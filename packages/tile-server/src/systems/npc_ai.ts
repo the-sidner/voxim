@@ -226,12 +226,19 @@ export class NpcAiSystem implements System {
       const newFacing = movementX !== 0 || movementY !== 0
         ? Math.atan2(movementY, movementX)
         : inputState.facing;
-      if (
-        movementX !== inputState.movementX ||
+      const inputChanged = movementX !== inputState.movementX ||
         movementY !== inputState.movementY ||
         actions !== inputState.actions ||
-        newFacing !== inputState.facing
-      ) {
+        newFacing !== inputState.facing;
+
+      if (inputChanged) {
+        if (movementX !== 0 || movementY !== 0) {
+          const job = queue.current;
+          log.debug("move: entity=%s dir=(%.2f,%.2f) job=%s", entityId, movementX, movementY, job?.type ?? "none");
+        }
+        if (actions !== 0) {
+          log.info("npc action: entity=%s actions=0x%x job=%s", entityId, actions, queue.current?.type ?? "none");
+        }
         world.write(entityId, InputState, {
           ...inputState, movementX, movementY, facing: newFacing, actions,
         });

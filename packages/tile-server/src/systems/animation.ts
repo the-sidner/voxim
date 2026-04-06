@@ -17,6 +17,9 @@ import type { System } from "../system.ts";
 import type { ContentStore } from "@voxim/content";
 import { Velocity, Health, SkillInProgress, AnimationState } from "../components/game.ts";
 import type { AnimationMode, AnimationStateData } from "@voxim/content";
+import { createLogger } from "../logger.ts";
+
+const log = createLogger("AnimationSystem");
 
 const WALK_THRESHOLD_SQ = 0.01;
 
@@ -84,6 +87,10 @@ export class AnimationSystem implements System {
       current.ticksIntoAction === next.ticksIntoAction
     ) return;
 
+    if (current?.mode !== next.mode) {
+      log.info("mode: entity=%s %s→%s%s", entityId, current?.mode ?? "none", next.mode,
+        next.mode === "attack" ? ` style=${next.attackStyle} ticks=${next.windupTicks}+${next.activeTicks}+${next.winddownTicks} into=${next.ticksIntoAction}` : "");
+    }
     world.set(entityId, AnimationState, next);
   }
 }

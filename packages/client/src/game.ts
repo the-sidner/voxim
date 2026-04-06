@@ -89,6 +89,10 @@ export class VoximGame {
           if (state.health)  this.hud.updateHealth(state.health.current, state.health.max);
           if (state.stamina) this.hud.updateStamina(state.stamina.current, state.stamina.max, state.stamina.exhausted);
           if (state.hunger)  this.hud.updateHunger(state.hunger.value);
+          if (state.animationState) {
+            const a = state.animationState;
+            console.log(`[client] self anim: ${a.mode} style=${a.attackStyle} ticks=${a.windupTicks}+${a.activeTicks}+${a.winddownTicks} into=${a.ticksIntoAction}`);
+          }
         }
       }
 
@@ -213,8 +217,10 @@ export class VoximGame {
         const lastAnim = this.playerId ? this.world.get(this.playerId)?.animationState : null;
         if (lastAnim?.mode === "attack") {
           this.renderer?.forceLocalAnimation("attack", lastAnim.attackStyle, lastAnim.windupTicks, lastAnim.activeTicks, lastAnim.winddownTicks);
+          console.log(`[client] forceAnim (confirmed): style=${lastAnim.attackStyle} into=${lastAnim.ticksIntoAction}`);
         } else {
           this.renderer?.forceLocalAnimation("attack", "slash", 4, 4, 7);
+          console.log("[client] forceAnim (predicted): slash 4+4+7");
         }
         // Arc is shown on DamageDealt confirmation, not on input prediction.
       }

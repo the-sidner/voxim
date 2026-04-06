@@ -83,7 +83,9 @@ export class ActionSystem implements System {
       const strikeSlot = loreLoadout?.skills.findIndex((s) => s?.verb === "strike") ?? -1;
 
       const weaponActionId = weaponStats.weaponAction ?? unarmedActionId;
-      world.set(entityId, SkillInProgress, {
+      // world.write (immediate) so AnimationSystem sees SkillInProgress this same tick
+      // and outputs mode=attack without a 1-tick idle gap.
+      world.write(entityId, SkillInProgress, {
         weaponActionId,
         phase: "windup",
         ticksInPhase: 0,
@@ -92,7 +94,7 @@ export class ActionSystem implements System {
         pendingSkillVerb: strikeSlot >= 0 ? `strike:${strikeSlot}` : "",
       });
 
-      log.debug("action initiated: entity=%s weaponAction=%s strikeSlot=%d", entityId, weaponActionId, strikeSlot);
+      log.info("swing start: entity=%s weapon=%s action=%s stamina=%f", entityId, weapon?.itemType ?? "unarmed", weaponActionId, stamina?.current ?? 0);
     }
 
     // ── 2. Advance phase + resolve hits ──────────────────────────────────────
@@ -117,10 +119,12 @@ export class ActionSystem implements System {
 
       if (sip.phase === "windup" && nextTicks >= action.windupTicks) {
         next = { ...next, phase: "active", ticksInPhase: 0 };
-        log.debug("action active: entity=%s weapon=%s", entityId, sip.weaponActionId);
+        log.info("swing active: entity=%s action=%s", entityId, sip.weaponActionId);
       } else if (sip.phase === "active" && nextTicks >= action.activeTicks) {
         next = { ...next, phase: "winddown", ticksInPhase: 0 };
+        log.info("swing winddown: entity=%s action=%s hits=%d", entityId, sip.weaponActionId, newHitEntities.length);
       } else if (sip.phase === "winddown" && nextTicks >= action.winddownTicks) {
+        log.info("swing done: entity=%s action=%s", entityId, sip.weaponActionId);
         world.remove(entityId, SkillInProgress);
         continue;
       }
@@ -194,8 +198,9 @@ export class ActionSystem implements System {
     const hiltCurr = localToWorld(poseCurr.hilt.fwd, poseCurr.hilt.right, poseCurr.hilt.up, attackerOrigin, attackFacing);
     const tipCurr  = localToWorld(poseCurr.tip.fwd,  poseCurr.tip.right,  poseCurr.tip.up,  attackerOrigin, attackFacing);
 
-    log.debug("resolveHits: attacker=%s pos=(%.2f,%.2f) facing=%.2f t=[%.3f,%.3f]",
-      entityId, ax, ay, attackFacing, tPrev, tCurr);
+    log.info("resolve: entity=%s pos=(%.1f,%.1f) facing=%.2f t=[%.3f,%.3f] candidates=%d tipFwd=(%.2f→%.2f)",
+      entityId, ax, ay, attackFacing, tPrev, tCurr, snap.entities.length,
+      posePrev.tip.fwd, poseCurr.tip.fwd);
 
     const attackerCombatState = world.get(entityId, CombatState);
     let damageMult = 1.0;
@@ -255,7 +260,18 @@ export class ActionSystem implements System {
         }
       }
 
-      if (!hitBodyPart) continue;
+      if (!hitBodyPart) {
+        // Log narrow-phase miss for debugging — shows closest part distances
+        const dists = hitboxDef.parts.map((p) => {
+          const pf = localToWorld(p.fromFwd, p.fromRight, p.fromUp, targetPos, targetFacing);
+          const pt = localToWorld(p.toFwd, p.toRight, p.toUp, targetPos, targetFacing);
+          const d = Math.min(segSegDistSq(hiltCurr, tipCurr, pf, pt), segSegDistSq(hiltPrev, tipPrev, pf, pt));
+          return `${p.id}:${Math.sqrt(d).toFixed(2)}(r=${(bladeRadius + p.radius).toFixed(2)})`;
+        });
+        log.info("miss: attacker=%s target=%s dist=%.2f parts=[%s]",
+          entityId, target.entityId, broadDist, dists.join(","));
+        continue;
+      }
 
       // Block / parry check (2D facing comparison — unchanged from original design).
       // Use snapshot actions for lag-compensated block check.
