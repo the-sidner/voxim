@@ -109,9 +109,8 @@
     "slots": [],
     "baseStats": {
       "damage": 12,
-      "attackRange": 1.8,
-      "attackArcHalf": 1.047,
-      "staminaCostPerSwing": 10
+      "staminaCostPerSwing": 10,
+      "bladeRadius": 0.06
     },
     "toolType": "sword",
     "weaponAction": "slash",
@@ -125,10 +124,9 @@
     "slots": [],
     "baseStats": {
       "damage": 18,
-      "attackRange": 1.5,
-      "attackArcHalf": 1.309,
       "staminaCostPerSwing": 14,
-      "harvestPower": 1.0
+      "harvestPower": 1.0,
+      "bladeRadius": 0.08
     },
     "toolType": "axe",
     "weaponAction": "overhead",
@@ -160,9 +158,8 @@
       }
     ],
     "baseStats": {
-      "attackRange": 2.0,
-      "attackArcHalf": 1.047,
-      "staminaCostPerSwing": 18
+      "staminaCostPerSwing": 18,
+      "bladeRadius": 0.06
     },
     "toolType": "sword",
     "weaponAction": "slash",
@@ -188,7 +185,6 @@
         "id": "haft",
         "materialCategories": ["wood", "bone"],
         "statContributions": [
-          { "stat": "attackRange",          "property": "density",     "multiplier": 0.5 },
           { "stat": "staminaCostPerSwing",  "property": "flexibility", "multiplier": -4 },
           { "stat": "weight",               "property": "density",     "multiplier": 0.8 }
         ],
@@ -196,10 +192,9 @@
       }
     ],
     "baseStats": {
-      "attackRange": 1.6,
-      "attackArcHalf": 1.309,
       "staminaCostPerSwing": 20,
-      "harvestPower": 1.0
+      "harvestPower": 1.0,
+      "bladeRadius": 0.08
     },
     "toolType": "axe",
     "weaponAction": "overhead",
@@ -224,16 +219,14 @@
         "id": "shaft",
         "materialCategories": ["wood"],
         "statContributions": [
-          { "stat": "attackRange",          "property": "density",     "multiplier": 1.2 },
           { "stat": "weight",               "property": "density",     "multiplier": 1.2 }
         ],
         "modelSlotId": "shaft_mat"
       }
     ],
     "baseStats": {
-      "attackRange": 2.5,
-      "attackArcHalf": 0.524,
-      "staminaCostPerSwing": 12
+      "staminaCostPerSwing": 12,
+      "bladeRadius": 0.04
     },
     "toolType": "spear",
     "weaponAction": "thrust",
@@ -326,9 +319,8 @@
     "slots": [],
     "baseStats": {
       "damage": 6,
-      "attackRange": 1.5,
-      "attackArcHalf": 0.785,
-      "staminaCostPerSwing": 0
+      "staminaCostPerSwing": 0,
+      "bladeRadius": 0.14
     },
     "weaponAction": "bite"
   }

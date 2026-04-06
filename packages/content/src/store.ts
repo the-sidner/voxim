@@ -32,6 +32,7 @@ import type {
   GameConfig,
   TileLayout,
   WeaponActionDef,
+  ModelHitboxDef,
   VerbDef,
 } from "./types.ts";
 
@@ -87,6 +88,9 @@ export interface ContentStore {
   getWeaponAction(id: string): WeaponActionDef | null;
   getAllWeaponActions(): readonly WeaponActionDef[];
 
+  // ---- model hitboxes ----
+  getModelHitboxDef(modelTemplateId: string): ModelHitboxDef | null;
+
   // ---- verbs ----
   getVerbDef(id: SkillVerb): VerbDef | null;
 
@@ -110,6 +114,7 @@ export class StaticContentStore implements ContentStore {
   private loreFragments = new Map<string, LoreFragment>();
   private conceptVerbEntries = new Map<string, ConceptVerbEntry>();
   private weaponActions = new Map<string, WeaponActionDef>();
+  private modelHitboxes = new Map<string, ModelHitboxDef>();
   private verbDefs = new Map<SkillVerb, VerbDef>();
   private gameConfig: GameConfig | null = null;
   private tileLayout: TileLayout | null = null;
@@ -159,6 +164,10 @@ export class StaticContentStore implements ContentStore {
 
   registerWeaponAction(def: WeaponActionDef): void {
     this.weaponActions.set(def.id, def);
+  }
+
+  registerModelHitbox(def: ModelHitboxDef): void {
+    this.modelHitboxes.set(def.modelTemplateId, def);
   }
 
   registerVerbDef(def: VerbDef): void {
@@ -325,6 +334,12 @@ export class StaticContentStore implements ContentStore {
 
   getAllWeaponActions(): readonly WeaponActionDef[] {
     return Array.from(this.weaponActions.values());
+  }
+
+  // ---- model hitboxes ----
+
+  getModelHitboxDef(modelTemplateId: string): ModelHitboxDef | null {
+    return this.modelHitboxes.get(modelTemplateId) ?? null;
   }
 
   // ---- verbs ----

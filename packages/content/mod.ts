@@ -45,7 +45,10 @@ export type {
   SkillEffectStat,
   ConceptVerbEntry,
   WeaponActionDef,
-  WeaponHitbox,
+  SwingKeyframe,
+  WeaponSwingPath,
+  BodyPartVolume,
+  ModelHitboxDef,
   VerbDef,
   GameConfig,
   TileLayout,
@@ -53,6 +56,10 @@ export type {
   TileNpcConfig,
   TileTraderListing,
 } from "./src/types.ts";
+
+// ---- sweep math (shared server + client) ----
+export type { Vec3 } from "./src/sweep_math.ts";
+export { localToWorld, evaluateSwingPath, segSegDistSq } from "./src/sweep_math.ts";
 
 // ---- ModelRef ECS component ----
 export { ModelRef } from "./src/component.ts";

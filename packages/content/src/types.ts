@@ -192,8 +192,12 @@ export interface DerivedItemStats {
   staminaCostPerSwing?: number;
   toolType?: string;
   harvestPower?: number;
-  /** ID of the WeaponActionDef that drives this weapon's swing phases and hitbox. */
+  /** ID of the WeaponActionDef that drives this weapon's swing phases and blade path. */
   weaponAction?: string;
+  /** Blade capsule half-radius in world units — overrides WeaponSwingPath.defaultBladeRadius. */
+  bladeRadius?: number;
+  /** Blade length in world units — reserved for future tip-scale derivation. */
+  bladeLength?: number;
   // armor
   armorReduction?: number;       // 0–1 fraction of incoming damage blocked
   staminaRegenPenalty?: number;  // 0–1 fraction of stamina regen suppressed while worn
@@ -291,27 +295,47 @@ export interface StructureDef {
 
 // ---- weapon actions ----
 
-/** Hitbox geometry for the active phase of a weapon swing. */
-export interface WeaponHitbox {
-  /** "arc" = radial sector; future shapes (e.g. "line") extend this union. */
-  shape: "arc";
-  /** Reach in world units from the attacker's position. */
-  range: number;
-  /** Half-angle of the arc in radians. PI/2 = quarter-circle sweep. */
-  arcHalf: number;
+/**
+ * One keyframe in a weapon swing path.
+ * t is normalised 0..1 over the ENTIRE action (windup + active + winddown).
+ * Hilt and tip positions are in entity-local (fwd, right, up) space.
+ */
+export interface SwingKeyframe {
+  /** Normalised time 0..1 over the entire action. */
+  t: number;
+  hiltFwd: number;
+  hiltRight: number;
+  hiltUp: number;
+  tipFwd: number;
+  tipRight: number;
+  tipUp: number;
+}
+
+/**
+ * Time-series description of the weapon's path through entity-local space.
+ * Replaces the old flat arc hitbox.
+ */
+export interface WeaponSwingPath {
+  /** Ordered keyframes; t values must be strictly increasing from 0 to 1. */
+  keyframes: SwingKeyframe[];
+  /**
+   * Default blade capsule half-radius in world units.
+   * Item templates may override via DerivedItemStats.bladeRadius.
+   */
+  defaultBladeRadius: number;
 }
 
 /**
  * Physics definition for one melee weapon archetype.
- * Drives the three-phase swing (windup → active → winddown), hitbox geometry,
+ * Drives the three-phase swing (windup → active → winddown), swing path geometry,
  * animation style tag, and base stamina cost.
  * Weapons reference this by id via ItemTemplate.weaponAction.
  */
 export interface WeaponActionDef {
   id: string;
-  /** Ticks the attacker is committed before the hitbox goes live. Telegraphs to defenders. */
+  /** Ticks the attacker is committed before the blade becomes active. Telegraphs to defenders. */
   windupTicks: number;
-  /** Ticks the hitbox is live. Each target can be hit at most once per swing. */
+  /** Ticks the blade is active. Each target body part can be hit at most once per swing. */
   activeTicks: number;
   /** Ticks of recovery after the active phase before the action is complete. */
   winddownTicks: number;
@@ -319,7 +343,37 @@ export interface WeaponActionDef {
   animationStyle: string;
   /** Flat stamina deducted when the action is initiated (before skill costs). */
   staminaCost: number;
-  hitbox: WeaponHitbox;
+  /** Swept capsule path of the weapon blade through entity-local space. */
+  swingPath: WeaponSwingPath;
+}
+
+// ---- body part volumes ----
+
+/**
+ * A named capsule in entity-local (fwd, right, up) space.
+ * Used for hit detection: the blade capsule is tested against each body part capsule.
+ */
+export interface BodyPartVolume {
+  /** Semantic name: "head", "torso", "abdomen", "legs", "body", "hindquarters", etc. */
+  id: string;
+  fromFwd: number;
+  fromRight: number;
+  fromUp: number;
+  toFwd: number;
+  toRight: number;
+  toUp: number;
+  /** Capsule radius in world units. */
+  radius: number;
+}
+
+/**
+ * Set of body part volumes for one model template.
+ * Keyed by modelTemplateId so action.ts can look up any hittable entity's hitbox.
+ */
+export interface ModelHitboxDef {
+  /** Matches ModelRef.modelId (same as NpcTemplate.modelTemplateId). */
+  modelTemplateId: string;
+  parts: BodyPartVolume[];
 }
 
 /**

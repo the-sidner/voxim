@@ -6,7 +6,15 @@
     "winddownTicks": 7,
     "animationStyle": "slash",
     "staminaCost": 10,
-    "hitbox": { "shape": "arc", "range": 2.0, "arcHalf": 1.047 }
+    "swingPath": {
+      "defaultBladeRadius": 0.06,
+      "keyframes": [
+        { "t": 0.0,   "hiltFwd": 0.2, "hiltRight":  0.35, "hiltUp": 1.0,  "tipFwd": 0.5, "tipRight":  0.9,  "tipUp": 0.95 },
+        { "t": 0.267, "hiltFwd": 0.3, "hiltRight":  0.4,  "hiltUp": 0.95, "tipFwd": 0.8, "tipRight":  1.1,  "tipUp": 0.9  },
+        { "t": 0.533, "hiltFwd": 0.3, "hiltRight": -0.35, "hiltUp": 0.9,  "tipFwd": 0.6, "tipRight": -1.1,  "tipUp": 0.85 },
+        { "t": 1.0,   "hiltFwd": 0.2, "hiltRight": -0.3,  "hiltUp": 0.85, "tipFwd": 0.4, "tipRight": -0.8,  "tipUp": 0.8  }
+      ]
+    }
   },
   {
     "id": "overhead",
@@ -15,7 +23,15 @@
     "winddownTicks": 9,
     "animationStyle": "overhead",
     "staminaCost": 14,
-    "hitbox": { "shape": "arc", "range": 1.8, "arcHalf": 0.785 }
+    "swingPath": {
+      "defaultBladeRadius": 0.08,
+      "keyframes": [
+        { "t": 0.0,   "hiltFwd": 0.1, "hiltRight": 0.25, "hiltUp": 0.9,  "tipFwd": 0.2, "tipRight": 0.3,  "tipUp": 1.4  },
+        { "t": 0.333, "hiltFwd": 0.1, "hiltRight": 0.2,  "hiltUp": 1.3,  "tipFwd": 0.2, "tipRight": 0.25, "tipUp": 1.85 },
+        { "t": 0.5,   "hiltFwd": 0.4, "hiltRight": 0.1,  "hiltUp": 0.75, "tipFwd": 0.7, "tipRight": 0.1,  "tipUp": 0.25 },
+        { "t": 1.0,   "hiltFwd": 0.2, "hiltRight": 0.1,  "hiltUp": 0.5,  "tipFwd": 0.4, "tipRight": 0.1,  "tipUp": 0.1  }
+      ]
+    }
   },
   {
     "id": "thrust",
@@ -24,7 +40,15 @@
     "winddownTicks": 6,
     "animationStyle": "thrust",
     "staminaCost": 12,
-    "hitbox": { "shape": "arc", "range": 2.6, "arcHalf": 0.4 }
+    "swingPath": {
+      "defaultBladeRadius": 0.04,
+      "keyframes": [
+        { "t": 0.0,   "hiltFwd": 0.1,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.5,  "tipRight": 0.32, "tipUp": 1.0 },
+        { "t": 0.231, "hiltFwd": 0.0,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.4,  "tipRight": 0.32, "tipUp": 1.0 },
+        { "t": 0.538, "hiltFwd": 0.35, "hiltRight": 0.22, "hiltUp": 1.0, "tipFwd": 1.95, "tipRight": 0.22, "tipUp": 1.0 },
+        { "t": 1.0,   "hiltFwd": 0.1,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.5,  "tipRight": 0.32, "tipUp": 1.0 }
+      ]
+    }
   },
   {
     "id": "unarmed",
@@ -33,7 +57,15 @@
     "winddownTicks": 5,
     "animationStyle": "unarmed",
     "staminaCost": 5,
-    "hitbox": { "shape": "arc", "range": 2.0, "arcHalf": 1.047 }
+    "swingPath": {
+      "defaultBladeRadius": 0.1,
+      "keyframes": [
+        { "t": 0.0,   "hiltFwd": 0.1,  "hiltRight": 0.22, "hiltUp": 1.0,  "tipFwd": 0.3,  "tipRight": 0.26, "tipUp": 1.0  },
+        { "t": 0.273, "hiltFwd": 0.0,  "hiltRight": 0.22, "hiltUp": 1.0,  "tipFwd": 0.2,  "tipRight": 0.26, "tipUp": 1.0  },
+        { "t": 0.545, "hiltFwd": 0.35, "hiltRight": 0.18, "hiltUp": 0.95, "tipFwd": 0.75, "tipRight": 0.18, "tipUp": 0.95 },
+        { "t": 1.0,   "hiltFwd": 0.1,  "hiltRight": 0.22, "hiltUp": 1.0,  "tipFwd": 0.3,  "tipRight": 0.26, "tipUp": 1.0  }
+      ]
+    }
   },
   {
     "id": "bite",
@@ -42,6 +74,14 @@
     "winddownTicks": 8,
     "animationStyle": "bite",
     "staminaCost": 0,
-    "hitbox": { "shape": "arc", "range": 1.5, "arcHalf": 0.785 }
+    "swingPath": {
+      "defaultBladeRadius": 0.14,
+      "keyframes": [
+        { "t": 0.0,   "hiltFwd": 0.25, "hiltRight": 0.0, "hiltUp": 0.6,  "tipFwd": 0.5,  "tipRight": 0.0, "tipUp": 0.65 },
+        { "t": 0.267, "hiltFwd": 0.15, "hiltRight": 0.0, "hiltUp": 0.58, "tipFwd": 0.38, "tipRight": 0.0, "tipUp": 0.62 },
+        { "t": 0.467, "hiltFwd": 0.6,  "hiltRight": 0.0, "hiltUp": 0.52, "tipFwd": 0.85, "tipRight": 0.0, "tipUp": 0.55 },
+        { "t": 1.0,   "hiltFwd": 0.25, "hiltRight": 0.0, "hiltUp": 0.6,  "tipFwd": 0.5,  "tipRight": 0.0, "tipUp": 0.65 }
+      ]
+    }
   }
 ]
