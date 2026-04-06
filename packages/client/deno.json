@@ -1,0 +1,8 @@
+{
+  "name": "@voxim/client",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "imports": {
+    "three": "https://esm.sh/three@0.167.0"
+  }
+}

@@ -1,0 +1,111 @@
+// @voxim/protocol — message schemas, event definitions, Serialiser re-export
+// Depends on: @voxim/engine
+
+// Re-export Serialiser so consumers can import it from here without depending on engine directly
+export type { Serialiser } from "@voxim/engine";
+
+export type {
+  InputDatagram,
+  EntityDelta,
+  EntityDestroyed,
+  StateMessage,
+  GameEvent,
+  DamageDealtEvent,
+  EntityDiedEvent,
+  CraftingCompletedEvent,
+  BuildingCompletedEvent,
+  HungerCriticalEvent,
+  GateApproachedEvent,
+  NodeDepletedEvent,
+  DayPhaseChangedEvent,
+  SkillActivatedEvent,
+  TradeCompletedEvent,
+  LoreExternalisedEvent,
+  LoreInternalisedEvent,
+} from "./src/messages.ts";
+
+export {
+  ACTION_USE_SKILL,
+  ACTION_BLOCK,
+  ACTION_JUMP,
+  ACTION_INTERACT,
+  ACTION_DODGE,
+  ACTION_CROUCH,
+  ACTION_EQUIP,
+  ACTION_CONSUME,
+  ACTION_SKILL_1,
+  ACTION_SKILL_2,
+  ACTION_SKILL_3,
+  ACTION_SKILL_4,
+  ACTION_TRADE_BUY,
+  ACTION_TRADE_SELL,
+  ACTION_EXTERNALISE,
+  ACTION_INTERNALISE,
+  hasAction,
+} from "./src/messages.ts";
+
+export { TileEvents } from "./src/tile_events.ts";
+export type {
+  EntityDiedPayload,
+  DamageDealtPayload,
+  CraftingCompletedPayload,
+  BuildingCompletedPayload,
+  HungerCriticalPayload,
+  ThirstCriticalPayload,
+  GateApproachedPayload,
+  NodeDepletedPayload,
+  DayPhaseChangedPayload,
+  SkillActivatedPayload,
+  TradeCompletedPayload,
+  LoreExternalisedPayload,
+  LoreInternalisedPayload,
+} from "./src/tile_events.ts";
+
+export { inputDatagramCodec } from "./src/codecs.ts";
+
+export type {
+  WorldSnapshot,
+  SnapshotEntity,
+} from "./src/world_snapshot.ts";
+export { worldSnapshotCodec } from "./src/world_snapshot.ts";
+
+export type {
+  ModelDefinition,
+  MaterialDef,
+  SkeletonDef,
+  ContentRequest,
+  ContentResponse,
+} from "./src/content.ts";
+export { contentRequestCodec, contentResponseCodec } from "./src/content.ts";
+
+export { ComponentType, COMPONENT_NAME_TO_TYPE, COMPONENT_TYPE_TO_NAME } from "./src/component_types.ts";
+export { EventType } from "./src/event_types.ts";
+export { binaryStateMessageCodec } from "./src/state_binary.ts";
+export type {
+  BinaryComponentEntry,
+  BinaryEntitySpawn,
+  BinaryComponentDelta,
+  BinaryStateMessage,
+} from "./src/state_binary.ts";
+
+export { WorldEvents } from "./src/world_events.ts";
+
+export type {
+  GatewayConnectRequest,
+  GatewayTileResponse,
+  GatewayErrorResponse,
+  GatewayResponse,
+  GatewayRegisterRequest,
+  GatewayRegisterResponse,
+  TileJoinRequest,
+  TileJoinAck,
+  TileHandoffRequest,
+  TileHandoffAck,
+} from "./src/gateway.ts";
+export type {
+  PlayerCrossedGatePayload,
+  TileServerStartedPayload,
+  TileServerStoppedPayload,
+  CaravanDepartedPayload,
+  CityRaidedPayload,
+} from "./src/world_events.ts";

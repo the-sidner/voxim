@@ -1,0 +1,414 @@
+[
+  {
+    "id": 0,
+    "name": "void",
+    "color": "#000000",
+    "roughness": 1.0,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.0,
+      "density": 0.0,
+      "flexibility": 0.0,
+      "flammability": 0.0,
+      "toughness": 0.0
+    }
+  },
+  {
+    "id": 1,
+    "name": "grass",
+    "color": "#4a7c3f",
+    "roughness": 0.9,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.1,
+      "density": 0.3,
+      "flexibility": 0.7,
+      "flammability": 0.6,
+      "toughness": 0.1
+    }
+  },
+  {
+    "id": 2,
+    "name": "wood",
+    "color": "#8b6340",
+    "roughness": 0.85,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.25,
+      "density": 0.4,
+      "flexibility": 0.65,
+      "flammability": 0.9,
+      "toughness": 0.3
+    }
+  },
+  {
+    "id": 3,
+    "name": "stone",
+    "color": "#808080",
+    "roughness": 0.8,
+    "metallic": 0.05,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.55,
+      "density": 0.8,
+      "flexibility": 0.05,
+      "flammability": 0.0,
+      "toughness": 0.6
+    }
+  },
+  {
+    "id": 4,
+    "name": "dirt",
+    "color": "#6b4226",
+    "roughness": 0.95,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.05,
+      "density": 0.5,
+      "flexibility": 0.3,
+      "flammability": 0.3,
+      "toughness": 0.15
+    }
+  },
+  {
+    "id": 5,
+    "name": "sand",
+    "color": "#c2a84e",
+    "roughness": 0.95,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.05,
+      "density": 0.55,
+      "flexibility": 0.1,
+      "flammability": 0.0,
+      "toughness": 0.1
+    }
+  },
+  {
+    "id": 6,
+    "name": "iron",
+    "color": "#7a7a8a",
+    "roughness": 0.4,
+    "metallic": 0.9,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.75,
+      "density": 1.0,
+      "flexibility": 0.15,
+      "flammability": 0.0,
+      "toughness": 0.8
+    }
+  },
+  {
+    "id": 7,
+    "name": "torch_mat",
+    "color": "#ff9900",
+    "roughness": 0.6,
+    "metallic": 0.0,
+    "emissive": 0.8,
+    "solid": false,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.1,
+      "density": 0.2,
+      "flexibility": 0.5,
+      "flammability": 1.0,
+      "toughness": 0.05
+    }
+  },
+  {
+    "id": 8,
+    "name": "water",
+    "color": "#1a6aaa",
+    "roughness": 0.05,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.0,
+      "density": 0.6,
+      "flexibility": 1.0,
+      "flammability": 0.0,
+      "toughness": 0.0
+    }
+  },
+  {
+    "id": 9,
+    "name": "corrupted",
+    "color": "#4a1a6a",
+    "roughness": 0.7,
+    "metallic": 0.1,
+    "emissive": 0.2,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.4,
+      "density": 0.7,
+      "flexibility": 0.2,
+      "flammability": 0.1,
+      "toughness": 0.5
+    }
+  },
+  {
+    "id": 10,
+    "name": "snow",
+    "color": "#e8eef0",
+    "roughness": 0.95,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.02,
+      "density": 0.2,
+      "flexibility": 0.1,
+      "flammability": 0.0,
+      "toughness": 0.05
+    }
+  },
+  {
+    "id": 11,
+    "name": "mud",
+    "color": "#4a3520",
+    "roughness": 0.98,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.03,
+      "density": 0.65,
+      "flexibility": 0.5,
+      "flammability": 0.1,
+      "toughness": 0.08
+    }
+  },
+  {
+    "id": 12,
+    "name": "gravel",
+    "color": "#7a7060",
+    "roughness": 0.9,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": true,
+    "properties": {
+      "hardness": 0.3,
+      "density": 0.7,
+      "flexibility": 0.05,
+      "flammability": 0.0,
+      "toughness": 0.25
+    }
+  },
+  {
+    "id": 100,
+    "name": "oak",
+    "color": "#92400e",
+    "roughness": 0.85,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.3,
+      "density": 0.45,
+      "flexibility": 0.55,
+      "flammability": 0.85,
+      "toughness": 0.35
+    }
+  },
+  {
+    "id": 101,
+    "name": "pine",
+    "color": "#a05020",
+    "roughness": 0.8,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.2,
+      "density": 0.35,
+      "flexibility": 0.7,
+      "flammability": 0.95,
+      "toughness": 0.25
+    }
+  },
+  {
+    "id": 102,
+    "name": "leather",
+    "color": "#7a4a2a",
+    "roughness": 0.7,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.15,
+      "density": 0.25,
+      "flexibility": 0.8,
+      "flammability": 0.5,
+      "toughness": 0.4
+    }
+  },
+  {
+    "id": 103,
+    "name": "steel",
+    "color": "#9090a0",
+    "roughness": 0.3,
+    "metallic": 0.95,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.9,
+      "density": 1.05,
+      "flexibility": 0.1,
+      "flammability": 0.0,
+      "toughness": 0.95
+    }
+  },
+  {
+    "id": 104,
+    "name": "copper",
+    "color": "#b87040",
+    "roughness": 0.45,
+    "metallic": 0.85,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.45,
+      "density": 0.9,
+      "flexibility": 0.35,
+      "flammability": 0.0,
+      "toughness": 0.55
+    }
+  },
+  {
+    "id": 105,
+    "name": "bone",
+    "color": "#e8e0c0",
+    "roughness": 0.75,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.4,
+      "density": 0.35,
+      "flexibility": 0.2,
+      "flammability": 0.3,
+      "toughness": 0.45
+    }
+  },
+  {
+    "id": 106,
+    "name": "skin",
+    "color": "#c8a882",
+    "roughness": 0.9,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": { "hardness": 0.05, "density": 0.2, "flexibility": 0.95, "flammability": 0.3, "toughness": 0.05 }
+  },
+  {
+    "id": 107,
+    "name": "dark_hair",
+    "color": "#2a1a0e",
+    "roughness": 0.95,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": { "hardness": 0.01, "density": 0.05, "flexibility": 0.99, "flammability": 0.7, "toughness": 0.01 }
+  },
+  {
+    "id": 108,
+    "name": "rough_cloth",
+    "color": "#5a4030",
+    "roughness": 0.95,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": { "hardness": 0.05, "density": 0.2, "flexibility": 0.9, "flammability": 0.8, "toughness": 0.1 }
+  },
+  {
+    "id": 109,
+    "name": "dark_leather",
+    "color": "#3a2010",
+    "roughness": 0.75,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": { "hardness": 0.15, "density": 0.25, "flexibility": 0.8, "flammability": 0.5, "toughness": 0.4 }
+  },
+  {
+    "id": 110,
+    "name": "worn_iron",
+    "color": "#6a6870",
+    "roughness": 0.55,
+    "metallic": 0.7,
+    "emissive": 0.0,
+    "solid": true,
+    "walkable": false,
+    "properties": { "hardness": 0.85, "density": 1.0, "flexibility": 0.1, "flammability": 0.0, "toughness": 0.9 }
+  },
+  {
+    "id": 200,
+    "name": "wolf_fur_dark",
+    "color": "#4a4444",
+    "roughness": 0.9,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.05,
+      "density": 0.1,
+      "flexibility": 0.9,
+      "flammability": 0.4,
+      "toughness": 0.1
+    }
+  },
+  {
+    "id": 201,
+    "name": "wolf_fur_light",
+    "color": "#8a7a6a",
+    "roughness": 0.9,
+    "metallic": 0.0,
+    "emissive": 0.0,
+    "solid": false,
+    "walkable": false,
+    "properties": {
+      "hardness": 0.05,
+      "density": 0.1,
+      "flexibility": 0.9,
+      "flammability": 0.4,
+      "toughness": 0.1
+    }
+  }
+]

@@ -1,0 +1,73 @@
+{
+  "domainWarp": {
+    "enabled": true,
+    "amplitude": 48,
+    "frequency": 0.0038,
+    "octaves": 3
+  },
+  "continent": {
+    "frequency": 0.0022,
+    "octaves": 7,
+    "lacunarity": 2.05,
+    "gain": 0.5
+  },
+  "tectonic": {
+    "frequency": 0.0058,
+    "octaves": 6,
+    "lacunarity": 1.95,
+    "gain": 0.46,
+    "weight": 0.38,
+    "ridgeOffset": 1.0,
+    "continentThreshold": 0.42,
+    "continentBlend": 0.15
+  },
+  "detail": {
+    "frequency": 0.028,
+    "octaves": 5,
+    "lacunarity": 2.2,
+    "gain": 0.52,
+    "weight": 0.11,
+    "billowMix": 0.35
+  },
+  "moisture": {
+    "frequency": 0.0036,
+    "octaves": 4,
+    "lacunarity": 2.1,
+    "gain": 0.5,
+    "bias": 0.0
+  },
+  "temperature": {
+    "frequency": 0.0042,
+    "octaves": 3,
+    "lacunarity": 2.0,
+    "gain": 0.5,
+    "bias": 0.0,
+    "altitudeFalloff": 0.9
+  },
+  "heightCurve": {
+    "seaLevel": 0.4,
+    "shoreWidth": 0.045,
+    "landExponent": 1.35,
+    "mountainExponent": 2.2,
+    "heightMin": 1.5,
+    "heightMax": 13.0
+  },
+  "spawnZone": {
+    "centerX": 256,
+    "centerY": 256,
+    "flatRadius": 28,
+    "fadeRadius": 72,
+    "targetNoise": 0.47
+  },
+  "erosion": {
+    "enabled": true,
+    "thermalPasses": 3,
+    "thermalAngle": 0.055,
+    "hydraulicStrength": 0.15
+  },
+  "zone": {
+    "gridSize": 32,
+    "ruinChance": 0.06,
+    "ruinMinAltitude": 0.38
+  }
+}

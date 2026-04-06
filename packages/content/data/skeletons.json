@@ -1,0 +1,208 @@
+[
+  {
+    "id": "human",
+    "bones": [
+      {
+        "id": "root",
+        "parent": null,
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": 0
+      },
+      {
+        "id": "torso_lower",
+        "parent": "root",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": 3
+      },
+      {
+        "id": "torso_mid",
+        "parent": "torso_lower",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": 1
+      },
+      {
+        "id": "torso_upper",
+        "parent": "torso_mid",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": 1
+      },
+      {
+        "id": "head",
+        "parent": "torso_upper",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": 1
+      },
+      {
+        "id": "upper_arm_l",
+        "parent": "torso_upper",
+        "restX": -2.0,
+        "restY": 0.0,
+        "restZ": 0
+      },
+      {
+        "id": "lower_arm_l",
+        "parent": "upper_arm_l",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": -2
+      },
+      {
+        "id": "upper_arm_r",
+        "parent": "torso_upper",
+        "restX": 2.0,
+        "restY": 0.0,
+        "restZ": 0
+      },
+      {
+        "id": "lower_arm_r",
+        "parent": "upper_arm_r",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": -2
+      },
+      {
+        "id": "hand_l",
+        "parent": "lower_arm_l",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": -2
+      },
+      {
+        "id": "hand_r",
+        "parent": "lower_arm_r",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": -2
+      },
+      {
+        "id": "upper_leg_l",
+        "parent": "root",
+        "restX": -0.5,
+        "restY": 0.0,
+        "restZ": 3
+      },
+      {
+        "id": "lower_leg_l",
+        "parent": "upper_leg_l",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": -2
+      },
+      {
+        "id": "upper_leg_r",
+        "parent": "root",
+        "restX": 0.5,
+        "restY": 0.0,
+        "restZ": 3
+      },
+      {
+        "id": "lower_leg_r",
+        "parent": "upper_leg_r",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": -2
+      },
+      {
+        "id": "foot_l",
+        "parent": "lower_leg_l",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": -1
+      },
+      {
+        "id": "foot_r",
+        "parent": "lower_leg_r",
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": -1
+      }
+    ]
+  },
+  {
+    "id": "wolf",
+    "bones": [
+      {
+        "id": "body",
+        "parent": null,
+        "restX": 0.0,
+        "restY": 0.0,
+        "restZ": 3
+      },
+      {
+        "id": "head",
+        "parent": "body",
+        "restX": 0.0,
+        "restY": -3,
+        "restZ": 0
+      },
+      {
+        "id": "tail",
+        "parent": "body",
+        "restX": 0.0,
+        "restY": 3,
+        "restZ": 0
+      },
+      {
+        "id": "fl_upper",
+        "parent": "body",
+        "restX": -1,
+        "restY": -2,
+        "restZ": -1
+      },
+      {
+        "id": "fl_lower",
+        "parent": "fl_upper",
+        "restX": 0,
+        "restY": 0,
+        "restZ": -1
+      },
+      {
+        "id": "fr_upper",
+        "parent": "body",
+        "restX": 1,
+        "restY": -2,
+        "restZ": -1
+      },
+      {
+        "id": "fr_lower",
+        "parent": "fr_upper",
+        "restX": 0,
+        "restY": 0,
+        "restZ": -1
+      },
+      {
+        "id": "rl_upper",
+        "parent": "body",
+        "restX": -1,
+        "restY": 2,
+        "restZ": -1
+      },
+      {
+        "id": "rl_lower",
+        "parent": "rl_upper",
+        "restX": 0,
+        "restY": 0,
+        "restZ": -1
+      },
+      {
+        "id": "rr_upper",
+        "parent": "body",
+        "restX": 1,
+        "restY": 2,
+        "restZ": -1
+      },
+      {
+        "id": "rr_lower",
+        "parent": "rr_upper",
+        "restX": 0,
+        "restY": 0,
+        "restZ": -1
+      }
+    ]
+  }
+]

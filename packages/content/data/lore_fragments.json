@@ -1,0 +1,164 @@
+[
+  {
+    "id": "vampiric_drain",
+    "name": "Vampiric Drain",
+    "concept": "DRAIN",
+    "domain": "SUPERNATURAL",
+    "magnitude": 3,
+    "outward": "steal {stat} from {target} into caster",
+    "inward": "caster {stat} drains as fuel"
+  },
+  {
+    "id": "hollow_hunger",
+    "name": "Hollow Hunger",
+    "concept": "DRAIN",
+    "domain": "SUPERNATURAL",
+    "magnitude": 2,
+    "outward": "inflict accelerated hunger on {target}",
+    "inward": "caster health drains slowly"
+  },
+  {
+    "id": "penance",
+    "name": "Penance",
+    "concept": "DRAIN",
+    "domain": "RELIGIOUS",
+    "magnitude": 2,
+    "outward": "sap stamina from {target} through divine judgement",
+    "inward": "caster suffers equal stamina loss"
+  },
+  {
+    "id": "dissolution",
+    "name": "Dissolution",
+    "concept": "DRAIN",
+    "domain": "ALCHEMICAL",
+    "magnitude": 2,
+    "outward": "dissolve {target} vitality through chemical contact",
+    "inward": "reagent stock consumed proportional to magnitude"
+  },
+  {
+    "id": "keen_edge",
+    "name": "Keen Edge",
+    "concept": "KEEN",
+    "domain": "SUPERNATURAL",
+    "magnitude": 3,
+    "outward": "strikes hit weak points, bonus damage on {target}",
+    "inward": "stamina cost per swing increased"
+  },
+  {
+    "id": "divine_sight",
+    "name": "Divine Sight",
+    "concept": "KEEN",
+    "domain": "RELIGIOUS",
+    "magnitude": 2,
+    "outward": "reveal hidden weaknesses and concealed threats",
+    "inward": "caster attention narrows; peripheral awareness reduced"
+  },
+  {
+    "id": "ignis",
+    "name": "Ignis",
+    "concept": "FIRE",
+    "domain": "ALCHEMICAL",
+    "magnitude": 3,
+    "outward": "ignite {target}, dealing burn damage over time",
+    "inward": "caster heat builds; cooling required between uses"
+  },
+  {
+    "id": "divine_flame",
+    "name": "Divine Flame",
+    "concept": "FIRE",
+    "domain": "RELIGIOUS",
+    "magnitude": 3,
+    "outward": "sacred fire purges corruption from {target}",
+    "inward": "caster piety consumed; must pray to restore"
+  },
+  {
+    "id": "infernal_brand",
+    "name": "Infernal Brand",
+    "concept": "FIRE",
+    "domain": "SUPERNATURAL",
+    "magnitude": 4,
+    "outward": "mark {target} with unstable fire; detonates on death",
+    "inward": "caster takes chip damage each tick brand is active"
+  },
+  {
+    "id": "dread_presence",
+    "name": "Dread Presence",
+    "concept": "FEAR",
+    "domain": "SUPERNATURAL",
+    "magnitude": 3,
+    "outward": "radiate dread; {target} accuracy and speed reduced",
+    "inward": "caster corruption builds while aura is active"
+  },
+  {
+    "id": "divine_wrath",
+    "name": "Divine Wrath",
+    "concept": "FEAR",
+    "domain": "RELIGIOUS",
+    "magnitude": 3,
+    "outward": "strike {target} with holy terror; undead flee immediately",
+    "inward": "caster must maintain conviction; fails under corruption"
+  },
+  {
+    "id": "swift_step",
+    "name": "Swift Step",
+    "concept": "SWIFT",
+    "domain": "SUPERNATURAL",
+    "magnitude": 2,
+    "outward": "caster movement speed and dodge distance increased",
+    "inward": "hunger accumulates faster while active"
+  },
+  {
+    "id": "fleet_blessing",
+    "name": "Fleet Blessing",
+    "concept": "SWIFT",
+    "domain": "RELIGIOUS",
+    "magnitude": 2,
+    "outward": "bless {target} with fleet feet; movement boosted",
+    "inward": "caster stamina regeneration halved for duration"
+  },
+  {
+    "id": "ward_of_stone",
+    "name": "Ward of Stone",
+    "concept": "SHIELD",
+    "domain": "RELIGIOUS",
+    "magnitude": 3,
+    "outward": "erect divine barrier absorbing incoming damage for {target}",
+    "inward": "caster stamina locked for barrier duration"
+  },
+  {
+    "id": "mending_touch",
+    "name": "Mending Touch",
+    "concept": "MEND",
+    "domain": "ALCHEMICAL",
+    "magnitude": 2,
+    "outward": "restore {amount} health to {target} via alchemical salve",
+    "inward": "consumes prepared salve from caster inventory"
+  },
+  {
+    "id": "laying_on_hands",
+    "name": "Laying on Hands",
+    "concept": "MEND",
+    "domain": "RELIGIOUS",
+    "magnitude": 3,
+    "outward": "channel divine healing into {target}",
+    "inward": "caster health transfers proportionally to {target}"
+  },
+  {
+    "id": "venom_coating",
+    "name": "Venom Coating",
+    "concept": "VENOM",
+    "domain": "ALCHEMICAL",
+    "magnitude": 2,
+    "outward": "weapon strikes poison {target}, slow health drain",
+    "inward": "coating depletes with use; requires re-application"
+  },
+  {
+    "id": "serpent_curse",
+    "name": "Serpent Curse",
+    "concept": "VENOM",
+    "domain": "SUPERNATURAL",
+    "magnitude": 3,
+    "outward": "curse {target} with supernatural poison; resists cure",
+    "inward": "caster suffers mild poison feedback"
+  }
+]

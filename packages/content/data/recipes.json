@@ -1,0 +1,63 @@
+[
+  {
+    "id": "wooden_sword",
+    "inputs": [{ "itemType": "wood", "quantity": 3 }],
+    "outputType": "wooden_sword",
+    "outputQuantity": 1,
+    "ticks": 60
+  },
+  {
+    "id": "stone_axe",
+    "inputs": [
+      { "itemType": "stone", "quantity": 2 },
+      { "itemType": "wood", "quantity": 2 }
+    ],
+    "outputType": "stone_axe",
+    "outputQuantity": 1,
+    "ticks": 120
+  },
+  {
+    "id": "campfire",
+    "inputs": [
+      { "itemType": "wood", "quantity": 5 },
+      { "itemType": "stone", "quantity": 2 }
+    ],
+    "outputType": "campfire",
+    "outputQuantity": 1,
+    "ticks": 100
+  },
+  {
+    "id": "cooked_meat",
+    "inputs": [
+      { "itemType": "raw_meat", "quantity": 1 },
+      { "itemType": "wood", "quantity": 1 }
+    ],
+    "outputType": "cooked_meat",
+    "outputQuantity": 1,
+    "ticks": 80
+  },
+  {
+    "id": "plank",
+    "inputs": [{ "itemType": "wood", "quantity": 1 }],
+    "outputType": "plank",
+    "outputQuantity": 2,
+    "ticks": 20
+  },
+  {
+    "id": "stone_block",
+    "inputs": [{ "itemType": "stone", "quantity": 2 }],
+    "outputType": "stone_block",
+    "outputQuantity": 1,
+    "ticks": 40
+  },
+  {
+    "id": "torch",
+    "inputs": [
+      { "itemType": "wood", "quantity": 1 },
+      { "itemType": "raw_meat", "quantity": 1 }
+    ],
+    "outputType": "torch",
+    "outputQuantity": 2,
+    "ticks": 30
+  }
+]

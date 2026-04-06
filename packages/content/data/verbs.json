@@ -1,0 +1,6 @@
+[
+  { "id": "strike", "baseMagnitude": 2 },
+  { "id": "invoke", "baseMagnitude": 4 },
+  { "id": "ward",   "baseMagnitude": 3 },
+  { "id": "step",   "baseMagnitude": 2 }
+]

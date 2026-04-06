@@ -1,0 +1,335 @@
+[
+  {
+    "id": "wood",
+    "category": "resource",
+    "stackable": true,
+    "weight": 1.0,
+    "slots": [],
+    "baseStats": {},
+    "materialName": "wood"
+  },
+  {
+    "id": "stone",
+    "category": "resource",
+    "stackable": true,
+    "weight": 2.0,
+    "slots": [],
+    "baseStats": {},
+    "materialName": "stone"
+  },
+  {
+    "id": "iron_ore",
+    "category": "resource",
+    "stackable": true,
+    "weight": 3.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "raw_meat",
+    "category": "resource",
+    "stackable": true,
+    "weight": 0.5,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "animal_hide",
+    "category": "resource",
+    "stackable": true,
+    "weight": 0.8,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "plank",
+    "category": "component",
+    "stackable": true,
+    "weight": 0.8,
+    "slots": [],
+    "baseStats": {},
+    "materialName": "wood"
+  },
+  {
+    "id": "stone_block",
+    "category": "component",
+    "stackable": true,
+    "weight": 3.5,
+    "slots": [],
+    "baseStats": {},
+    "materialName": "stone"
+  },
+  {
+    "id": "iron_ingot",
+    "category": "component",
+    "stackable": true,
+    "weight": 2.5,
+    "slots": [],
+    "baseStats": {},
+    "materialName": "iron"
+  },
+  {
+    "id": "leather_strip",
+    "category": "component",
+    "stackable": true,
+    "weight": 0.3,
+    "slots": [],
+    "baseStats": {},
+    "materialName": "leather"
+  },
+  {
+    "id": "cooked_meat",
+    "category": "consumable",
+    "stackable": true,
+    "weight": 0.3,
+    "slots": [],
+    "baseStats": { "foodValue": 40, "waterValue": 5 }
+  },
+  {
+    "id": "torch",
+    "category": "consumable",
+    "stackable": true,
+    "weight": 0.3,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "campfire",
+    "category": "resource",
+    "stackable": false,
+    "weight": 5.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "wooden_sword",
+    "category": "weapon",
+    "stackable": false,
+    "weight": 2.0,
+    "slots": [],
+    "baseStats": {
+      "damage": 12,
+      "attackRange": 1.8,
+      "attackArcHalf": 1.047,
+      "staminaCostPerSwing": 10
+    },
+    "toolType": "sword",
+    "weaponAction": "slash",
+    "modelTemplateId": "model_sword_basic"
+  },
+  {
+    "id": "stone_axe",
+    "category": "weapon",
+    "stackable": false,
+    "weight": 3.5,
+    "slots": [],
+    "baseStats": {
+      "damage": 18,
+      "attackRange": 1.5,
+      "attackArcHalf": 1.309,
+      "staminaCostPerSwing": 14,
+      "harvestPower": 1.0
+    },
+    "toolType": "axe",
+    "weaponAction": "overhead",
+    "modelTemplateId": "model_axe_basic"
+  },
+  {
+    "id": "sword",
+    "category": "weapon",
+    "stackable": false,
+    "weight": 0.5,
+    "slots": [
+      {
+        "id": "blade",
+        "materialCategories": ["metal", "stone"],
+        "statContributions": [
+          { "stat": "damage",               "property": "hardness",    "multiplier": 35 },
+          { "stat": "weight",               "property": "density",     "multiplier": 2.0 }
+        ],
+        "modelSlotId": "blade_mat"
+      },
+      {
+        "id": "grip",
+        "materialCategories": ["wood", "bone", "leather"],
+        "statContributions": [
+          { "stat": "staminaCostPerSwing",  "property": "flexibility", "multiplier": -6 },
+          { "stat": "weight",               "property": "density",     "multiplier": 0.5 }
+        ],
+        "modelSlotId": "grip_mat"
+      }
+    ],
+    "baseStats": {
+      "attackRange": 2.0,
+      "attackArcHalf": 1.047,
+      "staminaCostPerSwing": 18
+    },
+    "toolType": "sword",
+    "weaponAction": "slash",
+    "modelTemplateId": "model_sword"
+  },
+  {
+    "id": "axe",
+    "category": "weapon",
+    "stackable": false,
+    "weight": 0.5,
+    "slots": [
+      {
+        "id": "head",
+        "materialCategories": ["metal", "stone"],
+        "statContributions": [
+          { "stat": "damage",               "property": "hardness",    "multiplier": 40 },
+          { "stat": "harvestPower",         "property": "hardness",    "multiplier": 1.5 },
+          { "stat": "weight",               "property": "density",     "multiplier": 2.5 }
+        ],
+        "modelSlotId": "head_mat"
+      },
+      {
+        "id": "haft",
+        "materialCategories": ["wood", "bone"],
+        "statContributions": [
+          { "stat": "attackRange",          "property": "density",     "multiplier": 0.5 },
+          { "stat": "staminaCostPerSwing",  "property": "flexibility", "multiplier": -4 },
+          { "stat": "weight",               "property": "density",     "multiplier": 0.8 }
+        ],
+        "modelSlotId": "haft_mat"
+      }
+    ],
+    "baseStats": {
+      "attackRange": 1.6,
+      "attackArcHalf": 1.309,
+      "staminaCostPerSwing": 20,
+      "harvestPower": 1.0
+    },
+    "toolType": "axe",
+    "weaponAction": "overhead",
+    "modelTemplateId": "model_axe"
+  },
+  {
+    "id": "spear",
+    "category": "weapon",
+    "stackable": false,
+    "weight": 0.5,
+    "slots": [
+      {
+        "id": "tip",
+        "materialCategories": ["metal", "stone", "bone"],
+        "statContributions": [
+          { "stat": "damage",               "property": "hardness",    "multiplier": 28 },
+          { "stat": "weight",               "property": "density",     "multiplier": 1.0 }
+        ],
+        "modelSlotId": "tip_mat"
+      },
+      {
+        "id": "shaft",
+        "materialCategories": ["wood"],
+        "statContributions": [
+          { "stat": "attackRange",          "property": "density",     "multiplier": 1.2 },
+          { "stat": "weight",               "property": "density",     "multiplier": 1.2 }
+        ],
+        "modelSlotId": "shaft_mat"
+      }
+    ],
+    "baseStats": {
+      "attackRange": 2.5,
+      "attackArcHalf": 0.524,
+      "staminaCostPerSwing": 12
+    },
+    "toolType": "spear",
+    "weaponAction": "thrust",
+    "modelTemplateId": "model_spear"
+  },
+  {
+    "id": "chestplate",
+    "category": "armor",
+    "stackable": false,
+    "weight": 1.0,
+    "slots": [
+      {
+        "id": "shell",
+        "materialCategories": ["metal", "leather"],
+        "statContributions": [
+          { "stat": "armorReduction",       "property": "toughness",   "multiplier": 0.35 },
+          { "stat": "staminaRegenPenalty",  "property": "density",     "multiplier": 0.25 },
+          { "stat": "weight",               "property": "density",     "multiplier": 5.0 }
+        ],
+        "modelSlotId": "shell_mat"
+      },
+      {
+        "id": "lining",
+        "materialCategories": ["leather", "wood"],
+        "statContributions": [
+          { "stat": "staminaRegenPenalty",  "property": "flexibility", "multiplier": -0.1 },
+          { "stat": "weight",               "property": "density",     "multiplier": 1.0 }
+        ],
+        "modelSlotId": "lining_mat"
+      }
+    ],
+    "baseStats": {
+      "armorReduction": 0.0,
+      "staminaRegenPenalty": 0.0
+    },
+    "modelTemplateId": "model_chestplate"
+  },
+  {
+    "id": "coins",
+    "category": "resource",
+    "stackable": true,
+    "weight": 0.01,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "blank_tome",
+    "category": "component",
+    "stackable": true,
+    "weight": 0.4,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "tome",
+    "category": "component",
+    "stackable": false,
+    "weight": 0.4,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "helmet",
+    "category": "armor",
+    "stackable": false,
+    "weight": 0.5,
+    "slots": [
+      {
+        "id": "shell",
+        "materialCategories": ["metal", "leather"],
+        "statContributions": [
+          { "stat": "armorReduction",       "property": "toughness",   "multiplier": 0.15 },
+          { "stat": "staminaRegenPenalty",  "property": "density",     "multiplier": 0.1 },
+          { "stat": "weight",               "property": "density",     "multiplier": 2.0 }
+        ],
+        "modelSlotId": "shell_mat"
+      }
+    ],
+    "baseStats": {
+      "armorReduction": 0.0,
+      "staminaRegenPenalty": 0.0
+    },
+    "modelTemplateId": "model_helmet"
+  },
+  {
+    "id": "wolf_bite",
+    "category": "weapon",
+    "stackable": false,
+    "weight": 0,
+    "slots": [],
+    "baseStats": {
+      "damage": 6,
+      "attackRange": 1.5,
+      "attackArcHalf": 0.785,
+      "staminaCostPerSwing": 0
+    },
+    "weaponAction": "bite"
+  }
+]

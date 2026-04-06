@@ -1,0 +1,98 @@
+{
+  "survival": {
+    "hungerRatePerSec": 0.008333333333333333,
+    "thirstRatePerSec": 0.011111111111111112,
+    "hungerCritical": 80,
+    "thirstCritical": 80,
+    "starvationDps": 2,
+    "dehydrationDps": 3
+  },
+  "combat": {
+    "counterDamageMultiplier": 1.5,
+    "blockDamageMultiplier": 0.2,
+    "blockArcHalfRadians": 1.5707963267948966,
+    "knockbackImpulseXY": 5,
+    "knockbackImpulseZ": 1.5,
+    "unarmedWeaponAction": "unarmed",
+    "unarmedDamage": 8,
+    "unarmed": {
+      "weight": 0,
+      "damage": 8,
+      "attackRange": 2.0,
+      "attackArcHalf": 1.0471975511965976,
+      "staminaCostPerSwing": 5
+    }
+  },
+  "dodge": {
+    "staminaCost": 20,
+    "iFrameTicks": 8,
+    "cooldownTicks": 30,
+    "speed": 10.0,
+    "parryWindowTicks": 8,
+    "staggerTicks": 20
+  },
+  "corruption": {
+    "nightGainRatePerTick": 0.005,
+    "dayDecayRatePerTick": 0.003,
+    "exposureGainRatePerTick": 0.0001,
+    "exposureDecayRatePerTick": 0.003,
+    "staminaPenaltyThreshold": 30,
+    "staminaPenaltyFraction": 0.3,
+    "healthDamageThreshold": 60,
+    "healthDps": 2
+  },
+  "encumbrance": {
+    "maxCarryWeight": 50,
+    "penaltyThresholdRatio": 0.5,
+    "minSpeedMultiplier": 0.4
+  },
+  "dayNight": {
+    "dawnStart": 0.25,
+    "noonStart": 0.50,
+    "duskStart": 0.75,
+    "dayLengthTicks": 14400
+  },
+  "physics": {
+    "gravity": 20,
+    "maxGroundSpeed": 6,
+    "groundAccel": 40,
+    "airControlMult": 0.3,
+    "dragRetainPerSec": 0.05,
+    "jumpImpulse": 9,
+    "stepHeight": 0.75
+  },
+  "trade": {
+    "rangeWorldUnits": 3.0,
+    "cooldownTicks": 15,
+    "currencyItemType": "coins"
+  },
+  "lore": {
+    "externaliseConsumeTicks": 20,
+    "blankTomeItemType": "blank_tome",
+    "tomeItemType": "tome"
+  },
+  "player": {
+    "defaultSpawnX": 256,
+    "defaultSpawnY": 256,
+    "maxHealth": 100,
+    "maxStamina": 100,
+    "staminaRegenPerSec": 8,
+    "inventoryCapacity": 20
+  },
+  "npcAiDefaults": {
+    "wanderRadius": 20,
+    "wanderTicks": 60,
+    "idleTicks": 40,
+    "hungerEmergency": 90,
+    "thirstEmergency": 90,
+    "seekFoodTicks": 200,
+    "fleeTicks": 100,
+    "attackTicks": 40,
+    "foodHungerRestore": 40,
+    "waterThirstRestore": 40,
+    "foodPickupRangeSq": 2.25,
+    "arrivalThreshold": 0.8,
+    "attackRangeSq": 2.25,
+    "defaultAggroRangeSq": 225
+  }
+}

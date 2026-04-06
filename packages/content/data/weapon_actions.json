@@ -1,0 +1,47 @@
+[
+  {
+    "id": "slash",
+    "windupTicks": 4,
+    "activeTicks": 4,
+    "winddownTicks": 7,
+    "animationStyle": "slash",
+    "staminaCost": 10,
+    "hitbox": { "shape": "arc", "range": 2.0, "arcHalf": 1.047 }
+  },
+  {
+    "id": "overhead",
+    "windupTicks": 6,
+    "activeTicks": 3,
+    "winddownTicks": 9,
+    "animationStyle": "overhead",
+    "staminaCost": 14,
+    "hitbox": { "shape": "arc", "range": 1.8, "arcHalf": 0.785 }
+  },
+  {
+    "id": "thrust",
+    "windupTicks": 3,
+    "activeTicks": 4,
+    "winddownTicks": 6,
+    "animationStyle": "thrust",
+    "staminaCost": 12,
+    "hitbox": { "shape": "arc", "range": 2.6, "arcHalf": 0.4 }
+  },
+  {
+    "id": "unarmed",
+    "windupTicks": 3,
+    "activeTicks": 3,
+    "winddownTicks": 5,
+    "animationStyle": "unarmed",
+    "staminaCost": 5,
+    "hitbox": { "shape": "arc", "range": 1.5, "arcHalf": 1.047 }
+  },
+  {
+    "id": "bite",
+    "windupTicks": 4,
+    "activeTicks": 3,
+    "winddownTicks": 8,
+    "animationStyle": "bite",
+    "staminaCost": 0,
+    "hitbox": { "shape": "arc", "range": 1.5, "arcHalf": 0.785 }
+  }
+]

@@ -1,0 +1,713 @@
+/// <reference lib="dom" />
+/**
+ * Voxim renderer — Three.js scene management.
+ *
+ * Visual grammar:
+ *   - Post-process pipeline: scene → pixelTarget → depth-blit → heightTarget → EdgePass (Sobel + AO + sRGB) → canvas.
+ *   - Flat shading: all geometry uses MeshPhongMaterial with flatShading:true.
+ *   - Strong directional sun with hard shadows; dim hemisphere ambient.
+ *
+ * Camera is an orthographic isometric view (fixed 45°/45° angle).
+ * The camera only translates to track the player — orientation never changes.
+ * Culling: only the player's current terrain chunk plus its 8 neighbours are
+ * visible (3×3 chunk window = 96×96 world units). Entities outside a 68-unit
+ * radius from the player have their groups hidden.
+ */
+import * as THREE from "three";
+import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
+import type { EntityState } from "../state/client_world.ts";
+import type { ContentCache } from "../state/content_cache.ts";
+import type { MaterialDef, ModelDefinition } from "@voxim/content";
+import { resolveSubObjects } from "@voxim/content";
+import { buildTerrainMesh } from "./terrain_mesh.ts";
+import {
+  createEntityMesh,
+  updateEntityMesh,
+  upgradeToSkeletonModel,
+  updateSkeletonPose,
+  disposeEntityMesh,
+  type EntityMeshGroup,
+} from "./entity_mesh.ts";
+import { PropInstancePool } from "./prop_instance_pool.ts";
+import { evaluatePose } from "./skeleton_evaluator.ts";
+import { SkeletonOverlay } from "./skeleton_overlay.ts";
+import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
+import { EdgePass } from "./edge_pass.ts";
+
+/**
+ * Isometric view direction: camera sits at this offset from the camera target.
+ * (16, 24, 16) in Three.js space = 45° azimuth, ~47° elevation — classic game iso.
+ */
+const ISO_OFFSET = new THREE.Vector3(16, 24, 16);
+
+/**
+ * Depth → world-Y blit pass.
+ *
+ * Reads pixelTarget.depthTexture (written during Pass 1 for every rendered
+ * object — terrain, entities, trees, props) and reconstructs the exact world-Y
+ * coordinate for each pixel using the camera's inverse matrices.  The result is
+ * stored in heightTarget as a normalised greyscale value [0, 1].
+ *
+ * Running as a SEPARATE pass after Pass 1 means pixelTarget.depthTexture is
+ * never bound alongside pixelTarget.texture in the same draw call — avoiding
+ * the WebGL2 driver bug that returns black for the colour texture when both
+ * attachments of the same FBO are sampled simultaneously.
+ *
+ * Sky / unrendered pixels are cleared to white (depth = 1.0 → output 1.0) so
+ * they are never darkened by EdgePass height shading.
+ */
+const DEPTH_BLIT_VERT = /* glsl */`
+  varying vec2 vUv;
+  void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+const DEPTH_BLIT_FRAG = /* glsl */`
+  varying vec2 vUv;
+  uniform sampler2D tDepth;
+  uniform mat4      uProjInv;
+  uniform mat4      uViewInv;
+  uniform float     uHeightMin;
+  uniform float     uHeightMax;
+
+  void main() {
+    float depth = texture2D(tDepth, vUv).r;
+
+    // Unrendered (sky) pixels have depth = 1.0 (GL clear default).
+    // Output white so EdgePass does not darken sky areas.
+    if (depth >= 0.9999) {
+      gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+      return;
+    }
+
+    // Reconstruct world position from depth + camera inverse matrices.
+    vec4 ndc     = vec4(vUv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 viewPos = uProjInv * ndc;
+    viewPos     /= viewPos.w;           // perspective divide (identity for ortho, harmless)
+    vec4 world   = uViewInv * viewPos;
+
+    float h = clamp((world.y - uHeightMin) / (uHeightMax - uHeightMin), 0.0, 1.0);
+    gl_FragColor = vec4(h, h, h, 1.0);
+  }
+`;
+
+/**
+ * Half-height of the orthographic frustum in world units.
+ * The visible vertical range is 2×ORTHO_HALF = 60 world units.
+ */
+const ORTHO_HALF = 20;
+
+/** Terrain chunk size in world units. Must match CHUNK_SIZE in @voxim/world. */
+const CHUNK_SIZE = 32;
+
+/**
+ * Entities further than this squared distance (in world-x/y plane) from the
+ * local player have their Three.js group hidden each frame.
+ * 68² ≈ diagonal of the 3×3 chunk window (96 units) with a small margin.
+ */
+const CULL_RADIUS_SQ = 68 * 68;
+
+
+/**
+ * How many milliseconds behind the latest received state remote entities
+ * are rendered, to allow smooth linear interpolation between server ticks.
+ */
+const INTERP_DELAY_MS = 100;
+
+/** Lighting definition for a given time-of-day phase. */
+interface DayPhaseLight {
+  sky: THREE.Color; fog: THREE.Color; sun: THREE.Color;
+  sunIntensity: number; hemiIntensity: number; fogFar: number;
+}
+
+function makePhaseLights(): Record<string, DayPhaseLight> {
+  return {
+    noon:     { sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc), sun: new THREE.Color(0xfffde0), sunIntensity: 2.5,  hemiIntensity: 0.25, fogFar: 220 },
+    dawn:     { sky: new THREE.Color(0xd8846a), fog: new THREE.Color(0xb06848), sun: new THREE.Color(0xffb060), sunIntensity: 1.4,  hemiIntensity: 0.14, fogFar: 160 },
+    dusk:     { sky: new THREE.Color(0xa04828), fog: new THREE.Color(0x883820), sun: new THREE.Color(0xff7030), sunIntensity: 1.1,  hemiIntensity: 0.11, fogFar: 150 },
+    midnight: { sky: new THREE.Color(0x08091a), fog: new THREE.Color(0x060714), sun: new THREE.Color(0x2030a0), sunIntensity: 0.06, hemiIntensity: 0.04, fogFar: 100 },
+  };
+}
+
+/** Lerp a number toward target, returning new value. */
+function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t; }
+
+/** Short-path angle lerp (handles ±π wrap). */
+function lerpAngle(a: number, b: number, t: number): number {
+  const d = ((b - a) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+  return a + d * t;
+}
+
+/**
+ * Normalized direction FROM the world origin TOWARD the sun.
+ * Used for both the DirectionalLight position and the visible sun sphere.
+ */
+const SUN_DIR = new THREE.Vector3(20, 100, -15).normalize();
+
+export class VoximRenderer {
+  readonly renderer: THREE.WebGLRenderer;
+  readonly scene = new THREE.Scene();
+  readonly camera: THREE.OrthographicCamera;
+
+  private readonly terrainMeshes  = new Map<string, THREE.Mesh>();
+  private readonly terrainHmaps   = new Map<string, HeightmapData>();
+  private readonly terrainMats    = new Map<string, MaterialGridData>();
+  private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
+  private readonly propPool: PropInstancePool;
+
+  readonly skeletonOverlay: SkeletonOverlay;
+  readonly facingOverlay:   FacingOverlay;
+  readonly chunkOverlay:    ChunkOverlay;
+
+  private cameraTarget = new THREE.Vector3(256, 4, 256);
+  private localPlayerId: string | null = null;
+  private content: ContentCache | null = null;
+
+  /** Smooth animation tick — advances at server tick rate (20 Hz) based on real time. */
+  private smoothTick = 0;
+  private lastKnownServerTick = -1;
+  private lastServerTickMs = 0;
+
+  /** Full-res render target — 3D scene is drawn here before post-processing. */
+  private readonly pixelTarget: THREE.WebGLRenderTarget;
+  /** Height target — world-Y encoded as grayscale, fed into EdgePass for height shading. */
+  private readonly heightTarget: THREE.WebGLRenderTarget;
+  /** Fullscreen scene + material for the depth → world-Y blit pass. */
+  private readonly depthBlitScene: THREE.Scene;
+  private readonly depthBlitMat: THREE.ShaderMaterial;
+  /** Screen-space edge detection — runs during the blit pass. */
+  private readonly edgePass: EdgePass;
+  /** Fullscreen blit pass: upscales pixelTarget to the canvas. */
+  private readonly blitScene: THREE.Scene;
+  private readonly blitMesh: THREE.Mesh;
+  private readonly blitCamera: THREE.OrthographicCamera;
+  /** Debug: when true the blit pass shows the raw height texture instead of the scene. */
+  private heightDebugEnabled = false;
+  /** Directional sun — its target tracks the camera center each frame. */
+  private readonly sun: THREE.DirectionalLight;
+  /** Visible sun disc in the sky. */
+  private readonly sunMesh: THREE.Mesh;
+  /** Hemisphere sky/ground ambient. */
+  private readonly hemi: THREE.HemisphereLight;
+
+  // ---- day/night lighting ----
+  private readonly phaseLights = makePhaseLights();
+  /** Current interpolated lighting values (mutated every frame). */
+  private readonly lightCur: DayPhaseLight = {
+    sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc),
+    sun: new THREE.Color(0xfffde0), sunIntensity: 2.5, hemiIntensity: 0.25, fogFar: 220,
+  };
+  /** Target lighting values set by setDayPhase(). */
+  private readonly lightTgt: DayPhaseLight = {
+    sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc),
+    sun: new THREE.Color(0xfffde0), sunIntensity: 2.5, hemiIntensity: 0.25, fogFar: 220,
+  };
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.propPool        = new PropInstancePool(this.scene);
+    this.skeletonOverlay = new SkeletonOverlay(this.scene);
+    this.facingOverlay   = new FacingOverlay(this.scene);
+    this.chunkOverlay    = new ChunkOverlay(this.scene);
+
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
+    this.renderer.setPixelRatio(1);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap; // harder shadow edges
+
+    const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
+    this.camera = new THREE.OrthographicCamera(
+      -ORTHO_HALF * aspect, ORTHO_HALF * aspect, ORTHO_HALF, -ORTHO_HALF, 0.1, 1000,
+    );
+    this.camera.position.copy(this.cameraTarget).add(ISO_OFFSET);
+    this.camera.lookAt(this.cameraTarget);
+
+    // ---- render target (with depth texture for the depth-blit pass) ----
+    const pw = Math.max(1, canvas.clientWidth  || canvas.width  || 320);
+    const ph = Math.max(1, canvas.clientHeight || canvas.height || 180);
+    // Float depth texture — more portable for shader sampling than UnsignedIntType
+    // on WebGL2 (some drivers return undefined values for DEPTH_COMPONENT24 sampling).
+    const depthTex = new THREE.DepthTexture(pw, ph, THREE.FloatType);
+    depthTex.format = THREE.DepthFormat;
+    this.pixelTarget = new THREE.WebGLRenderTarget(pw, ph, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      stencilBuffer: false,
+    });
+    this.pixelTarget.depthTexture = depthTex;
+
+    // ---- height target + depth-blit pass ----
+    this.heightTarget = new THREE.WebGLRenderTarget(pw, ph, {
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      stencilBuffer: false,
+    });
+    this.depthBlitMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDepth:     { value: depthTex },
+        uProjInv:   { value: new THREE.Matrix4() },
+        uViewInv:   { value: new THREE.Matrix4() },
+        uHeightMin: { value: 0.0  },
+        uHeightMax: { value: 16.0 },
+      },
+      vertexShader:   DEPTH_BLIT_VERT,
+      fragmentShader: DEPTH_BLIT_FRAG,
+      depthTest:  false,
+      depthWrite: false,
+    });
+    this.depthBlitScene = new THREE.Scene();
+    this.depthBlitScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.depthBlitMat));
+
+    // ---- edge pass + fullscreen blit scene ----
+    this.edgePass   = new EdgePass(this.pixelTarget.texture, this.heightTarget.texture, pw, ph);
+    this.blitScene  = new THREE.Scene();
+    this.blitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const blitGeo = new THREE.PlaneGeometry(2, 2);
+    this.blitMesh = new THREE.Mesh(blitGeo, this.edgePass.material);
+    this.blitScene.add(this.blitMesh);
+
+    // ---- lighting ----
+    // Strong directional sun — dominates shading so flat-shaded faces read clearly.
+    this.sun = new THREE.DirectionalLight(0xfffde0, 2.5);
+    this.sun.position.copy(SUN_DIR).multiplyScalar(100);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.camera.near   = 0.5;
+    this.sun.shadow.camera.far    = 400;
+    this.sun.shadow.camera.left   = -90;
+    this.sun.shadow.camera.right  =  90;
+    this.sun.shadow.camera.top    =  90;
+    this.sun.shadow.camera.bottom = -90;
+    this.sun.shadow.bias = -0.001; // prevent self-shadow acne on flat faces
+    this.scene.add(this.sun);
+    // Target must be in the scene so Three.js updates its world matrix each frame.
+    this.scene.add(this.sun.target);
+
+    // Ambient fill — brightened so shadowed cliff walls are readable, not black voids.
+    this.hemi = new THREE.HemisphereLight(0x99bbdd, 0x334433, 0.55);
+    this.scene.add(this.hemi);
+
+    // ---- visible sun sphere ----
+    this.sunMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(10, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xfffce0 }),
+    );
+    this.scene.add(this.sunMesh);
+
+    // ---- sky ----
+    this.scene.fog = new THREE.Fog(0x7aa4cc, 80, 220);
+    this.scene.background = new THREE.Color(0x7aa4cc);
+
+    globalThis.addEventListener("resize", () => this.onResize(canvas));
+  }
+
+  setLocalPlayer(id: string): void {
+    this.localPlayerId = id;
+  }
+
+  setContentCache(cache: ContentCache): void {
+    this.content = cache;
+  }
+
+  // ---- terrain ----
+
+  updateTerrain(heightmap: HeightmapData, materials: MaterialGridData): void {
+    const cx = heightmap.chunkX, cy = heightmap.chunkY;
+    const key = `${cx},${cy}`;
+
+    this.terrainHmaps.set(key, heightmap);
+    this.terrainMats.set(key, materials);
+
+    this._rebuildChunk(cx, cy);
+
+    // Neighbors whose east/south boundary wall now references this chunk need rebuilding too.
+    this._rebuildChunk(cx - 1, cy);  // west neighbor — its east boundary faces us
+    this._rebuildChunk(cx, cy - 1);  // north neighbor — its south boundary faces us
+  }
+
+  private _rebuildChunk(cx: number, cy: number): void {
+    const key = `${cx},${cy}`;
+    const hm = this.terrainHmaps.get(key);
+    const mat = this.terrainMats.get(key);
+    if (!hm || !mat) return;
+
+    const existing = this.terrainMeshes.get(key);
+    const mesh = buildTerrainMesh(
+      hm, mat, existing,
+      this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
+      this.terrainMats.get(`${cx + 1},${cy}`) ?? null,
+      this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
+      this.terrainMats.get(`${cx},${cy + 1}`) ?? null,
+    );
+    if (!existing) {
+      this.scene.add(mesh);
+      this.terrainMeshes.set(key, mesh);
+      this.chunkOverlay.addChunk(cx, cy);
+    }
+  }
+
+  removeTerrain(chunkX: number, chunkY: number): void {
+    const key = `${chunkX},${chunkY}`;
+    const mesh = this.terrainMeshes.get(key);
+    if (mesh) {
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+      this.terrainMeshes.delete(key);
+      this.terrainHmaps.delete(key);
+      this.terrainMats.delete(key);
+      this.chunkOverlay.removeChunk(chunkX, chunkY);
+    }
+  }
+
+  // ---- entities ----
+
+  updateEntity(entityId: string, state: EntityState): void {
+    // Static props are fully managed by propPool after their first model load — skip.
+    if (this.propPool.hasProp(entityId)) return;
+
+    const isLocal = entityId === this.localPlayerId;
+    let mesh = this.entityMeshes.get(entityId);
+    if (!mesh) {
+      mesh = createEntityMesh(state, isLocal);
+      this.scene.add(mesh.group);
+      this.entityMeshes.set(entityId, mesh);
+    } else {
+      updateEntityMesh(mesh, state);
+    }
+
+    // Upgrade to skeleton model (animated entity) or prop pool (static entity)
+    // when modelRef arrives or changes.
+    const modelRef = state.modelRef;
+    if (modelRef && this.content && mesh.modelId !== modelRef.modelId) {
+      const capture = mesh;
+      const scale = { x: modelRef.scaleX, y: modelRef.scaleY, z: modelRef.scaleZ };
+      this.content.prefetchModel(modelRef.modelId).then(() => {
+        const def = this.content!.getModelSync(modelRef.modelId);
+        if (!def) return;
+
+        const resolvedSubs = resolveSubObjects(def.subObjects, modelRef.seed ?? 0);
+
+        const allMatIds = new Set<number>(def.materials);
+        for (const sub of resolvedSubs) {
+          const subDef = this.content!.getModelSync(sub.modelId);
+          if (subDef) for (const id of subDef.materials) allMatIds.add(id);
+        }
+        const mats = new Map<number, MaterialDef>();
+        for (const id of allMatIds) {
+          const m = this.content!.getMaterialSync(id);
+          if (m) mats.set(id, m);
+        }
+
+        const skeleton = def.skeletonId
+          ? this.content!.getSkeletonSync(def.skeletonId)
+          : undefined;
+
+        const subModelDefs = new Map<string, ModelDefinition>();
+        for (const sub of resolvedSubs) {
+          const subDef = this.content!.getModelSync(sub.modelId);
+          if (subDef) subModelDefs.set(sub.modelId, subDef);
+        }
+
+        if (skeleton) {
+          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale);
+          this.skeletonOverlay.trackEntity(entityId, capture, skeleton);
+        } else {
+          // Static prop — hand off to instanced pool, discard the placeholder Group.
+          const worldPos = capture.group.position.clone();
+          this.scene.remove(capture.group);
+          disposeEntityMesh(capture);
+          this.entityMeshes.delete(entityId);
+          this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale);
+        }
+      }).catch(() => {});
+    }
+  }
+
+  /**
+   * Immediately override the local player's animation state for client-side prediction.
+   * Called the instant the player attacks so the swing is visible without waiting for
+   * the server round-trip. The server's confirmed AnimationState will overwrite this
+   * within one tick (≤50ms) via the normal delta path.
+   */
+  forceLocalAnimation(mode: string): void {
+    if (!this.localPlayerId) return;
+    const mesh = this.entityMeshes.get(this.localPlayerId);
+    if (mesh) mesh.animationState = {
+      mode: mode as import("@voxim/content").AnimationMode,
+      attackStyle: "slash",
+      windupTicks: 4,
+      activeTicks: 4,
+      winddownTicks: 7,
+      ticksIntoAction: 0,
+    };
+  }
+
+  removeEntity(entityId: string): void {
+    if (this.propPool.hasProp(entityId)) {
+      this.propPool.removeProp(entityId);
+      return;
+    }
+    const mesh = this.entityMeshes.get(entityId);
+    if (mesh) {
+      this.skeletonOverlay.untrackEntity(entityId);
+      this.scene.remove(mesh.group);
+      disposeEntityMesh(mesh);
+      this.entityMeshes.delete(entityId);
+    }
+  }
+
+  // ---- camera ----
+
+  getPlayerScreenPos(): { x: number; y: number } {
+    return this.getEntityScreenPos(this.localPlayerId ?? "") ?? { x: 0, y: 0 };
+  }
+
+  /** Project an entity's world position to canvas pixel coordinates, or null if not found. */
+  getEntityScreenPos(entityId: string): { x: number; y: number } | null {
+    const mesh = this.entityMeshes.get(entityId);
+    if (!mesh) return null;
+    const pos = mesh.group.position.clone();
+    pos.project(this.camera);
+    const w = this.renderer.domElement.clientWidth;
+    const h = this.renderer.domElement.clientHeight;
+    return {
+      x: (pos.x * 0.5 + 0.5) * w,
+      y: (-pos.y * 0.5 + 0.5) * h,
+    };
+  }
+
+  // ---- day/night ----
+
+  /**
+   * Called when a DayPhaseChanged event arrives.
+   * Lighting smoothly interpolates toward the target values each render frame.
+   */
+  setDayPhase(phase: string): void {
+    const p = this.phaseLights[phase] ?? this.phaseLights.noon;
+    this.lightTgt.sky.copy(p.sky);
+    this.lightTgt.fog.copy(p.fog);
+    this.lightTgt.sun.copy(p.sun);
+    this.lightTgt.sunIntensity = p.sunIntensity;
+    this.lightTgt.hemiIntensity = p.hemiIntensity;
+    this.lightTgt.fogFar = p.fogFar;
+  }
+
+  // ---- debug ----
+
+  /** Toggle showing the raw height pre-pass texture instead of the normal scene. */
+  toggleHeightDebug(): boolean {
+    this.heightDebugEnabled = !this.heightDebugEnabled;
+    if (this.heightDebugEnabled) {
+      // Simple pass-through shader: displays height texture in sRGB space.
+      this.blitMesh.material = new THREE.ShaderMaterial({
+        uniforms: { tHeight: { value: this.heightTarget.texture } },
+        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+        fragmentShader: `
+          varying vec2 vUv;
+          uniform sampler2D tHeight;
+          void main() {
+            float h = texture2D(tHeight, vUv).r;
+            // linear → sRGB so the gradient is perceptually uniform
+            float s = pow(max(h, 0.0), 1.0 / 2.2);
+            gl_FragColor = vec4(s, s, s, 1.0);
+          }`,
+        depthTest: false,
+        depthWrite: false,
+      });
+    } else {
+      (this.blitMesh.material as THREE.Material).dispose();
+      this.blitMesh.material = this.edgePass.material;
+    }
+    return this.heightDebugEnabled;
+  }
+
+  // ---- render loop ----
+
+  render(serverTick: number): void {
+    // Compute a smooth fractional tick that advances at 20 Hz based on real time.
+    // This makes animations run at 60 fps instead of stepping every 50 ms.
+    const now = performance.now();
+    if (serverTick !== this.lastKnownServerTick) {
+      this.lastKnownServerTick = serverTick;
+      this.lastServerTickMs = now;
+    }
+    this.smoothTick = serverTick + (now - this.lastServerTickMs) / 50;
+
+    // Drive skeleton poses for all animated entities.
+    // Fall back to idle if no animationState has arrived yet (player starts still).
+    for (const [, mesh] of this.entityMeshes) {
+      if (mesh.boneGroups && mesh.skeletonId) {
+        const anim = mesh.animationState;
+        const pose = evaluatePose(
+          mesh.skeletonId,
+          anim?.mode          ?? "idle",
+          anim?.attackStyle   ?? "",
+          anim?.windupTicks   ?? 0,
+          anim?.activeTicks   ?? 0,
+          anim?.winddownTicks ?? 0,
+          anim?.ticksIntoAction ?? 0,
+          this.smoothTick,
+          mesh.velocityX, mesh.velocityY, mesh.facingAngle,
+        );
+        updateSkeletonPose(mesh, pose);
+      }
+    }
+
+    // Interpolate remote entity positions (local player snaps — no delay)
+    const renderTime = performance.now() - INTERP_DELAY_MS;
+    for (const [id, mesh] of this.entityMeshes) {
+      if (id === this.localPlayerId) continue;
+      const buf = mesh.posBuffer;
+      if (buf.length === 0) continue;
+      if (buf.length === 1) {
+        mesh.group.position.set(buf[0].x, buf[0].y, buf[0].z);
+        mesh.group.rotation.y = buf[0].ry;
+        continue;
+      }
+      // Find the last sample at or before renderTime
+      let lo = 0;
+      for (let i = 0; i < buf.length - 1; i++) {
+        if (buf[i].t <= renderTime) lo = i; else break;
+      }
+      const hi = Math.min(lo + 1, buf.length - 1);
+      if (lo === hi) {
+        mesh.group.position.set(buf[lo].x, buf[lo].y, buf[lo].z);
+        mesh.group.rotation.y = buf[lo].ry;
+      } else {
+        const alpha = Math.max(0, Math.min(1, (renderTime - buf[lo].t) / (buf[hi].t - buf[lo].t)));
+        mesh.group.position.set(
+          lerpN(buf[lo].x, buf[hi].x, alpha),
+          lerpN(buf[lo].y, buf[hi].y, alpha),
+          lerpN(buf[lo].z, buf[hi].z, alpha),
+        );
+        mesh.group.rotation.y = lerpAngle(buf[lo].ry, buf[hi].ry, alpha);
+      }
+    }
+
+    // Sync debug overlays after poses and interpolation
+    this.skeletonOverlay.update(this.entityMeshes);
+    this.facingOverlay.update(this.entityMeshes);
+
+    // Smoothly transition day/night lighting (per-frame lerp toward target)
+    const L = 0.015; // lerp speed — full transition over ~4 s at 60 fps
+    this.lightCur.sky.lerp(this.lightTgt.sky, L);
+    this.lightCur.fog.lerp(this.lightTgt.fog, L);
+    this.lightCur.sun.lerp(this.lightTgt.sun, L);
+    this.lightCur.sunIntensity  = lerpN(this.lightCur.sunIntensity,  this.lightTgt.sunIntensity,  L);
+    this.lightCur.hemiIntensity = lerpN(this.lightCur.hemiIntensity, this.lightTgt.hemiIntensity, L);
+    this.lightCur.fogFar        = lerpN(this.lightCur.fogFar,        this.lightTgt.fogFar,        L);
+    (this.scene.background as THREE.Color).copy(this.lightCur.sky);
+    (this.scene.fog as THREE.Fog).color.copy(this.lightCur.fog);
+    (this.scene.fog as THREE.Fog).far = this.lightCur.fogFar;
+    this.sun.color.copy(this.lightCur.sun);
+    this.sun.intensity   = this.lightCur.sunIntensity;
+    this.hemi.intensity  = this.lightCur.hemiIntensity;
+    this.sunMesh.visible = this.lightCur.sunIntensity > 0.15;
+
+    // Smoothly track local player
+    const localMesh = this.localPlayerId
+      ? this.entityMeshes.get(this.localPlayerId)
+      : undefined;
+    if (localMesh) {
+      this.cameraTarget.copy(localMesh.group.position);
+    }
+
+    // Chunk culling — only render 3×3 chunks around the player
+    const playerPos = localMesh?.group.position ?? this.cameraTarget;
+    const pChunkX = Math.floor(playerPos.x / CHUNK_SIZE);
+    const pChunkY = Math.floor(playerPos.z / CHUNK_SIZE);
+    for (const [key, tmesh] of this.terrainMeshes) {
+      const [cx, cy] = key.split(",").map(Number);
+      tmesh.visible = Math.abs(cx - pChunkX) <= 2 && Math.abs(cy - pChunkY) <= 2;
+    }
+    // Entity culling — hide entities beyond CULL_RADIUS_SQ
+    for (const [id, emesh] of this.entityMeshes) {
+      if (id === this.localPlayerId) { emesh.group.visible = true; continue; }
+      const dx = emesh.group.position.x - playerPos.x;
+      const dz = emesh.group.position.z - playerPos.z;
+      emesh.group.visible = dx * dx + dz * dz <= CULL_RADIUS_SQ;
+    }
+
+    const targetCamPos = this.cameraTarget.clone().add(ISO_OFFSET);
+    this.camera.position.copy(targetCamPos);
+    this.camera.lookAt(this.cameraTarget);
+
+    // Keep sun shadow frustum centered on the player area.
+    // Both position and target must move together — only the direction between
+    // them (SUN_DIR) defines where shadows fall, not the absolute world position.
+    this.sun.target.position.copy(this.cameraTarget);
+    this.sun.position.copy(this.cameraTarget).addScaledVector(SUN_DIR, 100);
+
+    // Snap shadow frustum to its own texel grid to eliminate shadow swimming.
+    // As the camera tracks the player, fractional-texel drift causes shadow
+    // edges to crawl across surfaces each frame (visible as flickering).
+    // Rounding the target position to the nearest shadow-map texel size
+    // keeps the shadow projection pixel-perfect between frames.
+    {
+      const texelSize = (this.sun.shadow.camera.right - this.sun.shadow.camera.left)
+        / this.sun.shadow.mapSize.x;
+      const tx = Math.round(this.sun.target.position.x / texelSize) * texelSize;
+      const tz = Math.round(this.sun.target.position.z / texelSize) * texelSize;
+      const dx = tx - this.sun.target.position.x;
+      const dz = tz - this.sun.target.position.z;
+      this.sun.target.position.x = tx;
+      this.sun.target.position.z = tz;
+      this.sun.position.x += dx;
+      this.sun.position.z += dz;
+    }
+
+    // Keep the sun sphere fixed in the sky relative to the camera
+    this.sunMesh.position
+      .copy(this.camera.position)
+      .addScaledVector(SUN_DIR, 350);
+
+    // Pass 1: render scene to low-res pixel target (writes colour + depth).
+    this.renderer.setRenderTarget(this.pixelTarget);
+    this.renderer.render(this.scene, this.camera);
+
+    // Depth blit: reconstruct world-Y from pixelTarget.depthTexture → heightTarget.
+    // pixelTarget is no longer the active FBO here, so reading its depth texture is
+    // safe — no same-FBO feedback loop.  Camera matrices are snapped after Pass 1
+    // so they match the frame that produced the depth buffer.
+    this.depthBlitMat.uniforms.uProjInv.value.copy(this.camera.projectionMatrixInverse);
+    this.depthBlitMat.uniforms.uViewInv.value.copy(this.camera.matrixWorld);
+    this.renderer.setRenderTarget(this.heightTarget);
+    this.renderer.render(this.depthBlitScene, this.blitCamera);
+
+    // Pass 2: edge detection + height shading + sRGB blit to canvas.
+    this.renderer.setRenderTarget(null);
+    this.renderer.render(this.blitScene, this.blitCamera);
+  }
+
+  private onResize(canvas: HTMLCanvasElement): void {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    this.renderer.setSize(w, h, false);
+    const aspect = w / h;
+    this.camera.left   = -ORTHO_HALF * aspect;
+    this.camera.right  =  ORTHO_HALF * aspect;
+    this.camera.top    =  ORTHO_HALF;
+    this.camera.bottom = -ORTHO_HALF;
+    this.camera.updateProjectionMatrix();
+    const npw = Math.max(1, w);
+    const nph = Math.max(1, h);
+    this.pixelTarget.setSize(npw, nph);
+    this.heightTarget.setSize(npw, nph);
+    this.edgePass.setSize(npw, nph);
+  }
+
+  dispose(): void {
+    this.skeletonOverlay.dispose();
+    this.facingOverlay.dispose();
+    this.chunkOverlay.dispose();
+    this.propPool.dispose();
+    this.edgePass.dispose();
+    this.pixelTarget.dispose();
+    this.heightTarget.dispose();
+    this.depthBlitMat.dispose();
+    this.renderer.dispose();
+    for (const [, mesh] of this.entityMeshes) disposeEntityMesh(mesh);
+    for (const [, mesh] of this.terrainMeshes) {
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+  }
+}

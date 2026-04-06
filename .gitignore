@@ -1,0 +1,42 @@
+# Deno
+.deno/
+
+# Node (playwright, scripts)
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+*.js.map
+
+# Generated terrain data
+terrain_tile_*.bin
+
+# TLS certificates (generated locally)
+certs/
+
+# Logs
+logs/
+*.log
+
+# Save data
+*.sav
+saves/
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*

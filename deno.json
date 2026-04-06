@@ -1,0 +1,23 @@
+{
+  "workspace": [
+    "packages/engine",
+    "packages/codecs",
+    "packages/world",
+    "packages/protocol",
+    "packages/content",
+    "packages/client",
+    "packages/tile-server",
+    "packages/gateway"
+  ],
+  "tasks": {
+    "gateway":      "deno run --allow-net --allow-read --allow-env --unstable-net packages/gateway/main.ts",
+    "tile":         "deno run --allow-net --allow-read --allow-write --allow-env --unstable-net packages/tile-server/main.ts",
+    "bundle":       "deno run -A --node-modules-dir=auto scripts/build_client.ts",
+    "demo":         "deno task bundle && deno task tile",
+    "demo-server":  "deno task tile",
+    "demo-client":  "deno task bundle",
+    "debug-client": "deno run --allow-net --allow-read --allow-env --unstable-net scripts/debug_client.ts",
+    "gen-terrain":  "deno run --allow-read --allow-write scripts/gen_terrain.ts",
+    "gen-certs":    "deno run --allow-run --allow-write scripts/gen_certs.ts"
+  }
+}
