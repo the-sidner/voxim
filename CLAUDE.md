@@ -1,5 +1,17 @@
 # Voxim2 — Architecture Reference
 
+## Git workflow
+
+Commit after every reasonable self-contained change. Prefix the commit message with the affected package name, e.g.:
+
+```
+tile-server: add DodgeSystem cooldown reset on death
+engine: fix query returning stale component after removal
+codecs: add AnimationState codec fields for attack style
+```
+
+If a change spans multiple packages, list the primary one first.
+
 Medieval post-apocalyptic multiplayer action RPG. Deno + TypeScript monorepo.
 Single authoritative tile-server per 512×512 world tile, browser client over WebTransport.
 
