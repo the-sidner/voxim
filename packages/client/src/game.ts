@@ -49,6 +49,7 @@ export class VoximGame {
   private animFrameId = 0;
   private playerId: string | null = null;
   private inputSeq = 0;
+  private lastInputWasActive = false;
   private serverTick = 0;
   private running = false;
 
@@ -224,11 +225,13 @@ export class VoximGame {
     if (!this.running) return;
     if (this.input) {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
-      const hasMovement = datagram.movementX !== 0 || datagram.movementY !== 0;
-      if (hasMovement || datagram.actions !== 0) {
+      const isActive = datagram.movementX !== 0 || datagram.movementY !== 0 || datagram.actions !== 0;
+      if (isActive || this.lastInputWasActive) {
+        // Send when active, and once more when going idle so the server clears action bits.
         this.connection.sendInput(datagram);
         recordInput(datagram);
       }
+      this.lastInputWasActive = isActive;
       if (hasAction(datagram.actions, ACTION_USE_SKILL)) {
         // Use the last server-confirmed attack params so the prediction matches the
         // real weapon. Falls back to "slash" defaults if no confirmed state yet.
