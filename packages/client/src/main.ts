@@ -27,74 +27,6 @@ addEventListener("resize", () => {
   canvas.height = innerHeight;
 });
 
-// ---- debug panel ----
-
-function buildDebugPanel(game: VoximGame): void {
-  const LAYERS: { id: "skeleton" | "facing" | "chunks" | "heightmap"; label: string }[] = [
-    { id: "skeleton",  label: "Skeleton bones" },
-    { id: "facing",    label: "Facing arrows" },
-    { id: "chunks",    label: "Chunk borders" },
-    { id: "heightmap", label: "Height map" },
-  ];
-
-  const state: Record<string, boolean> = {};
-  LAYERS.forEach(l => state[l.id] = false);
-
-  // Toggle button
-  const btn = document.createElement("button");
-  btn.textContent = "Debug";
-  Object.assign(btn.style, {
-    position: "fixed", top: "12px", right: "12px", zIndex: "1000",
-    padding: "6px 14px", fontFamily: "monospace", fontSize: "13px",
-    background: "#1a1a2e", color: "#8cf", border: "1px solid #334",
-    borderRadius: "4px", cursor: "pointer", userSelect: "none",
-  });
-
-  // Panel
-  const panel = document.createElement("div");
-  Object.assign(panel.style, {
-    position: "fixed", top: "42px", right: "12px", zIndex: "1000",
-    background: "#0d0d1a", border: "1px solid #334", borderRadius: "6px",
-    padding: "10px 14px", display: "none", flexDirection: "column", gap: "8px",
-    fontFamily: "monospace", fontSize: "13px", color: "#ccc", minWidth: "180px",
-  });
-
-  const title = document.createElement("div");
-  title.textContent = "Debug layers";
-  Object.assign(title.style, { color: "#8cf", fontWeight: "bold", marginBottom: "4px" });
-  panel.appendChild(title);
-
-  for (const layer of LAYERS) {
-    const row = document.createElement("label");
-    Object.assign(row.style, { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" });
-
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = false;
-    cb.addEventListener("change", () => {
-      state[layer.id] = game.toggleDebug(layer.id);
-      cb.checked = state[layer.id];
-    });
-
-    const lbl = document.createElement("span");
-    lbl.textContent = layer.label;
-
-    row.appendChild(cb);
-    row.appendChild(lbl);
-    panel.appendChild(row);
-  }
-
-  let open = false;
-  btn.addEventListener("click", () => {
-    open = !open;
-    panel.style.display = open ? "flex" : "none";
-    btn.style.background = open ? "#1a2e4a" : "#1a1a2e";
-  });
-
-  document.body.appendChild(btn);
-  document.body.appendChild(panel);
-}
-
 (async () => {
   const g = globalThis as unknown as Record<string, unknown>;
   const params = new URLSearchParams(location.search);
@@ -105,7 +37,6 @@ function buildDebugPanel(game: VoximGame): void {
     null;
 
   const game = new VoximGame();
-  buildDebugPanel(game);
 
   // Expose debug helpers for playwright/devtools
   (g as Record<string, unknown>)._voxim_game = game;
