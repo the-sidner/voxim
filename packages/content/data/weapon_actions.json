@@ -9,12 +9,59 @@
     "swingPath": {
       "defaultBladeRadius": 0.06,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.15, "hiltRight":  0.30, "hiltUp": 0.95, "tipFwd": 0.25, "tipRight":  1.0,  "tipUp": 0.95 },
-        { "t": 0.267, "hiltFwd": 0.25, "hiltRight":  0.35, "hiltUp": 0.90, "tipFwd": 1.5,  "tipRight":  1.3,  "tipUp": 0.95 },
-        { "t": 0.533, "hiltFwd": 0.30, "hiltRight": -0.25, "hiltUp": 0.85, "tipFwd": 1.5,  "tipRight": -1.3,  "tipUp": 0.85 },
-        { "t": 1.0,   "hiltFwd": 0.15, "hiltRight": -0.25, "hiltUp": 0.80, "tipFwd": 0.35, "tipRight": -0.7,  "tipUp": 0.75 }
-      ]
-    }
+        {
+          "t": 0,
+          "hiltFwd": 0.15,
+          "hiltRight": 0.3,
+          "hiltUp": 0.95,
+          "bladeFwd": 0.1414,
+          "bladeRight": 0.9899,
+          "bladeUp": 0
+        },
+        {
+          "t": 0.267,
+          "hiltFwd": 0.25,
+          "hiltRight": 0.35,
+          "hiltUp": 0.9,
+          "bladeFwd": 0.7958,
+          "bladeRight": 0.6048,
+          "bladeUp": 0.0318
+        },
+        {
+          "t": 0.533,
+          "hiltFwd": 0.3,
+          "hiltRight": -0.25,
+          "hiltUp": 0.85,
+          "bladeFwd": 0.7526,
+          "bladeRight": -0.6585,
+          "bladeUp": 0
+        },
+        {
+          "t": 1,
+          "hiltFwd": 0.15,
+          "hiltRight": -0.25,
+          "hiltUp": 0.8,
+          "bladeFwd": 0.4041,
+          "bladeRight": -0.9091,
+          "bladeUp": -0.101
+        }
+      ],
+      "defaultBladeLength": 1.5
+    },
+    "ikTargets": [
+      {
+        "chain": [
+          "upper_arm_r",
+          "lower_arm_r"
+        ],
+        "source": "hilt",
+        "poleHint": {
+          "fwd": 0,
+          "right": 0.5,
+          "up": 0.8
+        }
+      }
+    ]
   },
   {
     "id": "overhead",
@@ -26,12 +73,71 @@
     "swingPath": {
       "defaultBladeRadius": 0.08,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.10, "hiltRight": 0.20, "hiltUp": 0.85, "tipFwd": 0.20, "tipRight": 0.25, "tipUp": 1.35 },
-        { "t": 0.333, "hiltFwd": 0.10, "hiltRight": 0.20, "hiltUp": 1.25, "tipFwd": 0.20, "tipRight": 0.25, "tipUp": 1.90 },
-        { "t": 0.500, "hiltFwd": 0.35, "hiltRight": 0.10, "hiltUp": 0.85, "tipFwd": 1.80, "tipRight": 0.10, "tipUp": 0.30 },
-        { "t": 1.0,   "hiltFwd": 0.20, "hiltRight": 0.10, "hiltUp": 0.55, "tipFwd": 0.45, "tipRight": 0.10, "tipUp": 0.15 }
-      ]
-    }
+        {
+          "t": 0,
+          "hiltFwd": 0.1,
+          "hiltRight": 0.2,
+          "hiltUp": 0.85,
+          "bladeFwd": 0.1952,
+          "bladeRight": 0.0976,
+          "bladeUp": 0.9759
+        },
+        {
+          "t": 0.333,
+          "hiltFwd": 0.1,
+          "hiltRight": 0.2,
+          "hiltUp": 1.25,
+          "bladeFwd": 0.1516,
+          "bladeRight": 0.0758,
+          "bladeUp": 0.9855
+        },
+        {
+          "t": 0.5,
+          "hiltFwd": 0.35,
+          "hiltRight": 0.1,
+          "hiltUp": 0.85,
+          "bladeFwd": 0.935,
+          "bladeRight": 0,
+          "bladeUp": -0.3547
+        },
+        {
+          "t": 1,
+          "hiltFwd": 0.2,
+          "hiltRight": 0.1,
+          "hiltUp": 0.55,
+          "bladeFwd": 0.53,
+          "bladeRight": 0,
+          "bladeUp": -0.848
+        }
+      ],
+      "defaultBladeLength": 1.5
+    },
+    "ikTargets": [
+      {
+        "chain": [
+          "upper_arm_r",
+          "lower_arm_r"
+        ],
+        "source": "hilt",
+        "poleHint": {
+          "fwd": 0,
+          "right": 0.3,
+          "up": 0.8
+        }
+      },
+      {
+        "chain": [
+          "upper_arm_l",
+          "lower_arm_l"
+        ],
+        "source": "hilt",
+        "poleHint": {
+          "fwd": 0,
+          "right": -0.3,
+          "up": 0.8
+        }
+      }
+    ]
   },
   {
     "id": "thrust",
@@ -43,12 +149,59 @@
     "swingPath": {
       "defaultBladeRadius": 0.04,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.10,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.50,  "tipRight": 0.32, "tipUp": 1.0 },
-        { "t": 0.231, "hiltFwd": 0.00,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.40,  "tipRight": 0.32, "tipUp": 1.0 },
-        { "t": 0.538, "hiltFwd": 0.35,  "hiltRight": 0.22, "hiltUp": 1.0, "tipFwd": 1.95,  "tipRight": 0.22, "tipUp": 1.0 },
-        { "t": 1.0,   "hiltFwd": 0.10,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.50,  "tipRight": 0.32, "tipUp": 1.0 }
-      ]
-    }
+        {
+          "t": 0,
+          "hiltFwd": 0.1,
+          "hiltRight": 0.28,
+          "hiltUp": 1,
+          "bladeFwd": 0.995,
+          "bladeRight": 0.0995,
+          "bladeUp": 0
+        },
+        {
+          "t": 0.231,
+          "hiltFwd": 0,
+          "hiltRight": 0.28,
+          "hiltUp": 1,
+          "bladeFwd": 0.995,
+          "bladeRight": 0.0995,
+          "bladeUp": 0
+        },
+        {
+          "t": 0.538,
+          "hiltFwd": 0.35,
+          "hiltRight": 0.22,
+          "hiltUp": 1,
+          "bladeFwd": 1,
+          "bladeRight": 0,
+          "bladeUp": 0
+        },
+        {
+          "t": 1,
+          "hiltFwd": 0.1,
+          "hiltRight": 0.28,
+          "hiltUp": 1,
+          "bladeFwd": 0.995,
+          "bladeRight": 0.0995,
+          "bladeUp": 0
+        }
+      ],
+      "defaultBladeLength": 1.6
+    },
+    "ikTargets": [
+      {
+        "chain": [
+          "upper_arm_r",
+          "lower_arm_r"
+        ],
+        "source": "hilt",
+        "poleHint": {
+          "fwd": 0.2,
+          "right": 0.4,
+          "up": 0.7
+        }
+      }
+    ]
   },
   {
     "id": "unarmed",
@@ -60,12 +213,59 @@
     "swingPath": {
       "defaultBladeRadius": 0.1,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.10, "hiltRight": 0.22, "hiltUp": 1.00, "tipFwd": 0.35, "tipRight": 0.26, "tipUp": 1.00 },
-        { "t": 0.273, "hiltFwd": 0.00, "hiltRight": 0.22, "hiltUp": 0.95, "tipFwd": 0.15, "tipRight": 0.26, "tipUp": 0.95 },
-        { "t": 0.545, "hiltFwd": 0.25, "hiltRight": 0.18, "hiltUp": 0.95, "tipFwd": 1.30, "tipRight": 0.18, "tipUp": 0.95 },
-        { "t": 1.0,   "hiltFwd": 0.10, "hiltRight": 0.22, "hiltUp": 1.00, "tipFwd": 0.35, "tipRight": 0.26, "tipUp": 1.00 }
-      ]
-    }
+        {
+          "t": 0,
+          "hiltFwd": 0.1,
+          "hiltRight": 0.22,
+          "hiltUp": 1,
+          "bladeFwd": 0.9874,
+          "bladeRight": 0.158,
+          "bladeUp": 0
+        },
+        {
+          "t": 0.273,
+          "hiltFwd": 0,
+          "hiltRight": 0.22,
+          "hiltUp": 0.95,
+          "bladeFwd": 0.9662,
+          "bladeRight": 0.2577,
+          "bladeUp": 0
+        },
+        {
+          "t": 0.545,
+          "hiltFwd": 0.25,
+          "hiltRight": 0.18,
+          "hiltUp": 0.95,
+          "bladeFwd": 1,
+          "bladeRight": 0,
+          "bladeUp": 0
+        },
+        {
+          "t": 1,
+          "hiltFwd": 0.1,
+          "hiltRight": 0.22,
+          "hiltUp": 1,
+          "bladeFwd": 0.9874,
+          "bladeRight": 0.158,
+          "bladeUp": 0
+        }
+      ],
+      "defaultBladeLength": 0.4
+    },
+    "ikTargets": [
+      {
+        "chain": [
+          "upper_arm_r",
+          "lower_arm_r"
+        ],
+        "source": "hilt",
+        "poleHint": {
+          "fwd": 0,
+          "right": 0.4,
+          "up": 0.8
+        }
+      }
+    ]
   },
   {
     "id": "bite",
@@ -77,11 +277,44 @@
     "swingPath": {
       "defaultBladeRadius": 0.14,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.25, "hiltRight": 0.0, "hiltUp": 0.60, "tipFwd": 0.50, "tipRight": 0.0, "tipUp": 0.65 },
-        { "t": 0.267, "hiltFwd": 0.15, "hiltRight": 0.0, "hiltUp": 0.58, "tipFwd": 0.35, "tipRight": 0.0, "tipUp": 0.62 },
-        { "t": 0.467, "hiltFwd": 0.50, "hiltRight": 0.0, "hiltUp": 0.55, "tipFwd": 1.30, "tipRight": 0.0, "tipUp": 0.58 },
-        { "t": 1.0,   "hiltFwd": 0.25, "hiltRight": 0.0, "hiltUp": 0.60, "tipFwd": 0.50, "tipRight": 0.0, "tipUp": 0.65 }
-      ]
+        {
+          "t": 0,
+          "hiltFwd": 0.25,
+          "hiltRight": 0,
+          "hiltUp": 0.6,
+          "bladeFwd": 0.9806,
+          "bladeRight": 0,
+          "bladeUp": 0.1961
+        },
+        {
+          "t": 0.2,
+          "hiltFwd": 0.15,
+          "hiltRight": 0,
+          "hiltUp": 0.58,
+          "bladeFwd": 0.9662,
+          "bladeRight": 0,
+          "bladeUp": 0.2577
+        },
+        {
+          "t": 0.35,
+          "hiltFwd": 0.5,
+          "hiltRight": 0,
+          "hiltUp": 0.55,
+          "bladeFwd": 0.9996,
+          "bladeRight": 0,
+          "bladeUp": 0.03
+        },
+        {
+          "t": 1,
+          "hiltFwd": 0.25,
+          "hiltRight": 0,
+          "hiltUp": 0.6,
+          "bladeFwd": 0.9806,
+          "bladeRight": 0,
+          "bladeUp": 0.1961
+        }
+      ],
+      "defaultBladeLength": 1
     }
   }
 ]

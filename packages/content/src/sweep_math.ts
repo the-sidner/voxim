@@ -42,28 +42,39 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+/** Normalize a 3D vector in-place. Returns the original object. */
+function normalize(v: { fwd: number; right: number; up: number }): { fwd: number; right: number; up: number } {
+  const len = Math.sqrt(v.fwd * v.fwd + v.right * v.right + v.up * v.up);
+  if (len > 1e-8) { v.fwd /= len; v.right /= len; v.up /= len; }
+  return v;
+}
+
 function frameToLocal(kf: SwingKeyframe): {
   hilt: { fwd: number; right: number; up: number };
-  tip:  { fwd: number; right: number; up: number };
+  bladeDir: { fwd: number; right: number; up: number };
 } {
   return {
-    hilt: { fwd: kf.hiltFwd, right: kf.hiltRight, up: kf.hiltUp },
-    tip:  { fwd: kf.tipFwd,  right: kf.tipRight,  up: kf.tipUp  },
+    hilt:     { fwd: kf.hiltFwd,  right: kf.hiltRight,  up: kf.hiltUp },
+    bladeDir: { fwd: kf.bladeFwd, right: kf.bladeRight, up: kf.bladeUp },
   };
 }
 
 /**
- * Evaluate the weapon hilt and tip positions in entity-local (fwd, right, up) space
- * at normalised time t (0..1 over the entire action).
+ * Evaluate the weapon hilt position and blade direction in entity-local
+ * (fwd, right, up) space at normalised time t (0..1 over the entire action).
+ *
+ * bladeDir is a unit vector pointing from hilt toward blade tip.
+ * Callers derive the tip: tip = hilt + bladeDir × bladeLength.
+ *
  * Keyframes must be sorted by ascending t.
  */
 export function evaluateSwingPath(
   keyframes: SwingKeyframe[],
   t: number,
 ): { hilt: { fwd: number; right: number; up: number };
-     tip:  { fwd: number; right: number; up: number } } {
+     bladeDir: { fwd: number; right: number; up: number } } {
   if (keyframes.length === 0) {
-    return { hilt: { fwd: 0, right: 0, up: 1 }, tip: { fwd: 0.5, right: 0, up: 1 } };
+    return { hilt: { fwd: 0, right: 0, up: 1 }, bladeDir: { fwd: 1, right: 0, up: 0 } };
   }
   if (t <= keyframes[0].t) return frameToLocal(keyframes[0]);
   if (t >= keyframes[keyframes.length - 1].t) return frameToLocal(keyframes[keyframes.length - 1]);
@@ -77,15 +88,32 @@ export function evaluateSwingPath(
           right: lerp(a.hiltRight, b.hiltRight, alpha),
           up:    lerp(a.hiltUp,    b.hiltUp,    alpha),
         },
-        tip: {
-          fwd:   lerp(a.tipFwd,   b.tipFwd,   alpha),
-          right: lerp(a.tipRight, b.tipRight, alpha),
-          up:    lerp(a.tipUp,    b.tipUp,    alpha),
-        },
+        // Lerp blade direction then normalize — gives smooth rotation between keyframes
+        bladeDir: normalize({
+          fwd:   lerp(a.bladeFwd,   b.bladeFwd,   alpha),
+          right: lerp(a.bladeRight, b.bladeRight, alpha),
+          up:    lerp(a.bladeUp,    b.bladeUp,    alpha),
+        }),
       };
     }
   }
   return frameToLocal(keyframes[keyframes.length - 1]);
+}
+
+/**
+ * Derive the blade tip position from hilt + bladeDir × bladeLength.
+ * Convenience helper used by both server (hit detection) and client (trail, IK).
+ */
+export function deriveTip(
+  hilt: { fwd: number; right: number; up: number },
+  bladeDir: { fwd: number; right: number; up: number },
+  bladeLength: number,
+): { fwd: number; right: number; up: number } {
+  return {
+    fwd:   hilt.fwd   + bladeDir.fwd   * bladeLength,
+    right: hilt.right + bladeDir.right * bladeLength,
+    up:    hilt.up    + bladeDir.up    * bladeLength,
+  };
 }
 
 /**

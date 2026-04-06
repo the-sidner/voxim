@@ -592,6 +592,11 @@ export class VoximRenderer {
           const totalTicks = (anim.windupTicks ?? 0) + (anim.activeTicks ?? 0) + (anim.winddownTicks ?? 0);
           ticksIntoAction = Math.min(ticksIntoAction + elapsed, totalTicks);
         }
+        // Look up weapon action for IK + trail data
+        const weaponAction = (anim?.mode === "attack")
+          ? this.weaponActionsMap.get(anim.attackStyle)
+          : undefined;
+
         const pose = evaluatePose(
           mesh.skeletonId,
           anim?.mode          ?? "idle",
@@ -602,6 +607,9 @@ export class VoximRenderer {
           ticksIntoAction,
           this.smoothTick,
           mesh.velocityX, mesh.velocityY, mesh.facingAngle,
+          weaponAction?.swingPath?.keyframes,
+          weaponAction?.ikTargets,
+          weaponAction?.swingPath?.defaultBladeLength,
         );
         updateSkeletonPose(mesh, pose);
       }
@@ -787,19 +795,23 @@ export class VoximRenderer {
 
       if (inActive && keyframes && keyframes.length > 0) {
         const t = total > 0 ? ticks / total : 0;
-        const local = evaluateWeaponSlice(keyframes, t);
+        const local = evaluateWeaponSlice(keyframes, t, weaponAction?.swingPath?.defaultBladeLength ?? 1.0);
 
         // Force matrix recompute so we get current-frame position, not last frame's.
         // (updateWeaponTrails runs before renderer.render which would normally do this.)
         mesh.group.updateWorldMatrix(true, false);
 
-        // Convert entity-local Three.js coords to world space via the group matrix.
-        const localHilt = new THREE.Vector3(local.hiltX, local.hiltY, local.hiltZ);
-        const localTip  = new THREE.Vector3(local.tipX,  local.tipY,  local.tipZ);
-        const worldHilt = localHilt.applyMatrix4(mesh.group.matrixWorld);
-        const worldTip  = localTip.applyMatrix4(mesh.group.matrixWorld);
+        // Build the ribbon from the tip trajectory with a fixed vertical extent
+        // so the trail is visible from the isometric camera. Using hilt↔tip
+        // produces a horizontal sheet that looks flat from above.
+        const TRAIL_HALF_HEIGHT = 0.35;
+        const localTip = new THREE.Vector3(local.tipX, local.tipY, local.tipZ);
+        const worldTip = localTip.applyMatrix4(mesh.group.matrixWorld);
 
-        slices.push({ hilt: worldHilt, tip: worldTip, alpha: 0.5 });
+        const top    = new THREE.Vector3(worldTip.x, worldTip.y + TRAIL_HALF_HEIGHT, worldTip.z);
+        const bottom = new THREE.Vector3(worldTip.x, worldTip.y - TRAIL_HALF_HEIGHT, worldTip.z);
+
+        slices.push({ hilt: bottom, tip: top, alpha: 0.5 });
       }
 
       // Decay all slices
@@ -823,7 +835,15 @@ export class VoximRenderer {
     const slices = this.trailSlices.get(entityId) ?? [];
 
     if (slices.length < 2) {
-      this.removeTrailMesh(entityId);
+      // Remove the visual mesh but keep slices so they can accumulate.
+      // (removeTrailMesh would delete the slice data too.)
+      const existing = this.trailMeshes.get(entityId);
+      if (existing) {
+        this.scene.remove(existing);
+        existing.geometry.dispose();
+        (existing.material as THREE.Material).dispose();
+        this.trailMeshes.delete(entityId);
+      }
       return;
     }
 

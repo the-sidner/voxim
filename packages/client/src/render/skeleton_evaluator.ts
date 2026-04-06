@@ -1,38 +1,37 @@
 /**
- * Procedural skeleton pose evaluator — layered lower/upper body.
+ * Procedural skeleton pose evaluator — three-stage pipeline.
  *
- * Lower body (root, hips, legs) always plays locomotion derived from the
- * entity's velocity relative to its facing direction:
- *   • Idle   — breathing sway, soft knee bend
- *   • Walk   — bipedal gait with direction-aware phase (forward / backward /
- *              strafe); speed derived from velocity magnitude
+ * Stage 1: Base FK pose
+ *   Lower body always plays locomotion (idle sway / walk gait).
+ *   Upper body plays locomotion unless overridden.
  *
- * Upper body (torso_mid, torso_upper, head, arms) plays independently:
- *   • Follows locomotion normally when mode is idle/walk
- *   • Overridden by attack / death animations regardless of movement
+ * Stage 2: Constraint producers
+ *   During attacks, the weapon animation layer reads swingPath + ikTargets
+ *   from the weapon action to produce IK constraints. Torso lean/twist is
+ *   derived from the hilt position. Other producers (look-at, foot planting)
+ *   can add constraints from other sources in the future.
  *
- * Attack animation is parameterised entirely by the phase data forwarded from
- * the server's AnimationStateData:
- *   windupTicks, activeTicks, winddownTicks, ticksIntoAction
- * No hardcoded timing constants.  attackStyle selects the pose function.
+ * Stage 3: Constraint solver
+ *   Solves all constraints generically. Two-bone IK uses ik_solver.ts.
+ *   Results override FK bone rotations in the pose map.
  *
  * Directional walk mapping:
  *   facingAngle is the world-space heading (radians, counter-clockwise from +X).
  *   Velocity (vx, vy) is rotated into local facing space:
  *     localFwd    = -vx·sin(facing) + vy·cos(facing)   ← + = backward
  *     localStrafe =  vx·cos(facing) + vy·sin(facing)   ← + = strafe-right
- *   Backward walk flips the gait phase. Strafe adds lateral arm splay.
  *
  * Bone hierarchy (human):
  *   root → torso_lower → torso_mid → torso_upper → head
- *                                  ↘ upper_arm_l → lower_arm_l
- *                                  ↘ upper_arm_r → lower_arm_r
- *        → upper_leg_l → lower_leg_l
- *        → upper_leg_r → lower_leg_r
+ *                                  ↘ upper_arm_l → lower_arm_l → hand_l
+ *                                  ↘ upper_arm_r → lower_arm_r → hand_r
+ *        → upper_leg_l → lower_leg_l → foot_l
+ *        → upper_leg_r → lower_leg_r → foot_r
  */
 import * as THREE from "three";
-import type { AnimationMode, SwingKeyframe } from "@voxim/content";
-import { evaluateSwingPath } from "@voxim/content";
+import type { AnimationMode, SwingKeyframe, IKTargetDef } from "@voxim/content";
+import { evaluateSwingPath, deriveTip } from "@voxim/content";
+import { solveTwoBoneIK } from "./ik_solver.ts";
 
 // ---- constants ----
 
@@ -47,10 +46,27 @@ const BREATH_AMP  = 0.05;
 const SWAY_FREQ   = 0.05;   // rad/tick
 const SWAY_AMP    = 0.025;
 
-const ATTACK_AMP  = 1.6;
-
 /** Below this world-speed the locomotion is treated as idle. */
 const WALK_SPEED_THRESHOLD = 0.05;
+
+/** Human arm bone length in Three.js units (restZ=2 × scale=0.35). */
+const ARM_BONE_LEN = 0.7;
+
+/**
+ * Shoulder rest position in Three.js entity-local space.
+ * Accumulated from: root(0) + torso_lower(1.05y) + torso_mid(0.35y) + torso_upper(0.35y) + upper_arm(±0.7x).
+ */
+const SHOULDER_REST_Y = 1.75;  // height above entity origin
+
+// ---- constraint types ----
+
+/** A bone-chain constraint to solve after FK. */
+interface PoseConstraint {
+  type: "two-bone-ik";
+  chain: [string, string];
+  target: THREE.Vector3;
+  poleHint: THREE.Vector3;
+}
 
 // ---- public API ----
 
@@ -66,10 +82,13 @@ export function evaluatePose(
   velocityX = 0,
   velocityY = 0,
   facingAngle = 0,
+  swingKeyframes?: SwingKeyframe[],
+  ikTargets?: IKTargetDef[],
+  bladeLength?: number,
 ): Map<string, THREE.Euler> {
   const pose = new Map<string, THREE.Euler>();
   if (skeletonId === "human") {
-    evaluateHumanPose(pose, mode, attackStyle, windupTicks, activeTicks, winddownTicks, ticksIntoAction, serverTick, velocityX, velocityY, facingAngle);
+    evaluateHumanPose(pose, mode, attackStyle, windupTicks, activeTicks, winddownTicks, ticksIntoAction, serverTick, velocityX, velocityY, facingAngle, swingKeyframes, ikTargets, bladeLength);
   } else if (skeletonId === "wolf") {
     evaluateWolfPose(pose, mode, windupTicks, activeTicks, winddownTicks, ticksIntoAction, serverTick, velocityX, velocityY);
   }
@@ -96,7 +115,7 @@ function actionT(windupTicks: number, activeTicks: number, winddownTicks: number
 function evaluateHumanPose(
   pose: Map<string, THREE.Euler>,
   mode: AnimationMode,
-  attackStyle: string,
+  _attackStyle: string,
   windupTicks: number,
   activeTicks: number,
   winddownTicks: number,
@@ -105,16 +124,24 @@ function evaluateHumanPose(
   vx: number,
   vy: number,
   facing: number,
+  swingKeyframes?: SwingKeyframe[],
+  ikTargets?: IKTargetDef[],
+  bladeLength?: number,
 ): void {
   const speed = Math.sqrt(vx * vx + vy * vy);
   const moving = speed > WALK_SPEED_THRESHOLD;
   const [localFwd, localStrafe] = worldVelToLocal(vx, vy, facing);
 
+  // Stage 1: Base FK
   lowerBodyLocomotion(pose, tick, moving, localFwd, localStrafe, speed);
 
-  if (mode === "attack") {
+  if (mode === "attack" && swingKeyframes) {
+    // Stage 2: Weapon animation layer produces constraints
     const t = actionT(windupTicks, activeTicks, winddownTicks, ticksIntoAction);
-    upperBodyAttack(pose, attackStyle, t);
+    const constraints = weaponAnimationLayer(pose, t, swingKeyframes, ikTargets, bladeLength ?? 1.0);
+
+    // Stage 3: Generic constraint solver
+    solveConstraints(pose, constraints);
   } else if (mode === "death") {
     upperBodyDeath(pose);
     lowerBodyDeath(pose);
@@ -123,7 +150,114 @@ function evaluateHumanPose(
   }
 }
 
-// ── lower body ────────────────────────────────────────────────────────────────
+// ── Stage 2: Weapon animation layer ──────────────────────────────────────────
+
+/**
+ * Produces IK constraints from weapon action data. Sets torso/head FK from
+ * the hilt position (derived, not per-style). Sets passive pose for non-IK arms.
+ */
+function weaponAnimationLayer(
+  pose: Map<string, THREE.Euler>,
+  t: number,
+  keyframes: SwingKeyframe[],
+  ikTargets: IKTargetDef[] | undefined,
+  bladeLength: number,
+): PoseConstraint[] {
+  const swing = evaluateSwingPath(keyframes, t);
+
+  // Derive torso body language from hilt position (generic, not per-style)
+  const torsoTwist = -swing.hilt.right * 0.25;
+  const torsoLean  = -(swing.hilt.fwd - 0.2) * 0.08;
+  pose.set("torso_mid",   new THREE.Euler(torsoLean, torsoTwist * 0.7, 0));
+  pose.set("torso_upper", new THREE.Euler(torsoLean * 1.2, torsoTwist, 0));
+  pose.set("head",        new THREE.Euler(0, torsoTwist * 0.3, 0));
+
+  // Produce IK constraints from weapon action data
+  const constraints: PoseConstraint[] = [];
+  const constrainedBones = new Set<string>();
+
+  if (ikTargets) {
+    for (const ik of ikTargets) {
+      // Determine the IK target position in entity-local (fwd, right, up)
+      const srcLocal = ik.source === "hilt"
+        ? swing.hilt
+        : deriveTip(swing.hilt, swing.bladeDir, bladeLength);
+
+      // Convert to Three.js entity-local: (right, up, -fwd)
+      const target = new THREE.Vector3(srcLocal.right, srcLocal.up, -srcLocal.fwd);
+      const pole = new THREE.Vector3(ik.poleHint.right, ik.poleHint.up, -ik.poleHint.fwd);
+
+      constraints.push({ type: "two-bone-ik", chain: ik.chain, target, poleHint: pole });
+      constrainedBones.add(ik.chain[0]);
+      constrainedBones.add(ik.chain[1]);
+    }
+  }
+
+  // Passive pose for non-constrained arm bones
+  if (!constrainedBones.has("upper_arm_l")) {
+    pose.set("upper_arm_l", new THREE.Euler(0.08, 0, -0.18));
+    pose.set("lower_arm_l", new THREE.Euler(0.12, 0, 0));
+    pose.set("hand_l",      new THREE.Euler(0.08, 0, 0));
+  }
+  if (!constrainedBones.has("upper_arm_r")) {
+    pose.set("upper_arm_r", new THREE.Euler(0.08, 0, 0.18));
+    pose.set("lower_arm_r", new THREE.Euler(0.12, 0, 0));
+    pose.set("hand_r",      new THREE.Euler(0.08, 0, 0));
+  }
+
+  return constraints;
+}
+
+// ── Stage 3: Generic constraint solver ───────────────────────────────────────
+
+// Reusable scratch vectors for constraint solving
+const _shoulderOffset = new THREE.Vector3();
+const _localTarget = new THREE.Vector3();
+const _torsoQuat = new THREE.Quaternion();
+const _invTorsoQuat = new THREE.Quaternion();
+
+function solveConstraints(
+  pose: Map<string, THREE.Euler>,
+  constraints: PoseConstraint[],
+): void {
+  for (const c of constraints) {
+    switch (c.type) {
+      case "two-bone-ik": {
+        // Determine shoulder offset from bone chain root name
+        const isLeft = c.chain[0].endsWith("_l");
+        const shoulderX = isLeft ? -ARM_BONE_LEN : ARM_BONE_LEN;
+
+        // Compute the accumulated torso rotation (torso_mid + torso_upper)
+        // to transform the IK target from entity-local into shoulder-local space.
+        const torsoMidRot = pose.get("torso_mid");
+        const torsoUpperRot = pose.get("torso_upper");
+        _torsoQuat.identity();
+        if (torsoMidRot)   _torsoQuat.multiply(new THREE.Quaternion().setFromEuler(torsoMidRot));
+        if (torsoUpperRot) _torsoQuat.multiply(new THREE.Quaternion().setFromEuler(torsoUpperRot));
+        _invTorsoQuat.copy(_torsoQuat).invert();
+
+        // Shoulder position in entity-local Three.js space (after torso rotations)
+        _shoulderOffset.set(shoulderX, SHOULDER_REST_Y, 0);
+        // Note: torso rotations are small, so the shoulder position shift is minor.
+        // For accuracy, rotate the shoulder offset by torso rotation:
+        _shoulderOffset.applyQuaternion(_torsoQuat);
+
+        // Target in shoulder-local space
+        _localTarget.copy(c.target).sub(_shoulderOffset).applyQuaternion(_invTorsoQuat);
+
+        // Solve IK
+        const poleLocal = c.poleHint.clone().applyQuaternion(_invTorsoQuat);
+        const result = solveTwoBoneIK(ARM_BONE_LEN, ARM_BONE_LEN, _localTarget, poleLocal);
+
+        pose.set(c.chain[0], result.rotA);
+        pose.set(c.chain[1], result.rotB);
+        break;
+      }
+    }
+  }
+}
+
+// ── lower body ───────────────────────────────────────────────────────────────
 
 function lowerBodyLocomotion(
   pose: Map<string, THREE.Euler>,
@@ -179,7 +313,7 @@ function lowerBodyDeath(pose: Map<string, THREE.Euler>): void {
   pose.set("lower_leg_r", new THREE.Euler(0.15, 0, 0));
 }
 
-// ── upper body ────────────────────────────────────────────────────────────────
+// ── upper body ───────────────────────────────────────────────────────────────
 
 function upperBodyLocomotion(
   pose: Map<string, THREE.Euler>,
@@ -225,85 +359,6 @@ function upperBodyLocomotion(
   pose.set("hand_r",      new THREE.Euler(elbowBend * 0.3, 0, 0));
 }
 
-/**
- * Dispatch to the correct attack pose function by style.
- * t ∈ [0,1] spans the full windup→active→winddown arc.
- */
-function upperBodyAttack(pose: Map<string, THREE.Euler>, style: string, t: number): void {
-  switch (style) {
-    case "overhead": return upperBodyOverhead(pose, t);
-    case "thrust":   return upperBodyThrust(pose, t);
-    case "unarmed":  return upperBodyUnarmed(pose, t);
-    case "bite":     break; // no human bone rig for bite
-    default:         return upperBodySlash(pose, t); // "slash" and fallback
-  }
-}
-
-function upperBodySlash(pose: Map<string, THREE.Euler>, t: number): void {
-  // Wind-up (0–0.25) → strike (0.25–0.5) → snap back (0.5–1.0)
-  const swing = t < 0.25
-    ? -(t / 0.25) * (ATTACK_AMP * 0.3)
-    : t < 0.5
-      ? -(1 - (t - 0.25) / 0.25) * (ATTACK_AMP * 0.3) + ((t - 0.25) / 0.25) * ATTACK_AMP
-      : (1 - (t - 0.5) / 0.5) * ATTACK_AMP;
-  const twist = swing * 0.25;
-  pose.set("torso_mid",   new THREE.Euler(0.05, -twist, 0));
-  pose.set("torso_upper", new THREE.Euler(0.08, -twist, 0));
-  pose.set("head",        new THREE.Euler(0, -twist * 0.4, 0));
-  pose.set("upper_arm_l", new THREE.Euler(-0.3, 0, -0.25));
-  pose.set("lower_arm_l", new THREE.Euler(0.5, 0, 0));
-  pose.set("upper_arm_r", new THREE.Euler(-swing, 0, 0.15));
-  pose.set("lower_arm_r", new THREE.Euler(Math.max(0, swing * 0.4), 0, 0));
-}
-
-function upperBodyOverhead(pose: Map<string, THREE.Euler>, t: number): void {
-  // Raise both arms (0–0.4) → slam down (0.4–0.6) → recover (0.6–1.0)
-  const raise = t < 0.4
-    ? (t / 0.4) * ATTACK_AMP * 0.8
-    : t < 0.6
-      ? ATTACK_AMP * 0.8 - ((t - 0.4) / 0.2) * ATTACK_AMP * 1.4
-      : -ATTACK_AMP * 0.6 + ((t - 0.6) / 0.4) * ATTACK_AMP * 0.6;
-  pose.set("torso_mid",   new THREE.Euler(-raise * 0.15, 0, 0));
-  pose.set("torso_upper", new THREE.Euler(-raise * 0.2, 0, 0));
-  pose.set("head",        new THREE.Euler(raise * 0.1, 0, 0));
-  pose.set("upper_arm_l", new THREE.Euler(-raise, 0, -0.2));
-  pose.set("lower_arm_l", new THREE.Euler(Math.max(0, raise * 0.3), 0, 0));
-  pose.set("upper_arm_r", new THREE.Euler(-raise, 0,  0.2));
-  pose.set("lower_arm_r", new THREE.Euler(Math.max(0, raise * 0.3), 0, 0));
-}
-
-function upperBodyThrust(pose: Map<string, THREE.Euler>, t: number): void {
-  // Coil back (0–0.3) → lunge forward (0.3–0.55) → retract (0.55–1.0)
-  const reach = t < 0.3
-    ? -(t / 0.3) * 0.4
-    : t < 0.55
-      ? -0.4 + ((t - 0.3) / 0.25) * (ATTACK_AMP * 0.9 + 0.4)
-      : ATTACK_AMP * 0.9 - ((t - 0.55) / 0.45) * ATTACK_AMP * 0.9;
-  pose.set("torso_mid",   new THREE.Euler(-reach * 0.1, 0, 0));
-  pose.set("torso_upper", new THREE.Euler(-reach * 0.15, 0, 0));
-  pose.set("head",        new THREE.Euler(reach * 0.05, 0, 0));
-  pose.set("upper_arm_l", new THREE.Euler(0.2, 0, -0.3));
-  pose.set("lower_arm_l", new THREE.Euler(0.35, 0, 0));
-  pose.set("upper_arm_r", new THREE.Euler(-reach, 0, 0.1));
-  pose.set("lower_arm_r", new THREE.Euler(Math.max(0, reach * 0.2), 0, 0));
-}
-
-function upperBodyUnarmed(pose: Map<string, THREE.Euler>, t: number): void {
-  // Quick jab: pull back (0–0.3) → extend (0.3–0.55) → retract (0.55–1.0)
-  const jab = t < 0.3
-    ? -(t / 0.3) * 0.5
-    : t < 0.55
-      ? -0.5 + ((t - 0.3) / 0.25) * (ATTACK_AMP * 0.7 + 0.5)
-      : ATTACK_AMP * 0.7 - ((t - 0.55) / 0.45) * ATTACK_AMP * 0.7;
-  pose.set("torso_mid",   new THREE.Euler(0.03, -jab * 0.15, 0));
-  pose.set("torso_upper", new THREE.Euler(0.05, -jab * 0.2, 0));
-  pose.set("head",        new THREE.Euler(0, -jab * 0.08, 0));
-  pose.set("upper_arm_l", new THREE.Euler(0.15, 0, -0.2));
-  pose.set("lower_arm_l", new THREE.Euler(0.3, 0, 0));
-  pose.set("upper_arm_r", new THREE.Euler(-jab, 0, 0.12));
-  pose.set("lower_arm_r", new THREE.Euler(Math.max(0, jab * 0.25), 0, 0));
-}
-
 function upperBodyDeath(pose: Map<string, THREE.Euler>): void {
   pose.set("torso_mid",   new THREE.Euler(0, 0, 0));
   pose.set("torso_upper", new THREE.Euler(0, 0, 0));
@@ -314,7 +369,7 @@ function upperBodyDeath(pose: Map<string, THREE.Euler>): void {
   pose.set("lower_arm_r", new THREE.Euler(0.3, 0, 0));
 }
 
-// ── Wolf (quadruped) ──────────────────────────────────────────────────────────
+// ── Wolf (quadruped) ─────────────────────────────────────────────────────────
 
 const WOLF_TROT_FREQ  = 0.28;
 const WOLF_LEG_AMP   = 0.65;
@@ -352,7 +407,6 @@ function evaluateWolfPose(
 
   if (mode === "attack") {
     const t = actionT(windupTicks, activeTicks, winddownTicks, ticksIntoAction);
-    // Lunge: pull back → snap forward → recover
     const lunge = t < 0.3
       ? -(t / 0.3) * 0.5
       : t < 0.55
@@ -405,11 +459,10 @@ function evaluateWolfPose(
   pose.set("rl_lower", new THREE.Euler(Math.max(0, -swing) * K + 0.05, 0, 0));
 }
 
-// ---- weapon tip evaluation ----
+// ---- weapon position evaluation (used by trail + hit detection) ----
 
 /**
- * Evaluate the weapon tip position at normalised time t (0..1 over the full action)
- * in entity-local Three.js space, ready to be used as a child offset of the entity group.
+ * Evaluate the weapon tip position at normalised time t in entity-local Three.js space.
  *
  * Entity-local (fwd, right, up) → Three.js local:
  *   threeX = right
@@ -419,12 +472,14 @@ function evaluateWolfPose(
 export function evaluateWeaponTip(
   keyframes: SwingKeyframe[],
   t: number,
+  bladeLength: number,
 ): { threeX: number; threeY: number; threeZ: number } {
   const pose = evaluateSwingPath(keyframes, t);
+  const tip = deriveTip(pose.hilt, pose.bladeDir, bladeLength);
   return {
-    threeX:  pose.tip.right,
-    threeY:  pose.tip.up,
-    threeZ: -pose.tip.fwd,
+    threeX:  tip.right,
+    threeY:  tip.up,
+    threeZ: -tip.fwd,
   };
 }
 
@@ -434,14 +489,16 @@ export function evaluateWeaponTip(
 export function evaluateWeaponSlice(
   keyframes: SwingKeyframe[],
   t: number,
+  bladeLength: number,
 ): { hiltX: number; hiltY: number; hiltZ: number; tipX: number; tipY: number; tipZ: number } {
   const pose = evaluateSwingPath(keyframes, t);
+  const tip = deriveTip(pose.hilt, pose.bladeDir, bladeLength);
   return {
     hiltX:  pose.hilt.right,
     hiltY:  pose.hilt.up,
     hiltZ: -pose.hilt.fwd,
-    tipX:   pose.tip.right,
-    tipY:   pose.tip.up,
-    tipZ:  -pose.tip.fwd,
+    tipX:   tip.right,
+    tipY:   tip.up,
+    tipZ:  -tip.fwd,
   };
 }

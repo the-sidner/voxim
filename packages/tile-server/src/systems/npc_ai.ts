@@ -223,9 +223,21 @@ export class NpcAiSystem implements System {
         ? resolveAttackAction(world, currentJob.targetId, pos.x, pos.y, defaults.attackRangeSq)
         : 0;
 
-      const newFacing = movementX !== 0 || movementY !== 0
-        ? Math.atan2(movementY, movementX)
-        : inputState.facing;
+      // When stopped to attack, face toward target instead of keeping last movement direction.
+      let newFacing: number;
+      if (movementX !== 0 || movementY !== 0) {
+        newFacing = Math.atan2(movementY, movementX);
+      } else if (currentJob.type === "attackTarget") {
+        const targetPos = world.get(currentJob.targetId, Position);
+        if (targetPos) {
+          newFacing = Math.atan2(targetPos.y - pos.y, targetPos.x - pos.x);
+        } else {
+          newFacing = inputState.facing;
+        }
+      } else {
+        newFacing = inputState.facing;
+      }
+
       const inputChanged = movementX !== inputState.movementX ||
         movementY !== inputState.movementY ||
         actions !== inputState.actions ||
@@ -233,11 +245,10 @@ export class NpcAiSystem implements System {
 
       if (inputChanged) {
         if (movementX !== 0 || movementY !== 0) {
-          const job = queue.current;
-          log.debug("move: entity=%s dir=(%.2f,%.2f) job=%s", entityId, movementX, movementY, job?.type ?? "none");
+          log.debug("move: entity=%s dir=(%.2f,%.2f) job=%s", entityId, movementX, movementY, currentJob.type);
         }
         if (actions !== 0) {
-          log.info("npc action: entity=%s actions=0x%x job=%s", entityId, actions, queue.current?.type ?? "none");
+          log.info("npc action: entity=%s actions=%d facing=%.2f job=%s", entityId, actions, newFacing, currentJob.type);
         }
         world.write(entityId, InputState, {
           ...inputState, movementX, movementY, facing: newFacing, actions,

@@ -179,18 +179,28 @@ Effect magnitude = `outwardFragment.magnitude × entry.outwardScale`.
 
 ### Adding a new weapon action
 
-Add an entry to `packages/content/data/weapon_actions.json`:
+Add an entry to `packages/content/data/weapon_actions.json` with hilt keyframes, blade direction, blade length, and IK targets:
 ```json
 {
   "id": "spear_thrust",
-  "windupTicks": 6,
-  "activeTicks": 3,
-  "winddownTicks": 8,
-  "animationStyle": "thrust",
-  "hitbox": { "range": 2.8, "arcHalf": 0.4 }
+  "windupTicks": 6, "activeTicks": 3, "winddownTicks": 8,
+  "animationStyle": "spear_thrust",
+  "staminaCost": 12,
+  "swingPath": {
+    "defaultBladeRadius": 0.04,
+    "defaultBladeLength": 2.2,
+    "keyframes": [
+      { "t": 0.0, "hiltFwd": 0.1, "hiltRight": 0.25, "hiltUp": 1.0,
+        "bladeFwd": 1.0, "bladeRight": 0.0, "bladeUp": 0.0 }
+    ]
+  },
+  "ikTargets": [
+    { "chain": ["upper_arm_r", "lower_arm_r"], "source": "hilt",
+      "poleHint": { "fwd": 0.2, "right": 0.4, "up": 0.7 } }
+  ]
 }
 ```
-Set `weaponAction: "spear_thrust"` in the item template's `baseStats`. No code changes needed.
+Set `weaponAction: "spear_thrust"` in the item template's `baseStats`. No code changes needed — the swingPath hilt keyframes drive hit detection, arm animation (IK), and trail rendering automatically. Per-item `bladeLength` override via `DerivedItemStats.bladeLength`.
 
 ---
 
@@ -248,15 +258,24 @@ Item stats are derived at runtime — not stored: `content.deriveItemStats(itemT
 
 ## Client animation
 
-`skeleton_evaluator.ts` generates bone poses procedurally each frame:
+`skeleton_evaluator.ts` generates bone poses via a three-stage pipeline each frame:
 
-- **Lower body** always plays locomotion (idle sway / walk gait by velocity magnitude and direction).
-- **Upper body** is overridden by attack animation when `AnimationState.mode === "attack"`.
-- Attack pose is parameterised by `windupTicks`, `activeTicks`, `winddownTicks`, `ticksIntoAction` — all read from `AnimationState`, which AnimationSystem derives from `SkillInProgress` + `weapon_actions.json`.
-- `attackStyle` (slash / overhead / thrust / unarmed) selects the pose function.
-- No hardcoded timing constants in the evaluator — everything flows from content data.
+1. **Base FK** — Lower body always plays locomotion (idle sway / walk gait). Upper body plays locomotion or is overridden by constraint producers.
+2. **Constraint producers** — During attacks, the weapon animation layer reads the `swingPath` hilt position and `ikTargets` from the weapon action to produce IK constraints. Torso lean/twist is derived from the hilt position. Other producers (look-at, foot planting) can add constraints from other sources.
+3. **Constraint solver** — Solves all constraints generically. Two-bone IK uses `ik_solver.ts`. Results override FK bone rotations.
 
-`AnimationSystem` runs last every tick and derives `AnimationState` from observable entity state (health, velocity, SkillInProgress).
+### Hilt-centric weapon system
+
+SwingPath keyframes define hilt position + blade direction (unit vector). The blade tip is always derived: `hilt + bladeDir × bladeLength`. This single path drives:
+- Server hit detection: swept capsule (`ActionSystem`) using `deriveTip()`
+- Client arm animation: IK targets hilt position (constraint solver)
+- Client trail ribbon: tip derived from hilt + bladeDir × defaultBladeLength
+
+`defaultBladeLength` on `WeaponSwingPath` sets the default. Per-item override via `DerivedItemStats.bladeLength`. Same swing path works for any blade length (dagger vs longsword).
+
+`ik_solver.ts` is a generic two-bone IK solver — reusable for any bone chain (weapon arms, head look-at, foot planting). `ikTargets` on `WeaponActionDef` defines which bone chains track which swingPath points.
+
+`AnimationSystem` runs last every server tick and derives `AnimationState` from observable entity state (health, velocity, SkillInProgress).
 
 ---
 
@@ -281,3 +300,11 @@ Job queue (`NpcJobQueue`): `current` job + `scheduled` list + A\* `plan` (waypoi
 **ContentStore is the only way to read game data** — Never import JSON files directly. Never hardcode numeric tuning values in systems.
 
 **Codec in @voxim/codecs, not inline** — If a component is networked, its codec belongs in the codecs package so the client and server share it. Inline codecs are only acceptable for `networked: false` components.
+
+**Hilt path is the single source of truth** — SwingPath keyframes define hilt movement and blade direction. The tip is always derived: `hilt + bladeDir × bladeLength` via `deriveTip()`. Never store independent tip positions. New weapons only need swingPath + ikTargets data.
+
+**Animation uses a constraint pipeline** — Base FK → constraint producers (weapon layer, future look-at/foot-plant) → generic constraint solver. Weapon animation is a producer of constraints, not hardcoded poses. Don't add per-style code branches in the evaluator.
+
+**IK solver is generic** — `ik_solver.ts` solves two-bone IK for any bone chain. Don't add chain-specific solvers. The constraint solver dispatches by constraint type, not by which bone it affects.
+
+**Animation data lives in content** — Attack body language derives from hilt position. `ikTargets` define which bones track which swingPath points. No per-weapon-style code.

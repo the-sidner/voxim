@@ -15,14 +15,13 @@
 import type { World } from "@voxim/engine";
 import { ACTION_USE_SKILL, ACTION_BLOCK, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore, DerivedItemStats } from "@voxim/content";
-import { evaluateSwingPath, localToWorld, segSegDistSq } from "@voxim/content";
+import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Position, Velocity, Facing, InputState, Health, Stamina, SkillInProgress, CombatState } from "../components/game.ts";
+import { Position, Velocity, Facing, InputState, Health, Stamina, SkillInProgress, CombatState, ModelRef } from "../components/game.ts";
 import type { SkillInProgressData, HitRecord } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
 import { ActiveEffects, LoreLoadout } from "../components/lore_loadout.ts";
-import { ModelRef } from "@voxim/content";
 import type { StateHistoryBuffer } from "../state_history.ts";
 import { SkillSystem } from "./skill.ts";
 import { createLogger } from "../logger.ts";
@@ -154,6 +153,7 @@ export class ActionSystem implements System {
     const weaponStats = weapon ? this.content.deriveItemStats(weapon.itemType, weapon.parts) : unarmed;
     const baseDamage = weaponStats.damage ?? unarmed.damage!;
     const bladeRadius = weaponStats.bladeRadius ?? action.swingPath.defaultBladeRadius;
+    const bladeLength = weaponStats.bladeLength ?? action.swingPath.defaultBladeLength;
 
     // Compute normalised t for start and end of this active tick within the full action.
     const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
@@ -193,14 +193,18 @@ export class ActionSystem implements System {
     const posePrev = evaluateSwingPath(action.swingPath.keyframes, tPrev);
     const poseCurr = evaluateSwingPath(action.swingPath.keyframes, tCurr);
 
+    // Derive tip from hilt + bladeDir × bladeLength
+    const tipLocalPrev = deriveTip(posePrev.hilt, posePrev.bladeDir, bladeLength);
+    const tipLocalCurr = deriveTip(poseCurr.hilt, poseCurr.bladeDir, bladeLength);
+
     const hiltPrev = localToWorld(posePrev.hilt.fwd, posePrev.hilt.right, posePrev.hilt.up, attackerOrigin, attackFacing);
-    const tipPrev  = localToWorld(posePrev.tip.fwd,  posePrev.tip.right,  posePrev.tip.up,  attackerOrigin, attackFacing);
+    const tipPrev  = localToWorld(tipLocalPrev.fwd,  tipLocalPrev.right,  tipLocalPrev.up,  attackerOrigin, attackFacing);
     const hiltCurr = localToWorld(poseCurr.hilt.fwd, poseCurr.hilt.right, poseCurr.hilt.up, attackerOrigin, attackFacing);
-    const tipCurr  = localToWorld(poseCurr.tip.fwd,  poseCurr.tip.right,  poseCurr.tip.up,  attackerOrigin, attackFacing);
+    const tipCurr  = localToWorld(tipLocalCurr.fwd,  tipLocalCurr.right,  tipLocalCurr.up,  attackerOrigin, attackFacing);
 
     log.info("resolve: entity=%s pos=(%.1f,%.1f) facing=%.2f t=[%.3f,%.3f] candidates=%d tipFwd=(%.2f→%.2f)",
       entityId, ax, ay, attackFacing, tPrev, tCurr, snap.entities.length,
-      posePrev.tip.fwd, poseCurr.tip.fwd);
+      tipLocalPrev.fwd, tipLocalCurr.fwd);
 
     const attackerCombatState = world.get(entityId, CombatState);
     let damageMult = 1.0;

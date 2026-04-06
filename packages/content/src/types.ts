@@ -298,7 +298,10 @@ export interface StructureDef {
 /**
  * One keyframe in a weapon swing path.
  * t is normalised 0..1 over the ENTIRE action (windup + active + winddown).
- * Hilt and tip positions are in entity-local (fwd, right, up) space.
+ *
+ * Hilt position is in entity-local (fwd, right, up) space.
+ * Blade direction is a unit vector pointing from hilt toward tip.
+ * The tip is derived by callers: tip = hilt + bladeDir × bladeLength.
  */
 export interface SwingKeyframe {
   /** Normalised time 0..1 over the entire action. */
@@ -306,14 +309,17 @@ export interface SwingKeyframe {
   hiltFwd: number;
   hiltRight: number;
   hiltUp: number;
-  tipFwd: number;
-  tipRight: number;
-  tipUp: number;
+  /** Unit vector from hilt toward blade tip — forward component. */
+  bladeFwd: number;
+  /** Unit vector from hilt toward blade tip — rightward component. */
+  bladeRight: number;
+  /** Unit vector from hilt toward blade tip — upward component. */
+  bladeUp: number;
 }
 
 /**
- * Time-series description of the weapon's path through entity-local space.
- * Replaces the old flat arc hitbox.
+ * Time-series description of the weapon hilt's path through entity-local space.
+ * The blade tip is derived: hilt + bladeDir × bladeLength.
  */
 export interface WeaponSwingPath {
   /** Ordered keyframes; t values must be strictly increasing from 0 to 1. */
@@ -323,12 +329,38 @@ export interface WeaponSwingPath {
    * Item templates may override via DerivedItemStats.bladeRadius.
    */
   defaultBladeRadius: number;
+  /**
+   * Default blade length in world units — distance from hilt to tip.
+   * Item templates may override via DerivedItemStats.bladeLength.
+   */
+  defaultBladeLength: number;
+}
+
+/**
+ * An IK constraint that the client animation system solves during attacks.
+ * The weapon animation layer reads these to produce generic PoseConstraints
+ * which the constraint solver resolves into bone rotations.
+ */
+export interface IKTargetDef {
+  /** Two-bone chain to solve: [root_bone, mid_bone]. End-effector = mid_bone's child. */
+  chain: [string, string];
+  /** Which swingPath point to track: "hilt" position or derived "tip" position. */
+  source: "hilt" | "tip";
+  /** Direction the middle joint (elbow/knee) should bend toward.
+   *  Entity-local (fwd, right, up) coordinates. */
+  poleHint: { fwd: number; right: number; up: number };
 }
 
 /**
  * Physics definition for one melee weapon archetype.
  * Drives the three-phase swing (windup → active → winddown), swing path geometry,
  * animation style tag, and base stamina cost.
+ *
+ * The swingPath hilt keyframes are the single source of truth:
+ *   - Server: swept capsule hit detection (tip derived from hilt + bladeDir × bladeLength)
+ *   - Client: IK arm animation targets hilt position (via ikTargets)
+ *   - Client: trail ribbon from derived tip position
+ *
  * Weapons reference this by id via ItemTemplate.weaponAction.
  */
 export interface WeaponActionDef {
@@ -339,12 +371,15 @@ export interface WeaponActionDef {
   activeTicks: number;
   /** Ticks of recovery after the active phase before the action is complete. */
   winddownTicks: number;
-  /** Tag read by the skeleton evaluator to select the correct pose function. */
+  /** Tag used by the client to look up this weapon action for animation + trail rendering. */
   animationStyle: string;
   /** Flat stamina deducted when the action is initiated (before skill costs). */
   staminaCost: number;
-  /** Swept capsule path of the weapon blade through entity-local space. */
+  /** Hilt path + blade direction through entity-local space. */
   swingPath: WeaponSwingPath;
+  /** IK constraints for the client animation constraint pipeline.
+   *  Each entry drives a bone chain to track a swingPath point during attacks. */
+  ikTargets?: IKTargetDef[];
 }
 
 // ---- body part volumes ----

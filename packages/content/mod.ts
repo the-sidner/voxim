@@ -47,6 +47,7 @@ export type {
   WeaponActionDef,
   SwingKeyframe,
   WeaponSwingPath,
+  IKTargetDef,
   BodyPartVolume,
   ModelHitboxDef,
   VerbDef,
@@ -59,7 +60,7 @@ export type {
 
 // ---- sweep math (shared server + client) ----
 export type { Vec3 } from "./src/sweep_math.ts";
-export { localToWorld, evaluateSwingPath, segSegDistSq } from "./src/sweep_math.ts";
+export { localToWorld, evaluateSwingPath, deriveTip, segSegDistSq } from "./src/sweep_math.ts";
 
 // ---- ModelRef ECS component ----
 export { ModelRef } from "./src/component.ts";
