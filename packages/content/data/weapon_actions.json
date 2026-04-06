@@ -9,10 +9,10 @@
     "swingPath": {
       "defaultBladeRadius": 0.06,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.2, "hiltRight":  0.35, "hiltUp": 1.0,  "tipFwd": 0.5, "tipRight":  0.9,  "tipUp": 0.95 },
-        { "t": 0.267, "hiltFwd": 0.3, "hiltRight":  0.4,  "hiltUp": 0.95, "tipFwd": 0.8, "tipRight":  1.1,  "tipUp": 0.9  },
-        { "t": 0.533, "hiltFwd": 0.3, "hiltRight": -0.35, "hiltUp": 0.9,  "tipFwd": 0.6, "tipRight": -1.1,  "tipUp": 0.85 },
-        { "t": 1.0,   "hiltFwd": 0.2, "hiltRight": -0.3,  "hiltUp": 0.85, "tipFwd": 0.4, "tipRight": -0.8,  "tipUp": 0.8  }
+        { "t": 0.0,   "hiltFwd": 0.15, "hiltRight":  0.30, "hiltUp": 0.95, "tipFwd": 0.25, "tipRight":  1.0,  "tipUp": 0.95 },
+        { "t": 0.267, "hiltFwd": 0.25, "hiltRight":  0.35, "hiltUp": 0.90, "tipFwd": 1.5,  "tipRight":  1.3,  "tipUp": 0.95 },
+        { "t": 0.533, "hiltFwd": 0.30, "hiltRight": -0.25, "hiltUp": 0.85, "tipFwd": 1.5,  "tipRight": -1.3,  "tipUp": 0.85 },
+        { "t": 1.0,   "hiltFwd": 0.15, "hiltRight": -0.25, "hiltUp": 0.80, "tipFwd": 0.35, "tipRight": -0.7,  "tipUp": 0.75 }
       ]
     }
   },
@@ -26,10 +26,10 @@
     "swingPath": {
       "defaultBladeRadius": 0.08,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.1, "hiltRight": 0.25, "hiltUp": 0.9,  "tipFwd": 0.2, "tipRight": 0.3,  "tipUp": 1.4  },
-        { "t": 0.333, "hiltFwd": 0.1, "hiltRight": 0.2,  "hiltUp": 1.3,  "tipFwd": 0.2, "tipRight": 0.25, "tipUp": 1.85 },
-        { "t": 0.5,   "hiltFwd": 0.4, "hiltRight": 0.1,  "hiltUp": 0.75, "tipFwd": 0.7, "tipRight": 0.1,  "tipUp": 0.25 },
-        { "t": 1.0,   "hiltFwd": 0.2, "hiltRight": 0.1,  "hiltUp": 0.5,  "tipFwd": 0.4, "tipRight": 0.1,  "tipUp": 0.1  }
+        { "t": 0.0,   "hiltFwd": 0.10, "hiltRight": 0.20, "hiltUp": 0.85, "tipFwd": 0.20, "tipRight": 0.25, "tipUp": 1.35 },
+        { "t": 0.333, "hiltFwd": 0.10, "hiltRight": 0.20, "hiltUp": 1.25, "tipFwd": 0.20, "tipRight": 0.25, "tipUp": 1.90 },
+        { "t": 0.500, "hiltFwd": 0.35, "hiltRight": 0.10, "hiltUp": 0.85, "tipFwd": 1.80, "tipRight": 0.10, "tipUp": 0.30 },
+        { "t": 1.0,   "hiltFwd": 0.20, "hiltRight": 0.10, "hiltUp": 0.55, "tipFwd": 0.45, "tipRight": 0.10, "tipUp": 0.15 }
       ]
     }
   },
@@ -43,10 +43,10 @@
     "swingPath": {
       "defaultBladeRadius": 0.04,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.1,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.5,  "tipRight": 0.32, "tipUp": 1.0 },
-        { "t": 0.231, "hiltFwd": 0.0,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.4,  "tipRight": 0.32, "tipUp": 1.0 },
-        { "t": 0.538, "hiltFwd": 0.35, "hiltRight": 0.22, "hiltUp": 1.0, "tipFwd": 1.95, "tipRight": 0.22, "tipUp": 1.0 },
-        { "t": 1.0,   "hiltFwd": 0.1,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.5,  "tipRight": 0.32, "tipUp": 1.0 }
+        { "t": 0.0,   "hiltFwd": 0.10,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.50,  "tipRight": 0.32, "tipUp": 1.0 },
+        { "t": 0.231, "hiltFwd": 0.00,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.40,  "tipRight": 0.32, "tipUp": 1.0 },
+        { "t": 0.538, "hiltFwd": 0.35,  "hiltRight": 0.22, "hiltUp": 1.0, "tipFwd": 1.95,  "tipRight": 0.22, "tipUp": 1.0 },
+        { "t": 1.0,   "hiltFwd": 0.10,  "hiltRight": 0.28, "hiltUp": 1.0, "tipFwd": 0.50,  "tipRight": 0.32, "tipUp": 1.0 }
       ]
     }
   },
@@ -60,10 +60,10 @@
     "swingPath": {
       "defaultBladeRadius": 0.1,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.1,  "hiltRight": 0.22, "hiltUp": 1.0,  "tipFwd": 0.3,  "tipRight": 0.26, "tipUp": 1.0  },
-        { "t": 0.273, "hiltFwd": 0.0,  "hiltRight": 0.22, "hiltUp": 1.0,  "tipFwd": 0.2,  "tipRight": 0.26, "tipUp": 1.0  },
-        { "t": 0.545, "hiltFwd": 0.35, "hiltRight": 0.18, "hiltUp": 0.95, "tipFwd": 0.75, "tipRight": 0.18, "tipUp": 0.95 },
-        { "t": 1.0,   "hiltFwd": 0.1,  "hiltRight": 0.22, "hiltUp": 1.0,  "tipFwd": 0.3,  "tipRight": 0.26, "tipUp": 1.0  }
+        { "t": 0.0,   "hiltFwd": 0.10, "hiltRight": 0.22, "hiltUp": 1.00, "tipFwd": 0.35, "tipRight": 0.26, "tipUp": 1.00 },
+        { "t": 0.273, "hiltFwd": 0.00, "hiltRight": 0.22, "hiltUp": 0.95, "tipFwd": 0.15, "tipRight": 0.26, "tipUp": 0.95 },
+        { "t": 0.545, "hiltFwd": 0.25, "hiltRight": 0.18, "hiltUp": 0.95, "tipFwd": 1.30, "tipRight": 0.18, "tipUp": 0.95 },
+        { "t": 1.0,   "hiltFwd": 0.10, "hiltRight": 0.22, "hiltUp": 1.00, "tipFwd": 0.35, "tipRight": 0.26, "tipUp": 1.00 }
       ]
     }
   },
@@ -77,10 +77,10 @@
     "swingPath": {
       "defaultBladeRadius": 0.14,
       "keyframes": [
-        { "t": 0.0,   "hiltFwd": 0.25, "hiltRight": 0.0, "hiltUp": 0.6,  "tipFwd": 0.5,  "tipRight": 0.0, "tipUp": 0.65 },
-        { "t": 0.267, "hiltFwd": 0.15, "hiltRight": 0.0, "hiltUp": 0.58, "tipFwd": 0.38, "tipRight": 0.0, "tipUp": 0.62 },
-        { "t": 0.467, "hiltFwd": 0.6,  "hiltRight": 0.0, "hiltUp": 0.52, "tipFwd": 0.85, "tipRight": 0.0, "tipUp": 0.55 },
-        { "t": 1.0,   "hiltFwd": 0.25, "hiltRight": 0.0, "hiltUp": 0.6,  "tipFwd": 0.5,  "tipRight": 0.0, "tipUp": 0.65 }
+        { "t": 0.0,   "hiltFwd": 0.25, "hiltRight": 0.0, "hiltUp": 0.60, "tipFwd": 0.50, "tipRight": 0.0, "tipUp": 0.65 },
+        { "t": 0.267, "hiltFwd": 0.15, "hiltRight": 0.0, "hiltUp": 0.58, "tipFwd": 0.35, "tipRight": 0.0, "tipUp": 0.62 },
+        { "t": 0.467, "hiltFwd": 0.50, "hiltRight": 0.0, "hiltUp": 0.55, "tipFwd": 1.30, "tipRight": 0.0, "tipUp": 0.58 },
+        { "t": 1.0,   "hiltFwd": 0.25, "hiltRight": 0.0, "hiltUp": 0.60, "tipFwd": 0.50, "tipRight": 0.0, "tipUp": 0.65 }
       ]
     }
   }
