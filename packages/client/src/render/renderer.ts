@@ -17,7 +17,7 @@ import * as THREE from "three";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { MaterialDef, ModelDefinition, WeaponActionDef } from "@voxim/content";
+import type { MaterialDef, ModelDefinition, WeaponActionDef, ItemTemplate, AnimationStateData } from "@voxim/content";
 import { resolveSubObjects } from "@voxim/content";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import {
@@ -25,6 +25,9 @@ import {
   updateEntityMesh,
   upgradeToSkeletonModel,
   updateSkeletonPose,
+  ensureAttachment,
+  attachModelToSlot,
+  detachModelFromSlot,
   disposeEntityMesh,
   type EntityMeshGroup,
 } from "./entity_mesh.ts";
@@ -32,6 +35,7 @@ import { PropInstancePool } from "./prop_instance_pool.ts";
 import { evaluatePose, evaluateWeaponSlice } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
+import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
 import { EdgePass } from "./edge_pass.ts";
 
 /**
@@ -149,6 +153,9 @@ function lerpAngle(a: number, b: number, t: number): number {
  */
 const SUN_DIR = new THREE.Vector3(20, 100, -15).normalize();
 
+/** Scratch vector — reused by updateAttachmentPositions to avoid per-frame allocation. */
+const _attachTmp = new THREE.Vector3();
+
 export class VoximRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -160,9 +167,10 @@ export class VoximRenderer {
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
   private readonly propPool: PropInstancePool;
 
-  readonly skeletonOverlay: SkeletonOverlay;
-  readonly facingOverlay:   FacingOverlay;
-  readonly chunkOverlay:    ChunkOverlay;
+  readonly skeletonOverlay:   SkeletonOverlay;
+  readonly facingOverlay:     FacingOverlay;
+  readonly chunkOverlay:      ChunkOverlay;
+  readonly bladeDebugOverlay: BladeDebugOverlay;
 
   private cameraTarget = new THREE.Vector3(256, 4, 256);
   private localPlayerId: string | null = null;
@@ -199,8 +207,22 @@ export class VoximRenderer {
    */
   private readonly trailSlices = new Map<string, TrailSlice[]>();
   private readonly trailMeshes = new Map<string, THREE.Mesh>();
+
+  /**
+   * Maps slot id → bone id for slots that simply follow a rest bone.
+   * Extend this when adding new attachment points (belt, back, off_hand, …).
+   * "main_hand" is handled separately because it switches between swing-path
+   * and rest-bone depending on attack state.
+   */
+  private static readonly SLOT_REST_BONE: Record<string, string> = {
+    off_hand: "hand_l",
+    // belt: "torso_lower",
+    // back: "torso_upper",
+  };
   /** Weapon action definitions — set by setWeaponActions() from game.ts. */
   private weaponActionsMap = new Map<string, WeaponActionDef>();
+  /** Item template definitions — set by setItemTemplates() from game.ts. Used to resolve weapon modelTemplateId. */
+  private itemTemplateMap = new Map<string, ItemTemplate>();
 
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
@@ -232,9 +254,10 @@ export class VoximRenderer {
 
   constructor(canvas: HTMLCanvasElement) {
     this.propPool        = new PropInstancePool(this.scene);
-    this.skeletonOverlay = new SkeletonOverlay(this.scene);
-    this.facingOverlay   = new FacingOverlay(this.scene);
-    this.chunkOverlay    = new ChunkOverlay(this.scene);
+    this.skeletonOverlay   = new SkeletonOverlay(this.scene);
+    this.facingOverlay     = new FacingOverlay(this.scene);
+    this.chunkOverlay      = new ChunkOverlay(this.scene);
+    this.bladeDebugOverlay = new BladeDebugOverlay(this.scene);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(1);
@@ -448,6 +471,8 @@ export class VoximRenderer {
         if (skeleton) {
           upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale);
           this.skeletonOverlay.trackEntity(entityId, capture, skeleton);
+          // Attach weapon now that boneGroups exist. Use current equipment from state.
+          this.syncWeapon(capture, state);
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
           const worldPos = capture.group.position.clone();
@@ -457,6 +482,12 @@ export class VoximRenderer {
           this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale);
         }
       }).catch(() => {});
+    }
+
+    // React to equipment changes on already-upgraded skeleton entities.
+    // syncWeapon is a no-op if the weapon model ID hasn't changed.
+    if (mesh.boneGroups && state.equipment !== undefined) {
+      this.syncWeapon(mesh, state);
     }
   }
 
@@ -496,6 +527,7 @@ export class VoximRenderer {
     const mesh = this.entityMeshes.get(entityId);
     if (mesh) {
       this.skeletonOverlay.untrackEntity(entityId);
+      this.bladeDebugOverlay.remove(entityId);
       this.scene.remove(mesh.group);
       disposeEntityMesh(mesh);
       this.entityMeshes.delete(entityId);
@@ -586,16 +618,19 @@ export class VoximRenderer {
         const anim = mesh.animationState;
         // Extrapolate ticksIntoAction between server updates (50ms apart) so the
         // attack pose advances smoothly at 60fps instead of stepping every tick.
+        const totalTicks = (anim?.windupTicks ?? 0) + (anim?.activeTicks ?? 0) + (anim?.winddownTicks ?? 0);
         let ticksIntoAction = anim?.ticksIntoAction ?? 0;
         if (anim?.mode === "attack") {
           const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
-          const totalTicks = (anim.windupTicks ?? 0) + (anim.activeTicks ?? 0) + (anim.winddownTicks ?? 0);
           ticksIntoAction = Math.min(ticksIntoAction + elapsed, totalTicks);
         }
         // Look up weapon action for IK + trail data
         const weaponAction = (anim?.mode === "attack")
           ? this.weaponActionsMap.get(anim.attackStyle)
           : undefined;
+
+        // Normalised progress t ∈ [0,1] across the full action arc.
+        const t = totalTicks > 0 ? Math.min(ticksIntoAction / totalTicks, 1.0) : 1.0;
 
         const pose = evaluatePose(
           mesh.skeletonId,
@@ -612,6 +647,7 @@ export class VoximRenderer {
           weaponAction?.swingPath?.defaultBladeLength,
         );
         updateSkeletonPose(mesh, pose);
+        this.updateAttachmentPositions(mesh, anim, weaponAction, t);
       }
     }
 
@@ -649,6 +685,7 @@ export class VoximRenderer {
     // Sync debug overlays after poses and interpolation
     this.skeletonOverlay.update(this.entityMeshes);
     this.facingOverlay.update(this.entityMeshes);
+    this.bladeDebugOverlay.update(this.entityMeshes, this.weaponActionsMap, now);
 
     // Smoothly transition day/night lighting (per-frame lerp toward target)
     const L = 0.015; // lerp speed — full transition over ~4 s at 60 fps
@@ -759,6 +796,118 @@ export class VoximRenderer {
   setWeaponActions(actions: WeaponActionDef[]): void {
     this.weaponActionsMap.clear();
     for (const a of actions) this.weaponActionsMap.set(a.id, a);
+  }
+
+  /** Register item template definitions so the renderer can resolve weapon model IDs from item types. */
+  setItemTemplates(templates: ItemTemplate[]): void {
+    this.itemTemplateMap.clear();
+    for (const t of templates) this.itemTemplateMap.set(t.id, t);
+  }
+
+  /**
+   * Ensure the weapon model in the "main_hand" attachment slot matches what the
+   * entity currently has equipped.  Called after skeleton upgrade and on every
+   * equipment delta.  Exits early when the model ID hasn't changed.
+   *
+   * The slot anchor is created here if it doesn't exist yet.  The renderer
+   * positions the anchor each frame in updateAttachmentPositions().
+   */
+  private syncWeapon(mesh: EntityMeshGroup, state: EntityState): void {
+    if (!mesh.boneGroups || !this.content) return;
+
+    const weaponItemType = state.equipment?.weapon?.itemType ?? null;
+    const template = weaponItemType ? this.itemTemplateMap.get(weaponItemType) : null;
+    const weaponModelId = template?.modelTemplateId ?? null;
+
+    const slot = mesh.attachments.get("main_hand");
+    if (weaponModelId === (slot?.modelId ?? null)) return;
+
+    // Detach the current model immediately; the new one loads async.
+    detachModelFromSlot(mesh, "main_hand");
+
+    if (!weaponModelId) return;
+
+    // Reserve the target model ID (via ensureAttachment) so concurrent async
+    // calls from the same entity don't race and double-attach.
+    const pendingSlot = ensureAttachment(mesh, "main_hand");
+    pendingSlot.modelId = weaponModelId;   // reserve
+
+    const scale = state.modelRef
+      ? { x: state.modelRef.scaleX, y: state.modelRef.scaleY, z: state.modelRef.scaleZ }
+      : { x: 0.35, y: 0.35, z: 0.35 };
+
+    this.content.prefetchModel(weaponModelId).then(() => {
+      // Abort if the weapon changed or the entity was removed while loading.
+      const currentSlot = mesh.attachments.get("main_hand");
+      if (currentSlot?.modelId !== weaponModelId || !mesh.boneGroups) return;
+      const weaponDef = this.content!.getModelSync(weaponModelId);
+      if (!weaponDef) { if (currentSlot) currentSlot.modelId = null; return; }
+
+      const mats = new Map<number, MaterialDef>();
+      for (const id of weaponDef.materials) {
+        const m = this.content!.getMaterialSync(id);
+        if (m) mats.set(id, m);
+      }
+      attachModelToSlot(mesh, "main_hand", weaponDef, mats, scale);
+    }).catch(() => {
+      const currentSlot = mesh.attachments.get("main_hand");
+      if (currentSlot?.modelId === weaponModelId) currentSlot.modelId = null;
+    });
+  }
+
+  /**
+   * Position each entity's attachment slot anchors for the current frame.
+   *
+   * "main_hand" — during an attack the anchor is placed at the hilt position
+   * derived from the swing-path keyframes (same data the server uses for hit
+   * detection).  At all other times it follows the hand_r bone so the weapon
+   * sits naturally in the hand during locomotion.
+   *
+   * Future slots ("off_hand", "back", "belt", …) simply follow their
+   * designated rest bone; add entries to SLOT_REST_BONE to enable them.
+   */
+  private updateAttachmentPositions(
+    mesh: EntityMeshGroup,
+    anim: AnimationStateData | null,
+    weaponAction: WeaponActionDef | undefined,
+    t: number,
+  ): void {
+    if (!mesh.attachments.size) return;
+
+    for (const [slotId, slot] of mesh.attachments) {
+      if (slotId === "main_hand") {
+        if (anim?.mode === "attack" && weaponAction?.swingPath?.keyframes?.length) {
+          // Authoritative hilt position from swing path — same source as server hit detection.
+          const bladeLength = weaponAction.swingPath.defaultBladeLength ?? 1.0;
+          const s = evaluateWeaponSlice(
+            weaponAction.swingPath.keyframes, t, bladeLength,
+          );
+          slot.anchor.position.set(s.hiltX, s.hiltY, s.hiltZ);
+        } else {
+          // Follow hand_r: get its world position and convert to entity-local.
+          const handBone = mesh.boneGroups?.get("hand_r");
+          if (handBone) {
+            // Ensure the bone hierarchy world matrices reflect the current pose.
+            mesh.group.updateWorldMatrix(true, true);
+            handBone.getWorldPosition(_attachTmp);
+            mesh.group.worldToLocal(_attachTmp);
+            slot.anchor.position.copy(_attachTmp);
+          }
+        }
+      } else {
+        // Generic rest-bone follow for other slots.
+        const restBoneId = VoximRenderer.SLOT_REST_BONE[slotId];
+        if (restBoneId) {
+          const bone = mesh.boneGroups?.get(restBoneId);
+          if (bone) {
+            mesh.group.updateWorldMatrix(true, true);
+            bone.getWorldPosition(_attachTmp);
+            mesh.group.worldToLocal(_attachTmp);
+            slot.anchor.position.copy(_attachTmp);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -920,6 +1069,7 @@ export class VoximRenderer {
     this.skeletonOverlay.dispose();
     this.facingOverlay.dispose();
     this.chunkOverlay.dispose();
+    this.bladeDebugOverlay.dispose();
     this.propPool.dispose();
     this.edgePass.dispose();
     this.pixelTarget.dispose();

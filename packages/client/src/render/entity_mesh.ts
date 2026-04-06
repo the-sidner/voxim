@@ -75,6 +75,23 @@ export interface PosRecord {
   ry: number;  // group.rotation.y at this sample
 }
 
+/**
+ * One item attachment slot.
+ *
+ * `anchor` is a THREE.Group that is always a direct child of the entity root
+ * group.  Its position is driven per-frame: during an attack the renderer sets
+ * it from the swing-path hilt position; otherwise it follows the designated
+ * rest bone (e.g. hand_r for main_hand).  The item model voxels are children
+ * of the anchor — they move with it automatically.
+ *
+ * slotId examples: "main_hand", "off_hand", "back", "belt"
+ */
+export interface AttachmentSlot {
+  anchor: THREE.Group;
+  /** Model ID currently built into anchor's children, or null if empty / loading. */
+  modelId: string | null;
+}
+
 export interface EntityMeshGroup {
   group: THREE.Group;
   /** Non-null when in placeholder mode. */
@@ -83,6 +100,13 @@ export interface EntityMeshGroup {
   voxelMeshes: THREE.Mesh[] | null;
   /** Non-null when in skeleton mode. boneId → bone Group. */
   boneGroups: Map<string, THREE.Group> | null;
+  /**
+   * Item attachment slots — slotId → AttachmentSlot.
+   * Each slot's anchor is a direct child of the entity root group, positioned
+   * per-frame by the renderer (swing path during attacks, bone world-pos otherwise).
+   * Model voxels are children of the anchor.
+   */
+  attachments: Map<string, AttachmentSlot>;
   /** Cached animation state — used by the renderer for per-frame pose evaluation. */
   animationState: AnimationStateData | null;
   /** Wall-clock ms when animationState was last updated — used to extrapolate ticksIntoAction between server ticks. */
@@ -116,6 +140,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     placeholder,
     voxelMeshes: null,
     boneGroups: null,
+    attachments: new Map(),
     animationState: state.animationState ?? null,
     lastAnimUpdateMs: performance.now(),
     velocityX: state.velocity?.x ?? 0,
@@ -178,6 +203,18 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
     mesh.boneGroups = null;
     mesh.skeletonId = null;
   }
+  // Dispose all attachment anchors and their model voxels.
+  // Anchors are direct children of mesh.group (not part of the bone hierarchy).
+  for (const [, slot] of mesh.attachments) {
+    slot.anchor.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        (obj.material as THREE.Material).dispose();
+        obj.geometry.dispose();
+      }
+    });
+    mesh.group.remove(slot.anchor);
+  }
+  mesh.attachments.clear();
 }
 
 function buildVoxelMesh(
@@ -401,6 +438,70 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
     const color = pickPlaceholderColor(state, false);
     (mesh.placeholder.body.material as THREE.MeshLambertMaterial).color.set(color);
   }
+}
+
+// ---- item attachment slots ----
+
+/**
+ * Return the anchor Group for a slot, creating it if this is the first call.
+ * The anchor is a direct child of mesh.group (entity root) — not parented to
+ * any bone.  The renderer positions it each frame from the swing path (during
+ * attacks) or from the rest-bone world position (idle/walk).
+ */
+export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): AttachmentSlot {
+  let slot = mesh.attachments.get(slotId);
+  if (!slot) {
+    const anchor = new THREE.Group();
+    anchor.name = `attachment:${slotId}`;
+    mesh.group.add(anchor);
+    slot = { anchor, modelId: null };
+    mesh.attachments.set(slotId, slot);
+  }
+  return slot;
+}
+
+/**
+ * Build model voxels for a slot and add them as children of its anchor.
+ * Replaces any previously loaded model for this slot cleanly.
+ * Creates the slot anchor if it does not yet exist.
+ */
+export function attachModelToSlot(
+  mesh: EntityMeshGroup,
+  slotId: string,
+  modelDef: ModelDefinition,
+  materials: Map<number, MaterialDef>,
+  scale: { x: number; y: number; z: number },
+): void {
+  const slot = ensureAttachment(mesh, slotId);
+  detachModelFromSlot(mesh, slotId);   // clear previous model first
+
+  const modelGroup = new THREE.Group();
+  modelGroup.name = `model:${modelDef.id}`;
+  for (const node of modelDef.nodes) {
+    modelGroup.add(buildVoxelMesh(node, materials, scale));
+  }
+  slot.anchor.add(modelGroup);
+  slot.modelId = modelDef.id;
+}
+
+/**
+ * Remove and dispose the model voxels from a slot's anchor.
+ * The anchor itself is kept — it will be repositioned next frame as usual.
+ * Sets slot.modelId to null so the renderer knows the slot is empty.
+ */
+export function detachModelFromSlot(mesh: EntityMeshGroup, slotId: string): void {
+  const slot = mesh.attachments.get(slotId);
+  if (!slot || slot.modelId === null) return;
+  for (const child of [...slot.anchor.children]) {
+    slot.anchor.remove(child);
+    child.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        (obj.material as THREE.Material).dispose();
+        obj.geometry.dispose();
+      }
+    });
+  }
+  slot.modelId = null;
 }
 
 // ---- dispose ----
