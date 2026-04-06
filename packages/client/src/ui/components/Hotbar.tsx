@@ -10,9 +10,10 @@ export function Hotbar({ onAction }: { onAction: (a: UIAction) => void }) {
 
   return (
     <div class="interactive" style={{
-      position: "absolute", bottom: "24px", left: "50%",
-      transform: "translateX(-50%) translateY(-80px)",  // above status bars
+      position: "fixed", bottom: "80px", left: "50%",
+      transform: "translateX(-50%)",
       display: "flex", gap: "var(--gap-xs)",
+      zIndex: "var(--z-hud)",
     }}>
       {hb.slots.map((item, i) => (
         <div

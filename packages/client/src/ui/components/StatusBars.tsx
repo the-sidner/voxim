@@ -30,10 +30,11 @@ export function StatusBars() {
 
   return (
     <div style={{
-      position: "absolute", bottom: "24px", left: "50%",
+      position: "fixed", bottom: "24px", left: "50%",
       transform: "translateX(-50%)",
       display: "flex", flexDirection: "column", gap: "var(--gap-xs)",
       width: "220px",
+      zIndex: "var(--z-hud)",
     }}>
       {hp && (
         <Bar

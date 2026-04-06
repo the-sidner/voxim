@@ -18,9 +18,10 @@ export function PanelBar() {
   const panels = uiState.value.openPanels;
 
   return (
-    <div style={{
-      position: "absolute", top: "12px", right: "12px",
+    <div class="interactive" style={{
+      position: "fixed", top: "12px", right: "12px",
       display: "flex", gap: "var(--gap-xs)",
+      zIndex: "var(--z-hud)",
     }}>
       {BUTTONS.map(({ id, label, key }) => {
         const active = panels.has(id);
