@@ -194,7 +194,10 @@ export class ClientSession {
       for (let i = 0; i < bytes.byteLength; i += chunk) {
         await writer.write(bytes.subarray(i, Math.min(i + chunk, bytes.byteLength)));
       }
-    }).catch(() => { this._closed = true; });
+    }).catch((err) => {
+      console.error(`[Session] ${this.playerId.slice(-8)}: write failed, closing session —`, err);
+      this._closed = true;
+    });
   }
 
   close(): void {

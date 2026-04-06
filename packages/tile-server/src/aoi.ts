@@ -132,6 +132,10 @@ export function computeSessionUpdate(
   const px = pos?.x ?? 256;
   const py = pos?.y ?? 256;
   const pendingChunks = allChunkIds.filter((id) => !session.knownEntities.has(id));
+  if (pendingChunks.length > 0) {
+    const batchSize = Math.min(pendingChunks.length, MAX_CHUNK_SPAWNS_PER_TICK);
+    console.log(`[AoI] ${playerId.slice(-8)}: chunks pending=${pendingChunks.length} sending=${batchSize} known=${session.knownEntities.size}`);
+  }
   pendingChunks.sort((a, b) => {
     const ha = world.get(a, Heightmap)!;
     const hb = world.get(b, Heightmap)!;

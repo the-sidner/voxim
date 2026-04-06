@@ -348,7 +348,7 @@ export class TileServer {
       const changedComponents = this.buildDeltaMap(changeset.sets);
       const worldDestroys = new Set(changeset.destroys);
       for (const [playerId, session] of this.sessions) {
-        if (!session.isOpen) continue;
+        if (!session.isOpen) { console.warn(`[TileServer] tick ${serverTick}: session ${playerId.slice(-8)} is closed, skipping`); continue; }
         const inputState = this.world.get(playerId, InputState);
         const ackInputSeq = inputState?.seq ?? 0;
         const msg = computeSessionUpdate(
