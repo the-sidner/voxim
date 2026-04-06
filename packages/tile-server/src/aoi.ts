@@ -11,7 +11,7 @@
  */
 
 import type { World, EntityId } from "@voxim/engine";
-import { Heightmap } from "@voxim/world";
+import { Heightmap, CHUNK_SIZE } from "@voxim/world";
 import type { GameEvent } from "@voxim/protocol";
 import { COMPONENT_NAME_TO_TYPE } from "@voxim/protocol";
 import type {
@@ -27,6 +27,13 @@ import { NETWORKED_DEFS } from "./component_registry.ts";
 
 /** Radius in world units within which entities are visible to a client. */
 export const AOI_RADIUS = 128;
+
+/**
+ * Max number of NEW terrain chunk spawns per state message.
+ * Each 32×32 chunk is ~6 KB; 20 chunks ≈ 120 KB — well within the QUIC
+ * flow-control window.  256 total chunks load over ~13 ticks (≈650 ms).
+ */
+const MAX_CHUNK_SPAWNS_PER_TICK = 20;
 
 function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponentEntry[] {
   const components: BinaryComponentEntry[] = [];
@@ -97,8 +104,10 @@ export function computeSessionUpdate(
   const inAoI = new Set<EntityId>();
 
   // Terrain chunks are always visible — they never leave AoI
+  const allChunkIds: EntityId[] = [];
   for (const { entityId } of world.query(Heightmap)) {
     inAoI.add(entityId);
+    allChunkIds.push(entityId);
   }
 
   // Positioned entities within radius
@@ -116,8 +125,37 @@ export function computeSessionUpdate(
   const spawns: BinaryEntitySpawn[] = [];
   const newlySpawned = new Set<EntityId>();
 
+  // Terrain chunks: sort by distance from player, cap at MAX_CHUNK_SPAWNS_PER_TICK.
+  // Each 32×32 chunk is ~6 KB; sending all 256 at once (~1.6 MB) exhausts the QUIC
+  // flow-control window.  Deferred chunks remain outside knownEntities and are
+  // processed in subsequent ticks until all 256 are delivered.
+  const px = pos?.x ?? 256;
+  const py = pos?.y ?? 256;
+  const pendingChunks = allChunkIds.filter((id) => !session.knownEntities.has(id));
+  pendingChunks.sort((a, b) => {
+    const ha = world.get(a, Heightmap)!;
+    const hb = world.get(b, Heightmap)!;
+    const acx = (ha.chunkX + 0.5) * CHUNK_SIZE, acy = (ha.chunkY + 0.5) * CHUNK_SIZE;
+    const bcx = (hb.chunkX + 0.5) * CHUNK_SIZE, bcy = (hb.chunkY + 0.5) * CHUNK_SIZE;
+    const da = (acx - px) ** 2 + (acy - py) ** 2;
+    const db = (bcx - px) ** 2 + (bcy - py) ** 2;
+    return da - db;
+  });
+  for (let i = 0; i < Math.min(pendingChunks.length, MAX_CHUNK_SPAWNS_PER_TICK); i++) {
+    const id = pendingChunks[i];
+    const components = buildSpawnComponents(world, id);
+    if (components.length > 0) {
+      spawns.push({ entityId: id, components });
+      session.knownEntities.add(id);
+      newlySpawned.add(id);
+    }
+  }
+
+  // Non-terrain entities: all new ones in AoI, no cap (each is small)
   for (const id of inAoI) {
     if (session.knownEntities.has(id)) continue;
+    const hm = world.get(id, Heightmap);
+    if (hm !== null) continue; // chunk — handled above
     const components = buildSpawnComponents(world, id);
     if (components.length > 0) {
       spawns.push({ entityId: id, components });
