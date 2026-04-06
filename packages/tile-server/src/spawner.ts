@@ -64,7 +64,7 @@ export function spawnPlayer(world: World, opts: SpawnPlayerOpts = {}): EntityId 
   world.write(id, Stamina, { current: 100, max: 100, regenPerSecond: 8, exhausted: false });
   world.write(id, CorruptionExposure, { level: 0 });
   world.write(id, SpeedModifier, { multiplier: 1.0 });
-  world.write(id, Equipment, { weapon: null, armor: null });
+  world.write(id, Equipment, { weapon: { itemType: "wooden_sword", quantity: 1, parts: [] }, armor: null });
   world.write(id, LoreLoadout, { skills: [null, null, null, null], learnedFragmentIds: [], skillCooldowns: [0, 0, 0, 0] });
   world.write(id, ActiveEffects, { effects: [] });
   world.write(id, Inventory, { slots: [], capacity: 20 });
