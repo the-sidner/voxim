@@ -15,9 +15,13 @@ import { InputController } from "./input/input_controller.ts";
 import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
-import { GameHud } from "./hud.ts";
+import { WorldOverlay } from "./ui/world_overlay.ts";
+import { mountUI } from "./ui/mount_ui.tsx";
+import { patchUI, openPanel, pushToast } from "./ui/ui_store.ts";
+import type { UIAction } from "./ui/ui_actions.ts";
 import { ACTION_USE_SKILL, hasAction } from "@voxim/protocol";
 import weaponActionsData from "../../content/data/weapon_actions.json" with { type: "json" };
+import itemTemplatesData from "../../content/data/item_templates.json" with { type: "json" };
 
 export interface GameConfig {
   canvas: HTMLCanvasElement;
@@ -38,7 +42,7 @@ export class VoximGame {
   private world = new ClientWorld();
   private content: ContentCache | null = null;
   private renderer: VoximRenderer | null = null;
-  private hud: GameHud | null = null;
+  private overlay: WorldOverlay | null = null;
   private input: InputController | null = null;
   private animFrameId = 0;
   private playerId: string | null = null;
@@ -74,7 +78,7 @@ export class VoximGame {
       for (const entityId of msg.destroys) {
         this.world.applyDestroy(entityId);
         this.renderer?.removeEntity(entityId);
-        this.hud?.removeEntityBar(entityId);
+        this.overlay?.removeEntityBar(entityId);
       }
 
       for (const entityId of updated) {
@@ -85,10 +89,10 @@ export class VoximGame {
         } else if (state.position) {
           this.renderer?.updateEntity(entityId, state);
         }
-        if (entityId === this.playerId && this.hud) {
-          if (state.health)  this.hud.updateHealth(state.health.current, state.health.max);
-          if (state.stamina) this.hud.updateStamina(state.stamina.current, state.stamina.max, state.stamina.exhausted);
-          if (state.hunger)  this.hud.updateHunger(state.hunger.value);
+        if (entityId === this.playerId) {
+          if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
+          if (state.stamina) patchUI({ stamina: { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
+          if (state.hunger)  patchUI({ hunger:  { value: state.hunger.value } });
           // animationState updates handled by renderer via updateEntity
         }
       }
@@ -97,45 +101,47 @@ export class VoximGame {
         switch (ev.type) {
           case "DamageDealt": {
             const screenPos = this.renderer?.getEntityScreenPos(ev.targetId);
-            if (screenPos) this.hud?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
-            // bodyPart is available as ev.bodyPart — used for per-part armor display in future.
+            if (screenPos) this.overlay?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
             break;
           }
           case "EntityDied":
-            if (ev.entityId === this.playerId) this.hud?.showAlert("You died", "#ff4444");
+            if (ev.entityId === this.playerId) {
+              openPanel("death", true);
+              pushToast("You died", "danger");
+            }
             break;
           case "HungerCritical":
-            if (ev.entityId === this.playerId) this.hud?.showAlert("Starving!", "#ff8800");
+            if (ev.entityId === this.playerId) pushToast("Starving!", "warn");
             break;
           case "DayPhaseChanged": {
             const labels: Record<string, string> = { dawn: "Dawn", noon: "Noon", dusk: "Dusk", midnight: "Midnight" };
-            this.hud?.showAlert(labels[ev.phase] ?? ev.phase, "#aaccff");
+            pushToast(labels[ev.phase] ?? ev.phase, "info");
             this.renderer?.setDayPhase(ev.phase);
             break;
           }
           case "CraftingCompleted":
-            if (ev.crafterId === this.playerId) this.hud?.showAlert(`Crafted: ${ev.recipeId}`, "#88dd88");
+            if (ev.crafterId === this.playerId) pushToast(`Crafted: ${ev.recipeId}`, "success");
             break;
           case "BuildingCompleted":
-            if (ev.builderId === this.playerId) this.hud?.showAlert(`Built: ${ev.structureType}`, "#88ccff");
+            if (ev.builderId === this.playerId) pushToast(`Built: ${ev.structureType}`, "info");
             break;
           case "NodeDepleted":
-            if (ev.harvesterId === this.playerId) this.hud?.showAlert(`${ev.nodeTypeId} depleted`, "#998866");
+            if (ev.harvesterId === this.playerId) pushToast(`${ev.nodeTypeId} depleted`, "info");
             break;
           case "GateApproached":
-            if (ev.entityId === this.playerId) this.hud?.showAlert(`Entering ${ev.destinationTileId}`, "#aaccff");
+            if (ev.entityId === this.playerId) pushToast(`Entering ${ev.destinationTileId}`, "info");
             break;
           case "TradeCompleted":
             if (ev.buyerId === this.playerId) {
               const coins = ev.coinDelta > 0 ? `-${ev.coinDelta}` : `+${-ev.coinDelta}`;
-              this.hud?.showAlert(`${ev.quantity}x ${ev.itemType} (${coins} coins)`, "#88ccff");
+              pushToast(`${ev.quantity}x ${ev.itemType} (${coins} coins)`, "success");
             }
             break;
           case "LoreExternalised":
-            if (ev.entityId === this.playerId) this.hud?.showAlert(`Fragment written: ${ev.fragmentId}`, "#cc88ff");
+            if (ev.entityId === this.playerId) pushToast(`Fragment written: ${ev.fragmentId}`, "info");
             break;
           case "LoreInternalised":
-            if (ev.entityId === this.playerId) this.hud?.showAlert(`Lore absorbed: ${ev.fragmentId}`, "#cc88ff");
+            if (ev.entityId === this.playerId) pushToast(`Lore absorbed: ${ev.fragmentId}`, "success");
             break;
           case "SkillActivated":
             break;
@@ -176,7 +182,14 @@ export class VoximGame {
     this.renderer.setContentCache(this.content);
     // deno-lint-ignore no-explicit-any
     this.renderer.setWeaponActions(weaponActionsData as any);
-    this.hud = new GameHud();
+    // deno-lint-ignore no-explicit-any
+    this.renderer.setItemTemplates(itemTemplatesData as any);
+
+    // Mount world overlay (entity health bars, floating damage numbers — frame-driven)
+    this.overlay = new WorldOverlay();
+
+    // Mount Preact UI into <div id="ui"> — must exist in the HTML host page
+    mountUI((a) => this._handleUIAction(a));
 
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap && state.materialGrid) {
@@ -185,9 +198,9 @@ export class VoximGame {
         this.renderer.updateEntity(entityId, state);
       }
       if (entityId === this.playerId) {
-        if (state.health)  this.hud.updateHealth(state.health.current, state.health.max);
-        if (state.stamina) this.hud.updateStamina(state.stamina.current, state.stamina.max, state.stamina.exhausted);
-        if (state.hunger)  this.hud.updateHunger(state.hunger.value);
+        if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
+        if (state.stamina) patchUI({ stamina: { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
+        if (state.hunger)  patchUI({ hunger:  { value: state.hunger.value } });
       }
     }
 
@@ -222,27 +235,59 @@ export class VoximGame {
     }
     this.renderer?.render(this.serverTick);
 
-    // Update floating entity health bars
-    if (this.hud) {
-      this.hud.clearEntityBars();
+    // Update world-space entity health bars (frame-driven, not reactive)
+    if (this.overlay) {
+      this.overlay.clearEntityBars();
       for (const [entityId, state] of this.world.entries()) {
         if (entityId === this.playerId) continue;
         if (!state.health || !state.position) continue;
         const pos = this.renderer?.getEntityScreenPos(entityId);
-        if (pos) this.hud.setEntityHealth(entityId, state.health.current, state.health.max, pos.x, pos.y);
+        if (pos) this.overlay.setEntityHealth(entityId, state.health.current, state.health.max, pos.x, pos.y);
       }
     }
 
     this.scheduleFrame();
   }
 
-  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap"): boolean {
+  /**
+   * Translate UI intents into server messages.
+   * This is the single bridge between the UI layer and game logic.
+   */
+  private _handleUIAction(action: UIAction): void {
+    switch (action.type) {
+      case "respawn":
+        // TODO: send respawn request to server
+        break;
+      case "equip":
+      case "unequip":
+      case "move_item":
+      case "drop_item":
+      case "use_item":
+      case "split_stack":
+      case "hotbar_assign":
+      case "hotbar_use":
+      case "crafting_add":
+      case "crafting_remove":
+      case "crafting_craft":
+      case "trade_buy":
+      case "trade_sell":
+      case "dialogue_choice":
+      case "dialogue_close":
+      case "rebind_key":
+        // TODO: translate each action type to the appropriate server message
+        console.debug("[UIAction]", action);
+        break;
+    }
+  }
+
+  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade"): boolean {
     if (!this.renderer) return false;
     switch (layer) {
       case "skeleton":   return this.renderer.skeletonOverlay.toggle();
       case "facing":     return this.renderer.facingOverlay.toggle();
       case "chunks":     return this.renderer.chunkOverlay.toggle();
       case "heightmap":  return this.renderer.toggleHeightDebug();
+      case "blade":      return this.renderer.bladeDebugOverlay.toggle();
     }
   }
 
@@ -252,7 +297,7 @@ export class VoximGame {
     this.input?.dispose();
     this.connection.close();
     this.renderer?.dispose();
-    this.hud?.dispose();
+    this.overlay?.dispose();
     this.world.clear();
   }
 }

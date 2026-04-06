@@ -28,6 +28,8 @@ await esbuild.build({
   platform: "browser",
   target: "es2022",
   minify: false,
+  jsx: "automatic",
+  jsxImportSource: "preact",
 });
 
 await esbuild.stop();

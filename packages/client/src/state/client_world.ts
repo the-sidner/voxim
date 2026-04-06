@@ -9,9 +9,9 @@ import { ComponentType, COMPONENT_TYPE_TO_NAME } from "@voxim/protocol";
 import {
   positionCodec, velocityCodec, facingCodec,
   heightmapCodec, materialGridCodec,
-  staminaCodec, modelRefCodec, animationStateCodec,
+  staminaCodec, modelRefCodec, animationStateCodec, equipmentCodec,
 } from "@voxim/codecs";
-import type { HeightmapData, MaterialGridData, ModelRefData, AnimationStateData } from "@voxim/codecs";
+import type { HeightmapData, MaterialGridData, ModelRefData, AnimationStateData, EquipmentData } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
 export interface VelocityState  { x: number; y: number; z: number }
@@ -31,6 +31,7 @@ export interface EntityState {
   materialGrid?: MaterialGridData;
   modelRef?: ModelRefData;
   animationState?: AnimationStateData;
+  equipment?: EquipmentData;
   /** Raw bytes for components the client doesn't decode eagerly, keyed by component name. */
   raw: Map<string, Uint8Array>;
   /** Per-component version counters (component type ID → version). Stale deltas are discarded. */
@@ -94,6 +95,9 @@ export class ClientWorld {
         break;
       case ComponentType.animationState:
         entity.animationState = animationStateCodec.decode(data);
+        break;
+      case ComponentType.equipment:
+        entity.equipment = equipmentCodec.decode(data);
         break;
       default: {
         const name = COMPONENT_TYPE_TO_NAME.get(typeId);

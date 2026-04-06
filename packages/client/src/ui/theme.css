@@ -1,0 +1,250 @@
+/**
+ * Voxim2 UI design tokens.
+ *
+ * All UI components read exclusively from these custom properties.
+ * Never write colours, spacing, or font sizes inline — add a token here
+ * and reference it.  Changing the look of the entire UI is editing this file.
+ */
+
+:root {
+  /* ── Palette ────────────────────────────────────────────────────────────── */
+  --col-bg:            #16130e;   /* deepest background — panels, modals      */
+  --col-bg-raised:     #1f1b14;   /* one level above bg — card surfaces       */
+  --col-bg-hover:      #2a2418;   /* hover/focus tint on interactive surfaces  */
+  --col-border:        #3d3428;   /* default border between elements          */
+  --col-border-bright: #5c4f38;   /* highlighted border (active slot, focus)  */
+
+  --col-text:          #d4c9a8;   /* primary text                             */
+  --col-text-dim:      #7a6f58;   /* secondary / label text                   */
+  --col-text-disabled: #443d30;   /* disabled / unavailable                   */
+
+  --col-accent:        #c8953a;   /* buttons, highlights, interactive accent  */
+  --col-accent-dim:    #7a5a22;   /* dimmed accent (e.g. cooldown bar fill)   */
+
+  --col-danger:        #c04040;   /* destructive actions, critical health     */
+  --col-warn:          #c87820;   /* warnings, hunger bar                     */
+  --col-success:       #4a9c4a;   /* successful actions, crafting complete    */
+  --col-info:          #4a7ac8;   /* informational toasts, blue highlights    */
+
+  /* Vitals */
+  --col-health:        #5ab840;   /* health bar fill (full)                   */
+  --col-health-low:    #c04040;   /* health bar fill (< 30 %)                 */
+  --col-stamina:       #3a78e8;   /* stamina bar fill                         */
+  --col-stamina-exh:   #884444;   /* stamina bar when exhausted               */
+  --col-hunger:        #b87230;   /* hunger bar fill                          */
+  --col-hunger-crit:   --col-danger;
+
+  /* Rarity / item quality tints (future) */
+  --col-rarity-common:   #d4c9a8;
+  --col-rarity-uncommon: #4a9c4a;
+  --col-rarity-rare:     #4a7ac8;
+  --col-rarity-epic:     #9c4ac8;
+
+  /* ── Typography ─────────────────────────────────────────────────────────── */
+  --font-ui:    'Share Tech Mono', 'Courier New', monospace;
+  --font-title: 'Share Tech Mono', 'Courier New', monospace;
+
+  --text-xs:   10px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-lg:   16px;
+  --text-xl:   20px;
+
+  --leading:   1.5;
+  --tracking:  0.04em;
+
+  /* ── Spacing ─────────────────────────────────────────────────────────────── */
+  --gap-xs:  4px;
+  --gap-sm:  8px;
+  --gap-md:  12px;
+  --gap-lg:  20px;
+  --gap-xl:  32px;
+
+  /* ── Shape ───────────────────────────────────────────────────────────────── */
+  --radius-sm:  2px;
+  --radius:     4px;
+  --radius-lg:  8px;
+
+  /* ── Elevation (box-shadow) ──────────────────────────────────────────────── */
+  --shadow-panel:  0 4px 32px rgba(0, 0, 0, 0.72);
+  --shadow-tooltip: 0 2px 12px rgba(0, 0, 0, 0.8);
+
+  /* ── Transitions ─────────────────────────────────────────────────────────── */
+  --transition-fast:  0.1s ease;
+  --transition-base:  0.18s ease;
+
+  /* ── Z-index stack ───────────────────────────────────────────────────────── */
+  --z-hud:         100;   /* always-on screen overlays (bars, crosshair)      */
+  --z-panel:       200;   /* draggable panels (inventory, equipment)           */
+  --z-modal:       300;   /* blocking modals (death screen, dialogue)          */
+  --z-tooltip:     400;   /* item tooltips                                     */
+  --z-context:     500;   /* context menus                                     */
+  --z-toast:       600;   /* notifications — always on top                     */
+  --z-drag-ghost:  700;   /* dragged item ghost follows cursor                 */
+}
+
+/* ── Base resets (scoped to the UI root) ─────────────────────────────────── */
+
+#ui, #ui * {
+  box-sizing: border-box;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--col-text);
+  letter-spacing: var(--tracking);
+  line-height: var(--leading);
+  user-select: none;
+}
+
+/* Elements that need to receive pointer events opt in explicitly */
+#ui .interactive {
+  pointer-events: auto;
+}
+
+/* ── Shared component primitives ─────────────────────────────────────────── */
+
+.panel {
+  background:    var(--col-bg);
+  border:        1px solid var(--col-border);
+  border-radius: var(--radius);
+  box-shadow:    var(--shadow-panel);
+  padding:       var(--gap-md);
+}
+
+.panel__title {
+  font-size:      var(--text-sm);
+  color:          var(--col-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom:  var(--gap-sm);
+  border-bottom:  1px solid var(--col-border);
+  padding-bottom: var(--gap-xs);
+}
+
+/* Item slot cell */
+.slot {
+  width:          48px;
+  height:         48px;
+  background:     var(--col-bg-raised);
+  border:         1px solid var(--col-border);
+  border-radius:  var(--radius-sm);
+  display:        flex;
+  align-items:    center;
+  justify-content: center;
+  cursor:         pointer;
+  transition:     border-color var(--transition-fast),
+                  background   var(--transition-fast);
+}
+
+.slot:hover,
+.slot--hover {
+  border-color: var(--col-border-bright);
+  background:   var(--col-bg-hover);
+}
+
+.slot--active {
+  border-color: var(--col-accent);
+}
+
+.slot--empty {
+  cursor: default;
+}
+
+/* Stat bar (health, stamina, hunger) */
+.bar {
+  display:    flex;
+  align-items: center;
+  gap:        var(--gap-sm);
+}
+
+.bar__track {
+  flex:           1;
+  height:         8px;
+  background:     #0d0b08;
+  border:         1px solid var(--col-border);
+  border-radius:  var(--radius-sm);
+  overflow:       hidden;
+}
+
+.bar__fill {
+  height:     100%;
+  border-radius: var(--radius-sm);
+  transition: width var(--transition-fast), background var(--transition-base);
+}
+
+.bar__label {
+  font-size:  var(--text-xs);
+  color:      var(--col-text-dim);
+  width:      18px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.bar__value {
+  font-size:  var(--text-xs);
+  color:      var(--col-text-dim);
+  width:      56px;
+  flex-shrink: 0;
+}
+
+/* Button */
+.btn {
+  padding:        var(--gap-xs) var(--gap-sm);
+  background:     var(--col-bg-raised);
+  border:         1px solid var(--col-border);
+  border-radius:  var(--radius-sm);
+  color:          var(--col-text);
+  font-family:    var(--font-ui);
+  font-size:      var(--text-sm);
+  cursor:         pointer;
+  transition:     border-color var(--transition-fast),
+                  background   var(--transition-fast);
+}
+
+.btn:hover {
+  border-color: var(--col-accent);
+  background:   var(--col-bg-hover);
+}
+
+.btn--primary {
+  background:   var(--col-accent-dim);
+  border-color: var(--col-accent);
+  color:        var(--col-text);
+}
+
+.btn--primary:hover {
+  background: var(--col-accent);
+  color:      var(--col-bg);
+}
+
+.btn--danger {
+  border-color: var(--col-danger);
+}
+
+.btn--danger:hover {
+  background: var(--col-danger);
+  color:      #fff;
+}
+
+/* Toast variants */
+.toast { border-left: 3px solid var(--col-info);    }
+.toast--success { border-left-color: var(--col-success); }
+.toast--warn    { border-left-color: var(--col-warn);    }
+.toast--danger  { border-left-color: var(--col-danger);  }
+
+/* Drag ghost */
+.drag-ghost {
+  background:    var(--col-bg-raised);
+  border:        1px solid var(--col-accent);
+  border-radius: var(--radius-sm);
+  padding:       var(--gap-xs) var(--gap-sm);
+  font-size:     var(--text-sm);
+  color:         var(--col-text);
+  pointer-events: none;
+  z-index:       var(--z-drag-ghost);
+}
