@@ -130,11 +130,17 @@ export const Stamina = defineComponent({
 
 // ---- SkillInProgress ---- present while an action (windup→active→winddown) is executing
 
+/** A single hit record from a sweep — stores which entity and which body part was struck. */
+export interface HitRecord {
+  entityId: string;
+  bodyPart: string;
+}
+
 export interface SkillInProgressData {
   weaponActionId: string;
   phase: "windup" | "active" | "winddown";
   ticksInPhase: number;
-  hitEntities: string[];
+  hitEntities: HitRecord[];
   inputTimestamp: number;
   pendingSkillVerb: string;
 }
@@ -146,7 +152,7 @@ const skillInProgressCodec: Serialiser<SkillInProgressData> = {
     w.writeStr(v.phase);
     w.writeU16(v.ticksInPhase);
     w.writeU16(v.hitEntities.length);
-    for (const id of v.hitEntities) w.writeStr(id);
+    for (const h of v.hitEntities) { w.writeStr(h.entityId); w.writeStr(h.bodyPart); }
     w.writeF64(v.inputTimestamp);
     w.writeStr(v.pendingSkillVerb);
     return w.toBytes();
@@ -157,8 +163,8 @@ const skillInProgressCodec: Serialiser<SkillInProgressData> = {
     const phase = r.readStr() as SkillInProgressData["phase"];
     const ticksInPhase = r.readU16();
     const count = r.readU16();
-    const hitEntities: string[] = [];
-    for (let i = 0; i < count; i++) hitEntities.push(r.readStr());
+    const hitEntities: HitRecord[] = [];
+    for (let i = 0; i < count; i++) hitEntities.push({ entityId: r.readStr(), bodyPart: r.readStr() });
     const inputTimestamp = r.readF64();
     const pendingSkillVerb = r.readStr();
     return { weaponActionId, phase, ticksInPhase, hitEntities, inputTimestamp, pendingSkillVerb };
@@ -173,7 +179,7 @@ export const SkillInProgress = defineComponent({
     weaponActionId: "unarmed",
     phase: "windup",
     ticksInPhase: 0,
-    hitEntities: [],
+    hitEntities: [] as HitRecord[],
     inputTimestamp: 0,
     pendingSkillVerb: "",
   }),

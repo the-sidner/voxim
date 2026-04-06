@@ -36,6 +36,9 @@ export interface DamageDealtPayload {
   sourceId: EntityId;
   amount: number;
   blocked: boolean;
+  /** Which body part was struck: "head"|"torso"|"abdomen"|"legs"|"body"|"hindquarters"|etc.
+   *  Empty string for parried hits (no contact, only stagger). */
+  bodyPart: string;
 }
 
 export interface CraftingCompletedPayload {
