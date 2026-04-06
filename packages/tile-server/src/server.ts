@@ -285,6 +285,7 @@ export class TileServer {
   private _tickWarnCount = 0;
   private runTick(dt: number, serverTick: number): void {
     const _t0 = performance.now();
+    const _sysMs: [string, number][] = [];
     // ── 1. DRAIN INPUT BUFFERS ──────────────────────────────────────────────
     // Apply latest input from each player as an immediate write to InputState.
     // Movement/facing: latest-wins (continuous).
@@ -318,12 +319,16 @@ export class TileServer {
     const ctx: TickContext = { spatial: this.spatial };
     const deferredEvents = new DeferredEventQueue();
     for (const system of this.systems) {
+      const _st = performance.now();
       system.prepare?.(serverTick, ctx);
       system.run(this.world, deferredEvents, dt);
+      _sysMs.push([system.constructor.name, performance.now() - _st]);
     }
 
     // ── 3. APPLY CHANGESET ──────────────────────────────────────────────────
+    const _tChangeset = performance.now();
     const changeset = this.world.applyChangeset();
+    _sysMs.push(["[changeset]", performance.now() - _tChangeset]);
 
     // ── 4. FIRE EVENTS ──────────────────────────────────────────────────────
     // Subscribers see the already-committed world state.
@@ -334,6 +339,7 @@ export class TileServer {
     const hasSessions = this.sessions.size > 0;
 
     // Skip serialization and send entirely when no clients are connected.
+    const _tSend = performance.now();
     if (hasSessions) {
       // ── 6. SEND STATE (binary, per-session AoI) ───────────────────────────
       // Build component delta map once (encodes each changed component exactly once).
@@ -355,6 +361,7 @@ export class TileServer {
         session.sendStateRaw(framed);
       }
     }
+    _sysMs.push(["[send]", performance.now() - _tSend]);
 
     // ── 7. ADVANCE TICK ─────────────────────────────────────────────────────
     // Periodic autosave — fire-and-forget, errors are logged and swallowed.
@@ -417,7 +424,14 @@ export class TileServer {
     const _elapsed = performance.now() - _t0;
     if (_elapsed > 50) {
       if (++this._tickWarnCount <= 10 || this._tickWarnCount % 100 === 0) {
-        console.warn(`[TickLoop] overrun tick=${serverTick} elapsed=${_elapsed.toFixed(1)}ms (budget=50ms)`);
+        const top = [..._sysMs]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(([name, ms]) => `${name.replace("System", "")}=${ms.toFixed(1)}ms`)
+          .join(" ");
+        console.warn(
+          `[TickLoop] overrun tick=${serverTick} elapsed=${_elapsed.toFixed(1)}ms | sys: ${top}`,
+        );
       }
     }
   }
