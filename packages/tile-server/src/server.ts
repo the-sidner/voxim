@@ -653,7 +653,7 @@ export class TileServer {
         { headers: { "access-control-allow-origin": "*" } },
       );
     }
-    if (req.method === "GET" && url.pathname === "/") {
+    if (req.method === "GET" && url.pathname === "/debug") {
       return new Response(debugClientHtml(), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
