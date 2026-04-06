@@ -232,8 +232,8 @@ export class TileConnection {
         if (!payload) break;
         try {
           this.onStateMessage?.(binaryStateMessageCodec.decode(payload));
-        } catch {
-          // Malformed — skip
+        } catch (err) {
+          console.error("[TileConn] state decode error:", err);
         }
       }
     } finally {

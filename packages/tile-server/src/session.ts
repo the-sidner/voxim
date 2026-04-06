@@ -24,6 +24,8 @@ export class ClientSession {
   private outWriter:      WritableStreamDefaultWriter<Uint8Array> | null = null;
   private datagramWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private _closed = false;
+  /** Serialised write queue — ensures chunks from consecutive messages never interleave. */
+  private _writeQueue: Promise<void> = Promise.resolve();
 
   constructor(playerId: EntityId) {
     this.playerId = playerId;
@@ -174,10 +176,25 @@ export class ClientSession {
 
   /**
    * Send pre-encoded state bytes over the reliable unidirectional stream.
+   *
+   * Writes are chunked at 64 KiB and serialised through _writeQueue so that
+   * QUIC flow-control back-pressure is respected: a large initial spawn (e.g.
+   * terrain heightmap ≈ 1.6 MB) previously caused a deadlock because a single
+   * writer.write(1.6MB) filled the QUIC send window while the receiver was
+   * still waiting for its first reader.read() to resolve.
    */
+  private static readonly CHUNK_SIZE = 65536;
+
   sendStateRaw(bytes: Uint8Array): void {
     if (this._closed || !this.outWriter) return;
-    this.outWriter.write(bytes).catch(() => { this._closed = true; });
+    const writer = this.outWriter;
+    const chunk = ClientSession.CHUNK_SIZE;
+    this._writeQueue = this._writeQueue.then(async () => {
+      if (this._closed) return;
+      for (let i = 0; i < bytes.byteLength; i += chunk) {
+        await writer.write(bytes.subarray(i, Math.min(i + chunk, bytes.byteLength)));
+      }
+    }).catch(() => { this._closed = true; });
   }
 
   close(): void {

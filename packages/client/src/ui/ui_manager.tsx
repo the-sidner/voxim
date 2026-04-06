@@ -26,6 +26,7 @@ import { TraderPanel }     from "./components/TraderPanel.tsx";
 import { DialoguePanel }   from "./components/DialoguePanel.tsx";
 import { SettingsPanel }   from "./components/SettingsPanel.tsx";
 import { DeathScreen }     from "./components/DeathScreen.tsx";
+import { LoadingScreen }   from "./components/LoadingScreen.tsx";
 import { TooltipPortal }   from "./components/TooltipPortal.tsx";
 import { ContextMenu }     from "./components/ContextMenu.tsx";
 import { ToastQueue }      from "./components/ToastQueue.tsx";
@@ -42,7 +43,7 @@ export interface UIManagerProps {
 }
 
 export function UIManager({ onAction }: UIManagerProps) {
-  const panels = uiState.value.openPanels;
+  const { openPanels: panels, loading } = uiState.value;
 
   // Global keyboard handler
   useEffect(() => {
@@ -69,6 +70,9 @@ export function UIManager({ onAction }: UIManagerProps) {
 
   return (
     <>
+      {/* Loading screen — shown until first terrain state message is processed */}
+      {loading && <LoadingScreen />}
+
       {/* Always-visible HUD layer */}
       <StatusBars />
       <Hotbar onAction={onAction} />

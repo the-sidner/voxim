@@ -52,6 +52,9 @@ export class VoximGame {
   private serverTick = 0;
   private running = false;
 
+  /** Set to true once the terrain entity has been received and pushed to the renderer. */
+  private terrainReady = false;
+
   async start(config: GameConfig): Promise<void> {
     // Step 1: wire message handlers BEFORE connecting — eliminates the race where
     // the server's full snapshot arrives during connect() while handlers are still null.
@@ -90,6 +93,11 @@ export class VoximGame {
         if (!state) continue;
         if (state.heightmap && state.materialGrid) {
           this.renderer?.updateTerrain(state.heightmap, state.materialGrid);
+          if (!this.terrainReady) {
+            this.terrainReady = true;
+            patchUI({ loading: false });
+            console.log(`[Game] terrain received — loading screen dismissed`);
+          }
         } else if (state.position) {
           this.renderer?.updateEntity(entityId, state);
         }
@@ -97,7 +105,6 @@ export class VoximGame {
           if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
           if (state.stamina) patchUI({ stamina: { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
           if (state.hunger)  patchUI({ hunger:  { value: state.hunger.value } });
-          // animationState updates handled by renderer via updateEntity
         }
       }
 
@@ -195,11 +202,17 @@ export class VoximGame {
     // Mount Preact UI into <div id="ui"> — must exist in the HTML host page
     mountUI((a) => this._handleUIAction(a));
 
+    // Replay any world state that arrived during connect() (before renderer existed).
+    let replayCount = 0;
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap && state.materialGrid) {
-        this.renderer.updateTerrain(state.heightmap, state.materialGrid);
+        this.renderer.updateTerrain(state.heightmap, state.materialGrid); replayCount++;
+        if (!this.terrainReady) {
+          this.terrainReady = true;
+          patchUI({ loading: false });
+        }
       } else if (state.position) {
-        this.renderer.updateEntity(entityId, state);
+        this.renderer.updateEntity(entityId, state); replayCount++;
       }
       if (entityId === this.playerId) {
         if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
@@ -208,6 +221,7 @@ export class VoximGame {
       }
     }
 
+    console.log(`[Game] replay done — pushed ${replayCount} entities to renderer, terrainReady=${this.terrainReady}`);
     this.input = new InputController(canvas, () => this.renderer!.getPlayerScreenPos());
 
     // Step 5: render loop
@@ -315,6 +329,7 @@ export class VoximGame {
 
   stop(): void {
     this.running = false;
+    this.terrainReady = false;
     cancelAnimationFrame(this.animFrameId);
     this.input?.dispose();
     this.connection.close();
