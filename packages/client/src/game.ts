@@ -96,14 +96,16 @@ export class VoximGame {
         const state = this.world.get(entityId);
         if (!state) continue;
         if (state.heightmap && state.materialGrid) {
-          this.renderer?.updateTerrain(state.heightmap, state.materialGrid);
           this.terrainChunksReceived++;
           patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
           if (this.terrainChunksReceived % 20 === 0 || this.terrainChunksReceived === VoximGame.TOTAL_CHUNKS) {
-            console.log(`[Game] terrain chunks: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
+            console.log(`[Game] terrain chunks received: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
           }
+          // During loading: don't push to renderer yet — keeps JS thread free so
+          // QUIC flow control isn't starved.  _finishLoading() flushes everything.
+          if (this.loadingComplete) this.renderer?.updateTerrain(state.heightmap, state.materialGrid);
         } else if (state.position) {
-          this.renderer?.updateEntity(entityId, state);
+          if (this.loadingComplete) this.renderer?.updateEntity(entityId, state);
         }
         if (entityId === this.playerId) {
           if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
@@ -210,20 +212,17 @@ export class VoximGame {
     // Mount Preact UI into <div id="ui"> — must exist in the HTML host page
     mountUI((a) => this._handleUIAction(a));
 
-    // Replay any world state that arrived during connect() (before renderer existed).
+    // Count any terrain chunks that arrived during connect() (before renderer existed).
+    // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
     for (const [entityId, state] of this.world.entries()) {
-      if (state.heightmap && state.materialGrid) {
-        this.renderer.updateTerrain(state.heightmap, state.materialGrid);
-      } else if (state.position) {
-        this.renderer.updateEntity(entityId, state);
-      }
+      if (state.heightmap) this.terrainChunksReceived++;
       if (entityId === this.playerId) {
         if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
         if (state.stamina) patchUI({ stamina: { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
         if (state.hunger)  patchUI({ hunger:  { value: state.hunger.value } });
       }
     }
-    // terrainChunksReceived may already be > 0 if chunks arrived during connect()
+    patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
     if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
       this._finishLoading();
     }
@@ -333,29 +332,45 @@ export class VoximGame {
   }
 
   /**
-   * Called once all 256 terrain chunks are in the renderer.
-   * Prefetches every model currently in the world, then dismisses the loading screen.
-   * Runs asynchronously so subsequent state messages continue to apply normally.
+   * Phase 2 of loading: called once all 256 terrain chunks are in this.world.
+   *
+   * Steps (all while loading screen is still visible):
+   *   1. Flush world state → renderer (terrain meshes + entity positions).
+   *      This is the ~100 ms GPU-upload work we deferred from the receive loop.
+   *   2. Prefetch all model/skeleton/material definitions via content channel.
+   *   3. Dismiss loading screen.
+   *
+   * State messages keep arriving during steps 2-3 and are applied normally
+   * (loadingComplete=true means the renderer is now live).
    */
   private _finishLoading(): void {
     if (this.loadingComplete) return;
-    this.loadingComplete = true;
+    this.loadingComplete = true;  // renderer calls active from this point
 
+    console.log(`[Game] all terrain received — flushing world to renderer`);
+    // Step 1: push all buffered world state into the renderer
+    let terrainCount = 0, entityCount = 0;
+    for (const [entityId, state] of this.world.entries()) {
+      if (state.heightmap && state.materialGrid) {
+        this.renderer?.updateTerrain(state.heightmap, state.materialGrid); terrainCount++;
+      } else if (state.position) {
+        this.renderer?.updateEntity(entityId, state); entityCount++;
+      }
+    }
+    console.log(`[Game] flushed ${terrainCount} terrain chunks + ${entityCount} entities to renderer`);
+
+    // Step 2: prefetch models (async — loading screen stays up)
     const content = this.content;
     if (!content) { patchUI({ loading: false }); return; }
 
-    // Collect unique modelIds from all entities currently in the world
     const modelIds = new Set<string>();
     for (const [, state] of this.world.entries()) {
       if (state.modelRef?.modelId) modelIds.add(state.modelRef.modelId);
     }
-
-    if (modelIds.size === 0) { patchUI({ loading: false }); return; }
-
-    console.log(`[Game] preloading ${modelIds.size} models before dismissing loading screen`);
+    console.log(`[Game] prefetching ${modelIds.size} models`);
     Promise.all([...modelIds].map((id) => content.prefetchModel(id))).then(() => {
+      console.log(`[Game] models ready — dismissing loading screen`);
       patchUI({ loading: false });
-      console.log(`[Game] all models preloaded — loading screen dismissed`);
     }).catch(() => {
       patchUI({ loading: false });
     });
