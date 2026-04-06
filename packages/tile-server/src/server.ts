@@ -296,15 +296,7 @@ export class TileServer {
     for (const [playerId, session] of this.sessions) {
       if (!this.world.isAlive(playerId)) continue;
       const inputs = session.inputBuffer.drain();
-      if (inputs.length === 0) {
-        // No new datagrams this tick — clear one-shot action bits so they don't
-        // fire again next tick. Held bits (movement, block) remain as-is.
-        const prev = this.world.get(playerId, InputState);
-        if (prev && (prev.actions & ~HELD_ACTION_MASK)) {
-          this.world.write(playerId, InputState, { ...prev, actions: prev.actions & HELD_ACTION_MASK });
-        }
-        continue;
-      }
+      if (inputs.length === 0) continue;
       const latest = inputs[inputs.length - 1];
       // One-shot bits: OR across all frames so a click in any frame isn't dropped.
       // Held bits: take from latest frame only — releasing a key before tick end
