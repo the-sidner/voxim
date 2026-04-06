@@ -17,6 +17,7 @@ import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
 import { GameHud } from "./hud.ts";
 import { ACTION_USE_SKILL, hasAction } from "@voxim/protocol";
+import weaponActionsData from "../../content/data/weapon_actions.json" with { type: "json" };
 
 export interface GameConfig {
   canvas: HTMLCanvasElement;
@@ -96,19 +97,7 @@ export class VoximGame {
           case "DamageDealt": {
             const screenPos = this.renderer?.getEntityScreenPos(ev.targetId);
             if (screenPos) this.hud?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
-            // Show arc for all attackers — driven by server-confirmed DamageDealt so
-            // the arc always matches what the server hitbox actually was.
-            {
-              const srcScreen = this.renderer?.getEntityScreenPos(ev.sourceId);
-              const tgtScreen = screenPos;
-              if (srcScreen && tgtScreen) {
-                // Derive arc geometry from the attacker's confirmed AnimationState.
-                const attackerState = this.world.get(ev.sourceId);
-                const attackStyle = attackerState?.animationState?.attackStyle ?? "unarmed";
-                const { arcHalf, radius } = arcGeometry(attackStyle);
-                this.hud?.showSwingArc(srcScreen.x, srcScreen.y, tgtScreen.x, tgtScreen.y, arcHalf, radius);
-              }
-            }
+            // bodyPart is available as ev.bodyPart — used for per-part armor display in future.
             break;
           }
           case "EntityDied":
@@ -184,6 +173,8 @@ export class VoximGame {
     this.renderer = new VoximRenderer(canvas);
     this.renderer.setLocalPlayer(this.playerId!);
     this.renderer.setContentCache(this.content);
+    // deno-lint-ignore no-explicit-any
+    this.renderer.setWeaponActions(weaponActionsData as any);
     this.hud = new GameHud();
 
     for (const [entityId, state] of this.world.entries()) {
@@ -266,23 +257,3 @@ export class VoximGame {
 }
 
 // ---- helpers ----
-
-/**
- * Per-attack-style arc geometry in screen-space.
- *
- * arcHalf matches weapon_actions.json; radius is derived from the world-space
- * range scaled by the orthographic camera's pixel density.
- * ORTHO_HALF=20 world units spans half the canvas height, so:
- *   pixelsPerWorldUnit = canvasHeight / (2 * 20)
- * We use window.innerHeight as a proxy — close enough for the arc display.
- */
-function arcGeometry(attackStyle: string): { arcHalf: number; radius: number } {
-  const ppu = globalThis.innerHeight / 40;
-  switch (attackStyle) {
-    case "slash":    return { arcHalf: 1.047, radius: 2.0 * ppu };
-    case "overhead": return { arcHalf: 0.785, radius: 1.8 * ppu };
-    case "thrust":   return { arcHalf: 0.4,   radius: 2.6 * ppu };
-    case "bite":     return { arcHalf: 0.785, radius: 1.5 * ppu };
-    default:         return { arcHalf: 1.047, radius: 2.0 * ppu }; // unarmed
-  }
-}

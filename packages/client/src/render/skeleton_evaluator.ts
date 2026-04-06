@@ -31,7 +31,8 @@
  *        → upper_leg_r → lower_leg_r
  */
 import * as THREE from "three";
-import type { AnimationMode } from "@voxim/content";
+import type { AnimationMode, SwingKeyframe } from "@voxim/content";
+import { evaluateSwingPath } from "@voxim/content";
 
 // ---- constants ----
 
@@ -402,4 +403,45 @@ function evaluateWolfPose(
   pose.set("fr_lower", new THREE.Euler(Math.max(0, -swing) * K + 0.05, 0, 0));
   pose.set("rl_upper", new THREE.Euler(swing * A, 0, 0));
   pose.set("rl_lower", new THREE.Euler(Math.max(0, -swing) * K + 0.05, 0, 0));
+}
+
+// ---- weapon tip evaluation ----
+
+/**
+ * Evaluate the weapon tip position at normalised time t (0..1 over the full action)
+ * in entity-local Three.js space, ready to be used as a child offset of the entity group.
+ *
+ * Entity-local (fwd, right, up) → Three.js local:
+ *   threeX = right
+ *   threeY = up
+ *   threeZ = -fwd
+ */
+export function evaluateWeaponTip(
+  keyframes: SwingKeyframe[],
+  t: number,
+): { threeX: number; threeY: number; threeZ: number } {
+  const pose = evaluateSwingPath(keyframes, t);
+  return {
+    threeX:  pose.tip.right,
+    threeY:  pose.tip.up,
+    threeZ: -pose.tip.fwd,
+  };
+}
+
+/**
+ * Evaluate both hilt and tip at normalised time t in entity-local Three.js space.
+ */
+export function evaluateWeaponSlice(
+  keyframes: SwingKeyframe[],
+  t: number,
+): { hiltX: number; hiltY: number; hiltZ: number; tipX: number; tipY: number; tipZ: number } {
+  const pose = evaluateSwingPath(keyframes, t);
+  return {
+    hiltX:  pose.hilt.right,
+    hiltY:  pose.hilt.up,
+    hiltZ: -pose.hilt.fwd,
+    tipX:   pose.tip.right,
+    tipY:   pose.tip.up,
+    tipZ:  -pose.tip.fwd,
+  };
 }

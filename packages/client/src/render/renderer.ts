@@ -17,7 +17,7 @@ import * as THREE from "three";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { MaterialDef, ModelDefinition } from "@voxim/content";
+import type { MaterialDef, ModelDefinition, WeaponActionDef } from "@voxim/content";
 import { resolveSubObjects } from "@voxim/content";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import {
@@ -29,7 +29,7 @@ import {
   type EntityMeshGroup,
 } from "./entity_mesh.ts";
 import { PropInstancePool } from "./prop_instance_pool.ts";
-import { evaluatePose } from "./skeleton_evaluator.ts";
+import { evaluatePose, evaluateWeaponSlice } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { EdgePass } from "./edge_pass.ts";
@@ -39,6 +39,13 @@ import { EdgePass } from "./edge_pass.ts";
  * (16, 24, 16) in Three.js space = 45° azimuth, ~47° elevation — classic game iso.
  */
 const ISO_OFFSET = new THREE.Vector3(16, 24, 16);
+
+/** One recorded frame of the weapon blade during an attack's active phase. */
+interface TrailSlice {
+  hilt: THREE.Vector3;
+  tip:  THREE.Vector3;
+  alpha: number;
+}
 
 /**
  * Depth → world-Y blit pass.
@@ -183,18 +190,17 @@ export class VoximRenderer {
   private heightDebugEnabled = false;
 
   /**
-   * World-space attack hitbox overlays.
+   * Weapon tip trail system.
    *
-   * One mesh per attacking entity, parented to the entity group so it
-   * inherits position and facing automatically.  Visible only during the
-   * active phase; fades out through winddown.
-   *
-   * The material is shared across all overlays (opacity set per-mesh via
-   * an instanced clone so each entity can fade independently).
+   * During an attack's active phase the weapon blade traces a path through world
+   * space.  Each frame we record a (hilt, tip) slice and render consecutive slices
+   * as a ribbon mesh.  Slices fade out at 0.04 alpha/frame and are culled when
+   * they reach zero.
    */
-  private readonly hitboxMeshes = new Map<string, THREE.Mesh>();
-  /** Geometry cache keyed by "attackStyle" — reused across entities. */
-  private readonly hitboxGeoCache = new Map<string, THREE.BufferGeometry>();
+  private readonly trailSlices = new Map<string, TrailSlice[]>();
+  private readonly trailMeshes = new Map<string, THREE.Mesh>();
+  /** Weapon action definitions — set by setWeaponActions() from game.ts. */
+  private weaponActionsMap = new Map<string, WeaponActionDef>();
 
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
@@ -720,8 +726,8 @@ export class VoximRenderer {
       .copy(this.camera.position)
       .addScaledVector(SUN_DIR, 350);
 
-    // Update world-space hitbox overlays for all currently attacking entities.
-    this.updateAttackHitboxes(now);
+    // Update weapon tip trail ribbons for all currently attacking entities.
+    this.updateWeaponTrails(now);
 
     // Pass 1: render scene to low-res pixel target (writes colour + depth).
     this.renderer.setRenderTarget(this.pixelTarget);
@@ -741,102 +747,132 @@ export class VoximRenderer {
     this.renderer.render(this.blitScene, this.blitCamera);
   }
 
-  /**
-   * Build or retrieve the wedge geometry for a given attack style.
-   * The wedge lies in the local XZ plane with the arc centred on local -Z
-   * (entity forward direction in this renderer's convention).
-   */
-  private hitboxGeo(attackStyle: string): THREE.BufferGeometry {
-    const cached = this.hitboxGeoCache.get(attackStyle);
-    if (cached) return cached;
-
-    const { range, arcHalf } = hitboxParams(attackStyle);
-    const SEGS = 20;
-
-    const positions: number[] = [];
-    const indices: number[] = [];
-
-    // Vertex 0 — origin (entity root)
-    positions.push(0, 0, 0);
-
-    // Arc vertices: angle θ measured from -Z axis, sweeping ±arcHalf
-    for (let i = 0; i <= SEGS; i++) {
-      const θ = -arcHalf + (2 * arcHalf * i) / SEGS;
-      // Direction: rotate -Z by θ around Y → (sin θ, 0, -cos θ)
-      positions.push(Math.sin(θ) * range, 0, -Math.cos(θ) * range);
-    }
-
-    // Fan triangles: (0, i+1, i+2)
-    for (let i = 0; i < SEGS; i++) {
-      indices.push(0, i + 1, i + 2);
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    geo.setIndex(indices);
-    this.hitboxGeoCache.set(attackStyle, geo);
-    return geo;
+  /** Register weapon action definitions so the trail renderer can look up swing paths. */
+  setWeaponActions(actions: WeaponActionDef[]): void {
+    this.weaponActionsMap.clear();
+    for (const a of actions) this.weaponActionsMap.set(a.id, a);
   }
 
   /**
-   * Show/hide/fade world-space attack hitbox overlays.
+   * Append a weapon trail slice for each entity currently in the active attack phase,
+   * decay existing slices, and rebuild ribbon meshes.
    * Called once per render frame before the scene draw.
    */
-  private updateAttackHitboxes(now: number): void {
-    const activeIds = new Set<string>();
+  private updateWeaponTrails(now: number): void {
+    const ppu = globalThis.innerHeight / 40; // pixels per world unit (approx)
 
     for (const [entityId, mesh] of this.entityMeshes) {
       const anim = mesh.animationState;
-      if (!anim || anim.mode !== "attack") continue;
+      if (!anim || anim.mode !== "attack") {
+        // Decay-only: let existing trail finish fading even after attack ends
+        const slices = this.trailSlices.get(entityId);
+        if (slices && slices.length > 0) {
+          for (const s of slices) s.alpha -= 0.04;
+          this.trailSlices.set(entityId, slices.filter((s) => s.alpha > 0));
+          this.rebuildTrailMesh(entityId, ppu);
+        }
+        continue;
+      }
 
-      // Use the same extrapolated ticksIntoAction as the skeleton evaluator.
       const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
       const total = anim.windupTicks + anim.activeTicks + anim.winddownTicks;
-      const ticks = Math.min((anim.ticksIntoAction) + elapsed, total);
+      const ticks = Math.min(anim.ticksIntoAction + elapsed, total);
+      const inActive = ticks >= anim.windupTicks && ticks < anim.windupTicks + anim.activeTicks;
 
-      const inActive   = ticks >= anim.windupTicks && ticks < anim.windupTicks + anim.activeTicks;
-      const inWinddown = ticks >= anim.windupTicks + anim.activeTicks && ticks < total;
-      if (!inActive && !inWinddown) continue;
+      // Look up the weapon action's swing path keyframes.
+      const weaponAction = this.weaponActionsMap.get(anim.attackStyle);
+      const keyframes = weaponAction?.swingPath?.keyframes;
 
-      activeIds.add(entityId);
+      let slices = this.trailSlices.get(entityId) ?? [];
 
-      // Create the overlay mesh the first time this entity starts its active phase.
-      let overlay = this.hitboxMeshes.get(entityId);
-      if (!overlay) {
-        const geo = this.hitboxGeo(anim.attackStyle);
-        const mat = new THREE.MeshBasicMaterial({
-          color: 0xff4400,
-          transparent: true,
-          depthWrite: false,
-          side: THREE.DoubleSide,
-        });
-        overlay = new THREE.Mesh(geo, mat);
-        // Parent to the entity group — inherits world position and facing.
-        mesh.group.add(overlay);
-        this.hitboxMeshes.set(entityId, overlay);
+      if (inActive && keyframes && keyframes.length > 0) {
+        const t = total > 0 ? ticks / total : 0;
+        const local = evaluateWeaponSlice(keyframes, t);
+
+        // Convert entity-local Three.js coords to world space via the group matrix.
+        const localHilt = new THREE.Vector3(local.hiltX, local.hiltY, local.hiltZ);
+        const localTip  = new THREE.Vector3(local.tipX,  local.tipY,  local.tipZ);
+        const worldHilt = localHilt.applyMatrix4(mesh.group.matrixWorld);
+        const worldTip  = localTip.applyMatrix4(mesh.group.matrixWorld);
+
+        slices.push({ hilt: worldHilt, tip: worldTip, alpha: 0.5 });
       }
 
-      // Sit just above ground level in local space (entity root is at feet).
-      overlay.position.set(0, 0.08, 0);
+      // Decay all slices
+      for (const s of slices) s.alpha -= 0.04;
+      slices = slices.filter((s) => s.alpha > 0);
+      this.trailSlices.set(entityId, slices);
 
-      // Opacity: full during active phase, linear fade during winddown.
-      const mat = overlay.material as THREE.MeshBasicMaterial;
-      if (inActive) {
-        mat.opacity = 0.38;
-      } else {
-        const t = (ticks - anim.windupTicks - anim.activeTicks) / Math.max(1, anim.winddownTicks);
-        mat.opacity = 0.38 * (1 - t);
-      }
+      this.rebuildTrailMesh(entityId, ppu);
     }
 
-    // Remove overlays for entities no longer in an active/winddown phase.
-    for (const [entityId, overlay] of this.hitboxMeshes) {
-      if (!activeIds.has(entityId)) {
-        overlay.parent?.remove(overlay);
-        (overlay.material as THREE.Material).dispose();
-        this.hitboxMeshes.delete(entityId);
+    // Remove trail meshes for entities no longer tracked
+    for (const [entityId] of this.trailMeshes) {
+      if (!this.entityMeshes.has(entityId)) {
+        this.removeTrailMesh(entityId);
       }
     }
+  }
+
+  /** Rebuild the ribbon mesh from the current slice buffer for one entity. */
+  private rebuildTrailMesh(entityId: string, _ppu: number): void {
+    const slices = this.trailSlices.get(entityId) ?? [];
+
+    if (slices.length < 2) {
+      this.removeTrailMesh(entityId);
+      return;
+    }
+
+    const positions: number[] = [];
+    const colors:    number[] = [];
+    const indices:   number[] = [];
+
+    for (let i = 0; i < slices.length; i++) {
+      const s = slices[i];
+      positions.push(s.hilt.x, s.hilt.y, s.hilt.z);
+      positions.push(s.tip.x,  s.tip.y,  s.tip.z);
+      colors.push(1, 0.35, 0, s.alpha);
+      colors.push(1, 0.6,  0, s.alpha * 0.7);
+    }
+
+    // Each consecutive pair of slices forms a quad (two triangles)
+    for (let i = 0; i < slices.length - 1; i++) {
+      const h0 = i * 2,     t0 = i * 2 + 1;
+      const h1 = (i+1)*2,   t1 = (i+1)*2 + 1;
+      indices.push(h0, t0, h1);
+      indices.push(t0, t1, h1);
+    }
+
+    let trailMesh = this.trailMeshes.get(entityId);
+    if (!trailMesh) {
+      const geo = new THREE.BufferGeometry();
+      const mat = new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      trailMesh = new THREE.Mesh(geo, mat);
+      this.scene.add(trailMesh);
+      this.trailMeshes.set(entityId, trailMesh);
+    }
+
+    const geo = trailMesh.geometry;
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 4));
+    geo.setIndex(indices);
+    geo.computeBoundingSphere();
+  }
+
+  private removeTrailMesh(entityId: string): void {
+    const mesh = this.trailMeshes.get(entityId);
+    if (mesh) {
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+      this.trailMeshes.delete(entityId);
+    }
+    this.trailSlices.delete(entityId);
   }
 
   private onResize(canvas: HTMLCanvasElement): void {
@@ -866,11 +902,7 @@ export class VoximRenderer {
     this.heightTarget.dispose();
     this.depthBlitMat.dispose();
     this.renderer.dispose();
-    for (const [, overlay] of this.hitboxMeshes) {
-      overlay.parent?.remove(overlay);
-      (overlay.material as THREE.Material).dispose();
-    }
-    for (const [, geo] of this.hitboxGeoCache) geo.dispose();
+    for (const [entityId] of this.trailMeshes) this.removeTrailMesh(entityId);
     for (const [, mesh] of this.entityMeshes) disposeEntityMesh(mesh);
     for (const [, mesh] of this.terrainMeshes) {
       mesh.geometry.dispose();
@@ -880,14 +912,3 @@ export class VoximRenderer {
 }
 
 // ---- helpers ----
-
-/** Range and arc-half for each attack style, mirroring weapon_actions.json. */
-function hitboxParams(attackStyle: string): { range: number; arcHalf: number } {
-  switch (attackStyle) {
-    case "slash":    return { range: 2.0, arcHalf: 1.047 };
-    case "overhead": return { range: 1.8, arcHalf: 0.785 };
-    case "thrust":   return { range: 2.6, arcHalf: 0.4   };
-    case "bite":     return { range: 1.5, arcHalf: 0.785 };
-    default:         return { range: 2.0, arcHalf: 1.047 }; // unarmed
-  }
-}

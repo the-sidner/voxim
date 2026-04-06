@@ -81,10 +81,6 @@ export class GameHud {
   private readonly alertEl: HTMLDivElement;
   private readonly entityBars = new Map<string, EntityBar>();
   private alertTimer = 0;
-  private readonly arcCanvas: HTMLCanvasElement;
-  private readonly arcCtx: CanvasRenderingContext2D;
-  private readonly activeArcs: Array<{ sx: number; sy: number; angle: number; arcHalf: number; radius: number; alpha: number }> = [];
-  private arcLoopId = 0;
 
   constructor() {
     this.container = document.createElement("div");
@@ -149,20 +145,6 @@ export class GameHud {
       letterSpacing: "0.05em",
     });
     this.container.appendChild(this.alertEl);
-
-    // ── Attack arc canvas ─────────────────────────────────────────────────────
-    this.arcCanvas = document.createElement("canvas");
-    Object.assign(this.arcCanvas.style, {
-      position: "absolute", inset: "0", pointerEvents: "none",
-    });
-    this.arcCtx = this.arcCanvas.getContext("2d")!;
-    this.container.appendChild(this.arcCanvas);
-    const resizeArc = () => {
-      this.arcCanvas.width  = globalThis.innerWidth;
-      this.arcCanvas.height = globalThis.innerHeight;
-    };
-    resizeArc();
-    globalThis.addEventListener("resize", resizeArc);
 
     document.body.appendChild(this.container);
   }
@@ -270,49 +252,6 @@ export class GameHud {
   }
 
   /**
-   * Flash the player's attack arc (screen-space wedge) for the duration of the swing.
-   * facingAngle is the atan2 screen-space angle from InputController.
-   */
-  /**
-   * Flash an attack arc (screen-space wedge) centred at (sx, sy) pointing toward (tx, ty).
-   * arcHalf and radius are in screen-space units, derived from the weapon action geometry.
-   * Multiple simultaneous arcs are supported — one per active attacker.
-   */
-  showSwingArc(sx: number, sy: number, tx: number, ty: number, arcHalf: number, radius: number): void {
-    const angle = Math.atan2(ty - sy, tx - sx);
-    this.activeArcs.push({ sx, sy, angle, arcHalf, radius, alpha: 0.5 });
-    if (this.arcLoopId === 0) this.arcLoop();
-  }
-
-  private arcLoop(): void {
-    const ctx = this.arcCtx;
-    ctx.clearRect(0, 0, this.arcCanvas.width, this.arcCanvas.height);
-
-    for (let i = this.activeArcs.length - 1; i >= 0; i--) {
-      const arc = this.activeArcs[i];
-      ctx.globalAlpha = arc.alpha;
-      ctx.beginPath();
-      ctx.moveTo(arc.sx, arc.sy);
-      ctx.arc(arc.sx, arc.sy, arc.radius, arc.angle - arc.arcHalf, arc.angle + arc.arcHalf);
-      ctx.closePath();
-      ctx.fillStyle = "#ff5500";
-      ctx.fill();
-      ctx.strokeStyle = "#ffaa00";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      arc.alpha -= 0.025;
-      if (arc.alpha <= 0) this.activeArcs.splice(i, 1);
-    }
-
-    ctx.globalAlpha = 1;
-    if (this.activeArcs.length > 0) {
-      this.arcLoopId = requestAnimationFrame(() => this.arcLoop());
-    } else {
-      this.arcLoopId = 0;
-      ctx.clearRect(0, 0, this.arcCanvas.width, this.arcCanvas.height);
-    }
-  }
-
   /** Remove the health bar for an entity that has been destroyed. */
   removeEntityBar(id: string): void {
     const bar = this.entityBars.get(id);
@@ -324,7 +263,6 @@ export class GameHud {
 
   dispose(): void {
     clearTimeout(this.alertTimer);
-    cancelAnimationFrame(this.arcLoopId);
     this.container.remove();
   }
 }
