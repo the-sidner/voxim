@@ -1,5 +1,8 @@
 {
   "name": "@voxim/tile-server",
   "version": "0.1.0",
-  "exports": "./mod.ts"
+  "exports": "./mod.ts",
+  "imports": {
+    "@std/http": "jsr:@std/http@^1.0.0"
+  }
 }

@@ -12,6 +12,7 @@
  * shuts down when idle. Registers with the gateway on startup (gateway integration
  * is a stub — Phase 3, step 7).
  */
+import { serveDir } from "@std/http/file-server";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
 import { chunksFromBuffers, loadTerrainCache, seedFromTileId, ZONE_PROFILES, Heightmap } from "@voxim/world";
@@ -658,38 +659,18 @@ export class TileServer {
       });
     }
     if (req.method === "GET" && url.pathname === "/game") {
-      return new Response(await gameClientHtml(this.wtPort), {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      // Redirect to index.html with tile address as query param — main.ts reads ?tile=
+      return Response.redirect(
+        `${url.origin}/?tile=${encodeURIComponent(url.hostname + ":" + this.wtPort)}`,
+        302,
+      );
     }
-    if (req.method === "GET" && url.pathname === "/game.js") {
-      const gameJsPath = new URL("../../client/dist/game.js", import.meta.url).pathname;
-      try {
-        const js = await Deno.readFile(gameJsPath);
-        return new Response(js, {
-          headers: { "content-type": "application/javascript; charset=utf-8" },
-        });
-      } catch {
-        return new Response(
-          "// game.js not found — run: deno task bundle\nconsole.error('[Voxim] game.js not built');",
-          { status: 404, headers: { "content-type": "application/javascript; charset=utf-8" } },
-        );
-      }
-    }
-    if (req.method === "GET" && url.pathname === "/theme.css") {
-      const cssPath = new URL("../../client/src/ui/theme.css", import.meta.url).pathname;
-      try {
-        const css = await Deno.readFile(cssPath);
-        return new Response(css, {
-          headers: { "content-type": "text/css; charset=utf-8" },
-        });
-      } catch {
-        return new Response("/* theme.css not found */", {
-          status: 404, headers: { "content-type": "text/css; charset=utf-8" },
-        });
-      }
-    }
-    return new Response("not found", { status: 404 });
+    // Serve all other client assets (index.html, dist/game.js, src/ui/theme.css, etc.)
+    // from the packages/client directory.
+    return serveDir(req, {
+      fsRoot: new URL("../../client", import.meta.url).pathname,
+      quiet: true,
+    });
   }
 
   /**
@@ -1253,12 +1234,3 @@ function ts() { return new Date().toISOString().slice(11, 23); }
 </html>`;
 }
 
-// ── Game client page ──────────────────────────────────────────────────────────
-
-async function gameClientHtml(wtPort: number): Promise<string> {
-  const indexPath = new URL("../../client/index.html", import.meta.url).pathname;
-  const html = await Deno.readTextFile(indexPath);
-  // Inject tile address before </body> so main.ts picks it up before the module loads.
-  const injection = `<script>\nglobalThis.VOXIM_TILE_ADDRESS = location.hostname + ':${wtPort}';\n</script>\n`;
-  return html.replace("</body>", injection + "</body>");
-}
