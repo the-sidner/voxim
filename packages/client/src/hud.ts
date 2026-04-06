@@ -83,7 +83,7 @@ export class GameHud {
   private alertTimer = 0;
   private readonly arcCanvas: HTMLCanvasElement;
   private readonly arcCtx: CanvasRenderingContext2D;
-  private readonly activeArcs: Array<{ sx: number; sy: number; angle: number; alpha: number }> = [];
+  private readonly activeArcs: Array<{ sx: number; sy: number; angle: number; arcHalf: number; radius: number; alpha: number }> = [];
   private arcLoopId = 0;
 
   constructor() {
@@ -274,33 +274,33 @@ export class GameHud {
    * facingAngle is the atan2 screen-space angle from InputController.
    */
   /**
-   * Flash an attack arc (screen-space wedge) at (sx, sy) pointing in facingAngle.
+   * Flash an attack arc (screen-space wedge) centred at (sx, sy) pointing toward (tx, ty).
+   * arcHalf and radius are in screen-space units, derived from the weapon action geometry.
    * Multiple simultaneous arcs are supported — one per active attacker.
    */
-  showSwingArc(sx: number, sy: number, facingAngle: number): void {
-    this.activeArcs.push({ sx, sy, angle: facingAngle, alpha: 0.45 });
+  showSwingArc(sx: number, sy: number, tx: number, ty: number, arcHalf: number, radius: number): void {
+    const angle = Math.atan2(ty - sy, tx - sx);
+    this.activeArcs.push({ sx, sy, angle, arcHalf, radius, alpha: 0.5 });
     if (this.arcLoopId === 0) this.arcLoop();
   }
 
   private arcLoop(): void {
     const ctx = this.arcCtx;
     ctx.clearRect(0, 0, this.arcCanvas.width, this.arcCanvas.height);
-    const radius = 90;
-    const arcHalf = 1.047;
 
     for (let i = this.activeArcs.length - 1; i >= 0; i--) {
       const arc = this.activeArcs[i];
       ctx.globalAlpha = arc.alpha;
       ctx.beginPath();
       ctx.moveTo(arc.sx, arc.sy);
-      ctx.arc(arc.sx, arc.sy, radius, arc.angle - arcHalf, arc.angle + arcHalf);
+      ctx.arc(arc.sx, arc.sy, arc.radius, arc.angle - arc.arcHalf, arc.angle + arc.arcHalf);
       ctx.closePath();
       ctx.fillStyle = "#ff5500";
       ctx.fill();
       ctx.strokeStyle = "#ffaa00";
       ctx.lineWidth = 2;
       ctx.stroke();
-      arc.alpha -= 0.03;
+      arc.alpha -= 0.025;
       if (arc.alpha <= 0) this.activeArcs.splice(i, 1);
     }
 
