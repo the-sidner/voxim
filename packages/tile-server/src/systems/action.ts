@@ -100,14 +100,17 @@ export class ActionSystem implements System {
         continue;
       }
 
-      // Hit resolution happens during active phase before advancing ticks
-      if (sip.phase === "active") {
-        this.resolveHits(world, events, entityId, sip, combatCfg, dodgeCfg, unarmed, action);
-      }
+      // Hit resolution happens during active phase before advancing ticks.
+      // Returns the updated hitEntities list so the outer write includes it —
+      // resolveHits must not write SkillInProgress itself (last-write-wins would
+      // overwrite the phase-advance write below and discard the updated hit list).
+      const newHitEntities = sip.phase === "active"
+        ? this.resolveHits(world, events, entityId, sip, combatCfg, dodgeCfg, unarmed, action)
+        : sip.hitEntities;
 
       // Advance tick counter and transition phases
       const nextTicks = sip.ticksInPhase + 1;
-      let next: SkillInProgressData = { ...sip, ticksInPhase: nextTicks };
+      let next: SkillInProgressData = { ...sip, ticksInPhase: nextTicks, hitEntities: newHitEntities };
 
       if (sip.phase === "windup" && nextTicks >= action.windupTicks) {
         next = { ...next, phase: "active", ticksInPhase: 0 };
@@ -126,6 +129,7 @@ export class ActionSystem implements System {
     void _unused;
   }
 
+  /** Resolve hits for one active-phase tick. Returns the updated hitEntities list. */
   private resolveHits(
     world: World,
     events: EventEmitter,
@@ -135,7 +139,7 @@ export class ActionSystem implements System {
     dodgeCfg: ReturnType<ContentStore["getGameConfig"]>["dodge"],
     unarmed: DerivedItemStats,
     action: NonNullable<ReturnType<ContentStore["getWeaponAction"]>>,
-  ): void {
+  ): string[] {
     const equipment = world.get(entityId, Equipment);
     const weapon = equipment?.weapon ?? null;
     const weaponStats = weapon ? this.content.deriveItemStats(weapon.itemType, weapon.parts) : unarmed;
@@ -154,7 +158,7 @@ export class ActionSystem implements System {
       rewindTick = this.serverTick;
     }
     const snap = this.stateHistory.getAt(rewindTick);
-    if (!snap) return;
+    if (!snap) return sip.hitEntities;
 
     const attackerSnap = snap.entities.find((e) => e.entityId === entityId);
     const ax = attackerSnap?.x ?? (world.get(entityId, Position)?.x ?? 0);
@@ -277,13 +281,7 @@ export class ActionSystem implements System {
       log.debug("first active tick, no hits yet: entity=%s", entityId);
     }
 
-    // Persist updated hit list
-    if (newHitEntities.length > sip.hitEntities.length) {
-      const current = world.get(entityId, SkillInProgress);
-      if (current) {
-        world.set(entityId, SkillInProgress, { ...current, hitEntities: newHitEntities });
-      }
-    }
+    return newHitEntities;
   }
 }
 

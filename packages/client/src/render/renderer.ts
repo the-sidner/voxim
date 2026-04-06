@@ -445,15 +445,21 @@ export class VoximRenderer {
    * the server round-trip. The server's confirmed AnimationState will overwrite this
    * within one tick (≤50ms) via the normal delta path.
    */
-  forceLocalAnimation(mode: string): void {
+  forceLocalAnimation(
+    mode: string,
+    attackStyle = "unarmed",
+    windupTicks = 3,
+    activeTicks = 3,
+    winddownTicks = 5,
+  ): void {
     if (!this.localPlayerId) return;
     const mesh = this.entityMeshes.get(this.localPlayerId);
     if (mesh) mesh.animationState = {
       mode: mode as import("@voxim/content").AnimationMode,
-      attackStyle: "slash",
-      windupTicks: 4,
-      activeTicks: 4,
-      winddownTicks: 7,
+      attackStyle,
+      windupTicks,
+      activeTicks,
+      winddownTicks,
       ticksIntoAction: 0,
     };
   }
