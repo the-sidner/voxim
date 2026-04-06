@@ -789,6 +789,10 @@ export class VoximRenderer {
         const t = total > 0 ? ticks / total : 0;
         const local = evaluateWeaponSlice(keyframes, t);
 
+        // Force matrix recompute so we get current-frame position, not last frame's.
+        // (updateWeaponTrails runs before renderer.render which would normally do this.)
+        mesh.group.updateWorldMatrix(true, false);
+
         // Convert entity-local Three.js coords to world space via the group matrix.
         const localHilt = new THREE.Vector3(local.hiltX, local.hiltY, local.hiltZ);
         const localTip  = new THREE.Vector3(local.tipX,  local.tipY,  local.tipZ);
