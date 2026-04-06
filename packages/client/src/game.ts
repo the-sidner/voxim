@@ -224,8 +224,11 @@ export class VoximGame {
     if (!this.running) return;
     if (this.input) {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
-      this.connection.sendInput(datagram);
-      recordInput(datagram);
+      const hasMovement = datagram.movementX !== 0 || datagram.movementY !== 0;
+      if (hasMovement || datagram.actions !== 0) {
+        this.connection.sendInput(datagram);
+        recordInput(datagram);
+      }
       if (hasAction(datagram.actions, ACTION_USE_SKILL)) {
         // Use the last server-confirmed attack params so the prediction matches the
         // real weapon. Falls back to "slash" defaults if no confirmed state yet.
