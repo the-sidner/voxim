@@ -38,4 +38,7 @@ export type UIAction =
   | { type: "respawn" }
 
   // Settings
-  | { type: "rebind_key"; action: string; key: string };
+  | { type: "rebind_key"; action: string; key: string }
+
+  // Debug
+  | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" };

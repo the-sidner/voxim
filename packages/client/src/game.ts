@@ -17,8 +17,10 @@ import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
-import { patchUI, openPanel, pushToast } from "./ui/ui_store.ts";
+import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
+import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
+import { setDebugLayer } from "./ui/debug_store.ts";
 import { ACTION_USE_SKILL, hasAction } from "@voxim/protocol";
 import weaponActionsData from "../../content/data/weapon_actions.json" with { type: "json" };
 import itemTemplatesData from "../../content/data/item_templates.json" with { type: "json" };
@@ -57,6 +59,7 @@ export class VoximGame {
     this.connection.onSnapshot = (snap) => {
       this.serverTick = snap.serverTick;
       this.world.applySnapshot(snap);
+      recordSnapshot(snap);
       for (const e of snap.entities) {
         const state = this.world.get(e.entityId);
         if (state?.position) this.renderer?.updateEntity(e.entityId, state);
@@ -65,6 +68,7 @@ export class VoximGame {
 
     this.connection.onStateMessage = (msg) => {
       this.serverTick = msg.serverTick;
+      recordState(msg);
 
       const updated = new Set<string>();
       for (const spawn of msg.spawns) {
@@ -221,6 +225,7 @@ export class VoximGame {
     if (this.input) {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
       this.connection.sendInput(datagram);
+      recordInput(datagram);
       if (hasAction(datagram.actions, ACTION_USE_SKILL)) {
         // Use the last server-confirmed attack params so the prediction matches the
         // real weapon. Falls back to "slash" defaults if no confirmed state yet.
@@ -258,6 +263,11 @@ export class VoximGame {
       case "respawn":
         // TODO: send respawn request to server
         break;
+      case "debug_toggle": {
+        const on = this.toggleDebug(action.layer);
+        setDebugLayer(action.layer, on);
+        break;
+      }
       case "equip":
       case "unequip":
       case "move_item":
@@ -278,6 +288,18 @@ export class VoximGame {
         console.debug("[UIAction]", action);
         break;
     }
+  }
+
+  /** Toggle the debug panel visibility. */
+  toggleDebugPanel(): void {
+    const open = uiState.value.openPanels.has("debug");
+    open ? closePanel("debug") : openPanel("debug");
+  }
+
+  /** Toggle the network inspector panel visibility. */
+  toggleNetworkPanel(): void {
+    const open = uiState.value.openPanels.has("network");
+    open ? closePanel("network") : openPanel("network");
   }
 
   toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade"): boolean {

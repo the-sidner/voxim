@@ -29,6 +29,8 @@ import { DeathScreen }     from "./components/DeathScreen.tsx";
 import { TooltipPortal }   from "./components/TooltipPortal.tsx";
 import { ContextMenu }     from "./components/ContextMenu.tsx";
 import { ToastQueue }      from "./components/ToastQueue.tsx";
+import { DebugPanel }      from "./components/DebugPanel.tsx";
+import { NetworkPanel }    from "./components/NetworkPanel.tsx";
 
 export interface UIManagerProps {
   /**
@@ -73,6 +75,10 @@ export function UIManager({ onAction }: UIManagerProps) {
 
       {/* Modals — render above panels */}
       {panels.has("death")      && <DeathScreen      onAction={onAction} />}
+
+      {/* Debug tools — float independently, don't block game input */}
+      {panels.has("debug")      && <DebugPanel       onAction={onAction} />}
+      {panels.has("network")    && <NetworkPanel />}
 
       {/* Portals — always on top */}
       <TooltipPortal />

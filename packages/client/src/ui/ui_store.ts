@@ -191,7 +191,9 @@ export type PanelId =
   | "trader"
   | "dialogue"
   | "settings"
-  | "death";
+  | "death"
+  | "debug"
+  | "network";
 
 // ── Root UIState ───────────────────────────────────────────────────────────────
 
