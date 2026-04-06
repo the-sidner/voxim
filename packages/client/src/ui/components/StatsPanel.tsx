@@ -1,5 +1,6 @@
 import { computed } from "@preact/signals";
 import { uiState } from "../ui_store.ts";
+import { usePanel } from "../use_panel.ts";
 
 const stats = computed(() => uiState.value.stats);
 
@@ -15,18 +16,11 @@ function StatRow({ label, value }: { label: string; value: number | string }) {
 export function StatsPanel() {
   const s = stats.value;
   if (!s) return null;
+  const { panelProps, titleProps } = usePanel({ defaultX: 460, defaultY: 80 });
 
   return (
-    <div
-      class="panel interactive"
-      style={{
-        position: "absolute", top: "50%", left: "50%",
-        transform: "translate(-50%, -50%)",
-        zIndex: "var(--z-panel)",
-        width: "240px",
-      }}
-    >
-      <div class="panel__title">Character</div>
+    <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "240px" }}>
+      <div class="panel__title" {...titleProps}>Character</div>
       <div style={{ marginBottom: "var(--gap-sm)" }}>
         <StatRow label="Level"     value={s.level} />
         <StatRow label="XP"        value={`${s.experience} / ${s.nextLevel}`} />

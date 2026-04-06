@@ -12,6 +12,7 @@
  */
 import { debugOverlays } from "../debug_store.ts";
 import { uiState, openPanel, closePanel } from "../ui_store.ts";
+import { usePanel } from "../use_panel.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { DebugLayer } from "../debug_store.ts";
 import { captureEnabled, capturePaused, captureSignal } from "../network_capture.ts";
@@ -72,27 +73,15 @@ function ToggleRow({ label, on, onToggle, hint }: {
 
 export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
   const overlays = debugOverlays.value;
+  const { panelProps, titleProps } = usePanel({ defaultX: 20, defaultY: 80 });
 
   function toggle(layer: DebugLayer) {
     onAction({ type: "debug_toggle", layer });
   }
 
   return (
-    <div
-      class="panel interactive"
-      style={{
-        position: "absolute",
-        top: "var(--gap-lg)",
-        right: "var(--gap-lg)",
-        zIndex: "var(--z-panel)",
-        width: "260px",
-        maxHeight: "80vh",
-        overflowY: "auto",
-      }}
-    >
-      <div class="panel__title" style={{ marginBottom: "var(--gap-sm)" }}>
-        Debug
-      </div>
+    <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "260px", maxHeight: "80vh", overflowY: "auto" }}>
+      <div class="panel__title" {...titleProps}>Debug</div>
 
       {/* ── Render overlays ───────────────────────────────────────────────── */}
       <Section title="Render overlays">

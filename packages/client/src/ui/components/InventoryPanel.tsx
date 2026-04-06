@@ -1,5 +1,6 @@
 import { computed } from "@preact/signals";
 import { uiState, patchUI } from "../ui_store.ts";
+import { usePanel } from "../use_panel.ts";
 import { dragSystem } from "../drag_system.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { ItemStack } from "../ui_store.ts";
@@ -58,18 +59,11 @@ function ItemSlotCell({ item, index, onAction }: {
 export function InventoryPanel({ onAction }: { onAction: (a: UIAction) => void }) {
   const inv = inventory.value;
   if (!inv) return null;
+  const { panelProps, titleProps } = usePanel({ defaultX: 220, defaultY: 80 });
 
   return (
-    <div
-      class="panel interactive"
-      style={{
-        position: "absolute", top: "50%", right: "var(--gap-lg)",
-        transform: "translateY(-50%)",
-        zIndex: "var(--z-panel)",
-        width: "220px",
-      }}
-    >
-      <div class="panel__title">Inventory</div>
+    <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "220px" }}>
+      <div class="panel__title" {...titleProps}>Inventory</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gap-xs)" }}>
         {inv.slots.map((item, i) => (
           <ItemSlotCell key={i} item={item} index={i} onAction={onAction} />

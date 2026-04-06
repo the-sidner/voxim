@@ -1,5 +1,6 @@
 import { computed } from "@preact/signals";
 import { uiState } from "../ui_store.ts";
+import { usePanel } from "../use_panel.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { ItemStack } from "../ui_store.ts";
 
@@ -32,18 +33,11 @@ function EquipSlot({ label, item, slot, onAction }: {
 
 export function EquipmentPanel({ onAction }: { onAction: (a: UIAction) => void }) {
   const eq = equipment.value;
+  const { panelProps, titleProps } = usePanel({ defaultX: 20, defaultY: 80 });
 
   return (
-    <div
-      class="panel interactive"
-      style={{
-        position: "absolute", top: "50%", left: "var(--gap-lg)",
-        transform: "translateY(-50%)",
-        zIndex: "var(--z-panel)",
-        width: "180px",
-      }}
-    >
-      <div class="panel__title">Equipment</div>
+    <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "180px" }}>
+      <div class="panel__title" {...titleProps}>Equipment</div>
       {/* TODO: character silhouette with slot positions */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "var(--gap-sm)" }}>
         <EquipSlot label="Head"    item={eq?.head    ?? null} slot="head"    onAction={onAction} />
