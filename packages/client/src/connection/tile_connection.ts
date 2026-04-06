@@ -226,15 +226,21 @@ export class TileConnection {
   private async drainStateStream(stream: ReadableStream<Uint8Array>): Promise<void> {
     const reader = stream.getReader();
     const { readPayload } = makeMessageReader(reader);
+    let msgCount = 0;
     try {
       while (true) {
+        const t0 = performance.now();
         const payload = await readPayload();
-        if (!payload) break;
+        const tRead = performance.now();
+        if (!payload) { console.log(`[TileConn] state stream ended after ${msgCount} messages`); break; }
+        msgCount++;
         try {
           this.onStateMessage?.(binaryStateMessageCodec.decode(payload));
         } catch (err) {
-          console.error("[TileConn] state decode error:", err);
+          console.error(`[TileConn] state decode error on msg #${msgCount}:`, err);
         }
+        const tProcess = performance.now();
+        console.log(`[TileConn] msg #${msgCount} bytes=${payload.byteLength} read=${(tRead - t0).toFixed(1)}ms process=${(tProcess - tRead).toFixed(1)}ms`);
       }
     } finally {
       reader.releaseLock();

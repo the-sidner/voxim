@@ -99,6 +99,9 @@ export class VoximGame {
           this.renderer?.updateTerrain(state.heightmap, state.materialGrid);
           this.terrainChunksReceived++;
           patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
+          if (this.terrainChunksReceived % 20 === 0 || this.terrainChunksReceived === VoximGame.TOTAL_CHUNKS) {
+            console.log(`[Game] terrain chunks: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
+          }
         } else if (state.position) {
           this.renderer?.updateEntity(entityId, state);
         }
