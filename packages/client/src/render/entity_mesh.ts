@@ -85,6 +85,8 @@ export interface EntityMeshGroup {
   boneGroups: Map<string, THREE.Group> | null;
   /** Cached animation state — used by the renderer for per-frame pose evaluation. */
   animationState: AnimationStateData | null;
+  /** Wall-clock ms when animationState was last updated — used to extrapolate ticksIntoAction between server ticks. */
+  lastAnimUpdateMs: number;
   /**
    * World-space velocity (model coords) — used to derive movement direction
    * relative to facing for directional walk animations.
@@ -115,6 +117,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     voxelMeshes: null,
     boneGroups: null,
     animationState: state.animationState ?? null,
+    lastAnimUpdateMs: performance.now(),
     velocityX: state.velocity?.x ?? 0,
     velocityY: state.velocity?.y ?? 0,
     facingAngle: state.facing?.angle ?? 0,
@@ -383,6 +386,7 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
 
   if (state.animationState !== undefined) {
     mesh.animationState = state.animationState;
+    mesh.lastAnimUpdateMs = performance.now();
   }
   if (state.velocity !== undefined) {
     mesh.velocityX = state.velocity.x;

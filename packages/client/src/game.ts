@@ -213,7 +213,14 @@ export class VoximGame {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
       this.connection.sendInput(datagram);
       if (hasAction(datagram.actions, ACTION_USE_SKILL)) {
-        this.renderer?.forceLocalAnimation("attack");
+        // Use the last server-confirmed attack params so the prediction matches the
+        // real weapon. Falls back to "slash" defaults if no confirmed state yet.
+        const lastAnim = this.playerId ? this.world.get(this.playerId)?.animationState : null;
+        if (lastAnim?.mode === "attack") {
+          this.renderer?.forceLocalAnimation("attack", lastAnim.attackStyle, lastAnim.windupTicks, lastAnim.activeTicks, lastAnim.winddownTicks);
+        } else {
+          this.renderer?.forceLocalAnimation("attack", "slash", 4, 4, 7);
+        }
         const playerScreen = this.renderer?.getPlayerScreenPos();
         if (playerScreen) this.hud?.showSwingArc(playerScreen.x, playerScreen.y, datagram.facing);
       }

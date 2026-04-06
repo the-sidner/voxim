@@ -454,14 +454,17 @@ export class VoximRenderer {
   ): void {
     if (!this.localPlayerId) return;
     const mesh = this.entityMeshes.get(this.localPlayerId);
-    if (mesh) mesh.animationState = {
-      mode: mode as import("@voxim/content").AnimationMode,
-      attackStyle,
-      windupTicks,
-      activeTicks,
-      winddownTicks,
-      ticksIntoAction: 0,
-    };
+    if (mesh) {
+      mesh.animationState = {
+        mode: mode as import("@voxim/content").AnimationMode,
+        attackStyle,
+        windupTicks,
+        activeTicks,
+        winddownTicks,
+        ticksIntoAction: 0,
+      };
+      mesh.lastAnimUpdateMs = performance.now();
+    }
   }
 
   removeEntity(entityId: string): void {
@@ -560,6 +563,14 @@ export class VoximRenderer {
     for (const [, mesh] of this.entityMeshes) {
       if (mesh.boneGroups && mesh.skeletonId) {
         const anim = mesh.animationState;
+        // Extrapolate ticksIntoAction between server updates (50ms apart) so the
+        // attack pose advances smoothly at 60fps instead of stepping every tick.
+        let ticksIntoAction = anim?.ticksIntoAction ?? 0;
+        if (anim?.mode === "attack") {
+          const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
+          const totalTicks = (anim.windupTicks ?? 0) + (anim.activeTicks ?? 0) + (anim.winddownTicks ?? 0);
+          ticksIntoAction = Math.min(ticksIntoAction + elapsed, totalTicks);
+        }
         const pose = evaluatePose(
           mesh.skeletonId,
           anim?.mode          ?? "idle",
@@ -567,7 +578,7 @@ export class VoximRenderer {
           anim?.windupTicks   ?? 0,
           anim?.activeTicks   ?? 0,
           anim?.winddownTicks ?? 0,
-          anim?.ticksIntoAction ?? 0,
+          ticksIntoAction,
           this.smoothTick,
           mesh.velocityX, mesh.velocityY, mesh.facingAngle,
         );

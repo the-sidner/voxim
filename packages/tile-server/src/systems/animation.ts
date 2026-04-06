@@ -78,6 +78,9 @@ export class AnimationSystem implements System {
     if (
       current?.mode === next.mode &&
       current.attackStyle === next.attackStyle &&
+      current.windupTicks === next.windupTicks &&
+      current.activeTicks === next.activeTicks &&
+      current.winddownTicks === next.winddownTicks &&
       current.ticksIntoAction === next.ticksIntoAction
     ) return;
 
