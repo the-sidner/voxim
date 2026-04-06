@@ -183,6 +183,14 @@ export class VoximRenderer {
   private heightDebugEnabled = false;
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
+  /**
+   * Shadow camera basis vectors (pre-computed from the fixed SUN_DIR).
+   * Used to snap the shadow frustum in shadow-UV space rather than world X/Z —
+   * world-axis snapping leaves residual swimming along the perpendicular axis
+   * whenever the shadow camera isn't aligned with the world grid.
+   */
+  private readonly _shadowCamRight: THREE.Vector3;
+  private readonly _shadowCamUp: THREE.Vector3;
   /** Visible sun disc in the sky. */
   private readonly sunMesh: THREE.Mesh;
   /** Hemisphere sky/ground ambient. */
@@ -279,6 +287,16 @@ export class VoximRenderer {
     this.scene.add(this.sun);
     // Target must be in the scene so Three.js updates its world matrix each frame.
     this.scene.add(this.sun.target);
+
+    // Pre-compute shadow camera basis vectors from the fixed SUN_DIR.
+    // Three.js lookAt: camLocalZ = normalize(eye - target) = SUN_DIR.
+    // camLocalX = normalize(cross(worldUp, SUN_DIR)); camLocalY = cross(SUN_DIR, camLocalX).
+    // Snapping in these axes (not world X/Z) eliminates shadow swimming on non-axis geometry.
+    {
+      const up = new THREE.Vector3(0, 1, 0);
+      this._shadowCamRight = new THREE.Vector3().crossVectors(up, SUN_DIR).normalize();
+      this._shadowCamUp    = new THREE.Vector3().crossVectors(SUN_DIR, this._shadowCamRight).normalize();
+    }
 
     // Ambient fill — brightened so shadowed cliff walls are readable, not black voids.
     this.hemi = new THREE.HemisphereLight(0x99bbdd, 0x334433, 0.55);
@@ -636,22 +654,33 @@ export class VoximRenderer {
     this.sun.target.position.copy(this.cameraTarget);
     this.sun.position.copy(this.cameraTarget).addScaledVector(SUN_DIR, 100);
 
-    // Snap shadow frustum to its own texel grid to eliminate shadow swimming.
-    // As the camera tracks the player, fractional-texel drift causes shadow
-    // edges to crawl across surfaces each frame (visible as flickering).
-    // Rounding the target position to the nearest shadow-map texel size
-    // keeps the shadow projection pixel-perfect between frames.
+    // Snap shadow frustum to its own texel grid (in shadow-camera UV space) to
+    // eliminate shadow swimming.  Snapping in world X/Z leaves residual drift
+    // along the axes not aligned with the shadow camera — visible on tall objects
+    // like trees.  Projecting onto the shadow camera's right/up vectors and
+    // rounding there keeps the shadow projection pixel-stable in all directions.
     {
-      const texelSize = (this.sun.shadow.camera.right - this.sun.shadow.camera.left)
-        / this.sun.shadow.mapSize.x;
-      const tx = Math.round(this.sun.target.position.x / texelSize) * texelSize;
-      const tz = Math.round(this.sun.target.position.z / texelSize) * texelSize;
-      const dx = tx - this.sun.target.position.x;
-      const dz = tz - this.sun.target.position.z;
-      this.sun.target.position.x = tx;
-      this.sun.target.position.z = tz;
-      this.sun.position.x += dx;
-      this.sun.position.z += dz;
+      const sc = this.sun.shadow.camera;
+      const texelX = (sc.right - sc.left) / this.sun.shadow.mapSize.x;
+      const texelY = (sc.top   - sc.bottom) / this.sun.shadow.mapSize.y;
+
+      const t   = this.sun.target.position;
+      const dotX = t.dot(this._shadowCamRight);
+      const dotY = t.dot(this._shadowCamUp);
+
+      const snapX = Math.round(dotX / texelX) * texelX - dotX;
+      const snapY = Math.round(dotY / texelY) * texelY - dotY;
+
+      const cx = this._shadowCamRight.x * snapX + this._shadowCamUp.x * snapY;
+      const cy = this._shadowCamRight.y * snapX + this._shadowCamUp.y * snapY;
+      const cz = this._shadowCamRight.z * snapX + this._shadowCamUp.z * snapY;
+
+      this.sun.target.position.x += cx;
+      this.sun.target.position.y += cy;
+      this.sun.target.position.z += cz;
+      this.sun.position.x += cx;
+      this.sun.position.y += cy;
+      this.sun.position.z += cz;
     }
 
     // Keep the sun sphere fixed in the sky relative to the camera
