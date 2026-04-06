@@ -52,8 +52,12 @@ export class VoximGame {
   private serverTick = 0;
   private running = false;
 
-  /** Set to true once the terrain entity has been received and pushed to the renderer. */
-  private terrainReady = false;
+  /** Total terrain chunks expected per tile (32×32 chunks of 16×16 = 256). */
+  private static readonly TOTAL_CHUNKS = 256;
+
+  private terrainChunksReceived = 0;
+  /** True once all terrain AND all entity models are preloaded. */
+  private loadingComplete = false;
 
   async start(config: GameConfig): Promise<void> {
     // Step 1: wire message handlers BEFORE connecting — eliminates the race where
@@ -93,11 +97,8 @@ export class VoximGame {
         if (!state) continue;
         if (state.heightmap && state.materialGrid) {
           this.renderer?.updateTerrain(state.heightmap, state.materialGrid);
-          if (!this.terrainReady) {
-            this.terrainReady = true;
-            patchUI({ loading: false });
-            console.log(`[Game] terrain received — loading screen dismissed`);
-          }
+          this.terrainChunksReceived++;
+          patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
         } else if (state.position) {
           this.renderer?.updateEntity(entityId, state);
         }
@@ -106,6 +107,10 @@ export class VoximGame {
           if (state.stamina) patchUI({ stamina: { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
           if (state.hunger)  patchUI({ hunger:  { value: state.hunger.value } });
         }
+      }
+
+      if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
+        this._finishLoading();
       }
 
       for (const ev of msg.events) {
@@ -203,16 +208,11 @@ export class VoximGame {
     mountUI((a) => this._handleUIAction(a));
 
     // Replay any world state that arrived during connect() (before renderer existed).
-    let replayCount = 0;
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap && state.materialGrid) {
-        this.renderer.updateTerrain(state.heightmap, state.materialGrid); replayCount++;
-        if (!this.terrainReady) {
-          this.terrainReady = true;
-          patchUI({ loading: false });
-        }
+        this.renderer.updateTerrain(state.heightmap, state.materialGrid);
       } else if (state.position) {
-        this.renderer.updateEntity(entityId, state); replayCount++;
+        this.renderer.updateEntity(entityId, state);
       }
       if (entityId === this.playerId) {
         if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
@@ -220,8 +220,10 @@ export class VoximGame {
         if (state.hunger)  patchUI({ hunger:  { value: state.hunger.value } });
       }
     }
-
-    console.log(`[Game] replay done — pushed ${replayCount} entities to renderer, terrainReady=${this.terrainReady}`);
+    // terrainChunksReceived may already be > 0 if chunks arrived during connect()
+    if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
+      this._finishLoading();
+    }
     this.input = new InputController(canvas, () => this.renderer!.getPlayerScreenPos());
 
     // Step 5: render loop
@@ -327,9 +329,39 @@ export class VoximGame {
     }
   }
 
+  /**
+   * Called once all 256 terrain chunks are in the renderer.
+   * Prefetches every model currently in the world, then dismisses the loading screen.
+   * Runs asynchronously so subsequent state messages continue to apply normally.
+   */
+  private _finishLoading(): void {
+    if (this.loadingComplete) return;
+    this.loadingComplete = true;
+
+    const content = this.content;
+    if (!content) { patchUI({ loading: false }); return; }
+
+    // Collect unique modelIds from all entities currently in the world
+    const modelIds = new Set<string>();
+    for (const [, state] of this.world.entries()) {
+      if (state.modelRef?.modelId) modelIds.add(state.modelRef.modelId);
+    }
+
+    if (modelIds.size === 0) { patchUI({ loading: false }); return; }
+
+    console.log(`[Game] preloading ${modelIds.size} models before dismissing loading screen`);
+    Promise.all([...modelIds].map((id) => content.prefetchModel(id))).then(() => {
+      patchUI({ loading: false });
+      console.log(`[Game] all models preloaded — loading screen dismissed`);
+    }).catch(() => {
+      patchUI({ loading: false });
+    });
+  }
+
   stop(): void {
     this.running = false;
-    this.terrainReady = false;
+    this.terrainChunksReceived = 0;
+    this.loadingComplete = false;
     cancelAnimationFrame(this.animFrameId);
     this.input?.dispose();
     this.connection.close();

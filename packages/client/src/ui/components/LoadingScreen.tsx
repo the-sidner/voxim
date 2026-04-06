@@ -1,4 +1,10 @@
+import { uiState } from "../ui_store.ts";
+
 export function LoadingScreen() {
+  const progress = uiState.value.loadingProgress;
+  const pct = Math.round(progress * 100);
+  const label = progress < 1 ? `Loading terrain… ${pct}%` : "Loading assets…";
+
   return (
     <div
       style={{
@@ -12,28 +18,22 @@ export function LoadingScreen() {
       }}
     >
       <div style={{ fontSize: "var(--text-xl)", marginBottom: "var(--gap-xl)", letterSpacing: "0.15em" }}>
-        Loading world…
+        {label}
       </div>
       <div style={{
-        width: "200px", height: "4px",
+        width: "240px", height: "4px",
         background: "var(--col-surface-2, #222)",
         borderRadius: "2px",
         overflow: "hidden",
       }}>
         <div style={{
           height: "100%",
+          width: `${pct}%`,
           background: "var(--col-accent, #8af)",
           borderRadius: "2px",
-          animation: "loading-pulse 1.4s ease-in-out infinite",
+          transition: "width 100ms linear",
         }} />
       </div>
-      <style>{`
-        @keyframes loading-pulse {
-          0%   { width: 0%; margin-left: 0; }
-          50%  { width: 60%; margin-left: 20%; }
-          100% { width: 0%; margin-left: 100%; }
-        }
-      `}</style>
     </div>
   );
 }

@@ -228,8 +228,10 @@ export interface UIState {
   contextMenu: ContextMenuState | null;
   toasts:      Toast[];
 
-  /** True while the initial world state is still loading (terrain not yet received). */
+  /** True while the initial world state is still loading. */
   loading: boolean;
+  /** 0–1 loading progress (terrain chunks received / 256). */
+  loadingProgress: number;
 }
 
 // ── Store singleton ────────────────────────────────────────────────────────────
@@ -252,7 +254,8 @@ const _initial: UIState = {
   tooltip:     null,
   contextMenu: null,
   toasts:      [],
-  loading:     true,
+  loading:          true,
+  loadingProgress:  0,
 };
 
 export const uiState = signal<UIState>({ ..._initial });
