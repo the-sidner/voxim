@@ -12,11 +12,11 @@
  *   render(<UIManager onAction={handleAction} />, document.getElementById("ui")!);
  */
 import { useEffect } from "preact/hooks";
-import { uiState, closeTopModal, isModalOpen } from "./ui_store.ts";
+import { uiState, closeTopModal, isModalOpen, openPanel, closePanel } from "./ui_store.ts";
 import type { UIAction } from "./ui_actions.ts";
 
 import { StatusBars }      from "./components/StatusBars.tsx";
-import { Crosshair }       from "./components/Crosshair.tsx";
+import { PanelBar }        from "./components/PanelBar.tsx";
 import { Hotbar }          from "./components/Hotbar.tsx";
 import { EquipmentPanel }  from "./components/EquipmentPanel.tsx";
 import { InventoryPanel }  from "./components/InventoryPanel.tsx";
@@ -44,13 +44,24 @@ export interface UIManagerProps {
 export function UIManager({ onAction }: UIManagerProps) {
   const panels = uiState.value.openPanels;
 
-  // Global keyboard handler — ESC pops the modal stack
+  // Global keyboard handler
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isModalOpen.value) {
         e.preventDefault();
         closeTopModal();
+        return;
       }
+      // Panel toggles — only fire when not typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const toggle = (id: Parameters<typeof openPanel>[0]) => {
+        e.preventDefault();
+        uiState.value.openPanels.has(id) ? closePanel(id) : openPanel(id);
+      };
+      if (e.key === "i" || e.key === "I") toggle("inventory");
+      if (e.key === "e" || e.key === "E") toggle("equipment");
+      if (e.key === "c" || e.key === "C") toggle("stats");
+      if (e.key === "`")                  toggle("debug");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -59,9 +70,9 @@ export function UIManager({ onAction }: UIManagerProps) {
   return (
     <>
       {/* Always-visible HUD layer */}
-      <Crosshair />
       <StatusBars />
       <Hotbar onAction={onAction} />
+      <PanelBar />
       <ToastQueue />
 
       {/* Toggleable panels */}

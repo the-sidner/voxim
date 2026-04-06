@@ -237,7 +237,7 @@ const _initial: UIState = {
   hunger:      null,
   equipment:   null,
   inventory:   null,
-  hotbar:      null,
+  hotbar:      { slots: Array(8).fill(null) as (null)[], activeIndex: 0 },
   stats:       null,
   skillLoadout: null,
   crafting:    null,

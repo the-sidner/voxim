@@ -33,6 +33,7 @@ export function StatusBars() {
       position: "absolute", bottom: "24px", left: "50%",
       transform: "translateX(-50%)",
       display: "flex", flexDirection: "column", gap: "var(--gap-xs)",
+      width: "220px",
     }}>
       {hp && (
         <Bar

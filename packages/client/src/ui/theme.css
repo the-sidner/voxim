@@ -211,6 +211,12 @@
   background:   var(--col-bg-hover);
 }
 
+.btn--active {
+  background:   var(--col-bg-hover);
+  border-color: var(--col-border-bright);
+  color:        var(--col-text);
+}
+
 .btn--primary {
   background:   var(--col-accent-dim);
   border-color: var(--col-accent);
