@@ -181,6 +181,21 @@ export class VoximRenderer {
   private readonly blitCamera: THREE.OrthographicCamera;
   /** Debug: when true the blit pass shows the raw height texture instead of the scene. */
   private heightDebugEnabled = false;
+
+  /**
+   * World-space attack hitbox overlays.
+   *
+   * One mesh per attacking entity, parented to the entity group so it
+   * inherits position and facing automatically.  Visible only during the
+   * active phase; fades out through winddown.
+   *
+   * The material is shared across all overlays (opacity set per-mesh via
+   * an instanced clone so each entity can fade independently).
+   */
+  private readonly hitboxMeshes = new Map<string, THREE.Mesh>();
+  /** Geometry cache keyed by "attackStyle" — reused across entities. */
+  private readonly hitboxGeoCache = new Map<string, THREE.BufferGeometry>();
+
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
   /**
@@ -705,6 +720,9 @@ export class VoximRenderer {
       .copy(this.camera.position)
       .addScaledVector(SUN_DIR, 350);
 
+    // Update world-space hitbox overlays for all currently attacking entities.
+    this.updateAttackHitboxes(now);
+
     // Pass 1: render scene to low-res pixel target (writes colour + depth).
     this.renderer.setRenderTarget(this.pixelTarget);
     this.renderer.render(this.scene, this.camera);
@@ -721,6 +739,104 @@ export class VoximRenderer {
     // Pass 2: edge detection + height shading + sRGB blit to canvas.
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.blitScene, this.blitCamera);
+  }
+
+  /**
+   * Build or retrieve the wedge geometry for a given attack style.
+   * The wedge lies in the local XZ plane with the arc centred on local -Z
+   * (entity forward direction in this renderer's convention).
+   */
+  private hitboxGeo(attackStyle: string): THREE.BufferGeometry {
+    const cached = this.hitboxGeoCache.get(attackStyle);
+    if (cached) return cached;
+
+    const { range, arcHalf } = hitboxParams(attackStyle);
+    const SEGS = 20;
+
+    const positions: number[] = [];
+    const indices: number[] = [];
+
+    // Vertex 0 — origin (entity root)
+    positions.push(0, 0, 0);
+
+    // Arc vertices: angle θ measured from -Z axis, sweeping ±arcHalf
+    for (let i = 0; i <= SEGS; i++) {
+      const θ = -arcHalf + (2 * arcHalf * i) / SEGS;
+      // Direction: rotate -Z by θ around Y → (sin θ, 0, -cos θ)
+      positions.push(Math.sin(θ) * range, 0, -Math.cos(θ) * range);
+    }
+
+    // Fan triangles: (0, i+1, i+2)
+    for (let i = 0; i < SEGS; i++) {
+      indices.push(0, i + 1, i + 2);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    this.hitboxGeoCache.set(attackStyle, geo);
+    return geo;
+  }
+
+  /**
+   * Show/hide/fade world-space attack hitbox overlays.
+   * Called once per render frame before the scene draw.
+   */
+  private updateAttackHitboxes(now: number): void {
+    const activeIds = new Set<string>();
+
+    for (const [entityId, mesh] of this.entityMeshes) {
+      const anim = mesh.animationState;
+      if (!anim || anim.mode !== "attack") continue;
+
+      // Use the same extrapolated ticksIntoAction as the skeleton evaluator.
+      const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
+      const total = anim.windupTicks + anim.activeTicks + anim.winddownTicks;
+      const ticks = Math.min((anim.ticksIntoAction) + elapsed, total);
+
+      const inActive   = ticks >= anim.windupTicks && ticks < anim.windupTicks + anim.activeTicks;
+      const inWinddown = ticks >= anim.windupTicks + anim.activeTicks && ticks < total;
+      if (!inActive && !inWinddown) continue;
+
+      activeIds.add(entityId);
+
+      // Create the overlay mesh the first time this entity starts its active phase.
+      let overlay = this.hitboxMeshes.get(entityId);
+      if (!overlay) {
+        const geo = this.hitboxGeo(anim.attackStyle);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0xff4400,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+        overlay = new THREE.Mesh(geo, mat);
+        // Parent to the entity group — inherits world position and facing.
+        mesh.group.add(overlay);
+        this.hitboxMeshes.set(entityId, overlay);
+      }
+
+      // Sit just above ground level in local space (entity root is at feet).
+      overlay.position.set(0, 0.08, 0);
+
+      // Opacity: full during active phase, linear fade during winddown.
+      const mat = overlay.material as THREE.MeshBasicMaterial;
+      if (inActive) {
+        mat.opacity = 0.38;
+      } else {
+        const t = (ticks - anim.windupTicks - anim.activeTicks) / Math.max(1, anim.winddownTicks);
+        mat.opacity = 0.38 * (1 - t);
+      }
+    }
+
+    // Remove overlays for entities no longer in an active/winddown phase.
+    for (const [entityId, overlay] of this.hitboxMeshes) {
+      if (!activeIds.has(entityId)) {
+        overlay.parent?.remove(overlay);
+        (overlay.material as THREE.Material).dispose();
+        this.hitboxMeshes.delete(entityId);
+      }
+    }
   }
 
   private onResize(canvas: HTMLCanvasElement): void {
@@ -750,10 +866,28 @@ export class VoximRenderer {
     this.heightTarget.dispose();
     this.depthBlitMat.dispose();
     this.renderer.dispose();
+    for (const [, overlay] of this.hitboxMeshes) {
+      overlay.parent?.remove(overlay);
+      (overlay.material as THREE.Material).dispose();
+    }
+    for (const [, geo] of this.hitboxGeoCache) geo.dispose();
     for (const [, mesh] of this.entityMeshes) disposeEntityMesh(mesh);
     for (const [, mesh] of this.terrainMeshes) {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     }
+  }
+}
+
+// ---- helpers ----
+
+/** Range and arc-half for each attack style, mirroring weapon_actions.json. */
+function hitboxParams(attackStyle: string): { range: number; arcHalf: number } {
+  switch (attackStyle) {
+    case "slash":    return { range: 2.0, arcHalf: 1.047 };
+    case "overhead": return { range: 1.8, arcHalf: 0.785 };
+    case "thrust":   return { range: 2.6, arcHalf: 0.4   };
+    case "bite":     return { range: 1.5, arcHalf: 0.785 };
+    default:         return { range: 2.0, arcHalf: 1.047 }; // unarmed
   }
 }
