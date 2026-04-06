@@ -158,13 +158,18 @@ export class ActionSystem implements System {
       rewindTick = this.serverTick;
     }
     const snap = this.stateHistory.getAt(rewindTick);
-    if (!snap) return sip.hitEntities;
+    if (!snap) {
+      log.warn("resolveHits: no snapshot for rewindTick=%d serverTick=%d historySize=%d", rewindTick, this.serverTick, this.stateHistory.size);
+      return sip.hitEntities;
+    }
 
     const attackerSnap = snap.entities.find((e) => e.entityId === entityId);
     const ax = attackerSnap?.x ?? (world.get(entityId, Position)?.x ?? 0);
     const ay = attackerSnap?.y ?? (world.get(entityId, Position)?.y ?? 0);
     const inputState = world.get(entityId, InputState);
     const attackFacing = attackerSnap?.facing ?? inputState?.facing ?? 0;
+    log.debug("resolveHits: attacker=%s pos=(%.2f,%.2f) facing=%.2f range=%.2f arcHalf=%.2f snapTick=%d snapEntities=%d",
+      entityId, ax, ay, attackFacing, action.hitbox.range, action.hitbox.arcHalf, snap.serverTick, snap.entities.length);
 
     const attackerCombatState = world.get(entityId, CombatState);
     let damageMult = 1.0;
@@ -194,10 +199,13 @@ export class ActionSystem implements System {
       const dx = target.x - ax;
       const dy = target.y - ay;
       const distSq = dx * dx + dy * dy;
-      if (distSq > attackRange * attackRange) continue;
-
       const dist = Math.sqrt(distSq);
       const toTargetAngle = Math.atan2(dy, dx);
+      const arc = angleDiff(toTargetAngle, attackFacing);
+      log.debug("  candidate=%s dist=%.2f arcDiff=%.2f rangeOk=%s arcOk=%s",
+        target.entityId, dist, arc, dist <= attackRange, arc <= arcHalf);
+      if (distSq > attackRange * attackRange) continue;
+
       if (angleDiff(toTargetAngle, attackFacing) > arcHalf) continue;
 
       const targetCombatState = world.get(target.entityId, CombatState);

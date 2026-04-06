@@ -33,7 +33,7 @@
     "winddownTicks": 5,
     "animationStyle": "unarmed",
     "staminaCost": 5,
-    "hitbox": { "shape": "arc", "range": 1.5, "arcHalf": 1.047 }
+    "hitbox": { "shape": "arc", "range": 2.0, "arcHalf": 1.047 }
   },
   {
     "id": "bite",
