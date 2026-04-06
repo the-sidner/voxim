@@ -658,7 +658,7 @@ export class TileServer {
       });
     }
     if (req.method === "GET" && url.pathname === "/game") {
-      return new Response(gameClientHtml(this.wtPort), {
+      return new Response(await gameClientHtml(this.wtPort), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -674,6 +674,19 @@ export class TileServer {
           "// game.js not found — run: deno task bundle\nconsole.error('[Voxim] game.js not built');",
           { status: 404, headers: { "content-type": "application/javascript; charset=utf-8" } },
         );
+      }
+    }
+    if (req.method === "GET" && url.pathname === "/theme.css") {
+      const cssPath = new URL("../../client/src/ui/theme.css", import.meta.url).pathname;
+      try {
+        const css = await Deno.readFile(cssPath);
+        return new Response(css, {
+          headers: { "content-type": "text/css; charset=utf-8" },
+        });
+      } catch {
+        return new Response("/* theme.css not found */", {
+          status: 404, headers: { "content-type": "text/css; charset=utf-8" },
+        });
       }
     }
     return new Response("not found", { status: 404 });
@@ -1242,25 +1255,10 @@ function ts() { return new Date().toISOString().slice(11, 23); }
 
 // ── Game client page ──────────────────────────────────────────────────────────
 
-function gameClientHtml(wtPort: number): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Voxim</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { overflow: hidden; background: #000; }
-  canvas { display: block; width: 100vw; height: 100vh; }
-</style>
-</head>
-<body>
-<canvas id="canvas"></canvas>
-<script>
-// Set the tile address before the game module loads so main.ts picks it up.
-globalThis.VOXIM_TILE_ADDRESS = location.hostname + ':${wtPort}';
-</script>
-<script type="module" src="/game.js"></script>
-</body>
-</html>`;
+async function gameClientHtml(wtPort: number): Promise<string> {
+  const indexPath = new URL("../../client/index.html", import.meta.url).pathname;
+  const html = await Deno.readTextFile(indexPath);
+  // Inject tile address before </body> so main.ts picks it up before the module loads.
+  const injection = `<script>\nglobalThis.VOXIM_TILE_ADDRESS = location.hostname + ':${wtPort}';\n</script>\n`;
+  return html.replace("</body>", injection + "</body>");
 }
