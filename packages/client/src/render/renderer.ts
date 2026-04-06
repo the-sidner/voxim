@@ -153,8 +153,12 @@ function lerpAngle(a: number, b: number, t: number): number {
  */
 const SUN_DIR = new THREE.Vector3(20, 100, -15).normalize();
 
-/** Scratch vector — reused by updateAttachmentPositions to avoid per-frame allocation. */
-const _attachTmp = new THREE.Vector3();
+/** Scratch objects — reused by updateAttachmentPositions to avoid per-frame allocation. */
+const _attachTmp   = new THREE.Vector3();
+const _bladeTip    = new THREE.Vector3();
+const _bladeUp     = new THREE.Vector3(0, 1, 0);  // world-up used as orientation hint
+const _attachQuat  = new THREE.Quaternion();
+const _attachMat   = new THREE.Matrix4();
 
 export class VoximRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -877,21 +881,40 @@ export class VoximRenderer {
     for (const [slotId, slot] of mesh.attachments) {
       if (slotId === "main_hand") {
         if (anim?.mode === "attack" && weaponAction?.swingPath?.keyframes?.length) {
-          // Authoritative hilt position from swing path — same source as server hit detection.
+          // Authoritative hilt position + blade orientation from swing path.
+          // Same source as server hit detection — weapon model is visually exact.
           const bladeLength = weaponAction.swingPath.defaultBladeLength ?? 1.0;
           const s = evaluateWeaponSlice(
             weaponAction.swingPath.keyframes, t, bladeLength,
           );
           slot.anchor.position.set(s.hiltX, s.hiltY, s.hiltZ);
+          // Orient anchor so its +Y axis (model "up", i.e. blade direction) aligns
+          // with the swing-path blade direction.  Uses a look-rotation toward the
+          // tip with a stable up-hint to avoid gimbal singularities.
+          _bladeTip.set(s.tipX, s.tipY, s.tipZ);
+          _attachMat.lookAt(
+            slot.anchor.position,
+            _bladeTip,
+            _bladeUp,
+          );
+          slot.anchor.quaternion.setFromRotationMatrix(_attachMat);
         } else {
-          // Follow hand_r: get its world position and convert to entity-local.
+          // Follow hand_r: copy its world transform (position + rotation)
+          // into the anchor so the weapon sits naturally in the hand.
           const handBone = mesh.boneGroups?.get("hand_r");
           if (handBone) {
-            // Ensure the bone hierarchy world matrices reflect the current pose.
+            // Ensure bone world matrices reflect the current pose.
             mesh.group.updateWorldMatrix(true, true);
             handBone.getWorldPosition(_attachTmp);
             mesh.group.worldToLocal(_attachTmp);
             slot.anchor.position.copy(_attachTmp);
+            // Inherit hand rotation in entity-local space.
+            handBone.getWorldQuaternion(_attachQuat);
+            // Convert world-space quat to entity-local by removing the entity rotation.
+            _attachQuat.premultiply(
+              mesh.group.getWorldQuaternion(new THREE.Quaternion()).invert(),
+            );
+            slot.anchor.quaternion.copy(_attachQuat);
           }
         }
       } else {

@@ -484,13 +484,22 @@ export function evaluateWeaponTip(
 }
 
 /**
- * Evaluate both hilt and tip at normalised time t in entity-local Three.js space.
+ * Evaluate hilt, tip, and blade direction at normalised time t in entity-local
+ * Three.js space (right=X, up=Y, forward=-Z).
+ *
+ * bladeDirX/Y/Z is the normalised blade direction vector (hilt → tip).
+ * Use it to orient the weapon model anchor so the visual blade aligns with
+ * the swing path regardless of weapon length.
  */
 export function evaluateWeaponSlice(
   keyframes: SwingKeyframe[],
   t: number,
   bladeLength: number,
-): { hiltX: number; hiltY: number; hiltZ: number; tipX: number; tipY: number; tipZ: number } {
+): {
+  hiltX: number; hiltY: number; hiltZ: number;
+  tipX: number; tipY: number; tipZ: number;
+  bladeDirX: number; bladeDirY: number; bladeDirZ: number;
+} {
   const pose = evaluateSwingPath(keyframes, t);
   const tip = deriveTip(pose.hilt, pose.bladeDir, bladeLength);
   return {
@@ -500,5 +509,9 @@ export function evaluateWeaponSlice(
     tipX:   tip.right,
     tipY:   tip.up,
     tipZ:  -tip.fwd,
+    // blade direction in Three.js local space
+    bladeDirX:  pose.bladeDir.right,
+    bladeDirY:  pose.bladeDir.up,
+    bladeDirZ: -pose.bladeDir.fwd,
   };
 }
