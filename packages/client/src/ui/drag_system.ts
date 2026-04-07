@@ -43,6 +43,11 @@ class DragSystem {
   private zones: RegisteredZone[] = [];
   private ghostEl: HTMLElement | null = null;
   private activeZone: RegisteredZone | null = null;
+  /**
+   * Called when a drag ends outside any valid drop zone.
+   * Set by startDrag; cleared by endDrag.
+   */
+  private onDropOutside: (() => void) | null = null;
 
   // ── Zone registration ────────────────────────────────────────────────────────
 
@@ -63,14 +68,21 @@ class DragSystem {
 
   // ── Drag lifecycle ────────────────────────────────────────────────────────────
 
+  /**
+   * @param onDropOutside  Optional callback invoked when the drag ends without
+   *                       landing on a valid drop zone (e.g. unequip by dragging
+   *                       an item off the equipment panel).
+   */
   startDrag(
     item: ItemStack,
     sourceKind: DragSourceKind,
     sourceIndex: number,
     originEl: HTMLElement,
+    onDropOutside?: () => void,
   ): void {
     const drag: DragState = { item, sourceKind, sourceIndex };
     uiState.value = { ...uiState.value, drag };
+    this.onDropOutside = onDropOutside ?? null;
     this._spawnGhost(item, originEl);
     document.addEventListener("mousemove", this._onMouseMove);
     document.addEventListener("mouseup",   this._onMouseUp);
@@ -81,6 +93,7 @@ class DragSystem {
     this._removeGhost();
     this.activeZone?.opts.onLeave?.();
     this.activeZone = null;
+    this.onDropOutside = null;
     document.removeEventListener("mousemove", this._onMouseMove);
     document.removeEventListener("mouseup",   this._onMouseUp);
   }
@@ -116,9 +129,11 @@ class DragSystem {
       this.activeZone.opts.onDrop(drag, this.activeZone.zoneId);
       // onDrop is responsible for calling endDrag() after dispatching the action.
     } else {
-      // Dropped outside any valid zone — treat as "drop to ground" if source is inventory.
-      // TODO: dispatch drop-to-ground server action
-      this.endDrag();
+      // Dropped outside any valid zone — fire the caller's onDropOutside handler
+      // (e.g. unequip when dragging from equipment panel, drop-to-ground from inventory).
+      const cb = this.onDropOutside;
+      this.endDrag();   // clear onDropOutside before calling cb
+      cb?.();
     }
   };
 

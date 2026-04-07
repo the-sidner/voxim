@@ -26,7 +26,9 @@ import {
   upgradeToSkeletonModel,
   updateSkeletonPose,
   ensureAttachment,
+  ensureBoneAttachment,
   attachModelToSlot,
+  attachArmorToSlot,
   detachModelFromSlot,
   disposeEntityMesh,
   type EntityMeshGroup,
@@ -213,15 +215,32 @@ export class VoximRenderer {
   private readonly trailMeshes = new Map<string, THREE.Mesh>();
 
   /**
-   * Maps slot id → bone id for slots that simply follow a rest bone.
-   * Extend this when adding new attachment points (belt, back, off_hand, …).
-   * "main_hand" is handled separately because it switches between swing-path
-   * and rest-bone depending on attack state.
+   * Entity-root slots that follow a rest bone each frame (position + rotation).
+   * "main_hand" is handled separately (swing-path during attacks).
+   * Armor slots are bone-parented (see ARMOR_SLOTS) and need no entry here.
    */
   private static readonly SLOT_REST_BONE: Record<string, string> = {
     off_hand: "hand_l",
-    // belt: "torso_lower",
-    // back: "torso_upper",
+  };
+
+  /**
+   * Armor slots: maps equipment slot name → one or more render slots, each
+   * attached to a specific bone.  Leg and foot items attach to both sides.
+   */
+  private static readonly ARMOR_SLOTS: Record<string, Array<{ renderSlotId: string; boneId: string }>> = {
+    head:  [{ renderSlotId: "head",          boneId: "head" }],
+    chest: [{ renderSlotId: "chest",         boneId: "torso_upper" }],
+    back:  [{ renderSlotId: "back",          boneId: "torso_upper" }],
+    legs:  [
+      { renderSlotId: "legs_upper_l", boneId: "upper_leg_l" },
+      { renderSlotId: "legs_upper_r", boneId: "upper_leg_r" },
+      { renderSlotId: "legs_lower_l", boneId: "lower_leg_l" },
+      { renderSlotId: "legs_lower_r", boneId: "lower_leg_r" },
+    ],
+    feet:  [
+      { renderSlotId: "feet_l",       boneId: "foot_l" },
+      { renderSlotId: "feet_r",       boneId: "foot_r" },
+    ],
   };
   /** Weapon action definitions — set by setWeaponActions() from game.ts. */
   private weaponActionsMap = new Map<string, WeaponActionDef>();
@@ -475,8 +494,22 @@ export class VoximRenderer {
         if (skeleton) {
           upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale);
           this.skeletonOverlay.trackEntity(entityId, capture, skeleton);
-          // Attach weapon now that boneGroups exist. Use current equipment from state.
-          this.syncWeapon(capture, state);
+
+          // Record each sub-object's transform so armor anchors can be placed
+          // at the same position and scale as the body-part they overlay.
+          capture.boneSlotTransforms.clear();
+          for (const sub of resolvedSubs) {
+            if (sub.boneId && sub.transform.scaleX === sub.transform.scaleY &&
+                sub.transform.scaleX === sub.transform.scaleZ) {
+              capture.boneSlotTransforms.set(sub.boneId, {
+                x: sub.transform.x, y: sub.transform.y, z: sub.transform.z,
+                scale: sub.transform.scaleX,
+              });
+            }
+          }
+
+          // Sync all equipment slots now that boneGroups exist.
+          this.syncEquipment(capture, state);
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
           const worldPos = capture.group.position.clone();
@@ -489,9 +522,9 @@ export class VoximRenderer {
     }
 
     // React to equipment changes on already-upgraded skeleton entities.
-    // syncWeapon is a no-op if the weapon model ID hasn't changed.
+    // syncEquipment exits early per-slot when the model ID hasn't changed.
     if (mesh.boneGroups && state.equipment !== undefined) {
-      this.syncWeapon(mesh, state);
+      this.syncEquipment(mesh, state);
     }
   }
 
@@ -809,53 +842,123 @@ export class VoximRenderer {
   }
 
   /**
-   * Ensure the weapon model in the "main_hand" attachment slot matches what the
-   * entity currently has equipped.  Called after skeleton upgrade and on every
-   * equipment delta.  Exits early when the model ID hasn't changed.
-   *
-   * The slot anchor is created here if it doesn't exist yet.  The renderer
-   * positions the anchor each frame in updateAttachmentPositions().
+   * Sync all equipment slots for an entity whose skeleton is already built.
+   * Called after skeleton upgrade and on every equipment delta.
+   * Each slot exits early when its model ID hasn't changed.
    */
-  private syncWeapon(mesh: EntityMeshGroup, state: EntityState): void {
+  private syncEquipment(mesh: EntityMeshGroup, state: EntityState): void {
     if (!mesh.boneGroups || !this.content) return;
 
-    const weaponItemType = state.equipment?.weapon?.itemType ?? null;
-    const template = weaponItemType ? this.itemTemplateMap.get(weaponItemType) : null;
-    const weaponModelId = template?.modelTemplateId ?? null;
-
-    const slot = mesh.attachments.get("main_hand");
-    if (weaponModelId === (slot?.modelId ?? null)) return;
-
-    // Detach the current model immediately; the new one loads async.
-    detachModelFromSlot(mesh, "main_hand");
-
-    if (!weaponModelId) return;
-
-    // Reserve the target model ID (via ensureAttachment) so concurrent async
-    // calls from the same entity don't race and double-attach.
-    const pendingSlot = ensureAttachment(mesh, "main_hand");
-    pendingSlot.modelId = weaponModelId;   // reserve
-
-    const scale = state.modelRef
+    const eq = state.equipment;
+    const entityScale = state.modelRef
       ? { x: state.modelRef.scaleX, y: state.modelRef.scaleY, z: state.modelRef.scaleZ }
       : { x: 0.35, y: 0.35, z: 0.35 };
 
-    this.content.prefetchModel(weaponModelId).then(() => {
-      // Abort if the weapon changed or the entity was removed while loading.
-      const currentSlot = mesh.attachments.get("main_hand");
-      if (currentSlot?.modelId !== weaponModelId || !mesh.boneGroups) return;
-      const weaponDef = this.content!.getModelSync(weaponModelId);
-      if (!weaponDef) { if (currentSlot) currentSlot.modelId = null; return; }
+    // ── Weapon (main_hand): entity-root anchor, repositioned per-frame ──────
+    this.syncHandSlot(mesh, "main_hand", eq?.weapon?.itemType ?? null, entityScale);
+
+    // ── Off-hand: entity-root anchor, follows hand_l bone per-frame ──────────
+    this.syncHandSlot(mesh, "off_hand", eq?.offHand?.itemType ?? null, entityScale);
+
+    // ── Armor: bone-parented anchors at the sub-object transform ─────────────
+    for (const [equipSlot, renderSlots] of Object.entries(VoximRenderer.ARMOR_SLOTS)) {
+      const itemType = (eq as Record<string, { itemType: string } | null> | undefined)?.[equipSlot]?.itemType ?? null;
+      const template = itemType ? this.itemTemplateMap.get(itemType) : null;
+      const modelId  = template?.modelTemplateId ?? null;
+      for (const { renderSlotId, boneId } of renderSlots) {
+        this.syncArmorSlot(mesh, renderSlotId, boneId, modelId, entityScale);
+      }
+    }
+  }
+
+  /**
+   * Sync a single entity-root attachment slot (weapon or off-hand).
+   * The anchor is positioned per-frame by updateAttachmentPositions.
+   */
+  private syncHandSlot(
+    mesh: EntityMeshGroup,
+    slotId: string,
+    itemType: string | null,
+    entityScale: { x: number; y: number; z: number },
+  ): void {
+    const template = itemType ? this.itemTemplateMap.get(itemType) : null;
+    const modelId  = template?.modelTemplateId ?? null;
+
+    const existing = mesh.attachments.get(slotId);
+    if (modelId === (existing?.modelId ?? null)) return;
+
+    detachModelFromSlot(mesh, slotId);
+    if (!modelId) return;
+
+    const pendingSlot = ensureAttachment(mesh, slotId);
+    pendingSlot.modelId = modelId;   // reserve to prevent races
+
+    this.content!.prefetchModel(modelId).then(() => {
+      const currentSlot = mesh.attachments.get(slotId);
+      if (currentSlot?.modelId !== modelId || !mesh.boneGroups) return;
+      const def = this.content!.getModelSync(modelId);
+      if (!def) { if (currentSlot) currentSlot.modelId = null; return; }
 
       const mats = new Map<number, MaterialDef>();
-      for (const id of weaponDef.materials) {
+      for (const id of def.materials) {
         const m = this.content!.getMaterialSync(id);
         if (m) mats.set(id, m);
       }
-      attachModelToSlot(mesh, "main_hand", weaponDef, mats, scale);
+      attachModelToSlot(mesh, slotId, def, mats, entityScale);
     }).catch(() => {
-      const currentSlot = mesh.attachments.get("main_hand");
-      if (currentSlot?.modelId === weaponModelId) currentSlot.modelId = null;
+      const currentSlot = mesh.attachments.get(slotId);
+      if (currentSlot?.modelId === modelId) currentSlot.modelId = null;
+    });
+  }
+
+  /**
+   * Sync a single bone-parented armor slot.
+   *
+   * The anchor is parented to the bone group and positioned at the sub-object
+   * transform recorded in mesh.boneSlotTransforms so the armor voxels overlay
+   * the body-part voxels exactly.  polygonOffset (onTop=true) prevents z-fighting.
+   */
+  private syncArmorSlot(
+    mesh: EntityMeshGroup,
+    renderSlotId: string,
+    boneId: string,
+    modelId: string | null,
+    entityScale: { x: number; y: number; z: number },
+  ): void {
+    const existing = mesh.attachments.get(renderSlotId);
+    if (modelId === (existing?.modelId ?? null)) return;
+
+    detachModelFromSlot(mesh, renderSlotId);
+    if (!modelId) return;
+
+    const boneGroup = mesh.boneGroups!.get(boneId);
+    if (!boneGroup) return; // bone not present on this skeleton
+
+    // Look up the sub-object transform for this bone so the armor aligns with it.
+    const subInfo = mesh.boneSlotTransforms.get(boneId);
+    const pendingSlot = ensureBoneAttachment(
+      mesh, renderSlotId, boneGroup,
+      subInfo?.x ?? 0, subInfo?.y ?? 0, subInfo?.z ?? 0,
+      entityScale,
+      subInfo?.scale ?? 1,
+    );
+    pendingSlot.modelId = modelId;  // reserve
+
+    this.content!.prefetchModel(modelId).then(() => {
+      const currentSlot = mesh.attachments.get(renderSlotId);
+      if (currentSlot?.modelId !== modelId || !mesh.boneGroups) return;
+      const def = this.content!.getModelSync(modelId);
+      if (!def) { if (currentSlot) currentSlot.modelId = null; return; }
+
+      const mats = new Map<number, MaterialDef>();
+      for (const id of def.materials) {
+        const m = this.content!.getMaterialSync(id);
+        if (m) mats.set(id, m);
+      }
+      attachArmorToSlot(mesh, renderSlotId, def, mats, entityScale);
+    }).catch(() => {
+      const currentSlot = mesh.attachments.get(renderSlotId);
+      if (currentSlot?.modelId === modelId) currentSlot.modelId = null;
     });
   }
 
@@ -878,7 +981,17 @@ export class VoximRenderer {
   ): void {
     if (!mesh.attachments.size) return;
 
+    // Compute entity world matrix once before the loop (needed for world→local).
+    mesh.group.updateWorldMatrix(true, true);
+    const _entityWorldQuat = new THREE.Quaternion();
+    mesh.group.getWorldQuaternion(_entityWorldQuat);
+    const _entityWorldQuatInv = _entityWorldQuat.clone().invert();
+
     for (const [slotId, slot] of mesh.attachments) {
+      // Bone-parented slots inherit their bone's transform automatically through
+      // the Three.js scene hierarchy — no per-frame work needed.
+      if (slot.boneParented) continue;
+
       if (slotId === "main_hand") {
         if (anim?.mode === "attack" && weaponAction?.swingPath?.keyframes?.length) {
           // Authoritative hilt position + blade orientation from swing path.
@@ -903,30 +1016,27 @@ export class VoximRenderer {
           // into the anchor so the weapon sits naturally in the hand.
           const handBone = mesh.boneGroups?.get("hand_r");
           if (handBone) {
-            // Ensure bone world matrices reflect the current pose.
-            mesh.group.updateWorldMatrix(true, true);
             handBone.getWorldPosition(_attachTmp);
             mesh.group.worldToLocal(_attachTmp);
             slot.anchor.position.copy(_attachTmp);
-            // Inherit hand rotation in entity-local space.
             handBone.getWorldQuaternion(_attachQuat);
-            // Convert world-space quat to entity-local by removing the entity rotation.
-            _attachQuat.premultiply(
-              mesh.group.getWorldQuaternion(new THREE.Quaternion()).invert(),
-            );
+            _attachQuat.premultiply(_entityWorldQuatInv);
             slot.anchor.quaternion.copy(_attachQuat);
           }
         }
       } else {
-        // Generic rest-bone follow for other slots.
+        // Generic rest-bone follow — copies both position AND rotation so held
+        // items (e.g. off-hand shield) animate naturally with the limb.
         const restBoneId = VoximRenderer.SLOT_REST_BONE[slotId];
         if (restBoneId) {
           const bone = mesh.boneGroups?.get(restBoneId);
           if (bone) {
-            mesh.group.updateWorldMatrix(true, true);
             bone.getWorldPosition(_attachTmp);
             mesh.group.worldToLocal(_attachTmp);
             slot.anchor.position.copy(_attachTmp);
+            bone.getWorldQuaternion(_attachQuat);
+            _attachQuat.premultiply(_entityWorldQuatInv);
+            slot.anchor.quaternion.copy(_attachQuat);
           }
         }
       }

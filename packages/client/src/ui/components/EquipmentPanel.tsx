@@ -1,6 +1,8 @@
 import { computed } from "@preact/signals";
+import { useRef, useEffect, useState } from "preact/hooks";
 import { uiState } from "../ui_store.ts";
 import { usePanel } from "../use_panel.ts";
+import { dragSystem } from "../drag_system.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { ItemStack } from "../ui_store.ts";
 
@@ -12,13 +14,48 @@ function EquipSlot({ label, item, slot, onAction }: {
   slot: string;
   onAction: (a: UIAction) => void;
 }) {
+  const slotRef = useRef<HTMLDivElement>(null);
+  const [dropHighlight, setDropHighlight] = useState(false);
+
+  useEffect(() => {
+    const el = slotRef.current;
+    if (!el) return;
+    const zoneId = `equipment:${slot}`;
+    dragSystem.registerZone(el, zoneId, {
+      accept: ["inventory"],
+      onDrop: (drag) => {
+        onAction({ type: "equip", itemType: drag.item.itemType, fromSlot: drag.sourceIndex });
+        dragSystem.endDrag();
+      },
+      onEnter: () => setDropHighlight(true),
+      onLeave: () => setDropHighlight(false),
+    });
+    return () => {
+      dragSystem.unregisterZone(zoneId);
+      setDropHighlight(false);
+    };
+  }, [slot]);  // re-register only if slot name changes (it never does in practice)
+
+  const handleMouseDown = (e: MouseEvent) => {
+    if (!item) return;
+    // Drag from equipment slot. If dropped outside any valid zone, dispatch unequip.
+    dragSystem.startDrag(item, "equipment", 0, e.currentTarget as HTMLElement, () => {
+      onAction({ type: "unequip", slot });
+    });
+  };
+
+  const isHighlighted = dropHighlight && uiState.value.drag?.sourceKind === "inventory";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--gap-xs)" }}>
       <span style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>{label}</span>
       <div
+        ref={slotRef}
         class={`slot interactive ${item ? "" : "slot--empty"}`}
+        style={isHighlighted ? { outline: "2px solid var(--col-accent)", outlineOffset: "2px" } : undefined}
         title={item?.displayName ?? label}
-        onClick={() => item && onAction({ type: "unequip", slot })}
+        onMouseDown={handleMouseDown}
+        onClick={() => item && !uiState.value.drag && onAction({ type: "unequip", slot })}
       >
         {/* TODO: render item icon from modelTemplateId */}
         {item && (

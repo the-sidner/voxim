@@ -78,18 +78,23 @@ export interface PosRecord {
 /**
  * One item attachment slot.
  *
- * `anchor` is a THREE.Group that is always a direct child of the entity root
- * group.  Its position is driven per-frame: during an attack the renderer sets
- * it from the swing-path hilt position; otherwise it follows the designated
- * rest bone (e.g. hand_r for main_hand).  The item model voxels are children
- * of the anchor — they move with it automatically.
+ * `anchor` is a THREE.Group whose parent is either the entity root group
+ * (entity-root slots, positioned per-frame) or a bone group (bone-parented
+ * slots, which inherit the bone's transform automatically through the scene
+ * hierarchy — no per-frame positioning needed).
  *
- * slotId examples: "main_hand", "off_hand", "back", "belt"
+ * slotId examples: "main_hand", "off_hand", "head", "chest", "legs_upper_l"
  */
 export interface AttachmentSlot {
   anchor: THREE.Group;
   /** Model ID currently built into anchor's children, or null if empty / loading. */
   modelId: string | null;
+  /**
+   * When true the anchor is a child of a bone group, not the entity root.
+   * The renderer skips per-frame positioning for these slots — Three.js
+   * propagates the bone's world transform automatically.
+   */
+  boneParented: boolean;
 }
 
 export interface EntityMeshGroup {
@@ -102,11 +107,18 @@ export interface EntityMeshGroup {
   boneGroups: Map<string, THREE.Group> | null;
   /**
    * Item attachment slots — slotId → AttachmentSlot.
-   * Each slot's anchor is a direct child of the entity root group, positioned
-   * per-frame by the renderer (swing path during attacks, bone world-pos otherwise).
+   * Entity-root slots are positioned per-frame by the renderer.
+   * Bone-parented slots inherit their bone's world transform automatically.
    * Model voxels are children of the anchor.
    */
   attachments: Map<string, AttachmentSlot>;
+  /**
+   * Sub-object transform info per boneId, recorded when the skeleton is built.
+   * Used by syncEquipment to place armor anchors at the same position and scale
+   * as the body-part sub-object on that bone, ensuring correct alignment.
+   * Key: boneId. Value: sub-object transform (model-space offset + uniform scale).
+   */
+  boneSlotTransforms: Map<string, { x: number; y: number; z: number; scale: number }>;
   /** Cached animation state — used by the renderer for per-frame pose evaluation. */
   animationState: AnimationStateData | null;
   /** Wall-clock ms when animationState was last updated — used to extrapolate ticksIntoAction between server ticks. */
@@ -141,6 +153,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     voxelMeshes: null,
     boneGroups: null,
     attachments: new Map(),
+    boneSlotTransforms: new Map(),
     animationState: state.animationState ?? null,
     lastAnimUpdateMs: performance.now(),
     velocityX: state.velocity?.x ?? 0,
@@ -175,22 +188,24 @@ function createPlaceholder(
 // ---- internal helpers ----
 
 function clearMeshContent(mesh: EntityMeshGroup): void {
-  if (mesh.placeholder) {
-    mesh.group.remove(mesh.placeholder.body, mesh.placeholder.dir);
-    (mesh.placeholder.body.material as THREE.Material).dispose();
-    (mesh.placeholder.dir.material as THREE.Material).dispose();
-    mesh.placeholder = null;
+  // 1. Detach and dispose all attachment anchors first — before bone groups, to
+  //    avoid the bone-hierarchy traverse visiting already-detached anchors.
+  //    Bone-parented anchors use removeFromParent() since their parent is a bone
+  //    group, not the entity root.
+  for (const [, slot] of mesh.attachments) {
+    slot.anchor.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        (obj.material as THREE.Material).dispose();
+        obj.geometry.dispose();
+      }
+    });
+    slot.anchor.removeFromParent();
   }
-  if (mesh.voxelMeshes) {
-    for (const m of mesh.voxelMeshes) {
-      m.parent?.remove(m);
-      (m.material as THREE.Material).dispose();
-      m.geometry.dispose();
-    }
-    mesh.voxelMeshes = null;
-  }
+  mesh.attachments.clear();
+  mesh.boneSlotTransforms.clear();
+
+  // 2. Bone hierarchy — traverse disposes body-part voxels inside bone groups.
   if (mesh.boneGroups) {
-    // Remove all root-level bone groups from entity group; children are removed with them
     for (const [, bg] of mesh.boneGroups) {
       if (bg.parent === mesh.group) mesh.group.remove(bg);
     }
@@ -202,25 +217,34 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
     });
     mesh.boneGroups = null;
     mesh.skeletonId = null;
+    // voxelMeshes are children of bones — already disposed above.
+    mesh.voxelMeshes = null;
   }
-  // Dispose all attachment anchors and their model voxels.
-  // Anchors are direct children of mesh.group (not part of the bone hierarchy).
-  for (const [, slot] of mesh.attachments) {
-    slot.anchor.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        (obj.material as THREE.Material).dispose();
-        obj.geometry.dispose();
-      }
-    });
-    mesh.group.remove(slot.anchor);
+
+  // 3. Static voxel mode (no skeleton).
+  if (mesh.voxelMeshes) {
+    for (const m of mesh.voxelMeshes) {
+      m.parent?.remove(m);
+      (m.material as THREE.Material).dispose();
+      m.geometry.dispose();
+    }
+    mesh.voxelMeshes = null;
   }
-  mesh.attachments.clear();
+
+  // 4. Placeholder.
+  if (mesh.placeholder) {
+    mesh.group.remove(mesh.placeholder.body, mesh.placeholder.dir);
+    (mesh.placeholder.body.material as THREE.Material).dispose();
+    (mesh.placeholder.dir.material as THREE.Material).dispose();
+    mesh.placeholder = null;
+  }
 }
 
 function buildVoxelMesh(
   node: { x: number; y: number; z: number; materialId: number },
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
+  onTop = false,
 ): THREE.Mesh {
   const matDef = materials.get(node.materialId);
   const color = matDef ? matDef.color : 0x888888;
@@ -240,6 +264,11 @@ function buildVoxelMesh(
     flatShading: true,
     shininess,
     emissive,
+    // Armor voxels that overlay body-part voxels at the same position use
+    // polygonOffset so they render cleanly on top without z-fighting.
+    polygonOffset: onTop,
+    polygonOffsetFactor: onTop ? -1 : 0,
+    polygonOffsetUnits:  onTop ? -4 : 0,
   }));
   vox.position.set(px, py, pz);
   vox.castShadow = true;
@@ -443,10 +472,9 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
 // ---- item attachment slots ----
 
 /**
- * Return the anchor Group for a slot, creating it if this is the first call.
- * The anchor is a direct child of mesh.group (entity root) — not parented to
- * any bone.  The renderer positions it each frame from the swing path (during
- * attacks) or from the rest-bone world position (idle/walk).
+ * Return the anchor Group for an entity-root slot, creating it if needed.
+ * Entity-root anchors are direct children of mesh.group and are repositioned
+ * every frame by the renderer (swing path or bone world-position follow).
  */
 export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): AttachmentSlot {
   let slot = mesh.attachments.get(slotId);
@@ -454,7 +482,48 @@ export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): Attachm
     const anchor = new THREE.Group();
     anchor.name = `attachment:${slotId}`;
     mesh.group.add(anchor);
-    slot = { anchor, modelId: null };
+    slot = { anchor, modelId: null, boneParented: false };
+    mesh.attachments.set(slotId, slot);
+  }
+  return slot;
+}
+
+/**
+ * Return the anchor Group for a bone-parented slot, creating it if needed.
+ * Bone-parented anchors are children of the given bone group — Three.js
+ * propagates the bone's world transform automatically so no per-frame
+ * positioning is required.  The anchor is positioned/scaled to match the
+ * body-part sub-object on that bone (offset and sub-scale applied here).
+ *
+ * @param boneGroup  The bone THREE.Group to parent the anchor to.
+ * @param posX/Y/Z   Model-space offset of the sub-object on this bone
+ *                   (converted to Three.js space via the entity scale).
+ * @param entityScale  Entity scale (from ModelRef).
+ * @param subScale   Uniform sub-object scale multiplier (e.g. 0.5 for arms/legs).
+ */
+export function ensureBoneAttachment(
+  mesh: EntityMeshGroup,
+  slotId: string,
+  boneGroup: THREE.Group,
+  posX: number, posY: number, posZ: number,
+  entityScale: { x: number; y: number; z: number },
+  subScale: number,
+): AttachmentSlot {
+  let slot = mesh.attachments.get(slotId);
+  if (!slot) {
+    const anchor = new THREE.Group();
+    anchor.name = `attachment:${slotId}`;
+    // Apply sub-object offset in Three.js coordinate space (model z=up → Three y).
+    anchor.position.set(
+      posX * entityScale.x,
+      posZ * entityScale.z,
+      posY * entityScale.y,
+    );
+    // Store subScale on the anchor's userData so syncEquipment can read it
+    // when building the armor model voxels at the correct scale.
+    anchor.userData.armorSubScale = subScale;
+    boneGroup.add(anchor);
+    slot = { anchor, modelId: null, boneParented: true };
     mesh.attachments.set(slotId, slot);
   }
   return slot;
@@ -463,7 +532,11 @@ export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): Attachm
 /**
  * Build model voxels for a slot and add them as children of its anchor.
  * Replaces any previously loaded model for this slot cleanly.
- * Creates the slot anchor if it does not yet exist.
+ * Creates the slot anchor if it does not yet exist (entity-root only;
+ * for bone-parented slots, call ensureBoneAttachment first).
+ *
+ * @param onTop  When true, enables polygonOffset so voxels render on top of
+ *               any co-located body-part voxels without z-fighting.
  */
 export function attachModelToSlot(
   mesh: EntityMeshGroup,
@@ -471,6 +544,7 @@ export function attachModelToSlot(
   modelDef: ModelDefinition,
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
+  onTop = false,
 ): void {
   const slot = ensureAttachment(mesh, slotId);
   detachModelFromSlot(mesh, slotId);   // clear previous model first
@@ -478,7 +552,39 @@ export function attachModelToSlot(
   const modelGroup = new THREE.Group();
   modelGroup.name = `model:${modelDef.id}`;
   for (const node of modelDef.nodes) {
-    modelGroup.add(buildVoxelMesh(node, materials, scale));
+    modelGroup.add(buildVoxelMesh(node, materials, scale, onTop));
+  }
+  slot.anchor.add(modelGroup);
+  slot.modelId = modelDef.id;
+}
+
+/**
+ * Like attachModelToSlot but for bone-parented slots whose anchor was created
+ * by ensureBoneAttachment.  Reads armorSubScale from anchor.userData to build
+ * voxels at the correct sub-object scale.  Always enables onTop polygonOffset.
+ */
+export function attachArmorToSlot(
+  mesh: EntityMeshGroup,
+  slotId: string,
+  modelDef: ModelDefinition,
+  materials: Map<number, MaterialDef>,
+  entityScale: { x: number; y: number; z: number },
+): void {
+  const slot = mesh.attachments.get(slotId);
+  if (!slot) return; // ensureBoneAttachment must be called first
+  detachModelFromSlot(mesh, slotId);
+
+  const subScale: number = slot.anchor.userData.armorSubScale ?? 1;
+  const armorScale = {
+    x: entityScale.x * subScale,
+    y: entityScale.y * subScale,
+    z: entityScale.z * subScale,
+  };
+
+  const modelGroup = new THREE.Group();
+  modelGroup.name = `model:${modelDef.id}`;
+  for (const node of modelDef.nodes) {
+    modelGroup.add(buildVoxelMesh(node, materials, armorScale, true));
   }
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
