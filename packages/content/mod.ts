@@ -63,6 +63,10 @@ export type {
 export type { Vec3 } from "./src/sweep_math.ts";
 export { localToWorld, evaluateSwingPath, deriveTip, segSegDistSq } from "./src/sweep_math.ts";
 
+// ---- IK solver (shared server + client) ----
+export type { BoneRotation, Quat } from "./src/ik_solver.ts";
+export { solveTwoBoneIK, quatFromEulerXYZ, applyQuat } from "./src/ik_solver.ts";
+
 // ---- ModelRef ECS component ----
 export { ModelRef } from "./src/component.ts";
 
