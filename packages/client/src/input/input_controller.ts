@@ -2,8 +2,16 @@
 /**
  * Converts keyboard + mouse state into MovementDatagram values each frame.
  *
- * Movement: WASD / arrow keys → normalised (movementX, movementY).
- * Facing:   mouse position relative to player screen position → angle in radians.
+ * Movement: WASD / arrow keys → normalised (movementX, movementY) in world space.
+ *   W = forward  (toward mouse cursor / facing direction)
+ *   S = backward (away from mouse cursor)
+ *   A = strafe left  (90° CCW from facing)
+ *   D = strafe right (90° CW  from facing)
+ *   Per-key world-space contributions are accumulated then normalised, so
+ *   diagonal movement (W+D) is automatically capped at unit length.
+ *
+ * Facing:   mouse position relative to player screen position → world-space angle
+ *           in radians (atan2 with π/4 isometric adjustment).
  * Actions:  bitfield accumulated each frame; one-shot actions (jump, interact)
  *           fire once and clear; held actions (block) remain while key is held.
  *
@@ -88,12 +96,19 @@ export class InputController {
 
   /** Called by the game loop at input frequency (~60 Hz). Consumes one-shot actions. */
   buildDatagram(seq: number, tick: number): MovementDatagram {
+    // World-space forward and right unit vectors derived from the current facing angle.
+    // facing is the world-space angle (radians) from positive X toward the mouse cursor.
+    const fwdX =  Math.cos(this.facing);  // forward = direction entity is looking
+    const fwdY =  Math.sin(this.facing);
+    const rgtX =  Math.sin(this.facing);  // right = 90° clockwise from forward
+    const rgtY = -Math.cos(this.facing);
+
     let movX = 0;
     let movY = 0;
-    if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    movY -= 1;
-    if (this.keys.has("KeyS") || this.keys.has("ArrowDown"))  movY += 1;
-    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft"))  movX -= 1;
-    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) movX += 1;
+    if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    { movX += fwdX; movY += fwdY; }
+    if (this.keys.has("KeyS") || this.keys.has("ArrowDown"))  { movX -= fwdX; movY -= fwdY; }
+    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) { movX += rgtX; movY += rgtY; }
+    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft"))  { movX -= rgtX; movY -= rgtY; }
 
     const len = Math.sqrt(movX * movX + movY * movY);
     if (len > 0) { movX /= len; movY /= len; }
