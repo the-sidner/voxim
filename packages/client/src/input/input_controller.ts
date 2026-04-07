@@ -100,15 +100,15 @@ export class InputController {
     // facing is the world-space angle (radians) from positive X toward the mouse cursor.
     const fwdX =  Math.cos(this.facing);  // forward = direction entity is looking
     const fwdY =  Math.sin(this.facing);
-    const rgtX =  Math.sin(this.facing);  // right = 90° clockwise from forward
+    const rgtX =  Math.sin(this.facing);  // left = 90° clockwise from forward (world Y flipped in iso)
     const rgtY = -Math.cos(this.facing);
 
     let movX = 0;
     let movY = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    { movX += fwdX; movY += fwdY; }
     if (this.keys.has("KeyS") || this.keys.has("ArrowDown"))  { movX -= fwdX; movY -= fwdY; }
-    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) { movX += rgtX; movY += rgtY; }
-    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft"))  { movX -= rgtX; movY -= rgtY; }
+    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft"))  { movX += rgtX; movY += rgtY; }
+    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) { movX -= rgtX; movY -= rgtY; }
 
     const len = Math.sqrt(movX * movX + movY * movY);
     if (len > 0) { movX /= len; movY /= len; }
