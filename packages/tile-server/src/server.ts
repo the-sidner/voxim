@@ -21,7 +21,7 @@ import { TileEvents, binaryStateMessageCodec, COMPONENT_NAME_TO_TYPE, ACTION_BLO
 
 // Bits that represent held keys — use latest-wins rather than OR across the tick.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
-import type { BinaryComponentDelta, GameEvent, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
+import type { BinaryComponentDelta, CommandPayload, GameEvent, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
 import { loadContentStore, type ContentStore } from "@voxim/content";
 import { ClientSession } from "./session.ts";
@@ -288,36 +288,41 @@ export class TileServer {
     const _t0 = performance.now();
     const _sysMs: [string, number][] = [];
     // ── 1. DRAIN INPUT BUFFERS ──────────────────────────────────────────────
-    // Apply latest input from each player as an immediate write to InputState.
-    // Movement/facing: latest-wins (continuous).
-    // Actions: OR across all inputs in the tick — one-shot actions (attack, jump,
-    // interact) fire in a single client frame; taking only the latest would drop
-    // them when 3 client frames arrive per server tick (60 Hz client / 20 Hz server).
+    // MovementDatagrams → InputState (latest-wins for movement, OR for one-shot actions).
+    // CommandDatagrams  → pendingCommands map (ordered, processed by systems this tick).
+    const pendingCommands = new Map<string, CommandPayload[]>();
     for (const [playerId, session] of this.sessions) {
       if (!this.world.isAlive(playerId)) continue;
+
+      // Drain movement datagrams into InputState.
       const inputs = session.inputBuffer.drain();
-      if (inputs.length === 0) continue;
-      const latest = inputs[inputs.length - 1];
-      // One-shot bits: OR across all frames so a click in any frame isn't dropped.
-      // Held bits: take from latest frame only — releasing a key before tick end
-      // must not be reported as still held.
-      let oneShots = 0;
-      for (const inp of inputs) oneShots |= inp.actions;
-      const mergedActions = (oneShots & ~HELD_ACTION_MASK) | (latest.actions & HELD_ACTION_MASK);
-      this.world.write(playerId, InputState, {
-        facing: latest.facing,
-        movementX: latest.movementX,
-        movementY: latest.movementY,
-        actions: mergedActions,
-        seq: latest.seq,
-        timestamp: latest.timestamp,
-        interactSlot: latest.interactSlot,
-      });
+      if (inputs.length > 0) {
+        const latest = inputs[inputs.length - 1];
+        // One-shot bits: OR across all frames so a click in any frame isn't dropped.
+        // Held bits: take from latest frame only — releasing a key before tick end
+        // must not be reported as still held.
+        let oneShots = 0;
+        for (const inp of inputs) oneShots |= inp.actions;
+        const mergedActions = (oneShots & ~HELD_ACTION_MASK) | (latest.actions & HELD_ACTION_MASK);
+        this.world.write(playerId, InputState, {
+          facing: latest.facing,
+          movementX: latest.movementX,
+          movementY: latest.movementY,
+          actions: mergedActions,
+          seq: latest.seq,
+          timestamp: latest.timestamp,
+        });
+      }
+
+      // Drain command queue into pendingCommands map.
+      if (session.commandQueue.length > 0) {
+        pendingCommands.set(playerId, session.commandQueue.splice(0));
+      }
     }
 
     // ── 2. RUN SYSTEMS ──────────────────────────────────────────────────────
     this.spatial.rebuild(this.world);
-    const ctx: TickContext = { spatial: this.spatial };
+    const ctx: TickContext = { spatial: this.spatial, pendingCommands };
     const deferredEvents = new DeferredEventQueue();
     for (const system of this.systems) {
       const _st = performance.now();

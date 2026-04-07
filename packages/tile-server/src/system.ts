@@ -1,4 +1,5 @@
 import type { World } from "@voxim/engine";
+import type { CommandPayload } from "@voxim/protocol";
 import type { SpatialGrid } from "./spatial_grid.ts";
 
 /**
@@ -17,6 +18,15 @@ export interface EventEmitter {
 export interface TickContext {
   /** Chunk-aligned spatial index, rebuilt from all Position components each tick. */
   spatial: SpatialGrid;
+
+  /**
+   * Commands received from players this tick, keyed by player entity ID.
+   * Populated from CommandDatagrams before systems run; cleared after all systems run.
+   * Systems that consume commands must implement prepare() to cache this reference
+   * and process it during run(). The map itself is read-only — only the server
+   * tick loop may add or remove entries.
+   */
+  pendingCommands: ReadonlyMap<string, CommandPayload[]>;
 }
 
 /**

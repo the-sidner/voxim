@@ -320,25 +320,50 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
 };
 
 // ---- Equipment --------------------------------------------------------------
-// { weapon: InventorySlot|null, armor: InventorySlot|null }
+// All seven equipment slots. Wire order is fixed — never reorder.
+// Present/absent encoded as u8 flag (1 = slot occupied, 0 = empty) before each slot.
 
 export interface EquipmentData {
-  weapon: InventorySlot | null;
-  armor: InventorySlot | null;
+  weapon:  InventorySlot | null;
+  offHand: InventorySlot | null;
+  head:    InventorySlot | null;
+  chest:   InventorySlot | null;
+  legs:    InventorySlot | null;
+  feet:    InventorySlot | null;
+  back:    InventorySlot | null;
+}
+
+function writeSlot(w: WireWriter, slot: InventorySlot | null): void {
+  if (slot !== null) { w.writeU8(1); writeInventorySlot(w, slot); } else { w.writeU8(0); }
+}
+
+function readSlot(r: WireReader): InventorySlot | null {
+  return r.readU8() ? readInventorySlot(r) : null;
 }
 
 export const equipmentCodec: Serialiser<EquipmentData> = {
   encode(v: EquipmentData): Uint8Array {
     const w = new WireWriter();
-    if (v.weapon !== null) { w.writeU8(1); writeInventorySlot(w, v.weapon); } else { w.writeU8(0); }
-    if (v.armor !== null)  { w.writeU8(1); writeInventorySlot(w, v.armor);  } else { w.writeU8(0); }
+    writeSlot(w, v.weapon);
+    writeSlot(w, v.offHand);
+    writeSlot(w, v.head);
+    writeSlot(w, v.chest);
+    writeSlot(w, v.legs);
+    writeSlot(w, v.feet);
+    writeSlot(w, v.back);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): EquipmentData {
     const r = new WireReader(bytes);
-    const weapon = r.readU8() ? readInventorySlot(r) : null;
-    const armor  = r.readU8() ? readInventorySlot(r) : null;
-    return { weapon, armor };
+    return {
+      weapon:  readSlot(r),
+      offHand: readSlot(r),
+      head:    readSlot(r),
+      chest:   readSlot(r),
+      legs:    readSlot(r),
+      feet:    readSlot(r),
+      back:    readSlot(r),
+    };
   },
 };
 

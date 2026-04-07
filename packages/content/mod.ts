@@ -29,6 +29,7 @@ export type {
   ItemSlotDef,
   DerivedItemStats,
   ItemTemplate,
+  EquipSlot,
   RecipeInput,
   Recipe,
   StructureMaterial,

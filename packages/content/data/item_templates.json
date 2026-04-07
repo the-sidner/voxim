@@ -104,6 +104,7 @@
   {
     "id": "wooden_sword",
     "category": "weapon",
+    "equipSlot": "weapon",
     "stackable": false,
     "weight": 2.0,
     "slots": [],
@@ -119,6 +120,7 @@
   {
     "id": "stone_axe",
     "category": "weapon",
+    "equipSlot": "weapon",
     "stackable": false,
     "weight": 3.5,
     "slots": [],
@@ -135,6 +137,7 @@
   {
     "id": "sword",
     "category": "weapon",
+    "equipSlot": "weapon",
     "stackable": false,
     "weight": 0.5,
     "slots": [
@@ -168,6 +171,7 @@
   {
     "id": "axe",
     "category": "weapon",
+    "equipSlot": "weapon",
     "stackable": false,
     "weight": 0.5,
     "slots": [
@@ -203,6 +207,7 @@
   {
     "id": "spear",
     "category": "weapon",
+    "equipSlot": "weapon",
     "stackable": false,
     "weight": 0.5,
     "slots": [
@@ -235,6 +240,7 @@
   {
     "id": "chestplate",
     "category": "armor",
+    "equipSlot": "chest",
     "stackable": false,
     "weight": 1.0,
     "slots": [
@@ -291,6 +297,7 @@
   {
     "id": "helmet",
     "category": "armor",
+    "equipSlot": "head",
     "stackable": false,
     "weight": 0.5,
     "slots": [
@@ -310,6 +317,54 @@
       "staminaRegenPenalty": 0.0
     },
     "modelTemplateId": "model_helmet"
+  },
+  {
+    "id": "leggings",
+    "category": "armor",
+    "equipSlot": "legs",
+    "stackable": false,
+    "weight": 0.8,
+    "slots": [
+      {
+        "id": "shell",
+        "materialCategories": ["metal", "leather"],
+        "statContributions": [
+          { "stat": "armorReduction",       "property": "toughness",   "multiplier": 0.2 },
+          { "stat": "staminaRegenPenalty",  "property": "density",     "multiplier": 0.15 },
+          { "stat": "weight",               "property": "density",     "multiplier": 3.5 }
+        ],
+        "modelSlotId": "shell_mat"
+      }
+    ],
+    "baseStats": {
+      "armorReduction": 0.0,
+      "staminaRegenPenalty": 0.0
+    },
+    "modelTemplateId": "model_leggings"
+  },
+  {
+    "id": "boots",
+    "category": "armor",
+    "equipSlot": "feet",
+    "stackable": false,
+    "weight": 0.4,
+    "slots": [
+      {
+        "id": "shell",
+        "materialCategories": ["metal", "leather"],
+        "statContributions": [
+          { "stat": "armorReduction",       "property": "toughness",   "multiplier": 0.1 },
+          { "stat": "staminaRegenPenalty",  "property": "density",     "multiplier": 0.08 },
+          { "stat": "weight",               "property": "density",     "multiplier": 1.5 }
+        ],
+        "modelSlotId": "shell_mat"
+      }
+    ],
+    "baseStats": {
+      "armorReduction": 0.0,
+      "staminaRegenPenalty": 0.0
+    },
+    "modelTemplateId": "model_boots"
   },
   {
     "id": "wolf_bite",

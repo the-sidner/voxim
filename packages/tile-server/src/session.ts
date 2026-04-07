@@ -1,16 +1,16 @@
 /// <reference path="./types/webtransport.d.ts" />
 import type { EntityId } from "@voxim/engine";
-import { InputRingBuffer } from "./input_buffer.ts";
-import { inputDatagramCodec } from "./codec/input.ts";
-import { worldSnapshotCodec, contentRequestCodec, contentResponseCodec } from "@voxim/protocol";
+import type { CommandPayload } from "@voxim/protocol";
+import { decodeDatagram, worldSnapshotCodec, contentRequestCodec, contentResponseCodec } from "@voxim/protocol";
 import type { WorldSnapshot, ContentRequest, ContentResponse } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
+import { InputRingBuffer } from "./input_buffer.ts";
 
 /**
  * Per-connection state for one connected client.
  *
  * Three concurrent activities:
- *   1. receiveInputs()  — reads input datagrams, pushes to inputBuffer
+ *   1. receiveInputs()  — reads datagrams, routes to inputBuffer (movement) or commandQueue (commands)
  *   2. sendState()      — called by tick loop, reliable unidirectional stream
  *   3. sendSnapshot()   — called by tick loop, unreliable datagram
  *   4. serveContent()   — serves the client-opened content bidi stream
@@ -18,6 +18,14 @@ import type { ContentStore } from "@voxim/content";
 export class ClientSession {
   readonly playerId: EntityId;
   readonly inputBuffer: InputRingBuffer;
+
+  /**
+   * Commands received this session since the last tick drain.
+   * The tick loop drains this each tick to build the pendingCommands TickContext entry.
+   * Commands are appended in arrival order; the server processes them in order.
+   */
+  readonly commandQueue: CommandPayload[] = [];
+
   /** Entities this session currently knows about — used for AoI spawn/despawn tracking. */
   readonly knownEntities: Set<EntityId> = new Set();
 
@@ -51,8 +59,11 @@ export class ClientSession {
   // ── receive ──────────────────────────────────────────────────────────────
 
   /**
-   * Concurrent input receiver — reads datagrams from the WebTransport session
-   * and pushes them to the input ring buffer.
+   * Concurrent datagram receiver — reads datagrams from the WebTransport session
+   * and routes them by type:
+   *   - MovementDatagram (type=1) → inputBuffer (ring buffer, latest-wins)
+   *   - CommandDatagram  (type=2) → commandQueue (ordered, drained each tick)
+   *   - Unknown type              → silently discarded
    */
   async receiveInputs(session: WebTransportSession): Promise<void> {
     const reader = (session.datagrams.readable as ReadableStream<Uint8Array>).getReader();
@@ -60,9 +71,15 @@ export class ClientSession {
       while (!this._closed) {
         const { value, done } = await reader.read();
         if (done) break;
-        if (!value || value.byteLength < 36) continue;
+        if (!value || value.byteLength === 0) continue;
         try {
-          this.inputBuffer.push(inputDatagramCodec.decode(value));
+          const decoded = decodeDatagram(value);
+          if (decoded.kind === "movement") {
+            this.inputBuffer.push(decoded.data);
+          } else if (decoded.kind === "command") {
+            this.commandQueue.push(decoded.data.command);
+          }
+          // decoded.kind === "unknown" is silently discarded
         } catch {
           // Malformed datagram — discard silently
         }

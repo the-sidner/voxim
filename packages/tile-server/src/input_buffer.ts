@@ -1,9 +1,9 @@
-import type { InputDatagram } from "@voxim/protocol";
+import type { MovementDatagram } from "@voxim/protocol";
 
 const DEFAULT_CAPACITY = 128;
 
 /**
- * Per-player input ring buffer.
+ * Per-player movement datagram ring buffer.
  *
  * The input receiver loop pushes datagrams in concurrently as they arrive.
  * The tick loop drains the buffer at the start of each tick.
@@ -12,7 +12,7 @@ const DEFAULT_CAPACITY = 128;
  * catch up by draining a larger buffer. Latest-wins semantics apply within a tick.
  */
 export class InputRingBuffer {
-  private buf: Array<InputDatagram | undefined>;
+  private buf: Array<MovementDatagram | undefined>;
   private head = 0;
   private tail = 0;
   private size = 0;
@@ -21,7 +21,7 @@ export class InputRingBuffer {
     this.buf = new Array(capacity);
   }
 
-  push(input: InputDatagram): void {
+  push(input: MovementDatagram): void {
     if (this.size === this.buf.length) {
       // Full — drop oldest to make room
       this.tail = (this.tail + 1) % this.buf.length;
@@ -33,8 +33,8 @@ export class InputRingBuffer {
   }
 
   /** Remove and return all buffered inputs in arrival order. */
-  drain(): InputDatagram[] {
-    const result: InputDatagram[] = [];
+  drain(): MovementDatagram[] {
+    const result: MovementDatagram[] = [];
     while (this.size > 0) {
       result.push(this.buf[this.tail]!);
       this.buf[this.tail] = undefined;

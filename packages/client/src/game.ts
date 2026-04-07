@@ -21,7 +21,10 @@ import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_stor
 import type { UIAction } from "./ui/ui_actions.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
 import { setDebugLayer } from "./ui/debug_store.ts";
-import { ACTION_USE_SKILL, hasAction } from "@voxim/protocol";
+import { ACTION_USE_SKILL, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
+import type { CommandPayload } from "@voxim/protocol";
+import type { EquipmentData, InventoryData } from "@voxim/codecs";
+import type { EquipmentState, InventoryState, ItemStack } from "./ui/ui_store.ts";
 import weaponActionsData from "../../content/data/weapon_actions.json" with { type: "json" };
 import itemTemplatesData from "../../content/data/item_templates.json" with { type: "json" };
 
@@ -49,6 +52,7 @@ export class VoximGame {
   private animFrameId = 0;
   private playerId: string | null = null;
   private inputSeq = 0;
+  private commandSeq = 0;
   private serverTick = 0;
   private running = false;
 
@@ -108,9 +112,11 @@ export class VoximGame {
           if (this.loadingComplete) this.renderer?.updateEntity(entityId, state);
         }
         if (entityId === this.playerId) {
-          if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
-          if (state.stamina) patchUI({ stamina: { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
-          if (state.hunger)  patchUI({ hunger:  { value: state.hunger.value } });
+          if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
+          if (state.stamina)   patchUI({ stamina:   { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
+          if (state.hunger)    patchUI({ hunger:    { value: state.hunger.value } });
+          if (state.equipment) patchUI({ equipment: mapEquipmentToUI(state.equipment) });
+          if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory) });
         }
       }
 
@@ -217,9 +223,11 @@ export class VoximGame {
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap) this.terrainChunksReceived++;
       if (entityId === this.playerId) {
-        if (state.health)  patchUI({ health:  { current: state.health.current, max: state.health.max } });
-        if (state.stamina) patchUI({ stamina: { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
-        if (state.hunger)  patchUI({ hunger:  { value: state.hunger.value } });
+        if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
+        if (state.stamina)   patchUI({ stamina:   { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
+        if (state.hunger)    patchUI({ hunger:    { value: state.hunger.value } });
+        if (state.equipment) patchUI({ equipment: mapEquipmentToUI(state.equipment) });
+        if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory) });
       }
     }
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
@@ -242,7 +250,7 @@ export class VoximGame {
     if (!this.running) return;
     if (this.input) {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
-      this.connection.sendInput(datagram);
+      this.connection.sendMovement(datagram);
       recordInput(datagram);
       if (hasAction(datagram.actions, ACTION_USE_SKILL)) {
         // Use the last server-confirmed attack params so the prediction matches the
@@ -273,6 +281,14 @@ export class VoximGame {
   }
 
   /**
+   * Send a CommandDatagram to the server.
+   * Uses a separate monotonically increasing sequence space from movement datagrams.
+   */
+  private _sendCommand(command: CommandPayload): void {
+    this.connection.sendCommand({ seq: ++this.commandSeq, command });
+  }
+
+  /**
    * Translate UI intents into server messages.
    * This is the single bridge between the UI layer and game logic.
    */
@@ -281,16 +297,38 @@ export class VoximGame {
       case "respawn":
         // TODO: send respawn request to server
         break;
+
       case "debug_toggle": {
         const on = this.toggleDebug(action.layer);
         setDebugLayer(action.layer, on);
         break;
       }
+
       case "equip":
-      case "unequip":
+        this._sendCommand({ cmd: CommandType.Equip, fromInventorySlot: action.fromSlot });
+        break;
+
+      case "unequip": {
+        const slotIndex = EQUIP_SLOT_NAMES.indexOf(action.slot as typeof EQUIP_SLOT_NAMES[number]);
+        if (slotIndex !== -1) {
+          this._sendCommand({ cmd: CommandType.Unequip, equipSlot: slotIndex as EquipSlotIndex });
+        }
+        break;
+      }
+
       case "move_item":
+        this._sendCommand({ cmd: CommandType.MoveItem, fromSlot: action.fromSlot, toSlot: action.toSlot });
+        break;
+
       case "drop_item":
+        this._sendCommand({ cmd: CommandType.DropItem, fromSlot: action.fromSlot });
+        break;
+
       case "use_item":
+        this._sendCommand({ cmd: CommandType.UseItem, fromSlot: action.fromSlot });
+        break;
+
+      // Not yet implemented — log for discoverability during development.
       case "split_stack":
       case "hotbar_assign":
       case "hotbar_use":
@@ -302,8 +340,7 @@ export class VoximGame {
       case "dialogue_choice":
       case "dialogue_close":
       case "rebind_key":
-        // TODO: translate each action type to the appropriate server message
-        console.debug("[UIAction]", action);
+        console.debug("[UIAction unhandled]", action);
         break;
     }
   }
@@ -390,3 +427,55 @@ export class VoximGame {
 }
 
 // ---- helpers ----
+
+/**
+ * Convert an itemType id (e.g. "wooden_sword") to a display label ("Wooden Sword").
+ * Used wherever a human-readable item name is needed client-side.
+ */
+function humanizeItemType(id: string): string {
+  return id
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
+ * Map a server EquipmentData into the EquipmentState shape the UI expects.
+ * Inventory slots with null become null equipment slots.
+ */
+function mapEquipmentToUI(eq: EquipmentData): EquipmentState {
+  function toStack(slot: EquipmentData["weapon"]): ItemStack | null {
+    if (!slot) return null;
+    return {
+      itemType: slot.itemType,
+      quantity: slot.quantity,
+      displayName: humanizeItemType(slot.itemType),
+      modelTemplateId: null, // resolved lazily by content cache when needed
+    };
+  }
+  return {
+    weapon:  toStack(eq.weapon),
+    offHand: toStack(eq.offHand),
+    head:    toStack(eq.head),
+    chest:   toStack(eq.chest),
+    legs:    toStack(eq.legs),
+    feet:    toStack(eq.feet),
+    back:    toStack(eq.back),
+  };
+}
+
+/**
+ * Map a server InventoryData into the InventoryState shape the UI expects.
+ * The slots array is padded to capacity with nulls so the grid always renders
+ * the correct number of cells regardless of how many items are present.
+ */
+function mapInventoryToUI(inv: InventoryData): InventoryState {
+  const slots: (ItemStack | null)[] = inv.slots.map((s) => ({
+    itemType: s.itemType,
+    quantity: s.quantity,
+    displayName: humanizeItemType(s.itemType),
+    modelTemplateId: null,
+  }));
+  while (slots.length < inv.capacity) slots.push(null);
+  return { slots, maxSlots: inv.capacity };
+}

@@ -1,13 +1,16 @@
 /// <reference lib="dom" />
 /**
- * Converts keyboard + mouse state into InputDatagram values each frame.
+ * Converts keyboard + mouse state into MovementDatagram values each frame.
  *
  * Movement: WASD / arrow keys → normalised (movementX, movementY).
  * Facing:   mouse position relative to player screen position → angle in radians.
  * Actions:  bitfield accumulated each frame; one-shot actions (jump, interact)
  *           fire once and clear; held actions (block) remain while key is held.
+ *
+ * Slot-based commands (equip, drop, move item, lore, trade) are sent as
+ * CommandDatagrams by game.ts via VoximGame._sendCommand() — not from here.
  */
-import type { InputDatagram } from "@voxim/protocol";
+import type { MovementDatagram } from "@voxim/protocol";
 import {
   ACTION_USE_SKILL,
   ACTION_BLOCK,
@@ -15,7 +18,6 @@ import {
   ACTION_INTERACT,
   ACTION_DODGE,
   ACTION_CROUCH,
-  ACTION_EQUIP,
   ACTION_CONSUME,
   ACTION_SKILL_1,
   ACTION_SKILL_2,
@@ -28,7 +30,6 @@ export class InputController {
   private facing = 0;
   /** One-shot actions accumulated between buildDatagram calls. */
   private pendingActions = 0;
-  private interactSlot = 0;
 
   private readonly _keydown: (e: KeyboardEvent) => void;
   private readonly _keyup: (e: KeyboardEvent) => void;
@@ -74,20 +75,19 @@ export class InputController {
   private handleKeyDown(e: KeyboardEvent): void {
     this.keys.add(e.code);
     switch (e.code) {
-      case "Space":     this.pendingActions |= ACTION_JUMP;     e.preventDefault(); break;
+      case "Space":     this.pendingActions |= ACTION_JUMP;        e.preventDefault(); break;
       case "KeyZ":      this.pendingActions |= ACTION_USE_SKILL;   break;
-      case "KeyE":      this.pendingActions |= ACTION_INTERACT; break;
-      case "KeyQ":      this.pendingActions |= ACTION_EQUIP;    break;
-      case "KeyC":      this.pendingActions |= ACTION_CONSUME;  break;
-      case "Digit1":    this.pendingActions |= ACTION_SKILL_1;  break;
-      case "Digit2":    this.pendingActions |= ACTION_SKILL_2;  break;
-      case "Digit3":    this.pendingActions |= ACTION_SKILL_3;  break;
-      case "Digit4":    this.pendingActions |= ACTION_SKILL_4;  break;
+      case "KeyE":      this.pendingActions |= ACTION_INTERACT;    break;
+      case "KeyC":      this.pendingActions |= ACTION_CONSUME;     break;
+      case "Digit1":    this.pendingActions |= ACTION_SKILL_1;     break;
+      case "Digit2":    this.pendingActions |= ACTION_SKILL_2;     break;
+      case "Digit3":    this.pendingActions |= ACTION_SKILL_3;     break;
+      case "Digit4":    this.pendingActions |= ACTION_SKILL_4;     break;
     }
   }
 
   /** Called by the game loop at input frequency (~60 Hz). Consumes one-shot actions. */
-  buildDatagram(seq: number, tick: number): InputDatagram {
+  buildDatagram(seq: number, tick: number): MovementDatagram {
     let movX = 0;
     let movY = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    movY -= 1;
@@ -119,12 +119,7 @@ export class InputController {
       movementX: movX,
       movementY: movY,
       actions,
-      interactSlot: this.interactSlot,
     };
-  }
-
-  setInteractSlot(slot: number): void {
-    this.interactSlot = slot;
   }
 
   dispose(): void {

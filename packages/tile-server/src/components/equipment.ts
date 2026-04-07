@@ -25,5 +25,13 @@ export type { InventorySlot };
 export const Equipment = defineComponent({
   name: "equipment" as const,
   codec: equipmentCodec,
-  default: (): EquipmentData => ({ weapon: null, armor: null }),
+  default: (): EquipmentData => ({
+    weapon:  null,
+    offHand: null,
+    head:    null,
+    chest:   null,
+    legs:    null,
+    feet:    null,
+    back:    null,
+  }),
 });

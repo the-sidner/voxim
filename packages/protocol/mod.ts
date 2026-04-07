@@ -5,7 +5,9 @@
 export type { Serialiser } from "@voxim/engine";
 
 export type {
-  InputDatagram,
+  MovementDatagram,
+  CommandDatagram,
+  CommandPayload,
   EntityDelta,
   EntityDestroyed,
   StateMessage,
@@ -25,22 +27,20 @@ export type {
 } from "./src/messages.ts";
 
 export {
+  CommandType,
+  EquipSlotIndex,
+  EQUIP_SLOT_NAMES,
   ACTION_USE_SKILL,
   ACTION_BLOCK,
   ACTION_JUMP,
   ACTION_INTERACT,
   ACTION_DODGE,
   ACTION_CROUCH,
-  ACTION_EQUIP,
   ACTION_CONSUME,
   ACTION_SKILL_1,
   ACTION_SKILL_2,
   ACTION_SKILL_3,
   ACTION_SKILL_4,
-  ACTION_TRADE_BUY,
-  ACTION_TRADE_SELL,
-  ACTION_EXTERNALISE,
-  ACTION_INTERNALISE,
   hasAction,
 } from "./src/messages.ts";
 
@@ -61,7 +61,14 @@ export type {
   LoreInternalisedPayload,
 } from "./src/tile_events.ts";
 
-export { inputDatagramCodec } from "./src/codecs.ts";
+export {
+  movementDatagramCodec,
+  commandDatagramCodec,
+  decodeDatagram,
+  DATAGRAM_TYPE_MOVEMENT,
+  DATAGRAM_TYPE_COMMAND,
+} from "./src/codecs.ts";
+export type { DecodedDatagram } from "./src/codecs.ts";
 
 export type {
   WorldSnapshot,

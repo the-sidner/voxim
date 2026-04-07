@@ -9,11 +9,11 @@
  *   4. Client sends input as unreliable datagrams.
  */
 import type {
-  InputDatagram, BinaryStateMessage, TileJoinRequest, TileJoinAck,
+  MovementDatagram, CommandDatagram, BinaryStateMessage, TileJoinRequest, TileJoinAck,
   WorldSnapshot, ContentRequest, ContentResponse,
 } from "@voxim/protocol";
 import {
-  inputDatagramCodec, binaryStateMessageCodec,
+  movementDatagramCodec, commandDatagramCodec, binaryStateMessageCodec,
   worldSnapshotCodec, contentRequestCodec, contentResponseCodec,
 } from "@voxim/protocol";
 
@@ -164,9 +164,14 @@ export class TileConnection {
     return ack.playerId;
   }
 
-  sendInput(input: InputDatagram): void {
+  sendMovement(datagram: MovementDatagram): void {
     if (!this.datagramWriter) return;
-    this.datagramWriter.write(inputDatagramCodec.encode(input)).catch(() => {});
+    this.datagramWriter.write(movementDatagramCodec.encode(datagram)).catch(() => {});
+  }
+
+  sendCommand(datagram: CommandDatagram): void {
+    if (!this.datagramWriter) return;
+    this.datagramWriter.write(commandDatagramCodec.encode(datagram)).catch(() => {});
   }
 
   /** Send a content request and return the response (in-order, pipelined). */

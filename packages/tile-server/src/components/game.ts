@@ -51,14 +51,8 @@ export interface InputStateData {
   movementY: number;
   actions: number;    // bitfield (ACTION_* from @voxim/protocol)
   seq: number;        // last drained input sequence — echoed in StateMessage.ackInputSeq
-  /** Client wall-clock (ms) from the originating InputDatagram — used for RTT estimation. */
+  /** Client wall-clock (ms) from the originating MovementDatagram — used for RTT estimation. */
   timestamp: number;
-  /**
-   * General-purpose slot index accompanying an action.
-   * TraderSystem: index into trader's listing array.
-   * DynastySystem: index into learnedFragmentIds (externalise) or inventory slot (internalise).
-   */
-  interactSlot: number;
 }
 
 export const InputState = defineComponent({
@@ -70,7 +64,6 @@ export const InputState = defineComponent({
     actions: { type: "i32" },
     seq: { type: "i32" },
     timestamp: { type: "f64" },
-    interactSlot: { type: "i32" },
   }),
   default: (): InputStateData => ({
     facing: 0,
@@ -79,7 +72,6 @@ export const InputState = defineComponent({
     actions: 0,
     seq: 0,
     timestamp: 0,
-    interactSlot: 0,
   }),
 });
 

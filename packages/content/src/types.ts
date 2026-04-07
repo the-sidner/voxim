@@ -215,6 +215,13 @@ export interface DerivedItemStats {
  * Crafted items (swords, armor) declare slots whose material contributions
  * accumulate on top of baseStats at crafting time.
  */
+/**
+ * Which equipment slot an item occupies when equipped.
+ * Matches the field names on EquipmentData in @voxim/codecs.
+ * Absent on items that cannot be equipped (resources, consumables, components).
+ */
+export type EquipSlot = "weapon" | "offHand" | "head" | "chest" | "legs" | "feet" | "back";
+
 export interface ItemTemplate {
   id: string;
   category: "weapon" | "armor" | "tool" | "consumable" | "resource" | "component";
@@ -222,6 +229,12 @@ export interface ItemTemplate {
   stackable: boolean;
   /** Base weight before material density contributions. */
   weight: number;
+  /**
+   * Which equipment slot this item occupies when equipped.
+   * Absent on items that cannot be equipped (resources, consumables, components).
+   * Note: `slots` below refers to crafting material slots — a separate concept.
+   */
+  equipSlot?: EquipSlot;
   /** Named material slots — empty for simple items. */
   slots: ItemSlotDef[];
   /** Stat values applied before slot contributions. */
