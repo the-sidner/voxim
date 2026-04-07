@@ -1001,16 +1001,12 @@ export class VoximRenderer {
             weaponAction.swingPath.keyframes, t, bladeLength,
           );
           slot.anchor.position.set(s.hiltX, s.hiltY, s.hiltZ);
-          // Orient anchor so its +Y axis (model "up", i.e. blade direction) aligns
-          // with the swing-path blade direction.  Uses a look-rotation toward the
-          // tip with a stable up-hint to avoid gimbal singularities.
+          // Orient anchor so its +Y axis (= blade direction in model space,
+          // Three.js local +Y) points from hilt toward tip.
+          // setFromUnitVectors(+Y, dir_to_tip) is exact — no gimbal issues.
           _bladeTip.set(s.tipX, s.tipY, s.tipZ);
-          _attachMat.lookAt(
-            slot.anchor.position,
-            _bladeTip,
-            _bladeUp,
-          );
-          slot.anchor.quaternion.setFromRotationMatrix(_attachMat);
+          _attachTmp.subVectors(_bladeTip, slot.anchor.position).normalize();
+          slot.anchor.quaternion.setFromUnitVectors(_bladeUp, _attachTmp);
         } else {
           // Follow hand_r: copy its world transform (position + rotation)
           // into the anchor so the weapon sits naturally in the hand.
