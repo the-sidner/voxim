@@ -21,7 +21,8 @@ import type { HeritageStore } from "./heritage_store.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { CorruptionExposure, SpeedModifier } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
-import type { ResourceNodeTemplate, SkillSlot } from "@voxim/content";
+import { Hitbox } from "./components/hitbox.ts";
+import type { ContentStore, ResourceNodeTemplate, SkillSlot } from "@voxim/content";
 
 // ---- player spawning ----
 
@@ -37,7 +38,7 @@ export interface SpawnPlayerOpts {
  * Create a player entity with all required components.
  * Heritage bonuses are applied if a dynastyId and HeritageStore are provided.
  */
-export function spawnPlayer(world: World, opts: SpawnPlayerOpts = {}): EntityId {
+export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlayerOpts = {}): EntityId {
   const id = opts.id ?? newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
@@ -83,6 +84,8 @@ export function spawnPlayer(world: World, opts: SpawnPlayerOpts = {}): EntityId 
   world.write(id, Heritage, heritage);
   world.write(id, ModelRef, { modelId: "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
   world.write(id, AnimationState, { mode: "idle", attackStyle: "", windupTicks: 0, activeTicks: 0, winddownTicks: 0, ticksIntoAction: 0 });
+  const playerHitboxDef = content.getModelHitboxDef("human_base");
+  if (playerHitboxDef) world.write(id, Hitbox, { parts: playerHitboxDef.parts });
 
   return id;
 }
@@ -109,7 +112,7 @@ export interface SpawnNpcOpts {
  * Create an NPC entity. NPCs share the same physics path as players —
  * NpcAiSystem writes their movement intent to InputState each tick.
  */
-export function spawnNpc(world: World, opts: SpawnNpcOpts = {}): EntityId {
+export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts = {}): EntityId {
   const id = newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
@@ -137,6 +140,9 @@ export function spawnNpc(world: World, opts: SpawnNpcOpts = {}): EntityId {
   const slots = opts.skillLoadout ?? [null, null, null, null];
   world.write(id, LoreLoadout, { skills: slots, learnedFragmentIds: [], skillCooldowns: slots.map(() => 0) });
   world.write(id, ActiveEffects, { effects: [] });
+  const npcModelId = opts.modelId ?? "human_base";
+  const npcHitboxDef = content.getModelHitboxDef(npcModelId);
+  if (npcHitboxDef) world.write(id, Hitbox, { parts: npcHitboxDef.parts });
 
   return id;
 }
@@ -204,6 +210,9 @@ export function spawnNode(world: World, opts: SpawnNodeOpts): EntityId {
   });
   if (opts.template.modelTemplateId) {
     world.write(id, ModelRef, { modelId: opts.template.modelTemplateId, scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
+  }
+  if (opts.template.hitbox) {
+    world.write(id, Hitbox, { parts: opts.template.hitbox.parts });
   }
 
   return id;

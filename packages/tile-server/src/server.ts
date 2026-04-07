@@ -42,8 +42,10 @@ import { ActionSystem } from "./systems/action.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { ConsumptionSystem } from "./systems/consumption.ts";
-import { BuildingSystem } from "./systems/building.ts";
-import { GatheringSystem } from "./systems/gathering.ts";
+import { ResourceNodeSystem } from "./systems/resource_node_system.ts";
+import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
+import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
+import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
 import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
@@ -193,14 +195,17 @@ export class TileServer {
       new EquipmentSystem(content),
       new CraftingSystem(content),
       new ConsumptionSystem(content),
-      new BuildingSystem(),
-      new GatheringSystem(content),
+      new ResourceNodeSystem(content),
       new DayNightSystem(content),
       new CorruptionSystem(content),
       new EncumbranceSystem(content),
       ...((): [SkillSystem, ActionSystem] => {
         const skill = new SkillSystem(content);
-        const action = new ActionSystem(this.stateHistory, tickRateHz, content, skill);
+        const action = new ActionSystem(this.stateHistory, tickRateHz, content, [
+          new HealthHitHandler(content, skill),
+          new ResourceNodeHitHandler(content),
+          new BlueprintHitHandler(),
+        ]);
         return [skill, action];
       })(),
       new BuffSystem(),
@@ -725,7 +730,7 @@ export class TileServer {
     if (layout) {
       for (const npcCfg of layout.npcs) {
         const template = content.getNpcTemplate(npcCfg.npcType) ?? undefined;
-        const id = spawnNpc(this.world, {
+        const id = spawnNpc(this.world, content, {
           x: npcCfg.x,
           y: npcCfg.y,
           name: npcCfg.name,
@@ -780,7 +785,7 @@ export class TileServer {
           if (!npcType) continue;
           const template = content.getNpcTemplate(npcType);
           if (!template) continue;
-          spawnNpc(this.world, {
+          spawnNpc(this.world, content, {
             x: wx, y: wy,
             npcType,
             name: template.displayName,
@@ -991,7 +996,7 @@ export class TileServer {
     } else {
       dynastyId = newEntityId();
       const spawn = this.content.getGameConfig().player;
-      playerId = spawnPlayer(this.world, { x: spawn.defaultSpawnX, y: spawn.defaultSpawnY, dynastyId, heritageStore: this.heritageStore });
+      playerId = spawnPlayer(this.world, this.content, { x: spawn.defaultSpawnX, y: spawn.defaultSpawnY, dynastyId, heritageStore: this.heritageStore });
       this.playerDynasties.set(playerId, dynastyId);
     }
 
