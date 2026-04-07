@@ -192,6 +192,8 @@ export interface DerivedItemStats {
   staminaCostPerSwing?: number;
   toolType?: string;
   harvestPower?: number;
+  /** Reduces blueprint ticksRemaining by this amount per hammer swing. */
+  buildPower?: number;
   /** ID of the WeaponActionDef that drives this weapon's swing phases and blade path. */
   weaponAction?: string;
   /** Blade capsule half-radius in world units — overrides WeaponSwingPath.defaultBladeRadius. */
@@ -404,6 +406,13 @@ export interface WeaponActionDef {
 export interface BodyPartVolume {
   /** Semantic name: "head", "torso", "abdomen", "legs", "body", "hindquarters", etc. */
   id: string;
+  /**
+   * If set, this capsule is bone-local rather than entity-local.
+   * AnimationSystem recomputes its world-space coordinates from the named bone's
+   * transform each tick and writes them back into the entity's Hitbox component.
+   * If absent, coordinates are entity-local and written once at spawn.
+   */
+  boneId?: string;
   fromFwd: number;
   fromRight: number;
   fromUp: number;
@@ -522,8 +531,9 @@ export interface ResourceNodeTemplate {
   /**
    * The tool type required to harvest this node efficiently.
    * Swings with the wrong tool type deal 1 hit-point (always harvestable but slow).
+   * Null means any tool (or no tool) works at full power.
    */
-  requiredToolType: string;
+  requiredToolType: string | null;
   /** Total hit points before depletion. */
   hitPoints: number;
   /** Items dropped on depletion. */
@@ -535,6 +545,12 @@ export interface ResourceNodeTemplate {
   respawnTicks: number | null;
   /** References a ModelDefinition for client-side rendering. */
   modelTemplateId?: string;
+  /**
+   * Collision geometry used by ActionSystem for hit detection.
+   * Written to the entity's Hitbox component at spawn.
+   * If absent the node cannot be hit by swings.
+   */
+  hitbox?: { parts: BodyPartVolume[] };
 }
 
 // ---- concept verb matrix ----
