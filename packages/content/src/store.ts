@@ -91,6 +91,10 @@ export interface ContentStore {
   // ---- model hitboxes ----
   getModelHitboxDef(modelTemplateId: string): ModelHitboxDef | null;
 
+  // ---- skeleton lookup by model ----
+  /** Returns the SkeletonDef associated with the given model ID, or null if none. */
+  getSkeletonForModel(modelId: string): SkeletonDef | null;
+
   // ---- verbs ----
   getVerbDef(id: SkillVerb): VerbDef | null;
 
@@ -340,6 +344,12 @@ export class StaticContentStore implements ContentStore {
 
   getModelHitboxDef(modelTemplateId: string): ModelHitboxDef | null {
     return this.modelHitboxes.get(modelTemplateId) ?? null;
+  }
+
+  getSkeletonForModel(modelId: string): SkeletonDef | null {
+    const model = this.models.get(modelId);
+    if (!model?.skeletonId) return null;
+    return this.skeletons.get(model.skeletonId) ?? null;
   }
 
   // ---- verbs ----
