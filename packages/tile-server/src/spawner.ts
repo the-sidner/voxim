@@ -55,7 +55,7 @@ export function spawnPlayer(world: World, opts: SpawnPlayerOpts = {}): EntityId 
   world.write(id, Velocity, { x: 0, y: 0, z: 0 });
   world.write(id, Facing, { angle: 0 });
   world.write(id, InputState, {
-    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0, interactSlot: 0,
+    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0,
   });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Hunger, { value: 0 });
@@ -64,7 +64,10 @@ export function spawnPlayer(world: World, opts: SpawnPlayerOpts = {}): EntityId 
   world.write(id, Stamina, { current: 100, max: 100, regenPerSecond: 8, exhausted: false });
   world.write(id, CorruptionExposure, { level: 0 });
   world.write(id, SpeedModifier, { multiplier: 1.0 });
-  world.write(id, Equipment, { weapon: { itemType: "wooden_sword", quantity: 1, parts: [] }, armor: null });
+  world.write(id, Equipment, {
+    weapon:  { itemType: "wooden_sword", quantity: 1, parts: [] },
+    offHand: null, head: null, chest: null, legs: null, feet: null, back: null,
+  });
   world.write(id, LoreLoadout, { skills: [null, null, null, null], learnedFragmentIds: [], skillCooldowns: [0, 0, 0, 0] });
   world.write(id, ActiveEffects, { effects: [] });
   world.write(id, Inventory, { slots: [], capacity: 20 });
@@ -110,7 +113,7 @@ export function spawnNpc(world: World, opts: SpawnNpcOpts = {}): EntityId {
   world.write(id, Velocity, { x: 0, y: 0, z: 0 });
   world.write(id, Facing, { angle: 0 });
   world.write(id, InputState, {
-    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0, interactSlot: 0,
+    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0,
   });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Hunger, { value: 0 });
@@ -122,7 +125,7 @@ export function spawnNpc(world: World, opts: SpawnNpcOpts = {}): EntityId {
   world.write(id, NpcJobQueue, { current: null, scheduled: [], plan: null });
   world.write(id, ModelRef, { modelId: opts.modelId ?? "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
   const weapon = opts.weaponItemType ? { itemType: opts.weaponItemType, quantity: 1, parts: [] } : null;
-  world.write(id, Equipment, { weapon, armor: null });
+  world.write(id, Equipment, { weapon, offHand: null, head: null, chest: null, legs: null, feet: null, back: null });
   world.write(id, AnimationState, { mode: "idle", attackStyle: "", windupTicks: 0, activeTicks: 0, winddownTicks: 0, ticksIntoAction: 0 });
   const slots = opts.skillLoadout ?? [null, null, null, null];
   world.write(id, LoreLoadout, { skills: slots, learnedFragmentIds: [], skillCooldowns: slots.map(() => 0) });

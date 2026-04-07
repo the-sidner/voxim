@@ -302,9 +302,10 @@ export class ActionSystem implements System {
       }
 
       const defenderEquipment = world.get(target.entityId, Equipment);
-      const defenderArmor = defenderEquipment?.armor ?? null;
-      const armorStats = defenderArmor ? this.content.deriveItemStats(defenderArmor.itemType, defenderArmor.parts) : null;
-      const armorReduction = armorStats?.armorReduction ?? 0;
+      const armorReduction = defenderEquipment
+        ? [defenderEquipment.head, defenderEquipment.chest, defenderEquipment.legs, defenderEquipment.feet, defenderEquipment.back]
+            .reduce((sum, slot) => sum + (slot ? (this.content.deriveItemStats(slot.itemType, slot.parts).armorReduction ?? 0) : 0), 0)
+        : 0;
       const blockMult = isBlocking ? combatCfg.blockDamageMultiplier : 1.0;
 
       let damage = baseDamage * damageMult * blockMult * (1 - armorReduction);

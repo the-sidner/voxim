@@ -18,9 +18,10 @@ export class StaminaSystem implements System {
       if (stamina.current >= stamina.max) continue;
 
       const equipment = world.get(entityId, Equipment);
-      const armor = equipment?.armor ?? null;
-      const armorStats = armor ? this.content.deriveItemStats(armor.itemType, armor.parts) : null;
-      const armorPenalty = armorStats?.staminaRegenPenalty ?? 0;
+      const armorPenalty = equipment
+        ? [equipment.head, equipment.chest, equipment.legs, equipment.feet, equipment.back]
+            .reduce((sum, slot) => sum + (slot ? (this.content.deriveItemStats(slot.itemType, slot.parts).staminaRegenPenalty ?? 0) : 0), 0)
+        : 0;
 
       const corruption = world.get(entityId, CorruptionExposure);
       const corruptionPenalty = (corruption && corruption.level >= corruptionCfg.staminaPenaltyThreshold)

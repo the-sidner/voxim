@@ -9,7 +9,7 @@
  * Recording can be paused so the list freezes for inspection.
  */
 import { signal } from "@preact/signals";
-import type { InputDatagram, BinaryStateMessage, WorldSnapshot } from "@voxim/protocol";
+import type { MovementDatagram, BinaryStateMessage, WorldSnapshot } from "@voxim/protocol";
 import {
   ACTION_USE_SKILL, ACTION_BLOCK, ACTION_JUMP, ACTION_INTERACT,
   ACTION_DODGE, ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4,
@@ -97,16 +97,16 @@ function activeActions(bits: number): string[] {
 // ── Public record helpers ──────────────────────────────────────────────────────
 
 /**
- * Record an outgoing InputDatagram.
- * Call from game.ts immediately after sendInput().
+ * Record an outgoing MovementDatagram.
+ * Call from game.ts immediately after sendMovement().
  */
-export function recordInput(dg: InputDatagram): void {
+export function recordInput(dg: MovementDatagram): void {
   const active = activeActions(dg.actions);
   push({
     channel: "input",
     dir:     "out",
     t:       performance.now(),
-    bytes:   36,  // fixed InputDatagram size
+    bytes:   33,  // fixed MovementDatagram size
     summary: active.length
       ? `seq=${dg.seq}  [${active.join(" ")}]`
       : `seq=${dg.seq}  mov=(${dg.movementX.toFixed(2)},${dg.movementY.toFixed(2)})`,
@@ -119,7 +119,6 @@ export function recordInput(dg: InputDatagram): void {
       movementY:   +dg.movementY.toFixed(4),
       actions:     decodeActions(dg.actions),
       actionsBits: `0x${dg.actions.toString(16).padStart(8, "0")}`,
-      interactSlot: dg.interactSlot,
     },
   });
 }
