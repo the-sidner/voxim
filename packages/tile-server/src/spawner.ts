@@ -70,7 +70,14 @@ export function spawnPlayer(world: World, opts: SpawnPlayerOpts = {}): EntityId 
   });
   world.write(id, LoreLoadout, { skills: [null, null, null, null], learnedFragmentIds: [], skillCooldowns: [0, 0, 0, 0] });
   world.write(id, ActiveEffects, { effects: [] });
-  world.write(id, Inventory, { slots: [], capacity: 20 });
+  world.write(id, Inventory, {
+    slots: [
+      { itemType: "stone_axe",      quantity: 1, parts: [] },
+      { itemType: "stone_pickaxe",  quantity: 1, parts: [] },
+      { itemType: "hammer",         quantity: 1, parts: [] },
+    ],
+    capacity: 20,
+  });
   world.write(id, CraftingQueue, { activeRecipeId: null, progressTicks: 0, queued: [] });
   world.write(id, InteractCooldown, { remaining: 0 });
   world.write(id, Heritage, heritage);
