@@ -1,12 +1,17 @@
 /**
  * HitboxDebugOverlay — visualises the server-side Hitbox capsules.
  *
- * Each BodyPartVolume is drawn as a line segment (from → to) with wireframe
- * spheres at both endpoints scaled to the capsule radius. Positions are in
- * entity-local space (fwd=+Y, right=+X, up=+Z) and are rendered in the entity
- * group's local coordinate frame via a child Object3D.
+ * Each BodyPartVolume is rendered as:
+ *   - A line segment from → to
+ *   - A cylinder hull between the endpoints (shows the actual radius)
+ *   - Small spheres at each endpoint cap
  *
- * Toggle with the "hitbox" debug layer key.
+ * For animated entities (players, NPCs) the container is parented to the
+ * entity's mesh group so it moves with the entity automatically.
+ * For static props the container is placed at world position directly in
+ * the scene.
+ *
+ * Toggle with the "hitbox" debug layer (DebugPanel → Hitbox button).
  */
 import * as THREE from "three";
 import type { EntityMeshGroup } from "./entity_mesh.ts";
@@ -14,33 +19,84 @@ import type { HitboxData } from "@voxim/codecs";
 
 // Shared geometry — not disposed per-entry.
 const SPHERE_GEO = new THREE.SphereGeometry(1, 6, 4);
+const CYLINDER_GEO = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true); // open-ended, unit size
+
+const COLOR = 0x00ffcc;
 
 const MAT_LINE = new THREE.LineBasicMaterial({
-  color: 0x00ffcc, depthTest: false, depthWrite: false,
+  color: COLOR, depthTest: false, depthWrite: false,
 });
-const MAT_SPHERE = new THREE.MeshBasicMaterial({
-  color: 0x00ffcc, wireframe: true,
-  depthTest: false, depthWrite: false, transparent: true, opacity: 0.5,
+const MAT_WIRE = new THREE.MeshBasicMaterial({
+  color: COLOR, wireframe: true,
+  depthTest: false, depthWrite: false, transparent: true, opacity: 0.35,
 });
 
 interface PartGeo {
-  line: THREE.Line;
+  line:       THREE.Line;
+  cylinder:   THREE.Mesh;
   fromSphere: THREE.Mesh;
-  toSphere: THREE.Mesh;
+  toSphere:   THREE.Mesh;
 }
 
 interface HitboxEntry {
   container: THREE.Object3D;
   parts: PartGeo[];
+  /** True when the container is owned by a scene (prop), false when parented to entity group. */
+  ownedByScene: boolean;
+  scene: THREE.Scene | null;
 }
 
-/** Convert entity-local (fwd, right, up) → Three.js local (x, y, z). */
+/** Convert entity-local (fwd, right, up) → Three.js local (right, up, −fwd). */
 function toThree(fwd: number, right: number, up: number): THREE.Vector3 {
-  // Entity group: pos.x=server.x, pos.y=server.z, pos.z=server.y
-  // Entity-local axes: right=+X, up=+Z(server)=+Y(three), fwd=+Y(server)=+Z(three) but entity faces -Z
-  // The entity mesh itself is already rotated, so within the group's local frame:
-  //   right → +x, up → +y, fwd → -z
   return new THREE.Vector3(right, up, -fwd);
+}
+
+function buildParts(hitbox: HitboxData): { container: THREE.Object3D; parts: PartGeo[] } {
+  const container = new THREE.Object3D();
+  const parts: PartGeo[] = [];
+
+  for (const part of hitbox.parts) {
+    const from = toThree(part.fromFwd, part.fromRight, part.fromUp);
+    const to   = toThree(part.toFwd,   part.toRight,   part.toUp);
+    const r    = part.radius;
+
+    // Line segment
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute([
+      from.x, from.y, from.z, to.x, to.y, to.z,
+    ], 3));
+    const line = new THREE.Line(geo, MAT_LINE.clone());
+    line.renderOrder = 998;
+
+    // Cylinder hull — orient along the segment axis
+    const mid  = new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5);
+    const len  = from.distanceTo(to);
+    const cylinder = new THREE.Mesh(CYLINDER_GEO, MAT_WIRE.clone());
+    cylinder.renderOrder = 998;
+    cylinder.position.copy(mid);
+    cylinder.scale.set(r, len > 0 ? len : 0.001, r);
+    // Rotate default Y-axis cylinder to align with from→to
+    if (len > 0.0001) {
+      const axis = new THREE.Vector3().subVectors(to, from).normalize();
+      cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis);
+    }
+
+    // Endpoint spheres
+    const fromSphere = new THREE.Mesh(SPHERE_GEO, MAT_WIRE.clone());
+    fromSphere.position.copy(from);
+    fromSphere.scale.setScalar(r);
+    fromSphere.renderOrder = 998;
+
+    const toSphere = new THREE.Mesh(SPHERE_GEO, MAT_WIRE.clone());
+    toSphere.position.copy(to);
+    toSphere.scale.setScalar(r);
+    toSphere.renderOrder = 998;
+
+    container.add(line, cylinder, fromSphere, toSphere);
+    parts.push({ line, cylinder, fromSphere, toSphere });
+  }
+
+  return { container, parts };
 }
 
 export class HitboxDebugOverlay {
@@ -55,42 +111,26 @@ export class HitboxDebugOverlay {
     return this._visible;
   }
 
-  /** Called when an entity's hitbox component changes or entity spawns. */
+  /** Animated entity — container parented to the entity's mesh group. */
   updateEntity(entityId: string, mesh: EntityMeshGroup, hitbox: HitboxData): void {
     this.removeEntry(entityId);
-
-    const container = new THREE.Object3D();
+    const { container, parts } = buildParts(hitbox);
     container.visible = this._visible;
-    const partGeos: PartGeo[] = [];
-
-    for (const part of hitbox.parts) {
-      const from = toThree(part.fromFwd, part.fromRight, part.fromUp);
-      const to   = toThree(part.toFwd,   part.toRight,   part.toUp);
-
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute([
-        from.x, from.y, from.z,
-        to.x,   to.y,   to.z,
-      ], 3));
-      const line = new THREE.Line(geo, MAT_LINE.clone());
-      line.renderOrder = 998;
-
-      const fromSphere = new THREE.Mesh(SPHERE_GEO, MAT_SPHERE.clone());
-      fromSphere.position.copy(from);
-      fromSphere.scale.setScalar(part.radius);
-      fromSphere.renderOrder = 998;
-
-      const toSphere = new THREE.Mesh(SPHERE_GEO, MAT_SPHERE.clone());
-      toSphere.position.copy(to);
-      toSphere.scale.setScalar(part.radius);
-      toSphere.renderOrder = 998;
-
-      container.add(line, fromSphere, toSphere);
-      partGeos.push({ line, fromSphere, toSphere });
-    }
-
     mesh.group.add(container);
-    this.entries.set(entityId, { container, parts: partGeos });
+    this.entries.set(entityId, { container, parts, ownedByScene: false, scene: null });
+  }
+
+  /**
+   * Static prop — container placed at world position directly in scene.
+   * Called when the entity transitions to the prop pool.
+   */
+  updateProp(entityId: string, scene: THREE.Scene, worldPos: THREE.Vector3, hitbox: HitboxData): void {
+    this.removeEntry(entityId);
+    const { container, parts } = buildParts(hitbox);
+    container.position.copy(worldPos);
+    container.visible = this._visible;
+    scene.add(container);
+    this.entries.set(entityId, { container, parts, ownedByScene: true, scene });
   }
 
   removeEntity(entityId: string): void {
@@ -104,12 +144,18 @@ export class HitboxDebugOverlay {
   private removeEntry(entityId: string): void {
     const entry = this.entries.get(entityId);
     if (!entry) return;
-    entry.container.parent?.remove(entry.container);
+    if (entry.ownedByScene) {
+      entry.scene?.remove(entry.container);
+    } else {
+      entry.container.parent?.remove(entry.container);
+    }
     for (const pg of entry.parts) {
       pg.line.geometry.dispose();
-      (pg.line.material as THREE.Material).dispose();
+      pg.cylinder.geometry.dispose();
+      (pg.line.material       as THREE.Material).dispose();
+      (pg.cylinder.material   as THREE.Material).dispose();
       (pg.fromSphere.material as THREE.Material).dispose();
-      (pg.toSphere.material  as THREE.Material).dispose();
+      (pg.toSphere.material   as THREE.Material).dispose();
     }
     this.entries.delete(entityId);
   }

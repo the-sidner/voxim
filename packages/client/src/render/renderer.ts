@@ -173,6 +173,7 @@ export class VoximRenderer {
   private readonly terrainMats    = new Map<string, MaterialGridData>();
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
   private readonly propPool: PropInstancePool;
+  private readonly propPositions  = new Map<string, THREE.Vector3>();
 
   readonly skeletonOverlay:    SkeletonOverlay;
   readonly facingOverlay:      FacingOverlay;
@@ -448,8 +449,15 @@ export class VoximRenderer {
   // ---- entities ----
 
   updateEntity(entityId: string, state: EntityState): void {
-    // Static props are fully managed by propPool after their first model load — skip.
-    if (this.propPool.hasProp(entityId)) return;
+    // Static props are fully managed by propPool after their first model load.
+    // Still update hitbox overlay if hitbox arrived after the prop was added.
+    if (this.propPool.hasProp(entityId)) {
+      if (state.hitbox) {
+        const worldPos = this.propPositions.get(entityId);
+        if (worldPos) this.hitboxDebugOverlay.updateProp(entityId, this.scene, worldPos, state.hitbox);
+      }
+      return;
+    }
 
     const isLocal = entityId === this.localPlayerId;
     let mesh = this.entityMeshes.get(entityId);
@@ -525,6 +533,11 @@ export class VoximRenderer {
           disposeEntityMesh(capture);
           this.entityMeshes.delete(entityId);
           this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale);
+          this.propPositions.set(entityId, worldPos);
+          // Wire hitbox debug overlay at world position (props have no live mesh group).
+          if (state.hitbox) {
+            this.hitboxDebugOverlay.updateProp(entityId, this.scene, worldPos, state.hitbox);
+          }
         }
       }).catch(() => {});
     }
@@ -567,6 +580,8 @@ export class VoximRenderer {
   removeEntity(entityId: string): void {
     if (this.propPool.hasProp(entityId)) {
       this.propPool.removeProp(entityId);
+      this.propPositions.delete(entityId);
+      this.hitboxDebugOverlay.removeEntity(entityId);
       return;
     }
     const mesh = this.entityMeshes.get(entityId);
