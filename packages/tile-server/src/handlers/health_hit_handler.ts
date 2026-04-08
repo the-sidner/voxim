@@ -8,6 +8,9 @@ import { Equipment } from "../components/equipment.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
 import type { SkillSystem } from "../systems/skill.ts";
+import { createLogger } from "../logger.ts";
+
+const log = createLogger("HealthHitHandler");
 
 /**
  * Handles hits on entities that have a Health component.
@@ -25,6 +28,12 @@ export class HealthHitHandler implements HitHandler {
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
     const health = world.get(ctx.targetId, Health);
     if (!health) return;
+
+    log.debug(
+      "hit: attacker=%s target=%s part=%s weapon=%s",
+      ctx.attackerId, ctx.targetId, ctx.bodyPart,
+      ctx.weaponStats.damage != null ? `dmg=${ctx.weaponStats.damage.toFixed(1)}` : "no-damage",
+    );
 
     const gameCfg = this.content.getGameConfig();
     const combatCfg = gameCfg.combat;
