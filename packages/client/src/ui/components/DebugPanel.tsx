@@ -115,6 +115,12 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
           on={overlays.blade}
           onToggle={() => toggle("blade")}
         />
+        <ToggleRow
+          label="Hitbox"
+          hint="body part capsules"
+          on={overlays.hitbox}
+          onToggle={() => toggle("hitbox")}
+        />
       </Section>
 
       {/* ── Network inspector ─────────────────────────────────────────────── */}

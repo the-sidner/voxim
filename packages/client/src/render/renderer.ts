@@ -38,6 +38,7 @@ import { evaluatePose, evaluateWeaponSlice } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
+import { HitboxDebugOverlay } from "./hitbox_debug_overlay.ts";
 import { EdgePass } from "./edge_pass.ts";
 
 /**
@@ -173,10 +174,11 @@ export class VoximRenderer {
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
   private readonly propPool: PropInstancePool;
 
-  readonly skeletonOverlay:   SkeletonOverlay;
-  readonly facingOverlay:     FacingOverlay;
-  readonly chunkOverlay:      ChunkOverlay;
-  readonly bladeDebugOverlay: BladeDebugOverlay;
+  readonly skeletonOverlay:    SkeletonOverlay;
+  readonly facingOverlay:      FacingOverlay;
+  readonly chunkOverlay:       ChunkOverlay;
+  readonly bladeDebugOverlay:  BladeDebugOverlay;
+  readonly hitboxDebugOverlay: HitboxDebugOverlay;
 
   private cameraTarget = new THREE.Vector3(256, 4, 256);
   private localPlayerId: string | null = null;
@@ -280,7 +282,8 @@ export class VoximRenderer {
     this.skeletonOverlay   = new SkeletonOverlay(this.scene);
     this.facingOverlay     = new FacingOverlay(this.scene);
     this.chunkOverlay      = new ChunkOverlay(this.scene);
-    this.bladeDebugOverlay = new BladeDebugOverlay(this.scene);
+    this.bladeDebugOverlay  = new BladeDebugOverlay(this.scene);
+    this.hitboxDebugOverlay = new HitboxDebugOverlay();
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(1);
@@ -458,6 +461,11 @@ export class VoximRenderer {
       updateEntityMesh(mesh, state);
     }
 
+    // Sync hitbox debug overlay when hitbox data is present.
+    if (state.hitbox) {
+      this.hitboxDebugOverlay.updateEntity(entityId, mesh, state.hitbox);
+    }
+
     // Upgrade to skeleton model (animated entity) or prop pool (static entity)
     // when modelRef arrives or changes.
     const modelRef = state.modelRef;
@@ -565,6 +573,7 @@ export class VoximRenderer {
     if (mesh) {
       this.skeletonOverlay.untrackEntity(entityId);
       this.bladeDebugOverlay.remove(entityId);
+      this.hitboxDebugOverlay.removeEntity(entityId);
       this.scene.remove(mesh.group);
       disposeEntityMesh(mesh);
       this.entityMeshes.delete(entityId);
@@ -1199,6 +1208,7 @@ export class VoximRenderer {
     this.facingOverlay.dispose();
     this.chunkOverlay.dispose();
     this.bladeDebugOverlay.dispose();
+    this.hitboxDebugOverlay.dispose();
     this.propPool.dispose();
     this.edgePass.dispose();
     this.pixelTarget.dispose();

@@ -41,4 +41,4 @@ export type UIAction =
   | { type: "rebind_key"; action: string; key: string }
 
   // Debug
-  | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" };
+  | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" };

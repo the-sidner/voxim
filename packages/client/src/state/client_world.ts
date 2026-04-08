@@ -10,8 +10,9 @@ import {
   positionCodec, velocityCodec, facingCodec,
   heightmapCodec, materialGridCodec,
   staminaCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
+  hitboxCodec,
 } from "@voxim/codecs";
-import type { HeightmapData, MaterialGridData, ModelRefData, AnimationStateData, EquipmentData, InventoryData } from "@voxim/codecs";
+import type { HeightmapData, MaterialGridData, ModelRefData, AnimationStateData, EquipmentData, InventoryData, HitboxData } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
 export interface VelocityState  { x: number; y: number; z: number }
@@ -33,6 +34,7 @@ export interface EntityState {
   animationState?: AnimationStateData;
   equipment?: EquipmentData;
   inventory?: InventoryData;
+  hitbox?: HitboxData;
   /** Raw bytes for components the client doesn't decode eagerly, keyed by component name. */
   raw: Map<string, Uint8Array>;
   /** Per-component version counters (component type ID → version). Stale deltas are discarded. */
@@ -102,6 +104,9 @@ export class ClientWorld {
         break;
       case ComponentType.inventory:
         entity.inventory = inventoryCodec.decode(data);
+        break;
+      case ComponentType.hitbox:
+        entity.hitbox = hitboxCodec.decode(data);
         break;
       default: {
         const name = COMPONENT_TYPE_TO_NAME.get(typeId);
