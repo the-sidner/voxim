@@ -17,6 +17,13 @@ import * as THREE from "three";
 import type { EntityMeshGroup } from "./entity_mesh.ts";
 import type { HitboxData } from "@voxim/codecs";
 
+/**
+ * Three.js layer used exclusively by the hitbox debug overlay.
+ * Objects on this layer are excluded from the main pixel-art pass (Pass 1)
+ * and rendered in a dedicated overlay pass (Pass 3) directly to the canvas.
+ */
+export const HITBOX_OVERLAY_LAYER = 31;
+
 // Shared geometry — not disposed per-entry.
 const SPHERE_GEO = new THREE.SphereGeometry(1, 6, 4);
 const CYLINDER_GEO = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true); // open-ended, unit size
@@ -95,6 +102,10 @@ function buildParts(hitbox: HitboxData): { container: THREE.Object3D; parts: Par
     container.add(line, cylinder, fromSphere, toSphere);
     parts.push({ line, cylinder, fromSphere, toSphere });
   }
+
+  // Assign all objects to the overlay layer so they are excluded from the
+  // main pixel-art pass and rendered in the dedicated overlay pass instead.
+  container.traverse((obj) => obj.layers.set(HITBOX_OVERLAY_LAYER));
 
   return { container, parts };
 }

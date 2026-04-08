@@ -38,7 +38,7 @@ import { evaluatePose, evaluateWeaponSlice } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
-import { HitboxDebugOverlay } from "./hitbox_debug_overlay.ts";
+import { HitboxDebugOverlay, HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay.ts";
 import { EdgePass } from "./edge_pass.ts";
 
 /**
@@ -851,6 +851,17 @@ export class VoximRenderer {
     // Pass 2: edge detection + height shading + sRGB blit to canvas.
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.blitScene, this.blitCamera);
+
+    // Pass 3: hitbox debug overlay — rendered directly to canvas, bypassing
+    // the pixel-art and edge-detection passes so the lines stay crisp.
+    // Objects in HITBOX_OVERLAY_LAYER are invisible to the main camera (layer 0
+    // only by default), so they never appear in pixelTarget.
+    const savedMask = this.camera.layers.mask;
+    this.camera.layers.set(HITBOX_OVERLAY_LAYER);
+    this.renderer.autoClear = false;
+    this.renderer.render(this.scene, this.camera);
+    this.renderer.autoClear = true;
+    this.camera.layers.mask = savedMask;
   }
 
   /** Register weapon action definitions so the trail renderer can look up swing paths. */
