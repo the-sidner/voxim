@@ -59,6 +59,9 @@ export type {
   TileTraderListing,
 } from "./src/types.ts";
 
+// ---- hitbox derivation (server spawn-time) ----
+export { deriveHitboxParts } from "./src/hitbox_derive.ts";
+
 // ---- sweep math (shared server + client) ----
 export type { Vec3 } from "./src/sweep_math.ts";
 export { localToWorld, evaluateSwingPath, deriveTip, segSegDistSq } from "./src/sweep_math.ts";
