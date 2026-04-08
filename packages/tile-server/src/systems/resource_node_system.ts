@@ -22,7 +22,8 @@ export class ResourceNodeSystem implements System {
 
       const remaining = rn.respawnTicksRemaining - 1;
       if (remaining <= 0) {
-        const template = this.content.getNodeTemplate(rn.nodeTypeId);
+        const entityTemplate = this.content.getEntityTemplate(rn.nodeTypeId);
+        const template = entityTemplate?.components.resourceNode;
         log.info("node respawned: entity=%s type=%s", entityId, rn.nodeTypeId);
         world.set(entityId, ResourceNode, {
           nodeTypeId: rn.nodeTypeId,

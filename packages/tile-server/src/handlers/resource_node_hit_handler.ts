@@ -27,13 +27,14 @@ export class ResourceNodeHitHandler implements HitHandler {
     if (!rn) return;
     if (rn.depleted) return;
 
-    const template = this.content.getNodeTemplate(rn.nodeTypeId);
+    const entityTemplate = this.content.getEntityTemplate(rn.nodeTypeId);
+    const rnData = entityTemplate?.components.resourceNode;
     const harvestPower = ctx.weaponStats.harvestPower ?? 1;
 
     const toolMatches =
-      template?.requiredToolType === null ||
-      template?.requiredToolType === undefined ||
-      ctx.weaponStats.toolType === template?.requiredToolType;
+      rnData?.requiredToolType === null ||
+      rnData?.requiredToolType === undefined ||
+      ctx.weaponStats.toolType === rnData?.requiredToolType;
 
     const hitDamage = toolMatches ? harvestPower : 1;
     const newHp = rn.hitPoints - hitDamage;
@@ -54,7 +55,7 @@ export class ResourceNodeHitHandler implements HitHandler {
     }
 
     // ── Node depleted ─────────────────────────────────────────────────────────
-    if (template) spawnYields(world, ctx.targetId, ctx.attackerId, template.yields, harvestPower);
+    if (rnData) spawnYields(world, ctx.targetId, ctx.attackerId, rnData.yields, harvestPower);
 
     log.info("node depleted: entity=%s type=%s by=%s", ctx.targetId, rn.nodeTypeId, ctx.attackerId);
     events.publish(TileEvents.NodeDepleted, {
@@ -63,12 +64,12 @@ export class ResourceNodeHitHandler implements HitHandler {
       harvesterId: ctx.attackerId,
     });
 
-    if (template?.respawnTicks != null) {
+    if (rnData?.respawnTicks != null) {
       world.set(ctx.targetId, ResourceNode, {
         ...rn,
         hitPoints: 0,
         depleted: true,
-        respawnTicksRemaining: template.respawnTicks,
+        respawnTicksRemaining: rnData.respawnTicks,
       });
     } else {
       world.destroy(ctx.targetId);

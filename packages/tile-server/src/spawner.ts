@@ -22,7 +22,7 @@ import { ResourceNode } from "./components/resource_node.ts";
 import { CorruptionExposure, SpeedModifier } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
-import type { ContentStore, ResourceNodeTemplate, SkillSlot } from "@voxim/content";
+import type { ContentStore, EntityTemplate, SkillSlot } from "@voxim/content";
 import { deriveHitboxParts } from "@voxim/content";
 
 // ---- player spawning ----
@@ -188,48 +188,48 @@ export function spawnProp(world: World, opts: SpawnPropOpts): EntityId {
   return id;
 }
 
-// ---- resource node spawning ----
+// ---- entity spawning ----
 
-export interface SpawnNodeOpts {
+export interface SpawnEntityOpts {
   x?: number;
   y?: number;
   z?: number;
-  template: ResourceNodeTemplate;
-  /**
-   * Procedural seed — must match ModelRef.seed so the derived hitbox covers
-   * the same sub-objects (branch variants, etc.) that the client renders.
-   * Defaults to 0.
-   */
+  template: EntityTemplate;
   seed?: number;
 }
 
-const NODE_SCALE = 0.35;
+const ENTITY_SCALE = 0.35;
 
 /**
- * Create a resource node entity from a template.
- * Position defaults to tile centre; callers should pass an explicit location.
- *
- * The hitbox capsule is derived from the model's AABB — no separate hitbox
- * definition needed on the node template.
+ * Create a world entity from an EntityTemplate.
+ * Always writes ModelRef and derives Hitbox from template.modelId.
+ * Writes ResourceNode only when template.components.resourceNode is present.
  */
-export function spawnNode(world: World, content: ContentStore, opts: SpawnNodeOpts): EntityId {
+export function spawnEntity(world: World, content: ContentStore, opts: SpawnEntityOpts): EntityId {
   const id = newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
+  const seed = opts.seed ?? 0;
 
   world.create(id);
   world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
-  world.write(id, ResourceNode, {
-    nodeTypeId: opts.template.id,
-    hitPoints: opts.template.hitPoints,
-    depleted: false,
-    respawnTicksRemaining: null,
+
+  world.write(id, ModelRef, {
+    modelId: opts.template.modelId,
+    scaleX: ENTITY_SCALE, scaleY: ENTITY_SCALE, scaleZ: ENTITY_SCALE,
+    seed,
   });
-  if (opts.template.modelTemplateId) {
-    const nodeSeed = opts.seed ?? 0;
-    world.write(id, ModelRef, { modelId: opts.template.modelTemplateId, scaleX: NODE_SCALE, scaleY: NODE_SCALE, scaleZ: NODE_SCALE, seed: nodeSeed });
-    const parts = deriveHitboxParts(opts.template.modelTemplateId, nodeSeed, content, NODE_SCALE);
-    if (parts.length > 0) world.write(id, Hitbox, { parts });
+  const parts = deriveHitboxParts(opts.template.modelId, seed, content, ENTITY_SCALE);
+  if (parts.length > 0) world.write(id, Hitbox, { parts });
+
+  const rn = opts.template.components.resourceNode;
+  if (rn) {
+    world.write(id, ResourceNode, {
+      nodeTypeId: opts.template.id,
+      hitPoints: rn.hitPoints,
+      depleted: false,
+      respawnTicksRemaining: null,
+    });
   }
 
   return id;

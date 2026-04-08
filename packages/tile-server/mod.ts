@@ -81,8 +81,8 @@ export type {
 } from "./src/components/world.ts";
 
 // Spawner
-export { spawnNode } from "./src/spawner.ts";
-export type { SpawnNodeOpts } from "./src/spawner.ts";
+export { spawnEntity } from "./src/spawner.ts";
+export type { SpawnEntityOpts } from "./src/spawner.ts";
 
 // Lore / skill components
 export { LoreLoadout, ActiveEffects } from "./src/components/lore_loadout.ts";

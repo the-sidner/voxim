@@ -29,7 +29,7 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { HeritageStore } from "./heritage_store.ts";
-import { spawnPlayer, spawnNpc, spawnNode, spawnProp } from "./spawner.ts";
+import { spawnPlayer, spawnNpc, spawnEntity, spawnProp } from "./spawner.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -274,7 +274,7 @@ export class TileServer {
       `| ${content.getAllRecipes().length} recipes,`,
       `${content.getAllStructureDefs().length} structures,`,
       `${content.getAllNpcTemplates().length} NPC types,`,
-      `${content.getAllNodeTemplates().length} node types,`,
+      `${content.getAllEntityTemplates().length} entity templates,`,
       `${content.getAllLoreFragments().length} lore fragments,`,
       `${content.getAllConceptVerbEntries().length} skill entries loaded`,
     );
@@ -723,10 +723,10 @@ export class TileServer {
     if (layout) {
       let spawned = 0;
       for (const node of layout.nodes) {
-        const template = content.getNodeTemplate(node.nodeTypeId);
+        const template = content.getEntityTemplate(node.entityTemplateId);
         if (!template) continue;
         const nodeSeed = positionSeed(node.x, node.y);
-        spawnNode(this.world, this.content, { x: node.x, y: node.y, template, seed: nodeSeed });
+        spawnEntity(this.world, this.content, { x: node.x, y: node.y, template, seed: nodeSeed });
         spawned++;
       }
       console.log(`[TileServer] spawned ${spawned} resource nodes from tile_layout`);
@@ -848,18 +848,18 @@ export class TileServer {
       for (let cx = 0; cx < grid.gridSize; cx++) {
         const cell = grid.cells[cx + cy * grid.gridSize];
         const profile = ZONE_PROFILES[cell.zoneType];
-        const totalWeight = Object.values(profile.nodeWeights).reduce((s, w) => s + w, 0);
+        const totalWeight = Object.values(profile.entityWeights).reduce((s, w) => s + w, 0);
         if (totalWeight === 0) continue;
 
         const spawns = Math.floor(NODE_DENSITY) + (rng() < NODE_DENSITY % 1 ? 1 : 0);
         for (let i = 0; i < spawns; i++) {
           const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const nodeTypeId = weightedPick(profile.nodeWeights, rng);
-          if (!nodeTypeId) continue;
-          const template = content.getNodeTemplate(nodeTypeId);
+          const entityTemplateId = weightedPick(profile.entityWeights, rng);
+          if (!entityTemplateId) continue;
+          const template = content.getEntityTemplate(entityTemplateId);
           if (!template) continue;
-          spawnNode(this.world, this.content, { x: wx, y: wy, z: getTerrainZ(wx, wy), template, seed: positionSeed(wx, wy) });
+          spawnEntity(this.world, this.content, { x: wx, y: wy, z: getTerrainZ(wx, wy), template, seed: positionSeed(wx, wy) });
           total++;
         }
       }
