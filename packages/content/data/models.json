@@ -1815,7 +1815,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       },
       {
         "modelId": "wolf_upper_leg",
@@ -1830,7 +1831,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       },
       {
         "modelId": "wolf_lower_leg",
@@ -1845,7 +1847,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       },
       {
         "modelId": "wolf_upper_leg",
@@ -1860,7 +1863,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       },
       {
         "modelId": "wolf_lower_leg",
@@ -1875,7 +1879,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       },
       {
         "modelId": "wolf_upper_leg",
@@ -1890,7 +1895,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       },
       {
         "modelId": "wolf_lower_leg",
@@ -1905,7 +1911,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       },
       {
         "modelId": "wolf_upper_leg",
@@ -1920,7 +1927,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       },
       {
         "modelId": "wolf_lower_leg",
@@ -1935,7 +1943,8 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1
-        }
+        },
+        "hitbox": false
       }
     ],
     "materials": []
@@ -6185,129 +6194,565 @@
   {
     "id": "model_sword_basic",
     "version": 2,
-    "hitbox": { "minX": -1, "minY": 0, "minZ": 0, "maxX": 1, "maxY": 0, "maxZ": 6 },
+    "hitbox": {
+      "minX": -1,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 1,
+      "maxY": 0,
+      "maxZ": 6
+    },
     "nodes": [
-      { "x":  0, "y": 0, "z": 0, "materialId": 2 },
-      { "x":  0, "y": 0, "z": 1, "materialId": 2 },
-      { "x": -1, "y": 0, "z": 2, "materialId": 2 },
-      { "x":  0, "y": 0, "z": 2, "materialId": 2 },
-      { "x":  1, "y": 0, "z": 2, "materialId": 2 },
-      { "x":  0, "y": 0, "z": 3, "materialId": 2 },
-      { "x":  0, "y": 0, "z": 4, "materialId": 2 },
-      { "x":  0, "y": 0, "z": 5, "materialId": 2 },
-      { "x":  0, "y": 0, "z": 6, "materialId": 2 }
+      {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "materialId": 2
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 1,
+        "materialId": 2
+      },
+      {
+        "x": -1,
+        "y": 0,
+        "z": 2,
+        "materialId": 2
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 2,
+        "materialId": 2
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 2,
+        "materialId": 2
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 3,
+        "materialId": 2
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 4,
+        "materialId": 2
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 5,
+        "materialId": 2
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 6,
+        "materialId": 2
+      }
     ],
     "subObjects": [],
-    "materials": [2]
+    "materials": [
+      2
+    ]
   },
-
   {
     "id": "model_helmet",
     "version": 1,
-    "hitbox": { "minX": -1, "minY": 0, "minZ": 0, "maxX": 1, "maxY": 1, "maxZ": 3 },
+    "hitbox": {
+      "minX": -1,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 1,
+      "maxY": 1,
+      "maxZ": 3
+    },
     "nodes": [
-      { "x": -1, "y": 0, "z": 0, "materialId": 103 },
-      { "x": -1, "y": 1, "z": 0, "materialId": 103 },
-      { "x":  0, "y": 0, "z": 0, "materialId": 103 },
-      { "x":  0, "y": 1, "z": 0, "materialId": 103 },
-      { "x":  1, "y": 0, "z": 0, "materialId": 103 },
-      { "x":  1, "y": 1, "z": 0, "materialId": 103 },
-      { "x": -1, "y": 0, "z": 1, "materialId": 103 },
-      { "x": -1, "y": 1, "z": 1, "materialId": 103 },
-      { "x":  0, "y": 0, "z": 1, "materialId": 103 },
-      { "x":  0, "y": 1, "z": 1, "materialId": 103 },
-      { "x":  1, "y": 0, "z": 1, "materialId": 103 },
-      { "x":  1, "y": 1, "z": 1, "materialId": 103 },
-      { "x": -1, "y": 0, "z": 2, "materialId": 103 },
-      { "x": -1, "y": 1, "z": 2, "materialId": 103 },
-      { "x":  0, "y": 0, "z": 2, "materialId": 103 },
-      { "x":  0, "y": 1, "z": 2, "materialId": 103 },
-      { "x":  1, "y": 0, "z": 2, "materialId": 103 },
-      { "x":  1, "y": 1, "z": 2, "materialId": 103 },
-      { "x":  0, "y": 2, "z": 0, "materialId": 103 },
-      { "x":  0, "y": 2, "z": 1, "materialId": 103 }
+      {
+        "x": -1,
+        "y": 0,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": -1,
+        "y": 1,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": -1,
+        "y": 0,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": -1,
+        "y": 1,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": -1,
+        "y": 0,
+        "z": 2,
+        "materialId": 103
+      },
+      {
+        "x": -1,
+        "y": 1,
+        "z": 2,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 2,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": 2,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 2,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": 2,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 2,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 2,
+        "z": 1,
+        "materialId": 103
+      }
     ],
     "subObjects": [],
-    "materials": [103]
+    "materials": [
+      103
+    ]
   },
-
   {
     "id": "model_chestplate",
     "version": 1,
-    "hitbox": { "minX": -2, "minY": 0, "minZ": 0, "maxX": 2, "maxY": 1, "maxZ": 2 },
+    "hitbox": {
+      "minX": -2,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 2,
+      "maxY": 1,
+      "maxZ": 2
+    },
     "nodes": [
-      { "x": -1, "y": 0, "z": 0, "materialId": 103 },
-      { "x": -1, "y": 1, "z": 0, "materialId": 103 },
-      { "x":  0, "y": 0, "z": 0, "materialId": 103 },
-      { "x":  0, "y": 1, "z": 0, "materialId": 103 },
-      { "x":  1, "y": 0, "z": 0, "materialId": 103 },
-      { "x":  1, "y": 1, "z": 0, "materialId": 103 },
-      { "x": -1, "y": 0, "z": 1, "materialId": 103 },
-      { "x": -1, "y": 1, "z": 1, "materialId": 103 },
-      { "x":  0, "y": 0, "z": 1, "materialId": 103 },
-      { "x":  0, "y": 1, "z": 1, "materialId": 103 },
-      { "x":  1, "y": 0, "z": 1, "materialId": 103 },
-      { "x":  1, "y": 1, "z": 1, "materialId": 103 },
-      { "x": -2, "y": 0, "z": 0, "materialId": 103 },
-      { "x": -2, "y": 1, "z": 0, "materialId": 103 },
-      { "x":  2, "y": 0, "z": 0, "materialId": 103 },
-      { "x":  2, "y": 1, "z": 0, "materialId": 103 }
+      {
+        "x": -1,
+        "y": 0,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": -1,
+        "y": 1,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": -1,
+        "y": 0,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": -1,
+        "y": 1,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": 1,
+        "materialId": 103
+      },
+      {
+        "x": -2,
+        "y": 0,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": -2,
+        "y": 1,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "z": 0,
+        "materialId": 103
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "z": 0,
+        "materialId": 103
+      }
     ],
     "subObjects": [],
-    "materials": [103]
+    "materials": [
+      103
+    ]
   },
-
   {
     "id": "model_leggings",
     "version": 1,
-    "hitbox": { "minX": 0, "minY": 0, "minZ": -3, "maxX": 1, "maxY": 1, "maxZ": 0 },
+    "hitbox": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": -3,
+      "maxX": 1,
+      "maxY": 1,
+      "maxZ": 0
+    },
     "nodes": [
-      { "x": 0, "y": 0, "z":  0, "materialId": 102 },
-      { "x": 0, "y": 1, "z":  0, "materialId": 102 },
-      { "x": 1, "y": 0, "z":  0, "materialId": 102 },
-      { "x": 1, "y": 1, "z":  0, "materialId": 102 },
-      { "x": 0, "y": 0, "z": -1, "materialId": 102 },
-      { "x": 0, "y": 1, "z": -1, "materialId": 102 },
-      { "x": 1, "y": 0, "z": -1, "materialId": 102 },
-      { "x": 1, "y": 1, "z": -1, "materialId": 102 },
-      { "x": 0, "y": 0, "z": -2, "materialId": 102 },
-      { "x": 0, "y": 1, "z": -2, "materialId": 102 },
-      { "x": 1, "y": 0, "z": -2, "materialId": 102 },
-      { "x": 1, "y": 1, "z": -2, "materialId": 102 },
-      { "x": 0, "y": 0, "z": -3, "materialId": 102 },
-      { "x": 0, "y": 1, "z": -3, "materialId": 102 },
-      { "x": 1, "y": 0, "z": -3, "materialId": 102 },
-      { "x": 1, "y": 1, "z": -3, "materialId": 102 }
+      {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": -1,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": -1,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": -1,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": -1,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": -2,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": -2,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": -2,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": -2,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": -3,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": -3,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": -3,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": -3,
+        "materialId": 102
+      }
     ],
     "subObjects": [],
-    "materials": [102]
+    "materials": [
+      102
+    ]
   },
-
   {
     "id": "model_boots",
     "version": 1,
-    "hitbox": { "minX": 0, "minY": 0, "minZ": 0, "maxX": 2, "maxY": 3, "maxZ": 1 },
+    "hitbox": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 2,
+      "maxY": 3,
+      "maxZ": 1
+    },
     "nodes": [
-      { "x": 0, "y": 0, "z": 0, "materialId": 102 },
-      { "x": 0, "y": 1, "z": 0, "materialId": 102 },
-      { "x": 0, "y": 2, "z": 0, "materialId": 102 },
-      { "x": 0, "y": 3, "z": 0, "materialId": 102 },
-      { "x": 1, "y": 0, "z": 0, "materialId": 102 },
-      { "x": 1, "y": 1, "z": 0, "materialId": 102 },
-      { "x": 1, "y": 2, "z": 0, "materialId": 102 },
-      { "x": 1, "y": 3, "z": 0, "materialId": 102 },
-      { "x": 2, "y": 0, "z": 0, "materialId": 102 },
-      { "x": 2, "y": 1, "z": 0, "materialId": 102 },
-      { "x": 2, "y": 2, "z": 0, "materialId": 102 },
-      { "x": 2, "y": 3, "z": 0, "materialId": 102 },
-      { "x": 0, "y": 0, "z": 1, "materialId": 102 },
-      { "x": 0, "y": 1, "z": 1, "materialId": 102 },
-      { "x": 0, "y": 2, "z": 1, "materialId": 102 },
-      { "x": 0, "y": 3, "z": 1, "materialId": 102 },
-      { "x": 1, "y": 0, "z": 1, "materialId": 102 },
-      { "x": 1, "y": 1, "z": 1, "materialId": 102 }
+      {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 2,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 3,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "z": 0,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 1,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 1,
+        "z": 1,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 2,
+        "z": 1,
+        "materialId": 102
+      },
+      {
+        "x": 0,
+        "y": 3,
+        "z": 1,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "z": 1,
+        "materialId": 102
+      },
+      {
+        "x": 1,
+        "y": 1,
+        "z": 1,
+        "materialId": 102
+      }
     ],
     "subObjects": [],
-    "materials": [102]
+    "materials": [
+      102
+    ]
   }
 ]
