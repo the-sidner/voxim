@@ -191,11 +191,16 @@ export interface SpawnNodeOpts {
   template: ResourceNodeTemplate;
 }
 
+const NODE_SCALE = 0.35;
+
 /**
  * Create a resource node entity from a template.
  * Position defaults to tile centre; callers should pass an explicit location.
+ *
+ * The hitbox capsule is derived from the model's AABB — no separate hitbox
+ * definition needed on the node template.
  */
-export function spawnNode(world: World, opts: SpawnNodeOpts): EntityId {
+export function spawnNode(world: World, content: ContentStore, opts: SpawnNodeOpts): EntityId {
   const id = newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
@@ -209,10 +214,19 @@ export function spawnNode(world: World, opts: SpawnNodeOpts): EntityId {
     respawnTicksRemaining: null,
   });
   if (opts.template.modelTemplateId) {
-    world.write(id, ModelRef, { modelId: opts.template.modelTemplateId, scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
-  }
-  if (opts.template.hitbox) {
-    world.write(id, Hitbox, { parts: opts.template.hitbox.parts });
+    world.write(id, ModelRef, { modelId: opts.template.modelTemplateId, scaleX: NODE_SCALE, scaleY: NODE_SCALE, scaleZ: NODE_SCALE, seed: 0 });
+
+    const model = content.getModel(opts.template.modelTemplateId);
+    if (model) {
+      const { minX, minY, minZ, maxX, maxY, maxZ } = model.hitbox;
+      const radius = Math.max(maxX - minX, maxY - minY) / 2 * NODE_SCALE;
+      world.write(id, Hitbox, { parts: [{
+        id: "body",
+        fromFwd: 0, fromRight: 0, fromUp: minZ * NODE_SCALE,
+        toFwd:   0, toRight:   0, toUp:   maxZ * NODE_SCALE,
+        radius,
+      }] });
+    }
   }
 
   return id;

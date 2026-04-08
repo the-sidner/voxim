@@ -543,14 +543,8 @@ export interface ResourceNodeTemplate {
    * Null means it never respawns (one-time deposit).
    */
   respawnTicks: number | null;
-  /** References a ModelDefinition for client-side rendering. */
+  /** References a ModelDefinition for client-side rendering and hitbox derivation. */
   modelTemplateId?: string;
-  /**
-   * Collision geometry used by ActionSystem for hit detection.
-   * Written to the entity's Hitbox component at spawn.
-   * If absent the node cannot be hit by swings.
-   */
-  hitbox?: { parts: BodyPartVolume[] };
 }
 
 // ---- concept verb matrix ----

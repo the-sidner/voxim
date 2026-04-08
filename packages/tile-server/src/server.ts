@@ -720,7 +720,7 @@ export class TileServer {
       for (const node of layout.nodes) {
         const template = content.getNodeTemplate(node.nodeTypeId);
         if (!template) continue;
-        spawnNode(this.world, { x: node.x, y: node.y, template });
+        spawnNode(this.world, this.content, { x: node.x, y: node.y, template });
         spawned++;
       }
       console.log(`[TileServer] spawned ${spawned} resource nodes from tile_layout`);
@@ -853,7 +853,7 @@ export class TileServer {
           if (!nodeTypeId) continue;
           const template = content.getNodeTemplate(nodeTypeId);
           if (!template) continue;
-          spawnNode(this.world, { x: wx, y: wy, z: getTerrainZ(wx, wy), template });
+          spawnNode(this.world, this.content, { x: wx, y: wy, z: getTerrainZ(wx, wy), template });
           total++;
         }
       }
