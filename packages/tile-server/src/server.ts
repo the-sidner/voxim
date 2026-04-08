@@ -32,6 +32,7 @@ import { HeritageStore } from "./heritage_store.ts";
 import { spawnPlayer, spawnNpc, spawnNode, spawnProp } from "./spawner.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
+import { Hitbox } from "./components/hitbox.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
 import { PhysicsSystem } from "./systems/physics.ts";
 import { DodgeSystem } from "./systems/dodge.ts";
@@ -386,16 +387,19 @@ export class TileServer {
       }
     }
 
-    // Snapshot all combat-relevant entities for lag compensation.
-    // Queries the committed world state (applyChangeset already ran).
+    // Snapshot all hittable entities for lag compensation.
+    // Any entity with a Position and Hitbox is included; Velocity/Facing are optional
+    // (resource nodes are static and have neither).
     const snapEntities = [];
-    for (const { entityId, position, velocity, facing } of this.world.query(Position, Velocity, Facing)) {
-      const is = this.world.get(entityId, InputState);
+    for (const { entityId, position } of this.world.query(Position, Hitbox)) {
+      const vel = this.world.get(entityId, Velocity);
+      const fac = this.world.get(entityId, Facing);
+      const is  = this.world.get(entityId, InputState);
       snapEntities.push({
         entityId,
         x: position.x, y: position.y, z: position.z,
-        facing: facing.angle,
-        velocityX: velocity.x, velocityY: velocity.y, velocityZ: velocity.z,
+        facing: fac?.angle ?? 0,
+        velocityX: vel?.x ?? 0, velocityY: vel?.y ?? 0, velocityZ: vel?.z ?? 0,
         actions: is?.actions ?? 0,
       });
     }
