@@ -11,7 +11,7 @@
       }
     ],
     "respawnTicks": 12000,
-    "modelTemplateId": "model_tree"
+    "modelTemplateId": "tree_node"
   },
   {
     "id": "stone_deposit",
@@ -25,7 +25,7 @@
       }
     ],
     "respawnTicks": 18000,
-    "modelTemplateId": "model_stone_deposit"
+    "modelTemplateId": "model_rock_small"
   },
   {
     "id": "iron_ore_vein",
@@ -43,7 +43,7 @@
       }
     ],
     "respawnTicks": 36000,
-    "modelTemplateId": "model_iron_ore_vein"
+    "modelTemplateId": "model_rock_large"
   },
   {
     "id": "bush",
