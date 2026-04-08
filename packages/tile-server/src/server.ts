@@ -123,6 +123,11 @@ function mulberry32(seed: number): () => number {
 /**
  * Pick a key from a weight table using a single [0,1) random sample.
  */
+/** Deterministic position-based seed — same (x,y) always gives same visual/hitbox variation. */
+function positionSeed(x: number, y: number): number {
+  return ((Math.imul(x * 100 | 0, 0x45d9f3b) ^ Math.imul(y * 100 | 0, 0x119de1f3)) >>> 0);
+}
+
 function weightedPick(weights: Record<string, number>, rng: () => number): string | null {
   const entries = Object.entries(weights).filter(([, w]) => w > 0);
   if (entries.length === 0) return null;
@@ -720,7 +725,8 @@ export class TileServer {
       for (const node of layout.nodes) {
         const template = content.getNodeTemplate(node.nodeTypeId);
         if (!template) continue;
-        spawnNode(this.world, this.content, { x: node.x, y: node.y, template });
+        const nodeSeed = positionSeed(node.x, node.y);
+        spawnNode(this.world, this.content, { x: node.x, y: node.y, template, seed: nodeSeed });
         spawned++;
       }
       console.log(`[TileServer] spawned ${spawned} resource nodes from tile_layout`);
@@ -853,7 +859,7 @@ export class TileServer {
           if (!nodeTypeId) continue;
           const template = content.getNodeTemplate(nodeTypeId);
           if (!template) continue;
-          spawnNode(this.world, this.content, { x: wx, y: wy, z: getTerrainZ(wx, wy), template });
+          spawnNode(this.world, this.content, { x: wx, y: wy, z: getTerrainZ(wx, wy), template, seed: positionSeed(wx, wy) });
           total++;
         }
       }

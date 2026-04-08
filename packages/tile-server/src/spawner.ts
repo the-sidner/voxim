@@ -23,6 +23,7 @@ import { CorruptionExposure, SpeedModifier } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import type { ContentStore, ResourceNodeTemplate, SkillSlot } from "@voxim/content";
+import { deriveHitboxParts } from "@voxim/content";
 
 // ---- player spawning ----
 
@@ -142,7 +143,12 @@ export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts
   world.write(id, ActiveEffects, { effects: [] });
   const npcModelId = opts.modelId ?? "human_base";
   const npcHitboxDef = content.getModelHitboxDef(npcModelId);
-  if (npcHitboxDef) world.write(id, Hitbox, { parts: npcHitboxDef.parts });
+  if (npcHitboxDef) {
+    world.write(id, Hitbox, { parts: npcHitboxDef.parts });
+  } else {
+    const parts = deriveHitboxParts(npcModelId, 0, content, 0.35);
+    if (parts.length > 0) world.write(id, Hitbox, { parts });
+  }
 
   return id;
 }
@@ -189,6 +195,12 @@ export interface SpawnNodeOpts {
   y?: number;
   z?: number;
   template: ResourceNodeTemplate;
+  /**
+   * Procedural seed — must match ModelRef.seed so the derived hitbox covers
+   * the same sub-objects (branch variants, etc.) that the client renders.
+   * Defaults to 0.
+   */
+  seed?: number;
 }
 
 const NODE_SCALE = 0.35;
@@ -214,19 +226,10 @@ export function spawnNode(world: World, content: ContentStore, opts: SpawnNodeOp
     respawnTicksRemaining: null,
   });
   if (opts.template.modelTemplateId) {
-    world.write(id, ModelRef, { modelId: opts.template.modelTemplateId, scaleX: NODE_SCALE, scaleY: NODE_SCALE, scaleZ: NODE_SCALE, seed: 0 });
-
-    const model = content.getModel(opts.template.modelTemplateId);
-    if (model) {
-      const { minX, minY, minZ, maxX, maxY, maxZ } = model.hitbox;
-      const radius = Math.max(maxX - minX, maxY - minY) / 2 * NODE_SCALE;
-      world.write(id, Hitbox, { parts: [{
-        id: "body",
-        fromFwd: 0, fromRight: 0, fromUp: minZ * NODE_SCALE,
-        toFwd:   0, toRight:   0, toUp:   maxZ * NODE_SCALE,
-        radius,
-      }] });
-    }
+    const nodeSeed = opts.seed ?? 0;
+    world.write(id, ModelRef, { modelId: opts.template.modelTemplateId, scaleX: NODE_SCALE, scaleY: NODE_SCALE, scaleZ: NODE_SCALE, seed: nodeSeed });
+    const parts = deriveHitboxParts(opts.template.modelTemplateId, nodeSeed, content, NODE_SCALE);
+    if (parts.length > 0) world.write(id, Hitbox, { parts });
   }
 
   return id;
