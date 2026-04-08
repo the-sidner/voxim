@@ -36,6 +36,7 @@ export const ComponentType = {
   traderInventory:    26,
   loreLoadout:        27,
   activeEffects:      28,
+  hitbox:             29,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

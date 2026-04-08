@@ -28,6 +28,7 @@ import { ResourceNode } from "./components/resource_node.ts";
 import { WorldClock, TileCorruption, CorruptionExposure } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
+import { Hitbox } from "./components/hitbox.ts";
 
 interface RegistryEntry {
   readonly typeId: number;
@@ -69,6 +70,7 @@ export const COMPONENT_REGISTRY: ReadonlyArray<RegistryEntry> = [
   { typeId: ComponentType.traderInventory,    def: TraderInventory },
   { typeId: ComponentType.loreLoadout,        def: LoreLoadout },
   { typeId: ComponentType.activeEffects,      def: ActiveEffects },
+  { typeId: ComponentType.hitbox,             def: Hitbox },
 ];
 
 /** Flat list of all networked ComponentDefs — used by AoI spawn builder. */

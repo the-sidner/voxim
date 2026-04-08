@@ -8,7 +8,7 @@
 import type { Serialiser } from "@voxim/engine";
 import { buildCodec } from "./binary.ts";
 import { WireWriter, WireReader } from "./wire.ts";
-import type { ItemPart, ModelRefData, AnimationStateData, SkillVerb, SkillEffectStat } from "@voxim/content";
+import type { ItemPart, ModelRefData, AnimationStateData, SkillVerb, SkillEffectStat, BodyPartVolume } from "@voxim/content";
 
 // ---- Position ---- 24 bytes (3 × f64)
 
@@ -1010,5 +1010,44 @@ export const npcJobQueueCodec: Serialiser<NpcJobQueueData> = {
       };
     }
     return { current, scheduled, plan };
+  },
+};
+
+// ---- Hitbox ----
+
+export interface HitboxData {
+  parts: BodyPartVolume[];
+}
+
+function writeBodyPart(w: WireWriter, p: BodyPartVolume): void {
+  w.writeStr(p.id);
+  if (p.boneId) { w.writeU8(1); w.writeStr(p.boneId); } else { w.writeU8(0); }
+  w.writeF32(p.fromFwd);  w.writeF32(p.fromRight); w.writeF32(p.fromUp);
+  w.writeF32(p.toFwd);    w.writeF32(p.toRight);   w.writeF32(p.toUp);
+  w.writeF32(p.radius);
+}
+
+function readBodyPart(r: WireReader): BodyPartVolume {
+  const id     = r.readStr();
+  const boneId = r.readU8() ? r.readStr() : undefined;
+  const fromFwd   = r.readF32(); const fromRight = r.readF32(); const fromUp  = r.readF32();
+  const toFwd     = r.readF32(); const toRight   = r.readF32(); const toUp    = r.readF32();
+  const radius    = r.readF32();
+  return { id, boneId, fromFwd, fromRight, fromUp, toFwd, toRight, toUp, radius };
+}
+
+export const hitboxCodec: Serialiser<HitboxData> = {
+  encode(v: HitboxData): Uint8Array {
+    const w = new WireWriter();
+    w.writeU16(v.parts.length);
+    for (const p of v.parts) writeBodyPart(w, p);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): HitboxData {
+    const r = new WireReader(bytes);
+    const count = r.readU16();
+    const parts: BodyPartVolume[] = [];
+    for (let i = 0; i < count; i++) parts.push(readBodyPart(r));
+    return { parts };
   },
 };

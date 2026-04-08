@@ -11,6 +11,7 @@ export type {
   HeritageTrait, HeritageData, BlueprintMaterial, BlueprintData,
   ResourceNodeData, LoreSkillSlot, LoreLoadoutData, ActiveEffect, ActiveEffectsData,
   NpcTagData, Job, PlanStep, NpcPlanData, NpcJobQueueData,
+  HitboxData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec,
@@ -25,6 +26,7 @@ export {
   loreSkillSlotCodec, loreLoadoutCodec,
   activeEffectCodec, activeEffectsCodec,
   npcTagCodec, npcJobQueueCodec,
+  hitboxCodec,
 } from "./src/components.ts";
 
 export { uuidToBytes, bytesToUuid } from "./src/uuid.ts";

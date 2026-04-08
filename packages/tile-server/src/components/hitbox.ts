@@ -1,25 +1,18 @@
 import { defineComponent } from "@voxim/engine";
-import type { Serialiser } from "@voxim/engine";
-import type { BodyPartVolume } from "@voxim/content";
+import { hitboxCodec } from "@voxim/codecs";
+import type { HitboxData } from "@voxim/codecs";
 
-export interface HitboxData {
-  parts: BodyPartVolume[];
-}
-
-// Server-only — never sent over the wire. The codec is a no-op stub required
-// by defineComponent's type signature; it will never be called.
-const hitboxCodec: Serialiser<HitboxData> = {
-  encode: (_v) => new Uint8Array(0),
-  decode: (_b) => ({ parts: [] }),
-};
+export type { HitboxData };
 
 /**
  * Collision geometry for hit detection.
  *
- * Server-only (networked: false) — not sent to clients.
+ * Networked — sent to clients so they can visualise hitboxes in debug mode.
+ * The arm capsule parts (boneId set) update every tick during attacks via IK;
+ * the rest are written once at spawn and are effectively static.
  *
  * Parts with boneId set have their coordinates managed by AnimationSystem each tick
- * (bone-local → world-space recomputation). Parts without boneId are entity-local
+ * (bone-local → entity-local recomputation). Parts without boneId are entity-local
  * and written once at spawn.
  *
  * An entity without this component (or with an empty parts array) is invisible to
@@ -28,6 +21,5 @@ const hitboxCodec: Serialiser<HitboxData> = {
 export const Hitbox = defineComponent({
   name: "hitbox" as const,
   codec: hitboxCodec,
-  networked: false,
   default: (): HitboxData => ({ parts: [] }),
 });
