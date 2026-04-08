@@ -1,0 +1,104 @@
+[
+  {
+    "id": "tree",
+    "modelId": "tree_oak",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 5,
+        "requiredToolType": "axe",
+        "yields": [{ "itemType": "wood", "quantity": 3, "quantityPerHarvestPower": 1 }],
+        "respawnTicks": 12000
+      }
+    }
+  },
+  {
+    "id": "stone_deposit",
+    "modelId": "model_rock_small",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 8,
+        "requiredToolType": "pickaxe",
+        "yields": [{ "itemType": "stone", "quantity": 4, "quantityPerHarvestPower": 1 }],
+        "respawnTicks": 18000
+      }
+    }
+  },
+  {
+    "id": "iron_ore_vein",
+    "modelId": "model_rock_large",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 12,
+        "requiredToolType": "pickaxe",
+        "yields": [
+          { "itemType": "iron_ore", "quantity": 2, "quantityPerHarvestPower": 1 },
+          { "itemType": "stone", "quantity": 1 }
+        ],
+        "respawnTicks": 36000
+      }
+    }
+  },
+  {
+    "id": "bush",
+    "modelId": "model_bush",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 2,
+        "requiredToolType": null,
+        "yields": [{ "itemType": "raw_meat", "quantity": 1 }],
+        "respawnTicks": 6000
+      }
+    }
+  },
+  {
+    "id": "pine_tree",
+    "modelId": "model_pine_tree",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 4,
+        "requiredToolType": "axe",
+        "yields": [{ "itemType": "wood", "quantity": 2, "quantityPerHarvestPower": 1 }],
+        "respawnTicks": 14400
+      }
+    }
+  },
+  {
+    "id": "rock_small",
+    "modelId": "model_rock_small",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 3,
+        "requiredToolType": "pickaxe",
+        "yields": [{ "itemType": "stone", "quantity": 2, "quantityPerHarvestPower": 1 }],
+        "respawnTicks": 12000
+      }
+    }
+  },
+  {
+    "id": "rock_large",
+    "modelId": "model_rock_large",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 10,
+        "requiredToolType": "pickaxe",
+        "yields": [
+          { "itemType": "stone", "quantity": 5, "quantityPerHarvestPower": 1 },
+          { "itemType": "iron_ore", "quantity": 1 }
+        ],
+        "respawnTicks": 28800
+      }
+    }
+  },
+  {
+    "id": "flower_patch",
+    "modelId": "model_flower_patch",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 1,
+        "requiredToolType": null,
+        "yields": [],
+        "respawnTicks": 3600
+      }
+    }
+  }
+]

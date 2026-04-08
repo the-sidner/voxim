@@ -25,7 +25,7 @@ import type {
   StructureDef,
   NpcTemplate,
   LoreFragment,
-  ResourceNodeTemplate,
+  EntityTemplate,
   ConceptVerbEntry,
   SkillVerb,
   LoreConcept,
@@ -72,9 +72,9 @@ export interface ContentStore {
   getNpcTemplate(id: string): NpcTemplate | null;
   getAllNpcTemplates(): readonly NpcTemplate[];
 
-  // ---- resource nodes ----
-  getNodeTemplate(id: string): ResourceNodeTemplate | null;
-  getAllNodeTemplates(): readonly ResourceNodeTemplate[];
+  // ---- entity templates ----
+  getEntityTemplate(id: string): EntityTemplate | null;
+  getAllEntityTemplates(): readonly EntityTemplate[];
 
   // ---- lore fragments ----
   getLoreFragment(id: string): LoreFragment | null;
@@ -114,7 +114,7 @@ export class StaticContentStore implements ContentStore {
   private recipes = new Map<string, Recipe>();
   private structures = new Map<string, StructureDef>();
   private npcTemplates = new Map<string, NpcTemplate>();
-  private nodeTemplates = new Map<string, ResourceNodeTemplate>();
+  private entityTemplates = new Map<string, EntityTemplate>();
   private loreFragments = new Map<string, LoreFragment>();
   private conceptVerbEntries = new Map<string, ConceptVerbEntry>();
   private weaponActions = new Map<string, WeaponActionDef>();
@@ -154,8 +154,8 @@ export class StaticContentStore implements ContentStore {
     this.npcTemplates.set(template.id, template);
   }
 
-  registerNodeTemplate(template: ResourceNodeTemplate): void {
-    this.nodeTemplates.set(template.id, template);
+  registerEntityTemplate(template: EntityTemplate): void {
+    this.entityTemplates.set(template.id, template);
   }
 
   registerLoreFragment(fragment: LoreFragment): void {
@@ -300,14 +300,14 @@ export class StaticContentStore implements ContentStore {
     return Array.from(this.npcTemplates.values());
   }
 
-  // ---- resource nodes ----
+  // ---- entity templates ----
 
-  getNodeTemplate(id: string): ResourceNodeTemplate | null {
-    return this.nodeTemplates.get(id) ?? null;
+  getEntityTemplate(id: string): EntityTemplate | null {
+    return this.entityTemplates.get(id) ?? null;
   }
 
-  getAllNodeTemplates(): readonly ResourceNodeTemplate[] {
-    return Array.from(this.nodeTemplates.values());
+  getAllEntityTemplates(): readonly EntityTemplate[] {
+    return Array.from(this.entityTemplates.values());
   }
 
   // ---- lore ----

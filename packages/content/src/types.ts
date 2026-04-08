@@ -528,30 +528,35 @@ export interface ResourceNodeYield {
   quantityPerHarvestPower?: number;
 }
 
-/**
- * A harvestable world object — tree, ore vein, stone deposit, etc.
- * Hit by the player's equipped tool each swing (same cooldown as combat).
- * On depletion, yields items and optionally schedules respawn.
- */
-export interface ResourceNodeTemplate {
-  id: string;
-  /**
-   * The tool type required to harvest this node efficiently.
-   * Swings with the wrong tool type deal 1 hit-point (always harvestable but slow).
-   * Null means any tool (or no tool) works at full power.
-   */
-  requiredToolType: string | null;
-  /** Total hit points before depletion. */
+/** Harvest/resource-node behaviour data. Lives inside EntityTemplate.components. */
+export interface EntityTemplateResourceNodeData {
   hitPoints: number;
-  /** Items dropped on depletion. */
   yields: ResourceNodeYield[];
-  /**
-   * Ticks until the node respawns after depletion.
-   * Null means it never respawns (one-time deposit).
-   */
+  requiredToolType: string | null;
   respawnTicks: number | null;
-  /** References a ModelDefinition for client-side rendering and hitbox derivation. */
-  modelTemplateId?: string;
+}
+
+/** Component data declared by an entity template. Extend as new component types are added. */
+export interface EntityTemplateComponents {
+  resourceNode?: EntityTemplateResourceNodeData;
+}
+
+/**
+ * EntityTemplate — prefab-style definition of a spawnable world entity.
+ *
+ * Owns: which model to render (and derive hitbox from) and which optional
+ * behavioural components are attached at spawn.
+ *
+ * The ECS entity created from a template will always have:
+ *   Position, ModelRef, Hitbox (derived from modelId sub-objects)
+ * And conditionally:
+ *   ResourceNode   when components.resourceNode is present
+ *   (future: NpcTag, Blueprint, etc.)
+ */
+export interface EntityTemplate {
+  id: string;
+  modelId: string;
+  components: EntityTemplateComponents;
 }
 
 // ---- concept verb matrix ----
@@ -793,7 +798,7 @@ export interface GameConfig {
 
 /** A resource node placement for initial world spawn. */
 export interface TileNodeConfig {
-  nodeTypeId: string;
+  entityTemplateId: string;
   x: number;
   y: number;
 }

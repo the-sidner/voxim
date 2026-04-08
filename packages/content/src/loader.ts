@@ -10,7 +10,7 @@
  *   const template = content.getItemTemplate("wooden_sword");
  */
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, StructureDef, LoreFragment, ItemTemplate, NpcTemplate, ResourceNodeTemplate, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ModelHitboxDef, VerbDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, StructureDef, LoreFragment, ItemTemplate, NpcTemplate, EntityTemplate, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ModelHitboxDef, VerbDef } from "./types.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
 const DEFAULT_DATA_DIR = new URL("../data", import.meta.url).pathname;
@@ -20,7 +20,7 @@ export async function loadContentStore(
 ): Promise<StaticContentStore> {
   const store = new StaticContentStore();
 
-  const [materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw, loreRaw, itemTemplatesRaw, nodeTemplatesRaw, npcTemplatesRaw, conceptVerbRaw, weaponActionsRaw, modelHitboxesRaw, verbsRaw] = await Promise.all([
+  const [materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw, loreRaw, itemTemplatesRaw, entityTemplatesRaw, npcTemplatesRaw, conceptVerbRaw, weaponActionsRaw, modelHitboxesRaw, verbsRaw] = await Promise.all([
     readJson(dataDir, "materials.json"),
     readJson(dataDir, "models.json"),
     readJson(dataDir, "skeletons.json"),
@@ -28,7 +28,7 @@ export async function loadContentStore(
     readJson(dataDir, "structures.json"),
     readJson(dataDir, "lore_fragments.json"),
     readJson(dataDir, "item_templates.json"),
-    readJson(dataDir, "resource_nodes.json"),
+    readJson(dataDir, "entity_templates.json"),
     readJson(dataDir, "npc_templates.json"),
     readJson(dataDir, "concept_verb_matrix.json"),
     readJson(dataDir, "weapon_actions.json"),
@@ -64,8 +64,8 @@ export async function loadContentStore(
     store.registerItemTemplate(raw);
   }
 
-  for (const raw of nodeTemplatesRaw as ResourceNodeTemplate[]) {
-    store.registerNodeTemplate(raw);
+  for (const raw of entityTemplatesRaw as EntityTemplate[]) {
+    store.registerEntityTemplate(raw);
   }
 
   for (const raw of npcTemplatesRaw as NpcTemplate[]) {
