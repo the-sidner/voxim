@@ -90,6 +90,13 @@ export interface SubObjectRef {
    * ModelRef.materialBindings[materialSlot] at render time.
    */
   materialSlot?: string;
+  /**
+   * When explicitly set to false, this sub-object is excluded from automatic
+   * hitbox capsule derivation. Use for purely visual attachments (leaves,
+   * decorative detail) that should not be hittable.
+   * Absent (default) means include in hitbox derivation.
+   */
+  hitbox?: false;
 }
 
 /**
