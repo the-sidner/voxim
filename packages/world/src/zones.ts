@@ -37,8 +37,8 @@ export interface ZoneSpawnProfile {
   corruptionBaseline: number;
   /** Spawn weight table for NPC types (key = npcType string, value ≥ 0). */
   npcWeights: Record<string, number>;
-  /** Spawn weight table for resource node types (key = nodeTypeId, value ≥ 0). */
-  nodeWeights: Record<string, number>;
+  /** Spawn weight table for entity templates (key = EntityTemplate.id, value ≥ 0). */
+  entityWeights: Record<string, number>;
   /** Spawn weight table for decorative prop model IDs (key = modelTemplateId, value ≥ 0). */
   propWeights: Record<string, number>;
 }
@@ -48,77 +48,77 @@ export const ZONE_PROFILES: Record<ZoneType, ZoneSpawnProfile> = {
     dangerLevel: 0,
     corruptionBaseline: 0,
     npcWeights: { villager: 10, merchant: 5 },
-    nodeWeights: { flower_patch: 3 },
+    entityWeights: { flower_patch: 3 },
     propWeights: { model_building_well: 2, model_building_cottage: 3, tree_oak: 3 },
   },
   [ZoneType.Plains]: {
     dangerLevel: 1,
     corruptionBaseline: 5,
     npcWeights: { villager: 6, bandit: 2 },
-    nodeWeights: { tree: 4, stone_deposit: 2, bush: 5, flower_patch: 4, rock_small: 2 },
+    entityWeights: { tree: 4, stone_deposit: 2, bush: 5, flower_patch: 4, rock_small: 2 },
     propWeights: { tree_oak: 8, model_dead_tree: 1 },
   },
   [ZoneType.Forest]: {
     dangerLevel: 3,
     corruptionBaseline: 10,
     npcWeights: { wolf: 4, bandit: 1 },
-    nodeWeights: { tree: 10, stone_deposit: 1, iron_ore_vein: 1, bush: 4, pine_tree: 6, rock_small: 1 },
+    entityWeights: { tree: 10, stone_deposit: 1, iron_ore_vein: 1, bush: 4, pine_tree: 6, rock_small: 1 },
     propWeights: { tree_oak: 20, model_dead_tree: 2 },
   },
   [ZoneType.Hills]: {
     dangerLevel: 4,
     corruptionBaseline: 15,
     npcWeights: { bandit: 6, wolf: 3 },
-    nodeWeights: { stone_deposit: 8, iron_ore_vein: 3, tree: 2, rock_small: 4, rock_large: 3, bush: 2 },
+    entityWeights: { stone_deposit: 8, iron_ore_vein: 3, tree: 2, rock_small: 4, rock_large: 3, bush: 2 },
     propWeights: { tree_oak: 4, model_dead_tree: 2 },
   },
   [ZoneType.Mountains]: {
     dangerLevel: 7,
     corruptionBaseline: 25,
     npcWeights: { bandit: 4 },
-    nodeWeights: { stone_deposit: 10, iron_ore_vein: 8, rock_large: 6, pine_tree: 2 },
+    entityWeights: { stone_deposit: 10, iron_ore_vein: 8, rock_large: 6, pine_tree: 2 },
     propWeights: { model_building_ruin_wall: 1 },
   },
   [ZoneType.Swamp]: {
     dangerLevel: 5,
     corruptionBaseline: 60,
     npcWeights: { wolf: 5 },
-    nodeWeights: { tree: 3, bush: 4 },
+    entityWeights: { tree: 3, bush: 4 },
     propWeights: { tree_oak: 5, model_dead_tree: 6, model_building_ruin_wall: 2 },
   },
   [ZoneType.Tundra]: {
     dangerLevel: 6,
     corruptionBaseline: 20,
     npcWeights: { wolf: 6 },
-    nodeWeights: { stone_deposit: 5, iron_ore_vein: 2, pine_tree: 4, rock_small: 3 },
+    entityWeights: { stone_deposit: 5, iron_ore_vein: 2, pine_tree: 4, rock_small: 3 },
     propWeights: { model_dead_tree: 3 },
   },
   [ZoneType.Desert]: {
     dangerLevel: 4,
     corruptionBaseline: 15,
     npcWeights: { bandit: 8, merchant: 2 },
-    nodeWeights: { stone_deposit: 4, rock_large: 2 },
+    entityWeights: { stone_deposit: 4, rock_large: 2 },
     propWeights: { model_building_ruin_wall: 3, model_building_ruin_tower: 2 },
   },
   [ZoneType.Ruins]: {
     dangerLevel: 8,
     corruptionBaseline: 85,
     npcWeights: { bandit: 10 },
-    nodeWeights: { iron_ore_vein: 5 },
+    entityWeights: { iron_ore_vein: 5 },
     propWeights: { model_building_ruin_wall: 8, model_building_ruin_tower: 5, model_dead_tree: 3 },
   },
   [ZoneType.Shore]: {
     dangerLevel: 1,
     corruptionBaseline: 0,
     npcWeights: { villager: 3, merchant: 4 },
-    nodeWeights: { tree: 2, flower_patch: 3, bush: 2 },
+    entityWeights: { tree: 2, flower_patch: 3, bush: 2 },
     propWeights: { tree_oak: 4 },
   },
   [ZoneType.Water]: {
     dangerLevel: 2,
     corruptionBaseline: 0,
     npcWeights: {},
-    nodeWeights: {},
+    entityWeights: {},
     propWeights: {},
   },
 };
