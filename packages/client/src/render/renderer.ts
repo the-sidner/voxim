@@ -856,11 +856,16 @@ export class VoximRenderer {
     // the pixel-art and edge-detection passes so the lines stay crisp.
     // Objects in HITBOX_OVERLAY_LAYER are invisible to the main camera (layer 0
     // only by default), so they never appear in pixelTarget.
+    // Background must be nulled out: THREE.js renders scene.background even
+    // with autoClear=false, which would paint over the Pass 2 blit output.
     const savedMask = this.camera.layers.mask;
+    const savedBackground = this.scene.background;
     this.camera.layers.set(HITBOX_OVERLAY_LAYER);
+    this.scene.background = null;
     this.renderer.autoClear = false;
     this.renderer.render(this.scene, this.camera);
     this.renderer.autoClear = true;
+    this.scene.background = savedBackground;
     this.camera.layers.mask = savedMask;
   }
 
