@@ -301,7 +301,7 @@ export class VoximRenderer {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(1);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap; // harder shadow edges
+    this.renderer.shadowMap.type = THREE.BasicShadowMap; // hard 1-pixel shadow edges → thin outline
 
     const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
     this.camera = new THREE.OrthographicCamera(

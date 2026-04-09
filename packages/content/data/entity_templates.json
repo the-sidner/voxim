@@ -2,6 +2,7 @@
   {
     "id": "tree",
     "modelId": "tree_oak",
+    "modelScale": 2,
     "components": {
       "resourceNode": {
         "hitPoints": 5,

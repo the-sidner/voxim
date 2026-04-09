@@ -280,12 +280,13 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
   world.create(id);
   world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
 
+  const entityScale = ENTITY_SCALE * (opts.template.modelScale ?? 1);
   world.write(id, ModelRef, {
     modelId: opts.template.modelId,
-    scaleX: ENTITY_SCALE, scaleY: ENTITY_SCALE, scaleZ: ENTITY_SCALE,
+    scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
     seed,
   });
-  const parts = deriveHitboxParts(opts.template.modelId, seed, content, ENTITY_SCALE);
+  const parts = deriveHitboxParts(opts.template.modelId, seed, content, entityScale);
   if (parts.length > 0) world.write(id, Hitbox, { parts });
 
   const rn = opts.template.components.resourceNode;

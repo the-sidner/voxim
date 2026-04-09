@@ -556,6 +556,8 @@ export interface EntityTemplateComponents {
 export interface EntityTemplate {
   id: string;
   modelId: string;
+  /** Multiplier applied on top of the base ENTITY_SCALE at spawn. Defaults to 1. */
+  modelScale?: number;
   components: EntityTemplateComponents;
 }
 
