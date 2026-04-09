@@ -490,6 +490,9 @@ export class TileServer {
       sourceId: EntityId;
       amount: number;
       blocked: boolean;
+      hitX: number;
+      hitY: number;
+      hitZ: number;
     }) => {
       this.pendingEvents.push({
         type: "DamageDealt",
@@ -497,6 +500,9 @@ export class TileServer {
         sourceId: p.sourceId,
         amount: p.amount,
         blocked: p.blocked,
+        hitX: p.hitX,
+        hitY: p.hitY,
+        hitZ: p.hitZ,
       });
     });
 

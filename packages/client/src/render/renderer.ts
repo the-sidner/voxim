@@ -39,6 +39,7 @@ import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
 import { HitboxDebugOverlay, HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay.ts";
+import { HitSparkRenderer } from "./hit_spark_renderer.ts";
 import { EdgePass } from "./edge_pass.ts";
 
 /**
@@ -180,6 +181,7 @@ export class VoximRenderer {
   readonly chunkOverlay:       ChunkOverlay;
   readonly bladeDebugOverlay:  BladeDebugOverlay;
   readonly hitboxDebugOverlay: HitboxDebugOverlay;
+  private readonly hitSparkRenderer: HitSparkRenderer;
 
   private cameraTarget = new THREE.Vector3(256, 4, 256);
   private localPlayerId: string | null = null;
@@ -189,6 +191,7 @@ export class VoximRenderer {
   private smoothTick = 0;
   private lastKnownServerTick = -1;
   private lastServerTickMs = 0;
+  private lastFrameMs = 0;
 
   /** Full-res render target — 3D scene is drawn here before post-processing. */
   private readonly pixelTarget: THREE.WebGLRenderTarget;
@@ -285,6 +288,7 @@ export class VoximRenderer {
     this.chunkOverlay      = new ChunkOverlay(this.scene);
     this.bladeDebugOverlay  = new BladeDebugOverlay(this.scene);
     this.hitboxDebugOverlay = new HitboxDebugOverlay();
+    this.hitSparkRenderer   = new HitSparkRenderer(this.scene);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(1);
@@ -835,6 +839,11 @@ export class VoximRenderer {
     // Update weapon tip trail ribbons for all currently attacking entities.
     this.updateWeaponTrails(now);
 
+    // Advance hit spark particles.
+    const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
+    this.lastFrameMs = now;
+    this.hitSparkRenderer.update(dt);
+
     // Pass 1: render scene to low-res pixel target (writes colour + depth).
     this.renderer.setRenderTarget(this.pixelTarget);
     this.renderer.render(this.scene, this.camera);
@@ -867,6 +876,11 @@ export class VoximRenderer {
     this.renderer.autoClear = true;
     this.scene.background = savedBackground;
     this.camera.layers.mask = savedMask;
+  }
+
+  /** Spawn a hit spark burst at the given world-space position. */
+  spawnHitSpark(x: number, y: number, z: number): void {
+    this.hitSparkRenderer.spawn(x, y, z);
   }
 
   /** Register weapon action definitions so the trail renderer can look up swing paths. */
@@ -1240,6 +1254,7 @@ export class VoximRenderer {
     this.chunkOverlay.dispose();
     this.bladeDebugOverlay.dispose();
     this.hitboxDebugOverlay.dispose();
+    this.hitSparkRenderer.dispose();
     this.propPool.dispose();
     this.edgePass.dispose();
     this.pixelTarget.dispose();

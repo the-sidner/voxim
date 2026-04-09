@@ -25,6 +25,10 @@ export interface HitContext {
   /** Lag-compensated world position of the target. */
   targetX: number;
   targetY: number;
+  /** World-space contact point — midpoint between closest points on the blade and hit capsule. */
+  hitX: number;
+  hitY: number;
+  hitZ: number;
 }
 
 /**

@@ -147,6 +147,9 @@ export class HealthHitHandler implements HitHandler {
       amount: damage,
       blocked: isBlocking,
       bodyPart: ctx.bodyPart,
+      hitX: ctx.hitX,
+      hitY: ctx.hitY,
+      hitZ: ctx.hitZ,
     });
 
     // ── Skill on hit ("strike" verb) ──────────────────────────────────────────

@@ -16,7 +16,7 @@
 import type { World } from "@voxim/engine";
 import { ACTION_USE_SKILL, hasAction } from "@voxim/protocol";
 import type { ContentStore, DerivedItemStats } from "@voxim/content";
-import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim/content";
+import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq, segSegContactPoint } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, Facing, Velocity, InputState, Stamina, SkillInProgress, CombatState } from "../components/game.ts";
@@ -208,6 +208,7 @@ export class ActionSystem implements System {
       const targetFacing = target.facing ?? 0;
 
       let hitBodyPart = "";
+      let hitContact: Vec3 = targetPos;
       for (const part of hitbox.parts) {
         const partFrom = localToWorld(part.fromFwd, part.fromRight, part.fromUp, targetPos, targetFacing);
         const partTo   = localToWorld(part.toFwd,   part.toRight,   part.toUp,   targetPos, targetFacing);
@@ -218,6 +219,9 @@ export class ActionSystem implements System {
 
         if (distSqPrev <= combinedRadiusSq || distSqCurr <= combinedRadiusSq) {
           hitBodyPart = part.id;
+          const blade1 = distSqCurr <= combinedRadiusSq ? hiltCurr : hiltPrev;
+          const blade2 = distSqCurr <= combinedRadiusSq ? tipCurr  : tipPrev;
+          hitContact = segSegContactPoint(blade1, blade2, partFrom, partTo);
           break;
         }
       }
@@ -250,6 +254,9 @@ export class ActionSystem implements System {
         attackerY: ay,
         targetX: target.x,
         targetY: target.y,
+        hitX: hitContact.x,
+        hitY: hitContact.y,
+        hitZ: hitContact.z,
       };
       for (const handler of this.handlers) {
         handler.onHit(world, events, ctx);

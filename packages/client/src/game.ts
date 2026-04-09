@@ -129,6 +129,7 @@ export class VoximGame {
           case "DamageDealt": {
             const screenPos = this.renderer?.getEntityScreenPos(ev.targetId);
             if (screenPos) this.overlay?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
+            this.renderer?.spawnHitSpark(ev.hitX, ev.hitY, ev.hitZ);
             break;
           }
           case "EntityDied":

@@ -75,6 +75,9 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeUuid(ev.sourceId);
       w.writeF32(ev.amount);
       w.writeU8(ev.blocked ? 1 : 0);
+      w.writeF32(ev.hitX);
+      w.writeF32(ev.hitY);
+      w.writeF32(ev.hitZ);
       break;
     case "EntityDied":
       w.writeU8(EventType.EntityDied);
@@ -151,6 +154,9 @@ function decodeEvent(r: WireReader): GameEvent {
         sourceId: r.readUuid(),
         amount: r.readF32(),
         blocked: r.readU8() !== 0,
+        hitX: r.readF32(),
+        hitY: r.readF32(),
+        hitZ: r.readF32(),
       };
     case EventType.EntityDied: {
       const entityId = r.readUuid();

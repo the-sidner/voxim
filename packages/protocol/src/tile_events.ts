@@ -36,9 +36,12 @@ export interface DamageDealtPayload {
   sourceId: EntityId;
   amount: number;
   blocked: boolean;
-  /** Which body part was struck: "head"|"torso"|"abdomen"|"legs"|"body"|"hindquarters"|etc.
-   *  Empty string for parried hits (no contact, only stagger). */
+  /** Which body part was struck. Empty string for parried hits (no contact). */
   bodyPart: string;
+  /** World-space contact point — midpoint between closest points on blade and hit capsule. */
+  hitX: number;
+  hitY: number;
+  hitZ: number;
 }
 
 export interface CraftingCompletedPayload {

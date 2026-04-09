@@ -217,6 +217,10 @@ export interface DamageDealtEvent {
   sourceId: EntityId;
   amount: number;
   blocked: boolean;
+  /** World-space contact point for hit effects. */
+  hitX: number;
+  hitY: number;
+  hitZ: number;
 }
 
 export interface EntityDiedEvent {
