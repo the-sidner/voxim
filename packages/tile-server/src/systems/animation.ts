@@ -117,7 +117,7 @@ export class AnimationSystem implements System {
     ) return null;
 
     if (current?.mode !== next.mode) {
-      log.info(
+      log.debug(
         "mode: entity=%s %s→%s%s",
         entityId,
         current?.mode ?? "none",
