@@ -55,27 +55,34 @@ export class HitSparkRenderer {
     this.points = new THREE.Points(this.geometry, mat);
     this.points.layers.set(HITBOX_OVERLAY_LAYER);
     this.points.renderOrder = 999;
-    this.points.frustumCulled = false; // bounding sphere is stale when positions update dynamically
+    this.points.frustumCulled = false;
     scene.add(this.points);
   }
 
-  /** Spawn a burst of sparks at a world-space position. */
-  spawn(x: number, y: number, z: number): void {
+  /**
+   * Spawn sparks at a server world-space position.
+   * Converts server coords (x=east, y=north, z=up) to Three.js (x=east, y=up, z=north).
+   * Matches the posBuffer push in entity_mesh.ts: { x: pos.x, y: pos.z, z: pos.y }.
+   */
+  spawn(serverX: number, serverY: number, serverZ: number): void {
+    console.log("[HitSparkRenderer] spawn sx=%f sy=%f sz=%f", serverX, serverY, serverZ);
+    const tx = serverX;
+    const ty = serverZ;  // server z (up)   → Three.js y
+    const tz = serverY;  // server y (north) → Three.js z
     for (let i = 0; i < SPARKS_PER_HIT; i++) {
       if (this.sparks.length >= MAX_SPARKS) break;
 
-      // Random direction in full sphere, biased slightly upward
       const theta = Math.random() * Math.PI * 2;
-      const phi   = Math.acos(1 - Math.random() * 1.6); // 0..~143° — upper hemisphere
+      const phi   = Math.acos(1 - Math.random() * 1.6);
       const speed = SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN);
       const sinPhi = Math.sin(phi);
 
       const maxLife = LIFETIME_MIN + Math.random() * (LIFETIME_MAX - LIFETIME_MIN);
       this.sparks.push({
-        x, y, z,
+        x: tx, y: ty, z: tz,
         vx: sinPhi * Math.cos(theta) * speed,
-        vy: sinPhi * Math.sin(theta) * speed,
-        vz: Math.cos(phi) * speed + 0.5, // slight upward bias
+        vy: Math.cos(phi) * speed + 0.5,  // upward in Three.js y
+        vz: sinPhi * Math.sin(theta) * speed,
         life: maxLife,
         maxLife,
       });
@@ -89,7 +96,7 @@ export class HitSparkRenderer {
       const s = this.sparks[i];
       s.life -= dt;
       if (s.life <= 0) { this.sparks.splice(i, 1); continue; }
-      s.vz += GRAVITY * dt;
+      s.vy += GRAVITY * dt;  // gravity pulls down in Three.js y
       s.x  += s.vx * dt;
       s.y  += s.vy * dt;
       s.z  += s.vz * dt;
@@ -113,6 +120,7 @@ export class HitSparkRenderer {
     (this.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     (this.geometry.attributes.color    as THREE.BufferAttribute).needsUpdate = true;
     this.geometry.setDrawRange(0, count);
+    if (count > 0) console.log("[HitSparkRenderer] update count=%d pos0=(%f,%f,%f)", count, this.posArr[0], this.posArr[1], this.posArr[2]);
   }
 
   dispose(): void {
