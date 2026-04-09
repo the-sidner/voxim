@@ -33,7 +33,7 @@
 import type { Serialiser } from "@voxim/engine";
 import { WireWriter, WireReader } from "@voxim/codecs";
 import { EventType } from "./event_types.ts";
-import type { GameEvent } from "./messages.ts";
+import type { GameEvent, BuildingMaterial } from "./messages.ts";
 
 // ---- public types ----
 
@@ -148,6 +148,20 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeF32(ev.y);
       w.writeF32(ev.z);
       break;
+    case "BuildingMaterialsConsumed":
+      w.writeU8(EventType.BuildingMaterialsConsumed);
+      w.writeUuid(ev.builderId);
+      w.writeStr(ev.structureType);
+      w.writeU16(ev.consumed.length);
+      for (const m of ev.consumed) { w.writeStr(m.itemType); w.writeU16(m.quantity); }
+      break;
+    case "BuildingMissingMaterials":
+      w.writeU8(EventType.BuildingMissingMaterials);
+      w.writeUuid(ev.builderId);
+      w.writeStr(ev.structureType);
+      w.writeU16(ev.missing.length);
+      for (const m of ev.missing) { w.writeStr(m.itemType); w.writeU16(m.quantity); }
+      break;
   }
 }
 
@@ -219,6 +233,22 @@ function decodeEvent(r: WireReader): GameEvent {
       return { type: "LoreInternalised", entityId: r.readUuid(), fragmentId: r.readStr() };
     case EventType.HitSpark:
       return { type: "HitSpark", x: r.readF32(), y: r.readF32(), z: r.readF32() };
+    case EventType.BuildingMaterialsConsumed: {
+      const builderId = r.readUuid();
+      const structureType = r.readStr();
+      const count = r.readU16();
+      const consumed: BuildingMaterial[] = [];
+      for (let i = 0; i < count; i++) consumed.push({ itemType: r.readStr(), quantity: r.readU16() });
+      return { type: "BuildingMaterialsConsumed", builderId, structureType, consumed };
+    }
+    case EventType.BuildingMissingMaterials: {
+      const builderId = r.readUuid();
+      const structureType = r.readStr();
+      const count = r.readU16();
+      const missing: BuildingMaterial[] = [];
+      for (let i = 0; i < count; i++) missing.push({ itemType: r.readStr(), quantity: r.readU16() });
+      return { type: "BuildingMissingMaterials", builderId, structureType, missing };
+    }
     default:
       throw new Error(`Unknown event type ID: ${typeId}`);
   }
