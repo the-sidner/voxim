@@ -23,6 +23,8 @@ import { vertexDisp } from "./displacement.ts";
 // Shared placeholder geometries — never disposed individually
 const GEO_BODY  = new THREE.BoxGeometry(0.8, 1.8, 0.8);
 const GEO_DIR   = new THREE.BoxGeometry(0.2, 0.2, 0.5);
+// Shared unit cube for blueprint scaffolds — scaled per instance, never disposed
+const GEO_UNIT  = new THREE.BoxGeometry(1, 1, 1);
 // Base voxel geometry — cloned and displaced per instance, never disposed directly
 const GEO_VOXEL = new THREE.BoxGeometry(1, 1, 1);
 
@@ -171,6 +173,32 @@ function createPlaceholder(
   state: EntityState,
   isLocal: boolean,
 ): { body: THREE.Mesh; dir: THREE.Mesh } {
+  if (state.blueprint) {
+    // Render blueprint as a semi-transparent scaffold box sized by structure dimensions.
+    // heightDelta=0 means a floor tile — show as a thin slab.
+    const h = state.blueprint.heightDelta > 0 ? state.blueprint.heightDelta : 0.25;
+    const geo = GEO_UNIT; // 1×1×1 unit cube, scaled to actual size below
+    const body = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+      color: 0x4488ff,
+      transparent: true,
+      opacity: 0.45,
+      flatShading: true,
+      shininess: 0,
+      depthWrite: false,
+    }));
+    body.scale.set(1.0, h, 1.0);
+    body.position.y = h / 2;
+    // Wireframe overlay for scaffold edge lines
+    const edges = new THREE.EdgesGeometry(geo);
+    const wf = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x88bbff, transparent: true, opacity: 0.9 }));
+    wf.scale.set(1.0, h, 1.0);
+    wf.position.y = h / 2;
+    body.add(wf);
+    // dir mesh hidden — not meaningful for blueprints
+    const dir = new THREE.Mesh(GEO_DIR, new THREE.MeshPhongMaterial({ color: 0x4488ff, transparent: true, opacity: 0 }));
+    dir.visible = false;
+    return { body, dir };
+  }
   const color = pickPlaceholderColor(state, isLocal);
   const body = new THREE.Mesh(GEO_BODY, new THREE.MeshPhongMaterial({ color, flatShading: true, shininess: 0 }));
   body.position.y = 0.9;
@@ -462,8 +490,8 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
     mesh.facingAngle = state.facing.angle;
   }
 
-  // Update placeholder color from health (only in placeholder mode)
-  if (mesh.placeholder) {
+  // Update placeholder color from health (only in non-blueprint placeholder mode)
+  if (mesh.placeholder && !state.blueprint) {
     const color = pickPlaceholderColor(state, false);
     (mesh.placeholder.body.material as THREE.MeshLambertMaterial).color.set(color);
   }

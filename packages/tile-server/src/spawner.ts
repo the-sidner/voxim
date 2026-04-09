@@ -78,6 +78,7 @@ export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlay
       { itemType: "stone_axe",      quantity: 1, parts: [] },
       { itemType: "stone_pickaxe",  quantity: 1, parts: [] },
       { itemType: "hammer",         quantity: 1, parts: [] },
+      { itemType: "plank",          quantity: 16, parts: [] },
     ],
     capacity: 20,
   });

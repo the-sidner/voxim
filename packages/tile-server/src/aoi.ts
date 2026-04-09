@@ -83,6 +83,10 @@ function isEventRelevant(
       return ev.entityId === playerId;
     case "HitSpark":
       return true;
+    case "BuildingMaterialsConsumed":
+      return ev.builderId === playerId;
+    case "BuildingMissingMaterials":
+      return ev.builderId === playerId;
   }
 }
 
