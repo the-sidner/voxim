@@ -47,6 +47,7 @@ export class HitSparkRenderer {
       sizeAttenuation: false,
       vertexColors: true,
       transparent: true,
+      depthTest: false,      // overlay pass depth buffer contains blit-quad values, not scene depth
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
