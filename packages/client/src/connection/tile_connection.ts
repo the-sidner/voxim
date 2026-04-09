@@ -234,9 +234,7 @@ export class TileConnection {
     let msgCount = 0;
     try {
       while (true) {
-        const t0 = performance.now();
         const payload = await readPayload();
-        const tRead = performance.now();
         if (!payload) { console.log(`[TileConn] state stream ended after ${msgCount} messages`); break; }
         msgCount++;
         try {
@@ -244,8 +242,6 @@ export class TileConnection {
         } catch (err) {
           console.error(`[TileConn] state decode error on msg #${msgCount}:`, err);
         }
-        const tProcess = performance.now();
-        console.log(`[TileConn] msg #${msgCount} bytes=${payload.byteLength} read=${(tRead - t0).toFixed(1)}ms process=${(tProcess - tRead).toFixed(1)}ms`);
       }
     } finally {
       reader.releaseLock();

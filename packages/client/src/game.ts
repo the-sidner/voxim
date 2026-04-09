@@ -130,6 +130,8 @@ export class VoximGame {
       for (const ev of msg.events) {
         switch (ev.type) {
           case "DamageDealt": {
+            const blocked = ev.blocked ? " (blocked)" : "";
+            console.log(`[Event] DamageDealt target=${ev.targetId.slice(-6)} source=${ev.sourceId.slice(-6)} amount=${ev.amount.toFixed(1)}${blocked}`);
             const screenPos = this.renderer?.getEntityScreenPos(ev.targetId);
             if (screenPos) this.overlay?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
             break;
@@ -138,45 +140,56 @@ export class VoximGame {
             this.renderer?.spawnHitSpark(ev.x, ev.y, ev.z);
             break;
           case "EntityDied":
+            console.log(`[Event] EntityDied entity=${ev.entityId.slice(-6)}${ev.killerId ? ` killer=${ev.killerId.slice(-6)}` : ""}`);
             if (ev.entityId === this.playerId) {
               openPanel("death", true);
               pushToast("You died", "danger");
             }
             break;
           case "HungerCritical":
+            console.log(`[Event] HungerCritical entity=${ev.entityId.slice(-6)}`);
             if (ev.entityId === this.playerId) pushToast("Starving!", "warn");
             break;
           case "DayPhaseChanged": {
+            console.log(`[Event] DayPhaseChanged phase=${ev.phase} time=${ev.timeOfDay.toFixed(2)}`);
             const labels: Record<string, string> = { dawn: "Dawn", noon: "Noon", dusk: "Dusk", midnight: "Midnight" };
             pushToast(labels[ev.phase] ?? ev.phase, "info");
             this.renderer?.setDayPhase(ev.phase);
             break;
           }
           case "CraftingCompleted":
+            console.log(`[Event] CraftingCompleted crafter=${ev.crafterId.slice(-6)} recipe=${ev.recipeId}`);
             if (ev.crafterId === this.playerId) pushToast(`Crafted: ${ev.recipeId}`, "success");
             break;
           case "BuildingCompleted":
+            console.log(`[Event] BuildingCompleted builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
             if (ev.builderId === this.playerId) pushToast(`Built: ${ev.structureType}`, "info");
             break;
           case "NodeDepleted":
+            console.log(`[Event] NodeDepleted node=${ev.nodeId.slice(-6)} type=${ev.nodeTypeId} harvester=${ev.harvesterId.slice(-6)}`);
             if (ev.harvesterId === this.playerId) pushToast(`${ev.nodeTypeId} depleted`, "info");
             break;
           case "GateApproached":
+            console.log(`[Event] GateApproached entity=${ev.entityId.slice(-6)} gate=${ev.gateId} dest=${ev.destinationTileId}`);
             if (ev.entityId === this.playerId) pushToast(`Entering ${ev.destinationTileId}`, "info");
             break;
           case "TradeCompleted":
+            console.log(`[Event] TradeCompleted buyer=${ev.buyerId.slice(-6)} item=${ev.itemType} qty=${ev.quantity} coins=${ev.coinDelta}`);
             if (ev.buyerId === this.playerId) {
               const coins = ev.coinDelta > 0 ? `-${ev.coinDelta}` : `+${-ev.coinDelta}`;
               pushToast(`${ev.quantity}x ${ev.itemType} (${coins} coins)`, "success");
             }
             break;
           case "LoreExternalised":
+            console.log(`[Event] LoreExternalised entity=${ev.entityId.slice(-6)} fragment=${ev.fragmentId}`);
             if (ev.entityId === this.playerId) pushToast(`Fragment written: ${ev.fragmentId}`, "info");
             break;
           case "LoreInternalised":
+            console.log(`[Event] LoreInternalised entity=${ev.entityId.slice(-6)} fragment=${ev.fragmentId}`);
             if (ev.entityId === this.playerId) pushToast(`Lore absorbed: ${ev.fragmentId}`, "success");
             break;
           case "SkillActivated":
+            console.log(`[Event] SkillActivated caster=${ev.casterId.slice(-6)} slot=${ev.slot} effect=${ev.effectType}`);
             break;
         }
       }
