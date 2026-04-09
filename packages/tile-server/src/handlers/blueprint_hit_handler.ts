@@ -23,20 +23,33 @@ const log = createLogger("BlueprintHitHandler");
 export class BlueprintHitHandler implements HitHandler {
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
     const blueprint = world.get(ctx.targetId, Blueprint);
-    if (!blueprint) return;
+    if (!blueprint) {
+      log.debug("onHit: target=%s has no Blueprint component", ctx.targetId);
+      return;
+    }
 
     // Only a hammer can advance construction
-    if (ctx.weaponStats.toolType !== "hammer") return;
+    if (ctx.weaponStats.toolType !== "hammer") {
+      log.info("onHit: target=%s is blueprint but weapon toolType=%s (need hammer)", ctx.targetId, ctx.weaponStats.toolType ?? "none");
+      return;
+    }
 
     const buildPower = ctx.weaponStats.buildPower ?? 1;
+    log.info("onHit: attacker=%s target=%s structure=%s materialsDeducted=%s ticks=%d buildPower=%d",
+      ctx.attackerId, ctx.targetId, blueprint.structureType, blueprint.materialsDeducted, blueprint.ticksRemaining, buildPower);
 
     // ── Step 1: consume materials on first swing ──────────────────────────────
     if (!blueprint.materialsDeducted) {
       const inv = world.get(ctx.attackerId, Inventory);
-      if (!inv) return;
+      if (!inv) {
+        log.warn("onHit: attacker=%s has no Inventory", ctx.attackerId);
+        return;
+      }
 
       const missing = missingMaterials(inv.slots, blueprint.materialCost);
       if (missing.length > 0) {
+        log.info("onHit: missing materials for %s: %s", blueprint.structureType,
+          missing.map((m) => `${m.quantity}x${m.itemType}`).join(", "));
         events.publish(TileEvents.BuildingMissingMaterials, {
           builderId: ctx.attackerId,
           structureType: blueprint.structureType,

@@ -260,6 +260,8 @@ export class ActionSystem implements System {
         hitY: hitContact.y,
         hitZ: hitContact.z,
       };
+      log.info("dispatching hit: attacker=%s target=%s bodyPart=%s weapon=%s",
+        entityId, target.entityId, hitBodyPart, ctx.weaponStats.toolType ?? "weapon");
       for (const handler of this.handlers) {
         handler.onHit(world, events, ctx);
       }
