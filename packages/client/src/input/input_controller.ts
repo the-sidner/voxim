@@ -101,6 +101,7 @@ export class InputController {
       if (e.button === 2) {
         if (this.buildMode) {
           // Track press for long/short detection; suppress ACTION_BLOCK
+          console.log(`[Input] RMB down buildMode=true canvas=(${this.mouseCanvasX.toFixed(0)},${this.mouseCanvasY.toFixed(0)})`);
           this.rmbDownTime = Date.now();
           const cx = this.mouseCanvasX;
           const cy = this.mouseCanvasY;
@@ -116,6 +117,7 @@ export class InputController {
     this._mouseup = (e) => {
       if (e.button === 2 && this.buildMode) {
         const held = Date.now() - this.rmbDownTime;
+        console.log(`[Input] RMB up buildMode=true held=${held}ms`);
         if (this.rmbLongPressTimer) {
           globalThis.clearTimeout(this.rmbLongPressTimer);
           this.rmbLongPressTimer = 0;

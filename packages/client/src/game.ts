@@ -117,7 +117,14 @@ export class VoximGame {
           if (state.hunger)    patchUI({ hunger:    { value: state.hunger.value } });
           if (state.equipment) {
             patchUI({ equipment: mapEquipmentToUI(state.equipment) });
-            if (this.input) this.input.buildMode = getToolType(state.equipment.weapon?.itemType) === "hammer";
+            if (this.input) {
+              const toolType = getToolType(state.equipment.weapon?.itemType);
+              const newBuildMode = toolType === "hammer";
+              if (newBuildMode !== this.input.buildMode) {
+                console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.itemType ?? "none"} toolType=${toolType ?? "none"}`);
+                this.input.buildMode = newBuildMode;
+              }
+            }
           }
           if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory) });
         }
@@ -260,6 +267,7 @@ export class VoximGame {
       const playerState = this.playerId ? this.world.get(this.playerId) : null;
       const groundZ = playerState?.position?.z ?? 4.0;
       const worldPos = this.renderer?.getCursorWorldPos(cx, cy, groundZ);
+      console.log(`[Build] onBuildPlace canvas=(${cx.toFixed(0)},${cy.toFixed(0)}) groundZ=${groundZ.toFixed(2)} worldPos=${worldPos ? `(${worldPos.x.toFixed(1)},${worldPos.y.toFixed(1)})` : "null"} type=${uiState.value.selectedBlueprint}`);
       if (!worldPos) return;
       this._handleUIAction({
         type: "place_blueprint",
@@ -271,6 +279,7 @@ export class VoximGame {
 
     // Long RMB while hammer equipped → open radial blueprint menu at cursor
     this.input.onBuildOpenMenu = (cx, cy) => {
+      console.log(`[Build] onBuildOpenMenu canvas=(${cx.toFixed(0)},${cy.toFixed(0)})`);
       this._handleUIAction({ type: "open_build_menu", canvasX: cx, canvasY: cy });
     };
 
@@ -367,6 +376,7 @@ export class VoximGame {
         break;
 
       case "place_blueprint":
+        console.log(`[Build] sending PlaceBlueprint type=${action.structureType} world=(${action.worldX.toFixed(1)},${action.worldY.toFixed(1)})`);
         this._sendCommand({
           cmd: CommandType.PlaceBlueprint,
           structureType: action.structureType,
@@ -376,10 +386,12 @@ export class VoximGame {
         break;
 
       case "open_build_menu":
+        console.log(`[Build] opening radial menu at canvas=(${action.canvasX.toFixed(0)},${action.canvasY.toFixed(0)})`);
         patchUI({ radialMenu: { x: action.canvasX, y: action.canvasY } });
         break;
 
       case "select_blueprint":
+        console.log(`[Build] selected blueprint type=${action.structureType}`);
         patchUI({ selectedBlueprint: action.structureType, radialMenu: null });
         break;
 
@@ -530,7 +542,8 @@ function getToolType(itemType: string | undefined): string | undefined {
   // deno-lint-ignore no-explicit-any
   const templates = itemTemplatesData as any[];
   const tpl = templates.find((t) => t.id === itemType);
-  return tpl?.baseStats?.toolType as string | undefined;
+  // toolType is a top-level field on the template, not inside baseStats
+  return tpl?.toolType as string | undefined;
 }
 
 /**
