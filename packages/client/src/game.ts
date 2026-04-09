@@ -360,7 +360,7 @@ export class VoximGame {
     open ? closePanel("network") : openPanel("network");
   }
 
-  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox"): boolean {
+  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa"): boolean {
     if (!this.renderer) return false;
     switch (layer) {
       case "skeleton":   return this.renderer.skeletonOverlay.toggle();
@@ -369,6 +369,7 @@ export class VoximGame {
       case "heightmap":  return this.renderer.toggleHeightDebug();
       case "blade":      return this.renderer.bladeDebugOverlay.toggle();
       case "hitbox":     return this.renderer.hitboxDebugOverlay.toggle();
+      case "fxaa":       return this.renderer.toggleFxaa();
     }
   }
 

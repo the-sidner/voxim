@@ -83,6 +83,16 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
     <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "260px", maxHeight: "80vh", overflowY: "auto" }}>
       <div class="panel__title" {...titleProps}>Debug</div>
 
+      {/* ── Post-processing ───────────────────────────────────────────────── */}
+      <Section title="Post-processing">
+        <ToggleRow
+          label="FXAA"
+          hint="anti-aliasing"
+          on={overlays.fxaa}
+          onToggle={() => toggle("fxaa")}
+        />
+      </Section>
+
       {/* ── Render overlays ───────────────────────────────────────────────── */}
       <Section title="Render overlays">
         <ToggleRow

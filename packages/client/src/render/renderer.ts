@@ -207,6 +207,7 @@ export class VoximRenderer {
   private readonly aaTarget: THREE.WebGLRenderTarget;
   /** Screen-space FXAA — smooths sub-pixel edges on EdgePass output before canvas output. */
   private readonly fxaaPass: FxaaPass;
+  private fxaaEnabled = true;
   /** Fullscreen blit pass: upscales pixelTarget to the canvas. */
   private readonly blitScene: THREE.Scene;
   private readonly blitMesh: THREE.Mesh;
@@ -681,6 +682,11 @@ export class VoximRenderer {
     return this.heightDebugEnabled;
   }
 
+  toggleFxaa(): boolean {
+    this.fxaaEnabled = !this.fxaaEnabled;
+    return this.fxaaEnabled;
+  }
+
   // ---- render loop ----
 
   render(serverTick: number): void {
@@ -874,13 +880,17 @@ export class VoximRenderer {
     this.renderer.setRenderTarget(this.heightTarget);
     this.renderer.render(this.depthBlitScene, this.blitCamera);
 
-    // Pass 2: edge detection + height shading + sRGB → aaTarget (FXAA reads this).
-    this.renderer.setRenderTarget(this.aaTarget);
+    // Pass 2: edge detection + height shading + sRGB.
+    // When FXAA is enabled, render to aaTarget so the FXAA pass can read it;
+    // otherwise render directly to the canvas.
+    this.renderer.setRenderTarget(this.fxaaEnabled ? this.aaTarget : null);
     this.renderer.render(this.blitScene, this.blitCamera);
 
     // Pass 3: FXAA — smooth sub-pixel edges on EdgePass output → canvas.
-    this.renderer.setRenderTarget(null);
-    this.renderer.render(this.fxaaScene, this.blitCamera);
+    if (this.fxaaEnabled) {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.fxaaScene, this.blitCamera);
+    }
 
     // Pass 4: hitbox debug overlay — rendered directly to canvas, bypassing
     // the pixel-art, edge-detection, and FXAA passes so the lines stay crisp.
