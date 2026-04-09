@@ -55,6 +55,8 @@ export class VoximGame {
   private commandSeq = 0;
   private serverTick = 0;
   private running = false;
+  /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
+  private _lastMissingToastKey: string | null = null;
 
   /** Total terrain chunks expected per tile (32×32 chunks of 16×16 = 256). */
   private static readonly TOTAL_CHUNKS = 256;
@@ -170,8 +172,31 @@ export class VoximGame {
             break;
           case "BuildingCompleted":
             console.log(`[Event] BuildingCompleted builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
-            if (ev.builderId === this.playerId) pushToast(`Built: ${ev.structureType}`, "info");
+            if (ev.builderId === this.playerId) {
+              pushToast(`Built: ${humanizeItemType(ev.structureType)}`, "success");
+              this._lastMissingToastKey = null;
+            }
             break;
+          case "BuildingMaterialsConsumed":
+            console.log(`[Event] BuildingMaterialsConsumed builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
+            if (ev.builderId === this.playerId) {
+              const lines = ev.consumed.map((c) => `${c.quantity}× ${humanizeItemType(c.itemType)}`).join(", ");
+              pushToast(`Materials used: ${lines}`, "info");
+            }
+            break;
+          case "BuildingMissingMaterials": {
+            console.log(`[Event] BuildingMissingMaterials builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
+            if (ev.builderId === this.playerId) {
+              // Throttle: only toast once per unique (structureType, missing list) combination
+              const key = ev.structureType + ":" + ev.missing.map((m) => `${m.itemType}×${m.quantity}`).join(",");
+              if (key !== this._lastMissingToastKey) {
+                this._lastMissingToastKey = key;
+                const lines = ev.missing.map((m) => `${m.quantity}× ${humanizeItemType(m.itemType)}`).join(", ");
+                pushToast(`Missing: ${lines}`, "warn");
+              }
+            }
+            break;
+          }
           case "NodeDepleted":
             console.log(`[Event] NodeDepleted node=${ev.nodeId.slice(-6)} type=${ev.nodeTypeId} harvester=${ev.harvesterId.slice(-6)}`);
             if (ev.harvesterId === this.playerId) pushToast(`${ev.nodeTypeId} depleted`, "info");

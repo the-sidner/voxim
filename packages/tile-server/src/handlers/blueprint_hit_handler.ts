@@ -33,7 +33,17 @@ export class BlueprintHitHandler implements HitHandler {
     // ── Step 1: consume materials on first swing ──────────────────────────────
     if (!blueprint.materialsDeducted) {
       const inv = world.get(ctx.attackerId, Inventory);
-      if (!inv || !hasMaterials(inv.slots, blueprint.materialCost)) return;
+      if (!inv) return;
+
+      const missing = missingMaterials(inv.slots, blueprint.materialCost);
+      if (missing.length > 0) {
+        events.publish(TileEvents.BuildingMissingMaterials, {
+          builderId: ctx.attackerId,
+          structureType: blueprint.structureType,
+          missing,
+        });
+        return;
+      }
 
       world.set(ctx.attackerId, Inventory, {
         ...inv,
@@ -46,6 +56,11 @@ export class BlueprintHitHandler implements HitHandler {
         blueprint.structureType,
         blueprint.ticksRemaining,
       );
+      events.publish(TileEvents.BuildingMaterialsConsumed, {
+        builderId: ctx.attackerId,
+        structureType: blueprint.structureType,
+        consumed: blueprint.materialCost,
+      });
       return;
     }
 
@@ -77,10 +92,16 @@ export class BlueprintHitHandler implements HitHandler {
   }
 }
 
-function hasMaterials(slots: InventorySlot[], cost: BlueprintMaterial[]): boolean {
+/** Returns the items (and shortfall quantities) that are missing from slots. Empty = have all. */
+function missingMaterials(slots: InventorySlot[], cost: BlueprintMaterial[]): BlueprintMaterial[] {
   const available = new Map<string, number>();
   for (const s of slots) available.set(s.itemType, (available.get(s.itemType) ?? 0) + s.quantity);
-  return cost.every((c) => (available.get(c.itemType) ?? 0) >= c.quantity);
+  const missing: BlueprintMaterial[] = [];
+  for (const c of cost) {
+    const have = available.get(c.itemType) ?? 0;
+    if (have < c.quantity) missing.push({ itemType: c.itemType, quantity: c.quantity - have });
+  }
+  return missing;
 }
 
 function consumeMaterials(slots: InventorySlot[], cost: BlueprintMaterial[]): InventorySlot[] {

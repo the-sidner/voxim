@@ -525,6 +525,32 @@ export class TileServer {
       });
     });
 
+    this.eventBus.subscribe(TileEvents.BuildingMaterialsConsumed, (p: {
+      builderId: EntityId;
+      structureType: string;
+      consumed: { itemType: string; quantity: number }[];
+    }) => {
+      this.pendingEvents.push({
+        type: "BuildingMaterialsConsumed",
+        builderId: p.builderId,
+        structureType: p.structureType,
+        consumed: p.consumed,
+      });
+    });
+
+    this.eventBus.subscribe(TileEvents.BuildingMissingMaterials, (p: {
+      builderId: EntityId;
+      structureType: string;
+      missing: { itemType: string; quantity: number }[];
+    }) => {
+      this.pendingEvents.push({
+        type: "BuildingMissingMaterials",
+        builderId: p.builderId,
+        structureType: p.structureType,
+        missing: p.missing,
+      });
+    });
+
     this.eventBus.subscribe(TileEvents.CraftingCompleted, (p: {
       crafterId: EntityId;
       recipeId: string;

@@ -16,6 +16,8 @@ export const TileEvents = {
   HitSpark: Symbol("HitSpark"),
   CraftingCompleted: Symbol("CraftingCompleted"),
   BuildingCompleted: Symbol("BuildingCompleted"),
+  BuildingMaterialsConsumed: Symbol("BuildingMaterialsConsumed"),
+  BuildingMissingMaterials: Symbol("BuildingMissingMaterials"),
   HungerCritical: Symbol("HungerCritical"),
   ThirstCritical: Symbol("ThirstCritical"),
   GateApproached: Symbol("GateApproached"),
@@ -70,6 +72,23 @@ export interface BuildingCompletedPayload {
   builderId: EntityId;
   blueprintId: EntityId;
   structureType: string;
+}
+
+export interface BuildingMaterial {
+  itemType: string;
+  quantity: number;
+}
+
+export interface BuildingMaterialsConsumedPayload {
+  builderId: EntityId;
+  structureType: string;
+  consumed: BuildingMaterial[];
+}
+
+export interface BuildingMissingMaterialsPayload {
+  builderId: EntityId;
+  structureType: string;
+  missing: BuildingMaterial[];
 }
 
 export interface GateApproachedPayload {

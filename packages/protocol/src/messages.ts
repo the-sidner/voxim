@@ -205,6 +205,8 @@ export type GameEvent =
   | EntityDiedEvent
   | CraftingCompletedEvent
   | BuildingCompletedEvent
+  | BuildingMaterialsConsumedEvent
+  | BuildingMissingMaterialsEvent
   | HungerCriticalEvent
   | GateApproachedEvent
   | NodeDepletedEvent
@@ -250,6 +252,25 @@ export interface BuildingCompletedEvent {
   builderId: EntityId;
   blueprintId: EntityId;
   structureType: string;
+}
+
+export interface BuildingMaterial {
+  itemType: string;
+  quantity: number;
+}
+
+export interface BuildingMaterialsConsumedEvent {
+  type: "BuildingMaterialsConsumed";
+  builderId: EntityId;
+  structureType: string;
+  consumed: BuildingMaterial[];
+}
+
+export interface BuildingMissingMaterialsEvent {
+  type: "BuildingMissingMaterials";
+  builderId: EntityId;
+  structureType: string;
+  missing: BuildingMaterial[];
 }
 
 export interface HungerCriticalEvent {
