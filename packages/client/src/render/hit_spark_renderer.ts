@@ -120,7 +120,6 @@ export class HitSparkRenderer {
     (this.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     (this.geometry.attributes.color    as THREE.BufferAttribute).needsUpdate = true;
     this.geometry.setDrawRange(0, count);
-    if (count > 0) console.log("[HitSparkRenderer] update count=%d pos0=(%f,%f,%f)", count, this.posArr[0], this.posArr[1], this.posArr[2]);
   }
 
   dispose(): void {
