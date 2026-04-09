@@ -55,6 +55,7 @@ export class HitSparkRenderer {
     this.points = new THREE.Points(this.geometry, mat);
     this.points.layers.set(HITBOX_OVERLAY_LAYER);
     this.points.renderOrder = 999;
+    this.points.frustumCulled = false; // bounding sphere is stale when positions update dynamically
     scene.add(this.points);
   }
 
