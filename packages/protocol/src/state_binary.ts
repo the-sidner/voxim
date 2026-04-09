@@ -27,6 +27,7 @@
  *   TradeCompleted    uuid buyerId, uuid traderId, str itemType, u16 quantity, i32 coinDelta
  *   LoreExternalised  uuid entityId, str fragmentId
  *   LoreInternalised  uuid entityId, str fragmentId
+ *   HitSpark          f32 x, f32 y, f32 z
  */
 
 import type { Serialiser } from "@voxim/engine";
@@ -141,6 +142,12 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeUuid(ev.entityId);
       w.writeStr(ev.fragmentId);
       break;
+    case "HitSpark":
+      w.writeU8(EventType.HitSpark);
+      w.writeF32(ev.x);
+      w.writeF32(ev.y);
+      w.writeF32(ev.z);
+      break;
   }
 }
 
@@ -210,6 +217,8 @@ function decodeEvent(r: WireReader): GameEvent {
       return { type: "LoreExternalised", entityId: r.readUuid(), fragmentId: r.readStr() };
     case EventType.LoreInternalised:
       return { type: "LoreInternalised", entityId: r.readUuid(), fragmentId: r.readStr() };
+    case EventType.HitSpark:
+      return { type: "HitSpark", x: r.readF32(), y: r.readF32(), z: r.readF32() };
     default:
       throw new Error(`Unknown event type ID: ${typeId}`);
   }

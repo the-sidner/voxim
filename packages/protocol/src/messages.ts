@@ -199,6 +199,7 @@ export interface StateMessage {
 
 export type GameEvent =
   | DamageDealtEvent
+  | HitSparkEvent
   | EntityDiedEvent
   | CraftingCompletedEvent
   | BuildingCompletedEvent
@@ -210,6 +211,13 @@ export type GameEvent =
   | TradeCompletedEvent
   | LoreExternalisedEvent
   | LoreInternalisedEvent;
+
+export interface HitSparkEvent {
+  type: "HitSpark";
+  x: number;
+  y: number;
+  z: number;
+}
 
 export interface DamageDealtEvent {
   type: "DamageDealt";

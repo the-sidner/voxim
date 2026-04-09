@@ -13,6 +13,7 @@ import type { EntityId } from "@voxim/engine";
 export const TileEvents = {
   EntityDied: Symbol("EntityDied"),
   DamageDealt: Symbol("DamageDealt"),
+  HitSpark: Symbol("HitSpark"),
   CraftingCompleted: Symbol("CraftingCompleted"),
   BuildingCompleted: Symbol("BuildingCompleted"),
   HungerCritical: Symbol("HungerCritical"),
@@ -29,6 +30,12 @@ export const TileEvents = {
 export interface EntityDiedPayload {
   entityId: EntityId;
   killerId?: EntityId;
+}
+
+export interface HitSparkPayload {
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface DamageDealtPayload {

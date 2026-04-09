@@ -485,6 +485,10 @@ export class TileServer {
       this.pendingEvents.push({ type: "EntityDied", entityId: p.entityId, killerId: p.killerId });
     });
 
+    this.eventBus.subscribe(TileEvents.HitSpark, (p: { x: number; y: number; z: number }) => {
+      this.pendingEvents.push({ type: "HitSpark", x: p.x, y: p.y, z: p.z });
+    });
+
     this.eventBus.subscribe(TileEvents.DamageDealt, (p: {
       targetId: EntityId;
       sourceId: EntityId;

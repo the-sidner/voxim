@@ -14,7 +14,7 @@
  * Single code path for players and NPCs. No isNpc branches.
  */
 import type { World } from "@voxim/engine";
-import { ACTION_USE_SKILL, hasAction } from "@voxim/protocol";
+import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore, DerivedItemStats } from "@voxim/content";
 import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq, segSegContactPoint } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
@@ -242,6 +242,8 @@ export class ActionSystem implements System {
       }
 
       newHitEntities.push({ entityId: target.entityId, bodyPart: hitBodyPart });
+
+      events.publish(TileEvents.HitSpark, { x: hitContact.x, y: hitContact.y, z: hitContact.z });
 
       const ctx: HitContext = {
         attackerId: entityId,

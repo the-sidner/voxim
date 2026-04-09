@@ -81,6 +81,8 @@ function isEventRelevant(
       return ev.entityId === playerId;
     case "LoreInternalised":
       return ev.entityId === playerId;
+    case "HitSpark":
+      return true;
   }
 }
 

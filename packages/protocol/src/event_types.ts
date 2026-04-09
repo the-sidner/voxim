@@ -18,4 +18,5 @@ export const EventType = {
   TradeCompleted:    9,
   LoreExternalised:  10,
   LoreInternalised:  11,
+  HitSpark:          12,
 } as const;
