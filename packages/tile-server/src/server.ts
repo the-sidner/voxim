@@ -41,6 +41,7 @@ import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionSystem } from "./systems/action.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
+import { BuildingSystem } from "./systems/building.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { ConsumptionSystem } from "./systems/consumption.ts";
 import { ResourceNodeSystem } from "./systems/resource_node_system.ts";
@@ -199,6 +200,7 @@ export class TileServer {
       new StaminaSystem(content),
       new LifetimeSystem(),
       new EquipmentSystem(content),
+      new BuildingSystem(content),
       new CraftingSystem(content),
       new ConsumptionSystem(content),
       new ResourceNodeSystem(content),

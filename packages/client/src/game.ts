@@ -115,7 +115,10 @@ export class VoximGame {
           if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
           if (state.stamina)   patchUI({ stamina:   { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
           if (state.hunger)    patchUI({ hunger:    { value: state.hunger.value } });
-          if (state.equipment) patchUI({ equipment: mapEquipmentToUI(state.equipment) });
+          if (state.equipment) {
+            patchUI({ equipment: mapEquipmentToUI(state.equipment) });
+            if (this.input) this.input.buildMode = getToolType(state.equipment.weapon?.itemType) === "hammer";
+          }
           if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory) });
         }
       }
@@ -239,6 +242,25 @@ export class VoximGame {
     }
     this.input = new InputController(canvas, () => this.renderer!.getPlayerScreenPos());
 
+    // Short RMB while hammer equipped → place the selected blueprint at cursor world pos
+    this.input.onBuildPlace = (cx, cy) => {
+      const playerState = this.playerId ? this.world.get(this.playerId) : null;
+      const groundZ = playerState?.position?.z ?? 4.0;
+      const worldPos = this.renderer?.getCursorWorldPos(cx, cy, groundZ);
+      if (!worldPos) return;
+      this._handleUIAction({
+        type: "place_blueprint",
+        structureType: uiState.value.selectedBlueprint,
+        worldX: worldPos.x,
+        worldY: worldPos.y,
+      });
+    };
+
+    // Long RMB while hammer equipped → open radial blueprint menu at cursor
+    this.input.onBuildOpenMenu = (cx, cy) => {
+      this._handleUIAction({ type: "open_build_menu", canvasX: cx, canvasY: cy });
+    };
+
     // Step 5: render loop
     this.running = true;
     this.scheduleFrame();
@@ -329,6 +351,23 @@ export class VoximGame {
 
       case "use_item":
         this._sendCommand({ cmd: CommandType.UseItem, fromSlot: action.fromSlot });
+        break;
+
+      case "place_blueprint":
+        this._sendCommand({
+          cmd: CommandType.PlaceBlueprint,
+          structureType: action.structureType,
+          worldX: action.worldX,
+          worldY: action.worldY,
+        });
+        break;
+
+      case "open_build_menu":
+        patchUI({ radialMenu: { x: action.canvasX, y: action.canvasY } });
+        break;
+
+      case "select_blueprint":
+        patchUI({ selectedBlueprint: action.structureType, radialMenu: null });
         break;
 
       // Not yet implemented — log for discoverability during development.
@@ -467,6 +506,18 @@ function mapEquipmentToUI(eq: EquipmentData): EquipmentState {
     feet:    toStack(eq.feet),
     back:    toStack(eq.back),
   };
+}
+
+/**
+ * Look up the toolType field for a given itemType from the local item template data.
+ * Returns the toolType string (e.g. "hammer") or undefined if not found.
+ */
+function getToolType(itemType: string | undefined): string | undefined {
+  if (!itemType) return undefined;
+  // deno-lint-ignore no-explicit-any
+  const templates = itemTemplatesData as any[];
+  const tpl = templates.find((t) => t.id === itemType);
+  return tpl?.baseStats?.toolType as string | undefined;
 }
 
 /**

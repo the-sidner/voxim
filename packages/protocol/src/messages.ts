@@ -99,16 +99,17 @@ export function hasAction(actions: number, flag: number): boolean {
  * read what they know and skip the remainder via payloadLen.
  */
 export const enum CommandType {
-  Equip        = 1,  // payload: u8 fromInventorySlot
-  Unequip      = 2,  // payload: u8 equipSlot (EquipSlotIndex enum)
-  MoveItem     = 3,  // payload: u8 fromSlot, u8 toSlot
-  DropItem     = 4,  // payload: u8 fromSlot
-  UseItem      = 5,  // payload: u8 fromSlot
-  Externalise  = 6,  // payload: u8 fragIndex (index into learnedFragmentIds)
-  Internalise  = 7,  // payload: u8 inventorySlot (slot holding the tome)
-  TradeBuy     = 8,  // payload: u32 listingSlot
-  TradeSell    = 9,  // payload: u8 inventorySlot
-  // 10-255 reserved for future commands
+  Equip           = 1,  // payload: u8 fromInventorySlot
+  Unequip         = 2,  // payload: u8 equipSlot (EquipSlotIndex enum)
+  MoveItem        = 3,  // payload: u8 fromSlot, u8 toSlot
+  DropItem        = 4,  // payload: u8 fromSlot
+  UseItem         = 5,  // payload: u8 fromSlot
+  Externalise     = 6,  // payload: u8 fragIndex (index into learnedFragmentIds)
+  Internalise     = 7,  // payload: u8 inventorySlot (slot holding the tome)
+  TradeBuy        = 8,  // payload: u32 listingSlot
+  TradeSell       = 9,  // payload: u8 inventorySlot
+  PlaceBlueprint  = 10, // payload: u8 strLen + UTF-8 structureType + f32 worldX + f32 worldY
+  // 11-255 reserved for future commands
 }
 
 /**
@@ -131,15 +132,16 @@ export const EQUIP_SLOT_NAMES = [
 ] as const;
 
 export type CommandPayload =
-  | { cmd: CommandType.Equip;       fromInventorySlot: number }
-  | { cmd: CommandType.Unequip;     equipSlot: EquipSlotIndex }
-  | { cmd: CommandType.MoveItem;    fromSlot: number; toSlot: number }
-  | { cmd: CommandType.DropItem;    fromSlot: number }
-  | { cmd: CommandType.UseItem;     fromSlot: number }
-  | { cmd: CommandType.Externalise; fragIndex: number }
-  | { cmd: CommandType.Internalise; inventorySlot: number }
-  | { cmd: CommandType.TradeBuy;    listingSlot: number }
-  | { cmd: CommandType.TradeSell;   inventorySlot: number };
+  | { cmd: CommandType.Equip;          fromInventorySlot: number }
+  | { cmd: CommandType.Unequip;        equipSlot: EquipSlotIndex }
+  | { cmd: CommandType.MoveItem;       fromSlot: number; toSlot: number }
+  | { cmd: CommandType.DropItem;       fromSlot: number }
+  | { cmd: CommandType.UseItem;        fromSlot: number }
+  | { cmd: CommandType.Externalise;    fragIndex: number }
+  | { cmd: CommandType.Internalise;    inventorySlot: number }
+  | { cmd: CommandType.TradeBuy;       listingSlot: number }
+  | { cmd: CommandType.TradeSell;      inventorySlot: number }
+  | { cmd: CommandType.PlaceBlueprint; structureType: string; worldX: number; worldY: number };
 
 export interface CommandDatagram {
   /** Monotonically increasing, shared sequence space with MovementDatagram. */

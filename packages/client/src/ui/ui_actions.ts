@@ -41,4 +41,9 @@ export type UIAction =
   | { type: "rebind_key"; action: string; key: string }
 
   // Debug
-  | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa" };
+  | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa" }
+
+  // Building
+  | { type: "place_blueprint"; structureType: string; worldX: number; worldY: number }
+  | { type: "open_build_menu"; canvasX: number; canvasY: number }
+  | { type: "select_blueprint"; structureType: string };

@@ -30,6 +30,7 @@ import { LoadingScreen }   from "./components/LoadingScreen.tsx";
 import { TooltipPortal }   from "./components/TooltipPortal.tsx";
 import { ContextMenu }     from "./components/ContextMenu.tsx";
 import { ToastQueue }      from "./components/ToastQueue.tsx";
+import { RadialMenu }      from "./components/RadialMenu.tsx";
 import { DebugPanel }      from "./components/DebugPanel.tsx";
 import { NetworkPanel }    from "./components/NetworkPanel.tsx";
 
@@ -98,6 +99,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       {/* Portals — always on top */}
       <TooltipPortal />
       <ContextMenu onAction={onAction} />
+      <RadialMenu onAction={onAction} />
     </>
   );
 }

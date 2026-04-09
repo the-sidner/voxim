@@ -623,6 +623,34 @@ export class VoximRenderer {
     return this.getEntityScreenPos(this.localPlayerId ?? "") ?? { x: 0, y: 0 };
   }
 
+  /**
+   * Unproject canvas pixel coordinates onto the world ground plane.
+   *
+   * Coordinate mapping: world(x, y, z) → three(x, z, y).
+   * The ground plane in Three.js space is y = groundHeight (= world z).
+   * Returns world-space { x, y } of the intersection, or null if the ray
+   * is parallel to the plane (shouldn't happen for the fixed iso camera).
+   */
+  getCursorWorldPos(canvasX: number, canvasY: number, groundHeight: number): { x: number; y: number } | null {
+    const w = this.renderer.domElement.clientWidth  || this.renderer.domElement.width;
+    const h = this.renderer.domElement.clientHeight || this.renderer.domElement.height;
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(
+      new THREE.Vector2(
+        (canvasX / w) * 2 - 1,
+        -(canvasY / h) * 2 + 1,
+      ),
+      this.camera,
+    );
+    // Ground plane at Three.js y = groundHeight (= world.z / surface height)
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundHeight);
+    const hit = new THREE.Vector3();
+    const result = raycaster.ray.intersectPlane(plane, hit);
+    if (!result) return null;
+    // three.x = world.x, three.z = world.y
+    return { x: hit.x, y: hit.z };
+  }
+
   /** Project an entity's world position to canvas pixel coordinates, or null if not found. */
   getEntityScreenPos(entityId: string): { x: number; y: number } | null {
     const mesh = this.entityMeshes.get(entityId);

@@ -228,6 +228,12 @@ export interface UIState {
   contextMenu: ContextMenuState | null;
   toasts:      Toast[];
 
+  // Building
+  /** The blueprint type the player has selected for placement. */
+  selectedBlueprint: string;
+  /** When set, a radial menu is shown at these canvas coordinates. */
+  radialMenu: { x: number; y: number } | null;
+
   /** True while the initial world state is still loading. */
   loading: boolean;
   /** 0–1 loading progress (terrain chunks received / 256). */
@@ -254,6 +260,8 @@ const _initial: UIState = {
   tooltip:     null,
   contextMenu: null,
   toasts:      [],
+  selectedBlueprint: "wood_wall",
+  radialMenu:  null,
   loading:          true,
   loadingProgress:  0,
 };

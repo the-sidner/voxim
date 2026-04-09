@@ -39,10 +39,37 @@ export class InputController {
   /** One-shot actions accumulated between buildDatagram calls. */
   private pendingActions = 0;
 
+  /**
+   * When true, RMB does blueprint placement instead of blocking.
+   * Set by game.ts whenever the equipped weapon changes.
+   */
+  buildMode = false;
+
+  /** Canvas-relative mouse position, updated on every mousemove. */
+  private mouseCanvasX = 0;
+  private mouseCanvasY = 0;
+
+  /** RMB long-press tracking. */
+  private rmbDownTime = 0;
+  private rmbLongPressTimer = 0;
+
+  /**
+   * Called on short RMB (tap < 300 ms) when buildMode is true.
+   * Receives canvas-relative mouse coordinates at the time of the click.
+   */
+  onBuildPlace?: (canvasX: number, canvasY: number) => void;
+
+  /**
+   * Called when RMB is held ≥ 300 ms and buildMode is true.
+   * Receives canvas-relative mouse coordinates at press time.
+   */
+  onBuildOpenMenu?: (canvasX: number, canvasY: number) => void;
+
   private readonly _keydown: (e: KeyboardEvent) => void;
   private readonly _keyup: (e: KeyboardEvent) => void;
   private readonly _mousemove: (e: MouseEvent) => void;
   private readonly _mousedown: (e: MouseEvent) => void;
+  private readonly _mouseup: (e: MouseEvent) => void;
   private readonly _contextmenu: (e: Event) => void;
 
   /**
@@ -58,18 +85,46 @@ export class InputController {
     this._keyup = (e) => this.keys.delete(e.code);
     this._mousemove = (e) => {
       const rect = canvas.getBoundingClientRect();
+      this.mouseCanvasX = e.clientX - rect.left;
+      this.mouseCanvasY = e.clientY - rect.top;
       const { x: px, y: py } = this.getPlayerScreen();
       // Subtract π/4 to convert from screen-space to world-space angle.
       // The isometric camera sits at 45° azimuth, so screen-right = world-northeast.
       // The server hitbox uses world-space atan2, so facing must match.
       this.facing = Math.atan2(
-        (e.clientY - rect.top) - py,
-        (e.clientX - rect.left) - px,
+        this.mouseCanvasY - py,
+        this.mouseCanvasX - px,
       ) - Math.PI / 4;
     };
     this._mousedown = (e) => {
       if (e.button === 0) this.pendingActions |= ACTION_USE_SKILL;
-      if (e.button === 2) this.pendingActions |= ACTION_BLOCK;
+      if (e.button === 2) {
+        if (this.buildMode) {
+          // Track press for long/short detection; suppress ACTION_BLOCK
+          this.rmbDownTime = Date.now();
+          const cx = this.mouseCanvasX;
+          const cy = this.mouseCanvasY;
+          this.rmbLongPressTimer = globalThis.setTimeout(() => {
+            this.rmbLongPressTimer = 0;
+            this.onBuildOpenMenu?.(cx, cy);
+          }, 300) as unknown as number;
+        } else {
+          this.pendingActions |= ACTION_BLOCK;
+        }
+      }
+    };
+    this._mouseup = (e) => {
+      if (e.button === 2 && this.buildMode) {
+        const held = Date.now() - this.rmbDownTime;
+        if (this.rmbLongPressTimer) {
+          globalThis.clearTimeout(this.rmbLongPressTimer);
+          this.rmbLongPressTimer = 0;
+        }
+        // Only fire short-press if it was released before the long-press threshold
+        if (held < 300) {
+          this.onBuildPlace?.(this.mouseCanvasX, this.mouseCanvasY);
+        }
+      }
     };
     this._contextmenu = (e) => e.preventDefault();
 
@@ -77,6 +132,7 @@ export class InputController {
     globalThis.addEventListener("keyup", this._keyup);
     canvas.addEventListener("mousemove", this._mousemove);
     canvas.addEventListener("mousedown", this._mousedown);
+    canvas.addEventListener("mouseup", this._mouseup);
     canvas.addEventListener("contextmenu", this._contextmenu);
   }
 
@@ -142,6 +198,8 @@ export class InputController {
     window.removeEventListener("keyup", this._keyup);
     this.canvas.removeEventListener("mousemove", this._mousemove);
     this.canvas.removeEventListener("mousedown", this._mousedown);
+    this.canvas.removeEventListener("mouseup", this._mouseup);
     this.canvas.removeEventListener("contextmenu", this._contextmenu);
+    if (this.rmbLongPressTimer) globalThis.clearTimeout(this.rmbLongPressTimer);
   }
 }
