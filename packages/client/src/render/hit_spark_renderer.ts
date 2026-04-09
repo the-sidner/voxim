@@ -43,8 +43,8 @@ export class HitSparkRenderer {
     this.geometry.setDrawRange(0, 0);
 
     const mat = new THREE.PointsMaterial({
-      size: 0.14,
-      sizeAttenuation: true,
+      size: 5,               // pixels — sizeAttenuation must be false for orthographic cameras
+      sizeAttenuation: false,
       vertexColors: true,
       transparent: true,
       depthWrite: false,
