@@ -3,7 +3,7 @@
  * Voxim renderer — Three.js scene management.
  *
  * Visual grammar:
- *   - Post-process pipeline: scene → pixelTarget → depth-blit → heightTarget → EdgePass (Sobel + AO + sRGB) → canvas.
+ *   - Post-process pipeline: scene → pixelTarget → depth-blit → heightTarget → EdgePass (Sobel + AO + sRGB) → aaTarget → FxaaPass → canvas.
  *   - Flat shading: all geometry uses MeshPhongMaterial with flatShading:true.
  *   - Strong directional sun with hard shadows; dim hemisphere ambient.
  *
@@ -41,6 +41,7 @@ import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
 import { HitboxDebugOverlay, HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay.ts";
 import { HitSparkRenderer } from "./hit_spark_renderer.ts";
 import { EdgePass } from "./edge_pass.ts";
+import { FxaaPass } from "./fxaa_pass.ts";
 
 /**
  * Isometric view direction: camera sits at this offset from the camera target.
@@ -202,10 +203,16 @@ export class VoximRenderer {
   private readonly depthBlitMat: THREE.ShaderMaterial;
   /** Screen-space edge detection — runs during the blit pass. */
   private readonly edgePass: EdgePass;
+  /** Intermediate target for EdgePass output — FXAA reads from this. */
+  private readonly aaTarget: THREE.WebGLRenderTarget;
+  /** Screen-space FXAA — smooths sub-pixel edges on EdgePass output before canvas output. */
+  private readonly fxaaPass: FxaaPass;
   /** Fullscreen blit pass: upscales pixelTarget to the canvas. */
   private readonly blitScene: THREE.Scene;
   private readonly blitMesh: THREE.Mesh;
   private readonly blitCamera: THREE.OrthographicCamera;
+  /** Fullscreen scene for the FXAA pass. */
+  private readonly fxaaScene: THREE.Scene;
   /** Debug: when true the blit pass shows the raw height texture instead of the scene. */
   private heightDebugEnabled = false;
 
@@ -345,6 +352,16 @@ export class VoximRenderer {
     const blitGeo = new THREE.PlaneGeometry(2, 2);
     this.blitMesh = new THREE.Mesh(blitGeo, this.edgePass.material);
     this.blitScene.add(this.blitMesh);
+
+    // ---- FXAA pass — reads EdgePass output, writes anti-aliased result to canvas ----
+    this.aaTarget = new THREE.WebGLRenderTarget(pw, ph, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      stencilBuffer: false,
+    });
+    this.fxaaPass  = new FxaaPass(this.aaTarget.texture, pw, ph);
+    this.fxaaScene = new THREE.Scene();
+    this.fxaaScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.fxaaPass.material));
 
     // ---- lighting ----
     // Strong directional sun — dominates shading so flat-shaded faces read clearly.
@@ -857,12 +874,16 @@ export class VoximRenderer {
     this.renderer.setRenderTarget(this.heightTarget);
     this.renderer.render(this.depthBlitScene, this.blitCamera);
 
-    // Pass 2: edge detection + height shading + sRGB blit to canvas.
-    this.renderer.setRenderTarget(null);
+    // Pass 2: edge detection + height shading + sRGB → aaTarget (FXAA reads this).
+    this.renderer.setRenderTarget(this.aaTarget);
     this.renderer.render(this.blitScene, this.blitCamera);
 
-    // Pass 3: hitbox debug overlay — rendered directly to canvas, bypassing
-    // the pixel-art and edge-detection passes so the lines stay crisp.
+    // Pass 3: FXAA — smooth sub-pixel edges on EdgePass output → canvas.
+    this.renderer.setRenderTarget(null);
+    this.renderer.render(this.fxaaScene, this.blitCamera);
+
+    // Pass 4: hitbox debug overlay — rendered directly to canvas, bypassing
+    // the pixel-art, edge-detection, and FXAA passes so the lines stay crisp.
     // Objects in HITBOX_OVERLAY_LAYER are invisible to the main camera (layer 0
     // only by default), so they never appear in pixelTarget.
     // Background must be nulled out: THREE.js renders scene.background even
@@ -1246,6 +1267,8 @@ export class VoximRenderer {
     this.pixelTarget.setSize(npw, nph);
     this.heightTarget.setSize(npw, nph);
     this.edgePass.setSize(npw, nph);
+    this.aaTarget.setSize(npw, nph);
+    this.fxaaPass.setSize(npw, nph);
   }
 
   dispose(): void {
@@ -1257,8 +1280,10 @@ export class VoximRenderer {
     this.hitSparkRenderer.dispose();
     this.propPool.dispose();
     this.edgePass.dispose();
+    this.fxaaPass.dispose();
     this.pixelTarget.dispose();
     this.heightTarget.dispose();
+    this.aaTarget.dispose();
     this.depthBlitMat.dispose();
     this.renderer.dispose();
     for (const [entityId] of this.trailMeshes) this.removeTrailMesh(entityId);
