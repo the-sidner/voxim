@@ -14,6 +14,7 @@ import type {
   MaterialDef,
   MaterialProperties,
   ModelDefinition,
+  Hitbox,
   SubObjectRef,
   ResolvedSubObject,
   SkeletonDef,
@@ -48,6 +49,12 @@ export interface ContentStore {
 
   // ---- models ----
   getModel(id: string): ModelDefinition | null;
+  /**
+   * AABB derived from the model's VoxelNode positions at registration time.
+   * Computed once and cached — never re-derived at runtime.
+   * Returns null for unknown model IDs or models with no nodes.
+   */
+  getModelAabb(id: string): Hitbox | null;
 
   // ---- skeletons ----
   getSkeleton(id: string): SkeletonDef | null;
@@ -148,6 +155,8 @@ export class StaticContentStore implements ContentStore {
   private tileLayout: TileLayout | null = null;
 
   // ---- derived caches ----
+  /** Per-model AABB derived from VoxelNode positions at registerModel() time. */
+  private aabbCache = new Map<string, Hitbox>();
   /** One entry per skeleton type (skeletonId → Map<boneId, BoneDef>). */
   private boneIndexCache = new Map<string, ReadonlyMap<string, BoneDef>>();
   /** One entry per (modelId:seed:scale) combination. */
@@ -166,6 +175,17 @@ export class StaticContentStore implements ContentStore {
 
   registerModel(def: ModelDefinition): void {
     this.models.set(def.id, def);
+    // Derive and cache AABB from voxel positions once, at registration time.
+    if (def.nodes.length > 0) {
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (const n of def.nodes) {
+        if (n.x < minX) minX = n.x; if (n.x + 1 > maxX) maxX = n.x + 1;
+        if (n.y < minY) minY = n.y; if (n.y + 1 > maxY) maxY = n.y + 1;
+        if (n.z < minZ) minZ = n.z; if (n.z + 1 > maxZ) maxZ = n.z + 1;
+      }
+      this.aabbCache.set(def.id, { minX, minY, minZ, maxX, maxY, maxZ });
+    }
   }
 
   registerSkeleton(def: SkeletonDef): void {
@@ -234,6 +254,10 @@ export class StaticContentStore implements ContentStore {
 
   getModel(id: string): ModelDefinition | null {
     return this.models.get(id) ?? null;
+  }
+
+  getModelAabb(id: string): Hitbox | null {
+    return this.aabbCache.get(id) ?? null;
   }
 
   // ---- skeletons ----

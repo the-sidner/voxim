@@ -119,7 +119,12 @@ export interface Hitbox {
 export interface ModelDefinition {
   id: string;
   version: number;
-  hitbox: Hitbox;
+  /**
+   * Bounding box — derived at registration time from VoxelNode positions by
+   * StaticContentStore.registerModel().  No longer needs to be authored by hand
+   * or stored in JSON.  Still accepted if present (ignored — derived value wins).
+   */
+  hitbox?: Hitbox;
   nodes: VoxelNode[];
   subObjects: SubObjectRef[];
   materials: MaterialId[];

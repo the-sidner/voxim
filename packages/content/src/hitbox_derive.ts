@@ -24,7 +24,7 @@
  * Solver space: x=right, y=up, z=-fwd.
  * Sub-model AABB voxel coordinates use entity-local convention.
  */
-import type { BodyPartVolume, ModelDefinition, SubObjectRef } from "./types.ts";
+import type { BodyPartVolume, Hitbox, SubObjectRef } from "./types.ts";
 import type { ContentStore } from "./store.ts";
 import type { BoneTransform } from "./skeleton_solver.ts";
 import { quatFromEulerXYZ, applyQuat } from "./ik_solver.ts";
@@ -57,9 +57,9 @@ interface CapsuleLocal {
   radius: number; // voxel units
 }
 
-/** Derive a capsule from a model's AABB. Returns null for degenerate shapes. */
-function capsuleFromModel(model: ModelDefinition): CapsuleLocal | null {
-  const { minX, minY, minZ, maxX, maxY, maxZ } = model.hitbox;
+/** Derive a capsule from an AABB. Returns null for degenerate shapes. */
+function capsuleFromAabb(aabb: Hitbox): CapsuleLocal | null {
+  const { minX, minY, minZ, maxX, maxY, maxZ } = aabb;
   const extX = maxX - minX;
   const extY = maxY - minY;
   const extZ = maxZ - minZ;
@@ -150,9 +150,11 @@ export function deriveHitboxTemplate(
   const model = content.getModel(modelId);
   if (!model) return [];
 
-  // Leaf model — no sub-objects, fall back to top-level AABB
+  // Leaf model — no sub-objects, fall back to voxel-derived AABB
   if (!model.subObjects || model.subObjects.length === 0) {
-    return fallbackFromAabb(model, modelId, scale);
+    const aabb = content.getModelAabb(modelId);
+    if (!aabb) return [];
+    return fallbackFromAabb(aabb, modelId, scale);
   }
 
   const rand = makePrng(seed);
@@ -175,10 +177,10 @@ export function deriveHitboxTemplate(
     // ── Opt-out check — AFTER PRNG consumption ───────────────────────────────
     if (sub.hitbox === false) continue;
 
-    const subModel = content.getModel(subModelId);
-    if (!subModel) continue;
+    const subAabb = content.getModelAabb(subModelId);
+    if (!subAabb) continue;
 
-    const capsule = capsuleFromModel(subModel);
+    const capsule = capsuleFromAabb(subAabb);
     if (!capsule) continue;
 
     // Apply sub-object transform (entity-local) then convert to solver space.
@@ -196,7 +198,9 @@ export function deriveHitboxTemplate(
   }
 
   if (parts.length === 0) {
-    return fallbackFromAabb(model, modelId, scale);
+    const rootAabb = content.getModelAabb(modelId);
+    if (!rootAabb) return [];
+    return fallbackFromAabb(rootAabb, modelId, scale);
   }
   return parts;
 }
@@ -249,8 +253,8 @@ export function applyHitboxTemplate(
 
 // ── private helpers ───────────────────────────────────────────────────────────
 
-function fallbackFromAabb(model: ModelDefinition, id: string, scale: number): HitboxPartTemplate[] {
-  const capsule = capsuleFromModel(model);
+function fallbackFromAabb(aabb: Hitbox, id: string, scale: number): HitboxPartTemplate[] {
+  const capsule = capsuleFromAabb(aabb);
   if (!capsule) return [];
   // Fallback: entity-local axis-aligned capsule, convert to solver space.
   // Entity-local AABB: x=right, y=fwd, z=up → solver: x=right, y=up, z=-fwd
