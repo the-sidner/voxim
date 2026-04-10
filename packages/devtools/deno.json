@@ -1,0 +1,17 @@
+{
+  "name": "@voxim/devtools",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "imports": {
+    "three": "https://esm.sh/three@0.167.0",
+    "preact": "npm:preact@10.25.4",
+    "preact/hooks": "npm:preact@10.25.4/hooks",
+    "preact/jsx-runtime": "npm:preact@10.25.4/jsx-runtime",
+    "preact/compat": "npm:preact@10.25.4/compat",
+    "@preact/signals": "npm:@preact/signals@1.3.0"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  }
+}

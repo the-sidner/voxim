@@ -7,7 +7,8 @@
     "packages/content",
     "packages/client",
     "packages/tile-server",
-    "packages/gateway"
+    "packages/gateway",
+    "packages/devtools"
   ],
   "tasks": {
     "gateway":      "deno run --allow-net --allow-read --allow-env --unstable-net packages/gateway/main.ts",
@@ -18,6 +19,8 @@
     "demo-client":  "deno task bundle",
     "debug-client": "deno run --allow-net --allow-read --allow-env --unstable-net scripts/debug_client.ts",
     "gen-terrain":  "deno run --allow-read --allow-write scripts/gen_terrain.ts",
-    "gen-certs":    "deno run --allow-run --allow-write scripts/gen_certs.ts"
+    "gen-certs":    "deno run --allow-run --allow-write scripts/gen_certs.ts",
+    "build-voxel-editor": "deno run -A --node-modules-dir=auto scripts/build_voxel_editor.ts",
+    "devtools":     "deno task build-voxel-editor && deno run --allow-net --allow-read scripts/serve_devtools.ts"
   }
 }
