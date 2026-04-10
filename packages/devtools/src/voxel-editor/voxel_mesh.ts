@@ -12,7 +12,7 @@ import type { VoxelKey } from "./state.ts";
 import { parseKey } from "./state.ts";
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
-const MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
+const MAT = new THREE.MeshLambertMaterial();
 
 // Cursor: wireframe box showing hovered cell
 const CURSOR_GEO = new THREE.BoxGeometry(1.02, 1.02, 1.02);
