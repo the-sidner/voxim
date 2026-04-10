@@ -17,8 +17,8 @@ import * as THREE from "three";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { MaterialDef, ModelDefinition, WeaponActionDef, ItemTemplate, AnimationStateData } from "@voxim/content";
-import { resolveSubObjects } from "@voxim/content";
+import type { MaterialDef, ModelDefinition, WeaponActionDef, ItemTemplate, AnimationStateData, SkeletonDef, IKTargetDef } from "@voxim/content";
+import { resolveSubObjects, solveTwoBoneIK } from "@voxim/content";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import {
   createEntityMesh,
@@ -164,6 +164,11 @@ const _bladeTip    = new THREE.Vector3();
 const _bladeUp     = new THREE.Vector3(0, 1, 0);  // world-up used as orientation hint
 const _attachQuat  = new THREE.Quaternion();
 const _attachMat   = new THREE.Matrix4();
+
+/** Scratch objects — reused by applyWeaponIK to avoid per-frame allocation. */
+const _ikHilt      = new THREE.Vector3();
+const _ikPole      = new THREE.Vector3();
+const _ikInvParent = new THREE.Matrix4();
 
 export class VoximRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -732,6 +737,13 @@ export class VoximRenderer {
           : 0;
         const t = totalTicks > 0 ? Math.min(ticksIntoAction / totalTicks, 1.0) : 1.0;
 
+        // Apply weapon arm IK so hands track the hilt position.
+        if (skeleton && weaponAction?.ikTargets?.length && weaponAction.swingPath?.keyframes?.length) {
+          const bladeLength = weaponAction.swingPath.defaultBladeLength ?? 1.0;
+          const s = evaluateWeaponSlice(weaponAction.swingPath.keyframes, t, bladeLength);
+          this.applyWeaponIK(mesh, skeleton, weaponAction.ikTargets, s);
+        }
+
         this.updateAttachmentPositions(mesh, anim, weaponAction, t);
       }
     }
@@ -1047,6 +1059,66 @@ export class VoximRenderer {
   /**
    * Position each entity's attachment slot anchors for the current frame.
    *
+  /**
+   * Apply two-bone IK for each ikTarget in the current weapon action.
+   * Rotates arm bones so the end-effector tracks the hilt position.
+   *
+   * Must be called AFTER updateSkeletonPose (so FK rotations are set) but
+   * BEFORE updateAttachmentPositions reads hand_r world position.
+   * Caller is responsible for calling mesh.group.updateWorldMatrix(true, true)
+   * after this so subsequent world-position reads see the updated pose.
+   */
+  private applyWeaponIK(
+    mesh: EntityMeshGroup,
+    skeleton: SkeletonDef,
+    ikTargets: IKTargetDef[],
+    hilt: { hiltX: number; hiltY: number; hiltZ: number },
+  ): void {
+    if (!mesh.boneGroups) return;
+    mesh.group.updateWorldMatrix(true, true);
+
+    for (const ikt of ikTargets) {
+      if (ikt.source !== "hilt") continue;
+      const [boneAId, boneBId] = ikt.chain;
+      const boneAGroup = mesh.boneGroups.get(boneAId);
+      const boneBGroup = mesh.boneGroups.get(boneBId);
+      if (!boneAGroup || !boneBGroup || !boneAGroup.parent) continue;
+
+      // Bone lengths from rest-pose positions (already scaled, set at skeleton build time).
+      // Bone B's local position in bone A space = its rest offset = distance = bone A length.
+      const boneALen = boneBGroup.position.length();
+      const boneBChild = skeleton.bones.find(b => b.parent === boneBId);
+      if (!boneBChild) continue;
+      const boneBChildGroup = mesh.boneGroups.get(boneBChild.id);
+      if (!boneBChildGroup) continue;
+      const boneBLen = boneBChildGroup.position.length();
+      if (boneALen < 1e-4 || boneBLen < 1e-4) continue;
+
+      // Inverse of bone A's parent world matrix (point + direction transforms).
+      _ikInvParent.copy((boneAGroup.parent as THREE.Object3D).matrixWorld).invert();
+
+      // Hilt in bone A's parent local space.
+      _ikHilt.set(hilt.hiltX, hilt.hiltY, hilt.hiltZ);
+      mesh.group.localToWorld(_ikHilt);
+      _ikHilt.applyMatrix4(_ikInvParent);
+
+      // Pole hint direction (entity-local fwd/right/up → Three.js → parent local).
+      const ph = ikt.poleHint;
+      _ikPole.set(ph.right, ph.up, -ph.fwd);
+      _ikPole.transformDirection(mesh.group.matrixWorld);
+      _ikPole.transformDirection(_ikInvParent);
+
+      const { rotA, rotB } = solveTwoBoneIK(
+        boneALen, boneBLen,
+        { x: _ikHilt.x, y: _ikHilt.y, z: _ikHilt.z },
+        { x: _ikPole.x, y: _ikPole.y, z: _ikPole.z },
+      );
+      boneAGroup.rotation.set(rotA.x, rotA.y, rotA.z);
+      boneBGroup.rotation.set(rotB.x, rotB.y, rotB.z);
+    }
+  }
+
+  /**
    * "main_hand" — during an attack the anchor is placed at the hilt position
    * derived from the swing-path keyframes (same data the server uses for hit
    * detection).  At all other times it follows the hand_r bone so the weapon

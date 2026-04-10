@@ -18,7 +18,7 @@
 import type { World } from "@voxim/engine";
 import type { DeferredEventQueue } from "../deferred_events.ts";
 import type { System } from "../system.ts";
-import type { AnimationStateData, AnimationLayer } from "@voxim/content";
+import type { ContentStore, AnimationStateData, AnimationLayer } from "@voxim/content";
 import { ACTION_CROUCH, hasAction } from "@voxim/protocol";
 import { Velocity, Health, SkillInProgress, AnimationState, InputState } from "../components/game.ts";
 
@@ -29,9 +29,10 @@ const WALK_THRESHOLD_SQ = 0.01;
 /**
  * Reference speed (world units/tick) for the walk clip.
  * Walk animation plays at 1× rate when entity speed equals this value.
- * Adjust to match the expected gait cadence once walk clips are in skeletons.json.
+ * Set to match maxGroundSpeed/tickRate (6 units/sec ÷ 20 Hz = 0.3 units/tick),
+ * so a full gait cycle completes in ~1 second at top speed.
  */
-const WALK_SPEED_REFERENCE = 0.08;
+const WALK_SPEED_REFERENCE = 0.3;
 
 /**
  * Base time advance per tick for fixed-rate clips (speedScale is a number).
@@ -42,6 +43,8 @@ const TICK_DT = 1 / 20;
 // ---- AnimationSystem ----
 
 export class AnimationSystem implements System {
+  constructor(private readonly content: ContentStore) {}
+
   prepare(_tick: number): void {}
 
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
@@ -63,18 +66,14 @@ export class AnimationSystem implements System {
       let ticksIntoAction = 0;
 
       if (sip) {
-        const action = world.get(entityId, SkillInProgress);
-        if (action) {
-          weaponActionId = action.weaponActionId;
-          ticksIntoAction = sip.phase === "windup"
-            ? sip.ticksInPhase
-            : sip.phase === "active"
-            ? sip.ticksInPhase  // caller resolves windup offset at read time
-            : sip.ticksInPhase; // same for winddown
-          // Precise cumulative ticks: recomputed from sip each tick, not accumulated here.
-          // The client re-derives the offset from WeaponActionDef.windupTicks at render time.
-          // Keep it simple: just pass ticksInPhase for now; ActionSystem owns the phase.
-          // TODO: pass cumulative ticksIntoAction once ActionSystem exposes it on SkillInProgress.
+        weaponActionId = sip.weaponActionId;
+        // Compute cumulative ticks across phases so the client receives a
+        // monotonically increasing counter the renderer can extrapolate smoothly.
+        const def = this.content.getWeaponAction(sip.weaponActionId);
+        ticksIntoAction = sip.ticksInPhase;
+        if (def) {
+          if (sip.phase === "active")    ticksIntoAction += def.windupTicks;
+          else if (sip.phase === "winddown") ticksIntoAction += def.windupTicks + def.activeTicks;
         }
       }
 

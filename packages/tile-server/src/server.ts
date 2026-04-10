@@ -220,7 +220,7 @@ export class TileServer {
       new BuffSystem(),
       new TraderSystem(content),
       new DynastySystem(content),
-      new AnimationSystem(),
+      new AnimationSystem(content),
       new HitboxSystem(content),
     ];
 
