@@ -24,7 +24,7 @@ import { CorruptionExposure, SpeedModifier } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import type { ContentStore, EntityTemplate, SkillSlot } from "@voxim/content";
-import { deriveHitboxParts } from "@voxim/content";
+import { deriveHitboxTemplate, applyHitboxTemplate, solveSkeleton, REST_POSE } from "@voxim/content";
 
 // ---- player spawning ----
 
@@ -87,8 +87,7 @@ export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlay
   world.write(id, Heritage, heritage);
   world.write(id, ModelRef, { modelId: "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
   world.write(id, AnimationState, { mode: "idle", attackStyle: "", windupTicks: 0, activeTicks: 0, winddownTicks: 0, ticksIntoAction: 0, weaponActionId: "" });
-  const playerHitboxDef = content.getModelHitboxDef("human_base");
-  if (playerHitboxDef) world.write(id, Hitbox, { parts: playerHitboxDef.parts });
+  // Hitbox not written at spawn — HitboxSystem derives it from the live skeleton each tick.
 
   return id;
 }
@@ -143,14 +142,7 @@ export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts
   const slots = opts.skillLoadout ?? [null, null, null, null];
   world.write(id, LoreLoadout, { skills: slots, learnedFragmentIds: [], skillCooldowns: slots.map(() => 0) });
   world.write(id, ActiveEffects, { effects: [] });
-  const npcModelId = opts.modelId ?? "human_base";
-  const npcHitboxDef = content.getModelHitboxDef(npcModelId);
-  if (npcHitboxDef) {
-    world.write(id, Hitbox, { parts: npcHitboxDef.parts });
-  } else {
-    const parts = deriveHitboxParts(npcModelId, 0, content, 0.35);
-    if (parts.length > 0) world.write(id, Hitbox, { parts });
-  }
+  // Hitbox not written at spawn — HitboxSystem derives it from the live skeleton each tick.
 
   return id;
 }
@@ -286,8 +278,14 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
     scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
     seed,
   });
-  const parts = deriveHitboxParts(opts.template.modelId, seed, content, entityScale);
-  if (parts.length > 0) world.write(id, Hitbox, { parts });
+  const template = deriveHitboxTemplate(opts.template.modelId, seed, content, entityScale);
+  if (template.length > 0) {
+    const skeleton = content.getSkeletonForModel(opts.template.modelId);
+    const boneIndex = skeleton ? new Map(skeleton.bones.map((b) => [b.id, b])) : new Map();
+    const boneTransforms = skeleton ? solveSkeleton(skeleton, boneIndex, REST_POSE, entityScale) : new Map();
+    const parts = applyHitboxTemplate(template, boneTransforms);
+    if (parts.length > 0) world.write(id, Hitbox, { parts });
+  }
 
   const rn = opts.template.components.resourceNode;
   if (rn) {

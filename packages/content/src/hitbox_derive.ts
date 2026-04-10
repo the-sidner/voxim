@@ -1,37 +1,41 @@
 /**
- * deriveHitboxParts — auto-derive BodyPartVolume capsules from a model's
- * sub-objects at spawn time.
+ * Hitbox template derivation and application.
  *
- * Rules:
- *   - For each resolved sub-object (hitbox !== false): derive one capsule from
- *     the sub-model's AABB. The longest axis becomes the capsule axis; the
- *     largest of the other two half-extents becomes the radius.
- *   - Sub-object transform (translation + Euler XYZ rotation) is applied to
- *     the capsule endpoints to place them in parent space.
- *   - Bone-driven sub-objects (boneId set) get an additional rest-pose offset
- *     accumulated from the skeleton hierarchy.
- *   - If a sub-model's AABB produces radius < MIN_RADIUS_VOXELS the part is
- *     silently skipped (degenerate shape, useless for hit detection).
- *   - If a model has no sub-objects the model's own AABB is used as a single
- *     fallback capsule.
+ * Two-step pipeline:
+ *   1. deriveHitboxTemplate — at spawn (or cached): converts a model's sub-objects
+ *      into bone-local capsule templates in solver space. No live animation data
+ *      required — the bone offset is intentionally NOT accumulated here.
+ *   2. applyHitboxTemplate — every tick (for animated entities) or once (for
+ *      static entities): applies live bone world transforms to produce entity-local
+ *      BodyPartVolume capsules ready for hit detection.
+ *
+ * This file is the ONLY place in the codebase that converts solver-space
+ * coordinates (x=right, y=up, z=-fwd) to entity-local (right=X, fwd=Y, up=Z).
+ * All upstream math (solveSkeleton, computeHumanPose, applyQuat) stays in
+ * solver space. The outbound conversion happens once, at the bottom of
+ * applyHitboxTemplate.
  *
  * PRNG ordering contract: the hitbox !== false check happens AFTER the
  * probability draw and pool-selection draw so the seed sequence stays in sync
  * with resolveSubObjects and the hitbox covers the same sub-objects that the
  * client renders.
  *
- * Entity-local coordinate system: fwd=Y, right=X, up=Z.
- * AABB voxel coordinates use the same convention.
+ * Entity-local coordinate system: right=X, fwd=Y, up=Z.
+ * Solver space: x=right, y=up, z=-fwd.
+ * Sub-model AABB voxel coordinates use entity-local convention.
  */
-import type { BodyPartVolume, ModelDefinition, SubObjectRef, SkeletonDef } from "./types.ts";
+import type { BodyPartVolume, ModelDefinition, SubObjectRef } from "./types.ts";
 import type { ContentStore } from "./store.ts";
+import type { BoneTransform } from "./skeleton_solver.ts";
 import { quatFromEulerXYZ, applyQuat } from "./ik_solver.ts";
+import type { Quat } from "./ik_solver.ts";
 
 /** Minimum capsule radius in voxel units. Parts below this threshold are skipped. */
 const MIN_RADIUS_VOXELS = 0.1;
 
-// ── PRNG (mulberry32 — identical to store.ts; kept local so this module has no
-//    dependency on the private implementation in store.ts) ────────────────────
+const IDENTITY_QUAT: Quat = { x: 0, y: 0, z: 0, w: 1 };
+
+// ── PRNG (mulberry32 — identical to store.ts; kept local to avoid private dep) ──
 
 function makePrng(seed: number): () => number {
   let s = seed >>> 0;
@@ -45,11 +49,11 @@ function makePrng(seed: number): () => number {
 
 // ── Geometry helpers ─────────────────────────────────────────────────────────
 
-interface LocalPt { x: number; y: number; z: number }
+interface Vec3Local { x: number; y: number; z: number }
 
 interface CapsuleLocal {
-  p1: LocalPt;
-  p2: LocalPt;
+  p1: Vec3Local;
+  p2: Vec3Local;
   radius: number; // voxel units
 }
 
@@ -65,8 +69,8 @@ function capsuleFromModel(model: ModelDefinition): CapsuleLocal | null {
 
   let hl: number;
   let radius: number;
-  let p1: LocalPt;
-  let p2: LocalPt;
+  let p1: Vec3Local;
+  let p2: Vec3Local;
 
   if (extX >= extY && extX >= extZ) {
     hl = extX / 2;
@@ -89,59 +93,60 @@ function capsuleFromModel(model: ModelDefinition): CapsuleLocal | null {
   return { p1, p2, radius };
 }
 
-/** Apply a sub-object's rotation + translation (+ optional bone offset) to a point. */
-function transformPoint(
-  p: LocalPt,
+/**
+ * Apply sub-object rotation + translation in entity-local space,
+ * then convert the result from entity-local to solver space.
+ *
+ * Entity-local: right=x, fwd=y, up=z
+ * Solver space:  x=right, y=up, z=-fwd
+ */
+function transformToSolver(
+  p: Vec3Local,
   transform: SubObjectRef["transform"],
-  boneOffset: LocalPt,
-): LocalPt {
+): Vec3Local {
   const q = quatFromEulerXYZ(transform.rotX, transform.rotY, transform.rotZ);
   const r = applyQuat(p, q);
-  return {
-    x: r.x + transform.x + boneOffset.x,
-    y: r.y + transform.y + boneOffset.y,
-    z: r.z + transform.z + boneOffset.z,
-  };
+  // Apply translation (entity-local)
+  const ex = r.x + transform.x;
+  const ey = r.y + transform.y;
+  const ez = r.z + transform.z;
+  // Convert entity-local → solver: sx=right=ex, sy=up=ez, sz=-fwd=-ey
+  return { x: ex, y: ez, z: -ey };
 }
 
+// ── Public types and API ──────────────────────────────────────────────────────
+
 /**
- * Walk the skeleton hierarchy to accumulate the rest-pose position of a bone
- * in entity-local (parent-model) space.
- *
- * NOTE: BoneDef only stores rest translation (restX/Y/Z), not rest rotation.
- * If bones ever gain rest rotations this accumulation would need to compose
- * quaternions instead.
+ * Capsule geometry in bone-local solver space (x=right, y=up, z=-fwd).
+ * Both endpoints are relative to the bone's origin (from solveSkeleton).
+ * For boneId=null, endpoints are relative to the entity origin.
  */
-function boneRestPos(boneId: string, skeleton: SkeletonDef): LocalPt {
-  const boneMap = new Map(skeleton.bones.map((b) => [b.id, b]));
-  let x = 0, y = 0, z = 0;
-  let current = boneMap.get(boneId);
-  while (current) {
-    x += current.restX;
-    y += current.restY;
-    z += current.restZ;
-    current = current.parent ? boneMap.get(current.parent) : undefined;
-  }
-  return { x, y, z };
+export interface HitboxPartTemplate {
+  id: string;
+  /** Bone this part is relative to. Null for root/entity-origin-relative. */
+  boneId: string | null;
+  fromX: number; fromY: number; fromZ: number; // solver space, bone-local
+  toX:   number; toY:   number; toZ:   number; // solver space, bone-local
+  radius: number;                               // world units (already scaled)
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
 /**
- * Auto-derive BodyPartVolume capsules for a model at spawn time.
+ * Derive bone-local capsule templates for a model at spawn/cache time.
+ *
+ * The bone rest-pose offset is NOT accumulated here — it is applied dynamically
+ * by applyHitboxTemplate using live bone world transforms from solveSkeleton.
  *
  * @param modelId  Root model to derive hitbox for.
  * @param seed     Procedural seed — must match ModelRef.seed for this entity.
- * @param content  ContentStore for model and skeleton lookups.
- * @param scale    Uniform entity scale (e.g. 0.35). Converts voxel units to
- *                 entity-local units.
+ * @param content  ContentStore for model lookups.
+ * @param scale    Uniform entity scale (e.g. 0.35). Converts voxel units to world units.
  */
-export function deriveHitboxParts(
+export function deriveHitboxTemplate(
   modelId: string,
   seed: number,
   content: ContentStore,
   scale: number,
-): BodyPartVolume[] {
+): HitboxPartTemplate[] {
   const model = content.getModel(modelId);
   if (!model) return [];
 
@@ -150,18 +155,15 @@ export function deriveHitboxParts(
     return fallbackFromAabb(model, modelId, scale);
   }
 
-  const skeleton = content.getSkeletonForModel(modelId);
   const rand = makePrng(seed);
-  const parts: BodyPartVolume[] = [];
+  const parts: HitboxPartTemplate[] = [];
 
   for (const sub of model.subObjects) {
     // ── Reproduce resolveSubObjects PRNG consumption ─────────────────────────
-    // Probability draw (consumed even if we skip this sub-object for hitbox)
     const prob = sub.probability ?? 1.0;
-    const probRoll = prob < 1.0 ? rand() : 0; // consume RNG only when needed
+    const probRoll = prob < 1.0 ? rand() : 0;
     if (prob < 1.0 && probRoll >= prob) continue;
 
-    // Pool selection draw
     let subModelId: string | undefined;
     if (sub.pool && sub.pool.length > 0) {
       subModelId = sub.pool[Math.floor(rand() * sub.pool.length)];
@@ -177,25 +179,19 @@ export function deriveHitboxParts(
     if (!subModel) continue;
 
     const capsule = capsuleFromModel(subModel);
-    if (!capsule) continue; // degenerate AABB (zero radius)
+    if (!capsule) continue;
 
-    const boneOffset: LocalPt = (sub.boneId && skeleton)
-      ? boneRestPos(sub.boneId, skeleton)
-      : { x: 0, y: 0, z: 0 };
-
-    const tp1 = transformPoint(capsule.p1, sub.transform, boneOffset);
-    const tp2 = transformPoint(capsule.p2, sub.transform, boneOffset);
+    // Apply sub-object transform (entity-local) then convert to solver space.
+    // The bone rest offset is NOT added here — applyHitboxTemplate handles that.
+    const sp1 = transformToSolver(capsule.p1, sub.transform);
+    const sp2 = transformToSolver(capsule.p2, sub.transform);
 
     parts.push({
       id: subModelId,
-      // boneId intentionally absent — position is entity-local, not bone-local
-      fromRight: tp1.x * scale,
-      fromFwd:   tp1.y * scale,
-      fromUp:    tp1.z * scale,
-      toRight:   tp2.x * scale,
-      toFwd:     tp2.y * scale,
-      toUp:      tp2.z * scale,
-      radius:    capsule.radius * scale,
+      boneId: sub.boneId ?? null,
+      fromX: sp1.x * scale, fromY: sp1.y * scale, fromZ: sp1.z * scale,
+      toX:   sp2.x * scale, toY:   sp2.y * scale, toZ:   sp2.z * scale,
+      radius: capsule.radius * scale,
     });
   }
 
@@ -205,17 +201,66 @@ export function deriveHitboxParts(
   return parts;
 }
 
-function fallbackFromAabb(model: ModelDefinition, id: string, scale: number): BodyPartVolume[] {
+/**
+ * Apply bone world transforms to a hitbox template, producing entity-local
+ * BodyPartVolume capsules ready for hit detection and network transmission.
+ *
+ * This is the SINGLE place in the codebase that converts solver-space
+ * coordinates to entity-local. All upstream math stays in solver space.
+ *
+ * For each part:
+ *   1. Look up bone transform (solver-space position + orientation).
+ *      If boneId is null, identity transform at origin is used.
+ *   2. Rotate bone-local endpoint by the bone's orientation quaternion.
+ *   3. Add the bone's world position (both in solver space).
+ *   4. Convert resulting solver-space absolute position to entity-local:
+ *        right = x,  fwd = -z,  up = y
+ */
+export function applyHitboxTemplate(
+  template: HitboxPartTemplate[],
+  boneTransforms: ReadonlyMap<string, BoneTransform>,
+): BodyPartVolume[] {
+  const parts: BodyPartVolume[] = [];
+
+  for (const t of template) {
+    const bt = t.boneId !== null ? boneTransforms.get(t.boneId) : undefined;
+    const bonePos = bt?.pos ?? { x: 0, y: 0, z: 0 };
+    const boneRot: Quat = bt?.rot ?? IDENTITY_QUAT;
+
+    // Rotate bone-local endpoints by bone orientation (solver space)
+    const rf = applyQuat({ x: t.fromX, y: t.fromY, z: t.fromZ }, boneRot);
+    const rt = applyQuat({ x: t.toX,   y: t.toY,   z: t.toZ   }, boneRot);
+
+    // Add bone world position → absolute solver-space positions
+    const af = { x: rf.x + bonePos.x, y: rf.y + bonePos.y, z: rf.z + bonePos.z };
+    const at = { x: rt.x + bonePos.x, y: rt.y + bonePos.y, z: rt.z + bonePos.z };
+
+    // Convert solver-space → entity-local: right=x, fwd=-z, up=y
+    parts.push({
+      id: t.id,
+      fromRight: af.x, fromFwd: -af.z, fromUp: af.y,
+      toRight:   at.x, toFwd:  -at.z,  toUp:  at.y,
+      radius: t.radius,
+    });
+  }
+
+  return parts;
+}
+
+// ── private helpers ───────────────────────────────────────────────────────────
+
+function fallbackFromAabb(model: ModelDefinition, id: string, scale: number): HitboxPartTemplate[] {
   const capsule = capsuleFromModel(model);
   if (!capsule) return [];
+  // Fallback: entity-local axis-aligned capsule, convert to solver space.
+  // Entity-local AABB: x=right, y=fwd, z=up → solver: x=right, y=up, z=-fwd
+  const sp1 = { x: capsule.p1.x, y: capsule.p1.z, z: -capsule.p1.y };
+  const sp2 = { x: capsule.p2.x, y: capsule.p2.z, z: -capsule.p2.y };
   return [{
     id,
-    fromRight: capsule.p1.x * scale,
-    fromFwd:   capsule.p1.y * scale,
-    fromUp:    capsule.p1.z * scale,
-    toRight:   capsule.p2.x * scale,
-    toFwd:     capsule.p2.y * scale,
-    toUp:      capsule.p2.z * scale,
-    radius:    capsule.radius * scale,
+    boneId: null,
+    fromX: sp1.x * scale, fromY: sp1.y * scale, fromZ: sp1.z * scale,
+    toX:   sp2.x * scale, toY:   sp2.y * scale, toZ:   sp2.z * scale,
+    radius: capsule.radius * scale,
   }];
 }
