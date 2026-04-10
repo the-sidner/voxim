@@ -76,6 +76,9 @@ export { localToWorld, evaluateSwingPath, deriveTip, segSegDistSq, segSegContact
 export type { BoneRotation, Quat } from "./src/ik_solver.ts";
 export { solveTwoBoneIK, quatFromEulerXYZ, quatMultiply, invertQuat, applyQuat } from "./src/ik_solver.ts";
 
+// ---- Animation layer evaluator (shared server + client) ----
+export { evaluateAnimationLayers, buildClipIndex, buildMaskIndex } from "./src/animation_eval.ts";
+
 // ---- Skeleton FK solver (shared server + client) ----
 export type { BoneTransform } from "./src/skeleton_solver.ts";
 export { solveSkeleton, REST_POSE } from "./src/skeleton_solver.ts";
