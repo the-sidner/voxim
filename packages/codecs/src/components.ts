@@ -1023,19 +1023,17 @@ export interface HitboxData {
 
 function writeBodyPart(w: WireWriter, p: BodyPartVolume): void {
   w.writeStr(p.id);
-  if (p.boneId) { w.writeU8(1); w.writeStr(p.boneId); } else { w.writeU8(0); }
   w.writeF32(p.fromFwd);  w.writeF32(p.fromRight); w.writeF32(p.fromUp);
   w.writeF32(p.toFwd);    w.writeF32(p.toRight);   w.writeF32(p.toUp);
   w.writeF32(p.radius);
 }
 
 function readBodyPart(r: WireReader): BodyPartVolume {
-  const id     = r.readStr();
-  const boneId = r.readU8() ? r.readStr() : undefined;
+  const id        = r.readStr();
   const fromFwd   = r.readF32(); const fromRight = r.readF32(); const fromUp  = r.readF32();
   const toFwd     = r.readF32(); const toRight   = r.readF32(); const toUp    = r.readF32();
   const radius    = r.readF32();
-  return { id, boneId, fromFwd, fromRight, fromUp, toFwd, toRight, toUp, radius };
+  return { id, fromFwd, fromRight, fromUp, toFwd, toRight, toUp, radius };
 }
 
 export const hitboxCodec: Serialiser<HitboxData> = {

@@ -413,13 +413,7 @@ export interface WeaponActionDef {
 export interface BodyPartVolume {
   /** Semantic name: "head", "torso", "abdomen", "legs", "body", "hindquarters", etc. */
   id: string;
-  /**
-   * If set, this capsule is bone-local rather than entity-local.
-   * AnimationSystem recomputes its world-space coordinates from the named bone's
-   * transform each tick and writes them back into the entity's Hitbox component.
-   * If absent, coordinates are entity-local and written once at spawn.
-   */
-  boneId?: string;
+  /** All coordinates are entity-local (right=X, fwd=Y, up=Z), derived by HitboxSystem. */
   fromFwd: number;
   fromRight: number;
   fromUp: number;
@@ -428,16 +422,6 @@ export interface BodyPartVolume {
   toUp: number;
   /** Capsule radius in world units. */
   radius: number;
-}
-
-/**
- * Set of body part volumes for one model template.
- * Keyed by modelTemplateId so action.ts can look up any hittable entity's hitbox.
- */
-export interface ModelHitboxDef {
-  /** Matches ModelRef.modelId (same as NpcTemplate.modelTemplateId). */
-  modelTemplateId: string;
-  parts: BodyPartVolume[];
 }
 
 /**

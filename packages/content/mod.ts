@@ -52,7 +52,6 @@ export type {
   WeaponSwingPath,
   IKTargetDef,
   BodyPartVolume,
-  ModelHitboxDef,
   VerbDef,
   GameConfig,
   TileLayout,

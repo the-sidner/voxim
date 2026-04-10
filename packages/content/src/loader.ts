@@ -10,7 +10,7 @@
  *   const template = content.getItemTemplate("wooden_sword");
  */
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, StructureDef, LoreFragment, ItemTemplate, NpcTemplate, EntityTemplate, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ModelHitboxDef, VerbDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, StructureDef, LoreFragment, ItemTemplate, NpcTemplate, EntityTemplate, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef } from "./types.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
 const DEFAULT_DATA_DIR = new URL("../data", import.meta.url).pathname;
@@ -20,7 +20,7 @@ export async function loadContentStore(
 ): Promise<StaticContentStore> {
   const store = new StaticContentStore();
 
-  const [materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw, loreRaw, itemTemplatesRaw, entityTemplatesRaw, npcTemplatesRaw, conceptVerbRaw, weaponActionsRaw, modelHitboxesRaw, verbsRaw] = await Promise.all([
+  const [materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw, loreRaw, itemTemplatesRaw, entityTemplatesRaw, npcTemplatesRaw, conceptVerbRaw, weaponActionsRaw, verbsRaw] = await Promise.all([
     readJson(dataDir, "materials.json"),
     readJson(dataDir, "models.json"),
     readJson(dataDir, "skeletons.json"),
@@ -32,7 +32,6 @@ export async function loadContentStore(
     readJson(dataDir, "npc_templates.json"),
     readJson(dataDir, "concept_verb_matrix.json"),
     readJson(dataDir, "weapon_actions.json"),
-    readJson(dataDir, "model_hitboxes.json"),
     readJson(dataDir, "verbs.json"),
   ]);
 
@@ -78,10 +77,6 @@ export async function loadContentStore(
 
   for (const raw of weaponActionsRaw as WeaponActionDef[]) {
     store.registerWeaponAction(raw);
-  }
-
-  for (const raw of modelHitboxesRaw as ModelHitboxDef[]) {
-    store.registerModelHitbox(raw);
   }
 
   for (const raw of verbsRaw as VerbDef[]) {

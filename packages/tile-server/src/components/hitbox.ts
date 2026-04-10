@@ -8,15 +8,15 @@ export type { HitboxData };
  * Collision geometry for hit detection.
  *
  * Networked — sent to clients so they can visualise hitboxes in debug mode.
- * The arm capsule parts (boneId set) update every tick during attacks via IK;
- * the rest are written once at spawn and are effectively static.
+ * All coordinates are entity-local (right=X, fwd=Y, up=Z).
  *
- * Parts with boneId set have their coordinates managed by AnimationSystem each tick
- * (bone-local → entity-local recomputation). Parts without boneId are entity-local
- * and written once at spawn.
+ * For animated entities (players, NPCs): written each tick by HitboxSystem,
+ * derived from the live skeleton pose via solveSkeleton + applyHitboxTemplate.
+ * For static entities (trees, resources): written once at spawn by spawner.ts
+ * using the rest-pose skeleton.
  *
- * An entity without this component (or with an empty parts array) is invisible to
- * ActionSystem's hit detection. This is the single gate for hittability.
+ * An entity without this component (or with an empty parts array) is invisible
+ * to ActionSystem's hit detection. This is the single gate for hittability.
  */
 export const Hitbox = defineComponent({
   name: "hitbox" as const,
