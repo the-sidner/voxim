@@ -17,12 +17,17 @@ The correct model: the **server is authoritative on animation state**, the **cli
 
 ### Coordinate systems (fixed, do not change)
 
-| Space | Axes |
-|---|---|
-| Entity-local / game-world | `fwd = Y`, `right = X`, `up = Z` (bone restX=right, restY=fwd, restZ=up) |
-| Solver / Three.js local | `x = right`, `y = up`, `z = -fwd` |
+| Space | Axes | Used for |
+|---|---|---|
+| Entity-local / game-world | `fwd = Y`, `right = X`, `up = Z` (bone restX=right, restY=fwd, restZ=up) | ECS components, wire format, hit detection |
+| Solver space | `x = right`, `y = up`, `z = -fwd` | All internal math — FK walk, IK, pose output |
 
-All new math lives in solver space internally; convert at boundaries.
+**Rule: all math in solver space. Convert at the two boundaries only.**
+
+- **In**: entity-local bone rest offsets → solver space at the start of `solveSkeleton`
+- **Out**: solver-space bone positions → entity-local at the end of `applyHitboxTemplate`
+
+No other coordinate conversions anywhere. `solveSkeleton`, `computeHumanPose`, `computeWolfPose`, `solveTwoBoneIK`, and `applyHitboxTemplate` all work exclusively in solver space. `BoneTransform.pos` stores solver-space coordinates internally — only `applyHitboxTemplate` converts to entity-local when writing `BodyPartVolume` endpoints. This keeps all the math reusable and free of conversion bugs.
 
 ### New shared module: `@voxim/content/src/skeleton_solver.ts`
 
@@ -30,69 +35,93 @@ All new math lives in solver space internally; convert at boundaries.
 
 ```typescript
 export interface BoneTransform {
-  /** Position in entity-local (fwd, right, up) space — relative to entity origin. */
-  pos: { fwd: number; right: number; up: number };
-  /** Orientation as unit quaternion (solver-space XYZ convention). */
+  /** Position in solver space (x=right, y=up, z=-fwd) — relative to entity origin. */
+  pos: { x: number; y: number; z: number };
+  /** Orientation as unit quaternion in solver space. */
   rot: { x: number; y: number; z: number; w: number };
 }
 
-/** Rest-pose map — all bones at identity rotation. */
-export const REST_POSE: Map<string, BoneRotation> = new Map();
+/** Empty map — used to request rest-pose evaluation (all bones at identity rotation). */
+export const REST_POSE: ReadonlyMap<string, BoneRotation> = new Map();
 
 /**
  * Walk the skeleton hierarchy (root → leaves) and compute each bone's
- * entity-local position and orientation.
+ * transform in solver space (x=right, y=up, z=-fwd), relative to entity origin.
  *
- * poseRotations: bone id → Euler XYZ in solver space (same convention as
- * THREE.Euler default order, same as quatFromEulerXYZ input).
+ * poseRotations: bone id → Euler XYZ in solver space.
  * Bones absent from poseRotations use identity rotation.
+ *
+ * ContentStore provides a pre-built Map<boneId, BoneDef> per skeleton
+ * (getBoneIndex) so this function never does linear searches.
  */
 export function solveSkeleton(
   skeleton: SkeletonDef,
+  boneIndex: ReadonlyMap<string, BoneDef>,  // pre-cached by ContentStore
   poseRotations: ReadonlyMap<string, BoneRotation>,
   scale: number,
 ): Map<string, BoneTransform>;
 ```
 
-**Algorithm** (FK walk, root-first topological order):
+**Algorithm** (FK walk, root-first topological order, entirely in solver space):
 ```
 for each bone (root → leaf order):
-  parentTransform = result[bone.parent] ?? { pos: origin, rot: IDENTITY }
+  parentTransform = result[bone.parent] ?? { pos: {0,0,0}, rot: IDENTITY }
 
-  // Rest offset: bone coords are (restX=right, restY=fwd, restZ=up) → solver: (restX, restZ, -restY)
+  // Convert bone rest offset from entity-local to solver space — one-time conversion
+  // entity-local: right=restX, fwd=restY, up=restZ
+  // solver:       x=right,    y=up,      z=-fwd
   restOffsetSolver = { x: bone.restX * scale, y: bone.restZ * scale, z: -bone.restY * scale }
 
-  // Rotate rest offset by parent orientation
+  // Rotate rest offset into parent's orientation (stays in solver space)
   rotatedOffset = applyQuat(restOffsetSolver, parentTransform.rot)
 
-  // Bone world position (in solver space)
-  bonePosSolver = parentTransform.pos (solver) + rotatedOffset
+  // Accumulate position in solver space
+  bonePos = parentTransform.pos + rotatedOffset
 
-  // Bone orientation = parent * local
-  euler = poseRotations.get(bone.id) ?? ZERO_EULER
+  // Compose orientation: parent * local
+  euler    = poseRotations.get(bone.id) ?? { x:0, y:0, z:0 }
   localRot = quatFromEulerXYZ(euler.x, euler.y, euler.z)
   boneRot  = quatMultiply(parentTransform.rot, localRot)
 
-  // Store in entity-local (convert position from solver to entity-local)
-  result[bone.id] = {
-    pos: { fwd: -bonePosSolver.z, right: bonePosSolver.x, up: bonePosSolver.y },
-    rot: boneRot,
-  }
+  result[bone.id] = { pos: bonePos, rot: boneRot }
+  // pos remains in solver space — applyHitboxTemplate converts to entity-local at output
 ```
 
-Export from `@voxim/content/mod.ts`. This module has zero external dependencies (only imports from within `@voxim/content`). Add `quatMultiply` as a private helper.
+Export from `@voxim/content/mod.ts`. Zero external dependencies (only imports from within `@voxim/content`). `quatMultiply` added as a private helper in `ik_solver.ts`.
+
+---
+
+### Extended: `AnimationStateData`
+
+Add one field to carry the weapon action identity through to HitboxSystem (and the client):
+
+```typescript
+export interface AnimationStateData {
+  mode: AnimationMode;
+  attackStyle: string;
+  windupTicks: number;
+  activeTicks: number;
+  winddownTicks: number;
+  ticksIntoAction: number;
+  /** WeaponActionDef id driving the current attack. Empty string for non-attack modes.
+   *  Required by HitboxSystem to look up swingPath keyframes and ikTargets. */
+  weaponActionId: string;   // ← new field
+}
+```
+
+`AnimationSystem` already reads `sip.weaponActionId` from `SkillInProgress` — it just needs to pass it through to `AnimationStateData`. `HitboxSystem` calls `content.getWeaponAction(anim.weaponActionId)` to get keyframes and ikTargets for the pose functions. The client uses it identically. Add this field to the codec in `@voxim/codecs`.
 
 ---
 
 ### New shared module: `@voxim/content/src/skeleton_pose.ts`
 
-**Responsibility**: The pure-math pose functions (currently buried in the client's `skeleton_evaluator.ts`) extracted so the server can call them too.
+**Responsibility**: The pure-math pose functions (currently buried in the client's `skeleton_evaluator.ts`) extracted so the server can call them too. All output is in solver space — no Three.js types.
 
 ```typescript
 /**
  * Compute bone rotations for a given animation state and entity kinematics.
- * Returns a map of bone id → Euler XYZ in solver space.
- * This is the platform-independent core that both the server and client use.
+ * Returns a map of bone id → Euler XYZ in solver space (x=right, y=up, z=-fwd).
+ * This is the platform-independent core used by both HitboxSystem and the client.
  */
 export function computeHumanPose(
   mode: AnimationMode,
@@ -100,7 +129,15 @@ export function computeHumanPose(
   vx: number,
   vy: number,
   facingAngle: number,
-  weaponData?: { keyframes: SwingKeyframe[]; ikTargets?: IKTargetDef[]; windupTicks: number; activeTicks: number; winddownTicks: number; ticksIntoAction: number; bladeLength: number },
+  weaponData?: {
+    keyframes: SwingKeyframe[];
+    ikTargets?: IKTargetDef[];
+    windupTicks: number;
+    activeTicks: number;
+    winddownTicks: number;
+    ticksIntoAction: number;
+    bladeLength: number;
+  },
 ): Map<string, BoneRotation>;
 
 export function computeWolfPose(
@@ -108,11 +145,16 @@ export function computeWolfPose(
   tick: number,
   vx: number,
   vy: number,
-  weaponData?: { windupTicks: number; activeTicks: number; winddownTicks: number; ticksIntoAction: number },
+  weaponData?: {
+    windupTicks: number;
+    activeTicks: number;
+    winddownTicks: number;
+    ticksIntoAction: number;
+  },
 ): Map<string, BoneRotation>;
 ```
 
-All pose logic moves here verbatim from `skeleton_evaluator.ts`. These functions return plain `BoneRotation = { x, y, z }` — no Three.js types. The IK constraint solving (weapon arm IK) is also done here, outputting the final bone rotations directly rather than producing an intermediate constraint list (the constraint solver is an implementation detail of how you get there, not a public API).
+All pose logic moves here verbatim from `skeleton_evaluator.ts`. The IK constraint solving (weapon arm IK, currently `weaponAnimationLayer` + `solveConstraints`) is computed here and emits final bone rotations directly — no intermediate constraint list is exposed as a public type.
 
 Export from `@voxim/content/mod.ts`.
 
@@ -120,16 +162,20 @@ Export from `@voxim/content/mod.ts`.
 
 ### Refactored: `@voxim/content/src/hitbox_derive.ts`
 
-**New output**: bone-local capsule templates instead of baked entity-local positions.
+**New output**: bone-local capsule templates in solver space, instead of baked entity-local positions.
 
 ```typescript
-/** Capsule geometry in bone-local space (solver coords: x=right, y=up, z=-fwd). */
+/**
+ * Capsule geometry in bone-local solver space (x=right, y=up, z=-fwd).
+ * Both endpoints are relative to the bone's origin (from solveSkeleton).
+ * For boneId=null, endpoints are relative to entity origin (root-relative).
+ */
 export interface HitboxPartTemplate {
   id: string;
-  /** Bone this part is relative to. Null for root-relative (no skeleton). */
+  /** Bone this part is relative to. Null for root/entity-origin-relative. */
   boneId: string | null;
-  fromX: number; fromY: number; fromZ: number;  // solver space
-  toX:   number; toY:   number; toZ:   number;  // solver space
+  fromX: number; fromY: number; fromZ: number;  // solver space, bone-local
+  toX:   number; toY:   number; toZ:   number;  // solver space, bone-local
   radius: number;                                 // world units (already scaled)
 }
 
@@ -141,11 +187,11 @@ export function deriveHitboxTemplate(
 ): HitboxPartTemplate[];
 ```
 
-**Key change in algorithm**: The `boneOffset` accumulation is **removed**. Each part stores its geometry relative to its bone's origin (just the sub-object's own transform — position and rotation within the parent model). The `boneId` is always set when a sub-object has one; null when the model has no skeleton.
+**Key change in algorithm**: The `boneOffset` accumulation (the old `boneRestPos` walk) is **removed**. Each part stores its geometry in bone-local solver space — just the sub-object's own transform applied to the capsule. The `boneId` is always preserved when a sub-object has one; null otherwise.
 
-At runtime the system applies the bone world transform (from `solveSkeleton`) to move parts into entity-local space.
+`applyHitboxTemplate` applies the live bone world transform (from `solveSkeleton`) to move each part from bone-local into entity-local — this is where the one outbound coordinate conversion happens.
 
-`ContentStore` caches the template per `(modelId, seed)` pair so it is computed at most once per entity.
+`ContentStore` caches the template per `(modelId, seed, scale)` so it is computed at most once per entity type. Also caches a `Map<boneId, BoneDef>` per skeleton (the bone index) so `solveSkeleton` never does linear searches.
 
 The old `deriveHitboxParts` function is **deleted**. No compatibility shim.
 
@@ -171,36 +217,43 @@ AnimationSystem imports nothing from `@voxim/content` beyond what it already nee
 
 ### New system: `HitboxSystem`
 
-A new system added to the tick order **immediately after AnimationSystem**. Its sole job is: read animation state + kinematics → evaluate skeleton → write Hitbox.
+A new system added to the tick order immediately after AnimationSystem. Its sole job is: read animation state + kinematics → evaluate skeleton → write Hitbox.
 
 ```
 Runs after: AnimationSystem
-Runs before: ActionSystem (hit detection reads Hitbox)
+Registered before ActionSystem in server.ts
 
 Query: (AnimationState + ModelRef + Velocity + Facing)
 
+Fields captured in prepare(serverTick):
+  this.tick = serverTick   ← drives gait cycle / breathing Math.sin calls
+
 For each matching entity:
-  a. Read AnimationState (mode, attackStyle, tick fields) from component
-  b. Read velocity and facing from Velocity / Facing components
+  a. Read AnimationState (mode, weaponActionId, tick fields) from component
+  b. Read velocity (vx, vy) from Velocity, facing angle from Facing
   c. Look up skeleton from ContentStore via ModelRef.modelId
      → if no skeleton: skip (entity has no skeletal hitbox)
-  d. Dispatch to shared pose function:
-       skeletonId === "human" → computeHumanPose(mode, tick, vx, vy, facing, weaponData)
-       skeletonId === "wolf"  → computeWolfPose(mode, tick, vx, vy, weaponData)
-     → Map<boneId, BoneRotation>
-  e. solveSkeleton(skeleton, poseMap, scale)
-     → Map<boneId, BoneTransform>
-  f. getHitboxTemplate(modelId, seed, scale) from ContentStore (cached)
-  g. applyHitboxTemplate(template, boneTransforms)
-     → BodyPartVolume[]  (entity-local, fully resolved)
-  h. world.set(entityId, Hitbox, { parts })
+  d. If mode === "attack": fetch weaponData via content.getWeaponAction(anim.weaponActionId)
+     to get keyframes, ikTargets, bladeLength — passed to pose function
+  e. Dispatch to shared pose function (by skeletonId):
+       "human" → computeHumanPose(mode, this.tick, vx, vy, facing, weaponData)
+       "wolf"  → computeWolfPose(mode, this.tick, vx, vy, weaponData)
+     → Map<boneId, BoneRotation>  (solver space)
+  f. solveSkeleton(skeleton, boneIndex, poseMap, scale)
+     → Map<boneId, BoneTransform>  (solver space)
+  g. getHitboxTemplate(modelId, seed, scale) from ContentStore (cached)
+  h. applyHitboxTemplate(template, boneTransforms)
+     → BodyPartVolume[]  (entity-local, outbound conversion done here)
+  i. world.set(entityId, Hitbox, { parts })
 ```
 
-HitboxSystem imports: `computeHumanPose`, `computeWolfPose`, `solveSkeleton`, `applyHitboxTemplate` from `@voxim/content`. It does not do any geometry math itself.
+**Note on tick ordering**: In this ECS, `world.set()` writes are deferred until `applyChangeset()`. No system reads another system's writes within the same tick — ActionSystem in tick N always reads `Hitbox(N-1)`. The registration order (AnimationSystem → HitboxSystem → ActionSystem) is for logical clarity and future correctness, not a data dependency within the same tick.
 
-System registration in `server.ts` (tick order):
+HitboxSystem imports: `computeHumanPose`, `computeWolfPose`, `solveSkeleton`, `applyHitboxTemplate` from `@voxim/content`. It does no geometry math itself.
+
+System registration in `server.ts`:
 ```
-... AnimationSystem → HitboxSystem → (ActionSystem already after) ...
+... AnimationSystem → HitboxSystem → ActionSystem → ...
 ```
 
 ---
@@ -258,6 +311,17 @@ Shared helper (lives in `@voxim/content/src/hitbox_derive.ts` alongside the temp
 /**
  * Apply bone transforms to a hitbox template, producing entity-local
  * BodyPartVolume capsules ready for hit detection and network transmission.
+ *
+ * This is the single place where solver-space coordinates are converted to
+ * entity-local (fwd=Y, right=X, up=Z). All upstream math stays in solver space.
+ *
+ * For each part:
+ *   1. Look up bone transform (solver-space position + orientation) from boneTransforms.
+ *      If boneId is null, use identity transform at origin.
+ *   2. Rotate the bone-local endpoint by the bone's orientation quaternion.
+ *   3. Add the bone's world position (both in solver space).
+ *   4. Convert resulting solver-space point to entity-local:
+ *        fwd = -z,  right = x,  up = y
  */
 export function applyHitboxTemplate(
   template: HitboxPartTemplate[],
@@ -265,7 +329,7 @@ export function applyHitboxTemplate(
 ): BodyPartVolume[];
 ```
 
-Used by both the spawner (rest pose for static entities) and HitboxSystem (live pose for animated entities). Same function, different inputs.
+Used by both the spawner (with `REST_POSE` transforms for static entities) and HitboxSystem (with live transforms for animated entities). Same function, different inputs.
 
 ---
 
@@ -278,54 +342,60 @@ Used by both the spawner (rest pose for static entities) and HitboxSystem (live 
 ## Migration Steps (ordered, no skipping)
 
 ### Step 1 — `skeleton_solver.ts` in `@voxim/content`
-- Add `quatMultiply` as a private helper in `ik_solver.ts` (or inline in the new file).
-- Implement `solveSkeleton` with topological sort (bones are already parent-before-child in the JSON but sort defensively).
-- Export `solveSkeleton`, `BoneTransform`, and `REST_POSE` from `mod.ts`.
-- Write a standalone unit test (Deno test) with the human skeleton: verify that rest-pose shoulder positions match the known constants (`SHOULDER_REST_Y = 1.75`, etc.).
+- Add `quatMultiply` as a private helper in `ik_solver.ts`.
+- Implement `solveSkeleton` working entirely in solver space. Accepts a pre-built `boneIndex: ReadonlyMap<string, BoneDef>` (no linear searches inside the function).
+- `BoneTransform.pos` is solver-space — do not convert to entity-local here.
+- Export `solveSkeleton`, `BoneTransform`, `REST_POSE` from `mod.ts`.
+- Write a Deno unit test with the human skeleton at rest pose: verify shoulder positions match the known constant (`SHOULDER_REST_Y = 1.75` in Three.js units, which is `y = 1.75` in solver space).
 
-### Step 2 — `skeleton_pose.ts` in `@voxim/content`
+### Step 2 — Extend `AnimationStateData` + codec
+- Add `weaponActionId: string` to `AnimationStateData` in `packages/content/src/types.ts`.
+- Update the codec in `packages/codecs/src/components.ts` to encode/decode the new field.
+- Update `AnimationSystem` to write `weaponActionId: sip?.weaponActionId ?? ""` into `AnimationStateData`.
+- `deno check` must pass before continuing.
+
+### Step 3 — `skeleton_pose.ts` in `@voxim/content`
 - Move all pose functions out of `skeleton_evaluator.ts` into `skeleton_pose.ts`.
-- Change all `THREE.Euler` to `BoneRotation`. Change all `pose.set(key, new THREE.Euler(x,y,z))` to `pose.set(key, {x,y,z})`.
-- The weapon IK constraint logic (currently in `weaponAnimationLayer` + `solveConstraints`) is computed here and emits final bone rotations directly (no intermediate constraint list exposed).
+- Replace all `THREE.Euler` with `BoneRotation`. Replace all `pose.set(key, new THREE.Euler(x,y,z))` with `pose.set(key, {x,y,z})`.
+- The weapon IK constraint logic (`weaponAnimationLayer` + `solveConstraints`) is collapsed into the pose function and emits final bone rotations directly — no intermediate constraint list exposed.
 - Export `computeHumanPose`, `computeWolfPose` from `mod.ts`.
 
-### Step 3 — Refactor `skeleton_evaluator.ts` (client)
-- Delete all pose functions (they are now in `skeleton_pose.ts`).
-- Rewrite to call `computeHumanPose`/`computeWolfPose` and convert `BoneRotation` → `THREE.Euler`.
-- Verify client renders identically to before (no visual change).
+### Step 4 — Refactor `skeleton_evaluator.ts` (client)
+- Delete all pose functions (now in `skeleton_pose.ts`).
+- Rewrite to call `computeHumanPose`/`computeWolfPose` and convert `BoneRotation → THREE.Euler`.
+- Verify client renders identically to before (visual check).
 
-### Step 4 — Refactor `hitbox_derive.ts`
-- Replace `deriveHitboxParts` with `deriveHitboxTemplate` (bone-local output, no baked bone offsets).
-- Add `applyHitboxTemplate` helper.
-- Delete `boneRestPos` helper (no longer needed after this refactor — the solver handles it).
-- Remove `deriveHitboxParts` export from `mod.ts`. Add `deriveHitboxTemplate`, `applyHitboxTemplate`, `HitboxPartTemplate` exports.
+### Step 5 — Refactor `hitbox_derive.ts`
+- Replace `deriveHitboxParts` with `deriveHitboxTemplate` (bone-local solver-space output, no baked bone offsets, `boneRestPos` deleted).
+- Add `applyHitboxTemplate` — this is the single place converting solver-space → entity-local on output.
+- Remove `deriveHitboxParts` export from `mod.ts`. Add `deriveHitboxTemplate`, `applyHitboxTemplate`, `HitboxPartTemplate`.
 
-### Step 5 — Add template caching to `ContentStore`
-- Add `getHitboxTemplate(modelId, seed, scale): HitboxPartTemplate[]` that calls `deriveHitboxTemplate` and caches by `${modelId}:${seed}:${scale}`.
-- This is purely additive; no breaking changes to existing ContentStore API yet.
+### Step 6 — Add caching to `ContentStore`
+- Add `getBoneIndex(skeletonId): ReadonlyMap<string, BoneDef>` — cached per skeleton type (one entry per skeleton, not per entity).
+- Add `getHitboxTemplate(modelId, seed, scale): HitboxPartTemplate[]` — cached per `${modelId}:${seed}:${scale}`.
+- Purely additive, no breaking changes yet.
 
-### Step 6 — Refactor `AnimationSystem` + create `HitboxSystem`
-- In `AnimationSystem`: delete `updateArmHitboxes`, `boneWorldPos`, `solverToEntityLocal`, `ARM_BONE_IDS`, `ARM_BONE_LEN`, `ArmIKResult`. The system reverts to its original single job: derive AnimationMode, write AnimationState.
-- Create `packages/tile-server/src/systems/hitbox.ts` — the new `HitboxSystem`.
-- HitboxSystem queries `(AnimationState + ModelRef + Velocity + Facing)` and implements the full loop: pose → solveSkeleton → applyHitboxTemplate → write Hitbox.
-- Register HitboxSystem in `server.ts` immediately after AnimationSystem and before ActionSystem.
+### Step 7 — Refactor `AnimationSystem` + create `HitboxSystem`
+- In `AnimationSystem`: delete `updateArmHitboxes`, `boneWorldPos`, `solverToEntityLocal`, `ARM_BONE_IDS`, `ARM_BONE_LEN`, `ArmIKResult`. System reverts to single job: derive AnimationMode, write AnimationState.
+- Create `packages/tile-server/src/systems/hitbox.ts` with `HitboxSystem`.
+- HitboxSystem captures `serverTick` in `prepare()` for use in `run()`.
+- Register HitboxSystem in `server.ts` immediately after AnimationSystem.
 
-### Step 7 — Refactor `spawner.ts`
-- Remove all `deriveHitboxParts` call sites.
-- Remove the `content.getModelHitboxDef()` lookup and the pre-baked hitbox path.
-- For static entities: write Hitbox at spawn from `applyHitboxTemplate(template, solveSkeleton(skeleton, REST_POSE, scale))`.
-- For animated entities (players, NPCs): do not write Hitbox at spawn — HitboxSystem writes it on tick 1.
+### Step 8 — Refactor `spawner.ts`
+- Remove all `deriveHitboxParts` call sites and the `getModelHitboxDef` lookup.
+- Static entities: write Hitbox at spawn via `applyHitboxTemplate(template, solveSkeleton(skeleton, boneIndex, REST_POSE, scale))`.
+- Animated entities (players, NPCs): do not write Hitbox at spawn — HitboxSystem writes it on tick 1.
 
-### Step 8 — Delete dead code
-- Delete `getModelHitboxDef` from ContentStore (pre-baked hitbox lookup, now unused).
-- Confirm `deriveHitboxParts` is fully gone (`grep -r deriveHitboxParts` returns nothing).
-- Confirm `AnimationSystem` no longer imports anything hitbox-related.
-- Run `deno check` — zero errors.
+### Step 9 — Delete dead code
+- Delete `getModelHitboxDef` from ContentStore.
+- Confirm with grep: `deriveHitboxParts`, `getModelHitboxDef`, `boneWorldPos`, `ARM_BONE_IDS`, `updateArmHitboxes` — all zero results.
+- Confirm `AnimationSystem` imports nothing hitbox-related.
+- `deno check` — zero errors.
 
-### Step 9 — Smoke test
+### Step 10 — Smoke test
 - `deno task demo`
 - Confirm players, NPCs, and trees are all hittable.
-- Enable hitbox debug overlay — verify capsules track the visible skeleton.
+- Enable hitbox debug overlay — verify capsules track the live skeleton (crouching, walking, attacking).
 
 ---
 
@@ -335,13 +405,15 @@ Used by both the spawner (rest pose for static entities) and HitboxSystem (live 
 
 1. **Delete, do not deprecate.** When a function is replaced, delete it. Do not add `@deprecated` comments, do not rename to `_old`, do not leave it "for now". If it was used somewhere, fix that call site before deleting.
 
-2. **One hitbox derivation pipeline.** After this refactor, there is exactly one function that produces a `BodyPartVolume[]` from entity state: `applyHitboxTemplate`. The spawner and AnimationSystem both call it. If you find yourself adding a third call site that works differently, stop and reconsider.
+2. **One hitbox derivation pipeline.** After this refactor, there is exactly one function that produces a `BodyPartVolume[]` from entity state: `applyHitboxTemplate`. The spawner and HitboxSystem both call it. If you find yourself adding a third call site that works differently, stop and reconsider.
 
 3. **No ARM_BONE_IDS or equivalent.** Do not hard-code lists of bones that get special treatment. The new system treats all bones uniformly. If a part has a `boneId`, it gets the bone's transform. If it doesn't, it's root-relative. That's the only distinction.
 
 4. **No Three.js in `@voxim/content`.** The content package is shared between server and client. It must not import Three.js. Pose functions return `BoneRotation = { x, y, z }`. The client wraps these in `THREE.Euler`. This boundary must not be blurred.
 
-5. **No server-only fast-paths that skip bone evaluation.** It is not acceptable to short-circuit the skeleton evaluation for "simple" modes like idle or walk. Every animated entity gets a full skeleton evaluation every tick. If performance is a concern, profile first, then optimize the solver — do not add conditional skipping.
+5. **No server-only fast-paths that skip bone evaluation.** It is not acceptable to short-circuit the skeleton evaluation for "simple" modes like idle or walk. Every animated entity gets a full skeleton evaluation every tick. If performance is a concern, profile first, then optimize the solver — do not add conditional skipping. The bone index cache (`getBoneIndex`) and hitbox template cache (`getHitboxTemplate`) are the approved optimizations; no others should be added preemptively.
+
+5b. **`solveSkeleton` and `computeXxxPose` accept output maps (future pooling).** Both functions should accept an optional `out` parameter (`Map<string, BoneTransform>` / `Map<string, BoneRotation>`) that, if provided, is cleared and written into instead of allocating a new Map. This makes allocation pooling a caller-side concern and avoids changing the API later. For now callers pass nothing and get a fresh Map.
 
 6. **`AnimationSystem` does not touch `Hitbox`.** Its job is animation mode derivation only. `HitboxSystem` owns all Hitbox writes for animated entities. The spawner owns Hitbox writes for static entities (rest pose, one time). These are the only two places that write Hitbox. Do not add hitbox logic back into AnimationSystem for any reason.
 
@@ -360,7 +432,11 @@ Used by both the spawner (rest pose for static entities) and HitboxSystem (live 
 - `grep -r "ARM_BONE_IDS\|updateArmHitboxes\|deriveHitboxParts\|getModelHitboxDef\|boneWorldPos"` returns zero results.
 - `AnimationSystem` does not import `Hitbox`, `solveTwoBoneIK`, or `applyHitboxTemplate`.
 - `grep -r "THREE" packages/content/` returns zero results.
+- `solveSkeleton` and `computeHumanPose`/`computeWolfPose` accept optional `out` map parameters.
+- `ContentStore` exposes `getBoneIndex` (per skeleton type) and `getHitboxTemplate` (per model+seed+scale), both cached.
+- `AnimationStateData` includes `weaponActionId` and its codec round-trips it correctly.
+- `applyHitboxTemplate` is the only place in the codebase that converts solver-space → entity-local.
 - `deno check` passes with zero errors.
-- Hitbox debug overlay shows capsules that track the live skeleton (crouch posture, attack arms, walk lean).
+- Hitbox debug overlay shows capsules that track the live skeleton (crouching, walking, attacking).
 - Trees and resources remain hittable after the spawner change.
 - No new `// TODO`, `// FIXME`, or `// deprecated` comments introduced.
