@@ -37,6 +37,8 @@ import type {
 } from "./types.ts";
 import type { HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
+import type { AnimationClip, BoneMask } from "./types.ts";
+import { buildClipIndex, buildMaskIndex } from "./animation_eval.ts";
 
 export interface ContentStore {
   // ---- materials ----
@@ -106,6 +108,18 @@ export interface ContentStore {
    */
   getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[];
 
+  /**
+   * Returns a pre-built clip lookup map (clipId → AnimationClip) for a skeleton.
+   * Built once per skeleton type and reused — avoids linear searches in evaluateAnimationLayers.
+   */
+  getClipIndex(skeletonId: string): ReadonlyMap<string, AnimationClip>;
+
+  /**
+   * Returns a pre-built bone mask lookup map (maskId → BoneMask) for a skeleton.
+   * Built once per skeleton type and reused.
+   */
+  getMaskIndex(skeletonId: string): ReadonlyMap<string, BoneMask>;
+
   // ---- verbs ----
   getVerbDef(id: SkillVerb): VerbDef | null;
 
@@ -138,6 +152,10 @@ export class StaticContentStore implements ContentStore {
   private boneIndexCache = new Map<string, ReadonlyMap<string, BoneDef>>();
   /** One entry per (modelId:seed:scale) combination. */
   private hitboxTemplateCache = new Map<string, HitboxPartTemplate[]>();
+  /** One entry per skeleton type (skeletonId → Map<clipId, AnimationClip>). */
+  private clipIndexCache = new Map<string, ReadonlyMap<string, AnimationClip>>();
+  /** One entry per skeleton type (skeletonId → Map<maskId, BoneMask>). */
+  private maskIndexCache = new Map<string, ReadonlyMap<string, BoneMask>>();
 
   // ---- registration ----
 
@@ -376,6 +394,26 @@ export class StaticContentStore implements ContentStore {
       this.hitboxTemplateCache.set(key, tmpl);
     }
     return tmpl;
+  }
+
+  getClipIndex(skeletonId: string): ReadonlyMap<string, AnimationClip> {
+    let idx = this.clipIndexCache.get(skeletonId);
+    if (!idx) {
+      const skeleton = this.skeletons.get(skeletonId);
+      idx = skeleton ? buildClipIndex(skeleton) : new Map();
+      this.clipIndexCache.set(skeletonId, idx);
+    }
+    return idx;
+  }
+
+  getMaskIndex(skeletonId: string): ReadonlyMap<string, BoneMask> {
+    let idx = this.maskIndexCache.get(skeletonId);
+    if (!idx) {
+      const skeleton = this.skeletons.get(skeletonId);
+      idx = skeleton ? buildMaskIndex(skeleton) : new Map();
+      this.maskIndexCache.set(skeletonId, idx);
+    }
+    return idx;
   }
 
   // ---- verbs ----
