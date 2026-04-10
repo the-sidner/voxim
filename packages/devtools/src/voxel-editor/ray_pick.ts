@@ -41,12 +41,12 @@ export function pick(
 
   const mesh = getVoxelMesh();
   if (mesh) {
-    const hits = raycaster.intersectObject(mesh);
+    const hits = raycaster.intersectObject(mesh, true);
     if (hits.length > 0) {
       const hit = hits[0];
       const normal = hit.face?.normal ?? new THREE.Vector3(0, 1, 0);
-      // World normal from the instanced mesh
-      const worldNormal = normal.clone().transformDirection(mesh.matrixWorld).round();
+      // Transform face normal from the hit child mesh's local space to world space
+      const worldNormal = normal.clone().transformDirection(hit.object.matrixWorld).round();
       // The hit position in world space
       const wp = hit.point.clone().sub(
         worldNormal.clone().multiplyScalar(0.01), // step back slightly from face
