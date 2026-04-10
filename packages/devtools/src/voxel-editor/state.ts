@@ -2,11 +2,11 @@
  * Editor state — all mutable state as @preact/signals so UI panels react automatically.
  */
 import { signal, computed } from "@preact/signals";
-import type { MaterialId, ModelDefinition, SubObjectRef, Hitbox } from "@voxim/content";
+import type { MaterialId, ModelDefinition, SubObjectRef } from "@voxim/content";
 
 // ---- types ----
 
-export type ToolMode = "paint" | "erase" | "fill";
+export type ToolMode = "paint" | "erase" | "fill" | "select";
 export type VoxelKey = string; // "x,y,z"
 
 export function voxelKey(x: number, y: number, z: number): VoxelKey {
@@ -23,22 +23,25 @@ export type VoxelPatch = Map<VoxelKey, MaterialId | null>;
 
 // ---- core state signals ----
 
-export const modelId       = signal<string>("new_model");
-export const modelVersion  = signal<number>(1);
-export const skeletonId    = signal<string | null>(null);
-export const hitbox        = signal<Hitbox>({ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 });
-export const subObjects    = signal<SubObjectRef[]>([]);
+export const modelId      = signal<string>("new_model");
+export const modelVersion = signal<number>(1);
+export const skeletonId   = signal<string | null>(null);
+export const subObjects   = signal<SubObjectRef[]>([]);
 
 /**
  * The voxel grid — source of truth.
  * Replace the whole Map reference on every mutation to trigger signal subscribers.
  */
-export const voxels        = signal<Map<VoxelKey, MaterialId>>(new Map());
+export const voxels = signal<Map<VoxelKey, MaterialId>>(new Map());
 
-export const activeMaterial = signal<MaterialId>(3); // stone
-export const activeTool     = signal<ToolMode>("paint");
-export const activeLayer    = signal<number>(0);      // Y level for grid pick
-export const selectedSubObject = signal<number | null>(null);
+export const activeMaterial   = signal<MaterialId>(3); // stone
+export const activeTool       = signal<ToolMode>("paint");
+export const activeLayer      = signal<number>(0);     // Y level for grid pick
+
+/** Selected voxel key — set by the select tool, null when nothing is selected. */
+export const selectedVoxelKey    = signal<VoxelKey | null>(null);
+/** Selected subobject index into subObjects.value — set by select tool or sidebar. */
+export const selectedSubObject   = signal<number | null>(null);
 
 // ---- undo ----
 
@@ -76,7 +79,7 @@ export function toModelDefinition(): ModelDefinition {
   const def: ModelDefinition = {
     id: modelId.value,
     version: modelVersion.value,
-    hitbox: hitbox.value,
+    // hitbox is derived server-side from voxel nodes — not authored here
     nodes,
     subObjects: subObjects.value,
     materials,
@@ -88,29 +91,43 @@ export function toModelDefinition(): ModelDefinition {
 // ---- import helper ----
 
 export function fromModelDefinition(def: ModelDefinition): void {
-  modelId.value = def.id;
+  modelId.value      = def.id;
   modelVersion.value = def.version ?? 1;
-  skeletonId.value = def.skeletonId ?? null;
-  hitbox.value = def.hitbox ?? { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 };
-  subObjects.value = def.subObjects ?? [];
+  skeletonId.value   = def.skeletonId ?? null;
+  subObjects.value   = def.subObjects ?? [];
+  selectedVoxelKey.value  = null;
+  selectedSubObject.value = null;
   const next = new Map<VoxelKey, MaterialId>();
   for (const n of def.nodes) next.set(voxelKey(n.x, n.y, n.z), n.materialId);
   voxels.value = next;
   undoStack.length = 0;
 }
 
-// ---- hitbox auto-fit ----
+// ---- subobject helpers ----
 
-export function autoFitHitbox(): void {
-  const map = voxels.value;
-  if (map.size === 0) return;
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (const key of map.keys()) {
-    const [x, y, z] = parseKey(key);
-    if (x < minX) minX = x; if (x + 1 > maxX) maxX = x + 1;
-    if (y < minY) minY = y; if (y + 1 > maxY) maxY = y + 1;
-    if (z < minZ) minZ = z; if (z + 1 > maxZ) maxZ = z + 1;
-  }
-  hitbox.value = { minX, minY, minZ, maxX, maxY, maxZ };
+export function updateSubObject(index: number, patch: Partial<SubObjectRef>): void {
+  subObjects.value = subObjects.value.map((s, i) => i === index ? { ...s, ...patch } : s);
+}
+
+export function updateSubObjectTransform(index: number, key: string, value: number): void {
+  subObjects.value = subObjects.value.map((s, i) => {
+    if (i !== index) return s;
+    return { ...s, transform: { ...s.transform, [key]: value } };
+  });
+}
+
+export function addSubObject(): void {
+  const next: SubObjectRef = {
+    modelId: "",
+    transform: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 },
+  };
+  selectedSubObject.value = subObjects.value.length;
+  subObjects.value = [...subObjects.value, next];
+}
+
+export function removeSubObject(index: number): void {
+  subObjects.value = subObjects.value.filter((_, i) => i !== index);
+  if (selectedSubObject.value === index) selectedSubObject.value = null;
+  else if (selectedSubObject.value !== null && selectedSubObject.value > index)
+    selectedSubObject.value -= 1;
 }

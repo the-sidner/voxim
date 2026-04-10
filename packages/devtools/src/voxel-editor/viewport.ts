@@ -3,7 +3,7 @@
  * Call init(canvas) once. Call setVoxelMesh() when the mesh changes.
  */
 import * as THREE from "three";
-import { cursorMesh } from "./voxel_mesh.ts";
+import { cursorMesh, selectionMesh } from "./voxel_mesh.ts";
 
 // ---- scene ----
 
@@ -17,6 +17,7 @@ const axes = new THREE.AxesHelper(3);
 scene.add(axes);
 
 scene.add(cursorMesh);
+scene.add(selectionMesh);
 
 // Lighting
 const ambient = new THREE.AmbientLight(0xffffff, 0.6);
@@ -41,10 +42,17 @@ let _renderer: THREE.WebGLRenderer | null = null;
 let _raf = 0;
 
 let _currentMesh: THREE.Object3D | null = null;
+let _currentSubMesh: THREE.Object3D | null = null;
 
 export function setVoxelMesh(mesh: THREE.Object3D | null): void {
   if (_currentMesh) scene.remove(_currentMesh);
   _currentMesh = mesh;
+  if (mesh) scene.add(mesh);
+}
+
+export function setSubObjectMesh(mesh: THREE.Object3D | null): void {
+  if (_currentSubMesh) scene.remove(_currentSubMesh);
+  _currentSubMesh = mesh;
   if (mesh) scene.add(mesh);
 }
 
