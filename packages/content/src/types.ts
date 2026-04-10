@@ -843,9 +843,78 @@ export interface BoneDef {
 export interface SkeletonDef {
   id: string;
   bones: BoneDef[];
+  /** Named bone subsets for animation layer masking. Empty = all bones. */
+  boneMasks?: BoneMask[];
+  /** Named animation clips that belong to this skeleton archetype. */
+  clips?: AnimationClip[];
 }
 
-// ---- animation state ----
+// ---- animation clip system ----
+
+/** One keyframe in an animation bone track. time is normalized [0, 1] over the clip. */
+export interface AnimationKeyframe {
+  /** Normalized position within the clip [0, 1]. */
+  time: number;
+  /** Euler rotation X (radians) — pitch. */
+  rotX: number;
+  /** Euler rotation Y (radians) — yaw. */
+  rotY: number;
+  /** Euler rotation Z (radians) — roll. */
+  rotZ: number;
+}
+
+/** A named animation clip. Each entry in tracks animates one bone by ID. */
+export interface AnimationClip {
+  /** Unique within the skeleton. e.g. "idle", "walk", "death", "carry", "hit_front". */
+  id: string;
+  /** Locomotion and idle clips loop; death/hit/carry one-shots do not. */
+  loop: boolean;
+  /**
+   * Per-bone animation tracks. Key = BoneDef.id. Only bones that actually
+   * move need entries — static bones can be omitted (rest pose assumed).
+   */
+  tracks: Record<string, AnimationKeyframe[]>;
+}
+
+/** A named subset of bone IDs for animation layer masking. */
+export interface BoneMask {
+  /** Referenced by AnimationLayer.maskId. e.g. "upper_body", "lower_body". */
+  id: string;
+  /** IDs of bones included in this mask. Children are NOT automatically included. */
+  boneIds: string[];
+}
+
+/**
+ * One layer in an entity's animation layer stack.
+ * Layers are evaluated bottom→top.  Higher layers override lower layers for
+ * their masked bones (override blend) or add rotations on top (additive blend).
+ */
+export interface AnimationLayer {
+  /** References AnimationClip.id within the entity's skeleton's clips array. */
+  clipId: string;
+  /** References BoneMask.id. Empty string means full body (no masking). */
+  maskId: string;
+  /** Normalized time position within the clip [0, 1]. Advanced by AnimationSystem each tick. */
+  time: number;
+  /** Blend weight [0, 1]. 1.0 = fully replace lower layers on masked bones. */
+  weight: number;
+  /** override: lerp toward this layer's pose. additive: add rotations on top of lower layers. */
+  blend: "override" | "additive";
+  /**
+   * Clip playback speed.
+   * A number = fixed multiplier (1.0 = real time at 20 Hz).
+   * "velocity" = plays proportional to entity speed / speedReference.
+   */
+  speedScale: number | "velocity";
+  /**
+   * Reference speed (world units/tick) for "velocity" speedScale.
+   * The clip advances at 1.0 rate when entity speed equals speedReference.
+   * Only used when speedScale === "velocity".
+   */
+  speedReference?: number;
+}
+
+// ---- animation state (legacy — replaced by AnimationLayer stack in Step 5) ----
 
 export type AnimationMode = "idle" | "walk" | "crouch" | "crouch_walk" | "attack" | "death";
 
