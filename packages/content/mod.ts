@@ -76,6 +76,10 @@ export { solveTwoBoneIK, quatFromEulerXYZ, quatMultiply, invertQuat, applyQuat }
 export type { BoneTransform } from "./src/skeleton_solver.ts";
 export { solveSkeleton, REST_POSE } from "./src/skeleton_solver.ts";
 
+// ---- Skeleton pose functions (shared server + client) ----
+export type { HumanWeaponData, WolfWeaponData } from "./src/skeleton_pose.ts";
+export { computeHumanPose, computeWolfPose } from "./src/skeleton_pose.ts";
+
 // ---- ModelRef ECS component ----
 export { ModelRef } from "./src/component.ts";
 
