@@ -73,8 +73,8 @@ function applyQuat(v: Vec3, q: Quat): Vec3 {
   };
 }
 
-/** Conjugate of unit quaternion = inverse rotation. */
-function invertQuat(q: Quat): Quat {
+/** Inverse (conjugate) of a unit quaternion. */
+export function invertQuat(q: Quat): Quat {
   return { x: -q.x, y: -q.y, z: -q.z, w: q.w };
 }
 
@@ -214,6 +214,15 @@ export function quatFromEulerXYZ(x: number, y: number, z: number): Quat {
   };
 }
 
-// Export applyQuat for use in AnimationSystem arm position computation
+/** Multiply two unit quaternions: result represents applying b after a. */
+export function quatMultiply(a: Quat, b: Quat): Quat {
+  return {
+    x:  a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+    y:  a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+    z:  a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+    w:  a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+  };
+}
+
 export { applyQuat };
 export type { Quat };
