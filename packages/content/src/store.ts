@@ -17,6 +17,7 @@ import type {
   SubObjectRef,
   ResolvedSubObject,
   SkeletonDef,
+  BoneDef,
   ItemPart,
   ItemTemplate,
   DerivedItemStats,
@@ -35,6 +36,8 @@ import type {
   ModelHitboxDef,
   VerbDef,
 } from "./types.ts";
+import type { HitboxPartTemplate } from "./hitbox_derive.ts";
+import { deriveHitboxTemplate } from "./hitbox_derive.ts";
 
 export interface ContentStore {
   // ---- materials ----
@@ -95,6 +98,18 @@ export interface ContentStore {
   /** Returns the SkeletonDef associated with the given model ID, or null if none. */
   getSkeletonForModel(modelId: string): SkeletonDef | null;
 
+  /**
+   * Returns a cached bone index (Map<boneId, BoneDef>) for the given skeleton.
+   * Built once per skeleton type and reused — avoids per-tick linear searches in solveSkeleton.
+   */
+  getBoneIndex(skeletonId: string): ReadonlyMap<string, BoneDef>;
+
+  /**
+   * Returns the cached hitbox template for a (modelId, seed, scale) combination.
+   * Derived once and reused — the template does not depend on live animation state.
+   */
+  getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[];
+
   // ---- verbs ----
   getVerbDef(id: SkillVerb): VerbDef | null;
 
@@ -122,6 +137,12 @@ export class StaticContentStore implements ContentStore {
   private verbDefs = new Map<SkillVerb, VerbDef>();
   private gameConfig: GameConfig | null = null;
   private tileLayout: TileLayout | null = null;
+
+  // ---- derived caches ----
+  /** One entry per skeleton type (skeletonId → Map<boneId, BoneDef>). */
+  private boneIndexCache = new Map<string, ReadonlyMap<string, BoneDef>>();
+  /** One entry per (modelId:seed:scale) combination. */
+  private hitboxTemplateCache = new Map<string, HitboxPartTemplate[]>();
 
   // ---- registration ----
 
@@ -350,6 +371,26 @@ export class StaticContentStore implements ContentStore {
     const model = this.models.get(modelId);
     if (!model?.skeletonId) return null;
     return this.skeletons.get(model.skeletonId) ?? null;
+  }
+
+  getBoneIndex(skeletonId: string): ReadonlyMap<string, BoneDef> {
+    let idx = this.boneIndexCache.get(skeletonId);
+    if (!idx) {
+      const skeleton = this.skeletons.get(skeletonId);
+      idx = skeleton ? new Map(skeleton.bones.map((b) => [b.id, b])) : new Map();
+      this.boneIndexCache.set(skeletonId, idx);
+    }
+    return idx;
+  }
+
+  getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[] {
+    const key = `${modelId}:${seed}:${scale}`;
+    let tmpl = this.hitboxTemplateCache.get(key);
+    if (!tmpl) {
+      tmpl = deriveHitboxTemplate(modelId, seed, this, scale);
+      this.hitboxTemplateCache.set(key, tmpl);
+    }
+    return tmpl;
   }
 
   // ---- verbs ----

@@ -24,7 +24,7 @@ import { CorruptionExposure, SpeedModifier } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import type { ContentStore, EntityTemplate, SkillSlot } from "@voxim/content";
-import { deriveHitboxTemplate, applyHitboxTemplate, solveSkeleton, REST_POSE } from "@voxim/content";
+import { applyHitboxTemplate, solveSkeleton, REST_POSE } from "@voxim/content";
 
 // ---- player spawning ----
 
@@ -278,11 +278,12 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
     scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
     seed,
   });
-  const template = deriveHitboxTemplate(opts.template.modelId, seed, content, entityScale);
+  const template = content.getHitboxTemplate(opts.template.modelId, seed, entityScale);
   if (template.length > 0) {
     const skeleton = content.getSkeletonForModel(opts.template.modelId);
-    const boneIndex = skeleton ? new Map(skeleton.bones.map((b) => [b.id, b])) : new Map();
-    const boneTransforms = skeleton ? solveSkeleton(skeleton, boneIndex, REST_POSE, entityScale) : new Map();
+    const boneTransforms = skeleton
+      ? solveSkeleton(skeleton, content.getBoneIndex(skeleton.id), REST_POSE, entityScale)
+      : new Map();
     const parts = applyHitboxTemplate(template, boneTransforms);
     if (parts.length > 0) world.write(id, Hitbox, { parts });
   }
