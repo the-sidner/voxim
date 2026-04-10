@@ -145,6 +145,9 @@ function evaluateHumanPose(
   } else if (mode === "death") {
     upperBodyDeath(pose);
     lowerBodyDeath(pose);
+  } else if (mode === "crouch" || mode === "crouch_walk") {
+    lowerBodyCrouch(pose, tick, moving, localFwd, localStrafe, speed);
+    upperBodyCrouch(pose, tick, moving, localFwd, localStrafe);
   } else {
     upperBodyLocomotion(pose, tick, moving, localFwd, localStrafe);
   }
@@ -367,6 +370,77 @@ function upperBodyDeath(pose: Map<string, THREE.Euler>): void {
   pose.set("lower_arm_l", new THREE.Euler(0.4, 0, 0));
   pose.set("upper_arm_r", new THREE.Euler(-0.1, 0, 0.6));
   pose.set("lower_arm_r", new THREE.Euler(0.3, 0, 0));
+}
+
+// ── crouch poses ─────────────────────────────────────────────────────────────
+
+const CROUCH_HIP_FLEX  = 0.90;  // upper-leg forward tilt (hip flex)
+const CROUCH_KNEE_BEND = 1.10;  // lower-leg bend (knee)
+const CROUCH_TORSO_FWD = 0.35;  // forward lean of torso
+const CROUCH_WALK_FREQ = 0.18;  // slower gait cycle while crouched
+const CROUCH_WALK_AMP  = 0.30;  // reduced leg swing amplitude
+
+function lowerBodyCrouch(
+  pose: Map<string, THREE.Euler>,
+  tick: number,
+  moving: boolean,
+  localFwd: number,
+  localStrafe: number,
+  speed: number,
+): void {
+  if (!moving) {
+    const sway = Math.sin(tick * SWAY_FREQ) * SWAY_AMP * 0.5;
+    pose.set("root",        new THREE.Euler(-0.08, 0, 0));
+    pose.set("torso_lower", new THREE.Euler(0, sway, 0));
+    pose.set("upper_leg_l", new THREE.Euler(CROUCH_HIP_FLEX, 0, 0));
+    pose.set("lower_leg_l", new THREE.Euler(CROUCH_KNEE_BEND, 0, 0));
+    pose.set("upper_leg_r", new THREE.Euler(CROUCH_HIP_FLEX, 0, 0));
+    pose.set("lower_leg_r", new THREE.Euler(CROUCH_KNEE_BEND, 0, 0));
+    pose.set("foot_l",      new THREE.Euler(-0.15, 0, 0));
+    pose.set("foot_r",      new THREE.Euler(-0.15, 0, 0));
+    pose.set("hand_l",      new THREE.Euler(0.1, 0, 0));
+    pose.set("hand_r",      new THREE.Euler(0.1, 0, 0));
+    return;
+  }
+
+  const fwdSign   = localFwd >= 0 ? 1 : -1;
+  const speedMult = Math.min(speed / 3.0, 1.0);
+  const phase     = tick * CROUCH_WALK_FREQ * fwdSign;
+  const swing     = Math.sin(phase) * CROUCH_WALK_AMP * speedMult;
+  const hipLean   = localStrafe * 0.06;
+
+  pose.set("root",        new THREE.Euler(-0.08, 0, 0));
+  pose.set("torso_lower", new THREE.Euler(0, swing * 0.10 + hipLean, 0));
+  pose.set("upper_leg_l", new THREE.Euler(CROUCH_HIP_FLEX + swing,  0, 0));
+  pose.set("lower_leg_l", new THREE.Euler(CROUCH_KNEE_BEND + Math.max(0, -swing) * 0.25, 0, 0));
+  pose.set("upper_leg_r", new THREE.Euler(CROUCH_HIP_FLEX - swing,  0, 0));
+  pose.set("lower_leg_r", new THREE.Euler(CROUCH_KNEE_BEND + Math.max(0,  swing) * 0.25, 0, 0));
+  pose.set("foot_l",      new THREE.Euler(-0.15, 0, 0));
+  pose.set("foot_r",      new THREE.Euler(-0.15, 0, 0));
+  pose.set("hand_l",      new THREE.Euler(0.1, 0, 0));
+  pose.set("hand_r",      new THREE.Euler(0.1, 0, 0));
+}
+
+function upperBodyCrouch(
+  pose: Map<string, THREE.Euler>,
+  tick: number,
+  moving: boolean,
+  _localFwd: number,
+  _localStrafe: number,
+): void {
+  const breath = Math.sin(tick * BREATH_FREQ) * BREATH_AMP * 0.6;
+  const sway   = Math.sin(tick * SWAY_FREQ)   * SWAY_AMP   * 0.5;
+
+  pose.set("torso_mid",   new THREE.Euler(CROUCH_TORSO_FWD + breath * 0.3, -sway * 0.4, 0));
+  pose.set("torso_upper", new THREE.Euler(CROUCH_TORSO_FWD * 0.6 + breath, sway * 0.2, 0));
+  pose.set("head",        new THREE.Euler(-CROUCH_TORSO_FWD * 0.5 - breath * 0.3, moving ? 0 : Math.sin(tick * SWAY_FREQ * 0.7) * 0.015, 0));
+  // Arms hang slightly forward in crouch
+  pose.set("upper_arm_l", new THREE.Euler(0.15, 0, -0.22));
+  pose.set("lower_arm_l", new THREE.Euler(0.20, 0, 0));
+  pose.set("upper_arm_r", new THREE.Euler(0.15, 0,  0.22));
+  pose.set("lower_arm_r", new THREE.Euler(0.20, 0, 0));
+  pose.set("hand_l",      new THREE.Euler(0.10, 0, 0));
+  pose.set("hand_r",      new THREE.Euler(0.10, 0, 0));
 }
 
 // ── Wolf (quadruped) ─────────────────────────────────────────────────────────

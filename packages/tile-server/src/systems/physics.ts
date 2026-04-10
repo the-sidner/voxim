@@ -3,7 +3,7 @@ import { stepPhysics, vec2Normalize } from "@voxim/engine";
 import type { PhysicsConfig } from "@voxim/engine";
 import { Heightmap, getHeight, worldToChunk, worldToLocal } from "@voxim/world";
 import type { HeightmapData } from "@voxim/world";
-import { ACTION_JUMP, hasAction } from "@voxim/protocol";
+import { ACTION_JUMP, ACTION_CROUCH, hasAction } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { createLogger } from "../logger.ts";
@@ -21,7 +21,9 @@ export class PhysicsSystem implements System {
   constructor(private readonly content: ContentStore) {}
 
   run(world: World, _events: EventEmitter, dt: number): void {
-    const cfgRaw = this.content.getGameConfig().physics;
+    const gameCfg = this.content.getGameConfig();
+    const cfgRaw = gameCfg.physics;
+    const crouchSpeedMultiplier = gameCfg.crouch.speedMultiplier;
     const baseConfig: PhysicsConfig = {
       gravity: cfgRaw.gravity,
       maxGroundSpeed: cfgRaw.maxGroundSpeed,
@@ -50,8 +52,11 @@ export class PhysicsSystem implements System {
       }
 
       const speedMod = world.get(entityId, SpeedModifier);
-      const physicsConfig = speedMod && speedMod.multiplier !== 1.0
-        ? { ...baseConfig, maxGroundSpeed: baseConfig.maxGroundSpeed * speedMod.multiplier }
+      const crouching = hasAction(inputState.actions, ACTION_CROUCH);
+      let speedMultiplier = speedMod?.multiplier ?? 1.0;
+      if (crouching) speedMultiplier *= crouchSpeedMultiplier;
+      const physicsConfig = speedMultiplier !== 1.0
+        ? { ...baseConfig, maxGroundSpeed: baseConfig.maxGroundSpeed * speedMultiplier }
         : baseConfig;
 
       const next = stepPhysics(

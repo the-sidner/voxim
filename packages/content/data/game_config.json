@@ -52,6 +52,9 @@
     "duskStart": 0.75,
     "dayLengthTicks": 14400
   },
+  "crouch": {
+    "speedMultiplier": 0.45
+  },
   "physics": {
     "gravity": 20,
     "maxGroundSpeed": 6,

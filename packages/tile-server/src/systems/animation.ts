@@ -23,7 +23,8 @@ import type { AnimationMode, AnimationStateData } from "@voxim/content";
 import { evaluateSwingPath, deriveTip } from "@voxim/content";
 import { solveTwoBoneIK, quatFromEulerXYZ, applyQuat } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
-import { Velocity, Health, SkillInProgress, AnimationState, ModelRef } from "../components/game.ts";
+import { ACTION_CROUCH, hasAction } from "@voxim/protocol";
+import { Velocity, Health, SkillInProgress, AnimationState, ModelRef, InputState } from "../components/game.ts";
 import type { SkillInProgressData } from "../components/game.ts";
 import { Hitbox } from "../components/hitbox.ts";
 import type { HitboxData } from "../components/hitbox.ts";
@@ -63,8 +64,19 @@ export class AnimationSystem implements System {
         continue;
       }
 
+      const inputState = world.get(entityId, InputState);
+      const crouching = inputState !== null && hasAction(inputState.actions, ACTION_CROUCH);
       const vxSq = velocity.x * velocity.x + velocity.y * velocity.y;
-      this.setAnimState(world, entityId, vxSq > WALK_THRESHOLD_SQ ? "walk" : "idle", null);
+      const moving = vxSq > WALK_THRESHOLD_SQ;
+
+      let mode: "idle" | "walk" | "crouch" | "crouch_walk";
+      if (crouching) {
+        mode = moving ? "crouch_walk" : "crouch";
+      } else {
+        mode = moving ? "walk" : "idle";
+      }
+
+      this.setAnimState(world, entityId, mode, null);
       this.updateArmHitboxes(world, entityId, null, 0);
     }
   }

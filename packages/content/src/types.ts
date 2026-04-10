@@ -744,6 +744,9 @@ export interface GameConfig {
     penaltyThresholdRatio: number;
     minSpeedMultiplier: number;
   };
+  crouch: {
+    speedMultiplier: number;
+  };
   dayNight: {
     dawnStart: number;
     noonStart: number;
@@ -860,7 +863,7 @@ export interface SkeletonDef {
 
 // ---- animation state ----
 
-export type AnimationMode = "idle" | "walk" | "attack" | "death";
+export type AnimationMode = "idle" | "walk" | "crouch" | "crouch_walk" | "attack" | "death";
 
 /**
  * Written by AnimationSystem each tick.  The client skeleton evaluator reads
