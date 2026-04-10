@@ -53,7 +53,7 @@ export type {
   WeaponActionDef,
   SwingKeyframe,
   WeaponSwingPath,
-  IKTargetDef,
+  IKChainDef,
   BodyPartVolume,
   VerbDef,
   GameConfig,

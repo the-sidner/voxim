@@ -48,19 +48,8 @@
       ],
       "defaultBladeLength": 1.5
     },
-    "ikTargets": [
-      {
-        "chain": [
-          "upper_arm_r",
-          "lower_arm_r"
-        ],
-        "source": "hilt",
-        "poleHint": {
-          "fwd": 0,
-          "right": 0.5,
-          "up": 0.8
-        }
-      }
+    "ikChainIds": [
+      "right_arm"
     ]
   },
   {
@@ -112,31 +101,9 @@
       ],
       "defaultBladeLength": 1.5
     },
-    "ikTargets": [
-      {
-        "chain": [
-          "upper_arm_r",
-          "lower_arm_r"
-        ],
-        "source": "hilt",
-        "poleHint": {
-          "fwd": 0,
-          "right": 0.3,
-          "up": 0.8
-        }
-      },
-      {
-        "chain": [
-          "upper_arm_l",
-          "lower_arm_l"
-        ],
-        "source": "hilt",
-        "poleHint": {
-          "fwd": 0,
-          "right": -0.3,
-          "up": 0.8
-        }
-      }
+    "ikChainIds": [
+      "right_arm",
+      "left_arm"
     ]
   },
   {
@@ -188,19 +155,8 @@
       ],
       "defaultBladeLength": 1.6
     },
-    "ikTargets": [
-      {
-        "chain": [
-          "upper_arm_r",
-          "lower_arm_r"
-        ],
-        "source": "hilt",
-        "poleHint": {
-          "fwd": 0.2,
-          "right": 0.4,
-          "up": 0.7
-        }
-      }
+    "ikChainIds": [
+      "right_arm"
     ]
   },
   {
@@ -252,19 +208,8 @@
       ],
       "defaultBladeLength": 0.4
     },
-    "ikTargets": [
-      {
-        "chain": [
-          "upper_arm_r",
-          "lower_arm_r"
-        ],
-        "source": "hilt",
-        "poleHint": {
-          "fwd": 0,
-          "right": 0.4,
-          "up": 0.8
-        }
-      }
+    "ikChainIds": [
+      "right_arm"
     ]
   },
   {

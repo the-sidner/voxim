@@ -359,16 +359,20 @@ export interface WeaponSwingPath {
 }
 
 /**
- * An IK constraint that the client animation system solves during attacks.
- * The weapon animation layer reads these to produce generic PoseConstraints
- * which the constraint solver resolves into bone rotations.
+ * One IK chain defined on a skeleton.
+ * The skeleton owns the anatomy (which bones, how the joint bends) and
+ * which named drive source to track ("hilt", "grip_l", "ground_l", …).
+ * Weapon actions and other systems activate chains by ID, not by bone name.
  */
-export interface IKTargetDef {
-  /** Two-bone chain to solve: [root_bone, mid_bone]. End-effector = mid_bone's child. */
-  chain: [string, string];
-  /** Which swingPath point to track: "hilt" position or derived "tip" position. */
-  source: "hilt" | "tip";
-  /** Direction the middle joint (elbow/knee) should bend toward.
+export interface IKChainDef {
+  /** Unique within the skeleton. e.g. "right_arm", "left_arm", "right_leg". */
+  id: string;
+  /** Two-bone chain: [root_bone, mid_bone]. End-effector = mid_bone's child in rest pose. */
+  bones: [string, string];
+  /** Named drive source this chain tracks when present in the DriveContext.
+   *  e.g. "hilt" (weapon grip), "grip_l" (off-hand grip), "ground_l" (foot plant). */
+  driveSource: string;
+  /** Anatomical default: direction the middle joint (elbow/knee) bends toward.
    *  Entity-local (fwd, right, up) coordinates. */
   poleHint: { fwd: number; right: number; up: number };
 }
@@ -380,7 +384,7 @@ export interface IKTargetDef {
  *
  * The swingPath hilt keyframes are the single source of truth:
  *   - Server: swept capsule hit detection (tip derived from hilt + bladeDir × bladeLength)
- *   - Client: IK arm animation targets hilt position (via ikTargets)
+ *   - Client: IK arm animation tracks hilt via skeleton ikChains
  *   - Client: trail ribbon from derived tip position
  *
  * Weapons reference this by id via ItemTemplate.weaponAction.
@@ -399,9 +403,12 @@ export interface WeaponActionDef {
   staminaCost: number;
   /** Hilt path + blade direction through entity-local space. */
   swingPath: WeaponSwingPath;
-  /** IK constraints for the client animation constraint pipeline.
-   *  Each entry drives a bone chain to track a swingPath point during attacks. */
-  ikTargets?: IKTargetDef[];
+  /**
+   * IK chain IDs (from the skeleton's ikChains) to activate during this action.
+   * The skeleton owns bone names and pole hints; this list just selects which chains fire.
+   * e.g. ["right_arm"] for a one-handed slash, ["right_arm", "left_arm"] for overhead.
+   */
+  ikChainIds?: string[];
 }
 
 // ---- body part volumes ----
@@ -847,6 +854,12 @@ export interface SkeletonDef {
   boneMasks?: BoneMask[];
   /** Named animation clips that belong to this skeleton archetype. */
   clips?: AnimationClip[];
+  /**
+   * IK chains defined for this skeleton.
+   * Weapon actions and other systems activate chains by ID via DriveContext.
+   * The skeleton owns bone names and pole hints; activators only reference chain IDs.
+   */
+  ikChains?: IKChainDef[];
 }
 
 // ---- animation clip system ----
