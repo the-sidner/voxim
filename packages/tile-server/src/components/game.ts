@@ -217,6 +217,8 @@ export const AnimationState = defineComponent({
   name: "animationState" as const,
   codec: animationStateCodec,
   default: (): AnimationStateData => ({
-    mode: "idle", attackStyle: "", windupTicks: 0, activeTicks: 0, winddownTicks: 0, ticksIntoAction: 0, weaponActionId: "",
+    layers: [],
+    weaponActionId: "",
+    ticksIntoAction: 0,
   }),
 });

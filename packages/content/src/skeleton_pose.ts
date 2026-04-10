@@ -9,7 +9,9 @@
  * Both computeHumanPose and computeWolfPose accept an optional `out` map.
  * If provided it is cleared and reused, avoiding allocation on hot paths.
  */
-import type { AnimationMode, SwingKeyframe, IKTargetDef } from "./types.ts";
+import type { SwingKeyframe, IKTargetDef } from "./types.ts";
+/** @deprecated — removed in animation system migration; defined locally until skeleton_pose.ts is deleted. */
+type AnimationMode = "idle" | "walk" | "crouch" | "crouch_walk" | "attack" | "death";
 import type { BoneRotation, Quat } from "./ik_solver.ts";
 import { solveTwoBoneIK, quatFromEulerXYZ, quatMultiply, invertQuat, applyQuat } from "./ik_solver.ts";
 import { evaluateSwingPath, deriveTip } from "./sweep_math.ts";

@@ -86,7 +86,7 @@ export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlay
   world.write(id, InteractCooldown, { remaining: 0 });
   world.write(id, Heritage, heritage);
   world.write(id, ModelRef, { modelId: "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
-  world.write(id, AnimationState, { mode: "idle", attackStyle: "", windupTicks: 0, activeTicks: 0, winddownTicks: 0, ticksIntoAction: 0, weaponActionId: "" });
+  world.write(id, AnimationState, { layers: [], weaponActionId: "", ticksIntoAction: 0 });
   // Hitbox not written at spawn — HitboxSystem derives it from the live skeleton each tick.
 
   return id;
@@ -138,7 +138,7 @@ export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts
   world.write(id, ModelRef, { modelId: opts.modelId ?? "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
   const weapon = opts.weaponItemType ? { itemType: opts.weaponItemType, quantity: 1, parts: [] } : null;
   world.write(id, Equipment, { weapon, offHand: null, head: null, chest: null, legs: null, feet: null, back: null });
-  world.write(id, AnimationState, { mode: "idle", attackStyle: "", windupTicks: 0, activeTicks: 0, winddownTicks: 0, ticksIntoAction: 0, weaponActionId: "" });
+  world.write(id, AnimationState, { layers: [], weaponActionId: "", ticksIntoAction: 0 });
   const slots = opts.skillLoadout ?? [null, null, null, null];
   world.write(id, LoreLoadout, { skills: slots, learnedFragmentIds: [], skillCooldowns: slots.map(() => 0) });
   world.write(id, ActiveEffects, { effects: [] });

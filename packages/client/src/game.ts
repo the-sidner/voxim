@@ -328,11 +328,9 @@ export class VoximGame {
         // Use the last server-confirmed attack params so the prediction matches the
         // real weapon. Falls back to "slash" defaults if no confirmed state yet.
         const lastAnim = this.playerId ? this.world.get(this.playerId)?.animationState : null;
-        if (lastAnim?.mode === "attack") {
-          this.renderer?.forceLocalAnimation("attack", lastAnim.attackStyle, lastAnim.windupTicks, lastAnim.activeTicks, lastAnim.winddownTicks);
-        } else {
-          this.renderer?.forceLocalAnimation("attack", "slash", 4, 4, 7);
-        }
+        // Use last confirmed weapon action for prediction; fall back to unarmed.
+        const weaponActionId = lastAnim?.weaponActionId || "unarmed";
+        this.renderer?.forceLocalAnimation(weaponActionId);
         // Arc is shown on DamageDealt confirmation, not on input prediction.
       }
     }

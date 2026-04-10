@@ -4,13 +4,16 @@
  * bidi stream.  Deduplicates in-flight requests so each definition is fetched
  * at most once per session.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask } from "@voxim/content";
+import { buildClipIndex, buildMaskIndex } from "@voxim/content";
 import type { TileConnection } from "../connection/tile_connection.ts";
 
 export class ContentCache {
   private readonly models    = new Map<string, ModelDefinition>();
   private readonly materials = new Map<number, MaterialDef>();
   private readonly skeletons = new Map<string, SkeletonDef>();
+  private readonly clipIndexCache = new Map<string, ReadonlyMap<string, AnimationClip>>();
+  private readonly maskIndexCache = new Map<string, ReadonlyMap<string, BoneMask>>();
 
   // In-flight promises — prevents duplicate requests for the same key
   private readonly modelPending    = new Map<string, Promise<ModelDefinition | null>>();
@@ -118,5 +121,25 @@ export class ContentCache {
 
   getSkeletonSync(skeletonId: string): SkeletonDef | undefined {
     return this.skeletons.get(skeletonId);
+  }
+
+  getClipIndex(skeletonId: string): ReadonlyMap<string, AnimationClip> {
+    let idx = this.clipIndexCache.get(skeletonId);
+    if (!idx) {
+      const skeleton = this.skeletons.get(skeletonId);
+      idx = skeleton ? buildClipIndex(skeleton) : new Map();
+      this.clipIndexCache.set(skeletonId, idx);
+    }
+    return idx;
+  }
+
+  getMaskIndex(skeletonId: string): ReadonlyMap<string, BoneMask> {
+    let idx = this.maskIndexCache.get(skeletonId);
+    if (!idx) {
+      const skeleton = this.skeletons.get(skeletonId);
+      idx = skeleton ? buildMaskIndex(skeleton) : new Map();
+      this.maskIndexCache.set(skeletonId, idx);
+    }
+    return idx;
   }
 }

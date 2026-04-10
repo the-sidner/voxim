@@ -66,14 +66,16 @@ export class BladeDebugOverlay {
 
     for (const [entityId, mesh] of entityMeshes) {
       const anim = mesh.animationState;
-      if (!anim || anim.mode !== "attack") continue;
+      if (!anim || !anim.weaponActionId) continue;
 
-      const weaponAction = weaponActionsMap.get(anim.attackStyle);
+      const weaponAction = weaponActionsMap.get(anim.weaponActionId);
       const keyframes = weaponAction?.swingPath?.keyframes;
       if (!keyframes?.length) continue;
 
       const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
-      const total   = anim.windupTicks + anim.activeTicks + anim.winddownTicks;
+      const total   = weaponAction
+        ? weaponAction.windupTicks + weaponAction.activeTicks + weaponAction.winddownTicks
+        : 0;
       const ticks   = Math.min(anim.ticksIntoAction + elapsed, total);
       const t       = total > 0 ? ticks / total : 0;
 
@@ -91,9 +93,9 @@ export class BladeDebugOverlay {
 
       // Phase colour
       let color: THREE.Color;
-      if (ticks < anim.windupTicks)                           color = COL_WINDUP;
-      else if (ticks < anim.windupTicks + anim.activeTicks)  color = COL_ACTIVE;
-      else                                                    color = COL_WINDDOWN;
+      if (!weaponAction || ticks < weaponAction.windupTicks)                                        color = COL_WINDUP;
+      else if (ticks < weaponAction.windupTicks + weaponAction.activeTicks) color = COL_ACTIVE;
+      else                                                                   color = COL_WINDDOWN;
 
       let entry = this.entries.get(entityId);
       if (!entry) {

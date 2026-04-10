@@ -557,29 +557,20 @@ export class VoximRenderer {
   }
 
   /**
-   * Immediately override the local player's animation state for client-side prediction.
+   * Immediately override the local player's weapon action for client-side prediction.
    * Called the instant the player attacks so the swing is visible without waiting for
    * the server round-trip. The server's confirmed AnimationState will overwrite this
    * within one tick (≤50ms) via the normal delta path.
    */
-  forceLocalAnimation(
-    mode: string,
-    attackStyle = "unarmed",
-    windupTicks = 3,
-    activeTicks = 3,
-    winddownTicks = 5,
-  ): void {
+  forceLocalAnimation(weaponActionId: string): void {
     if (!this.localPlayerId) return;
     const mesh = this.entityMeshes.get(this.localPlayerId);
     if (mesh) {
+      const current = mesh.animationState;
       mesh.animationState = {
-        mode: mode as import("@voxim/content").AnimationMode,
-        attackStyle,
-        windupTicks,
-        activeTicks,
-        winddownTicks,
+        layers: current?.layers ?? [],
+        weaponActionId,
         ticksIntoAction: 0,
-        weaponActionId: "",
       };
       mesh.lastAnimUpdateMs = performance.now();
     }
@@ -714,41 +705,33 @@ export class VoximRenderer {
     this.smoothTick = serverTick + (now - this.lastServerTickMs) / 50;
 
     // Drive skeleton poses for all animated entities.
-    // Fall back to idle if no animationState has arrived yet (player starts still).
     for (const [, mesh] of this.entityMeshes) {
-      if (mesh.boneGroups && mesh.skeletonId) {
+      if (mesh.boneGroups && mesh.skeletonId && this.content) {
         const anim = mesh.animationState;
-        // Extrapolate ticksIntoAction between server updates (50ms apart) so the
-        // attack pose advances smoothly at 60fps instead of stepping every tick.
-        const totalTicks = (anim?.windupTicks ?? 0) + (anim?.activeTicks ?? 0) + (anim?.winddownTicks ?? 0);
+        const skeleton   = this.content.getSkeletonSync(mesh.skeletonId);
+        const clipIndex  = this.content.getClipIndex(mesh.skeletonId);
+        const maskIndex  = this.content.getMaskIndex(mesh.skeletonId);
+
+        const pose = evaluatePose(skeleton, clipIndex, maskIndex, anim);
+        updateSkeletonPose(mesh, pose);
+
+        // Look up weapon action for hilt/IK positioning and trail rendering.
+        const weaponActionId = anim?.weaponActionId ?? "";
+        const weaponAction = weaponActionId ? this.weaponActionsMap.get(weaponActionId) : undefined;
+
+        // Extrapolate ticksIntoAction between server updates (50ms apart) so arm
+        // IK and trail advance smoothly at 60fps instead of stepping every tick.
         let ticksIntoAction = anim?.ticksIntoAction ?? 0;
-        if (anim?.mode === "attack") {
+        if (weaponActionId) {
+          const totalTicks = (weaponAction?.windupTicks ?? 0) + (weaponAction?.activeTicks ?? 0) + (weaponAction?.winddownTicks ?? 0);
           const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
           ticksIntoAction = Math.min(ticksIntoAction + elapsed, totalTicks);
         }
-        // Look up weapon action for IK + trail data
-        const weaponAction = (anim?.mode === "attack")
-          ? this.weaponActionsMap.get(anim.attackStyle)
-          : undefined;
-
-        // Normalised progress t ∈ [0,1] across the full action arc.
+        const totalTicks = weaponAction
+          ? weaponAction.windupTicks + weaponAction.activeTicks + weaponAction.winddownTicks
+          : 0;
         const t = totalTicks > 0 ? Math.min(ticksIntoAction / totalTicks, 1.0) : 1.0;
 
-        const pose = evaluatePose(
-          mesh.skeletonId,
-          anim?.mode          ?? "idle",
-          anim?.attackStyle   ?? "",
-          anim?.windupTicks   ?? 0,
-          anim?.activeTicks   ?? 0,
-          anim?.winddownTicks ?? 0,
-          ticksIntoAction,
-          this.smoothTick,
-          mesh.velocityX, mesh.velocityY, mesh.facingAngle,
-          weaponAction?.swingPath?.keyframes,
-          weaponAction?.ikTargets,
-          weaponAction?.swingPath?.defaultBladeLength,
-        );
-        updateSkeletonPose(mesh, pose);
         this.updateAttachmentPositions(mesh, anim, weaponAction, t);
       }
     }
@@ -1092,7 +1075,7 @@ export class VoximRenderer {
       if (slot.boneParented) continue;
 
       if (slotId === "main_hand") {
-        if (anim?.mode === "attack" && weaponAction?.swingPath?.keyframes?.length) {
+        if (anim?.weaponActionId && weaponAction?.swingPath?.keyframes?.length) {
           // Authoritative hilt position + blade orientation from swing path.
           // Same source as server hit detection — weapon model is visually exact.
           const bladeLength = weaponAction.swingPath.defaultBladeLength ?? 1.0;
@@ -1148,7 +1131,7 @@ export class VoximRenderer {
 
     for (const [entityId, mesh] of this.entityMeshes) {
       const anim = mesh.animationState;
-      if (!anim || anim.mode !== "attack") {
+      if (!anim || !anim.weaponActionId) {
         // Decay-only: let existing trail finish fading even after attack ends
         const slices = this.trailSlices.get(entityId);
         if (slices && slices.length > 0) {
@@ -1159,14 +1142,16 @@ export class VoximRenderer {
         continue;
       }
 
-      const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
-      const total = anim.windupTicks + anim.activeTicks + anim.winddownTicks;
-      const ticks = Math.min(anim.ticksIntoAction + elapsed, total);
-      const inActive = ticks >= anim.windupTicks && ticks < anim.windupTicks + anim.activeTicks;
-
-      // Look up the weapon action's swing path keyframes.
-      const weaponAction = this.weaponActionsMap.get(anim.attackStyle);
+      const weaponAction = this.weaponActionsMap.get(anim.weaponActionId);
       const keyframes = weaponAction?.swingPath?.keyframes;
+      const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
+      const total = weaponAction
+        ? weaponAction.windupTicks + weaponAction.activeTicks + weaponAction.winddownTicks
+        : 0;
+      const ticks = Math.min(anim.ticksIntoAction + elapsed, total);
+      const inActive = weaponAction
+        ? ticks >= weaponAction.windupTicks && ticks < weaponAction.windupTicks + weaponAction.activeTicks
+        : false;
 
       let slices = this.trailSlices.get(entityId) ?? [];
 

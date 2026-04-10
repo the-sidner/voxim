@@ -26,7 +26,6 @@ export type {
   AnimationClip,
   BoneMask,
   AnimationLayer,
-  AnimationMode,
   AnimationStateData,
   ItemPart,
   StatContribution,

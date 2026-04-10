@@ -914,36 +914,30 @@ export interface AnimationLayer {
   speedReference?: number;
 }
 
-// ---- animation state (legacy — replaced by AnimationLayer stack in Step 5) ----
-
-export type AnimationMode = "idle" | "walk" | "crouch" | "crouch_walk" | "attack" | "death";
+// ---- animation state ----
 
 /**
- * Written by AnimationSystem each tick.  The client skeleton evaluator reads
- * this to select the correct animation pose and compute clip progress.
+ * Written by AnimationSystem each tick. The client skeleton evaluator reads
+ * this to evaluate the animation layer stack and compute the bone pose.
  *
- * For idle/walk/death: attackStyle is "" and all tick fields are 0.
- * For attack: attackStyle names the pose function; the three tick fields give
- * the phase boundaries so the evaluator can compute t ∈ [0,1] without any
- * hardcoded constants.  ticksIntoAction counts upward from 0 each tick the
- * action is in progress.
+ * layers: the full ordered animation layer stack (bottom→top).
+ *   AnimationSystem manages time advancement and layer selection each tick.
+ *   evaluateAnimationLayers() evaluates this on both server (HitboxSystem)
+ *   and client (skeleton_evaluator.ts) to produce bone rotations.
+ *
+ * weaponActionId + ticksIntoAction: drive weapon arm IK and trail rendering.
+ *   Both are "" / 0 when not attacking. These are kept outside the layer
+ *   stack because they drive geometry (arm position, blade path), not clips.
  */
 export interface AnimationStateData {
-  mode: AnimationMode;
-  /** Pose function tag for attack mode: "slash"|"overhead"|"thrust"|"unarmed"|"bite"|"" */
-  attackStyle: string;
-  /** Ticks the windup phase lasts (0 for non-attack modes). */
-  windupTicks: number;
-  /** Ticks the active phase lasts (0 for non-attack modes). */
-  activeTicks: number;
-  /** Ticks the winddown phase lasts (0 for non-attack modes). */
-  winddownTicks: number;
-  /** Elapsed ticks since the action started (0 for non-attack modes). */
-  ticksIntoAction: number;
+  /** Animation layer stack — evaluated bottom→top by evaluateAnimationLayers(). */
+  layers: AnimationLayer[];
   /**
    * WeaponActionDef id driving the current attack (e.g. "unarmed", "slash_r").
-   * Empty string for non-attack modes.
+   * Empty string when not attacking.
    * Used by HitboxSystem and the client to look up swingPath keyframes + ikTargets.
    */
   weaponActionId: string;
+  /** Elapsed ticks since the current attack started. 0 when not attacking. */
+  ticksIntoAction: number;
 }

@@ -8,7 +8,7 @@
 import type { Serialiser } from "@voxim/engine";
 import { buildCodec } from "./binary.ts";
 import { WireWriter, WireReader } from "./wire.ts";
-import type { ItemPart, ModelRefData, AnimationStateData, SkillVerb, SkillEffectStat, BodyPartVolume } from "@voxim/content";
+import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb, SkillEffectStat, BodyPartVolume } from "@voxim/content";
 
 // ---- Position ---- 24 bytes (3 × f64)
 
@@ -119,7 +119,7 @@ export const materialGridCodec: Serialiser<MaterialGridData> = {
 // ============================================================================
 
 // Re-export the content types we encode so consumers can import from one place.
-export type { ItemPart, ModelRefData, AnimationStateData, SkillVerb, SkillEffectStat };
+export type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb, SkillEffectStat };
 
 // ---- ItemPart ---------------------------------------------------------------
 // { slot: string, materialName: string }
@@ -293,30 +293,53 @@ export const modelRefCodec: Serialiser<ModelRefData> = {
 };
 
 // ---- AnimationState ---------------------------------------------------------
-// { mode, attackStyle, windupTicks, activeTicks, winddownTicks, ticksIntoAction, weaponActionId }
+// { layers: AnimationLayer[], weaponActionId: string, ticksIntoAction: u16 }
+//
+// Layer wire format (per layer):
+//   str  clipId
+//   str  maskId
+//   f32  time
+//   f32  weight
+//   u8   blend         (0 = override, 1 = additive)
+//   f32  speedScaleVal (-1.0 sentinel = "velocity")
+//   f32  speedReference (0 when not applicable)
 
 export const animationStateCodec: Serialiser<AnimationStateData> = {
   encode(v: AnimationStateData): Uint8Array {
     const w = new WireWriter();
-    w.writeStr(v.mode);
-    w.writeStr(v.attackStyle);
-    w.writeU16(v.windupTicks);
-    w.writeU16(v.activeTicks);
-    w.writeU16(v.winddownTicks);
-    w.writeU16(v.ticksIntoAction);
+    w.writeU8(v.layers.length);
+    for (const l of v.layers) {
+      w.writeStr(l.clipId);
+      w.writeStr(l.maskId);
+      w.writeF32(l.time);
+      w.writeF32(l.weight);
+      w.writeU8(l.blend === "additive" ? 1 : 0);
+      w.writeF32(typeof l.speedScale === "number" ? l.speedScale : -1.0);
+      w.writeF32(l.speedReference ?? 0);
+    }
     w.writeStr(v.weaponActionId);
+    w.writeU16(v.ticksIntoAction);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): AnimationStateData {
     const r = new WireReader(bytes);
+    const layerCount = r.readU8();
+    const layers: AnimationLayer[] = [];
+    for (let i = 0; i < layerCount; i++) {
+      const clipId         = r.readStr();
+      const maskId         = r.readStr();
+      const time           = r.readF32();
+      const weight         = r.readF32();
+      const blend          = r.readU8() === 1 ? "additive" as const : "override" as const;
+      const speedScaleVal  = r.readF32();
+      const speedReference = r.readF32();
+      const speedScale: AnimationLayer["speedScale"] = speedScaleVal < 0 ? "velocity" : speedScaleVal;
+      layers.push({ clipId, maskId, time, weight, blend, speedScale, speedReference: speedReference || undefined });
+    }
     return {
-      mode: r.readStr() as AnimationStateData["mode"],
-      attackStyle: r.readStr(),
-      windupTicks: r.readU16(),
-      activeTicks: r.readU16(),
-      winddownTicks: r.readU16(),
-      ticksIntoAction: r.readU16(),
+      layers,
       weaponActionId: r.readStr(),
+      ticksIntoAction: r.readU16(),
     };
   },
 };

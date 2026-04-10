@@ -1,102 +1,106 @@
 /**
- * HitboxSystem — derives entity-local hitbox capsules from the live skeleton pose each tick.
- *
- * Query: entities with (AnimationState + ModelRef + Velocity + Facing)
+ * HitboxSystem — derives entity-local hitbox capsules from the live animation
+ * layer stack each tick.
  *
  * Pipeline per entity:
- *   1. Determine skeleton from ModelRef.modelId
- *   2. Dispatch pose computation (computeHumanPose / computeWolfPose) based on skeleton
- *   3. solveSkeleton — FK walk produces bone world transforms (solver space)
- *   4. applyHitboxTemplate — solver-space → entity-local BodyPartVolume[]
- *   5. world.set(entityId, Hitbox, { parts })
+ *   1. evaluateAnimationLayers → bone rotations (Euler XYZ per bone)
+ *   2. solveSkeleton           → bone world transforms (solver space)
+ *   3. applyHitboxTemplate     → solver-space → entity-local BodyPartVolume[]
+ *   4. dirty check             → world.set only when parts changed
  *
- * Static entities (trees, resources) have no AnimationState and are skipped here.
+ * Static entities (trees, resources) have no AnimationState and are skipped.
  * Their hitbox is written once at spawn by spawner.ts.
  *
- * Note on tick ordering: world.set() writes are deferred until applyChangeset().
- * ActionSystem always reads Hitbox(N-1). The registration order
- * (AnimationSystem → HitboxSystem → ActionSystem) is for logical clarity.
+ * Performance optimisations:
+ *   - posePool / transformPool: pre-allocated Maps per entity, cleared and
+ *     reused each tick (zero hot-path allocation after first evaluation).
+ *   - Dirty check: byte-level comparison of new vs existing BodyPartVolume[]
+ *     avoids unnecessary deferred writes.
  */
 import type { World } from "@voxim/engine";
 import type { DeferredEventQueue } from "../deferred_events.ts";
 import type { System } from "../system.ts";
 import type { ContentStore } from "@voxim/content";
+import type { BodyPartVolume } from "@voxim/content";
+import type { BoneRotation } from "@voxim/content";
+import type { BoneTransform } from "@voxim/content";
 import {
-  computeHumanPose,
-  computeWolfPose,
+  evaluateAnimationLayers,
   solveSkeleton,
   applyHitboxTemplate,
   REST_POSE,
 } from "@voxim/content";
-import type { HumanWeaponData } from "@voxim/content";
-import { AnimationState, ModelRef, Velocity, Facing } from "../components/game.ts";
+import { AnimationState, ModelRef } from "../components/game.ts";
 import { Hitbox } from "../components/hitbox.ts";
 import type { HitboxData } from "../components/hitbox.ts";
 
 export class HitboxSystem implements System {
-  private tick = 0;
+  /** Per-entity pooled Maps to avoid per-tick allocation. */
+  private readonly posePool      = new Map<string, Map<string, BoneRotation>>();
+  private readonly transformPool = new Map<string, Map<string, BoneTransform>>();
 
   constructor(private readonly content: ContentStore) {}
 
-  prepare(serverTick: number): void {
-    this.tick = serverTick;
-  }
+  prepare(_tick: number): void {}
 
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
-    for (const { entityId, animationState, modelRef, velocity, facing } of world.query(
-      AnimationState,
-      ModelRef,
-      Velocity,
-      Facing,
-    )) {
+    for (const { entityId, animationState, modelRef } of world.query(AnimationState, ModelRef)) {
       const skeleton = this.content.getSkeletonForModel(modelRef.modelId);
-      if (!skeleton) continue; // no skeleton → no skeletal hitbox
+      if (!skeleton) continue;
 
-      const boneIndex = this.content.getBoneIndex(skeleton.id);
-      const template = this.content.getHitboxTemplate(modelRef.modelId, modelRef.seed, modelRef.scaleX);
+      const boneIndex    = this.content.getBoneIndex(skeleton.id);
+      const clipIndex    = this.content.getClipIndex(skeleton.id);
+      const maskIndex    = this.content.getMaskIndex(skeleton.id);
+      const template     = this.content.getHitboxTemplate(modelRef.modelId, modelRef.seed, modelRef.scaleX);
 
-      // Build weapon data if attacking
-      let poseRotations: Map<string, { x: number; y: number; z: number }>;
+      // Get or create pooled maps for this entity.
+      let poseMap = this.posePool.get(entityId);
+      if (!poseMap) { poseMap = new Map(); this.posePool.set(entityId, poseMap); }
+      let transformMap = this.transformPool.get(entityId);
+      if (!transformMap) { transformMap = new Map(); this.transformPool.set(entityId, transformMap); }
 
-      if (animationState.mode === "attack" && animationState.weaponActionId) {
-        const action = this.content.getWeaponAction(animationState.weaponActionId);
-        const weaponData: HumanWeaponData | undefined = action
-          ? {
-            keyframes: action.swingPath.keyframes,
-            ikTargets: action.ikTargets,
-            windupTicks: animationState.windupTicks,
-            activeTicks: animationState.activeTicks,
-            winddownTicks: animationState.winddownTicks,
-            ticksIntoAction: animationState.ticksIntoAction,
-            bladeLength: action.swingPath.defaultBladeLength,
-          }
-          : undefined;
+      // Evaluate animation layer stack → bone rotations.
+      const poseRotations = animationState.layers.length > 0
+        ? evaluateAnimationLayers(skeleton, clipIndex, maskIndex, animationState.layers, poseMap)
+        : REST_POSE;
 
-        poseRotations = skeleton.id === "wolf"
-          ? computeWolfPose(animationState.mode, this.tick, velocity.x, velocity.y, {
-            windupTicks: animationState.windupTicks,
-            activeTicks: animationState.activeTicks,
-            winddownTicks: animationState.winddownTicks,
-            ticksIntoAction: animationState.ticksIntoAction,
-          })
-          : computeHumanPose(animationState.mode, this.tick, velocity.x, velocity.y, facing.angle, weaponData);
-      } else if (skeleton.id === "wolf") {
-        poseRotations = computeWolfPose(animationState.mode, this.tick, velocity.x, velocity.y);
-      } else {
-        poseRotations = computeHumanPose(animationState.mode, this.tick, velocity.x, velocity.y, facing.angle);
-      }
+      // FK solve → bone world transforms.
+      const boneTransforms = solveSkeleton(skeleton, boneIndex, poseRotations, modelRef.scaleX, transformMap);
 
-      const boneTransforms = solveSkeleton(skeleton, boneIndex, poseRotations, modelRef.scaleX);
+      // Derive hitbox capsules from the template + current pose.
       const parts = applyHitboxTemplate(template, boneTransforms);
 
-      if (parts.length > 0) {
-        world.set(entityId, Hitbox, { parts } as HitboxData);
-      } else {
-        // No template parts — fall back to REST_POSE static hitbox
+      if (parts.length === 0) {
+        // No template parts — fall back to rest-pose static hitbox.
         const restTransforms = solveSkeleton(skeleton, boneIndex, REST_POSE, modelRef.scaleX);
         const restParts = applyHitboxTemplate(template, restTransforms);
-        if (restParts.length > 0) world.set(entityId, Hitbox, { parts: restParts } as HitboxData);
+        if (restParts.length > 0 && !partsEqual(world.get(entityId, Hitbox)?.parts, restParts)) {
+          world.set(entityId, Hitbox, { parts: restParts } as HitboxData);
+        }
+      } else if (!partsEqual(world.get(entityId, Hitbox)?.parts, parts)) {
+        world.set(entityId, Hitbox, { parts } as HitboxData);
       }
     }
   }
+}
+
+// ---- helpers ----
+
+/** Cheap structural equality check — avoids deferred writes when parts haven't changed. */
+function partsEqual(a: BodyPartVolume[] | undefined, b: BodyPartVolume[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ai = a[i], bi = b[i];
+    if (
+      ai.id !== bi.id ||
+      Math.abs(ai.fromFwd   - bi.fromFwd)   > 1e-4 ||
+      Math.abs(ai.fromRight - bi.fromRight) > 1e-4 ||
+      Math.abs(ai.fromUp    - bi.fromUp)    > 1e-4 ||
+      Math.abs(ai.toFwd     - bi.toFwd)     > 1e-4 ||
+      Math.abs(ai.toRight   - bi.toRight)   > 1e-4 ||
+      Math.abs(ai.toUp      - bi.toUp)      > 1e-4 ||
+      Math.abs(ai.radius    - bi.radius)    > 1e-4
+    ) return false;
+  }
+  return true;
 }

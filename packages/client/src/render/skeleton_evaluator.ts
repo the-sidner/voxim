@@ -1,53 +1,46 @@
 /**
- * Skeleton pose evaluator — thin Three.js wrapper around @voxim/content pose functions.
+ * Skeleton pose evaluator — thin Three.js wrapper around evaluateAnimationLayers().
  *
- * computeHumanPose / computeWolfPose live in @voxim/content so the server can
- * also call them (no Three.js there). This file only converts BoneRotation
+ * evaluateAnimationLayers() lives in @voxim/content so the server (HitboxSystem)
+ * can also call it without Three.js.  This file converts BoneRotation
  * (plain {x,y,z} Euler XYZ) → THREE.Euler so the renderer can use them.
  */
 import * as THREE from "three";
-import type { AnimationMode, SwingKeyframe, IKTargetDef } from "@voxim/content";
-import { computeHumanPose, computeWolfPose } from "@voxim/content";
-import type { HumanWeaponData } from "@voxim/content";
+import type { SkeletonDef, AnimationClip, BoneMask, AnimationStateData } from "@voxim/content";
+import { evaluateAnimationLayers } from "@voxim/content";
 import { evaluateSwingPath, deriveTip } from "@voxim/content";
+import type { SwingKeyframe } from "@voxim/content";
 
 // ---- public API ----
 
+/**
+ * Evaluate a full skeleton pose from an AnimationStateData layer stack.
+ *
+ * @param skeleton   The entity's skeleton definition. Pass undefined for a no-skeleton entity.
+ * @param clipIndex  Pre-built clip map from ContentCache.getClipIndex(skeletonId).
+ * @param maskIndex  Pre-built mask map from ContentCache.getMaskIndex(skeletonId).
+ * @param animState  The current AnimationStateData (layers + weaponActionId).
+ * @returns          Map from boneId to THREE.Euler (XYZ, radians).
+ */
 export function evaluatePose(
-  skeletonId: string,
-  mode: AnimationMode,
-  _attackStyle: string,
-  windupTicks: number,
-  activeTicks: number,
-  winddownTicks: number,
-  ticksIntoAction: number,
-  serverTick: number,
-  velocityX = 0,
-  velocityY = 0,
-  facingAngle = 0,
-  swingKeyframes?: SwingKeyframe[],
-  ikTargets?: IKTargetDef[],
-  bladeLength?: number,
+  skeleton: SkeletonDef | undefined,
+  clipIndex: ReadonlyMap<string, AnimationClip>,
+  maskIndex: ReadonlyMap<string, BoneMask>,
+  animState: AnimationStateData | null,
 ): Map<string, THREE.Euler> {
-  if (skeletonId === "human") {
-    const weaponData: HumanWeaponData | undefined = swingKeyframes
-      ? { keyframes: swingKeyframes, ikTargets, windupTicks, activeTicks, winddownTicks, ticksIntoAction, bladeLength: bladeLength ?? 1.0 }
-      : undefined;
-    const boneRotations = computeHumanPose(mode, serverTick, velocityX, velocityY, facingAngle, weaponData);
-    return toThreeEulerMap(boneRotations);
-  }
+  if (!skeleton || !animState) return new Map();
 
-  if (skeletonId === "wolf") {
-    const weaponData = { windupTicks, activeTicks, winddownTicks, ticksIntoAction };
-    const boneRotations = computeWolfPose(mode, serverTick, velocityX, velocityY, weaponData);
-    return toThreeEulerMap(boneRotations);
-  }
+  const layers = animState.layers;
+  if (layers.length === 0) return new Map();
 
-  return new Map();
+  const boneRotations = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, layers);
+  return toThreeEulerMap(boneRotations);
 }
 
 /** Convert a BoneRotation map (plain Euler XYZ) to THREE.Euler. */
-function toThreeEulerMap(input: Map<string, { x: number; y: number; z: number }>): Map<string, THREE.Euler> {
+function toThreeEulerMap(
+  input: Map<string, { x: number; y: number; z: number }>,
+): Map<string, THREE.Euler> {
   const out = new Map<string, THREE.Euler>();
   for (const [bone, rot] of input) {
     out.set(bone, new THREE.Euler(rot.x, rot.y, rot.z));
