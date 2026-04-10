@@ -153,27 +153,55 @@ The old `deriveHitboxParts` function is **deleted**. No compatibility shim.
 
 ### Refactored: `AnimationSystem`
 
-The `updateArmHitboxes` method and the `ARM_BONE_IDS` constant are **deleted entirely**.
+Returns to its original, single responsibility: derive `AnimationMode` from observable state and write `AnimationState`.
+
+The `updateArmHitboxes` method, `ARM_BONE_IDS`, `ARM_BONE_LEN`, `boneWorldPos`, `solverToEntityLocal`, and `ArmIKResult` are **deleted entirely**. The system no longer touches `Hitbox` at all.
 
 New `run` method:
 
 ```
-1. For each entity with (Velocity + AnimationState + ModelRef):
+1. For each entity with (Velocity + AnimationState):
    a. Derive AnimationMode from Health / SkillInProgress / InputState (same priority logic)
-   b. Write AnimationState component if changed
-   c. Get skeleton for entity's modelId from ContentStore
-   d. Call computeHumanPose / computeWolfPose (dispatched by skeletonId)
-      → Map<boneId, BoneRotation>
-   e. Call solveSkeleton(skeleton, poseMap, scale)
-      → Map<boneId, BoneTransform>
-   f. Look up HitboxPartTemplate[] from ContentStore (cached)
-   g. For each template part:
-      - If boneId present: get BoneTransform, transform bone-local endpoints to entity-local
-      - If boneId null: endpoints are already entity-local
-   h. Write Hitbox component with updated entity-local capsule endpoints
+   b. Write AnimationState if changed (unchanged from today)
 ```
 
-The system now imports from `@voxim/content`: `computeHumanPose`, `computeWolfPose`, `solveSkeleton`, and the ContentStore for template lookup. It no longer imports `solveTwoBoneIK`, `quatFromEulerXYZ`, or `applyQuat` directly (those are implementation details inside `skeleton_pose.ts`).
+AnimationSystem imports nothing from `@voxim/content` beyond what it already needs for weapon action lookups. It does not import `solveTwoBoneIK`, `quatFromEulerXYZ`, or `applyQuat`.
+
+---
+
+### New system: `HitboxSystem`
+
+A new system added to the tick order **immediately after AnimationSystem**. Its sole job is: read animation state + kinematics → evaluate skeleton → write Hitbox.
+
+```
+Runs after: AnimationSystem
+Runs before: ActionSystem (hit detection reads Hitbox)
+
+Query: (AnimationState + ModelRef + Velocity + Facing)
+
+For each matching entity:
+  a. Read AnimationState (mode, attackStyle, tick fields) from component
+  b. Read velocity and facing from Velocity / Facing components
+  c. Look up skeleton from ContentStore via ModelRef.modelId
+     → if no skeleton: skip (entity has no skeletal hitbox)
+  d. Dispatch to shared pose function:
+       skeletonId === "human" → computeHumanPose(mode, tick, vx, vy, facing, weaponData)
+       skeletonId === "wolf"  → computeWolfPose(mode, tick, vx, vy, weaponData)
+     → Map<boneId, BoneRotation>
+  e. solveSkeleton(skeleton, poseMap, scale)
+     → Map<boneId, BoneTransform>
+  f. getHitboxTemplate(modelId, seed, scale) from ContentStore (cached)
+  g. applyHitboxTemplate(template, boneTransforms)
+     → BodyPartVolume[]  (entity-local, fully resolved)
+  h. world.set(entityId, Hitbox, { parts })
+```
+
+HitboxSystem imports: `computeHumanPose`, `computeWolfPose`, `solveSkeleton`, `applyHitboxTemplate` from `@voxim/content`. It does not do any geometry math itself.
+
+System registration in `server.ts` (tick order):
+```
+... AnimationSystem → HitboxSystem → (ActionSystem already after) ...
+```
 
 ---
 
@@ -237,7 +265,7 @@ export function applyHitboxTemplate(
 ): BodyPartVolume[];
 ```
 
-Used by both the spawner (rest pose) and AnimationSystem (animated pose). Same function, different inputs.
+Used by both the spawner (rest pose for static entities) and HitboxSystem (live pose for animated entities). Same function, different inputs.
 
 ---
 
@@ -276,22 +304,22 @@ Used by both the spawner (rest pose) and AnimationSystem (animated pose). Same f
 - Add `getHitboxTemplate(modelId, seed, scale): HitboxPartTemplate[]` that calls `deriveHitboxTemplate` and caches by `${modelId}:${seed}:${scale}`.
 - This is purely additive; no breaking changes to existing ContentStore API yet.
 
-### Step 6 — Refactor `AnimationSystem`
-- Delete `updateArmHitboxes`, `boneWorldPos`, `solverToEntityLocal`, `ARM_BONE_IDS`, `ARM_BONE_LEN`, `ArmIKResult`.
-- Import `computeHumanPose`, `computeWolfPose`, `solveSkeleton`, `applyHitboxTemplate` from `@voxim/content`.
-- Implement the new unified run loop (see above).
-- The system now queries `(Velocity + AnimationState + ModelRef)`. Entities without ModelRef (if any) are skipped.
+### Step 6 — Refactor `AnimationSystem` + create `HitboxSystem`
+- In `AnimationSystem`: delete `updateArmHitboxes`, `boneWorldPos`, `solverToEntityLocal`, `ARM_BONE_IDS`, `ARM_BONE_LEN`, `ArmIKResult`. The system reverts to its original single job: derive AnimationMode, write AnimationState.
+- Create `packages/tile-server/src/systems/hitbox.ts` — the new `HitboxSystem`.
+- HitboxSystem queries `(AnimationState + ModelRef + Velocity + Facing)` and implements the full loop: pose → solveSkeleton → applyHitboxTemplate → write Hitbox.
+- Register HitboxSystem in `server.ts` immediately after AnimationSystem and before ActionSystem.
 
 ### Step 7 — Refactor `spawner.ts`
 - Remove all `deriveHitboxParts` call sites.
 - Remove the `content.getModelHitboxDef()` lookup and the pre-baked hitbox path.
 - For static entities: write Hitbox at spawn from `applyHitboxTemplate(template, solveSkeleton(skeleton, REST_POSE, scale))`.
-- For animated entities (player, NPCs): do not write Hitbox at spawn; AnimationSystem owns it.
+- For animated entities (players, NPCs): do not write Hitbox at spawn — HitboxSystem writes it on tick 1.
 
 ### Step 8 — Delete dead code
 - Delete `getModelHitboxDef` from ContentStore (pre-baked hitbox lookup, now unused).
-- Delete the old `boneWorldPos` in AnimationSystem (already done in step 6, but verify no other callers).
-- Confirm `deriveHitboxParts` is fully gone from the codebase (`grep -r deriveHitboxParts` returns nothing).
+- Confirm `deriveHitboxParts` is fully gone (`grep -r deriveHitboxParts` returns nothing).
+- Confirm `AnimationSystem` no longer imports anything hitbox-related.
 - Run `deno check` — zero errors.
 
 ### Step 9 — Smoke test
@@ -315,7 +343,7 @@ Used by both the spawner (rest pose) and AnimationSystem (animated pose). Same f
 
 5. **No server-only fast-paths that skip bone evaluation.** It is not acceptable to short-circuit the skeleton evaluation for "simple" modes like idle or walk. Every animated entity gets a full skeleton evaluation every tick. If performance is a concern, profile first, then optimize the solver — do not add conditional skipping.
 
-6. **Static entities (trees, resources) write their hitbox at spawn, animated entities do not.** The spawner owns static hitboxes; AnimationSystem owns animated hitboxes. These are different call sites of the same shared code. Do not add a flag to AnimationSystem to "handle" static entities — they have no AnimationState and are not in its query.
+6. **`AnimationSystem` does not touch `Hitbox`.** Its job is animation mode derivation only. `HitboxSystem` owns all Hitbox writes for animated entities. The spawner owns Hitbox writes for static entities (rest pose, one time). These are the only two places that write Hitbox. Do not add hitbox logic back into AnimationSystem for any reason.
 
 7. **The wire format does not change.** `BodyPartVolume` fields (`fromFwd`, `fromRight`, `fromUp`, `toFwd`, `toRight`, `toUp`, `radius`) are entity-local capsule endpoints. The codec does not change. The `boneId` field on `BodyPartVolume` is **removed** — it was a server implementation detail that should never have been on the wire type. After the refactor, all parts in the Hitbox component are entity-local and fully resolved.
 
@@ -330,6 +358,7 @@ Used by both the spawner (rest pose) and AnimationSystem (animated pose). Same f
 ## Acceptance Criteria
 
 - `grep -r "ARM_BONE_IDS\|updateArmHitboxes\|deriveHitboxParts\|getModelHitboxDef\|boneWorldPos"` returns zero results.
+- `AnimationSystem` does not import `Hitbox`, `solveTwoBoneIK`, or `applyHitboxTemplate`.
 - `grep -r "THREE" packages/content/` returns zero results.
 - `deno check` passes with zero errors.
 - Hitbox debug overlay shows capsules that track the live skeleton (crouch posture, attack arms, walk lean).
