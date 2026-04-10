@@ -28,7 +28,7 @@ import { ResourceNode } from "./components/resource_node.ts";
 import { WorldClock, TileCorruption, CorruptionExposure } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
-import { Hitbox } from "./components/hitbox.ts";
+// Hitbox is server-only (networked: false) — not in registry
 
 interface RegistryEntry {
   readonly typeId: number;
@@ -70,7 +70,7 @@ export const COMPONENT_REGISTRY: ReadonlyArray<RegistryEntry> = [
   { typeId: ComponentType.traderInventory,    def: TraderInventory },
   { typeId: ComponentType.loreLoadout,        def: LoreLoadout },
   { typeId: ComponentType.activeEffects,      def: ActiveEffects },
-  { typeId: ComponentType.hitbox,             def: Hitbox },
+  // ComponentType.hitbox slot reserved — component is networked: false (server-only)
 ];
 
 /** Flat list of all networked ComponentDefs — used by AoI spawn builder. */

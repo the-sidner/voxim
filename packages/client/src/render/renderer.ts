@@ -472,14 +472,7 @@ export class VoximRenderer {
 
   updateEntity(entityId: string, state: EntityState): void {
     // Static props are fully managed by propPool after their first model load.
-    // Still update hitbox overlay if hitbox arrived after the prop was added.
-    if (this.propPool.hasProp(entityId)) {
-      if (state.hitbox) {
-        const worldPos = this.propPositions.get(entityId);
-        if (worldPos) this.hitboxDebugOverlay.updateProp(entityId, this.scene, worldPos, state.hitbox);
-      }
-      return;
-    }
+    if (this.propPool.hasProp(entityId)) return;
 
     const isLocal = entityId === this.localPlayerId;
     let mesh = this.entityMeshes.get(entityId);
@@ -489,11 +482,6 @@ export class VoximRenderer {
       this.entityMeshes.set(entityId, mesh);
     } else {
       updateEntityMesh(mesh, state);
-    }
-
-    // Sync hitbox debug overlay when hitbox data is present.
-    if (state.hitbox) {
-      this.hitboxDebugOverlay.updateEntity(entityId, mesh, state.hitbox);
     }
 
     // Upgrade to skeleton model (animated entity) or prop pool (static entity)
@@ -556,10 +544,7 @@ export class VoximRenderer {
           this.entityMeshes.delete(entityId);
           this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale);
           this.propPositions.set(entityId, worldPos);
-          // Wire hitbox debug overlay at world position (props have no live mesh group).
-          if (state.hitbox) {
-            this.hitboxDebugOverlay.updateProp(entityId, this.scene, worldPos, state.hitbox);
-          }
+          // TODO Step 7: re-wire hitbox debug overlay using local computeHitboxDebug()
         }
       }).catch(() => {});
     }

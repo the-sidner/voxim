@@ -21,5 +21,6 @@ export type { HitboxData };
 export const Hitbox = defineComponent({
   name: "hitbox" as const,
   codec: hitboxCodec,
+  networked: false,
   default: (): HitboxData => ({ parts: [] }),
 });
