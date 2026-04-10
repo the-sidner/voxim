@@ -293,7 +293,7 @@ export const modelRefCodec: Serialiser<ModelRefData> = {
 };
 
 // ---- AnimationState ---------------------------------------------------------
-// { mode, attackStyle, windupTicks, activeTicks, winddownTicks, ticksIntoAction }
+// { mode, attackStyle, windupTicks, activeTicks, winddownTicks, ticksIntoAction, weaponActionId }
 
 export const animationStateCodec: Serialiser<AnimationStateData> = {
   encode(v: AnimationStateData): Uint8Array {
@@ -304,6 +304,7 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
     w.writeU16(v.activeTicks);
     w.writeU16(v.winddownTicks);
     w.writeU16(v.ticksIntoAction);
+    w.writeStr(v.weaponActionId);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): AnimationStateData {
@@ -315,6 +316,7 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
       activeTicks: r.readU16(),
       winddownTicks: r.readU16(),
       ticksIntoAction: r.readU16(),
+      weaponActionId: r.readStr(),
     };
   },
 };

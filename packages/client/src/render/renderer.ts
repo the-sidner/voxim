@@ -594,6 +594,7 @@ export class VoximRenderer {
         activeTicks,
         winddownTicks,
         ticksIntoAction: 0,
+        weaponActionId: "",
       };
       mesh.lastAnimUpdateMs = performance.now();
     }

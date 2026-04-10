@@ -93,10 +93,12 @@ export class AnimationSystem implements System {
     let activeTicks = 0;
     let winddownTicks = 0;
     let ticksIntoAction = 0;
+    let weaponActionId = "";
 
     if (mode === "attack" && sip) {
       const action = this.content.getWeaponAction(sip.weaponActionId);
       if (action) {
+        weaponActionId = sip.weaponActionId;
         attackStyle = action.animationStyle;
         windupTicks = action.windupTicks;
         activeTicks = action.activeTicks;
@@ -116,6 +118,7 @@ export class AnimationSystem implements System {
       activeTicks,
       winddownTicks,
       ticksIntoAction,
+      weaponActionId,
     };
 
     const current = world.get(entityId, AnimationState);
@@ -125,7 +128,8 @@ export class AnimationSystem implements System {
       current.windupTicks === next.windupTicks &&
       current.activeTicks === next.activeTicks &&
       current.winddownTicks === next.winddownTicks &&
-      current.ticksIntoAction === next.ticksIntoAction
+      current.ticksIntoAction === next.ticksIntoAction &&
+      current.weaponActionId === next.weaponActionId
     ) return null;
 
     if (current?.mode !== next.mode) {

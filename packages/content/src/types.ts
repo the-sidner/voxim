@@ -887,4 +887,10 @@ export interface AnimationStateData {
   winddownTicks: number;
   /** Elapsed ticks since the action started (0 for non-attack modes). */
   ticksIntoAction: number;
+  /**
+   * WeaponActionDef id driving the current attack (e.g. "unarmed", "slash_r").
+   * Empty string for non-attack modes.
+   * Used by HitboxSystem and the client to look up swingPath keyframes + ikTargets.
+   */
+  weaponActionId: string;
 }
