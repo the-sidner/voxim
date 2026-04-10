@@ -155,9 +155,19 @@ export function init(canvas: HTMLCanvasElement, cb: ViewportCallbacks): void {
   // Render loop
   function loop(): void {
     _raf = requestAnimationFrame(loop);
+    _frameListener?.();
     _renderer!.render(scene, _camera);
   }
   loop();
+}
+
+// ---- frame listener ----
+
+let _frameListener: (() => void) | null = null;
+
+/** Register a callback invoked every render frame (before draw). Pass null to clear. */
+export function setFrameListener(fn: (() => void) | null): void {
+  _frameListener = fn;
 }
 
 export function dispose(): void {

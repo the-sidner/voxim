@@ -888,6 +888,12 @@ export interface AnimationClip {
   /** Locomotion and idle clips loop; death/hit/carry one-shots do not. */
   loop: boolean;
   /**
+   * Real-time duration of one full cycle, in seconds.
+   * The AnimationSystem uses this to advance normalized time [0,1] at the correct rate.
+   * Omit or set to 1.0 for clips whose speed is driven by speedScale on the layer.
+   */
+  durationSeconds?: number;
+  /**
    * Per-bone animation tracks. Key = BoneDef.id. Only bones that actually
    * move need entries — static bones can be omitted (rest pose assumed).
    */
