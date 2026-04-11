@@ -21,10 +21,12 @@ import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_stor
 import type { UIAction } from "./ui/ui_actions.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
 import { setDebugLayer } from "./ui/debug_store.ts";
-import { ACTION_USE_SKILL, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
+import { ACTION_USE_SKILL, ACTION_JUMP, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { EquipmentData, InventoryData } from "@voxim/codecs";
 import type { EquipmentState, InventoryState, ItemStack } from "./ui/ui_store.ts";
+import { DEFAULT_PHYSICS } from "@voxim/engine";
+import { Predictor } from "./prediction/predictor.ts";
 import weaponActionsData from "../../content/data/weapon_actions.json" with { type: "json" };
 import itemTemplatesData from "../../content/data/item_templates.json" with { type: "json" };
 
@@ -55,6 +57,8 @@ export class VoximGame {
   private commandSeq = 0;
   private serverTick = 0;
   private running = false;
+  private predictor: Predictor | null = null;
+  private lastFrameTime = 0;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
@@ -134,6 +138,22 @@ export class VoximGame {
 
       if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
         this._finishLoading();
+      }
+
+      // Client-side prediction reconciliation
+      if (this.predictor && this.playerId) {
+        const playerState = this.world.get(this.playerId);
+        const pos = playerState?.position;
+        const vel = playerState?.velocity;
+        if (pos) {
+          const terrainFn = (x: number, y: number) => this.world.getTerrainHeight(x, y);
+          const serverVel = vel ?? { x: 0, y: 0, z: 0 };
+          if (!this.predictor.isInitialised) {
+            this.predictor.seed(pos, serverVel);
+          } else {
+            this.predictor.reconcile(msg.ackInputSeq, pos, serverVel, terrainFn);
+          }
+        }
       }
 
       for (const ev of msg.events) {
@@ -308,7 +328,9 @@ export class VoximGame {
       this._handleUIAction({ type: "open_build_menu", canvasX: cx, canvasY: cy });
     };
 
-    // Step 5: render loop
+    // Step 5: predictor + render loop
+    this.predictor = new Predictor(DEFAULT_PHYSICS);
+    this.lastFrameTime = performance.now();
     this.running = true;
     this.scheduleFrame();
   }
@@ -320,6 +342,12 @@ export class VoximGame {
 
   private frame(): void {
     if (!this.running) return;
+
+    const now = performance.now();
+    const dt = Math.min((now - this.lastFrameTime) / 1000, 0.1);
+    this.lastFrameTime = now;
+
+    let predictedPos = null;
     if (this.input) {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
       this.connection.sendMovement(datagram);
@@ -333,8 +361,18 @@ export class VoximGame {
         this.renderer?.forceLocalAnimation(weaponActionId);
         // Arc is shown on DamageDealt confirmation, not on input prediction.
       }
+
+      // Step predictor with this frame's input
+      if (this.predictor?.isInitialised) {
+        const physicsInput = {
+          movement: { x: datagram.movementX, y: datagram.movementY },
+          jump: hasAction(datagram.actions, ACTION_JUMP),
+        };
+        const terrainFn = (x: number, y: number) => this.world.getTerrainHeight(x, y);
+        predictedPos = this.predictor.step(datagram.seq, physicsInput, dt, terrainFn);
+      }
     }
-    this.renderer?.render(this.serverTick);
+    this.renderer?.render(this.serverTick, predictedPos);
 
     // Update world-space entity health bars (frame-driven, not reactive)
     if (this.overlay) {
@@ -507,6 +545,7 @@ export class VoximGame {
 
   stop(): void {
     this.running = false;
+    this.predictor = null;
     this.terrainChunksReceived = 0;
     this.loadingComplete = false;
     cancelAnimationFrame(this.animFrameId);

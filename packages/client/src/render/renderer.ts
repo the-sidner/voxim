@@ -695,7 +695,7 @@ export class VoximRenderer {
 
   // ---- render loop ----
 
-  render(serverTick: number): void {
+  render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null): void {
     // Compute a smooth fractional tick that advances at 20 Hz based on real time.
     // This makes animations run at 60 fps instead of stepping every 50 ms.
     const now = performance.now();
@@ -770,6 +770,15 @@ export class VoximRenderer {
           lerpN(buf[lo].z, buf[hi].z, alpha),
         );
         mesh.group.rotation.y = lerpAngle(buf[lo].ry, buf[hi].ry, alpha);
+      }
+    }
+
+    // Override local player position with client-side prediction
+    if (localPredictedPos && this.localPlayerId) {
+      const localMesh = this.entityMeshes.get(this.localPlayerId);
+      if (localMesh) {
+        // world(x, y, z) → three(x, height, y) — same mapping as updateEntityMesh
+        localMesh.group.position.set(localPredictedPos.x, localPredictedPos.z, localPredictedPos.y);
       }
     }
 

@@ -45,9 +45,13 @@ function makeEntity(): EntityState {
   return { raw: new Map(), versions: new Map() };
 }
 
+const CHUNK_CELLS = 32;
+
 export class ClientWorld {
   private readonly entities = new Map<string, EntityState>();
   private lastSnapshotTick = -1;
+  /** Heightmap data indexed by "chunkX,chunkY" for O(1) terrain height queries. */
+  private readonly chunkHeightmaps = new Map<string, Float32Array>();
 
   private applyComponentData(
     entity: EntityState,
@@ -87,9 +91,12 @@ export class ClientWorld {
         entity.hunger = { value: v.getFloat32(0, true) };
         break;
       }
-      case ComponentType.heightmap:
-        entity.heightmap = heightmapCodec.decode(data);
+      case ComponentType.heightmap: {
+        const hm = heightmapCodec.decode(data);
+        entity.heightmap = hm;
+        this.chunkHeightmaps.set(`${hm.chunkX},${hm.chunkY}`, hm.data);
         break;
+      }
       case ComponentType.materialGrid:
         entity.materialGrid = materialGridCodec.decode(data);
         break;
@@ -171,7 +178,23 @@ export class ClientWorld {
     return this.entities.entries();
   }
 
+  /**
+   * Sample terrain height at a world position. Uses bilinear interpolation
+   * between the four surrounding heightmap cells.
+   * Returns 0 for unloaded chunks.
+   */
+  getTerrainHeight(wx: number, wy: number): number {
+    const cx = Math.floor(wx / CHUNK_CELLS);
+    const cy = Math.floor(wy / CHUNK_CELLS);
+    const data = this.chunkHeightmaps.get(`${cx},${cy}`);
+    if (!data) return 0;
+    const lx = Math.max(0, Math.min(CHUNK_CELLS - 1, Math.floor(wx - cx * CHUNK_CELLS)));
+    const ly = Math.max(0, Math.min(CHUNK_CELLS - 1, Math.floor(wy - cy * CHUNK_CELLS)));
+    return data[lx + ly * CHUNK_CELLS] ?? 0;
+  }
+
   clear(): void {
     this.entities.clear();
+    this.chunkHeightmaps.clear();
   }
 }
