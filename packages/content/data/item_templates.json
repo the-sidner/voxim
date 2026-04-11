@@ -381,7 +381,7 @@
     },
     "toolType": "pickaxe",
     "weaponAction": "overhead",
-    "modelTemplateId": "model_pickaxe_basic"
+    "modelTemplateId": "pickaxe"
   },
   {
     "id": "pickaxe",
@@ -417,7 +417,7 @@
     },
     "toolType": "pickaxe",
     "weaponAction": "overhead",
-    "modelTemplateId": "model_pickaxe"
+    "modelTemplateId": "pickaxe"
   },
   {
     "id": "hammer",
