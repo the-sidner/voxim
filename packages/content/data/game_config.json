@@ -85,6 +85,10 @@
   "network": {
     "rttEmaAlpha": 0.15
   },
+  "prediction": {
+    "correctionHalfLifeMs": 60,
+    "hardSnapThresholdUnits": 2.0
+  },
   "npcAiDefaults": {
     "wanderRadius": 20,
     "wanderTicks": 60,

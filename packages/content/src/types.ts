@@ -781,6 +781,13 @@ export interface GameConfig {
     /** Exponential moving average alpha for per-session RTT estimation (0–1). Lower = smoother. */
     rttEmaAlpha: number;
   };
+  /** Client-side prediction correction smoothing. */
+  prediction: {
+    /** Half-life of the render-offset correction in milliseconds. Lower = snappier. */
+    correctionHalfLifeMs: number;
+    /** Divergences above this (world units) snap immediately instead of smoothing. */
+    hardSnapThresholdUnits: number;
+  };
   /** Global fallback defaults for NPC AI tuning. Per-type overrides live on NpcTemplate. */
   npcAiDefaults: {
     wanderRadius: number;

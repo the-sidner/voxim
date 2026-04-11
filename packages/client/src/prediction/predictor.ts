@@ -1,15 +1,25 @@
 /**
  * Client-side prediction for the local player.
  *
- * Records every input the client sends with its frame dt. On each server
- * acknowledgement, resets to the authoritative state and replays all inputs
- * with seq > ackSeq so the predicted position is always ahead of the server.
+ * The physics body (body.position) is always hard-snapped to the authoritative
+ * server state after replay — this is the ground truth for future physics steps.
  *
- * Uses the same stepPhysics() as the server — identical by construction.
+ * A separate renderOffset absorbs corrections visually: small divergences blend
+ * out exponentially (half-life controlled by correctionHalfLifeMs); large ones
+ * snap immediately to avoid rubber-band artefacts.
+ *
+ * render position = body.position + renderOffset
  */
 import type { Vec3 } from "@voxim/engine";
 import type { PhysicsBody, PhysicsInput, PhysicsConfig } from "@voxim/engine";
 import { stepPhysics } from "@voxim/engine";
+
+export interface PredictorConfig {
+  /** Half-life of the visual correction offset in milliseconds. */
+  correctionHalfLifeMs: number;
+  /** Divergences ≥ this (world units) snap immediately instead of blending. */
+  hardSnapThresholdUnits: number;
+}
 
 interface PendingInput {
   seq: number;
@@ -26,26 +36,39 @@ export class Predictor {
     velocity: { x: 0, y: 0, z: 0 },
     onGround: false,
   };
+  /** Visual offset — difference between old render position and new physics position after reconcile. */
+  private renderOffset: Vec3 = { x: 0, y: 0, z: 0 };
   private pending: PendingInput[] = [];
   private _initialised = false;
 
-  constructor(private readonly physicsConfig: PhysicsConfig) {}
+  constructor(
+    private readonly physicsConfig: PhysicsConfig,
+    private readonly predictorConfig: PredictorConfig,
+  ) {}
 
   get isInitialised(): boolean { return this._initialised; }
 
-  get position(): Vec3 { return this.body.position; }
+  /** Current render position — use this for mesh placement. */
+  get renderPosition(): Vec3 {
+    return {
+      x: this.body.position.x + this.renderOffset.x,
+      y: this.body.position.y + this.renderOffset.y,
+      z: this.body.position.z + this.renderOffset.z,
+    };
+  }
 
   /** Seed from first authoritative position. Called once when the server sends initial state. */
   seed(pos: Vec3, vel: Vec3): void {
     this.body.position = { ...pos };
     this.body.velocity = { ...vel };
+    this.renderOffset = { x: 0, y: 0, z: 0 };
     this._initialised = true;
   }
 
   /**
    * Advance the predicted body by one frame.
-   * Records the input so it can be replayed after reconciliation.
-   * Returns the new predicted position.
+   * Decays the render offset and steps physics.
+   * Returns the render position (body.position + decayed renderOffset).
    */
   step(seq: number, input: PhysicsInput, dt: number, getTerrainHeight: (x: number, y: number) => number): Vec3 {
     if (!this._initialised) return this.body.position;
@@ -54,14 +77,23 @@ export class Predictor {
     if (this.pending.length > MAX_PENDING) this.pending.shift();
 
     stepPhysics(this.body, input, getTerrainHeight, dt, this.physicsConfig);
-    return this.body.position;
+
+    // Exponential decay of render offset: retain = 0.5^(dt / halfLife)
+    const halfLifeSec = this.predictorConfig.correctionHalfLifeMs / 1000;
+    const retain = Math.pow(0.5, dt / halfLifeSec);
+    this.renderOffset.x *= retain;
+    this.renderOffset.y *= retain;
+    this.renderOffset.z *= retain;
+
+    return this.renderPosition;
   }
 
   /**
-   * Reconcile against a server authoritative state.
-   * 1. Prune inputs the server has already processed (seq <= ackSeq).
-   * 2. Reset body to server state.
-   * 3. Replay remaining inputs in order.
+   * Reconcile against authoritative server state.
+   * 1. Prune inputs the server has already processed (seq ≤ ackSeq).
+   * 2. Capture old render position.
+   * 3. Reset body to server state and replay remaining inputs.
+   * 4. Compute new renderOffset from divergence — smooth or snap.
    */
   reconcile(
     ackSeq: number,
@@ -69,6 +101,9 @@ export class Predictor {
     serverVel: Vec3,
     getTerrainHeight: (x: number, y: number) => number,
   ): void {
+    // Capture render position before reset
+    const oldRender = this.renderPosition;
+
     // Discard acknowledged inputs
     const idx = this.pending.findLastIndex((p) => p.seq <= ackSeq);
     if (idx >= 0) this.pending.splice(0, idx + 1);
@@ -81,6 +116,21 @@ export class Predictor {
     // Replay unacknowledged inputs
     for (const p of this.pending) {
       stepPhysics(this.body, p.input, getTerrainHeight, p.dt, this.physicsConfig);
+    }
+
+    // Compute divergence between where the player appeared and where physics landed
+    const dx = oldRender.x - this.body.position.x;
+    const dy = oldRender.y - this.body.position.y;
+    const dz = oldRender.z - this.body.position.z;
+    const divergence = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    const threshold = this.predictorConfig.hardSnapThresholdUnits;
+    if (divergence >= threshold) {
+      // Large divergence — snap immediately, no blending
+      this.renderOffset = { x: 0, y: 0, z: 0 };
+    } else {
+      // Small divergence — carry the offset forward for smooth blending
+      this.renderOffset = { x: dx, y: dy, z: dz };
     }
 
     this._initialised = true;

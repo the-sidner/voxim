@@ -29,6 +29,7 @@ import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import weaponActionsData from "../../content/data/weapon_actions.json" with { type: "json" };
 import itemTemplatesData from "../../content/data/item_templates.json" with { type: "json" };
+import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
 export interface GameConfig {
   canvas: HTMLCanvasElement;
@@ -329,7 +330,12 @@ export class VoximGame {
     };
 
     // Step 5: predictor + render loop
-    this.predictor = new Predictor(DEFAULT_PHYSICS);
+    this.predictor = new Predictor(DEFAULT_PHYSICS, {
+      // deno-lint-ignore no-explicit-any
+      correctionHalfLifeMs: (gameConfigData as any).prediction?.correctionHalfLifeMs ?? 60,
+      // deno-lint-ignore no-explicit-any
+      hardSnapThresholdUnits: (gameConfigData as any).prediction?.hardSnapThresholdUnits ?? 2.0,
+    });
     this.lastFrameTime = performance.now();
     this.running = true;
     this.scheduleFrame();
