@@ -25,7 +25,7 @@ import { Equipment } from "../components/equipment.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { Hitbox } from "../components/hitbox.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
-import type { StateHistoryBuffer } from "../state_history.ts";
+import type { StateHistoryBuffer, TickSnapshot, EntitySnapshot } from "../state_history.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ActionSystem");
@@ -88,7 +88,7 @@ export class ActionSystem implements System {
         phase: "windup",
         ticksInPhase: 0,
         hitEntities: [],
-        inputTimestamp: inputState.timestamp,
+        rewindTick: -1,
         pendingSkillVerb: strikeSlot >= 0 ? `strike:${strikeSlot}` : "",
       });
 
@@ -103,12 +103,24 @@ export class ActionSystem implements System {
         continue;
       }
 
-      const newHitEntities = sip.phase === "active"
-        ? this.resolveHits(world, events, entityId, sip, unarmed)
-        : sip.hitEntities;
+      // Compute rewindTick once on the first active tick; reuse it for the
+      // entire active phase so every hit in a multi-tick window is evaluated
+      // against the same historical snapshot.
+      let rewindTick = sip.rewindTick;
+      let newHitEntities = sip.hitEntities;
+
+      if (sip.phase === "active") {
+        if (rewindTick < 0) {
+          const inputState = world.get(entityId, InputState);
+          const rttMs = inputState?.rttMs ?? 0;
+          const rttTicks = Math.round(rttMs / (1000 / this.tickRateHz));
+          rewindTick = Math.max(0, this.serverTick - rttTicks);
+        }
+        newHitEntities = this.resolveHits(world, events, entityId, sip, unarmed, rewindTick);
+      }
 
       const nextTicks = sip.ticksInPhase + 1;
-      let next: SkillInProgressData = { ...sip, ticksInPhase: nextTicks, hitEntities: newHitEntities };
+      let next: SkillInProgressData = { ...sip, ticksInPhase: nextTicks, hitEntities: newHitEntities, rewindTick };
 
       if (sip.phase === "windup" && nextTicks >= action.windupTicks) {
         next = { ...next, phase: "active", ticksInPhase: 0 };
@@ -135,6 +147,7 @@ export class ActionSystem implements System {
     entityId: string,
     sip: SkillInProgressData,
     unarmed: DerivedItemStats,
+    rewindTick: number,
   ): HitRecord[] {
     const action = this.content.getWeaponAction(sip.weaponActionId);
     if (!action) return sip.hitEntities;
@@ -151,19 +164,8 @@ export class ActionSystem implements System {
     const tPrev = Math.max(0, globalTickPrev / totalTicks);
     const tCurr = globalTickCurr / totalTicks;
 
-    let rewindTick: number;
-    if (sip.ticksInPhase === 0 && sip.inputTimestamp > 0) {
-      const rttMs = Math.max(0, Date.now() - sip.inputTimestamp);
-      const rttTicks = Math.round(rttMs / (1000 / this.tickRateHz));
-      rewindTick = Math.max(0, this.serverTick - rttTicks);
-    } else {
-      rewindTick = this.serverTick;
-    }
-    const snap = this.stateHistory.getAt(rewindTick);
-    if (!snap) {
-      log.warn("resolveHits: no snapshot for rewindTick=%d serverTick=%d", rewindTick, this.serverTick);
-      return sip.hitEntities;
-    }
+    const snap = this.stateHistory.getAt(rewindTick) ?? this.buildCurrentSnapshot(world);
+    if (!snap) return sip.hitEntities;
 
     const attackerSnap = snap.entities.find((e) => e.entityId === entityId);
     const ax = attackerSnap?.x ?? (world.get(entityId, Position)?.x ?? 0);
@@ -268,5 +270,32 @@ export class ActionSystem implements System {
     }
 
     return newHitEntities;
+  }
+
+  /**
+   * Fallback snapshot built from current world state.
+   * Used when the history buffer doesn't yet cover the requested rewindTick
+   * (e.g. early in the session). Hit detection degrades gracefully rather than
+   * aborting — positions are current-tick rather than lag-compensated.
+   */
+  private buildCurrentSnapshot(world: World): TickSnapshot {
+    const entities: EntitySnapshot[] = [];
+    for (const { entityId, position } of world.query(Position)) {
+      const facing = world.get(entityId, Facing)?.angle ?? 0;
+      const vel = world.get(entityId, Velocity);
+      const inputState = world.get(entityId, InputState);
+      entities.push({
+        entityId,
+        x: position.x,
+        y: position.y,
+        z: position.z,
+        facing,
+        velocityX: vel?.x ?? 0,
+        velocityY: vel?.y ?? 0,
+        velocityZ: vel?.z ?? 0,
+        actions: inputState?.actions ?? 0,
+      });
+    }
+    return { serverTick: this.serverTick, timestamp: Date.now(), entities };
   }
 }

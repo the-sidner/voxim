@@ -51,8 +51,10 @@ export interface InputStateData {
   movementY: number;
   actions: number;    // bitfield (ACTION_* from @voxim/protocol)
   seq: number;        // last drained input sequence — echoed in StateMessage.ackInputSeq
-  /** Client wall-clock (ms) from the originating MovementDatagram — used for RTT estimation. */
+  /** Client wall-clock (ms) from the originating MovementDatagram. */
   timestamp: number;
+  /** Exponential moving average of round-trip time in ms, maintained per session. */
+  rttMs: number;
 }
 
 export const InputState = defineComponent({
@@ -64,6 +66,7 @@ export const InputState = defineComponent({
     actions: { type: "i32" },
     seq: { type: "i32" },
     timestamp: { type: "f64" },
+    rttMs: { type: "f32" },
   }),
   default: (): InputStateData => ({
     facing: 0,
@@ -72,6 +75,7 @@ export const InputState = defineComponent({
     actions: 0,
     seq: 0,
     timestamp: 0,
+    rttMs: 0,
   }),
 });
 
@@ -133,7 +137,13 @@ export interface SkillInProgressData {
   phase: "windup" | "active" | "winddown";
   ticksInPhase: number;
   hitEntities: HitRecord[];
-  inputTimestamp: number;
+  /**
+   * Server tick to rewind to for lag-compensated hit detection.
+   * -1 = not yet computed (set on first active tick from InputState.rttMs).
+   * Stable across all ticks of the active phase so every hit in a multi-tick
+   * active window is evaluated against the same historical snapshot.
+   */
+  rewindTick: number;
   pendingSkillVerb: string;
 }
 
@@ -145,7 +155,7 @@ const skillInProgressCodec: Serialiser<SkillInProgressData> = {
     w.writeU16(v.ticksInPhase);
     w.writeU16(v.hitEntities.length);
     for (const h of v.hitEntities) { w.writeStr(h.entityId); w.writeStr(h.bodyPart); }
-    w.writeF64(v.inputTimestamp);
+    w.writeI32(v.rewindTick);
     w.writeStr(v.pendingSkillVerb);
     return w.toBytes();
   },
@@ -157,9 +167,9 @@ const skillInProgressCodec: Serialiser<SkillInProgressData> = {
     const count = r.readU16();
     const hitEntities: HitRecord[] = [];
     for (let i = 0; i < count; i++) hitEntities.push({ entityId: r.readStr(), bodyPart: r.readStr() });
-    const inputTimestamp = r.readF64();
+    const rewindTick = r.readI32();
     const pendingSkillVerb = r.readStr();
-    return { weaponActionId, phase, ticksInPhase, hitEntities, inputTimestamp, pendingSkillVerb };
+    return { weaponActionId, phase, ticksInPhase, hitEntities, rewindTick, pendingSkillVerb };
   },
 };
 
@@ -172,7 +182,7 @@ export const SkillInProgress = defineComponent({
     phase: "windup",
     ticksInPhase: 0,
     hitEntities: [] as HitRecord[],
-    inputTimestamp: 0,
+    rewindTick: -1,
     pendingSkillVerb: "",
   }),
 });

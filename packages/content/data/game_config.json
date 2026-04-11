@@ -82,6 +82,9 @@
     "staminaRegenPerSec": 8,
     "inventoryCapacity": 20
   },
+  "network": {
+    "rttEmaAlpha": 0.15
+  },
   "npcAiDefaults": {
     "wanderRadius": 20,
     "wanderTicks": 60,

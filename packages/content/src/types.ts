@@ -776,6 +776,11 @@ export interface GameConfig {
     staminaRegenPerSec: number;
     inventoryCapacity: number;
   };
+  /** Per-client network tuning. */
+  network: {
+    /** Exponential moving average alpha for per-session RTT estimation (0–1). Lower = smoother. */
+    rttEmaAlpha: number;
+  };
   /** Global fallback defaults for NPC AI tuning. Per-type overrides live on NpcTemplate. */
   npcAiDefaults: {
     wanderRadius: number;

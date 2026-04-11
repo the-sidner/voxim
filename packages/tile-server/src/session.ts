@@ -29,6 +29,13 @@ export class ClientSession {
   /** Entities this session currently knows about — used for AoI spawn/despawn tracking. */
   readonly knownEntities: Set<EntityId> = new Set();
 
+  /**
+   * Exponential moving average of round-trip time in milliseconds.
+   * Updated on every received MovementDatagram via updateRtt().
+   * Written into InputState.rttMs each tick so any system can read it.
+   */
+  rttMs = 0;
+
   private outWriter:      WritableStreamDefaultWriter<Uint8Array> | null = null;
   private datagramWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private _closed = false;
@@ -54,6 +61,17 @@ export class ClientSession {
    */
   attachDatagramWriter(writer: WritableStreamDefaultWriter<Uint8Array>): void {
     this.datagramWriter = writer;
+  }
+
+  /**
+   * Update the RTT estimate with a new sample using exponential moving average.
+   * Called by the tick loop after draining the input buffer.
+   * alpha: weight of the new sample (0–1). Lower = smoother, slower to react.
+   */
+  updateRtt(sampleMs: number, alpha: number): void {
+    this.rttMs = this.rttMs === 0
+      ? sampleMs                                      // cold start: accept first sample directly
+      : alpha * sampleMs + (1 - alpha) * this.rttMs;
   }
 
   // ── receive ──────────────────────────────────────────────────────────────

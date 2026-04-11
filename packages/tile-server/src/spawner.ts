@@ -58,7 +58,7 @@ export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlay
   world.write(id, Velocity, { x: 0, y: 0, z: 0 });
   world.write(id, Facing, { angle: 0 });
   world.write(id, InputState, {
-    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0,
+    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0, rttMs: 0,
   });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Hunger, { value: 0 });
@@ -125,7 +125,7 @@ export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts
   world.write(id, Velocity, { x: 0, y: 0, z: 0 });
   world.write(id, Facing, { angle: 0 });
   world.write(id, InputState, {
-    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0,
+    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0, rttMs: 0,
   });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Hunger, { value: 0 });

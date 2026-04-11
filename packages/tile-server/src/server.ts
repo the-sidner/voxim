@@ -319,6 +319,14 @@ export class TileServer {
         let oneShots = 0;
         for (const inp of inputs) oneShots |= inp.actions;
         const mergedActions = (oneShots & ~HELD_ACTION_MASK) | (latest.actions & HELD_ACTION_MASK);
+
+        // Update per-session RTT EMA from the latest datagram's client timestamp.
+        if (latest.timestamp > 0) {
+          const sampleMs = Math.max(0, Date.now() - latest.timestamp);
+          const alpha = this.content.getGameConfig().network.rttEmaAlpha;
+          session.updateRtt(sampleMs, alpha);
+        }
+
         this.world.write(playerId, InputState, {
           facing: latest.facing,
           movementX: latest.movementX,
@@ -326,6 +334,7 @@ export class TileServer {
           actions: mergedActions,
           seq: latest.seq,
           timestamp: latest.timestamp,
+          rttMs: session.rttMs,
         });
       }
 
