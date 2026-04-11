@@ -21,6 +21,7 @@
     "gen-terrain":  "deno run --allow-read --allow-write scripts/gen_terrain.ts",
     "gen-certs":    "deno run --allow-run --allow-write scripts/gen_certs.ts",
     "build-voxel-editor": "deno run -A --node-modules-dir=auto scripts/build_voxel_editor.ts",
-    "devtools":     "deno task build-voxel-editor && deno run --allow-net --allow-read scripts/serve_devtools.ts"
+    "devtools":     "deno task build-voxel-editor && deno run --allow-net --allow-read scripts/serve_devtools.ts",
+    "dev":          "deno run -A scripts/dev.ts"
   }
 }
