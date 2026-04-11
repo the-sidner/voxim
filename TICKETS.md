@@ -105,7 +105,7 @@ Done when: own movement is instant locally; server corrections are applied witho
 under normal latency.
 
 ### T-012 · Reconciliation smoothing
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: dfa1313
 
 Decide and implement correction strategy: interpolate toward server position for small divergences
 (< configurable threshold); hard-snap for large ones. Threshold tunable in `game_config.json`.
