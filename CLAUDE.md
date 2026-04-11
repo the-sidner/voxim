@@ -1,5 +1,31 @@
 # Voxim2 — Architecture Reference
 
+## Ticket system
+
+All significant engineering work is tracked in `TICKETS.md`. This is the source of truth for
+what has been built and what remains.
+
+**When to create a ticket:** any new system, feature, or non-trivial bug fix — including work
+that comes up organically during other tasks. If it's more than a one-liner fix, it gets a
+ticket. When in doubt, create one.
+
+**When to update a ticket:** mark `Status: in-progress` when work starts. On completion, mark
+`Status: done` and add `Commit: <short hash>`. The ticket is the audit trail — the commit hash
+lives in the ticket, not the other way around.
+
+**Format:**
+```
+### T-NNN · Title
+Effort: S|M|L   Status: todo|in-progress|done   [Commit: abc1234]
+
+What needs to be built and what "done" looks like.
+```
+
+New tickets go at the bottom of the relevant domain section. New domains go at the end of the
+file. Never reuse a ticket number.
+
+---
+
 ## Git workflow
 
 Commit after every reasonable self-contained change. Prefix the commit message with the affected package name, e.g.:
