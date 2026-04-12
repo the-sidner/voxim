@@ -33,8 +33,13 @@ export class HungerSystem implements System {
       if (newHunger >= 100) dmg += cfg.starvationDps * dt;
       if (newThirst >= 100) dmg += cfg.dehydrationDps * dt;
       if (dmg > 0) {
-        log.debug("starvation/dehydration: entity=%s dmg=%.3f hp=%.1f", entityId, dmg, health.current - dmg);
-        world.set(entityId, Health, { ...health, current: Math.max(0, health.current - dmg) });
+        const newHp = Math.max(0, health.current - dmg);
+        log.debug("starvation/dehydration: entity=%s dmg=%.3f hp=%.1f", entityId, dmg, newHp);
+        world.set(entityId, Health, { ...health, current: newHp });
+        if (newHp <= 0 && health.current > 0) {
+          world.destroy(entityId);
+          events.publish(TileEvents.EntityDied, { entityId, killerId: undefined });
+        }
       }
     }
   }

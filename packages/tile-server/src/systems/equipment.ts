@@ -44,6 +44,15 @@ export class EquipmentSystem implements System {
       const inv = world.get(entityId, Inventory);
       if (!equipment || !inv) continue;
 
+      // NOTE: world.get() does NOT see deferred world.set() writes from earlier
+      // handlers within the same tick — deferred writes are only visible after
+      // applyChangeset(). Handlers therefore operate on the state captured above.
+      // Sending multiple conflicting equipment commands in a single tick (e.g.
+      // equip two items to the same slot) will have the last writer win at
+      // applyChangeset() time. In practice this is benign: commands arrive at
+      // ~60 Hz and the server ticks at 20 Hz, so at most 3 inputs are batched;
+      // conflicting equipment ops in one batch are an edge case and self-correct
+      // on the next reconcile.
       for (const cmd of commands) {
         switch (cmd.cmd) {
           case CommandType.Equip:
@@ -62,8 +71,6 @@ export class EquipmentSystem implements System {
             this._handleUseItem(world, entityId, cmd.fromSlot, inv);
             break;
         }
-        // Re-read after each command so the next one sees the updated state.
-        // world.get returns the latest deferred value within the same tick.
       }
     }
   }

@@ -19,10 +19,10 @@ export class DeferredEventQueue implements EventEmitter {
     for (const { type, event } of this.queue) {
       bus.publish(type, event);
     }
-    this.queue = [];
+    this.queue.length = 0;
   }
 
   clear(): void {
-    this.queue = [];
+    this.queue.length = 0;
   }
 }

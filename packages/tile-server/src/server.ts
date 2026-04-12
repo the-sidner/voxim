@@ -199,6 +199,9 @@ export class TileServer {
     // System execution order matches the spec's declared order
     this.systems = [
       new NpcAiSystem(content),
+      // BuffSystem runs before Physics so speed/movement buffs applied this tick
+      // are seen by PhysicsSystem in the same tick (not delayed by one tick).
+      new BuffSystem(),
       new PhysicsSystem(content),
       new DodgeSystem(content),
       new HungerSystem(content),
@@ -225,7 +228,6 @@ export class TileServer {
         const projectile = new ProjectileSystem(content, hitHandlers);
         return [skill, action, projectile];
       })(),
-      new BuffSystem(),
       new TerrainDigSystem(content),
       new TraderSystem(content),
       new DynastySystem(content),

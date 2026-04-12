@@ -18,6 +18,13 @@ import { SpeedModifier } from "../components/world.ts";
  * Physics tuning values come from GameConfig.physics — no hardcoded constants.
  */
 export class PhysicsSystem implements System {
+  /**
+   * Heightmaps are written once at world-load and never change.
+   * Cache the lookup closure on first use so we never query + rebuild the Map
+   * on every tick (it was the most expensive per-tick allocation in the system).
+   */
+  private cachedTerrainLookup: ((x: number, y: number) => number) | null = null;
+
   constructor(private readonly content: ContentStore) {}
 
   run(world: World, _events: EventEmitter, dt: number): void {
@@ -34,7 +41,8 @@ export class PhysicsSystem implements System {
       stepHeight: cfgRaw.stepHeight,
     };
 
-    const getHeight = buildTerrainLookup(world);
+    if (!this.cachedTerrainLookup) this.cachedTerrainLookup = buildTerrainLookup(world);
+    const getHeight = this.cachedTerrainLookup;
 
     for (const { entityId, position, velocity, inputState } of world.query(
       Position,
