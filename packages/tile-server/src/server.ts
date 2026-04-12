@@ -800,6 +800,7 @@ export class TileServer {
         spawned++;
       }
       console.log(`[TileServer] spawned ${spawned} entities from tile_layout`);
+      if (layout.proceduralNodes) this.spawnProceduralNodes(content);
     } else {
       this.spawnProceduralNodes(content);
     }
@@ -828,6 +829,7 @@ export class TileServer {
         }
       }
       console.log(`[TileServer] spawned ${layout.npcs.length} NPCs from tile_layout`);
+      if (layout.proceduralNpcs) this.spawnProceduralNpcs(content);
     } else {
       this.spawnProceduralNpcs(content);
     }

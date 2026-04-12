@@ -5,5 +5,7 @@
     { "entityTemplateId": "workbench",      "x": 261, "y": 256, "z": 4.0 },
     { "entityTemplateId": "campfire",       "x": 259, "y": 258, "z": 4.0 }
   ],
-  "npcs": []
+  "npcs": [],
+  "proceduralNodes": true,
+  "proceduralNpcs": true
 }
