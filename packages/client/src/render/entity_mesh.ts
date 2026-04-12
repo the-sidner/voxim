@@ -141,6 +141,14 @@ export interface EntityMeshGroup {
    * latest received state, smoothing out the 20 Hz tick rate.
    */
   posBuffer: PosRecord[];
+  /**
+   * World-unit visual lift applied on top of the physics position when placing
+   * the entity group.  Derived from skeleton.groundOffset * modelScale.z at
+   * model build time.  Keeps the lowest voxels flush with the terrain surface
+   * without touching server physics (which always snaps position.z to groundZ).
+   * Zero for non-skeleton entities.
+   */
+  groundOffsetWorld: number;
 }
 
 // ---- create ----
@@ -164,6 +172,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     modelId: null,
     skeletonId: null,
     posBuffer: [],
+    groundOffsetWorld: 0,
   };
   updateEntityMesh(mesh, state);
   return mesh;
@@ -458,6 +467,46 @@ export function upgradeToSkeletonModel(
   mesh.voxelMeshes = voxelMeshes;
   mesh.modelId = def.id;
   mesh.skeletonId = skeleton.id;
+
+  // Derive how far to lift the entity group so the lowest voxel face rests on the
+  // terrain surface rather than clipping through it.
+  //
+  // Physics always places position.z at terrain surface height (groundZ), and the
+  // entity group origin = that height.  Voxels on bones below the entity origin
+  // (entity-local z < 0) would clip through the terrain without this offset.
+  //
+  // This is computed from the current morphed rest pose so it remains correct even
+  // when morph params lengthen or shorten limbs — a static data field would break.
+  //
+  // Algorithm: accumulate Three.js y for each bone from the (morphed) rest offsets,
+  // then find the lowest voxel BOTTOM FACE across all sub-objects.
+  // groundOffsetWorld = max(0, -lowestFaceY).
+  {
+    // Bone accumulated Three.js y (= entity-local z after coord convert) in rest pose.
+    // Rest pose uses identity rotation, so positions are purely additive from parent.
+    const boneWorldY = new Map<string, number>();
+    for (const bone of skeleton.bones) {
+      const parentY = bone.parent !== null ? (boneWorldY.get(bone.parent) ?? 0) : 0;
+      const rz = bone.restZ * (boneScaleZ.get(bone.id) ?? 1.0);
+      boneWorldY.set(bone.id, parentY + rz * scale.z);
+    }
+
+    let minVoxelY = 0;
+    for (const sub of resolvedSubs) {
+      if (!sub.boneId) continue;
+      const boneY = boneWorldY.get(sub.boneId) ?? 0;
+      const subOffsetY = sub.transform.z * scale.z;
+      const subScaleZ = scale.z * sub.transform.scaleZ;
+      const subDef = subModelDefs.get(sub.modelId);
+      if (!subDef) continue;
+      for (const node of subDef.nodes) {
+        // Bottom face = node center - half voxel height
+        const voxelBottomY = boneY + subOffsetY + (node.z - 0.5) * subScaleZ;
+        if (voxelBottomY < minVoxelY) minVoxelY = voxelBottomY;
+      }
+    }
+    mesh.groundOffsetWorld = Math.max(0, -minVoxelY);
+  }
 }
 
 // ---- per-frame pose update ----
@@ -484,7 +533,9 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
   const pos = state.position;
   if (pos) {
     // world(x, y, z) → three(x, height, y)
-    mesh.group.position.set(pos.x, pos.z, pos.y);
+    // groundOffsetWorld lifts the visual mesh so the lowest voxels rest on terrain
+    // without affecting server physics (position.z is always the terrain contact point).
+    mesh.group.position.set(pos.x, pos.z + mesh.groundOffsetWorld, pos.y);
   }
 
   const facing = state.facing;
@@ -492,11 +543,12 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
     mesh.group.rotation.y = -facing.angle - Math.PI / 2;
   }
 
-  // Record position snapshot for interpolation (only when position actually changed)
+  // Record position snapshot for interpolation (only when position actually changed).
+  // Store the offset-adjusted y so interpolation also renders at the correct height.
   if (pos) {
     mesh.posBuffer.push({
       t: performance.now(),
-      x: pos.x, y: pos.z, z: pos.y,
+      x: pos.x, y: pos.z + mesh.groundOffsetWorld, z: pos.y,
       ry: mesh.group.rotation.y,
     });
     if (mesh.posBuffer.length > 16) mesh.posBuffer.shift();

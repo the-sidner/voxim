@@ -787,7 +787,7 @@ export class VoximRenderer {
       const localMesh = this.entityMeshes.get(this.localPlayerId);
       if (localMesh) {
         // world(x, y, z) → three(x, height, y) — same mapping as updateEntityMesh
-        localMesh.group.position.set(localPredictedPos.x, localPredictedPos.z, localPredictedPos.y);
+        localMesh.group.position.set(localPredictedPos.x, localPredictedPos.z + localMesh.groundOffsetWorld, localPredictedPos.y);
       }
     }
 

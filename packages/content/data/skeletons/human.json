@@ -51,6 +51,13 @@
       "restZ": -2
     },
     {
+      "id": "hand_l",
+      "parent": "lower_arm_l",
+      "restX": 0.0,
+      "restY": 0.0,
+      "restZ": -2
+    },
+    {
       "id": "upper_arm_r",
       "parent": "torso_upper",
       "restX": 2.0,
@@ -60,13 +67,6 @@
     {
       "id": "lower_arm_r",
       "parent": "upper_arm_r",
-      "restX": 0.0,
-      "restY": 0.0,
-      "restZ": -2
-    },
-    {
-      "id": "hand_l",
-      "parent": "lower_arm_l",
       "restX": 0.0,
       "restY": 0.0,
       "restZ": -2
@@ -93,6 +93,13 @@
       "restZ": -2
     },
     {
+      "id": "foot_l",
+      "parent": "lower_leg_l",
+      "restX": 0.0,
+      "restY": 0.0,
+      "restZ": -1
+    },
+    {
       "id": "upper_leg_r",
       "parent": "root",
       "restX": 0.5,
@@ -105,13 +112,6 @@
       "restX": 0.0,
       "restY": 0.0,
       "restZ": -2
-    },
-    {
-      "id": "foot_l",
-      "parent": "lower_leg_l",
-      "restX": 0.0,
-      "restY": 0.0,
-      "restZ": -1
     },
     {
       "id": "foot_r",
@@ -283,14 +283,6 @@
             "rotZ": 0
           }
         ],
-        "hand_l": [
-          {
-            "time": 0,
-            "rotX": 0.08,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
         "upper_arm_r": [
           {
             "time": 0,
@@ -303,14 +295,6 @@
           {
             "time": 0,
             "rotX": 0.12,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
-        "hand_r": [
-          {
-            "time": 0,
-            "rotX": 0.08,
             "rotY": 0,
             "rotZ": 0
           }
@@ -519,32 +503,6 @@
             "rotZ": 0
           }
         ],
-        "hand_l": [
-          {
-            "time": 0,
-            "rotX": 0.075,
-            "rotY": 0,
-            "rotZ": 0
-          },
-          {
-            "time": 0.25,
-            "rotX": 0.18,
-            "rotY": 0,
-            "rotZ": 0
-          },
-          {
-            "time": 0.5,
-            "rotX": 0.075,
-            "rotY": 0,
-            "rotZ": 0
-          },
-          {
-            "time": 0.75,
-            "rotX": 0.18,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
         "upper_arm_r": [
           {
             "time": 0,
@@ -593,32 +551,6 @@
           {
             "time": 0.75,
             "rotX": 0.6,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
-        "hand_r": [
-          {
-            "time": 0,
-            "rotX": 0.075,
-            "rotY": 0,
-            "rotZ": 0
-          },
-          {
-            "time": 0.25,
-            "rotX": 0.18,
-            "rotY": 0,
-            "rotZ": 0
-          },
-          {
-            "time": 0.5,
-            "rotX": 0.075,
-            "rotY": 0,
-            "rotZ": 0
-          },
-          {
-            "time": 0.75,
-            "rotX": 0.18,
             "rotY": 0,
             "rotZ": 0
           }
@@ -995,14 +927,6 @@
             "rotZ": 0
           }
         ],
-        "hand_l": [
-          {
-            "time": 0,
-            "rotX": 0.1,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
         "upper_arm_r": [
           {
             "time": 0,
@@ -1015,14 +939,6 @@
           {
             "time": 0,
             "rotX": 0.12,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
-        "hand_r": [
-          {
-            "time": 0,
-            "rotX": 0.1,
             "rotY": 0,
             "rotZ": 0
           }
@@ -1043,14 +959,6 @@
             "rotZ": 0
           }
         ],
-        "foot_l": [
-          {
-            "time": 0,
-            "rotX": -0.15,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
         "upper_leg_r": [
           {
             "time": 0,
@@ -1063,14 +971,6 @@
           {
             "time": 0,
             "rotX": 1.1,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
-        "foot_r": [
-          {
-            "time": 0,
-            "rotX": -0.15,
             "rotY": 0,
             "rotZ": 0
           }
@@ -1155,14 +1055,6 @@
             "rotZ": 0
           }
         ],
-        "hand_l": [
-          {
-            "time": 0,
-            "rotX": 0.1,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
         "upper_arm_r": [
           {
             "time": 0,
@@ -1175,14 +1067,6 @@
           {
             "time": 0,
             "rotX": 0.12,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
-        "hand_r": [
-          {
-            "time": 0,
-            "rotX": 0.1,
             "rotY": 0,
             "rotZ": 0
           }
@@ -1239,14 +1123,6 @@
             "rotZ": 0
           }
         ],
-        "foot_l": [
-          {
-            "time": 0,
-            "rotX": -0.15,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
         "upper_leg_r": [
           {
             "time": 0,
@@ -1295,14 +1171,6 @@
           {
             "time": 0.75,
             "rotX": 1.1,
-            "rotY": 0,
-            "rotZ": 0
-          }
-        ],
-        "foot_r": [
-          {
-            "time": 0,
-            "rotX": -0.15,
             "rotY": 0,
             "rotZ": 0
           }
