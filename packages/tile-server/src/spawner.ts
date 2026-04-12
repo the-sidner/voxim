@@ -20,7 +20,7 @@ import { Heritage } from "./components/heritage.ts";
 import type { HeritageStore } from "./heritage_store.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag, WorkstationBuffer } from "./components/building.ts";
-import { CorruptionExposure, SpeedModifier } from "./components/world.ts";
+import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import type { ContentStore, EntityTemplate, SkillSlot } from "@voxim/content";
@@ -67,6 +67,7 @@ export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlay
   world.write(id, Stamina, { current: 100, max: 100, regenPerSecond: 8, exhausted: false });
   world.write(id, CorruptionExposure, { level: 0 });
   world.write(id, SpeedModifier, { multiplier: 1.0 });
+  world.write(id, EncumbrancePenalty, { multiplier: 1.0 });
   world.write(id, Equipment, {
     weapon:  { itemType: "wooden_sword", quantity: 1, parts: [] },
     offHand: null, head: null, chest: null, legs: null, feet: null, back: null,
@@ -133,6 +134,7 @@ export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts
   world.write(id, CombatState, { blockHeldTicks: 0, staggerTicksRemaining: 0, counterReady: false, iFrameTicksRemaining: 0, dodgeCooldownTicks: 0 });
   world.write(id, CorruptionExposure, { level: 0 });
   world.write(id, SpeedModifier, { multiplier: opts.speedMultiplier ?? 1.0 });
+  world.write(id, EncumbrancePenalty, { multiplier: 1.0 });
   world.write(id, NpcTag, { npcType: opts.npcType ?? "villager", name: opts.name ?? "Villager" });
   world.write(id, NpcJobQueue, { current: null, scheduled: [], plan: null });
   world.write(id, ModelRef, { modelId: opts.modelId ?? "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });

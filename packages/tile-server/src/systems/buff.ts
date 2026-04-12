@@ -4,7 +4,7 @@ import type { System, EventEmitter } from "../system.ts";
 import { Health } from "../components/game.ts";
 import { ActiveEffects, CONSUME_ON_USE_SENTINEL } from "../components/lore_loadout.ts";
 import type { ActiveEffect } from "../components/lore_loadout.ts";
-import { SpeedModifier } from "../components/world.ts";
+import { SpeedModifier, EncumbrancePenalty } from "../components/world.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("BuffSystem");
@@ -60,10 +60,11 @@ export class BuffSystem implements System {
         }
       }
 
-      if (speedBonus > 0) {
-        const mod = world.get(entityId, SpeedModifier) ?? { multiplier: 1.0 };
-        world.set(entityId, SpeedModifier, { multiplier: mod.multiplier * (1 + speedBonus) });
-      }
+      // Compose final SpeedModifier: encumbrance base × all speed buff bonuses.
+      // This is the only place SpeedModifier is written — single writer, no conflicts.
+      const encumbranceBase = world.get(entityId, EncumbrancePenalty)?.multiplier ?? 1.0;
+      const composed = encumbranceBase * (1 + speedBonus);
+      world.set(entityId, SpeedModifier, { multiplier: composed });
 
       world.set(entityId, ActiveEffects, { effects: surviving });
     }

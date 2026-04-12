@@ -3,18 +3,25 @@ import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Inventory } from "../components/items.ts";
 import { Equipment } from "../components/equipment.ts";
-import { SpeedModifier } from "../components/world.ts";
+import { EncumbrancePenalty } from "../components/world.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("EncumbranceSystem");
 
+/**
+ * Derives an encumbrance penalty multiplier from carried weight and writes it
+ * to EncumbrancePenalty. BuffSystem then composes this with all speed ActiveEffects
+ * to produce the final SpeedModifier that PhysicsSystem reads.
+ *
+ * EncumbranceSystem never touches SpeedModifier directly — it only sets the base.
+ */
 export class EncumbranceSystem implements System {
   constructor(private readonly content: ContentStore) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().encumbrance;
 
-    for (const { entityId, inventory } of world.query(Inventory, SpeedModifier)) {
+    for (const { entityId, inventory } of world.query(Inventory, EncumbrancePenalty)) {
       let totalWeight = 0;
 
       for (const slot of inventory.slots) {
@@ -40,13 +47,13 @@ export class EncumbranceSystem implements System {
         multiplier = 1.0 - t * (1.0 - cfg.minSpeedMultiplier);
       }
 
-      const prev = world.get(entityId, SpeedModifier)?.multiplier ?? 1.0;
+      const prev = world.get(entityId, EncumbrancePenalty)?.multiplier ?? 1.0;
       if (Math.abs(prev - multiplier) > 0.01) {
         log.debug("encumbrance: entity=%s weight=%.1f/%.0f mult=%.2f",
           entityId, totalWeight, cfg.maxCarryWeight, multiplier);
       }
 
-      world.set(entityId, SpeedModifier, { multiplier });
+      world.set(entityId, EncumbrancePenalty, { multiplier });
     }
   }
 }

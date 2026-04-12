@@ -210,9 +210,10 @@ export class TileServer {
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
       new CorruptionSystem(content),
-      // EncumbranceSystem sets SpeedModifier to the base encumbrance multiplier.
-      // BuffSystem then multiplies speed bonuses on top of that base.
-      // Both must run before PhysicsSystem so the final SpeedModifier is correct.
+      // EncumbranceSystem writes EncumbrancePenalty (the base speed multiplier from weight).
+      // BuffSystem reads EncumbrancePenalty and composes it with all speed ActiveEffects,
+      // writing the final SpeedModifier. PhysicsSystem reads SpeedModifier.
+      // Order must be: Encumbrance → Buff → Physics.
       new EncumbranceSystem(content),
       new BuffSystem(),
       new PhysicsSystem(content),
