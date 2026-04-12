@@ -74,6 +74,16 @@
     "blankTomeItemType": "blank_tome",
     "tomeItemType": "tome"
   },
+  "terrain": {
+    "digStep": 0.25,
+    "minDigHeight": 1.0,
+    "materialDrops": {
+      "1": "dirt",
+      "2": "stone",
+      "3": "wood",
+      "4": "sand"
+    }
+  },
   "player": {
     "defaultSpawnX": 256,
     "defaultSpawnY": 256,

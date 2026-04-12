@@ -206,6 +206,8 @@ export interface DerivedItemStats {
   harvestPower?: number;
   /** Reduces blueprint ticksRemaining by this amount per hammer swing. */
   buildPower?: number;
+  /** Height units removed per shovel swing. Multiplied by terrain.digStep in config. */
+  digPower?: number;
   /** ID of the WeaponActionDef that drives this weapon's swing phases and blade path. */
   weaponAction?: string;
   /** Blade capsule half-radius in world units — overrides WeaponSwingPath.defaultBladeRadius. */
@@ -789,6 +791,14 @@ export interface GameConfig {
     externaliseConsumeTicks: number;
     blankTomeItemType: string;
     tomeItemType: string;
+  };
+  terrain: {
+    /** Height removed per shovel swing, in world units. Multiples of HEIGHT_STEP (0.25). */
+    digStep: number;
+    /** Minimum terrain height — shovels cannot dig below this. */
+    minDigHeight: number;
+    /** Maps material ID → item type dropped when a cell is dug. */
+    materialDrops: Record<string, string>;
   };
   player: {
     defaultSpawnX: number;

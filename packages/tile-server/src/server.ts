@@ -49,6 +49,7 @@ import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
 import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
 import { WorkstationHitHandler } from "./handlers/workstation_hit_handler.ts";
+import { TerrainDigSystem } from "./handlers/terrain_hit_handler.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
 import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
@@ -220,6 +221,7 @@ export class TileServer {
         return [skill, action];
       })(),
       new BuffSystem(),
+      new TerrainDigSystem(content),
       new TraderSystem(content),
       new DynastySystem(content),
       new AnimationSystem(content),
