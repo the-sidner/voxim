@@ -160,27 +160,22 @@ Done when: night makes stealth meaningfully easier; NPCs detect less far in dark
 ## Lore & Skills
 
 ### T-018 · Lore tome as inventory item
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: (pre-existing)
 
-Add a `lore_tome` item category to `item_templates.json`. A tome carries a payload: a single
-fragment, a skill configuration (fragment1 + verb + fragment2), or a recipe. Define the component
-structure and codec. Tomes are physical items — they have weight, can be looted, traded, stored.
-Done when: tome items exist in inventory with a payload; codec round-trips correctly.
+`blank_tome` and `tome` item templates exist; `InventorySlot.fragmentId` carries the payload;
+codec round-trips correctly via inventorySlotCodec optional field encoding.
 
 ### T-019 · Externalise Lore — write fragment to tome
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: (pre-existing)
 
-Add a crafting-style interaction: player at a writing workstation (desk/lectern) with blank tome
-in inventory can select a known fragment or skill configuration and produce a filled tome item.
-Done when: a player can produce a lore tome from known internal Lore at a writing station.
+DynastySystem handles `CommandType.Externalise`: consumes a blank_tome from inventory,
+produces a filled tome with the selected fragmentId. Cooldown gated via InteractCooldown.
 
 ### T-020 · Internalise Lore — read tome to add fragment
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: (pre-existing)
 
-Add a `read_tome` interaction (interact action on a tome in inventory or world). Adds the tome's
-payload to the character's `LoreLoadout` / fragment set. Tome is not consumed (reusable).
-Open question to resolve: consumed on read or reusable — set in `game_config.json` for now.
-Done when: reading a filled tome adds the contained fragment to the character's known Lore.
+DynastySystem handles `CommandType.Internalise`: reads fragmentId from tome slot,
+appends to `learnedFragmentIds`, consumes the tome. Cooldown from `lore.externaliseConsumeTicks`.
 
 ### T-021 · Balance algorithm in SkillSystem
 Effort: M   Status: todo
@@ -260,12 +255,11 @@ For assembly steps: player places multiple materials, selects a recipe from thei
 Done when: `2 ingots on anvil + select blade recipe + hammer → rough blade` works.
 
 ### T-030 · Recipes as Lore — require known recipe to select
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: (next)
 
-Recipe selection in crafting (T-029) is filtered to recipes the character has in their Lore set.
-Unknown recipe = cannot be selected (attempting produces low-quality result or nothing).
-Done when: a character without the recipe Lore cannot select it; acquiring the recipe Lore via
-tome enables it.
+`Recipe.requiredFragmentId` optional field added to types.ts. `_handleSelectRecipe` in
+CraftingSystem checks `LoreLoadout.learnedFragmentIds` before setting `activeRecipeId`.
+Recipes without `requiredFragmentId` remain freely available.
 
 ### T-031 · Currency — coins as physical inventory item with weight
 Effort: S   Status: todo

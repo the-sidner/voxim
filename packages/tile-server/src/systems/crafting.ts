@@ -23,6 +23,7 @@ import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
+import { LoreLoadout } from "../components/lore_loadout.ts";
 import { spawnWorkstation } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
@@ -177,6 +178,22 @@ export class CraftingSystem implements System {
   }
 
   private _handleSelectRecipe(world: World, entityId: EntityId, recipeId: string): void {
+    const recipe = this.content.getRecipe(recipeId);
+    if (!recipe) {
+      log.debug("select-recipe: unknown recipe=%s", recipeId);
+      return;
+    }
+
+    // T-030: gate on required lore fragment
+    if (recipe.requiredFragmentId) {
+      const loadout = world.get(entityId, LoreLoadout);
+      if (!loadout?.learnedFragmentIds.includes(recipe.requiredFragmentId)) {
+        log.debug("select-recipe: player=%s lacks fragment=%s for recipe=%s",
+          entityId, recipe.requiredFragmentId, recipeId);
+        return;
+      }
+    }
+
     const pos = world.get(entityId, Position);
     if (!pos) return;
     const stationId = this.findNearestWorkstation(world, pos.x, pos.y);

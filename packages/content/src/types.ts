@@ -309,6 +309,11 @@ export interface Recipe {
   stepType?: RecipeStepType;
   /** toolType the attacker must wield for "attack"/"assembly" steps. null = any tool. */
   requiredTool?: string | null;
+  /**
+   * LoreFragment ID the player must have in learnedFragmentIds to select this recipe.
+   * Absent = freely available to any player.
+   */
+  requiredFragmentId?: string;
   inputs: RecipeInput[];
   outputType: string;
   outputQuantity: number;
