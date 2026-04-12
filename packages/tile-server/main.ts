@@ -12,7 +12,7 @@
  *   GATEWAY_URL     Gateway base URL for registration default: (none — skips self-registration)
  *   SAVE_DIR        Directory for world save files    default: (none — ephemeral)
  *   DATA_DIR        Content data directory            default: (resolved by loader)
- *   DEV_MODE        Enable cheat commands (1/true)    default: false
+ *   DEV_MODE        Disable cheat commands (0/false)  default: true
  *
  * Run:
  *   deno task tile
@@ -37,7 +37,7 @@ const tileAddress = Deno.env.get("TILE_ADDRESS") ?? `127.0.0.1:${port}`;
 const gatewayUrl  = Deno.env.get("GATEWAY_URL");   // undefined → no self-registration
 const saveDir     = Deno.env.get("SAVE_DIR");       // undefined → ephemeral (no persistence)
 const dataDir     = Deno.env.get("DATA_DIR");       // undefined → default loader path
-const devMode     = ["1", "true"].includes(Deno.env.get("DEV_MODE") ?? "");
+const devMode     = !["0", "false"].includes(Deno.env.get("DEV_MODE") ?? "");
 
 const cert = await Deno.readTextFile(certPath);
 const key  = await Deno.readTextFile(keyPath);
