@@ -220,6 +220,15 @@ export interface DerivedItemStats {
   // consumable
   foodValue?: number;
   waterValue?: number;
+  // light emission — for held torches / lanterns
+  /** Packed RGB color (0xRRGGBB) emitted while equipped. */
+  lightColor?: number;
+  /** Light intensity 0–1 while equipped. */
+  lightIntensity?: number;
+  /** Light radius in world units while equipped. */
+  lightRadius?: number;
+  /** Flicker amplitude 0–1. 0 = steady, 1 = heavy flicker. */
+  lightFlicker?: number;
 }
 
 /**
@@ -608,6 +617,17 @@ export interface EntityTemplateComponents {
   workstation?: {
     stationType: string;
     capacity?: number;
+  };
+  /**
+   * When present, spawnEntity() writes a LightEmitter component at spawn.
+   * Used for placed torches, campfires, hearths, and other static light sources.
+   */
+  lightEmitter?: {
+    /** Packed RGB color (0xRRGGBB). */
+    color: number;
+    intensity: number;
+    radius: number;
+    flicker: number;
   };
 }
 

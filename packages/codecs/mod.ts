@@ -13,6 +13,7 @@ export type {
   NpcTagData, Job, PlanStep, NpcPlanData, NpcJobQueueData,
   HitboxData,
   WorkstationSlot, WorkstationBufferData,
+  LightEmitterData, DarknessModifierData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec,
@@ -29,6 +30,7 @@ export {
   npcTagCodec, npcJobQueueCodec,
   hitboxCodec,
   workstationBufferCodec,
+  lightEmitterCodec, darknessModifierCodec,
 } from "./src/components.ts";
 
 export { uuidToBytes, bytesToUuid } from "./src/uuid.ts";

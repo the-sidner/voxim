@@ -27,6 +27,7 @@ import { ResourceNode } from "./components/resource_node.ts";
 import { WorldClock, TileCorruption, CorruptionExposure } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
+import { LightEmitter, DarknessModifier } from "./components/light.ts";
 // Hitbox and WorkstationTag are server-only (networked: false) — not in registry
 
 /** All networked component defs. wireId is on each def — no separate typeId mapping needed. */
@@ -64,6 +65,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // hitbox slot reserved — networked: false (server-only)
   // workstationTag slot reserved — networked: false (server-only)
   WorkstationBuffer,
+  LightEmitter,
+  DarknessModifier,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */

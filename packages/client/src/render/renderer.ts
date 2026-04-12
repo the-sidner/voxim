@@ -40,6 +40,7 @@ import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
 import { HitboxDebugOverlay, HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay.ts";
 import { HitSparkRenderer } from "./hit_spark_renderer.ts";
+import { LightManager } from "./light_manager.ts";
 import { EdgePass } from "./edge_pass.ts";
 import { FxaaPass } from "./fxaa_pass.ts";
 
@@ -184,6 +185,7 @@ export class VoximRenderer {
   readonly bladeDebugOverlay:  BladeDebugOverlay;
   readonly hitboxDebugOverlay: HitboxDebugOverlay;
   private readonly hitSparkRenderer: HitSparkRenderer;
+  private readonly lightManager = new LightManager();
 
   private cameraTarget = new THREE.Vector3(256, 4, 256);
   private localPlayerId: string | null = null;
@@ -558,6 +560,9 @@ export class VoximRenderer {
     if (mesh.boneGroups && state.equipment !== undefined) {
       this.syncEquipment(mesh, state);
     }
+
+    // Sync point light (torch, lantern, etc.).
+    this.lightManager.sync(entityId, state.lightEmitter, mesh.group);
   }
 
   /**
@@ -589,6 +594,7 @@ export class VoximRenderer {
     }
     const mesh = this.entityMeshes.get(entityId);
     if (mesh) {
+      this.lightManager.remove(entityId, mesh.group);
       this.skeletonOverlay.untrackEntity(entityId);
       this.bladeDebugOverlay.remove(entityId);
       this.hitboxDebugOverlay.removeEntity(entityId);
@@ -880,10 +886,11 @@ export class VoximRenderer {
     // Update weapon tip trail ribbons for all currently attacking entities.
     this.updateWeaponTrails(now);
 
-    // Advance hit spark particles.
+    // Advance hit spark particles and flicker lights.
     const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
     this.lastFrameMs = now;
     this.hitSparkRenderer.update(dt);
+    this.lightManager.tick(now);
 
     // Pass 1: render scene to low-res pixel target (writes colour + depth).
     this.renderer.setRenderTarget(this.pixelTarget);
@@ -1308,6 +1315,7 @@ export class VoximRenderer {
     this.bladeDebugOverlay.dispose();
     this.hitboxDebugOverlay.dispose();
     this.hitSparkRenderer.dispose();
+    this.lightManager.dispose();
     this.propPool.dispose();
     this.edgePass.dispose();
     this.fxaaPass.dispose();

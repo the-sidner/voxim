@@ -10,6 +10,7 @@ import type { InventorySlot } from "../components/items.ts";
 import { ItemData } from "../components/items.ts";
 import { Equipment } from "../components/equipment.ts";
 import type { EquipmentData } from "../components/equipment.ts";
+import { LightEmitter } from "../components/light.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("EquipmentSystem");
@@ -102,6 +103,16 @@ export class EquipmentSystem implements System {
     const newSlots = inv.slots.filter((_, i) => i !== fromInventorySlot);
     world.set(entityId, Equipment, { ...equipment, [slot]: item });
     world.set(entityId, Inventory, { ...inv, slots: newSlots });
+    // If the newly equipped item emits light, write LightEmitter on the carrier.
+    const stats = this.content.deriveItemStats(item.itemType, item.parts ?? []);
+    if (stats.lightRadius !== undefined) {
+      world.set(entityId, LightEmitter, {
+        color:     stats.lightColor     ?? 0xffaa44,
+        intensity: stats.lightIntensity ?? 1.0,
+        radius:    stats.lightRadius,
+        flicker:   stats.lightFlicker   ?? 0.15,
+      });
+    }
     log.info("equipped: entity=%s item=%s slot=%s", entityId, item.itemType, slot);
   }
 
@@ -128,13 +139,48 @@ export class EquipmentSystem implements System {
     if (totalItems + item.quantity > inv.capacity) {
       dropItem(world, entityId, item);
       world.set(entityId, Equipment, { ...equipment, [slot]: null });
+      this._updateLightEmitter(world, entityId, { ...equipment, [slot]: null });
       log.info("unequipped: entity=%s item=%s slot=%s (dropped — inventory full)", entityId, item.itemType, slot);
       return;
     }
 
     world.set(entityId, Equipment, { ...equipment, [slot]: null });
     world.set(entityId, Inventory, { ...inv, slots: [...inv.slots, item] });
+    this._updateLightEmitter(world, entityId, { ...equipment, [slot]: null });
     log.info("unequipped: entity=%s item=%s slot=%s (returned to inventory)", entityId, item.itemType, slot);
+  }
+
+  /**
+   * After any equipment change, recalculate whether the entity should have
+   * LightEmitter based on the best light-emitting item currently equipped.
+   */
+  private _updateLightEmitter(world: World, entityId: EntityId, newEquipment: EquipmentData): void {
+    const SLOTS: (keyof EquipmentData)[] = ["weapon", "offHand", "head", "chest", "legs", "feet", "back"];
+    let bestRadius = 0;
+    let bestColor = 0xffaa44;
+    let bestIntensity = 1.0;
+    let bestFlicker = 0.15;
+
+    for (const s of SLOTS) {
+      const slot = newEquipment[s];
+      if (!slot) continue;
+      const stats = this.content.deriveItemStats(slot.itemType, slot.parts ?? []);
+      if (stats.lightRadius !== undefined && stats.lightRadius > bestRadius) {
+        bestRadius    = stats.lightRadius;
+        bestColor     = stats.lightColor     ?? 0xffaa44;
+        bestIntensity = stats.lightIntensity ?? 1.0;
+        bestFlicker   = stats.lightFlicker   ?? 0.15;
+      }
+    }
+
+    if (bestRadius > 0) {
+      world.set(entityId, LightEmitter, { color: bestColor, intensity: bestIntensity, radius: bestRadius, flicker: bestFlicker });
+    } else if (world.has(entityId, LightEmitter)) {
+      // No light-emitting item equipped. Use intensity=0 as the "off" signal —
+      // the protocol has no component-removal delta, so a zero-intensity write
+      // tells the client to tear down the PointLight.
+      world.set(entityId, LightEmitter, { color: 0, intensity: 0, radius: 0, flicker: 0 });
+    }
   }
 
   private _handleMoveItem(

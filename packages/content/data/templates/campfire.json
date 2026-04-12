@@ -5,6 +5,12 @@
     "workstation": {
       "stationType": "campfire",
       "capacity": 2
+    },
+    "lightEmitter": {
+      "color": 16740384,
+      "intensity": 1.0,
+      "radius": 14.0,
+      "flicker": 0.35
     }
   }
 }

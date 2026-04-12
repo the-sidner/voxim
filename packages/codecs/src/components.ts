@@ -1075,6 +1075,56 @@ export const hitboxCodec: Serialiser<HitboxData> = {
   },
 };
 
+// ---- LightEmitter ----------------------------------------------------------
+// Emitted by entities that cast light (torch, campfire, hearth, player holding torch).
+// color is a packed RGB u32 (0xRRGGBB). intensity 0–1 scales the raw radius.
+// flicker 0–1 drives random oscillation amplitude on the client.
+
+export interface LightEmitterData {
+  color: number;
+  intensity: number;
+  radius: number;
+  flicker: number;
+}
+
+export const lightEmitterCodec: Serialiser<LightEmitterData> = {
+  encode(v: LightEmitterData): Uint8Array {
+    const w = new WireWriter();
+    w.writeU32(v.color);
+    w.writeF32(v.intensity);
+    w.writeF32(v.radius);
+    w.writeF32(v.flicker);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): LightEmitterData {
+    const r = new WireReader(bytes);
+    return { color: r.readU32(), intensity: r.readF32(), radius: r.readF32(), flicker: r.readF32() };
+  },
+};
+
+// ---- DarknessModifier -------------------------------------------------------
+// Present on entities that suppress ambient light in a radius (deep corruption,
+// shadow-cursed creatures). Client darkens tiles within range.
+
+export interface DarknessModifierData {
+  radius: number;
+  /** 0–1: fraction of ambient light suppressed at the entity center. Falls off to 0 at radius. */
+  strength: number;
+}
+
+export const darknessModifierCodec: Serialiser<DarknessModifierData> = {
+  encode(v: DarknessModifierData): Uint8Array {
+    const w = new WireWriter();
+    w.writeF32(v.radius);
+    w.writeF32(v.strength);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): DarknessModifierData {
+    const r = new WireReader(bytes);
+    return { radius: r.readF32(), strength: r.readF32() };
+  },
+};
+
 // ---- WorkstationBuffer ----
 // Wire layout:
 //   stationType:    [u16 len][UTF-8 bytes]

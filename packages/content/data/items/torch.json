@@ -1,8 +1,14 @@
 {
   "id": "torch",
-  "category": "consumable",
+  "category": "tool",
   "stackable": true,
   "weight": 0.3,
+  "equipSlot": "offHand",
   "slots": [],
-  "baseStats": {}
+  "baseStats": {
+    "lightColor": 16755780,
+    "lightIntensity": 1.0,
+    "lightRadius": 10.0,
+    "lightFlicker": 0.2
+  }
 }

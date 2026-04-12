@@ -21,6 +21,7 @@ import type { HeritageStore } from "./heritage_store.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag, WorkstationBuffer } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
+import { LightEmitter } from "./components/light.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import type { ContentStore, EntityTemplate, SkillSlot } from "@voxim/content";
@@ -348,12 +349,15 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
   // ── Workstation entities ─────────────────────────────────────────────────────
   const wsComp = opts.template.components.workstation;
   if (wsComp) {
-    return spawnWorkstation(world, content, {
+    const wsId = spawnWorkstation(world, content, {
       x: opts.x, y: opts.y, z: opts.z,
       stationType: wsComp.stationType,
       capacity: wsComp.capacity,
       modelId: opts.template.modelId,
     });
+    const le = opts.template.components.lightEmitter;
+    if (le) world.write(wsId, LightEmitter, le);
+    return wsId;
   }
 
   // ── Resource nodes and decorative props ─────────────────────────────────────
@@ -391,6 +395,11 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
       depleted: false,
       respawnTicksRemaining: null,
     });
+  }
+
+  const le = opts.template.components.lightEmitter;
+  if (le) {
+    world.write(id, LightEmitter, le);
   }
 
   return id;

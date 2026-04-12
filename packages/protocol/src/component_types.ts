@@ -38,6 +38,8 @@ export const ComponentType = {
   activeEffects:      28,
   hitbox:             29,
   workstationBuffer:  30,
+  lightEmitter:       31,
+  darknessModifier:   32,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

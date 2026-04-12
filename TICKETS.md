@@ -757,13 +757,16 @@ Done when: player can repair a degraded item at a workstation to partially resto
 ## World / Environment
 
 ### T-089 · Light emission system (torch, fireplace, hearth)
-Effort: M   Status: todo
+Effort: M   Status: in-progress
 
-Point-light components on entities that illuminate surroundings. Torches are deployable items
-that emit warm light; campfire/hearth entities emit wider ambient light. Client-side: dynamic
-Three.js PointLight attached to the entity mesh. Server-side: a `LightEmitter` component
-(color, intensity, radius) — server-only, not authoritative for gameplay. Zone-based time-of-day
-multiplier dims lights during daylight and brightens them at night.
+`LightEmitter` (wireId 31) and `DarknessModifier` (wireId 32) networked components.
+Light level is virtual state — `getLightAt(world, x, y)` is a pure function over ECS queries, no
+precomputed grid. EquipmentSystem writes LightEmitter when a torch/lantern is equipped (driven by
+`baseStats.lightColor/Intensity/Radius/Flicker` on the item template). `spawnEntity()` writes
+LightEmitter for placed emitters (campfire, hearth) via `components.lightEmitter` on EntityTemplate.
+Client: `LightManager` attaches `THREE.PointLight` to entity groups; flicker via double-sinusoid
+oscillator. Protocol note: component-removal delta not yet implemented — zero-intensity write used
+as "off" sentinel until wire removal is added.
 Done when: a placed torch emits visible light that fades with distance; campfire casts warm
 ambient glow; lights respond to day/night cycle.
 
