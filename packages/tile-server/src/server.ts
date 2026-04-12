@@ -29,7 +29,7 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { HeritageStore } from "./heritage_store.ts";
-import { spawnPlayer, spawnNpc, spawnEntity, spawnProp, spawnWorkstation } from "./spawner.ts";
+import { spawnPlayer, spawnNpc, spawnEntity, spawnWorkstation } from "./spawner.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -779,9 +779,9 @@ export class TileServer {
     const spawn = content.getGameConfig().player;
     const sx = spawn.defaultSpawnX;
     const sy = spawn.defaultSpawnY;
-    spawnWorkstation(this.world, { x: sx + 3, y: sy,     z: 4.0, stationType: "chopping_block" });
-    spawnWorkstation(this.world, { x: sx + 5, y: sy,     z: 4.0, stationType: "workbench" });
-    spawnWorkstation(this.world, { x: sx + 3, y: sy + 2, z: 4.0, stationType: "campfire", capacity: 2 });
+    spawnWorkstation(this.world, content, { x: sx + 3, y: sy,     z: 4.0, stationType: "chopping_block" });
+    spawnWorkstation(this.world, content, { x: sx + 5, y: sy,     z: 4.0, stationType: "workbench" });
+    spawnWorkstation(this.world, content, { x: sx + 3, y: sy + 2, z: 4.0, stationType: "campfire", capacity: 2 });
     console.log("[TileServer] starter workstations spawned");
   }
 
@@ -860,18 +860,9 @@ export class TileServer {
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const npcType = weightedPick(profile.npcWeights, rng);
           if (!npcType) continue;
-          const template = content.getNpcTemplate(npcType);
+          const template = content.getEntityTemplate(npcType);
           if (!template) continue;
-          spawnNpc(this.world, content, {
-            x: wx, y: wy,
-            npcType,
-            name: template.displayName,
-            maxHealth: template.maxHealth,
-            modelId: template.modelTemplateId,
-            speedMultiplier: template.speedMultiplier,
-            weaponItemType: template.weaponItemType ?? null,
-            skillLoadout: template.skillLoadout,
-          });
+          spawnEntity(this.world, content, { x: wx, y: wy, template });
           total++;
         }
       }
@@ -973,13 +964,14 @@ export class TileServer {
         for (let i = 0; i < spawns; i++) {
           const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const modelId = weightedPick(profile.propWeights, rng);
-          if (!modelId) continue;
-          const isBuilding = modelId.includes("building");
+          const propTemplateId = weightedPick(profile.propWeights, rng);
+          if (!propTemplateId) continue;
+          const propTemplate = content.getEntityTemplate(propTemplateId);
+          if (!propTemplate) continue;
           const propSeed = (Math.imul(wx * 100 | 0, 0x45d9f3b) ^ Math.imul(wy * 100 | 0, 0x119de1f3)) >>> 0;
-          spawnProp(this.world, {
+          spawnEntity(this.world, content, {
             x: wx, y: wy, z: getTerrainZ(wx, wy),
-            modelId, scale: isBuilding ? 0.5 : 0.35, seed: propSeed,
+            template: propTemplate, seed: propSeed,
           });
           total++;
         }

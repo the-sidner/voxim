@@ -582,9 +582,23 @@ export interface EntityTemplateResourceNodeData {
   respawnTicks: number | null;
 }
 
+/**
+ * NPC component — links an entity template to an NPC archetype.
+ * All AI tuning lives in the referenced NpcTemplate; this just says "spawn one of these".
+ */
+export interface EntityTemplateNpcData {
+  /** ID of the entry in npc_templates.json that drives this NPC's behaviour. */
+  npcType: string;
+}
+
 /** Component data declared by an entity template. Extend as new component types are added. */
 export interface EntityTemplateComponents {
   resourceNode?: EntityTemplateResourceNodeData;
+  /**
+   * When present, spawnEntity() creates a full NPC entity (Health, AI, Equipment…)
+   * using the referenced npc_template for all tuning values.
+   */
+  npc?: EntityTemplateNpcData;
 }
 
 /**

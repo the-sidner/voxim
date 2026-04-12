@@ -101,5 +101,92 @@
         "respawnTicks": 3600
       }
     }
-  }
+  },
+  {
+    "id": "coal_seam",
+    "modelId": "model_coal_seam",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 8,
+        "requiredToolType": "pickaxe",
+        "yields": [{ "itemType": "coal", "quantity": 3, "quantityPerHarvestPower": 1 }],
+        "respawnTicks": 14400
+      }
+    }
+  },
+  {
+    "id": "copper_ore_vein",
+    "modelId": "model_copper_ore_rock",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 10,
+        "requiredToolType": "pickaxe",
+        "yields": [
+          { "itemType": "copper_ore", "quantity": 2, "quantityPerHarvestPower": 1 },
+          { "itemType": "stone", "quantity": 1 }
+        ],
+        "respawnTicks": 28800
+      }
+    }
+  },
+  {
+    "id": "clay_deposit",
+    "modelId": "model_clay_deposit",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 3,
+        "requiredToolType": null,
+        "yields": [{ "itemType": "clay", "quantity": 3, "quantityPerHarvestPower": 1 }],
+        "respawnTicks": 9600
+      }
+    }
+  },
+  {
+    "id": "mushroom_patch",
+    "modelId": "model_mushroom_patch",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 1,
+        "requiredToolType": null,
+        "yields": [{ "itemType": "mushroom", "quantity": 2 }],
+        "respawnTicks": 4800
+      }
+    }
+  },
+  {
+    "id": "berry_bush",
+    "modelId": "model_berry_bush",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 2,
+        "requiredToolType": null,
+        "yields": [{ "itemType": "berries", "quantity": 3 }],
+        "respawnTicks": 4800
+      }
+    }
+  },
+  {
+    "id": "flint_deposit",
+    "modelId": "model_flint",
+    "components": {
+      "resourceNode": {
+        "hitPoints": 4,
+        "requiredToolType": "pickaxe",
+        "yields": [{ "itemType": "flint", "quantity": 3, "quantityPerHarvestPower": 1 }],
+        "respawnTicks": 12000
+      }
+    }
+  },
+
+  { "id": "villager", "modelId": "human_base", "components": { "npc": { "npcType": "villager" } } },
+  { "id": "merchant", "modelId": "human_base", "components": { "npc": { "npcType": "merchant" } } },
+  { "id": "bandit",   "modelId": "human_base", "components": { "npc": { "npcType": "bandit"   } } },
+  { "id": "wolf",     "modelId": "wolf",        "components": { "npc": { "npcType": "wolf"     } } },
+  { "id": "archer",   "modelId": "human_base", "components": { "npc": { "npcType": "archer"   } } },
+
+  { "id": "model_dead_tree",           "modelId": "model_dead_tree",           "components": {} },
+  { "id": "model_building_well",       "modelId": "model_building_well",       "modelScale": 1.43, "components": {} },
+  { "id": "model_building_cottage",    "modelId": "model_building_cottage",    "modelScale": 1.43, "components": {} },
+  { "id": "model_building_ruin_wall",  "modelId": "model_building_ruin_wall",  "modelScale": 1.43, "components": {} },
+  { "id": "model_building_ruin_tower", "modelId": "model_building_ruin_tower", "modelScale": 1.43, "components": {} }
 ]

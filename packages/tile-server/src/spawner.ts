@@ -307,10 +307,30 @@ const ENTITY_SCALE = 0.35;
 
 /**
  * Create a world entity from an EntityTemplate.
- * Always writes ModelRef and derives Hitbox from template.modelId.
- * Writes ResourceNode only when template.components.resourceNode is present.
+ *
+ * Dispatch table:
+ *   components.npc         → full NPC entity (delegates to spawnNpc)
+ *   components.resourceNode → ModelRef + Hitbox + ResourceNode
+ *   (no components)        → ModelRef + Hitbox only (decorative prop)
  */
 export function spawnEntity(world: World, content: ContentStore, opts: SpawnEntityOpts): EntityId {
+  // ── NPC entities ────────────────────────────────────────────────────────────
+  const npcComp = opts.template.components.npc;
+  if (npcComp) {
+    const npcTemplate = content.getNpcTemplate(npcComp.npcType);
+    return spawnNpc(world, content, {
+      x: opts.x,
+      y: opts.y,
+      npcType: npcComp.npcType,
+      name:            npcTemplate?.displayName,
+      maxHealth:       npcTemplate?.maxHealth,
+      modelId:         npcTemplate?.modelTemplateId,
+      speedMultiplier: npcTemplate?.speedMultiplier,
+      weaponItemType:  npcTemplate?.weaponItemType ?? null,
+      skillLoadout:    npcTemplate?.skillLoadout ?? undefined,
+    });
+  }
+
   const id = newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
