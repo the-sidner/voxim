@@ -58,8 +58,7 @@ export type {
   VerbDef,
   GameConfig,
   TileLayout,
-  TileNodeConfig,
-  TileNpcConfig,
+  TileEntityConfig,
   TileTraderListing,
 } from "./src/types.ts";
 

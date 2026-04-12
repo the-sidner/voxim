@@ -29,7 +29,7 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { HeritageStore } from "./heritage_store.ts";
-import { spawnPlayer, spawnNpc, spawnEntity, spawnWorkstation } from "./spawner.ts";
+import { spawnPlayer, spawnEntity } from "./spawner.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -253,7 +253,7 @@ export class TileServer {
       chunksFromBuffers(this.world, loadedBuffers.heightBuffer, loadedBuffers.materialBuffer);
       this.zoneGrid = loadedBuffers.zoneGrid;
       this.spawnWorldState(content);
-      this.spawnInitialNodes(content);
+      this.spawnInitialEntities(content);
     }
 
     // NPCs are always re-spawned from layout (not persisted across restarts)
@@ -775,51 +775,56 @@ export class TileServer {
     this.world.write(id, TileCorruption, { level: 0 });
     console.log("[TileServer] world-state entity created");
 
-    // Spawn a few starter workstations near the default player spawn point.
-    const spawn = content.getGameConfig().player;
-    const sx = spawn.defaultSpawnX;
-    const sy = spawn.defaultSpawnY;
-    spawnWorkstation(this.world, content, { x: sx + 3, y: sy,     z: 4.0, stationType: "chopping_block" });
-    spawnWorkstation(this.world, content, { x: sx + 5, y: sy,     z: 4.0, stationType: "workbench" });
-    spawnWorkstation(this.world, content, { x: sx + 3, y: sy + 2, z: 4.0, stationType: "campfire", capacity: 2 });
-    console.log("[TileServer] starter workstations spawned");
+    // Starter entities (workstations, nodes) are declared in tile_layout.json.
   }
 
-  private spawnInitialNodes(content: ContentStore): void {
+  /**
+   * Spawn persistent world entities (resource nodes, workstations) from tile_layout.json.
+   * Only called on fresh world — these entities are saved and reloaded.
+   * Falls back to procedural node scattering when no layout file is present.
+   */
+  private spawnInitialEntities(content: ContentStore): void {
     const layout = content.getTileLayout();
     if (layout) {
       let spawned = 0;
-      for (const node of layout.nodes) {
-        const template = content.getEntityTemplate(node.entityTemplateId);
-        if (!template) continue;
-        const nodeSeed = positionSeed(node.x, node.y);
-        spawnEntity(this.world, this.content, { x: node.x, y: node.y, template, seed: nodeSeed });
+      for (const cfg of layout.entities) {
+        const template = content.getEntityTemplate(cfg.entityTemplateId);
+        if (!template) {
+          console.warn(`[TileServer] spawnInitialEntities: unknown template "${cfg.entityTemplateId}"`);
+          continue;
+        }
+        spawnEntity(this.world, content, {
+          x: cfg.x, y: cfg.y, z: cfg.z,
+          template, seed: positionSeed(cfg.x, cfg.y),
+        });
         spawned++;
       }
-      console.log(`[TileServer] spawned ${spawned} resource nodes from tile_layout`);
+      console.log(`[TileServer] spawned ${spawned} entities from tile_layout`);
     } else {
       this.spawnProceduralNodes(content);
     }
   }
 
+  /**
+   * Spawn NPCs from tile_layout.json or procedurally.
+   * Always called — NPCs are not persisted across restarts.
+   */
   private spawnInitialNpcs(content: ContentStore): void {
     const layout = content.getTileLayout();
     if (layout) {
-      for (const npcCfg of layout.npcs) {
-        const template = content.getNpcTemplate(npcCfg.npcType) ?? undefined;
-        const id = spawnNpc(this.world, content, {
-          x: npcCfg.x,
-          y: npcCfg.y,
-          name: npcCfg.name,
-          npcType: npcCfg.npcType,
-          maxHealth: template?.maxHealth,
-          modelId: template?.modelTemplateId,
-          speedMultiplier: template?.speedMultiplier,
-          weaponItemType: template?.weaponItemType ?? null,
-          skillLoadout: template?.skillLoadout,
+      for (const cfg of layout.npcs) {
+        const template = content.getEntityTemplate(cfg.entityTemplateId);
+        if (!template) {
+          console.warn(`[TileServer] spawnInitialNpcs: unknown template "${cfg.entityTemplateId}"`);
+          continue;
+        }
+        const id = spawnEntity(this.world, content, {
+          x: cfg.x, y: cfg.y,
+          template,
+          instanceName: cfg.name,
         });
-        if (npcCfg.traderListings && npcCfg.traderListings.length > 0) {
-          this.world.write(id, TraderInventory, { listings: npcCfg.traderListings });
+        if (cfg.traderListings?.length) {
+          this.world.write(id, TraderInventory, { listings: cfg.traderListings });
         }
       }
       console.log(`[TileServer] spawned ${layout.npcs.length} NPCs from tile_layout`);

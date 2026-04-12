@@ -301,6 +301,8 @@ export interface SpawnEntityOpts {
   z?: number;
   template: EntityTemplate;
   seed?: number;
+  /** Display name override — forwarded to NPC entities, overrides npc_template.displayName. */
+  instanceName?: string;
 }
 
 const ENTITY_SCALE = 0.35;
@@ -308,8 +310,9 @@ const ENTITY_SCALE = 0.35;
 /**
  * Create a world entity from an EntityTemplate.
  *
- * Dispatch table:
+ * Dispatch table (checked in order):
  *   components.npc         → full NPC entity (delegates to spawnNpc)
+ *   components.workstation → WorkstationTag + WorkstationBuffer + Hitbox + optional ModelRef
  *   components.resourceNode → ModelRef + Hitbox + ResourceNode
  *   (no components)        → ModelRef + Hitbox only (decorative prop)
  */
@@ -322,7 +325,7 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
       x: opts.x,
       y: opts.y,
       npcType: npcComp.npcType,
-      name:            npcTemplate?.displayName,
+      name:            opts.instanceName ?? npcTemplate?.displayName,
       maxHealth:       npcTemplate?.maxHealth,
       modelId:         npcTemplate?.modelTemplateId,
       speedMultiplier: npcTemplate?.speedMultiplier,
@@ -331,6 +334,17 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
     });
   }
 
+  // ── Workstation entities ─────────────────────────────────────────────────────
+  const wsComp = opts.template.components.workstation;
+  if (wsComp) {
+    return spawnWorkstation(world, content, {
+      x: opts.x, y: opts.y, z: opts.z,
+      stationType: wsComp.stationType,
+      capacity: wsComp.capacity,
+    });
+  }
+
+  // ── Resource nodes and decorative props ─────────────────────────────────────
   const id = newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
@@ -339,20 +353,22 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
   world.create(id);
   world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
 
-  const entityScale = ENTITY_SCALE * (opts.template.modelScale ?? 1);
-  world.write(id, ModelRef, {
-    modelId: opts.template.modelId,
-    scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
-    seed,
-  });
-  const template = content.getHitboxTemplate(opts.template.modelId, seed, entityScale);
-  if (template.length > 0) {
-    const skeleton = content.getSkeletonForModel(opts.template.modelId);
-    const boneTransforms = skeleton
-      ? solveSkeleton(skeleton, content.getBoneIndex(skeleton.id), REST_POSE, entityScale)
-      : new Map();
-    const parts = applyHitboxTemplate(template, boneTransforms);
-    if (parts.length > 0) world.write(id, Hitbox, { parts });
+  if (opts.template.modelId) {
+    const entityScale = ENTITY_SCALE * (opts.template.modelScale ?? 1);
+    world.write(id, ModelRef, {
+      modelId: opts.template.modelId,
+      scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
+      seed,
+    });
+    const hitboxParts = content.getHitboxTemplate(opts.template.modelId, seed, entityScale);
+    if (hitboxParts.length > 0) {
+      const skeleton = content.getSkeletonForModel(opts.template.modelId);
+      const boneTransforms = skeleton
+        ? solveSkeleton(skeleton, content.getBoneIndex(skeleton.id), REST_POSE, entityScale)
+        : new Map();
+      const parts = applyHitboxTemplate(hitboxParts, boneTransforms);
+      if (parts.length > 0) world.write(id, Hitbox, { parts });
+    }
   }
 
   const rn = opts.template.components.resourceNode;

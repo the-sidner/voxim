@@ -24,7 +24,7 @@ import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
-import { spawnWorkstation } from "../spawner.ts";
+import { spawnEntity } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("CraftingSystem");
@@ -159,6 +159,12 @@ export class CraftingSystem implements System {
       return;
     }
 
+    const entityTemplate = this.content.getEntityTemplate(slot.itemType);
+    if (!entityTemplate) {
+      log.warn("deploy: player=%s item=%s has no entity template", entityId, slot.itemType);
+      return;
+    }
+
     // Place the workstation slightly in front of the player
     const pos = world.get(entityId, Position);
     if (!pos) return;
@@ -166,7 +172,7 @@ export class CraftingSystem implements System {
     const wx = pos.x + Math.sin(facing) * DEPLOY_OFFSET;
     const wy = pos.y + Math.cos(facing) * DEPLOY_OFFSET;
 
-    spawnWorkstation(world, { x: wx, y: wy, z: pos.z, stationType: slot.itemType });
+    spawnEntity(world, this.content, { x: wx, y: wy, z: pos.z, template: entityTemplate });
 
     // Consume one from inventory
     const newSlots = [...inventory.slots];

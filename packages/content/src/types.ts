@@ -599,6 +599,14 @@ export interface EntityTemplateComponents {
    * using the referenced npc_template for all tuning values.
    */
   npc?: EntityTemplateNpcData;
+  /**
+   * When present, spawnEntity() creates a WorkstationTag + WorkstationBuffer entity.
+   * stationType must match a recipe source key and a deployable item ID.
+   */
+  workstation?: {
+    stationType: string;
+    capacity?: number;
+  };
 }
 
 /**
@@ -607,15 +615,19 @@ export interface EntityTemplateComponents {
  * Owns: which model to render (and derive hitbox from) and which optional
  * behavioural components are attached at spawn.
  *
- * The ECS entity created from a template will always have:
- *   Position, ModelRef, Hitbox (derived from modelId sub-objects)
- * And conditionally:
- *   ResourceNode   when components.resourceNode is present
- *   (future: NpcTag, Blueprint, etc.)
+ * Dispatch table in spawnEntity():
+ *   components.npc         → full NPC entity
+ *   components.workstation → WorkstationTag + WorkstationBuffer + Hitbox
+ *   components.resourceNode → ModelRef + Hitbox + ResourceNode
+ *   (no components)        → ModelRef + Hitbox only (decorative prop)
  */
 export interface EntityTemplate {
   id: string;
-  modelId: string;
+  /**
+   * Model to render this entity with. Optional — absent means no visual
+   * representation yet (placeholder/invisible entity).
+   */
+  modelId?: string;
   /** Multiplier applied on top of the base ENTITY_SCALE at spawn. Defaults to 1. */
   modelScale?: number;
   components: EntityTemplateComponents;
@@ -885,14 +897,7 @@ export interface GameConfig {
 
 // ---- tile layout ----
 
-/** A resource node placement for initial world spawn. */
-export interface TileNodeConfig {
-  entityTemplateId: string;
-  x: number;
-  y: number;
-}
-
-/** A trader listing within a TileNpcConfig. */
+/** A trader listing attached to a TileEntityConfig. */
 export interface TileTraderListing {
   itemType: string;
   buyPrice: number;
@@ -900,24 +905,36 @@ export interface TileTraderListing {
   stock: number;
 }
 
-/** An NPC spawn entry for initial world population. */
-export interface TileNpcConfig {
-  npcType: string;
-  name: string;
+/**
+ * One entity placement in a tile layout.
+ * Used for both persistent spawns (resource nodes, workstations) and
+ * transient spawns (NPCs, re-spawned on every server start).
+ */
+export interface TileEntityConfig {
+  /** Matches an EntityTemplate id — determines which components are written. */
+  entityTemplateId: string;
   x: number;
   y: number;
-  /** When present, this NPC is a trader and will receive a TraderInventory component. */
+  /** World-unit height. Defaults to 4.0 (slightly above ground). */
+  z?: number;
+  /** Display name override applied to NPC entities after spawn. */
+  name?: string;
+  /** When present, attaches a TraderInventory component to this entity. */
   traderListings?: TileTraderListing[];
 }
 
 /**
  * Declarative tile population config loaded from tile_layout.json.
- * Defines initial node and NPC spawns — replaces hardcoded spawn lists in TileServer.
+ *
+ * entities — persistent: resource nodes, workstations, static props.
+ *            Only spawned when the tile has no saved world state.
+ * npcs     — transient: NPCs are re-spawned on every server start from this
+ *            list (or procedurally if absent/empty), so they are never stale.
  */
 export interface TileLayout {
   tileId: string;
-  nodes: TileNodeConfig[];
-  npcs: TileNpcConfig[];
+  entities: TileEntityConfig[];
+  npcs: TileEntityConfig[];
 }
 
 // ---- skeleton system ----

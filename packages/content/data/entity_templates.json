@@ -178,6 +178,16 @@
     }
   },
 
+  { "id": "chopping_block", "modelId": "model_chopping_block", "components": { "workstation": { "stationType": "chopping_block" } } },
+  { "id": "workbench",     "modelId": "model_workbench",     "components": { "workstation": { "stationType": "workbench"     } } },
+  { "id": "campfire",      "modelId": "model_campfire",      "components": { "workstation": { "stationType": "campfire", "capacity": 2 } } },
+  { "id": "forge",         "components": { "workstation": { "stationType": "forge"         } } },
+  { "id": "furnace",       "components": { "workstation": { "stationType": "furnace"       } } },
+  { "id": "anvil",         "components": { "workstation": { "stationType": "anvil"         } } },
+  { "id": "altar",         "components": { "workstation": { "stationType": "altar"         } } },
+  { "id": "alchemist_bench","components": { "workstation": { "stationType": "alchemist_bench" } } },
+  { "id": "writing_desk",  "components": { "workstation": { "stationType": "writing_desk"  } } },
+
   { "id": "villager", "modelId": "human_base", "components": { "npc": { "npcType": "villager" } } },
   { "id": "merchant", "modelId": "human_base", "components": { "npc": { "npcType": "merchant" } } },
   { "id": "bandit",   "modelId": "human_base", "components": { "npc": { "npcType": "bandit"   } } },
