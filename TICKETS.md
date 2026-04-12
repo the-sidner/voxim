@@ -757,7 +757,7 @@ Done when: player can repair a degraded item at a workstation to partially resto
 ## World / Environment
 
 ### T-089 · Light emission system (torch, fireplace, hearth)
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 57587f4
 
 `LightEmitter` (wireId 31) and `DarknessModifier` (wireId 32) networked components.
 Light level is virtual state — `getLightAt(world, x, y)` is a pure function over ECS queries, no
