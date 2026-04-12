@@ -275,7 +275,8 @@
       "gravityScale": 0.4,
       "radius": 0.08,
       "maxHits": 1,
-      "lifetimeTicks": 60
+      "lifetimeTicks": 60,
+      "modelId": "model_arrow"
     }
   },
   {
@@ -291,7 +292,8 @@
       "gravityScale": 0.2,
       "radius": 0.07,
       "maxHits": 1,
-      "lifetimeTicks": 80
+      "lifetimeTicks": 80,
+      "modelId": "model_arrow"
     }
   }
 ]

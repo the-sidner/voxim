@@ -305,8 +305,10 @@ export class VoximRenderer {
     this.renderer.shadowMap.type = THREE.BasicShadowMap; // hard 1-pixel shadow edges → thin outline
 
     const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
+    // near=-200 prevents the near plane from clipping terrain and objects that sit
+    // "behind" the camera along the isometric view direction (most visible near map edges).
     this.camera = new THREE.OrthographicCamera(
-      -ORTHO_HALF * aspect, ORTHO_HALF * aspect, ORTHO_HALF, -ORTHO_HALF, 0.1, 1000,
+      -ORTHO_HALF * aspect, ORTHO_HALF * aspect, ORTHO_HALF, -ORTHO_HALF, -200, 1000,
     );
     this.camera.position.copy(this.cameraTarget).add(ISO_OFFSET);
     this.camera.lookAt(this.cameraTarget);

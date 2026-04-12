@@ -418,6 +418,8 @@ export interface ProjectileActionConfig {
   maxHits: number;
   /** Auto-destroy after this many ticks (limits max range). */
   lifetimeTicks: number;
+  /** Model ID for the in-flight projectile. Absent = invisible (e.g. magic bolt). */
+  modelId?: string;
 }
 
 /**

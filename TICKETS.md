@@ -751,3 +751,57 @@ Add a repair recipe type: item + repair material → restored durability. Repair
 appropriate workstation (anvil for metal, workbench for wood). Repair restores a fixed amount,
 not full — repeated repairs compound material cost.
 Done when: player can repair a degraded item at a workstation to partially restore durability.
+
+---
+
+## World / Environment
+
+### T-089 · Light emission system (torch, fireplace, hearth)
+Effort: M   Status: todo
+
+Point-light components on entities that illuminate surroundings. Torches are deployable items
+that emit warm light; campfire/hearth entities emit wider ambient light. Client-side: dynamic
+Three.js PointLight attached to the entity mesh. Server-side: a `LightEmitter` component
+(color, intensity, radius) — server-only, not authoritative for gameplay. Zone-based time-of-day
+multiplier dims lights during daylight and brightens them at night.
+Done when: a placed torch emits visible light that fades with distance; campfire casts warm
+ambient glow; lights respond to day/night cycle.
+
+### T-090 · Room detection and enclosed-wall system
+Effort: L   Status: todo
+
+A room is a contiguous enclosed volume formed by placed wall/floor blueprint structures.
+Room detection runs as a server-side flood-fill over the structure grid after each build event.
+Detected rooms receive a `RoomTag` entity with area, enclosure quality (0–1), and an interior
+cell set. Downstream consumers: warmth bonus (fireplaces raise interior temperature), shelter
+bonus (reduces corruption gain), NPC pathfinding prefers enclosed spaces for settling.
+Done when: placing walls that form a closed loop creates a detectable room entity; room dissolves
+when a wall is removed; interior cells are queryable by other systems.
+
+---
+
+## UI / Interaction
+
+### T-091 · Workstation recipe browser and selection UI
+Effort: M   Status: todo
+
+Currently the workstation CraftingPanel only shows auto-matched items; there is no way to
+browse or select a recipe. The workstation needs a recipe list panel showing all recipes valid
+for this station type. Clicking a recipe locks it as the `activeRecipeId` on WorkstationBuffer
+(server command via CommandType.SelectRecipe). Input slots then show required ingredients;
+items placed that don't match the locked recipe are rejected. Time-based recipes (smelt, cook)
+auto-start once all ingredients are present.
+Done when: player can open a workstation, browse its recipe list, select one, and place
+matching items to start crafting.
+
+### T-092 · Blade dimensions derived from equipped item voxel model
+Effort: M   Status: todo
+
+Melee hit detection uses swingPath.defaultBladeLength which is a hardcoded value per weapon
+action. Instead, derive the actual blade segment from the equipped weapon model's voxel AABB:
+longest axis of the model = blade length; model forward axis = blade direction at rest.
+This unifies visual scale with collision: a longer sword model = longer reach. Overrides
+swingPath.defaultBladeLength when a weapon is equipped. Unarmed keeps the current fixed fist
+capsule. Same derivation drives the client trail ribbon length.
+Done when: equipping a long sword model gives more reach than a dagger model using the same
+swing action; trail ribbon length matches visual blade length.

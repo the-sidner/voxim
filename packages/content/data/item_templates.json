@@ -99,7 +99,8 @@
     "stackable": false,
     "weight": 5.0,
     "slots": [],
-    "baseStats": {}
+    "baseStats": {},
+    "modelTemplateId": "model_campfire"
   },
   {
     "id": "wooden_sword",
@@ -489,7 +490,8 @@
     "stackable": true,
     "weight": 20.0,
     "slots": [],
-    "baseStats": {}
+    "baseStats": {},
+    "modelTemplateId": "model_chopping_block"
   },
   {
     "id": "workbench",
@@ -497,7 +499,8 @@
     "stackable": true,
     "weight": 25.0,
     "slots": [],
-    "baseStats": {}
+    "baseStats": {},
+    "modelTemplateId": "model_workbench"
   },
   {
     "id": "forge",
@@ -574,5 +577,36 @@
     },
     "weaponAction": "crossbow_shot",
     "modelTemplateId": "model_crossbow_basic"
+  },
+  { "id": "coal", "category": "resource", "stackable": true, "weight": 0.5, "slots": [], "baseStats": {} },
+  { "id": "copper_ore", "category": "resource", "stackable": true, "weight": 1.5, "slots": [], "baseStats": {} },
+  { "id": "clay", "category": "resource", "stackable": true, "weight": 1.0, "slots": [], "baseStats": {} },
+  { "id": "flint", "category": "resource", "stackable": true, "weight": 0.4, "slots": [], "baseStats": {} },
+  { "id": "copper_ingot", "category": "component", "stackable": true, "weight": 1.2, "slots": [], "baseStats": {} },
+  { "id": "mushroom", "category": "consumable", "stackable": true, "weight": 0.1, "slots": [], "baseStats": { "hungerRestore": 15, "thirstRestore": 5 } },
+  { "id": "berries", "category": "consumable", "stackable": true, "weight": 0.1, "slots": [], "baseStats": { "hungerRestore": 10, "thirstRestore": 15 } },
+  {
+    "id": "wooden_spear", "category": "weapon", "equipSlot": "weapon",
+    "stackable": false, "weight": 1.5, "slots": [],
+    "baseStats": { "damage": 14, "staminaCostPerSwing": 10, "bladeLength": 2.2 },
+    "weaponAction": "thrust", "modelTemplateId": "model_spear"
+  },
+  {
+    "id": "copper_spear", "category": "weapon", "equipSlot": "weapon",
+    "stackable": false, "weight": 2.0, "slots": [],
+    "baseStats": { "damage": 22, "staminaCostPerSwing": 12, "bladeLength": 2.4 },
+    "weaponAction": "thrust", "modelTemplateId": "model_spear"
+  },
+  {
+    "id": "wooden_hammer", "category": "weapon", "equipSlot": "weapon",
+    "stackable": false, "weight": 2.0, "slots": [],
+    "baseStats": { "damage": 10, "staminaCostPerSwing": 14, "buildPower": 1.0 },
+    "toolType": "hammer", "weaponAction": "overhead", "modelTemplateId": "model_hammer_basic"
+  },
+  {
+    "id": "stone_hammer", "category": "weapon", "equipSlot": "weapon",
+    "stackable": false, "weight": 2.8, "slots": [],
+    "baseStats": { "damage": 14, "staminaCostPerSwing": 16, "buildPower": 1.5 },
+    "toolType": "hammer", "weaponAction": "overhead", "modelTemplateId": "model_hammer_basic"
   }
 ]

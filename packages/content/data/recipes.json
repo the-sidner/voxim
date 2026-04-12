@@ -79,5 +79,133 @@
     "outputType": "cooked_meat",
     "outputQuantity": 1,
     "ticks": 80
+  },
+  {
+    "id": "wooden_spear",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
+    "inputs": [{ "itemType": "wood", "quantity": 3 }],
+    "outputType": "wooden_spear",
+    "outputQuantity": 1,
+    "ticks": 0
+  },
+  {
+    "id": "wooden_hammer",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "axe",
+    "inputs": [{ "itemType": "wood", "quantity": 3 }],
+    "outputType": "wooden_hammer",
+    "outputQuantity": 1,
+    "ticks": 0
+  },
+  {
+    "id": "wooden_bow_recipe",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "axe",
+    "inputs": [
+      { "itemType": "wood", "quantity": 3 },
+      { "itemType": "raw_meat", "quantity": 1 }
+    ],
+    "outputType": "wooden_bow",
+    "outputQuantity": 1,
+    "ticks": 0
+  },
+  {
+    "id": "stone_pickaxe",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
+    "inputs": [
+      { "itemType": "stone", "quantity": 2 },
+      { "itemType": "wood", "quantity": 2 }
+    ],
+    "outputType": "stone_pickaxe",
+    "outputQuantity": 1,
+    "ticks": 0
+  },
+  {
+    "id": "stone_shovel",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
+    "inputs": [
+      { "itemType": "stone", "quantity": 2 },
+      { "itemType": "wood", "quantity": 2 }
+    ],
+    "outputType": "stone_shovel",
+    "outputQuantity": 1,
+    "ticks": 0
+  },
+  {
+    "id": "iron_ingot",
+    "stationType": "campfire",
+    "stepType": "time",
+    "inputs": [
+      { "itemType": "iron_ore", "quantity": 1 },
+      { "itemType": "coal", "quantity": 1 }
+    ],
+    "outputType": "iron_ingot",
+    "outputQuantity": 1,
+    "ticks": 120
+  },
+  {
+    "id": "copper_ingot",
+    "stationType": "campfire",
+    "stepType": "time",
+    "inputs": [
+      { "itemType": "copper_ore", "quantity": 1 },
+      { "itemType": "coal", "quantity": 1 }
+    ],
+    "outputType": "copper_ingot",
+    "outputQuantity": 1,
+    "ticks": 100
+  },
+  {
+    "id": "cooked_mushroom",
+    "stationType": "campfire",
+    "stepType": "time",
+    "inputs": [
+      { "itemType": "mushroom", "quantity": 2 },
+      { "itemType": "wood", "quantity": 1 }
+    ],
+    "outputType": "cooked_meat",
+    "outputQuantity": 1,
+    "ticks": 60
+  },
+  {
+    "id": "copper_spear",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
+    "inputs": [
+      { "itemType": "copper_ingot", "quantity": 2 },
+      { "itemType": "wood", "quantity": 2 }
+    ],
+    "outputType": "copper_spear",
+    "outputQuantity": 1,
+    "ticks": 0
+  },
+  {
+    "id": "plank_wall",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
+    "inputs": [{ "itemType": "plank", "quantity": 4 }],
+    "outputType": "wood_wall",
+    "outputQuantity": 1,
+    "ticks": 0
+  },
+  {
+    "id": "kindling",
+    "stationType": "chopping_block",
+    "stepType": "attack",
+    "requiredTool": "axe",
+    "inputs": [{ "itemType": "wood", "quantity": 1 }],
+    "outputType": "coal",
+    "outputQuantity": 1,
+    "ticks": 0
   }
 ]

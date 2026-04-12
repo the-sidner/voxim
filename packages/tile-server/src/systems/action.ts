@@ -20,7 +20,7 @@ import type { ContentStore, DerivedItemStats } from "@voxim/content";
 import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq, segSegContactPoint } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Position, Facing, Velocity, InputState, Stamina, SkillInProgress, CombatState, Lifetime } from "../components/game.ts";
+import { Position, Facing, Velocity, InputState, Stamina, SkillInProgress, CombatState, Lifetime, ModelRef } from "../components/game.ts";
 import type { SkillInProgressData, HitRecord } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
@@ -335,6 +335,11 @@ export class ActionSystem implements System {
       hitEntities: [],
       maxHits,
     });
+
+    if (action.projectile.modelId) {
+      const s = 0.35;
+      world.write(projId, ModelRef, { modelId: action.projectile.modelId, scaleX: s, scaleY: s, scaleZ: s, seed: 0 });
+    }
 
     log.info("projectile spawned: entity=%s owner=%s weapon=%s speed=%.1f facing=%.2f",
       projId, entityId, weapon?.itemType ?? "unarmed", speed, facing);

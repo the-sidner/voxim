@@ -109,9 +109,13 @@ export class Predictor {
     if (idx >= 0) this.pending.splice(0, idx + 1);
 
     // Reset to server state
+    // Derive onGround from terrain — don't hard-code false or a pending jump input
+    // won't be applied during replay, causing the jump to be "eaten" and the player
+    // to snap back to the ground.
     this.body.position = { ...serverPos };
     this.body.velocity = { ...serverVel };
-    this.body.onGround = false;
+    const terrainZ = getTerrainHeight(serverPos.x, serverPos.y);
+    this.body.onGround = serverPos.z <= terrainZ + 0.05;
 
     // Replay unacknowledged inputs
     for (const p of this.pending) {

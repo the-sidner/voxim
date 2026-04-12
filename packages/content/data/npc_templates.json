@@ -68,5 +68,21 @@
       null,
       null
     ]
+  },
+  {
+    "id": "archer",
+    "displayName": "Archer",
+    "maxHealth": 80,
+    "fleeHealthRatio": 0.15,
+    "behavior": "hostile",
+    "aggroRange": 30,
+    "attackRange": 7.0,
+    "wanderRadius": 25,
+    "modelTemplateId": "human_base",
+    "wanderTicks": 60,
+    "attackTicks": 35,
+    "fleeTicks": 100,
+    "weaponItemType": "wooden_bow",
+    "skillLoadout": [null, null, null, null]
   }
 ]
