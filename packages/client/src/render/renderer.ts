@@ -107,11 +107,9 @@ const DEPTH_BLIT_FRAG = /* glsl */`
 
 /**
  * Half-height of the orthographic frustum in world units.
- * The visible vertical range is 2×ORTHO_HALF = 80 world units.
- * Set to 40 to avoid clipping tall terrain, trees, and buildings near the
- * top of the screen (isometric projection compresses world Z into screen Y).
+ * The visible vertical range is 2×ORTHO_HALF = 40 world units.
  */
-const ORTHO_HALF = 40;
+const ORTHO_HALF = 20;
 
 /** Terrain chunk size in world units. Must match CHUNK_SIZE in @voxim/world. */
 const CHUNK_SIZE = 32;
@@ -813,6 +811,9 @@ export class VoximRenderer {
       : undefined;
     if (localMesh) {
       this.cameraTarget.copy(localMesh.group.position);
+      // Bias the look-at point upward (Three.js Y = game Z) so the upper half
+      // of the frustum covers tall terrain, trees, and buildings above the player.
+      this.cameraTarget.y += 5;
     }
 
     // Chunk culling — only render 3×3 chunks around the player
