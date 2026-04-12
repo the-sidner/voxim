@@ -222,7 +222,7 @@ names from three traditions.
 ## Crafting & Economy
 
 ### T-025 · Workstations as world deployables
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 708300c
 
 Add workstation item templates: `chopping_block`, `forge`, `anvil`, `furnace`, `workbench`,
 `writing_desk`, `altar`, `alchemist_bench`. Each is a deployable (can be placed in world).
@@ -231,7 +231,7 @@ by workstation type.
 Done when: workstations can be placed and persist as world entities; they have a type component.
 
 ### T-026 · Physical crafting interaction — material placement on workstation
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 2822939
 
 Replace menu-driven crafting with the physical model: player places material items onto a
 workstation entity (via interact action). Workstation holds a material slot buffer. Attacking the
@@ -239,21 +239,21 @@ workstation with the correct tool triggers the crafting check against the buffer
 Done when: crafting requires physical material placement + tool attack; menu crafting is removed.
 
 ### T-027 · Crafting action step type (tool + attack)
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 2822939
 
 Implement instantaneous crafting resolution: when player attacks workstation with correct tool
 and correct materials are in the slot buffer, consume materials and spawn output item.
 Done when: `axe on chopping_block + log → planks` works via the physical model.
 
 ### T-028 · Crafting time-based step type (furnace/fire)
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 2822939
 
 Workstations with `"stepType": "time"` in recipe definition run a timer after materials are
 placed and a fuel/trigger condition is met. Output spawns when timer completes.
 Done when: `ore + fuel → furnace → metal slugs after N ticks` works.
 
 ### T-029 · Crafting assembly step type (multi-material + recipe select)
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 2822939
 
 For assembly steps: player places multiple materials, selects a recipe from their known Lore
 (filtered to recipes valid for current station + materials), then attacks to produce output.
