@@ -406,15 +406,31 @@ export interface IKChainDef {
   poleHint: { fwd: number; right: number; up: number };
 }
 
+/** Configuration for a ranged weapon action — projectile spawn parameters. */
+export interface ProjectileActionConfig {
+  /** World units per second. */
+  speed: number;
+  /** 0 = no gravity (magic bolt), 0.4 = arrow arc, 1.0 = thrown rock. */
+  gravityScale: number;
+  /** Collision sphere radius in world units. */
+  radius: number;
+  /** Max entities to pierce through. 1 = arrow (stops on first hit). 0 = unlimited. */
+  maxHits: number;
+  /** Auto-destroy after this many ticks (limits max range). */
+  lifetimeTicks: number;
+}
+
 /**
- * Physics definition for one melee weapon archetype.
+ * Physics definition for one weapon archetype (melee or ranged).
  * Drives the three-phase swing (windup → active → winddown), swing path geometry,
  * animation style tag, and base stamina cost.
  *
- * The swingPath hilt keyframes are the single source of truth:
+ * For melee: swingPath hilt keyframes are the single source of truth:
  *   - Server: swept capsule hit detection (tip derived from hilt + bladeDir × bladeLength)
  *   - Client: IK arm animation tracks hilt via skeleton ikChains
  *   - Client: trail ribbon from derived tip position
+ *
+ * For ranged: projectile config drives spawn on first active tick; no blade sweep.
  *
  * Weapons reference this by id via ItemTemplate.weaponAction.
  */
@@ -430,8 +446,12 @@ export interface WeaponActionDef {
   animationStyle: string;
   /** Flat stamina deducted when the action is initiated (before skill costs). */
   staminaCost: number;
-  /** Hilt path + blade direction through entity-local space. */
-  swingPath: WeaponSwingPath;
+  /** "melee" (default when absent) or "ranged". */
+  actionType?: "melee" | "ranged";
+  /** Hilt path + blade direction through entity-local space. Required for melee, absent for ranged. */
+  swingPath?: WeaponSwingPath;
+  /** Projectile spawn parameters. Required for ranged, absent for melee. */
+  projectile?: ProjectileActionConfig;
   /**
    * IK chain IDs (from the skeleton's ikChains) to activate during this action.
    * The skeleton owns bone names and pole hints; this list just selects which chains fire.

@@ -546,5 +546,33 @@
     "weight": 18.0,
     "slots": [],
     "baseStats": {}
+  },
+  {
+    "id": "wooden_bow",
+    "category": "weapon",
+    "equipSlot": "weapon",
+    "stackable": false,
+    "weight": 1.2,
+    "slots": [],
+    "baseStats": {
+      "damage": 18,
+      "staminaCostPerSwing": 8
+    },
+    "weaponAction": "bow_shot",
+    "modelTemplateId": "model_bow_basic"
+  },
+  {
+    "id": "crossbow",
+    "category": "weapon",
+    "equipSlot": "weapon",
+    "stackable": false,
+    "weight": 3.0,
+    "slots": [],
+    "baseStats": {
+      "damage": 28,
+      "staminaCostPerSwing": 5
+    },
+    "weaponAction": "crossbow_shot",
+    "modelTemplateId": "model_crossbow_basic"
   }
 ]

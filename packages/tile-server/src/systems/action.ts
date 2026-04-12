@@ -14,16 +14,18 @@
  * Single code path for players and NPCs. No isNpc branches.
  */
 import type { World } from "@voxim/engine";
+import { newEntityId } from "@voxim/engine";
 import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore, DerivedItemStats } from "@voxim/content";
 import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq, segSegContactPoint } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Position, Facing, Velocity, InputState, Stamina, SkillInProgress, CombatState } from "../components/game.ts";
+import { Position, Facing, Velocity, InputState, Stamina, SkillInProgress, CombatState, Lifetime } from "../components/game.ts";
 import type { SkillInProgressData, HitRecord } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { Hitbox } from "../components/hitbox.ts";
+import { ProjectileData } from "../components/projectile.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import type { StateHistoryBuffer, TickSnapshot, EntitySnapshot } from "../state_history.ts";
 import { createLogger } from "../logger.ts";
@@ -110,13 +112,21 @@ export class ActionSystem implements System {
       let newHitEntities = sip.hitEntities;
 
       if (sip.phase === "active") {
-        if (rewindTick < 0) {
-          const inputState = world.get(entityId, InputState);
-          const rttMs = inputState?.rttMs ?? 0;
-          const rttTicks = Math.round(rttMs / (1000 / this.tickRateHz));
-          rewindTick = Math.max(0, this.serverTick - rttTicks);
+        if ((action.actionType ?? "melee") === "ranged") {
+          // Ranged: spawn projectile on first active tick; no blade sweep
+          if (sip.ticksInPhase === 0) {
+            this.spawnProjectile(world, entityId, action, unarmed);
+          }
+        } else {
+          // Melee: lag-compensated blade sweep
+          if (rewindTick < 0) {
+            const inputState = world.get(entityId, InputState);
+            const rttMs = inputState?.rttMs ?? 0;
+            const rttTicks = Math.round(rttMs / (1000 / this.tickRateHz));
+            rewindTick = Math.max(0, this.serverTick - rttTicks);
+          }
+          newHitEntities = this.resolveHits(world, events, entityId, sip, unarmed, rewindTick);
         }
-        newHitEntities = this.resolveHits(world, events, entityId, sip, unarmed, rewindTick);
       }
 
       const nextTicks = sip.ticksInPhase + 1;
@@ -151,6 +161,8 @@ export class ActionSystem implements System {
   ): HitRecord[] {
     const action = this.content.getWeaponAction(sip.weaponActionId);
     if (!action) return sip.hitEntities;
+    // resolveHits is only called for melee actions; swingPath is required for melee
+    if (!action.swingPath) return sip.hitEntities;
 
     const equipment = world.get(entityId, Equipment);
     const weapon = equipment?.weapon ?? null;
@@ -261,6 +273,7 @@ export class ActionSystem implements System {
         hitX: hitContact.x,
         hitY: hitContact.y,
         hitZ: hitContact.z,
+        parryAllowed: true,
       };
       log.info("dispatching hit: attacker=%s target=%s bodyPart=%s weapon=%s",
         entityId, target.entityId, hitBodyPart, ctx.weaponStats.toolType ?? "weapon");
@@ -270,6 +283,61 @@ export class ActionSystem implements System {
     }
 
     return newHitEntities;
+  }
+
+  /**
+   * Spawns a projectile entity for a ranged action on the first active tick.
+   * Uses world.write() (spawn-time immediate writes) for all components.
+   */
+  private spawnProjectile(
+    world: World,
+    entityId: string,
+    action: ReturnType<ContentStore["getWeaponAction"]>,
+    unarmed: DerivedItemStats,
+  ): void {
+    if (!action?.projectile) return;
+
+    const equipment = world.get(entityId, Equipment);
+    const weapon = equipment?.weapon ?? null;
+    const weaponStats = weapon ? this.content.deriveItemStats(weapon.itemType, weapon.parts) : unarmed;
+
+    const pos = world.get(entityId, Position);
+    const inputState = world.get(entityId, InputState);
+    if (!pos || !inputState) return;
+
+    const facing = inputState.facing;
+    const { speed, gravityScale, radius, maxHits, lifetimeTicks } = action.projectile;
+
+    // Spawn offset: in front of the shooter at shoulder height
+    const spawnX = pos.x + Math.cos(facing) * 0.6;
+    const spawnY = pos.y + Math.sin(facing) * 0.6;
+    const spawnZ = pos.z + 1.4; // shoulder height
+
+    // Velocity: horizontal component along facing; small upward arc for gravity projectiles
+    const vx = Math.cos(facing) * speed;
+    const vy = Math.sin(facing) * speed;
+    const vz = gravityScale > 0 ? speed * 0.08 : 0;
+
+    const projId = newEntityId();
+    world.create(projId);
+    world.write(projId, Position, { x: spawnX, y: spawnY, z: spawnZ });
+    world.write(projId, Velocity, { x: vx, y: vy, z: vz });
+    world.write(projId, Lifetime, { ticks: lifetimeTicks });
+    world.write(projId, ProjectileData, {
+      ownerId: entityId,
+      damage: weaponStats.damage ?? 0,
+      toolType: weaponStats.toolType ?? "",
+      harvestPower: weaponStats.harvestPower ?? 1,
+      buildPower: weaponStats.buildPower ?? 0,
+      armorReduction: weaponStats.armorReduction ?? 0,
+      gravityScale,
+      radius,
+      hitEntities: [],
+      maxHits,
+    });
+
+    log.info("projectile spawned: entity=%s owner=%s weapon=%s speed=%.1f facing=%.2f",
+      projId, entityId, weapon?.itemType ?? "unarmed", speed, facing);
   }
 
   /**

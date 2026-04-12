@@ -29,6 +29,12 @@ export interface HitContext {
   hitX: number;
   hitY: number;
   hitZ: number;
+  /**
+   * Whether the attacker can be staggered by a successful parry.
+   * Melee hits: true — attacker is nearby and physically can be staggered.
+   * Projectile hits: false — attacker is far away, parry deflects but cannot stagger them.
+   */
+  parryAllowed: boolean;
 }
 
 /**

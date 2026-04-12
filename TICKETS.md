@@ -49,7 +49,7 @@ HealthHitHandler: `angleDiff(incomingAngle, targetSnapshotFacing) <= blockArcHal
 (π/2 = 90° half-arc). Stamina-exhausted defenders cannot block. Rear/side hits land through.
 
 ### T-006 · Ranged weapon action type + projectile spawning
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: pending
 
 Add `"ranged"` action type to `weapon_actions.json` schema. On action activation, spawn a
 projectile entity with `Velocity` in facing direction, `Lifetime`, and `Damage` components.
@@ -57,7 +57,7 @@ Projectile travels until lifetime expires or it hits an entity/terrain.
 Done when: firing a bow spawns a projectile that deals damage on contact.
 
 ### T-007 · Bow/crossbow item templates + facing-based aim
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: pending
 
 Add bow and crossbow entries to `item_templates.json` with `weaponAction: "ranged_bow"` /
 `"ranged_crossbow"`. No zoom — aim is entirely facing-driven (same system as melee).

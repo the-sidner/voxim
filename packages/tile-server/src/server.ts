@@ -56,6 +56,7 @@ import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { BuffSystem } from "./systems/buff.ts";
+import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
 import { DynastySystem } from "./systems/dynasty.ts";
 import { AnimationSystem } from "./systems/animation.ts";
@@ -212,15 +213,17 @@ export class TileServer {
       new DayNightSystem(content),
       new CorruptionSystem(content),
       new EncumbranceSystem(content),
-      ...((): [SkillSystem, ActionSystem] => {
+      ...((): [SkillSystem, ActionSystem, ProjectileSystem] => {
         const skill = new SkillSystem(content);
-        const action = new ActionSystem(this.stateHistory, tickRateHz, content, [
+        const hitHandlers = [
           new HealthHitHandler(content, skill),
           new ResourceNodeHitHandler(content),
           new BlueprintHitHandler(),
           new WorkstationHitHandler(content),
-        ]);
-        return [skill, action];
+        ];
+        const action = new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers);
+        const projectile = new ProjectileSystem(content, hitHandlers);
+        return [skill, action, projectile];
       })(),
       new BuffSystem(),
       new TerrainDigSystem(content),

@@ -52,7 +52,8 @@ export class HealthHitHandler implements HitHandler {
       hasAction(ctx.targetSnapshotActions, ACTION_BLOCK) &&
       angleDiff(incomingAngle, ctx.targetSnapshotFacing) <= combatCfg.blockArcHalfRadians;
 
-    const isParry = isBlocking &&
+    const isParry = ctx.parryAllowed &&
+      isBlocking &&
       targetCombatState !== null &&
       targetCombatState!.blockHeldTicks < dodgeCfg.parryWindowTicks;
 
