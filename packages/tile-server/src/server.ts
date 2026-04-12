@@ -199,11 +199,6 @@ export class TileServer {
     // System execution order matches the spec's declared order
     this.systems = [
       new NpcAiSystem(content),
-      // BuffSystem runs before Physics so speed/movement buffs applied this tick
-      // are seen by PhysicsSystem in the same tick (not delayed by one tick).
-      new BuffSystem(),
-      new PhysicsSystem(content),
-      new DodgeSystem(content),
       new HungerSystem(content),
       new StaminaSystem(content),
       new LifetimeSystem(),
@@ -215,7 +210,13 @@ export class TileServer {
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
       new CorruptionSystem(content),
+      // EncumbranceSystem sets SpeedModifier to the base encumbrance multiplier.
+      // BuffSystem then multiplies speed bonuses on top of that base.
+      // Both must run before PhysicsSystem so the final SpeedModifier is correct.
       new EncumbranceSystem(content),
+      new BuffSystem(),
+      new PhysicsSystem(content),
+      new DodgeSystem(content),
       ...((): [SkillSystem, ActionSystem, ProjectileSystem] => {
         const skill = new SkillSystem(content);
         const hitHandlers = [

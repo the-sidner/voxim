@@ -36,6 +36,8 @@ const log = createLogger("ProjectileSystem");
 
 export class ProjectileSystem implements System {
   private spatial: SpatialGrid | null = null;
+  /** Heightmap chunk map — built once on first tick; chunks never change. */
+  private heightmapCache: Map<string, Uint16Array | Float32Array> | null = null;
 
   constructor(
     private readonly content: ContentStore,
@@ -189,17 +191,19 @@ export class ProjectileSystem implements System {
 
   /** Returns the terrain heightmap value at (x, y), or 0 if no heightmap covers that cell. */
   private getTerrainHeight(world: World, x: number, y: number): number {
+    if (!this.heightmapCache) {
+      this.heightmapCache = new Map();
+      for (const { heightmap } of world.query(Heightmap)) {
+        this.heightmapCache.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap.data);
+      }
+    }
     const cellX = Math.floor(x);
     const cellY = Math.floor(y);
     const chunkX = Math.floor(cellX / CHUNK_SIZE);
     const chunkY = Math.floor(cellY / CHUNK_SIZE);
     const localX = ((cellX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const localY = ((cellY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    const idx = localX + localY * CHUNK_SIZE;
-    for (const { heightmap } of world.query(Heightmap)) {
-      if (heightmap.chunkX !== chunkX || heightmap.chunkY !== chunkY) continue;
-      return heightmap.data[idx];
-    }
-    return 0; // fallback
+    const data = this.heightmapCache.get(`${chunkX},${chunkY}`);
+    return data ? data[localX + localY * CHUNK_SIZE] : 0;
   }
 }
