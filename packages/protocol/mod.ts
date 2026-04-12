@@ -4,13 +4,14 @@
 // Re-export Serialiser so consumers can import it from here without depending on engine directly
 export type { Serialiser } from "@voxim/engine";
 
+export { encodeFrame, makeFrameReader } from "./src/framing.ts";
+
 export type {
   MovementDatagram,
   CommandDatagram,
   CommandPayload,
   EntityDelta,
   EntityDestroyed,
-  StateMessage,
   GameEvent,
   DamageDealtEvent,
   EntityDiedEvent,

@@ -12,17 +12,19 @@
  * shuts down when idle. Registers with the gateway on startup (gateway integration
  * is a stub — Phase 3, step 7).
  */
-import { serveDir } from "@std/http/file-server";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
 import { chunksFromBuffers, loadTerrainCache, seedFromTileId, ZONE_PROFILES, Heightmap } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
-import { TileEvents, binaryStateMessageCodec, COMPONENT_NAME_TO_TYPE, ACTION_BLOCK, ACTION_CROUCH } from "@voxim/protocol";
+import { TileEvents, binaryStateMessageCodec, COMPONENT_NAME_TO_TYPE, COMPONENT_TYPE_TO_NAME, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
+import { startAdminServer, registerWithGateway } from "./admin_server.ts";
+import { listenQuic } from "./quic_server.ts";
 
 // Bits that represent held keys — use latest-wins rather than OR across the tick.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 import type { BinaryComponentDelta, CommandPayload, GameEvent, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
+import { COMPONENT_REGISTRY } from "./component_registry.ts";
 import { loadContentStore, type ContentStore } from "@voxim/content";
 import { ClientSession } from "./session.ts";
 import { TickLoop } from "./tick_loop.ts";
@@ -64,7 +66,7 @@ import { HitboxSystem } from "./systems/hitbox.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { WorldClock, TileCorruption } from "./components/world.ts";
 import { SaveManager } from "./save_manager.ts";
-import { serializePlayer, restorePlayer } from "./handoff.ts";
+import { serializePlayer } from "./handoff.ts";
 import { SpatialGrid } from "./spatial_grid.ts";
 import type { TickContext } from "./system.ts";
 
@@ -183,7 +185,7 @@ export class TileServer {
     const tickRateHz = config.tickRateHz ?? 20;
     this.wtPort = config.port;
 
-    // Compute cert fingerprint (used by the debug client page).
+    // Compute cert fingerprint (served via /cert-hash for client self-signed cert pinning).
     const b64 = config.cert.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
     const der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const hashBuf = await crypto.subtle.digest("SHA-256", der);
@@ -266,22 +268,37 @@ export class TileServer {
     // Props are always re-spawned (decorative, not persisted)
     this.spawnProceduralProps(content);
 
+    // Assert that every entry in COMPONENT_REGISTRY has a matching ComponentType wire ID.
+    // Fires at startup — a missing entry would silently drop all deltas for that component.
+    for (const { typeId } of COMPONENT_REGISTRY) {
+      if (!COMPONENT_TYPE_TO_NAME.has(typeId)) {
+        throw new Error(
+          `[TileServer] COMPONENT_REGISTRY entry typeId=${typeId} has no matching ComponentType enum entry. ` +
+          `Add it to packages/protocol/src/component_types.ts before starting.`,
+        );
+      }
+    }
+
     // Subscribe to tile events that need to reach clients as GameEvents
     this.subscribeNetworkEvents();
 
     // Start the WebTransport QUIC server (Deno.QuicEndpoint, requires --unstable-net)
-    this.startQuicEndpoint(config);
+    listenQuic(config, (session) => this.handleSession(session));
 
     // Start admin HTTP server for gateway → tile internal messages (handoff)
     if (config.adminPort) {
-      this.startAdminServer(config);
+      startAdminServer(config.adminPort, {
+        world: this.world,
+        getCertHashHex: () => this.certHashHex,
+        getWtPort: () => this.wtPort,
+      });
     }
 
     // Self-register with gateway so clients can be routed here
     if (config.gatewayUrl && config.tileAddress && config.adminPort) {
       this.gatewayUrl = config.gatewayUrl;
       const adminUrl = `http://localhost:${config.adminPort}`;
-      this.registerWithGateway(config.gatewayUrl, config.tileId, config.tileAddress, adminUrl);
+      registerWithGateway(config.gatewayUrl, config.tileId, config.tileAddress, adminUrl);
     }
 
     this.tickLoop.start((dt, tick) => this.runTick(dt, tick), { tickRateHz });
@@ -442,6 +459,9 @@ export class TileServer {
     // Paginate across multiple datagrams with the same serverTick.
     if (hasSessions) {
       const PAGE_SIZE = 27;
+      // actions intentionally excluded from wire snapshot — clients receive InputState
+      // via reliable delta stream. snapEntities keeps actions for the server-side
+      // StateHistoryBuffer (lag-compensated block detection), not for the wire format.
       const snapEntitiesMapped = snapEntities.map((e) => ({
         entityId: e.entityId,
         x: e.x, y: e.y, z: e.z,
@@ -660,116 +680,6 @@ export class TileServer {
     });
   }
 
-  // ---- WebTransport server (QUIC) ----
-
-  private startQuicEndpoint(config: TileServerConfig): void {
-    type QuicEndpoint = { listen(opts: unknown): AsyncIterable<{ accept(): Promise<unknown> }> };
-    // deno-lint-ignore no-explicit-any
-    const DenoAny = Deno as any;
-    let endpoint: QuicEndpoint;
-    try {
-      endpoint = new DenoAny.QuicEndpoint({ hostname: "0.0.0.0", port: config.port }) as QuicEndpoint;
-    } catch (err) {
-      console.warn(`[TileServer] WebTransport/QUIC unavailable (${(err as Error).message}). Continuing without WebTransport — admin/HTTP only.`);
-      return;
-    }
-    const listener = endpoint.listen({
-      cert: config.cert,
-      key: config.key,
-      alpnProtocols: ["h3"],
-    }) as AsyncIterable<{ accept(): Promise<unknown> }>;
-
-    console.log(`Listening on https://0.0.0.0:${config.port}/`);
-
-    (async () => {
-      for await (const incoming of listener) {
-        // Accept and upgrade each connection concurrently — don't block the accept loop
-        incoming.accept()
-          // deno-lint-ignore no-explicit-any
-          .then((conn) => (Deno as any).upgradeWebTransport(conn))
-          .then((wt: WebTransportSession) => this.handleSession(wt))
-          .catch((err: unknown) => {
-            console.error("[TileServer] connection error", err);
-          });
-      }
-    })().catch((err: unknown) => {
-      console.error("[TileServer] QUIC listener error", err);
-    });
-  }
-
-  /**
-   * Plain HTTP server for gateway → tile internal messages.
-   * Runs on a separate port from WebTransport so TLS is not required.
-   */
-  private startAdminServer(config: TileServerConfig): void {
-    const adminPort = config.adminPort!;
-    Deno.serve(
-      { port: adminPort, hostname: "127.0.0.1" },
-      (req) => this.handleAdminRequest(req),
-    );
-    console.log(`[TileServer] admin HTTP listening on 127.0.0.1:${adminPort}`);
-  }
-
-  private async handleAdminRequest(req: Request): Promise<Response> {
-    const url = new URL(req.url);
-    if (req.method === "POST" && url.pathname === "/handoff") {
-      try {
-        const payload = await req.json();
-        if (!payload.playerId || !payload.components) {
-          return new Response("bad request", { status: 400 });
-        }
-        restorePlayer(this.world, payload);
-        console.log(`[TileServer] received handoff for player ${payload.playerId}`);
-        return Response.json({ type: "handoff_ack", playerId: payload.playerId });
-      } catch {
-        return new Response("bad request", { status: 400 });
-      }
-    }
-    if (req.method === "GET" && url.pathname === "/health") {
-      return Response.json({ status: "ok" });
-    }
-    if (req.method === "GET" && url.pathname === "/cert-hash") {
-      return Response.json(
-        { sha256: this.certHashHex },
-        { headers: { "access-control-allow-origin": "*" } },
-      );
-    }
-    if (req.method === "GET" && url.pathname === "/debug") {
-      return new Response(debugClientHtml(), {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    }
-    if (req.method === "GET" && url.pathname === "/game") {
-      // Redirect to index.html with tile address as query param — main.ts reads ?tile=
-      return Response.redirect(
-        `${url.origin}/?tile=${encodeURIComponent(url.hostname + ":" + this.wtPort)}`,
-        302,
-      );
-    }
-    // Serve all other client assets (index.html, dist/game.js, src/ui/theme.css, etc.)
-    // from the packages/client directory.
-    return serveDir(req, {
-      fsRoot: new URL("../../client", import.meta.url).pathname,
-      quiet: true,
-    });
-  }
-
-  /**
-   * POST self-registration to the gateway so clients can be routed here.
-   * Fire-and-forget — a failure is logged but does not block startup.
-   */
-  private registerWithGateway(gatewayUrl: string, tileId: string, tileAddress: string, adminUrl: string): void {
-    fetch(`${gatewayUrl}/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "register", tileId, address: tileAddress, adminUrl }),
-    }).then((r) => {
-      if (!r.ok) console.error(`[TileServer] gateway registration failed: ${r.status}`);
-      else console.log(`[TileServer] registered with gateway as ${tileId} → ${tileAddress}`);
-    }).catch((err: unknown) => {
-      console.error("[TileServer] could not reach gateway:", err);
-    });
-  }
 
   private spawnWorldState(content: ContentStore): void {
     const dayLengthTicks = content.getGameConfig().dayNight.dayLengthTicks;
@@ -992,53 +902,6 @@ export class TileServer {
     console.log(`[TileServer] procedurally spawned ${total} props from zone grid`);
   }
 
-  private encodeJsonMessage(value: unknown): Uint8Array {
-    const payload = new TextEncoder().encode(JSON.stringify(value));
-    const out = new Uint8Array(4 + payload.byteLength);
-    new DataView(out.buffer).setUint32(0, payload.byteLength, true);
-    out.set(payload, 4);
-    return out;
-  }
-
-  private async readJsonMessage(
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-  ): Promise<unknown | null> {
-    const headerResult = await this.readExact(reader, 4);
-    if (!headerResult) return null;
-    const len = new DataView(headerResult.data.buffer).getUint32(0, true);
-    const payloadResult = await this.readExact(reader, len, headerResult.overflow ?? undefined);
-    if (!payloadResult) return null;
-    return JSON.parse(new TextDecoder().decode(payloadResult.data));
-  }
-
-  private async readExact(
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-    n: number,
-    overflow?: Uint8Array,
-  ): Promise<{ data: Uint8Array; overflow: Uint8Array | null } | null> {
-    const buf = new Uint8Array(n);
-    let offset = 0;
-    let leftover: Uint8Array | null = overflow ?? null;
-
-    if (leftover) {
-      const take = Math.min(leftover.byteLength, n);
-      buf.set(leftover.subarray(0, take), 0);
-      offset = take;
-      leftover = leftover.byteLength > take ? leftover.subarray(take) : null;
-    }
-
-    while (offset < n) {
-      const { value, done } = await reader.read();
-      if (done || !value) return null;
-      const take = Math.min(value.byteLength, n - offset);
-      buf.set(value.subarray(0, take), offset);
-      offset += take;
-      if (value.byteLength > take) leftover = value.subarray(take);
-    }
-    return { data: buf, overflow: leftover };
-  }
-
-
   private async handleSession(session: WebTransportSession): Promise<void> {
     // Silence the session.closed rejection so it never becomes an uncaught promise
     // rejection that crashes the server process — we handle the close implicitly when
@@ -1059,7 +922,7 @@ export class TileServer {
     const jReader = (joinStream as { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }).readable.getReader();
     const jWriter = (joinStream as { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }).writable.getWriter();
 
-    const joinMsg = await this.readJsonMessage(jReader) as TileJoinRequest | null;
+    const joinMsg = await makeFrameReader(jReader).readJson() as TileJoinRequest | null;
     jReader.releaseLock();
 
     // Determine playerId: reuse existing entity (post-handoff) or spawn fresh
@@ -1082,7 +945,7 @@ export class TileServer {
 
     // Send ack with canonical playerId
     const ack: TileJoinAck = { type: "joined", playerId };
-    await jWriter.write(this.encodeJsonMessage(ack));
+    await jWriter.write(encodeFrame(ack));
     // Fire-and-forget — don't block on the client consuming the stream FIN.
     // Awaiting close() here caused an 80% failure rate: the tick loop could fire
     // between the await and createUnidirectionalStream(), registering no session
@@ -1155,172 +1018,5 @@ export class TileServer {
     this.playerDynasties.delete(playerId);
     console.log(`[TileServer] player ${playerId} disconnected`);
   }
-}
-
-// ── Debug client page ─────────────────────────────────────────────────────────
-
-function debugClientHtml(): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Voxim Debug Client</title>
-<style>
-  body { font: 13px/1.4 monospace; background:#111; color:#ccc; margin:0; padding:12px; }
-  h1   { font-size:14px; color:#8cf; margin:0 0 8px; }
-  #controls { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
-  button { font:inherit; padding:3px 10px; cursor:pointer; }
-  #status { color:#8c8; font-size:12px; }
-  #log { width:100%; height:calc(100vh - 90px); box-sizing:border-box;
-         background:#0a0a0a; color:#bfb; border:1px solid #333;
-         padding:6px; overflow-y:scroll; white-space:pre; font-size:12px; }
-</style>
-</head>
-<body>
-<h1>Voxim Debug Client</h1>
-<div id="controls">
-  <button id="btn" onclick="toggle()">Connect</button>
-  <span id="status">disconnected</span>
-</div>
-<div id="log"></div>
-<script>
-let transport, inputTimer, connected = false;
-
-function log(line) {
-  const el = document.getElementById('log');
-  el.textContent += line + '\\n';
-  el.scrollTop = el.scrollHeight;
-  console.log(line);
-}
-
-function status(msg, color) {
-  const el = document.getElementById('status');
-  el.textContent = msg;
-  el.style.color = color ?? '#8c8';
-}
-
-function toggle() {
-  connected ? disconnect() : connect();
-}
-
-async function connect() {
-  document.getElementById('btn').textContent = 'Disconnect';
-  status('connecting…', '#fc8');
-
-  const { sha256 } = await fetch('/cert-hash').then(r => r.json());
-  const hashBytes = Uint8Array.from(sha256.match(/../g).map(h => parseInt(h, 16)));
-
-  transport = new WebTransport('https://' + location.hostname + ':4434', {
-    serverCertificateHashes: [{ algorithm: 'sha-256', value: hashBytes.buffer }],
-  });
-  await transport.ready;
-  status('connected — joining…', '#fc8');
-  log('[' + ts() + '] transport open');
-
-  // join handshake
-  log('[' + ts() + '] opening bidi stream…');
-  const { readable: jr, writable: jw } = await transport.createBidirectionalStream();
-  log('[' + ts() + '] bidi stream open, sending join…');
-  const jWriter = jw.getWriter(), jReader = jr.getReader();
-  await jWriter.write(encMsg({ type: 'join' }));
-  await jWriter.close();
-  log('[' + ts() + '] join sent, awaiting ack…');
-  const jRead = makeExactReader(jReader);
-  const ack = await readMsg(jRead);
-  jReader.releaseLock();
-
-  if (!ack || ack.type !== 'joined') { log('join rejected: ' + JSON.stringify(ack)); disconnect(); return; }
-  const playerId = ack.playerId;
-  status('connected as ' + playerId.slice(-8));
-  log('[' + ts() + '] joined as ' + playerId);
-  connected = true;
-
-  // input heartbeat 20Hz
-  let seq = 0, tick = 0;
-  const dgWriter = transport.datagrams.writable.getWriter();
-  inputTimer = setInterval(() => {
-    const b = new ArrayBuffer(36), v = new DataView(b);
-    v.setUint32(0, seq++, true); v.setUint32(4, tick, true);
-    v.setFloat64(8, Date.now(), true);
-    dgWriter.write(new Uint8Array(b)).catch(() => clearInterval(inputTimer));
-  }, 50);
-
-  // state stream
-  const uniRdr = transport.incomingUnidirectionalStreams.getReader();
-  const { value: stateStream } = await uniRdr.read();
-  uniRdr.releaseLock();
-  const stateRdr = stateStream.getReader();
-  const stateRead = makeExactReader(stateRdr);
-
-  let lastPrint = -1;
-  while (true) {
-    const hdr = await stateRead(4); if (!hdr) break;
-    const len = new DataView(hdr.buffer).getUint32(0, true);
-    const payload = await stateRead(len); if (!payload) break;
-    const msg = JSON.parse(new TextDecoder().decode(payload), (_k, v) =>
-      (v && typeof v === 'object' && v.__t === 'u8')
-        ? Uint8Array.from(atob(v.b), c => c.charCodeAt(0)) : v);
-    tick = msg.serverTick;
-    if (msg.serverTick - lastPrint >= 20) {
-      lastPrint = msg.serverTick;
-      const counts = {};
-      for (const d of msg.entityDeltas) counts[d.componentName] = (counts[d.componentName] ?? 0) + 1;
-      const dStr = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,n])=>k+'×'+n).join(', ');
-      log('[' + ts() + '] tick ' + String(msg.serverTick).padStart(6) +
-          ' | deltas=' + msg.entityDeltas.length + (dStr ? ' [' + dStr + ']' : '') +
-          ' | events=' + msg.events.length);
-      for (const ev of msg.events) log('  event: ' + JSON.stringify(ev));
-    }
-  }
-  disconnect();
-}
-
-function disconnect() {
-  connected = false;
-  clearInterval(inputTimer);
-  try { transport?.close(); } catch(_){}
-  status('disconnected', '#c88');
-  document.getElementById('btn').textContent = 'Connect';
-  log('[' + ts() + '] disconnected');
-}
-
-// ── wire helpers ──
-function encMsg(v) {
-  const p = new TextEncoder().encode(JSON.stringify(v));
-  const out = new Uint8Array(4 + p.byteLength);
-  new DataView(out.buffer).setUint32(0, p.byteLength, true);
-  out.set(p, 4); return out;
-}
-// Returns a readExact function that preserves leftover bytes across calls.
-// Each reader must get its own instance to avoid cross-stream contamination.
-function makeExactReader(rdr) {
-  let overflow = null;
-  return async function readExact(n) {
-    const buf = new Uint8Array(n); let off = 0;
-    if (overflow) {
-      const take = Math.min(overflow.byteLength, n);
-      buf.set(overflow.subarray(0, take), 0); off = take;
-      overflow = overflow.byteLength > take ? overflow.subarray(take) : null;
-    }
-    while (off < n) {
-      const { value, done } = await rdr.read();
-      if (done || !value) return null;
-      const take = Math.min(value.byteLength, n - off);
-      buf.set(value.subarray(0, take), off); off += take;
-      if (value.byteLength > take) overflow = value.subarray(take);
-    }
-    return buf;
-  };
-}
-async function readMsg(readExact) {
-  const h = await readExact(4); if (!h) return null;
-  const len = new DataView(h.buffer).getUint32(0, true);
-  const p = await readExact(len); if (!p) return null;
-  return JSON.parse(new TextDecoder().decode(p));
-}
-function ts() { return new Date().toISOString().slice(11, 23); }
-</script>
-</body>
-</html>`;
 }
 

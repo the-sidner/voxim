@@ -7,46 +7,7 @@
  * a new connection directly to the tile server.
  */
 import type { GatewayConnectRequest, GatewayTileResponse, GatewayErrorResponse } from "@voxim/protocol";
-
-// ----- length-prefixed JSON codec (mirrors gateway/src/codec.ts) -----
-
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-
-function encodeMessage(value: unknown): Uint8Array {
-  const payload = enc.encode(JSON.stringify(value));
-  const out = new Uint8Array(4 + payload.byteLength);
-  new DataView(out.buffer).setUint32(0, payload.byteLength, true);
-  out.set(payload, 4);
-  return out;
-}
-
-async function readExact(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  n: number,
-): Promise<Uint8Array | null> {
-  const buf = new Uint8Array(n);
-  let offset = 0;
-  while (offset < n) {
-    const { value, done } = await reader.read();
-    if (done || !value) return null;
-    const take = Math.min(value.byteLength, n - offset);
-    buf.set(value.subarray(0, take), offset);
-    offset += take;
-  }
-  return buf;
-}
-
-async function readMessage(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-): Promise<unknown | null> {
-  const header = await readExact(reader, 4);
-  if (!header) return null;
-  const len = new DataView(header.buffer).getUint32(0, true);
-  const payload = await readExact(reader, len);
-  if (!payload) return null;
-  return JSON.parse(dec.decode(payload));
-}
+import { encodeFrame, makeFrameReader } from "@voxim/protocol";
 
 // ----- public API -----
 
@@ -79,10 +40,10 @@ export async function connectViaGateway(
       type: "connect",
       ...(playerId ? { playerId } : {}),
     };
-    await writer.write(encodeMessage(req));
+    await writer.write(encodeFrame(req));
     await writer.close();
 
-    const resp = await readMessage(reader) as GatewayTileResponse | GatewayErrorResponse | null;
+    const resp = await makeFrameReader(reader).readJson() as GatewayTileResponse | GatewayErrorResponse | null;
     if (!resp) throw new Error("Gateway closed without response");
     if (resp.type === "error") {
       throw new Error(`Gateway error: ${resp.code} — ${resp.message}`);

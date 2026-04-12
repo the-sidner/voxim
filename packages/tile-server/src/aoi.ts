@@ -87,6 +87,11 @@ function isEventRelevant(
       return ev.builderId === playerId;
     case "BuildingMissingMaterials":
       return ev.builderId === playerId;
+    default:
+      // TypeScript enforces exhaustiveness: adding a new GameEvent type without
+      // a matching case here will produce a compile error.
+      ev satisfies never;
+      return false;
   }
 }
 

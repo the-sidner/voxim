@@ -1,7 +1,7 @@
 /// <reference path="./types/webtransport.d.ts" />
 import type { EntityId } from "@voxim/engine";
 import type { CommandPayload } from "@voxim/protocol";
-import { decodeDatagram, worldSnapshotCodec, contentRequestCodec, contentResponseCodec } from "@voxim/protocol";
+import { decodeDatagram, worldSnapshotCodec, contentRequestCodec, contentResponseCodec, makeFrameReader } from "@voxim/protocol";
 import type { WorldSnapshot, ContentRequest, ContentResponse } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import { InputRingBuffer } from "./input_buffer.ts";
@@ -121,37 +121,13 @@ export class ClientSession {
   ): Promise<void> {
     const reader = (stream.readable as ReadableStream<Uint8Array>).getReader();
     const writer = (stream.writable as WritableStream<Uint8Array>).getWriter();
-
-    let overflow: Uint8Array | null = null;
-
-    async function readExact(n: number): Promise<Uint8Array | null> {
-      const buf = new Uint8Array(n);
-      let offset = 0;
-      if (overflow) {
-        const take = Math.min(overflow.byteLength, n);
-        buf.set(overflow.subarray(0, take), 0);
-        offset = take;
-        overflow = overflow.byteLength > take ? overflow.subarray(take) : null;
-      }
-      while (offset < n) {
-        const { value, done } = await reader.read();
-        if (done || !value) return null;
-        const take = Math.min(value.byteLength, n - offset);
-        buf.set(value.subarray(0, take), offset);
-        offset += take;
-        if (value.byteLength > take) overflow = value.subarray(take);
-      }
-      return buf;
-    }
+    const { readFrame } = makeFrameReader(reader);
 
     async function readRequest(): Promise<ContentRequest | null> {
-      const header = await readExact(4);
-      if (!header) return null;
-      const len = new DataView(header.buffer).getUint32(0, true);
-      const payload = await readExact(len);
-      if (!payload) return null;
+      const frame = await readFrame();
+      if (!frame) return null;
       try {
-        return contentRequestCodec.decode(new Uint8Array([...header, ...payload]));
+        return contentRequestCodec.decode(frame);
       } catch {
         return null;
       }

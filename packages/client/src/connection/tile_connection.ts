@@ -15,82 +15,8 @@ import type {
 import {
   movementDatagramCodec, commandDatagramCodec, binaryStateMessageCodec,
   worldSnapshotCodec, contentRequestCodec, contentResponseCodec,
+  encodeFrame, makeFrameReader,
 } from "@voxim/protocol";
-
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-
-function encodeMessage(value: unknown): Uint8Array {
-  const payload = enc.encode(JSON.stringify(value));
-  const out = new Uint8Array(4 + payload.byteLength);
-  new DataView(out.buffer).setUint32(0, payload.byteLength, true);
-  out.set(payload, 4);
-  return out;
-}
-
-/**
- * Creates a stateful reader that handles chunk boundaries correctly.
- * reader.read() may deliver more bytes than requested in one chunk;
- * leftovers are kept in a closure and prepended to the next read.
- */
-function makeMessageReader(reader: ReadableStreamDefaultReader<Uint8Array>) {
-  let overflow: Uint8Array | null = null;
-
-  async function readExact(n: number): Promise<Uint8Array | null> {
-    const buf = new Uint8Array(n);
-    let offset = 0;
-
-    if (overflow) {
-      const take = Math.min(overflow.byteLength, n);
-      buf.set(overflow.subarray(0, take), 0);
-      offset = take;
-      overflow = overflow.byteLength > take ? overflow.subarray(take) : null;
-    }
-
-    while (offset < n) {
-      const { value, done } = await reader.read();
-      if (done || !value) return null;
-      const take = Math.min(value.byteLength, n - offset);
-      buf.set(value.subarray(0, take), offset);
-      offset += take;
-      if (value.byteLength > take) overflow = value.subarray(take);
-    }
-    return buf;
-  }
-
-  /** Read the next length-prefixed JSON message. */
-  async function readMessage(): Promise<unknown | null> {
-    const header = await readExact(4);
-    if (!header) return null;
-    const len = new DataView(header.buffer).getUint32(0, true);
-    const payload = await readExact(len);
-    if (!payload) return null;
-    return JSON.parse(dec.decode(payload));
-  }
-
-  /** Read the next length-prefixed frame as raw bytes (header+payload combined). */
-  async function readFrame(): Promise<Uint8Array | null> {
-    const header = await readExact(4);
-    if (!header) return null;
-    const len = new DataView(header.buffer).getUint32(0, true);
-    const payload = await readExact(len);
-    if (!payload) return null;
-    const full = new Uint8Array(4 + len);
-    full.set(header, 0);
-    full.set(payload, 4);
-    return full;
-  }
-
-  /** Read the next length-prefixed frame's payload bytes only (no header). */
-  async function readPayload(): Promise<Uint8Array | null> {
-    const header = await readExact(4);
-    if (!header) return null;
-    const len = new DataView(header.buffer).getUint32(0, true);
-    return readExact(len);
-  }
-
-  return { readMessage, readFrame, readPayload };
-}
 
 export class TileConnection {
   private transport: WebTransport | null = null;
@@ -131,13 +57,12 @@ export class TileConnection {
     const joinStream = await this.transport.createBidirectionalStream();
     const jWriter = joinStream.writable.getWriter();
     const jReader = joinStream.readable.getReader();
-    const msgReader = makeMessageReader(jReader);
 
     const req: TileJoinRequest = { type: "join", ...(playerId ? { playerId } : {}) };
-    await jWriter.write(encodeMessage(req));
+    await jWriter.write(encodeFrame(req));
     jWriter.close().catch(() => {}); // signal FIN without blocking on remote ACK
 
-    const ack = await msgReader.readMessage() as TileJoinAck | null;
+    const ack = await makeFrameReader(jReader).readJson() as TileJoinAck | null;
     jReader.releaseLock();
 
     if (!ack || ack.type !== "joined") {
@@ -203,7 +128,7 @@ export class TileConnection {
 
   private async drainContentStream(stream: ReadableStream<Uint8Array>): Promise<void> {
     const reader = stream.getReader();
-    const { readFrame } = makeMessageReader(reader);
+    const { readFrame } = makeFrameReader(reader);
     try {
       while (true) {
         const frame = await readFrame();
@@ -230,7 +155,7 @@ export class TileConnection {
 
   private async drainStateStream(stream: ReadableStream<Uint8Array>): Promise<void> {
     const reader = stream.getReader();
-    const { readPayload } = makeMessageReader(reader);
+    const { readPayload } = makeFrameReader(reader);
     let msgCount = 0;
     try {
       while (true) {

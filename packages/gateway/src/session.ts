@@ -12,7 +12,7 @@
 import type { GatewayConnectRequest, GatewayResponse } from "@voxim/protocol";
 import type { TileDirectory } from "./tile_directory.ts";
 import { TileDirectory as TD } from "./tile_directory.ts";
-import { readMessage, encodeJson } from "./codec.ts";
+import { makeFrameReader, encodeJson } from "./codec.ts";
 
 export async function handleGatewaySession(
   session: WebTransportSession,
@@ -33,7 +33,7 @@ export async function handleGatewaySession(
   const writer = stream.writable.getWriter();
 
   try {
-    const msg = await readMessage(reader);
+    const msg = await makeFrameReader(reader).readJson();
     if (!msg || (msg as { type?: string }).type !== "connect") {
       await sendResponse(writer, {
         type: "error",
