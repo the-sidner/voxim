@@ -238,7 +238,7 @@ export type EquipSlot = "weapon" | "offHand" | "head" | "chest" | "legs" | "feet
 
 export interface ItemTemplate {
   id: string;
-  category: "weapon" | "armor" | "tool" | "consumable" | "resource" | "component";
+  category: "weapon" | "armor" | "tool" | "consumable" | "resource" | "component" | "deployable";
   /** Resources and consumables stack; crafted items (with parts) do not. */
   stackable: boolean;
   /** Base weight before material density contributions. */
@@ -287,15 +287,32 @@ export interface RecipeInput {
 }
 
 /**
- * A crafting recipe.  Inputs are consumed from the crafter's inventory;
- * output is added or dropped as a world item if inventory is full.
- * ticks: construction time at 20 Hz.
+ * How a recipe step is resolved.
+ *   "attack"   — player attacks the workstation with the requiredTool; instant output.
+ *   "time"     — timer starts when inputs are placed; output when ticks reach 0.
+ *   "assembly" — player selects a recipe explicitly, then attacks with requiredTool.
+ */
+export type RecipeStepType = "attack" | "time" | "assembly";
+
+/**
+ * A crafting recipe.
+ *
+ * Physical model: inputs are placed on a WorkstationBuffer entity; the step
+ * type determines how resolution is triggered.  Legacy recipes with no
+ * stationType are currently unreachable (menu crafting removed).
  */
 export interface Recipe {
   id: string;
+  /** Workstation stationType required (e.g. "chopping_block"). Absent = no station. */
+  stationType?: string;
+  /** How this recipe is resolved. Default "time" when absent. */
+  stepType?: RecipeStepType;
+  /** toolType the attacker must wield for "attack"/"assembly" steps. null = any tool. */
+  requiredTool?: string | null;
   inputs: RecipeInput[];
   outputType: string;
   outputQuantity: number;
+  /** Timer length at 20 Hz. 0 for instant "attack" steps. */
   ticks: number;
 }
 

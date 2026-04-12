@@ -1,23 +1,62 @@
-import type { World } from "@voxim/engine";
+/**
+ * CraftingSystem — physical workstation crafting.
+ *
+ * Responsibilities:
+ *   1. Placement  — ACTION_INTERACT near a workstation moves the first item from
+ *                   the player's inventory into the WorkstationBuffer.
+ *   2. Time-based — WorkstationBuffers whose progressTicks is counting down are
+ *                   advanced each tick; output is spawned on completion.
+ *   3. Auto-start — When a time-based recipe's inputs are fully placed, the
+ *                   countdown begins automatically.
+ *
+ * Attack-based and assembly resolution are handled by WorkstationHitHandler,
+ * which is registered as a HitHandler in server.ts.
+ */
+import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
-import { TileEvents } from "@voxim/protocol";
-import { ACTION_INTERACT, hasAction } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
-import type { ItemPart } from "@voxim/content";
-import type { System, EventEmitter } from "../system.ts";
+import { TileEvents, ACTION_INTERACT, hasAction, CommandType } from "@voxim/protocol";
+import type { CommandPayload } from "@voxim/protocol";
+import type { ContentStore, Recipe } from "@voxim/content";
+import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
-import { Inventory, CraftingQueue, ItemData, InteractCooldown } from "../components/items.ts";
+import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
+import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
+import type { WorkstationBufferData } from "../components/building.ts";
+import { spawnWorkstation } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("CraftingSystem");
-const INTERACT_COOLDOWN_TICKS = 20;
+
+/** How close a player must be to interact with a workstation (world units). */
+const INTERACT_RANGE = 3.0;
+/** Ticks between placement attempts to prevent button-hold spam. */
+const INTERACT_COOLDOWN_TICKS = 10;
+/** How far ahead of the player to place a deployed workstation (world units). */
+const DEPLOY_OFFSET = 1.5;
 
 export class CraftingSystem implements System {
-  constructor(private content: ContentStore) {}
+  private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
+
+  constructor(private readonly content: ContentStore) {}
+
+  prepare(_serverTick: number, ctx: TickContext): void {
+    this._commands = ctx.pendingCommands;
+  }
 
   run(world: World, events: EventEmitter, _dt: number): void {
-    // ── Step 1: detect interact → start crafting ──────────────────────────
+    // ── 0. Command: DeployItem / SelectRecipe ────────────────────────────
+    for (const [entityId, commands] of this._commands) {
+      if (!world.isAlive(entityId)) continue;
+      for (const cmd of commands) {
+        if (cmd.cmd === CommandType.DeployItem) {
+          this._handleDeploy(world, entityId, cmd.inventorySlot);
+        } else if (cmd.cmd === CommandType.SelectRecipe) {
+          this._handleSelectRecipe(world, entityId, cmd.recipeId);
+        }
+      }
+    }
+    // ── 1. Placement via ACTION_INTERACT ─────────────────────────────────
     for (const { entityId, inputState, inventory, interactCooldown } of world.query(
       InputState, Inventory, InteractCooldown,
     )) {
@@ -25,132 +64,211 @@ export class CraftingSystem implements System {
         world.set(entityId, InteractCooldown, { remaining: interactCooldown.remaining - 1 });
         continue;
       }
-
       if (!hasAction(inputState.actions, ACTION_INTERACT)) continue;
 
       world.set(entityId, InteractCooldown, { remaining: INTERACT_COOLDOWN_TICKS });
 
-      const craftingQueue = world.get(entityId, CraftingQueue);
-      if (!craftingQueue || craftingQueue.activeRecipeId !== null) continue;
+      if (inventory.slots.length === 0) continue;
 
-      const inventoryMap = slotsToMap(inventory.slots);
-      const recipe = this.content.findCraftableRecipe(inventoryMap);
-      if (!recipe) {
-        log.debug("craft attempt: entity=%s no craftable recipe in inventory", entityId);
+      const pos = world.get(entityId, Position);
+      if (!pos) continue;
+
+      const stationId = this.findNearestWorkstation(world, pos.x, pos.y);
+      if (!stationId) continue;
+
+      const buffer = world.get(stationId, WorkstationBuffer);
+      if (!buffer) continue;
+
+      const occupied = buffer.slots.filter((s) => s !== null).length;
+      if (occupied >= buffer.capacity) {
+        log.debug("interact: station=%s buffer full (%d/%d)", stationId, occupied, buffer.capacity);
         continue;
       }
 
-      log.info("crafting started: entity=%s recipe=%s ticks=%d", entityId, recipe.id, recipe.ticks);
-      world.set(entityId, CraftingQueue, {
-        activeRecipeId: recipe.id,
+      // Place the first inventory slot into the buffer
+      const slot = inventory.slots[0];
+      const newInvSlots = inventory.slots.slice(1);
+      world.set(entityId, Inventory, { ...inventory, slots: newInvSlots });
+
+      const newBufferSlots = [...buffer.slots, { itemType: slot.itemType, quantity: slot.quantity }];
+      world.set(stationId, WorkstationBuffer, { ...buffer, slots: newBufferSlots });
+
+      log.info("placed: player=%s item=%sx%d on station=%s (%s)",
+        entityId, slot.itemType, slot.quantity, stationId, buffer.stationType);
+    }
+
+    // ── 2. Auto-start time-based recipes ────────────────────────────────
+    for (const { entityId, workstationBuffer: buf } of world.query(WorkstationBuffer)) {
+      if (buf.progressTicks !== null) continue; // already running
+      if (buf.slots.length === 0) continue;
+
+      const recipe = findMatchingRecipe(this.content, buf.stationType, "time", buf.slots);
+      if (!recipe) continue;
+
+      world.set(entityId, WorkstationBuffer, {
+        ...buf,
         progressTicks: recipe.ticks,
-        queued: craftingQueue.queued,
+        activeRecipeId: recipe.id,
       });
+      log.info("time-recipe started: station=%s recipe=%s ticks=%d", entityId, recipe.id, recipe.ticks);
     }
 
-    // ── Step 2: advance active recipes ───────────────────────────────────
-    for (const { entityId, craftingQueue } of world.query(CraftingQueue)) {
-      if (craftingQueue.activeRecipeId === null) continue;
+    // ── 3. Advance time-based recipes ────────────────────────────────────
+    for (const { entityId, workstationBuffer: buf } of world.query(WorkstationBuffer)) {
+      if (buf.progressTicks === null || buf.progressTicks <= 0) continue;
 
-      const newProgress = craftingQueue.progressTicks - 1;
-
-      if (newProgress > 0) {
-        world.set(entityId, CraftingQueue, { ...craftingQueue, progressTicks: newProgress });
+      const newTicks = buf.progressTicks - 1;
+      if (newTicks > 0) {
+        world.set(entityId, WorkstationBuffer, { ...buf, progressTicks: newTicks });
         continue;
       }
 
-      // Recipe completed
-      const recipe = this.content.getRecipe(craftingQueue.activeRecipeId);
+      // Completed
+      const recipe = buf.activeRecipeId ? this.content.getRecipe(buf.activeRecipeId) : null;
       if (recipe) {
-        const inv = world.get(entityId, Inventory);
-        if (inv) {
-          const newSlots = consumeItems(
-            inv.slots,
-            recipe.inputs.map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
-          );
-          const parts = buildOutputParts(recipe.inputs, this.content);
-          const outputTemplate = this.content.getItemTemplate(recipe.outputType);
-          const stackable = outputTemplate?.stackable ?? true;
-
-          let finalSlots: InventorySlot[] | null;
-          if (stackable && parts.length === 0) {
-            finalSlots = addStackableItem(newSlots, recipe.outputType, recipe.outputQuantity, inv.capacity);
-          } else {
-            finalSlots = addUniqueItem(newSlots, recipe.outputType, parts, inv.capacity);
-          }
-
-          if (finalSlots !== null) {
-            world.set(entityId, Inventory, { ...inv, slots: finalSlots });
-            log.info("crafting complete: entity=%s recipe=%s output=%sx%d (to inventory)",
-              entityId, recipe.id, recipe.outputType, recipe.outputQuantity);
-          } else {
-            spawnItemAtEntity(world, entityId, recipe.outputType, recipe.outputQuantity, parts);
-            log.info("crafting complete: entity=%s recipe=%s output=%sx%d (dropped — full)",
-              entityId, recipe.id, recipe.outputType, recipe.outputQuantity);
-          }
-        }
-
-        events.publish(TileEvents.CraftingCompleted, { crafterId: entityId, recipeId: recipe.id });
-      }
-
-      const [next, ...rest] = craftingQueue.queued;
-      if (next) {
-        const nextRecipe = this.content.getRecipe(next);
-        log.info("crafting next: entity=%s recipe=%s", entityId, next);
-        world.set(entityId, CraftingQueue, {
-          activeRecipeId: next,
-          progressTicks: nextRecipe?.ticks ?? 60,
-          queued: rest,
+        const newSlots = consumeFromBuffer(buf.slots, recipe.inputs);
+        world.set(entityId, WorkstationBuffer, {
+          ...buf,
+          slots: newSlots,
+          progressTicks: null,
+          activeRecipeId: null,
         });
+
+        spawnOutputNear(world, entityId, recipe.outputType, recipe.outputQuantity);
+        events.publish(TileEvents.CraftingCompleted, { crafterId: entityId, recipeId: recipe.id });
+        log.info("time-recipe done: station=%s recipe=%s output=%sx%d",
+          entityId, recipe.id, recipe.outputType, recipe.outputQuantity);
       } else {
-        world.set(entityId, CraftingQueue, { activeRecipeId: null, progressTicks: 0, queued: [] });
+        world.set(entityId, WorkstationBuffer, { ...buf, progressTicks: null, activeRecipeId: null });
       }
     }
   }
-}
 
-function buildOutputParts(inputs: Array<{ itemType: string; outputSlot?: string }>, content: ContentStore): ItemPart[] {
-  const parts: ItemPart[] = [];
-  for (const input of inputs) {
-    if (!input.outputSlot) continue;
-    const template = content.getItemTemplate(input.itemType);
-    if (!template?.materialName) continue;
-    parts.push({ slot: input.outputSlot, materialName: template.materialName });
+  private _handleDeploy(world: World, entityId: EntityId, slotIndex: number): void {
+    const inventory = world.get(entityId, Inventory);
+    if (!inventory) return;
+    const slot = inventory.slots[slotIndex];
+    if (!slot) return;
+
+    const itemDef = this.content.getItemTemplate(slot.itemType);
+    if (itemDef?.category !== "deployable") {
+      log.debug("deploy: player=%s item=%s not deployable", entityId, slot.itemType);
+      return;
+    }
+
+    // Place the workstation slightly in front of the player
+    const pos = world.get(entityId, Position);
+    if (!pos) return;
+    const facing = world.get(entityId, InputState)?.facing ?? 0;
+    const wx = pos.x + Math.sin(facing) * DEPLOY_OFFSET;
+    const wy = pos.y + Math.cos(facing) * DEPLOY_OFFSET;
+
+    spawnWorkstation(world, { x: wx, y: wy, z: pos.z, stationType: slot.itemType });
+
+    // Consume one from inventory
+    const newSlots = [...inventory.slots];
+    if (slot.quantity <= 1) {
+      newSlots.splice(slotIndex, 1);
+    } else {
+      newSlots[slotIndex] = { ...slot, quantity: slot.quantity - 1 };
+    }
+    world.set(entityId, Inventory, { ...inventory, slots: newSlots });
+    log.info("deploy: player=%s placed %s at (%.1f, %.1f)", entityId, slot.itemType, wx, wy);
   }
-  return parts;
+
+  private _handleSelectRecipe(world: World, entityId: EntityId, recipeId: string): void {
+    const pos = world.get(entityId, Position);
+    if (!pos) return;
+    const stationId = this.findNearestWorkstation(world, pos.x, pos.y);
+    if (!stationId) return;
+    const buffer = world.get(stationId, WorkstationBuffer);
+    if (!buffer) return;
+    world.set(stationId, WorkstationBuffer, { ...buffer, activeRecipeId: recipeId });
+    log.info("select-recipe: player=%s station=%s recipe=%s", entityId, stationId, recipeId);
+  }
+
+  private findNearestWorkstation(world: World, x: number, y: number): EntityId | null {
+    let bestId: EntityId | null = null;
+    let bestDistSq = INTERACT_RANGE * INTERACT_RANGE;
+
+    for (const { entityId } of world.query(WorkstationTag)) {
+      const pos = world.get(entityId, Position);
+      if (!pos) continue;
+      const dx = pos.x - x, dy = pos.y - y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < bestDistSq) { bestDistSq = distSq; bestId = entityId; }
+    }
+    return bestId;
+  }
 }
 
-function slotsToMap(slots: InventorySlot[]): Map<string, number> {
+// ---- shared helpers (also used by WorkstationHitHandler) ----
+
+export function findMatchingRecipe(
+  content: ContentStore,
+  stationType: string,
+  stepType: Recipe["stepType"],
+  bufferSlots: WorkstationBufferData["slots"],
+): Recipe | null {
+  const bufferMap = slotsToMap(bufferSlots);
+  for (const recipe of content.getAllRecipes()) {
+    if (recipe.stationType !== stationType) continue;
+    if ((recipe.stepType ?? "time") !== stepType) continue;
+    if (!recipeInputsMatch(recipe.inputs, bufferMap)) continue;
+    return recipe;
+  }
+  return null;
+}
+
+export function recipeInputsMatch(
+  inputs: Recipe["inputs"],
+  bufferMap: Map<string, number>,
+): boolean {
+  return inputs.every((inp) => (bufferMap.get(inp.itemType) ?? 0) >= inp.quantity);
+}
+
+export function consumeFromBuffer(
+  slots: WorkstationBufferData["slots"],
+  inputs: Recipe["inputs"],
+): WorkstationBufferData["slots"] {
+  const remaining = new Map<string, number>();
+  for (const s of slots) {
+    if (s !== null) remaining.set(s.itemType, (remaining.get(s.itemType) ?? 0) + s.quantity);
+  }
+  for (const inp of inputs) {
+    const cur = remaining.get(inp.itemType) ?? 0;
+    const after = cur - inp.quantity;
+    if (after <= 0) remaining.delete(inp.itemType);
+    else remaining.set(inp.itemType, after);
+  }
+  return Array.from(remaining.entries()).map(([itemType, quantity]) => ({ itemType, quantity }));
+}
+
+function slotsToMap(slots: WorkstationBufferData["slots"]): Map<string, number> {
   const m = new Map<string, number>();
-  for (const s of slots) m.set(s.itemType, (m.get(s.itemType) ?? 0) + s.quantity);
+  for (const s of slots) {
+    if (s !== null) m.set(s.itemType, (m.get(s.itemType) ?? 0) + s.quantity);
+  }
   return m;
 }
 
-function consumeItems(slots: InventorySlot[], inputs: Array<{ itemType: string; quantity: number }>): InventorySlot[] {
-  const m = slotsToMap(slots);
-  for (const inp of inputs) m.set(inp.itemType, (m.get(inp.itemType) ?? 0) - inp.quantity);
-  return Array.from(m.entries()).filter(([, qty]) => qty > 0).map(([itemType, quantity]) => ({ itemType, quantity }));
+export function spawnOutputNear(world: World, stationId: EntityId, itemType: string, quantity: number): void {
+  const pos = world.get(stationId, Position);
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, Position, { x: (pos?.x ?? 0) + 0.5, y: (pos?.y ?? 0) + 0.5, z: pos?.z ?? 4.0 });
+  world.write(id, ItemData, { itemType, quantity });
 }
 
-function addStackableItem(slots: InventorySlot[], itemType: string, quantity: number, capacity: number): InventorySlot[] | null {
+export function addStackableToInventory(
+  slots: InventorySlot[],
+  itemType: string,
+  quantity: number,
+  capacity: number,
+): InventorySlot[] | null {
   const total = slots.reduce((s, sl) => s + sl.quantity, 0);
   if (total + quantity > capacity) return null;
   const existing = slots.find((s) => s.itemType === itemType && !s.parts);
-  if (existing) return slots.map((s) => s === existing ? { ...s, quantity: s.quantity + quantity } : s);
+  if (existing) return slots.map((s) => (s === existing ? { ...s, quantity: s.quantity + quantity } : s));
   return [...slots, { itemType, quantity }];
-}
-
-function addUniqueItem(slots: InventorySlot[], itemType: string, parts: ItemPart[], capacity: number): InventorySlot[] | null {
-  const total = slots.reduce((s, sl) => s + sl.quantity, 0);
-  if (total + 1 > capacity) return null;
-  return [...slots, { itemType, quantity: 1, condition: 100, ...(parts.length > 0 ? { parts } : {}) }];
-}
-
-function spawnItemAtEntity(world: World, entityId: string, itemType: string, quantity: number, parts: ItemPart[]): void {
-  const pos = world.get(entityId, Position);
-  if (!pos) return;
-  const id = newEntityId();
-  world.create(id);
-  world.write(id, Position, { x: pos.x + 0.5, y: pos.y + 0.5, z: pos.z });
-  world.write(id, ItemData, { itemType, quantity, condition: parts.length > 0 ? 100 : undefined, parts: parts.length > 0 ? parts : undefined });
 }

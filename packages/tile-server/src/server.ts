@@ -29,7 +29,7 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { HeritageStore } from "./heritage_store.ts";
-import { spawnPlayer, spawnNpc, spawnEntity, spawnProp } from "./spawner.ts";
+import { spawnPlayer, spawnNpc, spawnEntity, spawnProp, spawnWorkstation } from "./spawner.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -48,6 +48,7 @@ import { ResourceNodeSystem } from "./systems/resource_node_system.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
 import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
+import { WorkstationHitHandler } from "./handlers/workstation_hit_handler.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
 import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
@@ -214,6 +215,7 @@ export class TileServer {
           new HealthHitHandler(content, skill),
           new ResourceNodeHitHandler(content),
           new BlueprintHitHandler(),
+          new WorkstationHitHandler(content),
         ]);
         return [skill, action];
       })(),
@@ -765,6 +767,15 @@ export class TileServer {
     this.world.write(id, WorldClock, { ticksElapsed: 0, dayLengthTicks });
     this.world.write(id, TileCorruption, { level: 0 });
     console.log("[TileServer] world-state entity created");
+
+    // Spawn a few starter workstations near the default player spawn point.
+    const spawn = content.getGameConfig().player;
+    const sx = spawn.defaultSpawnX;
+    const sy = spawn.defaultSpawnY;
+    spawnWorkstation(this.world, { x: sx + 3, y: sy,     z: 4.0, stationType: "chopping_block" });
+    spawnWorkstation(this.world, { x: sx + 5, y: sy,     z: 4.0, stationType: "workbench" });
+    spawnWorkstation(this.world, { x: sx + 3, y: sy + 2, z: 4.0, stationType: "campfire", capacity: 2 });
+    console.log("[TileServer] starter workstations spawned");
   }
 
   private spawnInitialNodes(content: ContentStore): void {

@@ -19,7 +19,7 @@ import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import type { HeritageStore } from "./heritage_store.ts";
 import { ResourceNode } from "./components/resource_node.ts";
-import { Blueprint } from "./components/building.ts";
+import { Blueprint, WorkstationTag, WorkstationBuffer } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -205,6 +205,47 @@ export function spawnBlueprint(world: World, content: ContentStore, opts: SpawnB
       fromFwd: 0, fromRight: 0, fromUp: 0,
       toFwd:   0, toRight:   0, toUp: capsuleHeight,
       radius:  0.5,
+    }],
+  });
+
+  return id;
+}
+
+// ---- workstation spawning ----
+
+export interface SpawnWorkstationOpts {
+  x?: number;
+  y?: number;
+  z?: number;
+  stationType: string;
+  capacity?: number;
+}
+
+/**
+ * Create a workstation entity: WorkstationTag (server-only) + WorkstationBuffer (networked) + Hitbox.
+ * Players place items on it via ACTION_INTERACT; attacks resolve recipes via WorkstationHitHandler.
+ */
+export function spawnWorkstation(world: World, opts: SpawnWorkstationOpts): EntityId {
+  const id = newEntityId();
+  const x = opts.x ?? 256;
+  const y = opts.y ?? 256;
+
+  world.create(id);
+  world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
+  world.write(id, WorkstationTag, { stationType: opts.stationType });
+  world.write(id, WorkstationBuffer, {
+    stationType: opts.stationType,
+    slots: [],
+    capacity: opts.capacity ?? 4,
+    activeRecipeId: null,
+    progressTicks: null,
+  });
+  world.write(id, Hitbox, {
+    parts: [{
+      id: "body",
+      fromFwd: 0, fromRight: 0, fromUp: 0,
+      toFwd:   0, toRight:   0, toUp: 1.2,
+      radius: 0.6,
     }],
   });
 
