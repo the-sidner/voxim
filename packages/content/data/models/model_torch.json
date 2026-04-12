@@ -1,0 +1,14 @@
+{
+  "id": "model_torch",
+  "version": 1,
+  "nodes": [
+    { "x": 0, "y": 0, "z": 0, "materialId": 100 },
+    { "x": 0, "y": 0, "z": 1, "materialId": 100 },
+    { "x": 0, "y": 0, "z": 2, "materialId": 100 },
+    { "x": 0, "y": 0, "z": 3, "materialId": 108 },
+    { "x": 0, "y": 0, "z": 4, "materialId": 7 },
+    { "x": 0, "y": 0, "z": 5, "materialId": 7 }
+  ],
+  "subObjects": [],
+  "materials": [100, 108, 7]
+}

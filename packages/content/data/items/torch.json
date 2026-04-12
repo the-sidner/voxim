@@ -5,6 +5,7 @@
   "deployTemplateId": "torch_placed",
   "stackable": true,
   "weight": 0.3,
+  "modelTemplateId": "model_torch",
   "slots": [],
   "baseStats": {
     "damage": 4,
