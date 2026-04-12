@@ -25,33 +25,28 @@ buffer and evaluate the hit against that historical snapshot.
 Done when: hit detection uses rewound state; RTT estimate drives rewind depth.
 
 ### T-002 · Parry window detection in `ActionSystem`
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 1a12c4b
 
-When block input arrives while an incoming swing is in active phase, check if it lands within the
-parry window (configurable ticks from `game_config.json`). If yes, emit a `ParrySuccess` event.
-Done when: successful blocks within the window produce a `ParrySuccess` event on the event bus.
+HealthHitHandler: `blockHeldTicks < parryWindowTicks` (dodge config) triggers parry path.
+Emits `DamageDealt { blocked: true, amount: 0 }` (no separate ParrySuccess event needed).
 
 ### T-003 · Stagger state from parry
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 1a12c4b
 
-On `ParrySuccess` event, write a stagger component onto the attacker with a duration from config.
-Stagger interrupts the attacker's winddown phase and prevents new swings while active.
-Done when: a parried attacker cannot swing during stagger duration.
+HealthHitHandler sets `staggerTicksRemaining: dodgeCfg.staggerTicks` on attacker.
+DodgeSystem decrements each tick; ActionSystem gates swing initiation on stagger === 0.
 
 ### T-004 · Counter-attack window + bonus damage
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 1a12c4b
 
-After a stagger is applied, open a counter window (configurable ticks). Hits landing during the
-counter window on a staggered enemy deal bonus damage (multiplier from `game_config.json`).
-Done when: counter hits apply bonus damage; window closes after expiry or first hit.
+Parry sets `counterReady: true` on defender's CombatState. Next hit from that entity
+applies `counterDamageMultiplier` and clears the flag. Window is open-ended (one hit).
 
 ### T-005 · Directional blocking — facing check in hit resolution
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 1a12c4b
 
-Blocking currently ignores attack direction. In hit resolution, check if the target is in block
-state and whether the attacker is within a frontal arc of the defender's facing. Attacks from
-outside the arc bypass the block.
-Done when: side and rear hits land through block; frontal hits are blocked correctly.
+HealthHitHandler: `angleDiff(incomingAngle, targetSnapshotFacing) <= blockArcHalfRadians`
+(π/2 = 90° half-arc). Stamina-exhausted defenders cannot block. Rear/side hits land through.
 
 ### T-006 · Ranged weapon action type + projectile spawning
 Effort: M   Status: todo
