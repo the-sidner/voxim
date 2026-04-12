@@ -448,5 +448,69 @@
       "bladeRadius": 0.14
     },
     "weaponAction": "bite"
+  },
+  {
+    "id": "chopping_block",
+    "category": "deployable",
+    "stackable": true,
+    "weight": 20.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "workbench",
+    "category": "deployable",
+    "stackable": true,
+    "weight": 25.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "forge",
+    "category": "deployable",
+    "stackable": true,
+    "weight": 50.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "furnace",
+    "category": "deployable",
+    "stackable": true,
+    "weight": 60.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "anvil",
+    "category": "deployable",
+    "stackable": true,
+    "weight": 80.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "altar",
+    "category": "deployable",
+    "stackable": true,
+    "weight": 30.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "alchemist_bench",
+    "category": "deployable",
+    "stackable": true,
+    "weight": 22.0,
+    "slots": [],
+    "baseStats": {}
+  },
+  {
+    "id": "writing_desk",
+    "category": "deployable",
+    "stackable": true,
+    "weight": 18.0,
+    "slots": [],
+    "baseStats": {}
   }
 ]

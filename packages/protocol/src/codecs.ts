@@ -110,6 +110,18 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       v.setFloat32(1 + strBytes.byteLength + 4, cmd.worldY, true);
       return u8;
     }
+
+    case CommandType.DeployItem:
+      return new Uint8Array([cmd.inventorySlot]);
+
+    case CommandType.SelectRecipe: {
+      const strBytes = new TextEncoder().encode(cmd.recipeId);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      return u8;
+    }
   }
 }
 
@@ -150,6 +162,15 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const worldX = dv.getFloat32(0, true);
       const worldY = dv.getFloat32(4, true);
       return { cmd: CommandType.PlaceBlueprint, structureType, worldX, worldY };
+    }
+
+    case CommandType.DeployItem:
+      return { cmd: CommandType.DeployItem, inventorySlot: bytes[0] };
+
+    case CommandType.SelectRecipe: {
+      const strLen = bytes[0];
+      const recipeId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      return { cmd: CommandType.SelectRecipe, recipeId };
     }
 
     default:

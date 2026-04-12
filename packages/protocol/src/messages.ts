@@ -109,7 +109,9 @@ export const enum CommandType {
   TradeBuy        = 8,  // payload: u32 listingSlot
   TradeSell       = 9,  // payload: u8 inventorySlot
   PlaceBlueprint  = 10, // payload: u8 strLen + UTF-8 structureType + f32 worldX + f32 worldY
-  // 11-255 reserved for future commands
+  DeployItem      = 11, // payload: u8 inventorySlot — place deployable item as world workstation
+  SelectRecipe    = 12, // payload: u8 strLen + UTF-8 recipeId — set active recipe on nearest workstation (assembly step)
+  // 13-255 reserved for future commands
 }
 
 /**
@@ -141,7 +143,9 @@ export type CommandPayload =
   | { cmd: CommandType.Internalise;    inventorySlot: number }
   | { cmd: CommandType.TradeBuy;       listingSlot: number }
   | { cmd: CommandType.TradeSell;      inventorySlot: number }
-  | { cmd: CommandType.PlaceBlueprint; structureType: string; worldX: number; worldY: number };
+  | { cmd: CommandType.PlaceBlueprint; structureType: string; worldX: number; worldY: number }
+  | { cmd: CommandType.DeployItem;     inventorySlot: number }
+  | { cmd: CommandType.SelectRecipe;   recipeId: string };
 
 export interface CommandDatagram {
   /** Monotonically increasing, shared sequence space with MovementDatagram. */

@@ -1074,3 +1074,60 @@ export const hitboxCodec: Serialiser<HitboxData> = {
     return { parts };
   },
 };
+
+// ---- WorkstationBuffer ----
+// Wire layout:
+//   stationType:    [u16 len][UTF-8 bytes]
+//   capacity:       u8
+//   activeRecipeId: u8 present + [u16 len][UTF-8 bytes] if present
+//   progressTicks:  i32 (-1 = null)
+//   slots:          [u16 count] per slot: u8 present + [u16 str][u16 qty] if present
+
+export interface WorkstationSlot {
+  itemType: string;
+  quantity: number;
+}
+
+export interface WorkstationBufferData {
+  stationType: string;
+  slots: Array<WorkstationSlot | null>;
+  capacity: number;
+  /** Set by SelectRecipe command for "assembly" step recipes. */
+  activeRecipeId: string | null;
+  /** Countdown for "time" step recipes. null when idle. */
+  progressTicks: number | null;
+}
+
+export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
+  encode(v: WorkstationBufferData): Uint8Array {
+    const w = new WireWriter();
+    w.writeStr(v.stationType);
+    w.writeU8(v.capacity);
+    if (v.activeRecipeId !== null) { w.writeU8(1); w.writeStr(v.activeRecipeId); }
+    else                           { w.writeU8(0); }
+    w.writeI32(v.progressTicks ?? -1);
+    w.writeU16(v.slots.length);
+    for (const s of v.slots) {
+      if (s !== null) { w.writeU8(1); w.writeStr(s.itemType); w.writeU16(s.quantity); }
+      else            { w.writeU8(0); }
+    }
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): WorkstationBufferData {
+    const r = new WireReader(bytes);
+    const stationType    = r.readStr();
+    const capacity       = r.readU8();
+    const hasRecipe      = r.readU8() === 1;
+    const activeRecipeId = hasRecipe ? r.readStr() : null;
+    const rawTicks       = r.readI32();
+    const progressTicks  = rawTicks < 0 ? null : rawTicks;
+    const count = r.readU16();
+    const slots: Array<WorkstationSlot | null> = [];
+    for (let i = 0; i < count; i++) {
+      const present = r.readU8() === 1;
+      if (present) { const itemType = r.readStr(); const quantity = r.readU16(); slots.push({ itemType, quantity }); }
+      else         { slots.push(null); }
+    }
+    return { stationType, capacity, activeRecipeId, progressTicks, slots };
+  },
+};

@@ -1,5 +1,6 @@
 import { defineComponent } from "@voxim/engine";
-import { blueprintCodec } from "@voxim/codecs";
+import { blueprintCodec, workstationBufferCodec, WireWriter, WireReader } from "@voxim/codecs";
+import type { WorkstationBufferData } from "@voxim/codecs";
 
 export interface BlueprintMaterial {
   itemType: string;
@@ -54,5 +55,43 @@ export const Blueprint = defineComponent({
     totalTicks: 60,
     ticksRemaining: 60,
     materialsDeducted: false,
+  }),
+});
+
+// ---- WorkstationTag (server-only) ----
+// Marks an entity as a workstation of a given type. Not sent over the wire.
+
+export interface WorkstationTagData {
+  stationType: string;
+}
+
+export const WorkstationTag = defineComponent({
+  name: "workstationTag" as const,
+  networked: false,
+  codec: {
+    encode(v: WorkstationTagData): Uint8Array {
+      const w = new WireWriter(); w.writeStr(v.stationType); return w.toBytes();
+    },
+    decode(b: Uint8Array): WorkstationTagData {
+      const r = new WireReader(b); return { stationType: r.readStr() };
+    },
+  },
+  default: (): WorkstationTagData => ({ stationType: "" }),
+});
+
+// ---- WorkstationBuffer (networked) ----
+// Holds materials placed on a workstation. Visible to clients for UI display.
+
+export { type WorkstationBufferData };
+
+export const WorkstationBuffer = defineComponent({
+  name: "workstationBuffer" as const,
+  codec: workstationBufferCodec,
+  default: (): WorkstationBufferData => ({
+    stationType: "",
+    slots: [],
+    capacity: 4,
+    activeRecipeId: null,
+    progressTicks: null,
   }),
 });

@@ -23,12 +23,12 @@ import {
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import { ItemData, Inventory, CraftingQueue, InteractCooldown } from "./components/items.ts";
-import { Blueprint } from "./components/building.ts";
+import { Blueprint, WorkstationBuffer } from "./components/building.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { WorldClock, TileCorruption, CorruptionExposure } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
-// Hitbox is server-only (networked: false) — not in registry
+// Hitbox and WorkstationTag are server-only (networked: false) — not in registry
 
 interface RegistryEntry {
   readonly typeId: number;
@@ -71,6 +71,8 @@ export const COMPONENT_REGISTRY: ReadonlyArray<RegistryEntry> = [
   { typeId: ComponentType.loreLoadout,        def: LoreLoadout },
   { typeId: ComponentType.activeEffects,      def: ActiveEffects },
   // ComponentType.hitbox slot reserved — component is networked: false (server-only)
+  // ComponentType.workstationTag slot reserved — component is networked: false (server-only)
+  { typeId: ComponentType.workstationBuffer,  def: WorkstationBuffer },
 ];
 
 /** Flat list of all networked ComponentDefs — used by AoI spawn builder. */

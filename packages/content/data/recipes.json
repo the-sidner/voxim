@@ -1,33 +1,77 @@
 [
   {
+    "id": "plank",
+    "stationType": "chopping_block",
+    "stepType": "attack",
+    "requiredTool": "axe",
+    "inputs": [{ "itemType": "wood", "quantity": 1 }],
+    "outputType": "plank",
+    "outputQuantity": 2,
+    "ticks": 0
+  },
+  {
+    "id": "stone_block",
+    "stationType": "chopping_block",
+    "stepType": "attack",
+    "requiredTool": "pickaxe",
+    "inputs": [{ "itemType": "stone", "quantity": 2 }],
+    "outputType": "stone_block",
+    "outputQuantity": 1,
+    "ticks": 0
+  },
+  {
     "id": "wooden_sword",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
     "inputs": [{ "itemType": "wood", "quantity": 3 }],
     "outputType": "wooden_sword",
     "outputQuantity": 1,
-    "ticks": 60
+    "ticks": 0
   },
   {
     "id": "stone_axe",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
     "inputs": [
       { "itemType": "stone", "quantity": 2 },
       { "itemType": "wood", "quantity": 2 }
     ],
     "outputType": "stone_axe",
     "outputQuantity": 1,
-    "ticks": 120
+    "ticks": 0
+  },
+  {
+    "id": "torch",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
+    "inputs": [
+      { "itemType": "wood", "quantity": 1 },
+      { "itemType": "raw_meat", "quantity": 1 }
+    ],
+    "outputType": "torch",
+    "outputQuantity": 2,
+    "ticks": 0
   },
   {
     "id": "campfire",
+    "stationType": "workbench",
+    "stepType": "attack",
+    "requiredTool": "hammer",
     "inputs": [
       { "itemType": "wood", "quantity": 5 },
       { "itemType": "stone", "quantity": 2 }
     ],
     "outputType": "campfire",
     "outputQuantity": 1,
-    "ticks": 100
+    "ticks": 0
   },
   {
     "id": "cooked_meat",
+    "stationType": "campfire",
+    "stepType": "time",
     "inputs": [
       { "itemType": "raw_meat", "quantity": 1 },
       { "itemType": "wood", "quantity": 1 }
@@ -35,29 +79,5 @@
     "outputType": "cooked_meat",
     "outputQuantity": 1,
     "ticks": 80
-  },
-  {
-    "id": "plank",
-    "inputs": [{ "itemType": "wood", "quantity": 1 }],
-    "outputType": "plank",
-    "outputQuantity": 2,
-    "ticks": 20
-  },
-  {
-    "id": "stone_block",
-    "inputs": [{ "itemType": "stone", "quantity": 2 }],
-    "outputType": "stone_block",
-    "outputQuantity": 1,
-    "ticks": 40
-  },
-  {
-    "id": "torch",
-    "inputs": [
-      { "itemType": "wood", "quantity": 1 },
-      { "itemType": "raw_meat", "quantity": 1 }
-    ],
-    "outputType": "torch",
-    "outputQuantity": 2,
-    "ticks": 30
   }
 ]

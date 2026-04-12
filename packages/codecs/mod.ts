@@ -12,6 +12,7 @@ export type {
   ResourceNodeData, LoreSkillSlot, LoreLoadoutData, ActiveEffect, ActiveEffectsData,
   NpcTagData, Job, PlanStep, NpcPlanData, NpcJobQueueData,
   HitboxData,
+  WorkstationSlot, WorkstationBufferData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec,
@@ -27,6 +28,7 @@ export {
   activeEffectCodec, activeEffectsCodec,
   npcTagCodec, npcJobQueueCodec,
   hitboxCodec,
+  workstationBufferCodec,
 } from "./src/components.ts";
 
 export { uuidToBytes, bytesToUuid } from "./src/uuid.ts";
