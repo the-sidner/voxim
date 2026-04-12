@@ -504,6 +504,30 @@ export function resolveSubObjects(subObjects: SubObjectRef[], seed: number): Res
   return result;
 }
 
+/**
+ * Sample procedural body proportion parameters for a skeleton from a seed.
+ *
+ * Uses a PRNG stream independent of resolveSubObjects (different seed derivation)
+ * so adding or removing sub-object pool entries never shifts morph values.
+ *
+ * Returns an empty object if the skeleton defines no morphParams.
+ * The same (skeleton, seed) pair always produces the same result — deterministic
+ * across server (hitbox derivation) and client (mesh building).
+ */
+export function resolveMorphParams(
+  skeleton: import("./types.ts").SkeletonDef,
+  seed: number,
+): Record<string, number> {
+  if (!skeleton.morphParams?.length) return {};
+  // XOR with a magic constant to produce a different PRNG stream from resolveSubObjects.
+  const rand = makePrng((seed ^ 0xA3C5E7F9) >>> 0);
+  const result: Record<string, number> = {};
+  for (const param of skeleton.morphParams) {
+    result[param.id] = param.min + rand() * (param.max - param.min);
+  }
+  return result;
+}
+
 // ---- helpers ----
 
 /**

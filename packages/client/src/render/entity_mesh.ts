@@ -379,18 +379,42 @@ export function upgradeToSkeletonModel(
   subModelDefs: Map<string, ModelDefinition>,
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
+  morphParams?: Record<string, number>,
 ): void {
   clearMeshContent(mesh);
+
+  // Pre-build per-bone rest-axis multipliers from morph param declarations.
+  const boneScaleX = new Map<string, number>();
+  const boneScaleY = new Map<string, number>();
+  const boneScaleZ = new Map<string, number>();
+  if (morphParams && skeleton.morphParams) {
+    for (const param of skeleton.morphParams) {
+      const factor = morphParams[param.id] ?? 1.0;
+      if (factor === 1.0) continue;
+      for (const boneId of param.bones) {
+        if (param.restAxis === "x") {
+          boneScaleX.set(boneId, (boneScaleX.get(boneId) ?? 1.0) * factor);
+        } else if (param.restAxis === "y") {
+          boneScaleY.set(boneId, (boneScaleY.get(boneId) ?? 1.0) * factor);
+        } else {
+          boneScaleZ.set(boneId, (boneScaleZ.get(boneId) ?? 1.0) * factor);
+        }
+      }
+    }
+  }
 
   // Build bone Groups parent-first
   const boneGroups = new Map<string, THREE.Group>();
   for (const bone of skeleton.bones) {
     const bg = new THREE.Group();
     bg.name = `bone:${bone.id}`;
+    const rx = bone.restX * (boneScaleX.get(bone.id) ?? 1.0);
+    const ry = bone.restY * (boneScaleY.get(bone.id) ?? 1.0);
+    const rz = bone.restZ * (boneScaleZ.get(bone.id) ?? 1.0);
     bg.position.set(
-      bone.restX * scale.x,
-      bone.restZ * scale.z,  // model z = up → Three.js y
-      bone.restY * scale.y,
+      rx * scale.x,
+      rz * scale.z,  // model z = up → Three.js y
+      ry * scale.y,
     );
     const parentGroup = bone.parent !== null
       ? (boneGroups.get(bone.parent) ?? mesh.group)

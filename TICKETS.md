@@ -924,6 +924,31 @@ generated TypeScript files aggregate the per-item imports for static bundling:
 `weapon_actions_static.ts` and `item_templates_static.ts`.  Run
 `deno task gen-content` after adding/renaming data files.
 
+---
+
+## Procedural Characters
+
+### T-096 · Skeleton morph params — seed-driven body proportion variation
+Effort: M   Status: done   Commit: (pending)
+
+Add a `morphParams` array to `SkeletonDef` that declares named scalar parameters
+(e.g. `armLength`, `legLength`, `torsoHeight`, `shoulderWidth`), each mapping
+to a set of bone IDs, a rest-axis (`x`/`y`/`z`), and a `[min, max]` multiplier
+range.  `resolveMorphParams(skeleton, seed)` samples each param via a PRNG stream
+derived from `ModelRef.seed` (XOR-separated from the pool-selection stream so the
+two don't alias).  Resolved values are applied in `solveSkeleton()` (server,
+hitboxes) and `upgradeToSkeletonModel()` (client, Three.js bone Groups) — same
+seed produces identical proportions on both sides, no codec changes needed.
+
+Done when:
+- `MorphParamDef` type defined in `types.ts`, `morphParams?` on `SkeletonDef`
+- `resolveMorphParams()` exported from `@voxim/content`
+- `solveSkeleton()` accepts optional `morphParams` and scales per-bone rest offsets
+- `upgradeToSkeletonModel()` accepts optional `morphParams` and scales bone positions
+- `HitboxSystem` and `spawner.ts` compute and forward morph params from `ModelRef.seed`
+- `human.json` skeleton declares four params: `armLength`, `legLength`, `torsoHeight`, `shoulderWidth`
+- `deno check` passes clean
+
 **Deleted**: `model_hitboxes.json` (was never read by the loader — orphaned
 leftover from a superseded hitbox system).
 

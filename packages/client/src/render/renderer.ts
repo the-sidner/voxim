@@ -18,7 +18,7 @@ import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { MaterialDef, ModelDefinition, WeaponActionDef, ItemTemplate, AnimationStateData } from "@voxim/content";
-import { resolveSubObjects } from "@voxim/content";
+import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import {
   createEntityMesh,
@@ -521,7 +521,8 @@ export class VoximRenderer {
         }
 
         if (skeleton) {
-          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale);
+          const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
+          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams);
           this.skeletonOverlay.trackEntity(entityId, capture, skeleton);
 
           // Record each sub-object's transform so armor anchors can be placed

@@ -24,7 +24,7 @@ import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./compone
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import type { ContentStore, EntityTemplate, SkillSlot } from "@voxim/content";
-import { applyHitboxTemplate, solveSkeleton, REST_POSE } from "@voxim/content";
+import { applyHitboxTemplate, solveSkeleton, REST_POSE, resolveMorphParams } from "@voxim/content";
 
 // ---- shared spawn helpers ----
 
@@ -376,7 +376,7 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
     if (hitboxParts.length > 0) {
       const skeleton = content.getSkeletonForModel(opts.template.modelId);
       const boneTransforms = skeleton
-        ? solveSkeleton(skeleton, content.getBoneIndex(skeleton.id), REST_POSE, entityScale)
+        ? solveSkeleton(skeleton, content.getBoneIndex(skeleton.id), REST_POSE, entityScale, resolveMorphParams(skeleton, seed))
         : new Map();
       const parts = applyHitboxTemplate(hitboxParts, boneTransforms);
       if (parts.length > 0) world.write(id, Hitbox, { parts });

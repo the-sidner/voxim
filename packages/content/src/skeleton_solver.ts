@@ -38,6 +38,8 @@ const IDENTITY_TRANSFORM: BoneTransform = { pos: { x: 0, y: 0, z: 0 }, rot: IDEN
  * @param poseRotations  Bone id → Euler XYZ rotation in solver space.
  *                       Bones absent from this map use identity rotation.
  * @param scale          Uniform entity scale (converts voxel rest-units → world units).
+ * @param morphParams    Optional per-axis rest multipliers from resolveMorphParams().
+ *                       When provided, scales each bone's rest offset per its declared axes.
  * @param out            Optional output map. If provided, it is cleared and reused to
  *                       avoid allocation. Pass a persistent Map for pooling.
  */
@@ -46,23 +48,49 @@ export function solveSkeleton(
   boneIndex: ReadonlyMap<string, BoneDef>,
   poseRotations: ReadonlyMap<string, BoneRotation>,
   scale: number,
+  morphParams?: Record<string, number>,
   out?: Map<string, BoneTransform>,
 ): Map<string, BoneTransform> {
   const result: Map<string, BoneTransform> = out ?? new Map();
   if (out) out.clear();
+
+  // Pre-build per-bone rest-axis multipliers from morph param declarations.
+  const boneScaleX = new Map<string, number>();
+  const boneScaleY = new Map<string, number>();
+  const boneScaleZ = new Map<string, number>();
+  if (morphParams && skeleton.morphParams) {
+    for (const param of skeleton.morphParams) {
+      const factor = morphParams[param.id] ?? 1.0;
+      if (factor === 1.0) continue;
+      for (const boneId of param.bones) {
+        if (param.restAxis === "x") {
+          boneScaleX.set(boneId, (boneScaleX.get(boneId) ?? 1.0) * factor);
+        } else if (param.restAxis === "y") {
+          boneScaleY.set(boneId, (boneScaleY.get(boneId) ?? 1.0) * factor);
+        } else {
+          boneScaleZ.set(boneId, (boneScaleZ.get(boneId) ?? 1.0) * factor);
+        }
+      }
+    }
+  }
 
   for (const bone of skeleton.bones) {
     const parentTransform: BoneTransform = bone.parent !== null
       ? (result.get(bone.parent) ?? IDENTITY_TRANSFORM)
       : IDENTITY_TRANSFORM;
 
+    // Apply morph scale to rest components before coordinate conversion.
+    const rx = bone.restX * (boneScaleX.get(bone.id) ?? 1.0);
+    const ry = bone.restY * (boneScaleY.get(bone.id) ?? 1.0);
+    const rz = bone.restZ * (boneScaleZ.get(bone.id) ?? 1.0);
+
     // Convert rest offset from entity-local to solver space.
     // Entity-local: right=restX, fwd=restY, up=restZ
     // Solver:       x=right,    y=up,      z=-fwd
     const restOffsetSolver = {
-      x:  bone.restX * scale,
-      y:  bone.restZ * scale,
-      z: -bone.restY * scale,
+      x:  rx * scale,
+      y:  rz * scale,
+      z: -ry * scale,
     };
 
     // Rotate rest offset into parent's orientation (stays in solver space).

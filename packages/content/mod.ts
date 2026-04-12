@@ -86,7 +86,7 @@ export { ModelRef } from "./src/component.ts";
 
 // ---- content store ----
 export type { ContentStore } from "./src/store.ts";
-export { StaticContentStore, resolveSubObjects } from "./src/store.ts";
+export { StaticContentStore, resolveSubObjects, resolveMorphParams } from "./src/store.ts";
 
 // ---- file loader (Deno server-side) ----
 export { loadContentStore } from "./src/loader.ts";

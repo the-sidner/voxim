@@ -962,6 +962,26 @@ export interface BoneDef {
 }
 
 /**
+ * A named scalar parameter that scales one rest-axis of a set of bones,
+ * producing procedural body proportion variation from a seed.
+ *
+ * Entity-local axes: x = right, y = forward, z = up.
+ * The resolved value is sampled in [min, max] via resolveMorphParams().
+ */
+export interface MorphParamDef {
+  /** Unique name referenced by resolveMorphParams() results. e.g. "armLength". */
+  id: string;
+  /** Bone IDs whose rest offset is multiplied along restAxis. */
+  bones: string[];
+  /** Which entity-local rest component to scale. */
+  restAxis: "x" | "y" | "z";
+  /** Minimum multiplier (e.g. 0.8 = 20% shorter). */
+  min: number;
+  /** Maximum multiplier (e.g. 1.25 = 25% longer). */
+  max: number;
+}
+
+/**
  * Skeleton archetype — defines the bone hierarchy shared across all visual
  * variants of a character type.  Animations reference bones by id.
  * One archetype per character type (human, dwarf, spider, …).
@@ -979,6 +999,12 @@ export interface SkeletonDef {
    * The skeleton owns bone names and pole hints; activators only reference chain IDs.
    */
   ikChains?: IKChainDef[];
+  /**
+   * Procedural proportion parameters sampled from ModelRef.seed via resolveMorphParams().
+   * Each param scales a named rest axis on a set of bones, enabling unique body shapes
+   * without authoring separate skeleton files per variant.
+   */
+  morphParams?: MorphParamDef[];
 }
 
 // ---- animation clip system ----

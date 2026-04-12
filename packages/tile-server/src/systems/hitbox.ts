@@ -29,6 +29,7 @@ import {
   solveSkeleton,
   applyHitboxTemplate,
   REST_POSE,
+  resolveMorphParams,
 } from "@voxim/content";
 import { AnimationState, ModelRef } from "../components/game.ts";
 import { Hitbox } from "../components/hitbox.ts";
@@ -64,15 +65,18 @@ export class HitboxSystem implements System {
         ? evaluateAnimationLayers(skeleton, clipIndex, maskIndex, animationState.layers, poseMap)
         : REST_POSE;
 
+      // Resolve morph params once — same seed as client, deterministic.
+      const morphParams = resolveMorphParams(skeleton, modelRef.seed);
+
       // FK solve → bone world transforms.
-      const boneTransforms = solveSkeleton(skeleton, boneIndex, poseRotations, modelRef.scaleX, transformMap);
+      const boneTransforms = solveSkeleton(skeleton, boneIndex, poseRotations, modelRef.scaleX, morphParams, transformMap);
 
       // Derive hitbox capsules from the template + current pose.
       const parts = applyHitboxTemplate(template, boneTransforms);
 
       if (parts.length === 0) {
         // No template parts — fall back to rest-pose static hitbox.
-        const restTransforms = solveSkeleton(skeleton, boneIndex, REST_POSE, modelRef.scaleX);
+        const restTransforms = solveSkeleton(skeleton, boneIndex, REST_POSE, modelRef.scaleX, morphParams);
         const restParts = applyHitboxTemplate(template, restTransforms);
         if (restParts.length > 0 && !partsEqual(world.get(entityId, Hitbox)?.parts, restParts)) {
           world.set(entityId, Hitbox, { parts: restParts } as HitboxData);
