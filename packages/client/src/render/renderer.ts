@@ -107,9 +107,11 @@ const DEPTH_BLIT_FRAG = /* glsl */`
 
 /**
  * Half-height of the orthographic frustum in world units.
- * The visible vertical range is 2×ORTHO_HALF = 60 world units.
+ * The visible vertical range is 2×ORTHO_HALF = 80 world units.
+ * Set to 40 to avoid clipping tall terrain, trees, and buildings near the
+ * top of the screen (isometric projection compresses world Z into screen Y).
  */
-const ORTHO_HALF = 20;
+const ORTHO_HALF = 40;
 
 /** Terrain chunk size in world units. Must match CHUNK_SIZE in @voxim/world. */
 const CHUNK_SIZE = 32;

@@ -848,7 +848,7 @@ export class TileServer {
 
     const grid = this.zoneGrid;
     const cellWorldSize = 512 / grid.gridSize; // world-units per zone cell side
-    const NPC_DENSITY = 0.06; // expected spawns per zone cell (~60 total)
+    const NPC_DENSITY = 0.35; // expected spawns per zone cell (~360 total)
     const MARGIN = 1.5; // world-units away from cell edges
     const rng = mulberry32(this.tileSeed ^ 0xdeadbeef);
     let total = 0;

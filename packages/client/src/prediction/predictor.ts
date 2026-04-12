@@ -76,7 +76,7 @@ export class Predictor {
     this.pending.push({ seq, input, dt });
     if (this.pending.length > MAX_PENDING) this.pending.shift();
 
-    stepPhysics(this.body, input, getTerrainHeight, dt, this.physicsConfig);
+    this.body = stepPhysics(this.body, input, getTerrainHeight, dt, this.physicsConfig);
 
     // Exponential decay of render offset: retain = 0.5^(dt / halfLife)
     const halfLifeSec = this.predictorConfig.correctionHalfLifeMs / 1000;
@@ -119,7 +119,7 @@ export class Predictor {
 
     // Replay unacknowledged inputs
     for (const p of this.pending) {
-      stepPhysics(this.body, p.input, getTerrainHeight, p.dt, this.physicsConfig);
+      this.body = stepPhysics(this.body, p.input, getTerrainHeight, p.dt, this.physicsConfig);
     }
 
     // Compute divergence between where the player appeared and where physics landed
