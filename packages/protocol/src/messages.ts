@@ -153,55 +153,7 @@ export interface CommandDatagram {
   command: CommandPayload;
 }
 
-// ---- entity delta (component of StateMessage) ----
-
-/**
- * A single component change for one entity, delta-encoded.
- * The network layer emits one EntityDelta per (entityId, componentToken) pair
- * that appears in the tick's AppliedChangeset.
- */
-export interface EntityDelta {
-  entityId: EntityId;
-  /** Identifies the component type — matches ComponentDef.name. */
-  componentName: string;
-  /** Binary-encoded component data (via the component's Serialiser). */
-  data: Uint8Array;
-  /** Version counter at time of encoding. Used by client to discard stale deltas. */
-  version: number;
-}
-
-/** Entity was destroyed this tick. */
-export interface EntityDestroyed {
-  entityId: EntityId;
-}
-
-// ---- state message (server → client, reliable stream, per tick) ----
-
-/**
- * Sent by the tile server at the end of each tick to every connected client.
- * ack_input_seq is load-bearing for client reconciliation.
- */
-export interface StateMessage {
-  /** Which server tick produced this state. */
-  serverTick: number; // u32
-
-  /**
-   * Last input sequence number the server has processed for this client.
-   * Client discards buffered inputs with seq <= ackInputSeq, then replays the rest.
-   */
-  ackInputSeq: number; // u32
-
-  /** Component changes this tick. */
-  entityDeltas: EntityDelta[];
-
-  /** Entities removed this tick. */
-  entityDestroys: EntityDestroyed[];
-
-  /** Discrete game events this tick (damage, death, crafting, etc.). */
-  events: GameEvent[];
-}
-
-// ---- game events (carried inside StateMessage.events) ----
+// ---- game events (carried inside BinaryStateMessage.events) ----
 
 export type GameEvent =
   | DamageDealtEvent

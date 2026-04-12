@@ -16,7 +16,7 @@ import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
 import { chunksFromBuffers, loadTerrainCache, seedFromTileId, ZONE_PROFILES, Heightmap } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
-import { TileEvents, binaryStateMessageCodec, COMPONENT_TYPE_TO_NAME, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
+import { TileEvents, binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 

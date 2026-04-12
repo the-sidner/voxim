@@ -10,8 +10,6 @@ export type {
   MovementDatagram,
   CommandDatagram,
   CommandPayload,
-  EntityDelta,
-  EntityDestroyed,
   GameEvent,
   DamageDealtEvent,
   EntityDiedEvent,
@@ -86,7 +84,7 @@ export type {
 } from "./src/content.ts";
 export { contentRequestCodec, contentResponseCodec } from "./src/content.ts";
 
-export { ComponentType, COMPONENT_NAME_TO_TYPE, COMPONENT_TYPE_TO_NAME } from "./src/component_types.ts";
+export { ComponentType, COMPONENT_TYPE_TO_NAME } from "./src/component_types.ts";
 export { EventType } from "./src/event_types.ts";
 export { binaryStateMessageCodec } from "./src/state_binary.ts";
 export type {

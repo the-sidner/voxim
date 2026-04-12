@@ -31,7 +31,6 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { WireWriter, WireReader } from "@voxim/codecs";
-import { ComponentType } from "@voxim/protocol";
 import { Heightmap, MaterialGrid } from "@voxim/world";
 import { WorldClock, TileCorruption } from "./components/world.ts";
 import { Position } from "./components/game.ts";
@@ -80,12 +79,12 @@ export class SaveManager {
     // World-state entity (WorldClock + TileCorruption)
     for (const { entityId, worldClock } of world.query(WorldClock)) {
       const components: SavedComponent[] = [
-        { typeId: ComponentType.worldClock, data: WorldClock.codec.encode(worldClock) },
+        { typeId: WorldClock.wireId, data: WorldClock.codec.encode(worldClock) },
       ];
       const corruption = world.get(entityId, TileCorruption);
       if (corruption) {
         components.push({
-          typeId: ComponentType.tileCorruption,
+          typeId: TileCorruption.wireId,
           data: TileCorruption.codec.encode(corruption),
         });
       }
@@ -98,8 +97,8 @@ export class SaveManager {
       entities.push({
         entityId,
         components: [
-          { typeId: ComponentType.heightmap,    data: Heightmap.codec.encode(heightmap) },
-          { typeId: ComponentType.materialGrid, data: MaterialGrid.codec.encode(materialGrid) },
+          { typeId: Heightmap.wireId,     data: Heightmap.codec.encode(heightmap) },
+          { typeId: MaterialGrid.wireId,  data: MaterialGrid.codec.encode(materialGrid) },
         ],
       });
     }
@@ -109,8 +108,8 @@ export class SaveManager {
       entities.push({
         entityId,
         components: [
-          { typeId: ComponentType.position,      data: Position.codec.encode(position) },
-          { typeId: ComponentType.resource_node, data: ResourceNode.codec.encode(resource_node) },
+          { typeId: Position.wireId,     data: Position.codec.encode(position) },
+          { typeId: ResourceNode.wireId, data: ResourceNode.codec.encode(resource_node) },
         ],
       });
     }
@@ -181,7 +180,9 @@ export class SaveManager {
         const def = DEF_BY_TYPE_ID.get(typeId);
         if (!def) continue; // unknown typeId — forward-compatibility skip
         try {
-          // deno-lint-ignore no-explicit-any
+          // deno-lint-ignore no-explicit-any — def is NetworkedComponentDef<unknown> at this
+          // point; the decoded value is the correct type by construction (same def owns both
+          // codec and world slot), but TypeScript can't prove it without a generic parameter.
           world.write(entityId, def, def.codec.decode(data) as any);
         } catch {
           console.warn(`[SaveManager] failed to decode component typeId=${typeId} for entity ${entityId}`);

@@ -26,6 +26,29 @@ import { Hitbox } from "./components/hitbox.ts";
 import type { ContentStore, EntityTemplate, SkillSlot } from "@voxim/content";
 import { applyHitboxTemplate, solveSkeleton, REST_POSE } from "@voxim/content";
 
+// ---- shared spawn helpers ----
+
+/**
+ * Write components that every mobile entity (player or NPC) needs:
+ * position, velocity, facing, input slot, and movement modifiers.
+ */
+function writeMovementComponents(
+  world: World,
+  id: EntityId,
+  x: number,
+  y: number,
+  speedMultiplier = 1.0,
+): void {
+  world.write(id, Position, { x, y, z: 4.0 });
+  world.write(id, Velocity, { x: 0, y: 0, z: 0 });
+  world.write(id, Facing, { angle: 0 });
+  world.write(id, InputState, {
+    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0, rttMs: 0,
+  });
+  world.write(id, SpeedModifier, { multiplier: speedMultiplier });
+  world.write(id, EncumbrancePenalty, { multiplier: 1.0 });
+}
+
 // ---- player spawning ----
 
 export interface SpawnPlayerOpts {
@@ -54,20 +77,13 @@ export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlay
   const maxHealth = opts.heritageStore?.maxHealthFor(dynastyId) ?? 100;
 
   world.create(id);
-  world.write(id, Position, { x, y, z: 4.0 });
-  world.write(id, Velocity, { x: 0, y: 0, z: 0 });
-  world.write(id, Facing, { angle: 0 });
-  world.write(id, InputState, {
-    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0, rttMs: 0,
-  });
+  writeMovementComponents(world, id, x, y);
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Hunger, { value: 0 });
   world.write(id, Thirst, { value: 0 });
   world.write(id, CombatState, { blockHeldTicks: 0, staggerTicksRemaining: 0, counterReady: false, iFrameTicksRemaining: 0, dodgeCooldownTicks: 0 });
   world.write(id, Stamina, { current: 100, max: 100, regenPerSecond: 8, exhausted: false });
   world.write(id, CorruptionExposure, { level: 0 });
-  world.write(id, SpeedModifier, { multiplier: 1.0 });
-  world.write(id, EncumbrancePenalty, { multiplier: 1.0 });
   world.write(id, Equipment, {
     weapon:  { itemType: "wooden_sword", quantity: 1, parts: [] },
     offHand: null, head: null, chest: null, legs: null, feet: null, back: null,
@@ -122,19 +138,12 @@ export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts
   const maxHealth = opts.maxHealth ?? 80;
 
   world.create(id);
-  world.write(id, Position, { x, y, z: 4.0 });
-  world.write(id, Velocity, { x: 0, y: 0, z: 0 });
-  world.write(id, Facing, { angle: 0 });
-  world.write(id, InputState, {
-    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0, rttMs: 0,
-  });
+  writeMovementComponents(world, id, x, y, opts.speedMultiplier);
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Hunger, { value: 0 });
   world.write(id, Thirst, { value: 0 });
   world.write(id, CombatState, { blockHeldTicks: 0, staggerTicksRemaining: 0, counterReady: false, iFrameTicksRemaining: 0, dodgeCooldownTicks: 0 });
   world.write(id, CorruptionExposure, { level: 0 });
-  world.write(id, SpeedModifier, { multiplier: opts.speedMultiplier ?? 1.0 });
-  world.write(id, EncumbrancePenalty, { multiplier: 1.0 });
   world.write(id, NpcTag, { npcType: opts.npcType ?? "villager", name: opts.name ?? "Villager" });
   world.write(id, NpcJobQueue, { current: null, scheduled: [], plan: null });
   world.write(id, ModelRef, { modelId: opts.modelId ?? "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
