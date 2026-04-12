@@ -224,8 +224,9 @@ export interface SpawnWorkstationOpts {
 /**
  * Create a workstation entity: WorkstationTag (server-only) + WorkstationBuffer (networked) + Hitbox.
  * Players place items on it via ACTION_INTERACT; attacks resolve recipes via WorkstationHitHandler.
+ * Pass ContentStore to resolve a model from the item template's modelTemplateId.
  */
-export function spawnWorkstation(world: World, opts: SpawnWorkstationOpts): EntityId {
+export function spawnWorkstation(world: World, content: ContentStore, opts: SpawnWorkstationOpts): EntityId {
   const id = newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
@@ -248,6 +249,11 @@ export function spawnWorkstation(world: World, opts: SpawnWorkstationOpts): Enti
       radius: 0.6,
     }],
   });
+
+  const modelId = content.getItemTemplate(opts.stationType)?.modelTemplateId;
+  if (modelId) {
+    world.write(id, ModelRef, { modelId, scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
+  }
 
   return id;
 }

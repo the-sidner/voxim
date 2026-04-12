@@ -75,6 +75,9 @@ export class NpcAiSystem implements System {
       const aggroRangeSq   = template?.aggroRange !== undefined
         ? template.aggroRange * template.aggroRange
         : defaults.defaultAggroRangeSq;
+      const attackRangeSq  = template?.attackRange !== undefined
+        ? template.attackRange * template.attackRange
+        : defaults.attackRangeSq;
       const hungerEmergency  = template?.hungerEmergency ?? defaults.hungerEmergency;
       const thirstEmergency  = template?.thirstEmergency ?? defaults.thirstEmergency;
       const foodHungerRestore = template?.foodHungerRestore ?? defaults.foodHungerRestore;
@@ -186,7 +189,7 @@ export class NpcAiSystem implements System {
           || (currentJob.type === "attackTarget" && targetDrifted(world, currentJob.targetId, plan));
 
         if (needsReplan && this.replansRemaining > 0) {
-          plan = buildPlan(currentJob, pos.x, pos.y, world, this.content, this.currentTick, this.spatial!);
+          plan = buildPlan(currentJob, pos.x, pos.y, world, this.content, this.currentTick, this.spatial!, attackRangeSq);
           this.replansRemaining--;
           dirty = true;
         }
@@ -210,7 +213,7 @@ export class NpcAiSystem implements System {
           if (targetPos) {
             const dx = targetPos.x - pos.x;
             const dy = targetPos.y - pos.y;
-            if (dx * dx + dy * dy <= defaults.attackRangeSq) {
+            if (dx * dx + dy * dy <= attackRangeSq) {
               movementX = 0;
               movementY = 0;
             }
@@ -220,7 +223,7 @@ export class NpcAiSystem implements System {
 
       // ── Attack action ─────────────────────────────────────────────────────
       const actions = currentJob.type === "attackTarget"
-        ? resolveAttackAction(world, currentJob.targetId, pos.x, pos.y, defaults.attackRangeSq)
+        ? resolveAttackAction(world, currentJob.targetId, pos.x, pos.y, attackRangeSq)
         : 0;
 
       // When stopped to attack, face toward target instead of keeping last movement direction.
@@ -280,6 +283,7 @@ function buildPlan(
   content: ContentStore,
   currentTick: number,
   spatial: SpatialGrid,
+  attackRangeSq = 2.25,
 ): NpcPlanData | null {
   switch (job.type) {
     case "idle":
@@ -298,7 +302,7 @@ function buildPlan(
       // Each wolf approaches from its own current angle toward the target,
       // stopping just outside melee range. This naturally spreads a pack
       // around the target instead of stacking them all on the same point.
-      const APPROACH_RADIUS = 1.2; // world units — just inside attackRangeSq=2.25 (r=1.5)
+      const APPROACH_RADIUS = Math.sqrt(attackRangeSq) * 0.85;
       const dx0 = px - targetPos.x;
       const dy0 = py - targetPos.y;
       const dist0 = Math.sqrt(dx0 * dx0 + dy0 * dy0) || 1;

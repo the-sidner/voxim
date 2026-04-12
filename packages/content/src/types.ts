@@ -518,6 +518,12 @@ export interface NpcTemplate {
    * Ignored for passive and neutral types.
    */
   aggroRange?: number;
+  /**
+   * Euclidean range (world units) within which an NPC will stop advancing and attack.
+   * Defaults to sqrt(npcAiDefaults.attackRangeSq) when absent (melee range ≈ 1.5).
+   * Set larger values for archers and other ranged combatants.
+   */
+  attackRange?: number;
   /** Max wander distance per job step (world units). */
   wanderRadius?: number;
   /** Ticks each wander job lasts before reevaluating. */

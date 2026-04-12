@@ -79,8 +79,8 @@ export class BladeDebugOverlay {
       const ticks   = Math.min(anim.ticksIntoAction + elapsed, total);
       const t       = total > 0 ? ticks / total : 0;
 
-      const bladeLength = weaponAction!.swingPath.defaultBladeLength ?? 1.0;
-      const bladeRadius = weaponAction!.swingPath.defaultBladeRadius  ?? 0.05;
+      const bladeLength = weaponAction!.swingPath?.defaultBladeLength ?? 1.0;
+      const bladeRadius = weaponAction!.swingPath?.defaultBladeRadius  ?? 0.05;
 
       const local = evaluateWeaponSlice(keyframes, t, bladeLength);
 
