@@ -1,0 +1,9 @@
+{
+  "id": "divine_flame",
+  "name": "Divine Flame",
+  "concept": "FIRE",
+  "domain": "RELIGIOUS",
+  "magnitude": 3,
+  "outward": "sacred fire purges corruption from {target}",
+  "inward": "caster piety consumed; must pray to restore"
+}

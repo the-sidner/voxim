@@ -1,0 +1,9 @@
+{
+  "id": "ward_of_stone",
+  "name": "Ward of Stone",
+  "concept": "SHIELD",
+  "domain": "RELIGIOUS",
+  "magnitude": 3,
+  "outward": "erect divine barrier absorbing incoming damage for {target}",
+  "inward": "caster stamina locked for barrier duration"
+}

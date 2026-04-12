@@ -1,0 +1,9 @@
+{
+  "id": "iron_ingot",
+  "category": "component",
+  "stackable": true,
+  "weight": 2.5,
+  "slots": [],
+  "baseStats": {},
+  "materialName": "iron"
+}

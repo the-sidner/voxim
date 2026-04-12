@@ -1,0 +1,19 @@
+{
+  "id": "stone_shovel",
+  "stationType": "workbench",
+  "stepType": "attack",
+  "requiredTool": "hammer",
+  "inputs": [
+    {
+      "itemType": "stone",
+      "quantity": 2
+    },
+    {
+      "itemType": "wood",
+      "quantity": 2
+    }
+  ],
+  "outputType": "stone_shovel",
+  "outputQuantity": 1,
+  "ticks": 0
+}

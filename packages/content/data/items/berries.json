@@ -1,0 +1,11 @@
+{
+  "id": "berries",
+  "category": "consumable",
+  "stackable": true,
+  "weight": 0.1,
+  "slots": [],
+  "baseStats": {
+    "hungerRestore": 10,
+    "thirstRestore": 15
+  }
+}

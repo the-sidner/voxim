@@ -90,3 +90,7 @@ export { StaticContentStore, resolveSubObjects } from "./src/store.ts";
 
 // ---- file loader (Deno server-side) ----
 export { loadContentStore } from "./src/loader.ts";
+
+// ---- static aggregations (used by the browser client bundle) ----
+export { weapon_actions } from "./src/weapon_actions_static.ts";
+export { item_templates } from "./src/item_templates_static.ts";

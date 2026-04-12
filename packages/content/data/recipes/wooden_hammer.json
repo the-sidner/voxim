@@ -1,0 +1,15 @@
+{
+  "id": "wooden_hammer",
+  "stationType": "workbench",
+  "stepType": "attack",
+  "requiredTool": "axe",
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 3
+    }
+  ],
+  "outputType": "wooden_hammer",
+  "outputQuantity": 1,
+  "ticks": 0
+}

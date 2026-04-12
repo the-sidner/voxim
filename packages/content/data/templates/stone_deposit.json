@@ -1,0 +1,18 @@
+{
+  "id": "stone_deposit",
+  "modelId": "model_rock_small",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 8,
+      "requiredToolType": "pickaxe",
+      "yields": [
+        {
+          "itemType": "stone",
+          "quantity": 4,
+          "quantityPerHarvestPower": 1
+        }
+      ],
+      "respawnTicks": 18000
+    }
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "id": "model_bush",
+  "version": 1,
+  "hitbox": {
+    "minX": -1,
+    "minY": -1,
+    "minZ": 0,
+    "maxX": 1,
+    "maxY": 1,
+    "maxZ": 3
+  },
+  "nodes": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 1
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "materialId": 1
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 0,
+      "materialId": 1
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "materialId": 1
+    },
+    {
+      "x": 0,
+      "y": -1,
+      "z": 0,
+      "materialId": 1
+    },
+    {
+      "x": -1,
+      "y": -1,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": 0,
+      "y": -1,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": 1,
+      "y": -1,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": -1,
+      "y": 1,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 1,
+      "materialId": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 2,
+      "materialId": 1
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 2,
+      "materialId": 1
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 2,
+      "materialId": 1
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 2,
+      "materialId": 1
+    },
+    {
+      "x": 0,
+      "y": -1,
+      "z": 2,
+      "materialId": 1
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    1
+  ]
+}

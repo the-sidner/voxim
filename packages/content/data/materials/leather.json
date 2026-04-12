@@ -1,0 +1,17 @@
+{
+  "id": 102,
+  "name": "leather",
+  "color": "#7a4a2a",
+  "roughness": 0.7,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": false,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.15,
+    "density": 0.25,
+    "flexibility": 0.8,
+    "flammability": 0.5,
+    "toughness": 0.4
+  }
+}

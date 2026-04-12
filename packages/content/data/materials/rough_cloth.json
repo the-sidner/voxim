@@ -1,0 +1,17 @@
+{
+  "id": 108,
+  "name": "rough_cloth",
+  "color": "#5a4030",
+  "roughness": 0.95,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": false,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.05,
+    "density": 0.2,
+    "flexibility": 0.9,
+    "flammability": 0.8,
+    "toughness": 0.1
+  }
+}

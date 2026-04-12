@@ -1,0 +1,9 @@
+{
+  "id": "hollow_hunger",
+  "name": "Hollow Hunger",
+  "concept": "DRAIN",
+  "domain": "SUPERNATURAL",
+  "magnitude": 2,
+  "outward": "inflict accelerated hunger on {target}",
+  "inward": "caster health drains slowly"
+}

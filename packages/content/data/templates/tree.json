@@ -1,0 +1,19 @@
+{
+  "id": "tree",
+  "modelId": "tree_oak",
+  "modelScale": 2,
+  "components": {
+    "resourceNode": {
+      "hitPoints": 5,
+      "requiredToolType": "axe",
+      "yields": [
+        {
+          "itemType": "wood",
+          "quantity": 3,
+          "quantityPerHarvestPower": 1
+        }
+      ],
+      "respawnTicks": 12000
+    }
+  }
+}

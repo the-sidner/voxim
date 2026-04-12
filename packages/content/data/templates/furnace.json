@@ -1,0 +1,8 @@
+{
+  "id": "furnace",
+  "components": {
+    "workstation": {
+      "stationType": "furnace"
+    }
+  }
+}

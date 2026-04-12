@@ -1,0 +1,8 @@
+{
+  "id": "anvil",
+  "category": "deployable",
+  "stackable": true,
+  "weight": 80.0,
+  "slots": [],
+  "baseStats": {}
+}

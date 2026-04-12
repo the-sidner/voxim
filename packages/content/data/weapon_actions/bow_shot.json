@@ -1,0 +1,17 @@
+{
+  "id": "bow_shot",
+  "actionType": "ranged",
+  "windupTicks": 20,
+  "activeTicks": 1,
+  "winddownTicks": 12,
+  "animationStyle": "bow_draw",
+  "staminaCost": 8,
+  "projectile": {
+    "speed": 22,
+    "gravityScale": 0.4,
+    "radius": 0.08,
+    "maxHits": 1,
+    "lifetimeTicks": 60,
+    "modelId": "model_arrow"
+  }
+}

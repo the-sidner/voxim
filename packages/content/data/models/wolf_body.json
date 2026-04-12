@@ -1,0 +1,199 @@
+{
+  "id": "wolf_body",
+  "version": 1,
+  "hitbox": {
+    "minX": -1,
+    "minY": -2,
+    "minZ": -1,
+    "maxX": 1,
+    "maxY": 2,
+    "maxZ": 0
+  },
+  "nodes": [
+    {
+      "x": -1,
+      "y": -2,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": -1,
+      "y": -1,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": -1,
+      "y": 1,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": -1,
+      "y": 2,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 0,
+      "y": -2,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 0,
+      "y": -1,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 1,
+      "y": -2,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 1,
+      "y": -1,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": -1,
+      "y": -2,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": -1,
+      "y": -1,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": -1,
+      "y": 1,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": -1,
+      "y": 2,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 0,
+      "y": -2,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 0,
+      "y": -1,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 1,
+      "y": -2,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 1,
+      "y": -1,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": -1,
+      "materialId": 201
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "z": -1,
+      "materialId": 201
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    200,
+    201
+  ]
+}

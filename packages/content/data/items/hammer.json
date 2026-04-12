@@ -1,0 +1,17 @@
+{
+  "id": "hammer",
+  "category": "weapon",
+  "equipSlot": "weapon",
+  "stackable": false,
+  "weight": 3.0,
+  "slots": [],
+  "baseStats": {
+    "damage": 8,
+    "staminaCostPerSwing": 12,
+    "bladeRadius": 0.1,
+    "buildPower": 1.0
+  },
+  "toolType": "hammer",
+  "weaponAction": "overhead",
+  "modelTemplateId": "model_hammer_basic"
+}

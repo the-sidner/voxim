@@ -1,0 +1,15 @@
+{
+  "id": "stone_block",
+  "stationType": "chopping_block",
+  "stepType": "attack",
+  "requiredTool": "pickaxe",
+  "inputs": [
+    {
+      "itemType": "stone",
+      "quantity": 2
+    }
+  ],
+  "outputType": "stone_block",
+  "outputQuantity": 1,
+  "ticks": 0
+}

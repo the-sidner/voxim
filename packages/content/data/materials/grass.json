@@ -1,0 +1,17 @@
+{
+  "id": 1,
+  "name": "grass",
+  "color": "#4a9e30",
+  "roughness": 0.9,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": true,
+  "properties": {
+    "hardness": 0.1,
+    "density": 0.3,
+    "flexibility": 0.7,
+    "flammability": 0.6,
+    "toughness": 0.1
+  }
+}

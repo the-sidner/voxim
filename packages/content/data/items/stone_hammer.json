@@ -1,0 +1,16 @@
+{
+  "id": "stone_hammer",
+  "category": "weapon",
+  "equipSlot": "weapon",
+  "stackable": false,
+  "weight": 2.8,
+  "slots": [],
+  "baseStats": {
+    "damage": 14,
+    "staminaCostPerSwing": 16,
+    "buildPower": 1.5
+  },
+  "toolType": "hammer",
+  "weaponAction": "overhead",
+  "modelTemplateId": "model_hammer_basic"
+}

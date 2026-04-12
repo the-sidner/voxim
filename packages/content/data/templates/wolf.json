@@ -1,0 +1,9 @@
+{
+  "id": "wolf",
+  "modelId": "wolf",
+  "components": {
+    "npc": {
+      "npcType": "wolf"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "id": "anvil",
+  "components": {
+    "workstation": {
+      "stationType": "anvil"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "flower_patch",
+  "modelId": "model_flower_patch",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 1,
+      "requiredToolType": null,
+      "yields": [],
+      "respawnTicks": 3600
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "wolf_bite",
+  "category": "weapon",
+  "stackable": false,
+  "weight": 0,
+  "slots": [],
+  "baseStats": {
+    "damage": 6,
+    "staminaCostPerSwing": 0,
+    "bladeRadius": 0.14
+  },
+  "weaponAction": "bite"
+}

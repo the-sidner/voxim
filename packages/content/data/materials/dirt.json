@@ -1,0 +1,17 @@
+{
+  "id": 4,
+  "name": "dirt",
+  "color": "#6b4226",
+  "roughness": 0.95,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": true,
+  "properties": {
+    "hardness": 0.05,
+    "density": 0.5,
+    "flexibility": 0.3,
+    "flammability": 0.3,
+    "toughness": 0.15
+  }
+}

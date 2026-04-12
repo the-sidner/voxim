@@ -1,0 +1,114 @@
+{
+  "id": "human_upper_arm",
+  "version": 3,
+  "hitbox": {
+    "minX": 0,
+    "minY": 0,
+    "minZ": -4,
+    "maxX": 1,
+    "maxY": 1,
+    "maxZ": 0
+  },
+  "nodes": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 110
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": -1,
+      "materialId": 110
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": -2,
+      "materialId": 110
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": -3,
+      "materialId": 110
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "materialId": 110
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": -1,
+      "materialId": 110
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": -2,
+      "materialId": 110
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": -3,
+      "materialId": 110
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "materialId": 110
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": -1,
+      "materialId": 110
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": -2,
+      "materialId": 110
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": -3,
+      "materialId": 110
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 0,
+      "materialId": 110
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": -1,
+      "materialId": 110
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": -2,
+      "materialId": 110
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": -3,
+      "materialId": 110
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    110
+  ]
+}

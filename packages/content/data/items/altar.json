@@ -1,0 +1,8 @@
+{
+  "id": "altar",
+  "category": "deployable",
+  "stackable": true,
+  "weight": 30.0,
+  "slots": [],
+  "baseStats": {}
+}

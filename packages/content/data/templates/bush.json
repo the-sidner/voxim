@@ -1,0 +1,17 @@
+{
+  "id": "bush",
+  "modelId": "model_bush",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 2,
+      "requiredToolType": null,
+      "yields": [
+        {
+          "itemType": "raw_meat",
+          "quantity": 1
+        }
+      ],
+      "respawnTicks": 6000
+    }
+  }
+}

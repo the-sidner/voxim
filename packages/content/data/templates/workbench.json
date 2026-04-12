@@ -1,0 +1,9 @@
+{
+  "id": "workbench",
+  "modelId": "model_workbench",
+  "components": {
+    "workstation": {
+      "stationType": "workbench"
+    }
+  }
+}

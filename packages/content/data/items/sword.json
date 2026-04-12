@@ -1,0 +1,57 @@
+{
+  "id": "sword",
+  "category": "weapon",
+  "equipSlot": "weapon",
+  "stackable": false,
+  "weight": 0.5,
+  "slots": [
+    {
+      "id": "blade",
+      "materialCategories": [
+        "metal",
+        "stone"
+      ],
+      "statContributions": [
+        {
+          "stat": "damage",
+          "property": "hardness",
+          "multiplier": 35
+        },
+        {
+          "stat": "weight",
+          "property": "density",
+          "multiplier": 2.0
+        }
+      ],
+      "modelSlotId": "blade_mat"
+    },
+    {
+      "id": "grip",
+      "materialCategories": [
+        "wood",
+        "bone",
+        "leather"
+      ],
+      "statContributions": [
+        {
+          "stat": "staminaCostPerSwing",
+          "property": "flexibility",
+          "multiplier": -6
+        },
+        {
+          "stat": "weight",
+          "property": "density",
+          "multiplier": 0.5
+        }
+      ],
+      "modelSlotId": "grip_mat"
+    }
+  ],
+  "baseStats": {
+    "staminaCostPerSwing": 18,
+    "bladeRadius": 0.06
+  },
+  "toolType": "sword",
+  "weaponAction": "slash",
+  "modelTemplateId": "model_sword"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "torch",
+  "category": "consumable",
+  "stackable": true,
+  "weight": 0.3,
+  "slots": [],
+  "baseStats": {}
+}

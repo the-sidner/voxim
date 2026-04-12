@@ -1,0 +1,17 @@
+{
+  "id": 10,
+  "name": "snow",
+  "color": "#e8eef0",
+  "roughness": 0.95,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": true,
+  "properties": {
+    "hardness": 0.02,
+    "density": 0.2,
+    "flexibility": 0.1,
+    "flammability": 0.0,
+    "toughness": 0.05
+  }
+}

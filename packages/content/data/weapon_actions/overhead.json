@@ -1,0 +1,54 @@
+{
+  "id": "overhead",
+  "windupTicks": 6,
+  "activeTicks": 3,
+  "winddownTicks": 9,
+  "animationStyle": "overhead",
+  "staminaCost": 14,
+  "swingPath": {
+    "defaultBladeRadius": 0.08,
+    "keyframes": [
+      {
+        "t": 0,
+        "hiltFwd": 0.1,
+        "hiltRight": 0.2,
+        "hiltUp": 0.85,
+        "bladeFwd": 0.1952,
+        "bladeRight": 0.0976,
+        "bladeUp": 0.9759
+      },
+      {
+        "t": 0.333,
+        "hiltFwd": 0.1,
+        "hiltRight": 0.2,
+        "hiltUp": 1.25,
+        "bladeFwd": 0.1516,
+        "bladeRight": 0.0758,
+        "bladeUp": 0.9855
+      },
+      {
+        "t": 0.5,
+        "hiltFwd": 0.35,
+        "hiltRight": 0.1,
+        "hiltUp": 0.85,
+        "bladeFwd": 0.935,
+        "bladeRight": 0,
+        "bladeUp": -0.3547
+      },
+      {
+        "t": 1,
+        "hiltFwd": 0.2,
+        "hiltRight": 0.1,
+        "hiltUp": 0.55,
+        "bladeFwd": 0.53,
+        "bladeRight": 0,
+        "bladeUp": -0.848
+      }
+    ],
+    "defaultBladeLength": 1.5
+  },
+  "ikChainIds": [
+    "right_arm",
+    "left_arm"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "keen_edge",
+  "name": "Keen Edge",
+  "concept": "KEEN",
+  "domain": "SUPERNATURAL",
+  "magnitude": 3,
+  "outward": "strikes hit weak points, bonus damage on {target}",
+  "inward": "stamina cost per swing increased"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "stone_pickaxe",
+  "category": "weapon",
+  "equipSlot": "weapon",
+  "stackable": false,
+  "weight": 4.0,
+  "slots": [],
+  "baseStats": {
+    "damage": 15,
+    "staminaCostPerSwing": 16,
+    "harvestPower": 1.0,
+    "bladeRadius": 0.07
+  },
+  "toolType": "pickaxe",
+  "weaponAction": "overhead",
+  "modelTemplateId": "pickaxe"
+}

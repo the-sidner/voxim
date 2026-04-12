@@ -1,0 +1,22 @@
+{
+  "id": "iron_ore_vein",
+  "modelId": "model_rock_large",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 12,
+      "requiredToolType": "pickaxe",
+      "yields": [
+        {
+          "itemType": "iron_ore",
+          "quantity": 2,
+          "quantityPerHarvestPower": 1
+        },
+        {
+          "itemType": "stone",
+          "quantity": 1
+        }
+      ],
+      "respawnTicks": 36000
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "wood",
+  "category": "resource",
+  "stackable": true,
+  "weight": 1.0,
+  "slots": [],
+  "baseStats": {},
+  "materialName": "wood"
+}

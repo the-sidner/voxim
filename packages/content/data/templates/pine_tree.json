@@ -1,0 +1,18 @@
+{
+  "id": "pine_tree",
+  "modelId": "model_pine_tree",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 4,
+      "requiredToolType": "axe",
+      "yields": [
+        {
+          "itemType": "wood",
+          "quantity": 2,
+          "quantityPerHarvestPower": 1
+        }
+      ],
+      "respawnTicks": 14400
+    }
+  }
+}

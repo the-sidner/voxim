@@ -1,0 +1,9 @@
+{
+  "id": "stone",
+  "category": "resource",
+  "stackable": true,
+  "weight": 2.0,
+  "slots": [],
+  "baseStats": {},
+  "materialName": "stone"
+}

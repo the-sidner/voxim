@@ -27,8 +27,7 @@ import type { EquipmentData, InventoryData } from "@voxim/codecs";
 import type { EquipmentState, InventoryState, ItemStack } from "./ui/ui_store.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
-import weaponActionsData from "../../content/data/weapon_actions.json" with { type: "json" };
-import itemTemplatesData from "../../content/data/item_templates.json" with { type: "json" };
+import { weapon_actions as weaponActionsData, item_templates as itemTemplatesData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
 export interface GameConfig {

@@ -1,0 +1,9 @@
+{
+  "id": "bandit",
+  "modelId": "human_base",
+  "components": {
+    "npc": {
+      "npcType": "bandit"
+    }
+  }
+}

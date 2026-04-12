@@ -1,0 +1,15 @@
+{
+  "id": "wooden_spear",
+  "category": "weapon",
+  "equipSlot": "weapon",
+  "stackable": false,
+  "weight": 1.5,
+  "slots": [],
+  "baseStats": {
+    "damage": 14,
+    "staminaCostPerSwing": 10,
+    "bladeLength": 2.2
+  },
+  "weaponAction": "thrust",
+  "modelTemplateId": "model_spear"
+}

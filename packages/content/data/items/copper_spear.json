@@ -1,0 +1,15 @@
+{
+  "id": "copper_spear",
+  "category": "weapon",
+  "equipSlot": "weapon",
+  "stackable": false,
+  "weight": 2.0,
+  "slots": [],
+  "baseStats": {
+    "damage": 22,
+    "staminaCostPerSwing": 12,
+    "bladeLength": 2.4
+  },
+  "weaponAction": "thrust",
+  "modelTemplateId": "model_spear"
+}

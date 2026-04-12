@@ -1,0 +1,9 @@
+{
+  "id": "swift_step",
+  "name": "Swift Step",
+  "concept": "SWIFT",
+  "domain": "SUPERNATURAL",
+  "magnitude": 2,
+  "outward": "caster movement speed and dodge distance increased",
+  "inward": "hunger accumulates faster while active"
+}

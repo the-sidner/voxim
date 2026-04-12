@@ -1,0 +1,19 @@
+{
+  "id": "torch",
+  "stationType": "workbench",
+  "stepType": "attack",
+  "requiredTool": "hammer",
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    },
+    {
+      "itemType": "raw_meat",
+      "quantity": 1
+    }
+  ],
+  "outputType": "torch",
+  "outputQuantity": 2,
+  "ticks": 0
+}

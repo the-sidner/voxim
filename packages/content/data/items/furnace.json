@@ -1,0 +1,8 @@
+{
+  "id": "furnace",
+  "category": "deployable",
+  "stackable": true,
+  "weight": 60.0,
+  "slots": [],
+  "baseStats": {}
+}

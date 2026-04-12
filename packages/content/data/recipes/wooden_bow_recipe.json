@@ -1,0 +1,19 @@
+{
+  "id": "wooden_bow_recipe",
+  "stationType": "workbench",
+  "stepType": "attack",
+  "requiredTool": "axe",
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 3
+    },
+    {
+      "itemType": "raw_meat",
+      "quantity": 1
+    }
+  ],
+  "outputType": "wooden_bow",
+  "outputQuantity": 1,
+  "ticks": 0
+}

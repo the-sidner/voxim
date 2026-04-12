@@ -1,0 +1,9 @@
+{
+  "id": "chopping_block",
+  "modelId": "model_chopping_block",
+  "components": {
+    "workstation": {
+      "stationType": "chopping_block"
+    }
+  }
+}

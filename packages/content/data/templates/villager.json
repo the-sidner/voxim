@@ -1,0 +1,9 @@
+{
+  "id": "villager",
+  "modelId": "human_base",
+  "components": {
+    "npc": {
+      "npcType": "villager"
+    }
+  }
+}

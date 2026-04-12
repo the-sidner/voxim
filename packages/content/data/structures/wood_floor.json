@@ -1,0 +1,12 @@
+{
+  "id": "wood_floor",
+  "materialCost": [
+    {
+      "itemType": "plank",
+      "quantity": 2
+    }
+  ],
+  "heightDelta": 0.0,
+  "materialId": 2,
+  "totalTicks": 2
+}

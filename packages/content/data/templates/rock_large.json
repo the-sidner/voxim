@@ -1,0 +1,22 @@
+{
+  "id": "rock_large",
+  "modelId": "model_rock_large",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 10,
+      "requiredToolType": "pickaxe",
+      "yields": [
+        {
+          "itemType": "stone",
+          "quantity": 5,
+          "quantityPerHarvestPower": 1
+        },
+        {
+          "itemType": "iron_ore",
+          "quantity": 1
+        }
+      ],
+      "respawnTicks": 28800
+    }
+  }
+}

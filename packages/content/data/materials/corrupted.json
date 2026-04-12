@@ -1,0 +1,17 @@
+{
+  "id": 9,
+  "name": "corrupted",
+  "color": "#4a1a6a",
+  "roughness": 0.7,
+  "metallic": 0.1,
+  "emissive": 0.2,
+  "solid": true,
+  "walkable": true,
+  "properties": {
+    "hardness": 0.4,
+    "density": 0.7,
+    "flexibility": 0.2,
+    "flammability": 0.1,
+    "toughness": 0.5
+  }
+}

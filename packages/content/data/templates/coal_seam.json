@@ -1,0 +1,18 @@
+{
+  "id": "coal_seam",
+  "modelId": "model_coal_seam",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 8,
+      "requiredToolType": "pickaxe",
+      "yields": [
+        {
+          "itemType": "coal",
+          "quantity": 3,
+          "quantityPerHarvestPower": 1
+        }
+      ],
+      "respawnTicks": 14400
+    }
+  }
+}

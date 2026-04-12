@@ -1,0 +1,9 @@
+{
+  "id": "penance",
+  "name": "Penance",
+  "concept": "DRAIN",
+  "domain": "RELIGIOUS",
+  "magnitude": 2,
+  "outward": "sap stamina from {target} through divine judgement",
+  "inward": "caster suffers equal stamina loss"
+}

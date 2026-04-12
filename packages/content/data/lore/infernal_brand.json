@@ -1,0 +1,9 @@
+{
+  "id": "infernal_brand",
+  "name": "Infernal Brand",
+  "concept": "FIRE",
+  "domain": "SUPERNATURAL",
+  "magnitude": 4,
+  "outward": "mark {target} with unstable fire; detonates on death",
+  "inward": "caster takes chip damage each tick brand is active"
+}

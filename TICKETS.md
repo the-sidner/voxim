@@ -895,3 +895,36 @@ accepting `networked: false` without it.
 Done when: `deno check` passes, adding a networked component without `wireId` is a
 compile error, and server-only components cannot have `wireId`.
 
+
+### T-095 · Split monolithic content data files into per-item directories
+Effort: M   Status: done   Commit: 38e1462
+
+All content previously stored in large flat JSON arrays has been split into
+one file per item under typed subdirectories.  Singletons (game_config.json,
+concept_verb_matrix.json, etc.) stay as flat files.
+
+**New directory layout under `packages/content/data/`:**
+- `models/{id}.json` — 69 model definitions
+- `skeletons/{id}.json` — skeleton rigs
+- `items/{id}.json` — item templates (was item_templates.json)
+- `templates/{id}.json` — entity templates (was entity_templates.json)
+- `npcs/{id}.json` — NPC templates
+- `weapon_actions/{id}.json` — weapon swing definitions
+- `recipes/{id}.json`
+- `structures/{id}.json`
+- `lore/{id}.json` — lore fragments
+- `materials/{name}.json` — material definitions (numeric id stays in file)
+
+**Loader** (`loader.ts`): switched from `readJson(dir, "file.json")` to
+`readJsonDir(dir, "subdir")` which scans the directory, sorts by filename
+for deterministic order, and loads each file as one item.
+
+**Client aggregation**: since the browser bundle can't use Deno.readDir, two
+generated TypeScript files aggregate the per-item imports for static bundling:
+`weapon_actions_static.ts` and `item_templates_static.ts`.  Run
+`deno task gen-content` after adding/renaming data files.
+
+**Deleted**: `model_hitboxes.json` (was never read by the loader — orphaned
+leftover from a superseded hitbox system).
+
+Done when: `deno check` passes, adding a new item is a single JSON file drop.

@@ -1,0 +1,17 @@
+{
+  "id": "mushroom_patch",
+  "modelId": "model_mushroom_patch",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 1,
+      "requiredToolType": null,
+      "yields": [
+        {
+          "itemType": "mushroom",
+          "quantity": 2
+        }
+      ],
+      "respawnTicks": 4800
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "flint_deposit",
+  "modelId": "model_flint",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 4,
+      "requiredToolType": "pickaxe",
+      "yields": [
+        {
+          "itemType": "flint",
+          "quantity": 3,
+          "quantityPerHarvestPower": 1
+        }
+      ],
+      "respawnTicks": 12000
+    }
+  }
+}

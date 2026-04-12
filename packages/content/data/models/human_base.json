@@ -1,0 +1,257 @@
+{
+  "id": "human_base",
+  "version": 1,
+  "skeletonId": "human",
+  "hitbox": {
+    "minX": -0.4,
+    "minY": -0.4,
+    "minZ": 0,
+    "maxX": 0.4,
+    "maxY": 0.4,
+    "maxZ": 1.8
+  },
+  "nodes": [],
+  "subObjects": [
+    {
+      "modelId": "human_torso_lower",
+      "boneId": "torso_lower",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      }
+    },
+    {
+      "modelId": "human_torso_mid",
+      "boneId": "torso_mid",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      }
+    },
+    {
+      "modelId": "human_torso_upper",
+      "boneId": "torso_upper",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      }
+    },
+    {
+      "modelId": "human_head",
+      "boneId": "head",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      }
+    },
+    {
+      "modelId": "human_upper_arm",
+      "boneId": "upper_arm_l",
+      "transform": {
+        "x": -0.25,
+        "y": 0.25,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.5,
+        "scaleY": 0.5,
+        "scaleZ": 0.5
+      }
+    },
+    {
+      "modelId": "human_lower_arm",
+      "boneId": "lower_arm_l",
+      "transform": {
+        "x": -0.25,
+        "y": 0.25,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.5,
+        "scaleY": 0.5,
+        "scaleZ": 0.5
+      }
+    },
+    {
+      "modelId": "human_upper_arm",
+      "boneId": "upper_arm_r",
+      "transform": {
+        "x": -0.25,
+        "y": 0.25,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.5,
+        "scaleY": 0.5,
+        "scaleZ": 0.5
+      }
+    },
+    {
+      "modelId": "human_lower_arm",
+      "boneId": "lower_arm_r",
+      "transform": {
+        "x": -0.25,
+        "y": 0.25,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.5,
+        "scaleY": 0.5,
+        "scaleZ": 0.5
+      }
+    },
+    {
+      "modelId": "human_upper_leg",
+      "boneId": "upper_leg_l",
+      "transform": {
+        "x": -0.25,
+        "y": 0.25,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.5,
+        "scaleY": 0.5,
+        "scaleZ": 0.5
+      }
+    },
+    {
+      "modelId": "human_lower_leg",
+      "boneId": "lower_leg_l",
+      "transform": {
+        "x": -0.25,
+        "y": 0.25,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.5,
+        "scaleY": 0.5,
+        "scaleZ": 0.5
+      }
+    },
+    {
+      "modelId": "human_upper_leg",
+      "boneId": "upper_leg_r",
+      "transform": {
+        "x": -0.25,
+        "y": 0.25,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.5,
+        "scaleY": 0.5,
+        "scaleZ": 0.5
+      }
+    },
+    {
+      "modelId": "human_lower_leg",
+      "boneId": "lower_leg_r",
+      "transform": {
+        "x": -0.25,
+        "y": 0.25,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.5,
+        "scaleY": 0.5,
+        "scaleZ": 0.5
+      }
+    },
+    {
+      "modelId": "human_hand",
+      "boneId": "hand_l",
+      "transform": {
+        "x": -0.375,
+        "y": 0.375,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.25,
+        "scaleY": 0.25,
+        "scaleZ": 0.25
+      }
+    },
+    {
+      "modelId": "human_hand",
+      "boneId": "hand_r",
+      "transform": {
+        "x": -0.375,
+        "y": 0.375,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.25,
+        "scaleY": 0.25,
+        "scaleZ": 0.25
+      }
+    },
+    {
+      "modelId": "human_foot",
+      "boneId": "foot_l",
+      "transform": {
+        "x": -0.3,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.3,
+        "scaleY": 0.3,
+        "scaleZ": 0.3
+      }
+    },
+    {
+      "modelId": "human_foot",
+      "boneId": "foot_r",
+      "transform": {
+        "x": -0.3,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 0.3,
+        "scaleY": 0.3,
+        "scaleZ": 0.3
+      }
+    }
+  ],
+  "materials": []
+}

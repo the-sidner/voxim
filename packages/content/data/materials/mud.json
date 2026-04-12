@@ -1,0 +1,17 @@
+{
+  "id": 11,
+  "name": "mud",
+  "color": "#4a3520",
+  "roughness": 0.98,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": true,
+  "properties": {
+    "hardness": 0.03,
+    "density": 0.65,
+    "flexibility": 0.5,
+    "flammability": 0.1,
+    "toughness": 0.08
+  }
+}

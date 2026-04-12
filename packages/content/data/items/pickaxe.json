@@ -1,0 +1,62 @@
+{
+  "id": "pickaxe",
+  "category": "weapon",
+  "equipSlot": "weapon",
+  "stackable": false,
+  "weight": 0.5,
+  "slots": [
+    {
+      "id": "head",
+      "materialCategories": [
+        "metal",
+        "stone"
+      ],
+      "statContributions": [
+        {
+          "stat": "damage",
+          "property": "hardness",
+          "multiplier": 35
+        },
+        {
+          "stat": "harvestPower",
+          "property": "hardness",
+          "multiplier": 2.0
+        },
+        {
+          "stat": "weight",
+          "property": "density",
+          "multiplier": 2.5
+        }
+      ],
+      "modelSlotId": "head_mat"
+    },
+    {
+      "id": "haft",
+      "materialCategories": [
+        "wood",
+        "bone"
+      ],
+      "statContributions": [
+        {
+          "stat": "staminaCostPerSwing",
+          "property": "flexibility",
+          "multiplier": -4
+        },
+        {
+          "stat": "weight",
+          "property": "density",
+          "multiplier": 0.8
+        }
+      ],
+      "modelSlotId": "haft_mat"
+    }
+  ],
+  "baseStats": {
+    "staminaCostPerSwing": 22,
+    "harvestPower": 1.0,
+    "bladeRadius": 0.07
+  },
+  "toolType": "pickaxe",
+  "weaponAction": "overhead",
+  "modelTemplateId": "pickaxe"
+}

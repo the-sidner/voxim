@@ -1,0 +1,9 @@
+{
+  "id": "ignis",
+  "name": "Ignis",
+  "concept": "FIRE",
+  "domain": "ALCHEMICAL",
+  "magnitude": 3,
+  "outward": "ignite {target}, dealing burn damage over time",
+  "inward": "caster heat builds; cooling required between uses"
+}

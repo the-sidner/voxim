@@ -1,0 +1,8 @@
+{
+  "id": "forge",
+  "category": "deployable",
+  "stackable": true,
+  "weight": 50.0,
+  "slots": [],
+  "baseStats": {}
+}

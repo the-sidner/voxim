@@ -1,0 +1,17 @@
+{
+  "id": 101,
+  "name": "pine",
+  "color": "#a05020",
+  "roughness": 0.8,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.2,
+    "density": 0.35,
+    "flexibility": 0.7,
+    "flammability": 0.95,
+    "toughness": 0.25
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "fleet_blessing",
+  "name": "Fleet Blessing",
+  "concept": "SWIFT",
+  "domain": "RELIGIOUS",
+  "magnitude": 2,
+  "outward": "bless {target} with fleet feet; movement boosted",
+  "inward": "caster stamina regeneration halved for duration"
+}

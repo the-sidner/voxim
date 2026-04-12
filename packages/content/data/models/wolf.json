@@ -1,0 +1,191 @@
+{
+  "id": "wolf",
+  "version": 1,
+  "skeletonId": "wolf",
+  "hitbox": {
+    "minX": -0.4,
+    "minY": -0.7,
+    "minZ": 0,
+    "maxX": 0.4,
+    "maxY": 0.7,
+    "maxZ": 1.0
+  },
+  "nodes": [],
+  "subObjects": [
+    {
+      "modelId": "wolf_body",
+      "boneId": "body",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      }
+    },
+    {
+      "modelId": "wolf_head",
+      "boneId": "head",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      }
+    },
+    {
+      "modelId": "wolf_tail",
+      "boneId": "tail",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    },
+    {
+      "modelId": "wolf_upper_leg",
+      "boneId": "fl_upper",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    },
+    {
+      "modelId": "wolf_lower_leg",
+      "boneId": "fl_lower",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    },
+    {
+      "modelId": "wolf_upper_leg",
+      "boneId": "fr_upper",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    },
+    {
+      "modelId": "wolf_lower_leg",
+      "boneId": "fr_lower",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    },
+    {
+      "modelId": "wolf_upper_leg",
+      "boneId": "rl_upper",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    },
+    {
+      "modelId": "wolf_lower_leg",
+      "boneId": "rl_lower",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    },
+    {
+      "modelId": "wolf_upper_leg",
+      "boneId": "rr_upper",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    },
+    {
+      "modelId": "wolf_lower_leg",
+      "boneId": "rr_lower",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "hitbox": false
+    }
+  ],
+  "materials": []
+}

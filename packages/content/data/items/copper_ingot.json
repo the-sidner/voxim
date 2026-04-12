@@ -1,0 +1,8 @@
+{
+  "id": "copper_ingot",
+  "category": "component",
+  "stackable": true,
+  "weight": 1.2,
+  "slots": [],
+  "baseStats": {}
+}

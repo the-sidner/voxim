@@ -1,0 +1,9 @@
+{
+  "id": "leather_strip",
+  "category": "component",
+  "stackable": true,
+  "weight": 0.3,
+  "slots": [],
+  "baseStats": {},
+  "materialName": "leather"
+}

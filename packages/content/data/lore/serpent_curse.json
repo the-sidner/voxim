@@ -1,0 +1,9 @@
+{
+  "id": "serpent_curse",
+  "name": "Serpent Curse",
+  "concept": "VENOM",
+  "domain": "SUPERNATURAL",
+  "magnitude": 3,
+  "outward": "curse {target} with supernatural poison; resists cure",
+  "inward": "caster suffers mild poison feedback"
+}

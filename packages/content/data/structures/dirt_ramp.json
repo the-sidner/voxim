@@ -1,0 +1,12 @@
+{
+  "id": "dirt_ramp",
+  "materialCost": [
+    {
+      "itemType": "dirt",
+      "quantity": 4
+    }
+  ],
+  "heightDelta": 1.0,
+  "materialId": 4,
+  "totalTicks": 2
+}

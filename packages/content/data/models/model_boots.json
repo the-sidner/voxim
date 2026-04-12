@@ -1,0 +1,126 @@
+{
+  "id": "model_boots",
+  "version": 1,
+  "hitbox": {
+    "minX": 0,
+    "minY": 0,
+    "minZ": 0,
+    "maxX": 2,
+    "maxY": 3,
+    "maxZ": 1
+  },
+  "nodes": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 0,
+      "y": 3,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 1,
+      "y": 3,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 2,
+      "y": 2,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 2,
+      "y": 3,
+      "z": 0,
+      "materialId": 102
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 1,
+      "materialId": 102
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 1,
+      "materialId": 102
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "z": 1,
+      "materialId": 102
+    },
+    {
+      "x": 0,
+      "y": 3,
+      "z": 1,
+      "materialId": 102
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 1,
+      "materialId": 102
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 1,
+      "materialId": 102
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    102
+  ]
+}

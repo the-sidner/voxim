@@ -1,0 +1,138 @@
+{
+  "id": "trunk_oak",
+  "version": 1,
+  "hitbox": {
+    "minX": -1,
+    "minY": -1,
+    "minZ": 0,
+    "maxX": 1,
+    "maxY": 1,
+    "maxZ": 14
+  },
+  "nodes": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": -1,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 1,
+      "materialId": 2
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 1,
+      "materialId": 2
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 1,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 2,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 3,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 4,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 5,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 6,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 7,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 8,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 9,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 10,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 11,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 12,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 13,
+      "materialId": 2
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    2
+  ]
+}

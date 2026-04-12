@@ -1,0 +1,71 @@
+{
+  "id": "pickaxe",
+  "version": 1,
+  "nodes": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 3,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 4,
+      "z": 0,
+      "materialId": 2
+    },
+    {
+      "x": 0,
+      "y": 5,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 5,
+      "z": -1,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 4,
+      "z": -2,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 4,
+      "z": 2,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 5,
+      "z": 1,
+      "materialId": 3
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    2,
+    3
+  ]
+}

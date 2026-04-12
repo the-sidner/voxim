@@ -1,0 +1,17 @@
+{
+  "id": 7,
+  "name": "torch_mat",
+  "color": "#ff9900",
+  "roughness": 0.6,
+  "metallic": 0.0,
+  "emissive": 0.8,
+  "solid": false,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.1,
+    "density": 0.2,
+    "flexibility": 0.5,
+    "flammability": 1.0,
+    "toughness": 0.05
+  }
+}

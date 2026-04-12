@@ -1,0 +1,30 @@
+{
+  "id": "wolf_upper_leg",
+  "version": 1,
+  "hitbox": {
+    "minX": 0,
+    "minY": 0,
+    "minZ": -1,
+    "maxX": 0,
+    "maxY": 0,
+    "maxZ": 0
+  },
+  "nodes": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 200
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": -1,
+      "materialId": 200
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    200
+  ]
+}

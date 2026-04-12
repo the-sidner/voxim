@@ -1,0 +1,8 @@
+{
+  "id": "writing_desk",
+  "components": {
+    "workstation": {
+      "stationType": "writing_desk"
+    }
+  }
+}

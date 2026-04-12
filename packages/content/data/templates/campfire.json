@@ -1,0 +1,10 @@
+{
+  "id": "campfire",
+  "modelId": "model_campfire",
+  "components": {
+    "workstation": {
+      "stationType": "campfire",
+      "capacity": 2
+    }
+  }
+}

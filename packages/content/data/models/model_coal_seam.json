@@ -1,0 +1,133 @@
+{
+  "id": "model_coal_seam",
+  "version": 1,
+  "hitbox": {
+    "minX": -1,
+    "minY": 0,
+    "minZ": 0,
+    "maxX": 1,
+    "maxY": 2,
+    "maxZ": 3
+  },
+  "nodes": [
+    {
+      "x": -1,
+      "y": 0,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": -1,
+      "y": 1,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": -1,
+      "y": 2,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "z": 0,
+      "materialId": 3
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 1,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 1,
+      "materialId": 3
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 1,
+      "materialId": 3
+    },
+    {
+      "x": -1,
+      "y": 1,
+      "z": 1,
+      "materialId": 3
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 1,
+      "materialId": 3
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 1,
+      "materialId": 3
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 1,
+      "materialId": 9
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "z": 1,
+      "materialId": 9
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 1,
+      "materialId": 9
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 2,
+      "materialId": 9
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    3,
+    9
+  ]
+}

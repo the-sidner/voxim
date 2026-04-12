@@ -1,0 +1,9 @@
+{
+  "id": "laying_on_hands",
+  "name": "Laying on Hands",
+  "concept": "MEND",
+  "domain": "RELIGIOUS",
+  "magnitude": 3,
+  "outward": "channel divine healing into {target}",
+  "inward": "caster health transfers proportionally to {target}"
+}

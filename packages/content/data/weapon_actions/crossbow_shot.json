@@ -1,0 +1,17 @@
+{
+  "id": "crossbow_shot",
+  "actionType": "ranged",
+  "windupTicks": 30,
+  "activeTicks": 1,
+  "winddownTicks": 25,
+  "animationStyle": "crossbow_draw",
+  "staminaCost": 5,
+  "projectile": {
+    "speed": 28,
+    "gravityScale": 0.2,
+    "radius": 0.07,
+    "maxHits": 1,
+    "lifetimeTicks": 80,
+    "modelId": "model_arrow"
+  }
+}

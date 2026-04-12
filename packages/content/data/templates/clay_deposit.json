@@ -1,0 +1,18 @@
+{
+  "id": "clay_deposit",
+  "modelId": "model_clay_deposit",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 3,
+      "requiredToolType": null,
+      "yields": [
+        {
+          "itemType": "clay",
+          "quantity": 3,
+          "quantityPerHarvestPower": 1
+        }
+      ],
+      "respawnTicks": 9600
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "dread_presence",
+  "name": "Dread Presence",
+  "concept": "FEAR",
+  "domain": "SUPERNATURAL",
+  "magnitude": 3,
+  "outward": "radiate dread; {target} accuracy and speed reduced",
+  "inward": "caster corruption builds while aura is active"
+}

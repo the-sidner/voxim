@@ -1,0 +1,19 @@
+{
+  "id": "merchant",
+  "displayName": "Merchant",
+  "maxHealth": 60,
+  "fleeHealthRatio": 0.5,
+  "behavior": "passive",
+  "wanderRadius": 8,
+  "modelTemplateId": "human_base",
+  "wanderTicks": 120,
+  "idleTicks": 100,
+  "fleeTicks": 60,
+  "weaponAction": "unarmed",
+  "skillLoadout": [
+    null,
+    null,
+    null,
+    null
+  ]
+}

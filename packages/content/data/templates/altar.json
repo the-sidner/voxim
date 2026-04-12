@@ -1,0 +1,8 @@
+{
+  "id": "altar",
+  "components": {
+    "workstation": {
+      "stationType": "altar"
+    }
+  }
+}

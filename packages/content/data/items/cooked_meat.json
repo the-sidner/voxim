@@ -1,0 +1,11 @@
+{
+  "id": "cooked_meat",
+  "category": "consumable",
+  "stackable": true,
+  "weight": 0.3,
+  "slots": [],
+  "baseStats": {
+    "foodValue": 40,
+    "waterValue": 5
+  }
+}

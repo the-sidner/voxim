@@ -1,0 +1,18 @@
+{
+  "id": "copper_ingot",
+  "stationType": "campfire",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "copper_ore",
+      "quantity": 1
+    },
+    {
+      "itemType": "coal",
+      "quantity": 1
+    }
+  ],
+  "outputType": "copper_ingot",
+  "outputQuantity": 1,
+  "ticks": 100
+}

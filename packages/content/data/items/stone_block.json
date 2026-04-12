@@ -1,0 +1,9 @@
+{
+  "id": "stone_block",
+  "category": "component",
+  "stackable": true,
+  "weight": 3.5,
+  "slots": [],
+  "baseStats": {},
+  "materialName": "stone"
+}

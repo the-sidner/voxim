@@ -1,0 +1,9 @@
+{
+  "id": "merchant",
+  "modelId": "human_base",
+  "components": {
+    "npc": {
+      "npcType": "merchant"
+    }
+  }
+}

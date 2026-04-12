@@ -1,0 +1,9 @@
+{
+  "id": "chopping_block",
+  "category": "deployable",
+  "stackable": true,
+  "weight": 20.0,
+  "slots": [],
+  "baseStats": {},
+  "modelTemplateId": "model_chopping_block"
+}

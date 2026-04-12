@@ -1,0 +1,18 @@
+{
+  "id": "rock_small",
+  "modelId": "model_rock_small",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 3,
+      "requiredToolType": "pickaxe",
+      "yields": [
+        {
+          "itemType": "stone",
+          "quantity": 2,
+          "quantityPerHarvestPower": 1
+        }
+      ],
+      "respawnTicks": 12000
+    }
+  }
+}

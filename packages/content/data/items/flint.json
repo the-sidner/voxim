@@ -1,0 +1,8 @@
+{
+  "id": "flint",
+  "category": "resource",
+  "stackable": true,
+  "weight": 0.4,
+  "slots": [],
+  "baseStats": {}
+}

@@ -1,0 +1,9 @@
+{
+  "id": "archer",
+  "modelId": "human_base",
+  "components": {
+    "npc": {
+      "npcType": "archer"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": 110,
+  "name": "worn_iron",
+  "color": "#6a6870",
+  "roughness": 0.55,
+  "metallic": 0.7,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.85,
+    "density": 1.0,
+    "flexibility": 0.1,
+    "flammability": 0.0,
+    "toughness": 0.9
+  }
+}

@@ -1,9 +1,11 @@
 /**
  * File-based content loader for the Deno tile server.
  *
- * Reads JSON data files from a content data directory and populates a
- * StaticContentStore.  The data directory defaults to packages/content/data/
- * (resolved relative to this source file).  Pass an explicit path in production.
+ * Each content type lives in its own subdirectory under the data root, with one
+ * JSON file per item.  The loader scans each directory and registers every file
+ * it finds — adding a new item requires only dropping a new file.
+ *
+ * Singleton config files (game_config.json etc.) stay as flat objects.
  *
  * Usage:
  *   const content = await loadContentStore();
@@ -20,19 +22,23 @@ export async function loadContentStore(
 ): Promise<StaticContentStore> {
   const store = new StaticContentStore();
 
-  const [materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw, loreRaw, itemTemplatesRaw, entityTemplatesRaw, npcTemplatesRaw, conceptVerbRaw, weaponActionsRaw, verbsRaw] = await Promise.all([
-    readJson(dataDir, "materials.json"),
-    readJson(dataDir, "models.json"),
-    readJson(dataDir, "skeletons.json"),
-    readJson(dataDir, "recipes.json"),
-    readJson(dataDir, "structures.json"),
-    readJson(dataDir, "lore_fragments.json"),
-    readJson(dataDir, "item_templates.json"),
-    readJson(dataDir, "entity_templates.json"),
-    readJson(dataDir, "npc_templates.json"),
-    readJson(dataDir, "concept_verb_matrix.json"),
-    readJson(dataDir, "weapon_actions.json"),
-    readJson(dataDir, "verbs.json"),
+  const [
+    materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw,
+    loreRaw, itemTemplatesRaw, entityTemplatesRaw, npcTemplatesRaw,
+    conceptVerbRaw, weaponActionsRaw, verbsRaw,
+  ] = await Promise.all([
+    readJsonDir(dataDir, "materials"),
+    readJsonDir(dataDir, "models"),
+    readJsonDir(dataDir, "skeletons"),
+    readJsonDir(dataDir, "recipes"),
+    readJsonDir(dataDir, "structures"),
+    readJsonDir(dataDir, "lore"),
+    readJsonDir(dataDir, "items"),
+    readJsonDir(dataDir, "templates"),
+    readJsonDir(dataDir, "npcs"),
+    readJsonFile(dataDir, "concept_verb_matrix.json"),
+    readJsonDir(dataDir, "weapon_actions"),
+    readJsonFile(dataDir, "verbs.json"),
   ]);
 
   for (const raw of materialsRaw as RawMaterialDef[]) {
@@ -98,7 +104,32 @@ export async function loadContentStore(
 
 // ---- helpers ----
 
-async function readJson(dir: string, file: string): Promise<unknown[]> {
+/**
+ * Read all *.json files in `dir/subdir`, parse each as a single item, and
+ * return them sorted by filename for deterministic registration order.
+ */
+async function readJsonDir(dir: string, subdir: string): Promise<unknown[]> {
+  const fullDir = `${dir}/${subdir}`;
+  const names: string[] = [];
+  for await (const entry of Deno.readDir(fullDir)) {
+    if (entry.isFile && entry.name.endsWith(".json")) {
+      names.push(entry.name);
+    }
+  }
+  names.sort();
+  return Promise.all(
+    names.map(async (name) => {
+      const text = await Deno.readTextFile(`${fullDir}/${name}`);
+      return JSON.parse(text);
+    }),
+  );
+}
+
+/**
+ * Read a single JSON file that contains an array of items (concept_verb_matrix,
+ * verbs — collections with no natural per-item key).
+ */
+async function readJsonFile(dir: string, file: string): Promise<unknown[]> {
   const path = `${dir}/${file}`;
   const text = await Deno.readTextFile(path);
   const parsed = JSON.parse(text);

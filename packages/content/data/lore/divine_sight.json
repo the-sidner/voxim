@@ -1,0 +1,9 @@
+{
+  "id": "divine_sight",
+  "name": "Divine Sight",
+  "concept": "KEEN",
+  "domain": "RELIGIOUS",
+  "magnitude": 2,
+  "outward": "reveal hidden weaknesses and concealed threats",
+  "inward": "caster attention narrows; peripheral awareness reduced"
+}

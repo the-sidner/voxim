@@ -1,0 +1,17 @@
+{
+  "id": 105,
+  "name": "bone",
+  "color": "#e8e0c0",
+  "roughness": 0.75,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.4,
+    "density": 0.35,
+    "flexibility": 0.2,
+    "flammability": 0.3,
+    "toughness": 0.45
+  }
+}

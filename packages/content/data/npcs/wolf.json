@@ -1,0 +1,28 @@
+{
+  "id": "wolf",
+  "displayName": "Wolf",
+  "maxHealth": 60,
+  "fleeHealthRatio": 0.0,
+  "behavior": "hostile",
+  "aggroRange": 25,
+  "wanderRadius": 40,
+  "modelTemplateId": "wolf",
+  "wanderTicks": 60,
+  "idleTicks": 30,
+  "attackTicks": 6000,
+  "fleeTicks": 120,
+  "seekFoodTicks": 150,
+  "speedMultiplier": 1.4,
+  "weaponItemType": "wolf_bite",
+  "weaponAction": "bite",
+  "skillLoadout": [
+    {
+      "verb": "strike",
+      "outwardFragmentId": "vampiric_drain",
+      "inwardFragmentId": "swift_step"
+    },
+    null,
+    null,
+    null
+  ]
+}

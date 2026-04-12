@@ -1,0 +1,12 @@
+{
+  "id": "stone_floor",
+  "materialCost": [
+    {
+      "itemType": "stone_block",
+      "quantity": 2
+    }
+  ],
+  "heightDelta": 0.0,
+  "materialId": 3,
+  "totalTicks": 2
+}

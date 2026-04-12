@@ -1,0 +1,777 @@
+{
+  "id": "tree_oak",
+  "version": 1,
+  "hitbox": {
+    "minX": -4,
+    "minY": -4,
+    "minZ": 0,
+    "maxX": 4,
+    "maxY": 4,
+    "maxZ": 16
+  },
+  "nodes": [],
+  "subObjects": [
+    {
+      "modelId": "trunk_oak",
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      }
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 8,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.55
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 8,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 1.57,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.55
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 8,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 3.14,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.55
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 8,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 4.71,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.55
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 9,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0.78,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.8
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 9,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 2.36,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.8
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 9,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 3.93,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.8
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 9,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 5.5,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.8
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 10,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.95
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 10,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 1.57,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.95
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 10,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 3.14,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.95
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 10,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 4.71,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.95
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 11,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0.78,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.95
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 11,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 2.36,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.95
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 11,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 3.93,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.95
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 11,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 5.5,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.95
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 12,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.85
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 12,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 1.57,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.85
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 12,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 3.14,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.85
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 12,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 4.71,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.85
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 13,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0.78,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.65
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 13,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 2.36,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.65
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 13,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 3.93,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.65
+    },
+    {
+      "pool": [
+        "branch_oak_01",
+        "branch_oak_02",
+        "branch_oak_03",
+        "branch_oak_04",
+        "branch_oak_05",
+        "branch_oak_06",
+        "branch_oak_07",
+        "branch_oak_08",
+        "branch_oak_09",
+        "branch_oak_10",
+        "branch_oak_11",
+        "branch_oak_12",
+        "branch_oak_13",
+        "branch_oak_14",
+        "branch_oak_15"
+      ],
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "z": 13,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 5.5,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "probability": 0.65
+    }
+  ],
+  "materials": [
+    1,
+    2
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": 3,
+  "name": "stone",
+  "color": "#808080",
+  "roughness": 0.8,
+  "metallic": 0.05,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": true,
+  "properties": {
+    "hardness": 0.55,
+    "density": 0.8,
+    "flexibility": 0.05,
+    "flammability": 0.0,
+    "toughness": 0.6
+  }
+}

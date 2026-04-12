@@ -1,0 +1,17 @@
+{
+  "id": 100,
+  "name": "oak",
+  "color": "#92400e",
+  "roughness": 0.85,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.3,
+    "density": 0.45,
+    "flexibility": 0.55,
+    "flammability": 0.85,
+    "toughness": 0.35
+  }
+}

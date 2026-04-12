@@ -1,0 +1,59 @@
+{
+  "id": "chestplate",
+  "category": "armor",
+  "equipSlot": "chest",
+  "stackable": false,
+  "weight": 1.0,
+  "slots": [
+    {
+      "id": "shell",
+      "materialCategories": [
+        "metal",
+        "leather"
+      ],
+      "statContributions": [
+        {
+          "stat": "armorReduction",
+          "property": "toughness",
+          "multiplier": 0.35
+        },
+        {
+          "stat": "staminaRegenPenalty",
+          "property": "density",
+          "multiplier": 0.25
+        },
+        {
+          "stat": "weight",
+          "property": "density",
+          "multiplier": 5.0
+        }
+      ],
+      "modelSlotId": "shell_mat"
+    },
+    {
+      "id": "lining",
+      "materialCategories": [
+        "leather",
+        "wood"
+      ],
+      "statContributions": [
+        {
+          "stat": "staminaRegenPenalty",
+          "property": "flexibility",
+          "multiplier": -0.1
+        },
+        {
+          "stat": "weight",
+          "property": "density",
+          "multiplier": 1.0
+        }
+      ],
+      "modelSlotId": "lining_mat"
+    }
+  ],
+  "baseStats": {
+    "armorReduction": 0.0,
+    "staminaRegenPenalty": 0.0
+  },
+  "modelTemplateId": "model_chestplate"
+}

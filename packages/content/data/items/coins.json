@@ -1,0 +1,8 @@
+{
+  "id": "coins",
+  "category": "resource",
+  "stackable": true,
+  "weight": 0.01,
+  "slots": [],
+  "baseStats": {}
+}

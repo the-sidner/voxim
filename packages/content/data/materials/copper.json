@@ -1,0 +1,17 @@
+{
+  "id": 104,
+  "name": "copper",
+  "color": "#b87040",
+  "roughness": 0.45,
+  "metallic": 0.85,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.45,
+    "density": 0.9,
+    "flexibility": 0.35,
+    "flammability": 0.0,
+    "toughness": 0.55
+  }
+}

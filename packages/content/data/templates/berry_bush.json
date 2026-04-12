@@ -1,0 +1,17 @@
+{
+  "id": "berry_bush",
+  "modelId": "model_berry_bush",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 2,
+      "requiredToolType": null,
+      "yields": [
+        {
+          "itemType": "berries",
+          "quantity": 3
+        }
+      ],
+      "respawnTicks": 4800
+    }
+  }
+}

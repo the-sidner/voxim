@@ -1,0 +1,9 @@
+{
+  "id": "mending_touch",
+  "name": "Mending Touch",
+  "concept": "MEND",
+  "domain": "ALCHEMICAL",
+  "magnitude": 2,
+  "outward": "restore {amount} health to {target} via alchemical salve",
+  "inward": "consumes prepared salve from caster inventory"
+}

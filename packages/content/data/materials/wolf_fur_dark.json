@@ -1,0 +1,17 @@
+{
+  "id": 200,
+  "name": "wolf_fur_dark",
+  "color": "#4a4444",
+  "roughness": 0.9,
+  "metallic": 0.0,
+  "emissive": 0.0,
+  "solid": false,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.05,
+    "density": 0.1,
+    "flexibility": 0.9,
+    "flammability": 0.4,
+    "toughness": 0.1
+  }
+}

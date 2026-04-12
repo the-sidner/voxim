@@ -1,0 +1,9 @@
+{
+  "id": "divine_wrath",
+  "name": "Divine Wrath",
+  "concept": "FEAR",
+  "domain": "RELIGIOUS",
+  "magnitude": 3,
+  "outward": "strike {target} with holy terror; undead flee immediately",
+  "inward": "caster must maintain conviction; fails under corruption"
+}

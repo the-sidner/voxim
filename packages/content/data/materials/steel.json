@@ -1,0 +1,17 @@
+{
+  "id": 103,
+  "name": "steel",
+  "color": "#9090a0",
+  "roughness": 0.3,
+  "metallic": 0.95,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.9,
+    "density": 1.05,
+    "flexibility": 0.1,
+    "flammability": 0.0,
+    "toughness": 0.95
+  }
+}

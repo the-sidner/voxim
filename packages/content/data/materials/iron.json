@@ -1,0 +1,17 @@
+{
+  "id": 6,
+  "name": "iron",
+  "color": "#7a7a8a",
+  "roughness": 0.4,
+  "metallic": 0.9,
+  "emissive": 0.0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.75,
+    "density": 1.0,
+    "flexibility": 0.15,
+    "flammability": 0.0,
+    "toughness": 0.8
+  }
+}

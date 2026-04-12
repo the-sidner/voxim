@@ -1,0 +1,138 @@
+{
+  "id": "human_hand",
+  "version": 2,
+  "hitbox": {
+    "minX": 0,
+    "minY": 0,
+    "minZ": -3,
+    "maxX": 3,
+    "maxY": 1,
+    "maxZ": 0
+  },
+  "nodes": [
+    {
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "materialId": 106
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": 0,
+      "materialId": 106
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 0,
+      "materialId": 106
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "z": 0,
+      "materialId": 106
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": -1,
+      "materialId": 106
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": -1,
+      "materialId": 106
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": -1,
+      "materialId": 106
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": -1,
+      "materialId": 106
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": -1,
+      "materialId": 106
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "z": -1,
+      "materialId": 106
+    },
+    {
+      "x": 3,
+      "y": 0,
+      "z": -1,
+      "materialId": 106
+    },
+    {
+      "x": 3,
+      "y": 1,
+      "z": -1,
+      "materialId": 106
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": -2,
+      "materialId": 106
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": -2,
+      "materialId": 106
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": -2,
+      "materialId": 106
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": -2,
+      "materialId": 106
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": -2,
+      "materialId": 106
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "z": -2,
+      "materialId": 106
+    },
+    {
+      "x": 3,
+      "y": 0,
+      "z": -2,
+      "materialId": 106
+    },
+    {
+      "x": 3,
+      "y": 1,
+      "z": -2,
+      "materialId": 106
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    106
+  ]
+}

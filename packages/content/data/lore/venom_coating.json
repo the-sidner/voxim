@@ -1,0 +1,9 @@
+{
+  "id": "venom_coating",
+  "name": "Venom Coating",
+  "concept": "VENOM",
+  "domain": "ALCHEMICAL",
+  "magnitude": 2,
+  "outward": "weapon strikes poison {target}, slow health drain",
+  "inward": "coating depletes with use; requires re-application"
+}

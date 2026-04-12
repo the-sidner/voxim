@@ -1,0 +1,9 @@
+{
+  "id": "dissolution",
+  "name": "Dissolution",
+  "concept": "DRAIN",
+  "domain": "ALCHEMICAL",
+  "magnitude": 2,
+  "outward": "dissolve {target} vitality through chemical contact",
+  "inward": "reagent stock consumed proportional to magnitude"
+}

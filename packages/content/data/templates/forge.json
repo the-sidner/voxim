@@ -1,0 +1,8 @@
+{
+  "id": "forge",
+  "components": {
+    "workstation": {
+      "stationType": "forge"
+    }
+  }
+}

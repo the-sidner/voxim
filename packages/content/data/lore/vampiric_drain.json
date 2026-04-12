@@ -1,0 +1,9 @@
+{
+  "id": "vampiric_drain",
+  "name": "Vampiric Drain",
+  "concept": "DRAIN",
+  "domain": "SUPERNATURAL",
+  "magnitude": 3,
+  "outward": "steal {stat} from {target} into caster",
+  "inward": "caster {stat} drains as fuel"
+}

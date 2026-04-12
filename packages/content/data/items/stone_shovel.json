@@ -1,0 +1,17 @@
+{
+  "id": "stone_shovel",
+  "category": "weapon",
+  "equipSlot": "weapon",
+  "stackable": false,
+  "weight": 3.0,
+  "slots": [],
+  "baseStats": {
+    "damage": 8,
+    "staminaCostPerSwing": 12,
+    "digPower": 2.0,
+    "bladeRadius": 0.12
+  },
+  "toolType": "shovel",
+  "weaponAction": "overhead",
+  "modelTemplateId": "model_shovel_basic"
+}
