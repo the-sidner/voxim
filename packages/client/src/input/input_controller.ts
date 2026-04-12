@@ -33,6 +33,20 @@ import {
   ACTION_SKILL_4,
 } from "@voxim/protocol";
 
+/**
+ * Keys the game claims exclusively. preventDefault fires for these unconditionally
+ * so the browser never acts on them (Ctrl+W closes tab, Ctrl+S saves, etc.).
+ * Also, any Ctrl or Alt combo is swallowed regardless of base key.
+ */
+const GAME_KEYS = new Set([
+  "KeyW", "KeyA", "KeyS", "KeyD",
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Space", "ShiftLeft", "ShiftRight",
+  "ControlLeft", "ControlRight",
+  "KeyZ", "KeyE", "KeyC", "KeyF",
+  "Digit1", "Digit2", "Digit3", "Digit4",
+]);
+
 export class InputController {
   private readonly keys = new Set<string>();
   private facing = 0;
@@ -139,16 +153,20 @@ export class InputController {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
+    // Prevent browser shortcuts for all game-owned keys, and swallow any Ctrl/Alt
+    // combo regardless of base key (catches Ctrl+W, Ctrl+S, Alt+F4, etc.).
+    if (GAME_KEYS.has(e.code) || e.ctrlKey || e.altKey) e.preventDefault();
+
     this.keys.add(e.code);
     switch (e.code) {
-      case "Space":     this.pendingActions |= ACTION_JUMP;        e.preventDefault(); break;
-      case "KeyZ":      this.pendingActions |= ACTION_USE_SKILL;   break;
-      case "KeyE":      this.pendingActions |= ACTION_INTERACT;    break;
-      case "KeyC":      this.pendingActions |= ACTION_CONSUME;     break;
-      case "Digit1":    this.pendingActions |= ACTION_SKILL_1;     break;
-      case "Digit2":    this.pendingActions |= ACTION_SKILL_2;     break;
-      case "Digit3":    this.pendingActions |= ACTION_SKILL_3;     break;
-      case "Digit4":    this.pendingActions |= ACTION_SKILL_4;     break;
+      case "Space":  this.pendingActions |= ACTION_JUMP;      break;
+      case "KeyZ":   this.pendingActions |= ACTION_USE_SKILL; break;
+      case "KeyE":   this.pendingActions |= ACTION_INTERACT;  break;
+      case "KeyC":   this.pendingActions |= ACTION_CONSUME;   break;
+      case "Digit1": this.pendingActions |= ACTION_SKILL_1;   break;
+      case "Digit2": this.pendingActions |= ACTION_SKILL_2;   break;
+      case "Digit3": this.pendingActions |= ACTION_SKILL_3;   break;
+      case "Digit4": this.pendingActions |= ACTION_SKILL_4;   break;
     }
   }
 
