@@ -1,19 +1,21 @@
 # Voxim2 — Architecture Reference
 
+Medieval post-apocalyptic multiplayer action RPG. Deno + TypeScript monorepo.
+Single authoritative tile-server per 512×512 world tile, browser client over WebTransport/QUIC.
+
+---
+
 ## Ticket system
 
-All significant engineering work is tracked in `TICKETS.md`. This is the source of truth for
-what has been built and what remains.
+All significant engineering work is tracked in `TICKETS.md`. Source of truth for what has been
+built and what remains.
 
 **When to create a ticket:** any new system, feature, or non-trivial bug fix — including work
-that comes up organically during other tasks. If it's more than a one-liner fix, it gets a
-ticket. When in doubt, create one.
+that comes up organically. If it's more than a one-liner, it gets a ticket. When in doubt, create one.
 
 **When to update a ticket:** mark `Status: in-progress` when work starts. On completion, mark
-`Status: done` and add `Commit: <short hash>`. The ticket is the audit trail — the commit hash
-lives in the ticket, not the other way around.
+`Status: done` and add `Commit: <short hash>`. The ticket is the audit trail.
 
-**Format:**
 ```
 ### T-NNN · Title
 Effort: S|M|L   Status: todo|in-progress|done   [Commit: abc1234]
@@ -21,14 +23,13 @@ Effort: S|M|L   Status: todo|in-progress|done   [Commit: abc1234]
 What needs to be built and what "done" looks like.
 ```
 
-New tickets go at the bottom of the relevant domain section. New domains go at the end of the
-file. Never reuse a ticket number.
+New tickets go at the bottom of the relevant domain section. Never reuse a ticket number.
 
 ---
 
 ## Git workflow
 
-Commit after every reasonable self-contained change. Prefix the commit message with the affected package name, e.g.:
+Commit after every reasonable self-contained change. Prefix with the affected package:
 
 ```
 tile-server: add DodgeSystem cooldown reset on death
@@ -38,8 +39,7 @@ codecs: add AnimationState codec fields for attack style
 
 If a change spans multiple packages, list the primary one first.
 
-Medieval post-apocalyptic multiplayer action RPG. Deno + TypeScript monorepo.
-Single authoritative tile-server per 512×512 world tile, browser client over WebTransport.
+---
 
 ## Running the project
 
@@ -48,6 +48,7 @@ deno task demo          # bundle client + start tile server
 deno task tile          # server only
 deno task bundle        # client bundle only
 deno task gen-terrain   # regenerate terrain_tile_0.bin
+deno task gen-content   # regenerate static TS aggregation files after adding/renaming data files
 deno check packages/tile-server/mod.ts packages/client/src/game.ts packages/codecs/mod.ts packages/content/mod.ts
 ```
 
@@ -59,30 +60,44 @@ deno check packages/tile-server/mod.ts packages/client/src/game.ts packages/code
 |---------|-------------|---------|
 | `packages/engine` | `@voxim/engine` | ECS core — World, ComponentDef, EventBus, physics math. Zero game dependencies. |
 | `packages/codecs` | `@voxim/codecs` | Binary codecs for every **networked** component. Shared by server and client. |
-| `packages/protocol` | `@voxim/protocol` | Wire message types, ComponentType enum, InputDatagram codec, action bitflags. |
-| `packages/content` | `@voxim/content` | Data-driven game definitions. ContentStore loads from `packages/content/data/*.json`. |
+| `packages/protocol` | `@voxim/protocol` | Wire message types, ComponentType enum, InputDatagram codec, action bitflags, length-prefixed framing. |
+| `packages/content` | `@voxim/content` | Data-driven game definitions. ContentStore loads from per-item JSON files in `packages/content/data/`. |
 | `packages/world` | `@voxim/world` | Terrain generation, heightmaps, biome zones. |
-| `packages/tile-server` | `@voxim/tile-server` | Authoritative game server — systems, components, save/load, NPC AI. |
-| `packages/client` | `@voxim/client` | Browser client — Three.js render, input, state interpolation, skeleton animation. |
+| `packages/tile-server` | — | Authoritative game server — systems, components, save/load, NPC AI. |
+| `packages/client` | — | Browser client — Three.js render, input, state interpolation, skeleton animation. |
 | `packages/gateway` | — | Stub multi-tile router. Out of scope for now. |
 
 ---
 
 ## ECS overview
 
-### Entities and components
+### Defining a component
+
+`ComponentDef` is a discriminated union with two variants. TypeScript enforces the contract at the
+call site — the compiler will reject a misconfigured def:
 
 ```typescript
-// Define (once, at module level in a component file):
+// Networked component — wireId is REQUIRED (stable wire-format ID, never reuse)
 export const Health = defineComponent({
-  name: "health" as const,        // must match ComponentType enum name
+  name: "health" as const,
+  wireId: ComponentType.health,          // from @voxim/protocol ComponentType enum
   codec: buildCodec<HealthData>({ current: { type: "f32" }, max: { type: "f32" } }),
   default: (): HealthData => ({ current: 100, max: 100 }),
-  // networked: false             // add this for server-only components
+});
+
+// Server-only component — networked: false is REQUIRED, no wireId
+export const SkillInProgress = defineComponent({
+  name: "skillInProgress" as const,
+  networked: false,
+  codec: skillInProgressCodec,
+  default: (): SkillInProgressData => ({ ... }),
 });
 ```
 
-**Two write APIs:**
+`NetworkedComponentDef` and `ServerOnlyComponentDef` are both exported from `@voxim/engine` if
+you need to narrow the type.
+
+### Write APIs
 
 | Method | When | Effect |
 |--------|------|--------|
@@ -92,7 +107,8 @@ export const Health = defineComponent({
 | `world.remove(id, C)` | Inside systems | Deferred removal |
 | `world.destroy(id)` | Inside systems | Tombstones entity; purged on `applyChangeset()` |
 
-**Read API:**
+### Read APIs
+
 ```typescript
 world.get(entityId, Health)           // T | null
 world.has(entityId, Health)           // boolean
@@ -106,22 +122,24 @@ Queries use a **reverse component index** — cost is O(smallest matching set), 
 
 ```typescript
 export interface System {
-  prepare?(serverTick: number, ctx: TickContext): void;  // optional
+  prepare?(serverTick: number, ctx: TickContext): void;  // optional pre-tick hook
   run(world: World, events: EventEmitter, dt: number): void;
 }
 ```
 
-Systems never call `applyChangeset()` themselves. They accumulate deferred writes; the tick loop commits them all at once after all systems have run. **A system cannot see another system's writes until the next tick.** This is intentional.
+Systems never call `applyChangeset()` themselves. They accumulate deferred writes via `world.set()`
+and `world.remove()`; the tick loop commits them all at once after all systems have run.
+**A system cannot see another system's writes until the next tick.** This is intentional.
 
 ### Server tick sequence (20 Hz)
 
 1. **Drain input** — latest InputDatagram per player written to InputState via `world.write()`
-2. **Run systems** — in order (see below); deferred writes accumulate
+2. **Run systems** — in declared order; deferred writes accumulate in the changeset
 3. **Apply changeset** — `world.applyChangeset()` commits all deferred writes and removals
-4. **Fire events** — deferred event queue flushed; subscribers see committed state
-5. **Build delta** — changed components encoded to `Uint8Array` once per component
-6. **Send state** — per-session AoI filter (128-unit radius), encode StateMessage, send
-7. **Advance tick** — auto-save if interval elapsed
+4. **Fire events** — deferred EventBus queue flushed; subscribers see committed state
+5. **Build delta** — changed components in the changeset encoded once per component
+6. **Send state** — per-session AoI filter (128-unit radius), encode BinaryStateMessage, send
+7. **Advance tick** — auto-save every 6000 ticks (5 min at 20 Hz) if SaveManager is active
 
 ### System execution order (`server.ts`)
 
@@ -133,79 +151,168 @@ NpcAiSystem → PhysicsSystem → DodgeSystem → HungerSystem → StaminaSystem
 → TraderSystem → DynastySystem → AnimationSystem
 ```
 
-Order matters: SkillSystem runs before ActionSystem so on-hit effects compose correctly. AnimationSystem runs last so it sees all state changes.
+Order matters: SkillSystem runs before ActionSystem so on-hit effects compose correctly.
+AnimationSystem runs last so it sees all state changes before encoding AnimationState.
 
 ---
 
 ## Adding or reworking a component
 
-### Adding a new component
+### Adding a networked component (3 steps)
 
-1. **Define type + codec** in the appropriate component file under `packages/tile-server/src/components/` (server-only) or `packages/codecs/src/components.ts` (if networked and used client-side too).
-2. **Server-only component?** Set `networked: false` on the def. It will be excluded from wire deltas automatically. Do **not** add it to the registry.
-3. **Networked component?** Do all of these:
-   - Add a stable numeric ID to the `ComponentType` enum in `packages/protocol/src/component_types.ts`. Never reuse a retired ID.
-   - Register in `packages/tile-server/src/component_registry.ts` as `{ typeId: ComponentType.X, def: MyComponent }`.
-   - Add the codec in `packages/codecs/src/components.ts` so the client can decode it.
-4. **Write the component at spawn** in `spawner.ts` if all entities need it.
+1. **Define** the component in the appropriate file under `packages/tile-server/src/components/`,
+   adding both `wireId: ComponentType.X` and a codec from `@voxim/codecs`:
+   ```typescript
+   export const Foo = defineComponent({
+     name: "foo" as const,
+     wireId: ComponentType.foo,
+     codec: fooCodec,
+     default: (): FooData => ({ ... }),
+   });
+   ```
+2. **Reserve a wire ID** — add a new entry to the `ComponentType` const object in
+   `packages/protocol/src/component_types.ts`. Never reuse a retired numeric ID.
+3. **Register** — add `Foo` to the `NETWORKED_DEFS` array in
+   `packages/tile-server/src/component_registry.ts`. The `DEF_BY_TYPE_ID` map is derived
+   automatically from `def.wireId`. No separate `typeId` field in the registry.
+4. **Add the codec** in `packages/codecs/src/components.ts` so the client can decode it.
+5. **Write at spawn** in `spawner.ts` if all entities need it.
+
+### Adding a server-only component (1 step)
+
+Set `networked: false` on the def. That is all — it will be excluded from wire deltas, AoI spawn
+messages, and the registry automatically. The codec may be defined inline in the component file.
 
 ### Retiring a component
 
-- Comment out its entry in `component_registry.ts` with a note like `// 10 (attackCooldown) retired`.
-- Remove from `component_types.ts` import but **leave the numeric slot** as a comment so the ID is never recycled.
+- Leave the numeric slot as a comment in `component_types.ts` (e.g. `// 10 (attackCooldown) retired`) — IDs are permanent.
+- Remove from `NETWORKED_DEFS` in `component_registry.ts`.
 - Remove from `spawner.ts` and all system reads/writes.
-- Delete the `defineComponent()` call.
+- Delete the `defineComponent()` call and its codec.
 
 ### Codec rules
 
-- **All codecs belong in `@voxim/codecs`** if they are used on the wire (server ↔ client). Never define a networked codec inline in a component file.
-- **Server-only components** may define their codec inline (e.g. `skillInProgressCodec` in `game.ts`) since the client never sees them.
+- **Networked codecs belong in `@voxim/codecs`** — the client and server must share them.
+  Never define a networked codec inline in a component file.
+- **Server-only codecs** may be inline (the client never sees them).
 - Use `buildCodec<T>({ field: { type: "f32" } })` for flat structs with primitives.
 - Use `WireWriter` / `WireReader` for variable-length data (strings, arrays, nested objects).
 - Every codec must implement `Serialiser<T>` from `@voxim/engine`.
 
 ---
 
-## Combat and skills
+## Network protocol
 
-### Combat architecture (two-layer)
+### Wire framing
 
-```
-ActionSystem (Layer 1 — physics of the swing)
-  → SkillSystem.resolve() (Layer 2 — Lore effects on hit)
-```
+All reliable stream messages (join handshake, state updates, commands) use length-prefixed binary
+framing provided by `@voxim/protocol`:
 
-**ActionSystem** handles: windup → active → winddown timing (from `weapon_actions.json`), hitbox detection, damage calculation, knockback, parry/block/counter logic. When a hit connects and `pendingSkillVerb` is set it delegates to SkillSystem.
-
-**SkillSystem** handles: skill slot activation from `INPUT_SKILL_N` flags, cooldown management, concept-verb matrix lookups, applying `ActiveEffects`.
-
-### SkillInProgress component
-
-Present on an entity **only while a swing is in progress** (windup through winddown). Absent otherwise — do not write it at spawn. Systems that need to gate on "is swinging?" just check `world.get(entityId, SkillInProgress) !== null`.
-
-Fields:
 ```typescript
-{
-  weaponActionId: string;       // key into weapon_actions.json
-  phase: "windup"|"active"|"winddown";
-  ticksInPhase: number;
-  hitEntities: string[];        // already-hit this swing (prevents multi-hit)
-  inputTimestamp: number;       // client wall-clock ms for RTT rewind
-  pendingSkillVerb: string;     // "strike:0" → fire skill slot 0 on connect
-}
+import { encodeFrame, makeFrameReader } from "@voxim/protocol";
+
+// Sender
+writer.write(encodeFrame({ type: "join", ... }));   // JSON objects
+writer.write(encodeFrame(binaryBytes));              // Uint8Array pass-through
+
+// Receiver
+const { readJson, readFrame, readPayload } = makeFrameReader(reader);
+const msg = await readJson();      // reads one length-prefixed JSON message
+const raw = await readPayload();   // reads one length-prefixed binary payload
 ```
 
-### Skill loadout
+Never roll a custom length-prefix implementation — always use these helpers.
 
-LoreLoadout: 4 skill slots, each with `{ verb, outwardFragmentId, inwardFragmentId }`.
-- Verb `"strike"` — fires on melee connect via `pendingSkillVerb`
-- Verbs `"invoke"`, `"ward"`, `"step"` — activate immediately in SkillSystem
+### InputDatagram (client → server, unreliable datagrams, ~60 Hz)
 
-Effect magnitude = `outwardFragment.magnitude × entry.outwardScale`.
+36-byte fixed binary: `seq` (u32, monotonic), `timestamp` (f64, wall-clock ms for RTT),
+`facing` (f32 radians), `movementX/Y` (f32 normalised), `actions` (u32 bitfield),
+`interactSlot` (u32).
+
+Action bitflags (defined in `packages/protocol/src/messages.ts`):
+```
+ACTION_USE_SKILL = 1 << 0    ACTION_BLOCK  = 1 << 1    ACTION_JUMP     = 1 << 2
+ACTION_INTERACT  = 1 << 3    ACTION_DODGE  = 1 << 4    ACTION_CROUCH   = 1 << 5
+ACTION_CONSUME   = 1 << 6    ACTION_SKILL_1 = 1 << 7   ACTION_SKILL_2  = 1 << 8
+ACTION_SKILL_3   = 1 << 9    ACTION_SKILL_4 = 1 << 10
+```
+
+### BinaryStateMessage (server → client, reliable stream, 20 Hz)
+
+Length-prefixed binary, encoded by `binaryStateMessageCodec`. Contains:
+- `entitySpawns` — full component snapshots for entities entering AoI this tick
+- `entityDestroys` — entity IDs that left AoI or died
+- `componentDeltas` — per-entity changed components (only changed, only AoI)
+- `events` — discrete game events (damage, death, crafting, etc.)
+- `ackInputSeq` — last input seq processed (for client-side reconciliation)
+
+### Session lifecycle
+
+1. Client opens WebTransport session → tile-server accepts in `handleSession()`
+2. Client sends `TileJoinRequest` (JSON, length-prefixed)
+3. Server responds with `TileJoinAck` (JSON) or closes session on error
+4. Reliable stream: server pushes `BinaryStateMessage` each tick; client sends `CommandDatagram`
+5. Unreliable datagrams: client sends `MovementDatagram` ~60 Hz; server sends nothing on datagrams
+6. Disconnect: session cleaned up, player entity destroyed, dynasty saved to HeritageStore
+
+### Rewind / lag compensation
+
+On the first active tick of a swing, ActionSystem rewinds the target's position using
+`StateHistoryBuffer.getAt(serverTick - rttTicks)`. NPCs always use the current tick.
+
+---
+
+## Content / data-driven design
+
+All tuning lives in `packages/content/data/`. No hardcoded game values in systems.
+
+### Directory layout
+
+Each content type has its own subdirectory — **one JSON file per item**. Adding a new sword,
+NPC, or recipe requires dropping a single file; no code changes needed.
+
+```
+data/
+  models/           {id}.json    — ModelDefinition (voxel geometry + skeleton binding)
+  skeletons/        {id}.json    — SkeletonDef (bone hierarchy + animation clips)
+  items/            {id}.json    — ItemTemplate (item categories, material slots, base stats)
+  templates/        {id}.json    — EntityTemplate (prefab: which model + which components)
+  npcs/             {id}.json    — NpcTemplate (archetype stats, skill loadout, behavior)
+  weapon_actions/   {id}.json    — WeaponActionDef (swing timing, hitbox shape, IK targets)
+  recipes/          {id}.json    — Recipe (crafting inputs/outputs, station requirement)
+  structures/       {id}.json    — StructureDef (blueprint building parameters)
+  lore/             {id}.json    — LoreFragment (skill concept + magnitude)
+  materials/        {name}.json  — MaterialDef (numeric id in file, name is filename)
+
+  game_config.json              — singleton: combat ratios, physics constants, AI defaults
+  concept_verb_matrix.json      — skill effect table: verb × outward × inward → effect + scaling
+  verbs.json                    — skill verb definitions
+  terrain_config.json           — terrain generation parameters
+  tile_layout.json              — optional: NPC/prop placement overrides for a specific tile
+```
+
+### Loader
+
+The server calls `loadContentStore(dataDir?)` from `@voxim/content`. It scans each subdirectory,
+sorts filenames alphabetically for deterministic registration order, and loads each file as one item.
+
+### Client bundle
+
+The browser client cannot use `Deno.readDir`. Two generated TypeScript files in
+`packages/content/src/` aggregate per-item imports statically for bundling:
+- `weapon_actions_static.ts` — all weapon actions
+- `item_templates_static.ts` — all item templates
+
+**After adding or renaming a data file in those categories, run:**
+```
+deno task gen-content
+```
+The generator lives at `scripts/gen_content.ts`. Add new categories to `TARGETS` there if the
+client needs them. Always commit the regenerated `*_static.ts` files.
 
 ### Adding a new weapon action
 
-Add an entry to `packages/content/data/weapon_actions.json` with hilt keyframes, blade direction, blade length, and IK targets:
+Drop a file in `data/weapon_actions/spear_thrust.json`:
 ```json
 {
   "id": "spear_thrust",
@@ -226,59 +333,58 @@ Add an entry to `packages/content/data/weapon_actions.json` with hilt keyframes,
   ]
 }
 ```
-Set `weaponAction: "spear_thrust"` in the item template's `baseStats`. No code changes needed — the swingPath hilt keyframes drive hit detection, arm animation (IK), and trail rendering automatically. Per-item `bladeLength` override via `DerivedItemStats.bladeLength`.
+Set `weaponAction: "spear_thrust"` in the item template's `baseStats`. Run `deno task gen-content`.
+No other code changes needed — the swingPath drives hit detection, arm IK, and trail rendering.
+
+### ContentStore access
+
+Injected into every system constructor. Never import JSON files directly. Never hardcode tuning.
+
+```typescript
+content.getWeaponAction("slash")
+content.getItemTemplate("wooden_sword")
+content.getEntityTemplate("wolf")
+content.deriveItemStats(itemType, parts)   // combines template + material multipliers at runtime
+```
 
 ---
 
-## Network protocol
+## Combat and skills
 
-### InputDatagram (client → server, unreliable, ~60 Hz)
+### Two-layer architecture
 
-36-byte fixed binary. Key fields: `seq` (monotonic, for ack), `timestamp` (wall-clock ms, for RTT), `facing` (f32 radians), `movementX/Y` (f32 normalised), `actions` (u32 bitfield), `interactSlot` (u32).
-
-Action bitflags (defined in `packages/protocol/src/messages.ts`):
 ```
-ACTION_USE_SKILL = 1 << 0
-ACTION_BLOCK     = 1 << 1
-ACTION_JUMP      = 1 << 2
-ACTION_INTERACT  = 1 << 3
-ACTION_DODGE     = 1 << 4
-ACTION_SKILL_1   = 1 << 5
-ACTION_SKILL_2   = 1 << 6
-ACTION_SKILL_3   = 1 << 7
-ACTION_SKILL_4   = 1 << 8
+ActionSystem (Layer 1 — physics of the swing)
+  → SkillSystem.resolve() (Layer 2 — Lore effects on hit)
 ```
 
-### StateMessage (server → client, reliable stream, 20 Hz)
+**ActionSystem** handles: windup → active → winddown timing, hitbox sweep detection, damage
+calculation, knockback, parry/block/counter logic. Delegates to SkillSystem when `pendingSkillVerb`
+is set and a hit connects.
 
-Length-prefixed binary. Contains:
-- `entityDeltas` — per-entity component changes (only changed components, only entities in AoI)
-- `entityDestroys` — entities that left AoI or died
-- `events` — discrete game events (damage, death, crafting complete, etc.)
-- `ackInputSeq` — last input seq processed (client-side reconciliation)
+**SkillSystem** handles: skill slot activation from `ACTION_SKILL_N` flags, cooldown management,
+concept-verb matrix lookups, applying `ActiveEffects`.
 
-### Rewind / lag compensation
+Hit handlers in `packages/tile-server/src/handlers/` implement `HitHandler` and are dispatched
+by ActionSystem based on what was hit (entity health, resource node, blueprint, terrain, workstation).
 
-When a hit enters the active phase on the first tick, ActionSystem rewinds the target's position using `StateHistoryBuffer.getAt(serverTick - rttTicks)`. NPCs always use the current tick (no client latency to compensate for).
+### SkillInProgress component
 
----
+Present **only while a swing is in progress** (windup through winddown). Absent otherwise.
+Gate on "is swinging?" with `world.get(entityId, SkillInProgress) !== null`.
+Never write it at spawn.
 
-## Content / data-driven design
+Key fields: `weaponActionId`, `phase` ("windup"|"active"|"winddown"), `ticksInPhase`,
+`hitEntities` (deduplication), `rewindTick` (lag-compensated hit tick, set once on first active
+tick), `pendingSkillVerb`.
 
-All tuning lives in `packages/content/data/`. No hardcoded game values in systems.
+### Skill loadout
 
-| File | What it controls |
-|------|-----------------|
-| `game_config.json` | Combat ratios, physics constants, stamina regen, dodge windows, NPC AI defaults |
-| `weapon_actions.json` | Swing timing (windup/active/winddown), hitbox shape, animation style |
-| `item_templates.json` | Item categories, material slots, base stats |
-| `npc_templates.json` | NPC archetype stats, skill loadouts, behavior type |
-| `lore_fragments.json` | Fragment concepts and magnitude values |
-| `concept_verb_matrix.json` | Skill effect table — verb × outward × inward → effectStat + scaling |
+LoreLoadout: 4 skill slots, each `{ verb, outwardFragmentId, inwardFragmentId }`.
+- `"strike"` — fires on melee connect via `pendingSkillVerb`
+- `"invoke"`, `"ward"`, `"step"` — activate immediately in SkillSystem
 
-Access via `ContentStore` injected into every system constructor. Never read JSON files directly from systems.
-
-Item stats are derived at runtime — not stored: `content.deriveItemStats(itemType, parts)` combines template base stats with per-slot material property multipliers.
+Effect magnitude = `outwardFragment.magnitude × entry.outwardScale`.
 
 ---
 
@@ -286,51 +392,111 @@ Item stats are derived at runtime — not stored: `content.deriveItemStats(itemT
 
 `skeleton_evaluator.ts` generates bone poses via a three-stage pipeline each frame:
 
-1. **Base FK** — Lower body always plays locomotion (idle sway / walk gait). Upper body plays locomotion or is overridden by constraint producers.
-2. **Constraint producers** — During attacks, the weapon animation layer reads the `swingPath` hilt position and `ikTargets` from the weapon action to produce IK constraints. Torso lean/twist is derived from the hilt position. Other producers (look-at, foot planting) can add constraints from other sources.
-3. **Constraint solver** — Solves all constraints generically. Two-bone IK uses `ik_solver.ts`. Results override FK bone rotations.
+1. **Base FK** — lower body always plays locomotion (idle / walk). Upper body plays locomotion or
+   is overridden by constraint producers.
+2. **Constraint producers** — the weapon layer reads `swingPath` hilt + `ikTargets` from the
+   weapon action and produces IK constraints. Torso lean derives from hilt position. Other
+   producers (look-at, foot planting) contribute additional constraints.
+3. **Constraint solver** — solves all constraints generically. Two-bone IK via `ik_solver.ts`.
 
 ### Hilt-centric weapon system
 
-SwingPath keyframes define hilt position + blade direction (unit vector). The blade tip is always derived: `hilt + bladeDir × bladeLength`. This single path drives:
-- Server hit detection: swept capsule (`ActionSystem`) using `deriveTip()`
-- Client arm animation: IK targets hilt position (constraint solver)
-- Client trail ribbon: tip derived from hilt + bladeDir × defaultBladeLength
+SwingPath keyframes define hilt position + blade direction. Tip is always derived:
+`hilt + bladeDir × bladeLength` via `deriveTip()`. This single path drives:
+- Server hit detection: swept capsule in ActionSystem
+- Client arm animation: IK constraint targets
+- Client trail ribbon: tip position each frame
 
-`defaultBladeLength` on `WeaponSwingPath` sets the default. Per-item override via `DerivedItemStats.bladeLength`. Same swing path works for any blade length (dagger vs longsword).
+`ik_solver.ts` is generic — reusable for any bone chain. `ikTargets` on `WeaponActionDef`
+specifies which chains track which swingPath points.
 
-`ik_solver.ts` is a generic two-bone IK solver — reusable for any bone chain (weapon arms, head look-at, foot planting). `ikTargets` on `WeaponActionDef` defines which bone chains track which swingPath points.
-
-`AnimationSystem` runs last every server tick and derives `AnimationState` from observable entity state (health, velocity, SkillInProgress).
+`AnimationSystem` runs last each server tick and derives `AnimationState` from observable
+entity state (velocity, SkillInProgress, health) — it never reads raw input.
 
 ---
 
 ## NPC AI
 
-NpcAiSystem writes to the **same InputState component** as players. All downstream systems (physics, action, skill) are unaware whether the entity is an NPC or player — there are no `isNpc` branches.
+`NpcAiSystem` writes to the **same `InputState` component** as players. All downstream systems
+are NPC-unaware — no `isNpc` branches anywhere in physics, combat, or skill code.
 
-NPCs get `LoreLoadout` and `ActiveEffects` at spawn (same as players). Skill loadout comes from `npc_templates.json → skillLoadout`.
+Differences between NPCs and players are expressed through component data: `NpcTag` (marker),
+`NpcJobQueue` (AI job scheduler), `LoreLoadout` contents from `npc_templates.json`.
 
-Job queue (`NpcJobQueue`): `current` job + `scheduled` list + A\* `plan` (waypoints). Replanning is budgeted at 16 per tick to prevent frame spikes.
+Job queue: `current` job + `scheduled` list + A\* `plan` (waypoints). Replanning is budgeted at
+16 plans per tick to prevent frame spikes.
+
+---
+
+## Save / load
+
+`SaveManager` (injected into TileServer, optional) persists a binary snapshot:
+
+**What is saved:** WorldClock + TileCorruption, all terrain chunks (Heightmap + MaterialGrid),
+resource node positions and HP.
+
+**What is NOT saved:** Players (reconnect and respawn fresh), NPCs (re-spawned from config),
+transient state (ActiveEffects, cooldowns).
+
+Format: `VXM2` magic + version u32 + timestamp f64 + entity list. Each entity: UUID + component
+list of `(wireId u8, dataLen u16, bytes…)`. Loading is forward-compatible — unknown typeIds are
+skipped without error.
+
+---
+
+## Server module structure
+
+The `TileServer` class in `server.ts` owns the tick loop and session map. Large subsystems are
+extracted into separate modules:
+
+| File | Responsibility |
+|------|---------------|
+| `server.ts` | TileServer class, tick loop, system wiring, delta build, state send |
+| `admin_server.ts` | HTTP admin endpoint (`/status`, `/save`), gateway registration |
+| `quic_server.ts` | `listenQuic()` — opens Deno.QuicEndpoint, upgrades to WebTransport |
+| `session.ts` | `ClientSession` — per-player input ring buffer, reliable stream writer |
+| `spawner.ts` | `spawnPlayer()`, `spawnNpc()`, `spawnEntity()`, prop/blueprint spawning |
+| `aoi.ts` | `computeSessionUpdate()` — AoI diff, entity spawn/despawn, event filter |
+| `component_registry.ts` | `NETWORKED_DEFS[]`, `DEF_BY_TYPE_ID` — derived from `def.wireId` |
+| `save_manager.ts` | Binary save/load for terrain + world state |
+| `state_history.ts` | `StateHistoryBuffer` — rolling snapshot for lag compensation rewind |
+| `heritage_store.ts` | Persistent dynasty/heritage data across player deaths |
+| `spatial_grid.ts` | Spatial hash for AoI proximity queries |
+| `systems/` | One file per System implementation |
+| `handlers/` | Hit handler dispatch (health, resource node, terrain, blueprint, workstation) |
+| `components/` | Component defs grouped by domain |
 
 ---
 
 ## Patterns to follow
 
-**Component presence as flag** — Don't add `active: boolean` fields. If a thing is happening, the component exists. If it isn't, remove the component. (`SkillInProgress` is the canonical example.)
+**Component presence as flag** — No `active: boolean` fields. The component existing means the
+thing is happening. The component being absent means it isn't. `SkillInProgress` is canonical.
 
-**No isNpc branches** — NPCs and players share all combat/physics/skill systems. Differences are expressed through component data (LoreLoadout contents, NpcTag presence, etc.).
+**No isNpc branches** — NPCs and players share all systems. Differences live in component data.
 
-**Deferred events for game logic reactions** — If system B needs to react to something system A did, A publishes an event and B subscribes via EventBus. Don't call B from A directly.
+**Deferred events for cross-system reactions** — System A publishes an event; System B subscribes
+via EventBus. Never call system B directly from system A.
 
-**ContentStore is the only way to read game data** — Never import JSON files directly. Never hardcode numeric tuning values in systems.
+**ContentStore is the only data access path** — Never import JSON files directly from systems.
+Never hardcode numeric tuning values.
 
-**Codec in @voxim/codecs, not inline** — If a component is networked, its codec belongs in the codecs package so the client and server share it. Inline codecs are only acceptable for `networked: false` components.
+**Networked codec in @voxim/codecs** — If a component is on the wire, its codec belongs in the
+codecs package so client and server share it. Inline codecs only for `networked: false` components.
 
-**Hilt path is the single source of truth** — SwingPath keyframes define hilt movement and blade direction. The tip is always derived: `hilt + bladeDir × bladeLength` via `deriveTip()`. Never store independent tip positions. New weapons only need swingPath + ikTargets data.
+**wireId lives on the def** — `NetworkedComponentDef.wireId` is the stable wire ID. Never maintain
+a parallel ID mapping (no `{ typeId, def }` wrapper). `NETWORKED_DEFS` is a flat array of defs;
+`DEF_BY_TYPE_ID` is derived from `def.wireId`.
 
-**Animation uses a constraint pipeline** — Base FK → constraint producers (weapon layer, future look-at/foot-plant) → generic constraint solver. Weapon animation is a producer of constraints, not hardcoded poses. Don't add per-style code branches in the evaluator.
+**Hilt path is the single source of truth** — Tip always derived: `hilt + bladeDir × bladeLength`
+via `deriveTip()`. Never store independent tip positions.
 
-**IK solver is generic** — `ik_solver.ts` solves two-bone IK for any bone chain. Don't add chain-specific solvers. The constraint solver dispatches by constraint type, not by which bone it affects.
+**Animation is a constraint pipeline** — Base FK → constraint producers → generic solver. No
+per-weapon-style branches in the evaluator; add producers, not special cases.
 
-**Animation data lives in content** — Attack body language derives from hilt position. `ikTargets` define which bones track which swingPath points. No per-weapon-style code.
+**IK solver is generic** — `ik_solver.ts` solves two-bone IK for any chain. Never write
+chain-specific solvers.
+
+**One file per data item** — Content lives in `packages/content/data/{category}/{id}.json`.
+Adding content is a file drop, not a code change. Run `deno task gen-content` after adding to
+categories used by the browser bundle.
