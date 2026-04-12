@@ -766,7 +766,7 @@ precomputed grid. EquipmentSystem writes LightEmitter when a torch/lantern is eq
 LightEmitter for placed emitters (campfire, hearth) via `components.lightEmitter` on EntityTemplate.
 Client: `LightManager` attaches `THREE.PointLight` to entity groups; flicker via double-sinusoid
 oscillator. Protocol note: component-removal delta not yet implemented — zero-intensity write used
-as "off" sentinel until wire removal is added.
+as "off" sentinel until wire removal is added (see T-097).
 Done when: a placed torch emits visible light that fades with distance; campfire casts warm
 ambient glow; lights respond to day/night cycle.
 
@@ -899,7 +899,36 @@ Done when: `deno check` passes, adding a networked component without `wireId` is
 compile error, and server-only components cannot have `wireId`.
 
 
-### T-095 · Split monolithic content data files into per-item directories
+### T-097 · Wire protocol: component removal delta
+Effort: S   Status: todo
+
+**The problem.** `BinaryStateMessage` currently carries `spawns`, `deltas` (component writes),
+and `destroys` (entity removals).  There is no message for removing a single component from a
+living entity.  When a component is removed via `world.remove()`, the client never learns about it
+— its `EntityState` retains the stale value until the entity leaves and re-enters AoI.
+
+**Known example: T-089 `LightEmitter`.** When a player unequips a torch, `EquipmentSystem` calls
+`world.set(entityId, LightEmitter, { intensity: 0, radius: 0, ... })` instead of `world.remove()`
+to signal "light off" to the client.  The component persists in ECS state with sentinel values.
+This is a workaround, not a proper solution — it leaves garbage data in the ECS and requires every
+consumer of `LightEmitter` to guard against `intensity <= 0`.
+
+**Decision needed.** Before implementing, weigh:
+- Extend `BinaryStateMessage` with `componentRemovals: { entityId: string; componentType: number }[]`.
+  Clean, explicit, low overhead per removal.
+- Alternatively, tolerate sentinel-value conventions for sparse components (simpler protocol,
+  higher call-site burden).
+
+**If wire removal is added:**
+1. Add `componentRemovals` to `BinaryStateMessage` and update `binaryStateMessageCodec`.
+2. Server: collect `changeset.removals` for networked defs and encode them alongside deltas.
+3. Client: `ClientWorld.applyRemoval(entityId, componentType)` clears the field in `EntityState`.
+4. Replace the `intensity: 0` sentinel in `EquipmentSystem._updateLightEmitter()` with a real
+   `world.remove(entityId, LightEmitter)` call.
+5. Remove the `intensity <= 0` guard from `getLightAt()` and `LightManager.sync()`.
+
+Done when: a protocol decision is recorded here; if wire removal is chosen, all five steps above
+are complete and `LightEmitter` is the first component to use the new path.
 Effort: M   Status: done   Commit: 38e1462
 
 All content previously stored in large flat JSON arrays has been split into

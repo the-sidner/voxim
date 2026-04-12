@@ -40,6 +40,8 @@ export class LightManager {
    * @param group     Three.js group to attach / detach the light from
    */
   sync(entityId: string, emitter: LightEmitterData | undefined, group: THREE.Group): void {
+    // intensity=0 is the "off" sentinel used when a torch is unequipped
+    // (workaround for missing wire component-removal delta — see T-097).
     if (!emitter || emitter.intensity <= 0 || emitter.radius <= 0) {
       this._remove(entityId, group);
       return;

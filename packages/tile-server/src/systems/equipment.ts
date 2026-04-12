@@ -176,9 +176,10 @@ export class EquipmentSystem implements System {
     if (bestRadius > 0) {
       world.set(entityId, LightEmitter, { color: bestColor, intensity: bestIntensity, radius: bestRadius, flicker: bestFlicker });
     } else if (world.has(entityId, LightEmitter)) {
-      // No light-emitting item equipped. Use intensity=0 as the "off" signal —
-      // the protocol has no component-removal delta, so a zero-intensity write
-      // tells the client to tear down the PointLight.
+      // No light-emitting item equipped.  Ideally we'd call world.remove() here,
+      // but the wire protocol has no component-removal delta yet (T-097).  A
+      // zero-intensity write serves as the "off" sentinel — the client's
+      // LightManager tears down the PointLight when it sees intensity <= 0.
       world.set(entityId, LightEmitter, { color: 0, intensity: 0, radius: 0, flicker: 0 });
     }
   }

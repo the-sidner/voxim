@@ -41,6 +41,8 @@ export function getLightAt(world: World, x: number, y: number): number {
   let light = 0;
 
   for (const { position, lightEmitter } of world.query(Position, LightEmitter)) {
+    // intensity=0 is the "off" sentinel written by EquipmentSystem when a torch
+    // is unequipped (workaround for missing wire component-removal — see T-097).
     if (lightEmitter.intensity <= 0 || lightEmitter.radius <= 0) continue;
     const dx = x - position.x;
     const dy = y - position.y;
