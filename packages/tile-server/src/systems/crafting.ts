@@ -13,6 +13,7 @@
  * which is registered as a HitHandler in server.ts.
  */
 import type { World, EntityId } from "@voxim/engine";
+import type { SpatialGrid } from "../spatial_grid.ts";
 import { newEntityId } from "@voxim/engine";
 import { TileEvents, ACTION_INTERACT, hasAction, CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
@@ -20,7 +21,6 @@ import type { ContentStore, Recipe } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
 import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
-import type { InventorySlot } from "../components/items.ts";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
@@ -38,11 +38,13 @@ const DEPLOY_OFFSET = 1.5;
 
 export class CraftingSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
+  private _spatial: SpatialGrid | null = null;
 
   constructor(private readonly content: ContentStore) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
     this._commands = ctx.pendingCommands;
+    this._spatial = ctx.spatial;
   }
 
   run(world: World, events: EventEmitter, _dt: number): void {
@@ -205,15 +207,17 @@ export class CraftingSystem implements System {
   }
 
   private findNearestWorkstation(world: World, x: number, y: number): EntityId | null {
+    if (!this._spatial) return null;
     let bestId: EntityId | null = null;
     let bestDistSq = INTERACT_RANGE * INTERACT_RANGE;
 
-    for (const { entityId } of world.query(WorkstationTag)) {
-      const pos = world.get(entityId, Position);
+    for (const candidateId of this._spatial.nearby(x, y, INTERACT_RANGE)) {
+      if (!world.has(candidateId, WorkstationTag)) continue;
+      const pos = world.get(candidateId, Position);
       if (!pos) continue;
       const dx = pos.x - x, dy = pos.y - y;
       const distSq = dx * dx + dy * dy;
-      if (distSq < bestDistSq) { bestDistSq = distSq; bestId = entityId; }
+      if (distSq < bestDistSq) { bestDistSq = distSq; bestId = candidateId; }
     }
     return bestId;
   }
@@ -277,15 +281,3 @@ export function spawnOutputNear(world: World, stationId: EntityId, itemType: str
   world.write(id, ItemData, { itemType, quantity });
 }
 
-export function addStackableToInventory(
-  slots: InventorySlot[],
-  itemType: string,
-  quantity: number,
-  capacity: number,
-): InventorySlot[] | null {
-  const total = slots.reduce((s, sl) => s + sl.quantity, 0);
-  if (total + quantity > capacity) return null;
-  const existing = slots.find((s) => s.itemType === itemType && !s.parts);
-  if (existing) return slots.map((s) => (s === existing ? { ...s, quantity: s.quantity + quantity } : s));
-  return [...slots, { itemType, quantity }];
-}
