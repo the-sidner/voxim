@@ -1,4 +1,5 @@
 import { defineComponent } from "@voxim/engine";
+import { ComponentType } from "@voxim/protocol";
 import { loreLoadoutCodec, activeEffectsCodec } from "@voxim/codecs";
 import type { SkillVerb, SkillEffectStat } from "@voxim/content";
 
@@ -27,6 +28,7 @@ export interface LoreLoadoutData {
 
 export const LoreLoadout = defineComponent({
   name: "loreLoadout" as const,
+  wireId: ComponentType.loreLoadout,
   codec: loreLoadoutCodec,
   default: (): LoreLoadoutData => ({
     skills: [null, null, null, null],
@@ -67,6 +69,7 @@ export interface ActiveEffectsData {
 
 export const ActiveEffects = defineComponent({
   name: "activeEffects" as const,
+  wireId: ComponentType.activeEffects,
   codec: activeEffectsCodec,
   default: (): ActiveEffectsData => ({ effects: [] }),
 });

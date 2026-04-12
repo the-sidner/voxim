@@ -1,4 +1,5 @@
 import { defineComponent } from "@voxim/engine";
+import { ComponentType } from "@voxim/protocol";
 import { itemDataCodec, inventoryCodec, craftingQueueCodec, buildCodec } from "@voxim/codecs";
 import type { ItemPart } from "@voxim/content";
 
@@ -17,6 +18,7 @@ export interface ItemDataData {
 
 export const ItemData = defineComponent({
   name: "itemData" as const,
+  wireId: ComponentType.itemData,
   codec: itemDataCodec,
   default: (): ItemDataData => ({ itemType: "unknown", quantity: 1 }),
 });
@@ -46,6 +48,7 @@ export interface InventoryData {
 
 export const Inventory = defineComponent({
   name: "inventory" as const,
+  wireId: ComponentType.inventory,
   codec: inventoryCodec,
   default: (): InventoryData => ({ slots: [], capacity: 20 }),
 });
@@ -64,6 +67,7 @@ export interface CraftingQueueData {
 
 export const CraftingQueue = defineComponent({
   name: "craftingQueue" as const,
+  wireId: ComponentType.craftingQueue,
   codec: craftingQueueCodec,
   default: (): CraftingQueueData => ({
     activeRecipeId: null,
@@ -81,6 +85,7 @@ export interface InteractCooldownData {
 
 export const InteractCooldown = defineComponent({
   name: "interactCooldown" as const,
+  wireId: ComponentType.interactCooldown,
   codec: buildCodec<InteractCooldownData>({ remaining: { type: "i32" } }),
   default: (): InteractCooldownData => ({ remaining: 0 }),
 });

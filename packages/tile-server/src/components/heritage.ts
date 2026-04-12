@@ -1,4 +1,5 @@
 import { defineComponent } from "@voxim/engine";
+import { ComponentType } from "@voxim/protocol";
 import { heritageCodec } from "@voxim/codecs";
 
 // ---- Heritage ----
@@ -24,6 +25,7 @@ export interface HeritageData {
 
 export const Heritage = defineComponent({
   name: "heritage" as const,
+  wireId: ComponentType.heritage,
   codec: heritageCodec,
   default: (): HeritageData => ({
     dynastyId: "",

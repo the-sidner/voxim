@@ -13,7 +13,6 @@
 import type { World, EntityId } from "@voxim/engine";
 import { Heightmap, CHUNK_SIZE } from "@voxim/world";
 import type { GameEvent } from "@voxim/protocol";
-import { COMPONENT_NAME_TO_TYPE } from "@voxim/protocol";
 import type {
   BinaryStateMessage,
   BinaryEntitySpawn,
@@ -38,12 +37,10 @@ const MAX_CHUNK_SPAWNS_PER_TICK = 20;
 function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponentEntry[] {
   const components: BinaryComponentEntry[] = [];
   for (const def of NETWORKED_DEFS) {
-    const typeId = COMPONENT_NAME_TO_TYPE.get(def.name);
-    if (typeId === undefined) continue;
     const data = world.get(entityId, def);
     if (data === null) continue;
     try {
-      components.push({ componentType: typeId, data: def.codec.encode(data) });
+      components.push({ componentType: def.wireId, data: def.codec.encode(data) });
     } catch {
       // Encoding failure — skip this component
     }

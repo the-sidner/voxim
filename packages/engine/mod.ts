@@ -4,7 +4,7 @@
 export type { Vec2, Vec3, EntityId } from "./src/math.ts";
 export { vec2, vec3, vec2Add, vec2Scale, vec2Length, vec2LengthSq, vec2Normalize, vec3Add, vec3Scale, vec3Length, vec3LengthSq, newEntityId } from "./src/math.ts";
 
-export type { Serialiser, ComponentDef } from "./src/component.ts";
+export type { Serialiser, ComponentDef, NetworkedComponentDef, ServerOnlyComponentDef } from "./src/component.ts";
 export { defineComponent } from "./src/component.ts";
 
 export type { AppliedChangeset, ChangesetSet, ChangesetRemoval, QueryResult } from "./src/world.ts";

@@ -1,4 +1,5 @@
 import { defineComponent } from "@voxim/engine";
+import { ComponentType } from "@voxim/protocol";
 import { blueprintCodec, workstationBufferCodec, WireWriter, WireReader } from "@voxim/codecs";
 import type { WorkstationBufferData } from "@voxim/codecs";
 
@@ -42,6 +43,7 @@ export interface BlueprintData {
 
 export const Blueprint = defineComponent({
   name: "blueprint" as const,
+  wireId: ComponentType.blueprint,
   codec: blueprintCodec,
   default: (): BlueprintData => ({
     structureType: "",
@@ -86,6 +88,7 @@ export { type WorkstationBufferData };
 
 export const WorkstationBuffer = defineComponent({
   name: "workstationBuffer" as const,
+  wireId: ComponentType.workstationBuffer,
   codec: workstationBufferCodec,
   default: (): WorkstationBufferData => ({
     stationType: "",

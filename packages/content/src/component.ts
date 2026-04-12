@@ -16,6 +16,7 @@ export type { ModelRefData };
 
 export const ModelRef = defineComponent({
   name: "modelRef" as const,
+  networked: false,
   codec: modelRefCodec,
   default: (): ModelRefData => ({
     modelId: "",

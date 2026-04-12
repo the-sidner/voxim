@@ -1,4 +1,5 @@
 import { defineComponent } from "@voxim/engine";
+import { ComponentType } from "@voxim/protocol";
 import { buildCodec } from "@voxim/codecs";
 
 // ---- WorldClock ----
@@ -14,6 +15,7 @@ export interface WorldClockData {
 
 export const WorldClock = defineComponent({
   name: "worldClock" as const,
+  wireId: ComponentType.worldClock,
   codec: buildCodec<WorldClockData>({ ticksElapsed: { type: "i32" }, dayLengthTicks: { type: "i32" } }),
   default: (): WorldClockData => ({ ticksElapsed: 0, dayLengthTicks: 14400 }),
 });
@@ -40,6 +42,7 @@ export interface TileCorruptionData {
 
 export const TileCorruption = defineComponent({
   name: "tileCorruption" as const,
+  wireId: ComponentType.tileCorruption,
   codec: buildCodec<TileCorruptionData>({ level: { type: "f32" } }),
   default: (): TileCorruptionData => ({ level: 0 }),
 });
@@ -54,6 +57,7 @@ export interface CorruptionExposureData {
 
 export const CorruptionExposure = defineComponent({
   name: "corruptionExposure" as const,
+  wireId: ComponentType.corruptionExposure,
   codec: buildCodec<CorruptionExposureData>({ level: { type: "f32" } }),
   default: (): CorruptionExposureData => ({ level: 0 }),
 });

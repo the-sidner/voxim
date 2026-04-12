@@ -839,3 +839,59 @@ carries the dynasty tag. Furniture items are defined in item_templates.json with
 
 Done when: a player can build a fully enclosed structure, claim it as home, gain shelter
 bonuses inside, and lose the claim when the structure is sufficiently destroyed.
+
+---
+
+## Engine / Netcode
+
+### T-094 · Discriminated union for ComponentDef — wireId required on networked components
+Effort: M   Status: done
+
+`ComponentDef` currently has `networked: boolean` but no wire ID on the type itself. Adding a
+new networked component requires touching two separate places (the def file + `COMPONENT_REGISTRY`)
+and forgetting the registry causes silent delta loss.
+
+**Change `ComponentDef` in `@voxim/engine` to a discriminated union:**
+
+```typescript
+export interface NetworkedComponentDef<T, N extends string = string> {
+  readonly id: symbol;
+  readonly name: N;
+  readonly default: () => T;
+  readonly codec: Serialiser<T>;
+  readonly networked: true;
+  readonly wireId: number;  // stable wire format ID, never reuse
+}
+
+export interface ServerOnlyComponentDef<T, N extends string = string> {
+  readonly id: symbol;
+  readonly name: N;
+  readonly default: () => T;
+  readonly codec: Serialiser<T>;
+  readonly networked: false;
+}
+
+export type ComponentDef<T, N extends string = string> =
+  | NetworkedComponentDef<T, N>
+  | ServerOnlyComponentDef<T, N>;
+```
+
+`defineComponent()` gets two overloads: one requiring `wireId` when networked (default), one
+accepting `networked: false` without it.
+
+**Cascade changes:**
+- All ~28 networked component defs: add `wireId: ComponentType.X`
+- All ~6 server-only defs: add `networked: false` explicitly (already set, just becomes
+  the discriminant)
+- `COMPONENT_REGISTRY` entries: drop `typeId` field (now lives on the def)
+- `buildDeltaMap` in `server.ts`: replace `COMPONENT_NAME_TO_TYPE.get(entry.token.name)`
+  lookup with `entry.token.wireId` directly
+- `buildSpawnComponents` in `aoi.ts`: replace `COMPONENT_NAME_TO_TYPE.get(def.name)`
+  with `def.wireId`
+- `DEF_BY_TYPE_ID` derivation: `new Map(NETWORKED_DEFS.map(d => [d.wireId, d]))`
+- Remove the startup assertion added in d372aef (TypeScript makes it redundant)
+- Remove `COMPONENT_NAME_TO_TYPE` from `server.ts` import (no longer used there)
+
+Done when: `deno check` passes, adding a networked component without `wireId` is a
+compile error, and server-only components cannot have `wireId`.
+

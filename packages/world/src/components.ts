@@ -7,6 +7,7 @@
 import { defineComponent } from "@voxim/engine";
 import { heightmapCodec, materialGridCodec } from "@voxim/codecs";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
+import { ComponentType } from "@voxim/protocol";
 
 export type { HeightmapData, MaterialGridData };
 
@@ -19,6 +20,7 @@ const CHUNK_CELLS = 32 * 32;
  */
 export const Heightmap = defineComponent({
   name: "heightmap" as const,
+  wireId: ComponentType.heightmap,
   codec: heightmapCodec,
   default: (): HeightmapData => ({
     data: new Float32Array(CHUNK_CELLS),
@@ -34,6 +36,7 @@ export const Heightmap = defineComponent({
  */
 export const MaterialGrid = defineComponent({
   name: "materialGrid" as const,
+  wireId: ComponentType.materialGrid,
   codec: materialGridCodec,
   default: (): MaterialGridData => ({
     data: new Uint16Array(CHUNK_CELLS),

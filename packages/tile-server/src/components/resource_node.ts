@@ -1,4 +1,5 @@
 import { defineComponent } from "@voxim/engine";
+import { ComponentType } from "@voxim/protocol";
 import { resourceNodeCodec } from "@voxim/codecs";
 
 export interface ResourceNodeData {
@@ -18,6 +19,7 @@ export interface ResourceNodeData {
 
 export const ResourceNode = defineComponent({
   name: "resource_node" as const,
+  wireId: ComponentType.resource_node,
   codec: resourceNodeCodec,
   default: (): ResourceNodeData => ({
     nodeTypeId: "tree",

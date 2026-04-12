@@ -3,16 +3,15 @@
  *
  * To add a new networked component:
  *   1. Define its codec in @voxim/codecs (or inline in the component file).
- *   2. Define the ComponentDef in the appropriate component file.
+ *   2. Define the ComponentDef with a `wireId` in the appropriate component file.
  *   3. Assign a stable wire ID in @voxim/protocol's ComponentType enum.
- *   4. Add one entry to COMPONENT_REGISTRY below.
+ *   4. Add the def to NETWORKED_DEFS below.
  *
- * That is all. NETWORKED_DEFS and DEF_BY_TYPE_ID are derived automatically.
+ * NETWORKED_DEFS and DEF_BY_TYPE_ID are derived automatically.
  * IDs are wire format — never reassign or reuse one.
  */
 
-import type { ComponentDef } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
+import type { NetworkedComponentDef } from "@voxim/engine";
 import { Heightmap, MaterialGrid } from "@voxim/world";
 import {
   Position, Velocity, Facing, InputState,
@@ -30,58 +29,45 @@ import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 // Hitbox and WorkstationTag are server-only (networked: false) — not in registry
 
-interface RegistryEntry {
-  readonly typeId: number;
-  // deno-lint-ignore no-explicit-any
-  readonly def: ComponentDef<any>;
-}
-
-/**
- * All networked components with their stable wire type IDs.
- * Order does not matter — lookups use the explicit typeId.
- */
-export const COMPONENT_REGISTRY: ReadonlyArray<RegistryEntry> = [
-  { typeId: ComponentType.heightmap,          def: Heightmap },
-  { typeId: ComponentType.materialGrid,       def: MaterialGrid },
-  { typeId: ComponentType.position,           def: Position },
-  { typeId: ComponentType.velocity,           def: Velocity },
-  { typeId: ComponentType.facing,             def: Facing },
-  { typeId: ComponentType.inputState,         def: InputState },
-  { typeId: ComponentType.health,             def: Health },
-  { typeId: ComponentType.hunger,             def: Hunger },
-  { typeId: ComponentType.thirst,             def: Thirst },
-  { typeId: ComponentType.stamina,            def: Stamina },
-  // 10 (attackCooldown) retired
-  { typeId: ComponentType.combatState,        def: CombatState },
-  { typeId: ComponentType.lifetime,           def: Lifetime },
-  { typeId: ComponentType.modelRef,           def: ModelRef },
-  { typeId: ComponentType.animationState,     def: AnimationState },
-  { typeId: ComponentType.equipment,          def: Equipment },
-  { typeId: ComponentType.heritage,           def: Heritage },
-  { typeId: ComponentType.itemData,           def: ItemData },
-  { typeId: ComponentType.inventory,          def: Inventory },
-  { typeId: ComponentType.craftingQueue,      def: CraftingQueue },
-  { typeId: ComponentType.interactCooldown,   def: InteractCooldown },
-  { typeId: ComponentType.blueprint,          def: Blueprint },
-  { typeId: ComponentType.resource_node,      def: ResourceNode },
-  { typeId: ComponentType.worldClock,         def: WorldClock },
-  { typeId: ComponentType.tileCorruption,     def: TileCorruption },
-  { typeId: ComponentType.corruptionExposure, def: CorruptionExposure },
-  { typeId: ComponentType.traderInventory,    def: TraderInventory },
-  { typeId: ComponentType.loreLoadout,        def: LoreLoadout },
-  { typeId: ComponentType.activeEffects,      def: ActiveEffects },
-  // ComponentType.hitbox slot reserved — component is networked: false (server-only)
-  // ComponentType.workstationTag slot reserved — component is networked: false (server-only)
-  { typeId: ComponentType.workstationBuffer,  def: WorkstationBuffer },
-];
-
-/** Flat list of all networked ComponentDefs — used by AoI spawn builder. */
+/** All networked component defs. wireId is on each def — no separate typeId mapping needed. */
 // deno-lint-ignore no-explicit-any
-export const NETWORKED_DEFS: ReadonlyArray<ComponentDef<any>> =
-  COMPONENT_REGISTRY.map((e) => e.def);
+export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
+  Heightmap,
+  MaterialGrid,
+  Position,
+  Velocity,
+  Facing,
+  InputState,
+  Health,
+  Hunger,
+  Thirst,
+  Stamina,
+  // 10 (attackCooldown) retired
+  CombatState,
+  Lifetime,
+  ModelRef,
+  AnimationState,
+  Equipment,
+  Heritage,
+  ItemData,
+  Inventory,
+  CraftingQueue,
+  InteractCooldown,
+  Blueprint,
+  ResourceNode,
+  WorldClock,
+  TileCorruption,
+  CorruptionExposure,
+  TraderInventory,
+  LoreLoadout,
+  ActiveEffects,
+  // hitbox slot reserved — networked: false (server-only)
+  // workstationTag slot reserved — networked: false (server-only)
+  WorkstationBuffer,
+];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
 // deno-lint-ignore no-explicit-any
-export const DEF_BY_TYPE_ID: ReadonlyMap<number, ComponentDef<any>> = new Map(
-  COMPONENT_REGISTRY.map((e) => [e.typeId, e.def]),
+export const DEF_BY_TYPE_ID: ReadonlyMap<number, NetworkedComponentDef<any>> = new Map(
+  NETWORKED_DEFS.map((d) => [d.wireId, d]),
 );

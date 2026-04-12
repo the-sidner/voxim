@@ -16,7 +16,7 @@ import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
 import { chunksFromBuffers, loadTerrainCache, seedFromTileId, ZONE_PROFILES, Heightmap } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
-import { TileEvents, binaryStateMessageCodec, COMPONENT_NAME_TO_TYPE, COMPONENT_TYPE_TO_NAME, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
+import { TileEvents, binaryStateMessageCodec, COMPONENT_TYPE_TO_NAME, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 
@@ -24,7 +24,6 @@ import { listenQuic } from "./quic_server.ts";
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 import type { BinaryComponentDelta, CommandPayload, GameEvent, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
-import { COMPONENT_REGISTRY } from "./component_registry.ts";
 import { loadContentStore, type ContentStore } from "@voxim/content";
 import { ClientSession } from "./session.ts";
 import { TickLoop } from "./tick_loop.ts";
@@ -268,17 +267,6 @@ export class TileServer {
     // Props are always re-spawned (decorative, not persisted)
     this.spawnProceduralProps(content);
 
-    // Assert that every entry in COMPONENT_REGISTRY has a matching ComponentType wire ID.
-    // Fires at startup — a missing entry would silently drop all deltas for that component.
-    for (const { typeId } of COMPONENT_REGISTRY) {
-      if (!COMPONENT_TYPE_TO_NAME.has(typeId)) {
-        throw new Error(
-          `[TileServer] COMPONENT_REGISTRY entry typeId=${typeId} has no matching ComponentType enum entry. ` +
-          `Add it to packages/protocol/src/component_types.ts before starting.`,
-        );
-      }
-    }
-
     // Subscribe to tile events that need to reach clients as GameEvents
     this.subscribeNetworkEvents();
 
@@ -508,14 +496,12 @@ export class TileServer {
     const map = new Map<EntityId, BinaryComponentDelta[]>();
     for (const entry of sets) {
       if (!entry.token.networked) continue;
-      const typeId = COMPONENT_NAME_TO_TYPE.get(entry.token.name);
-      if (typeId === undefined) continue;
       try {
         // deno-lint-ignore no-explicit-any
         const data = entry.token.codec.encode(entry.data as any);
         let list = map.get(entry.entityId);
         if (!list) { list = []; map.set(entry.entityId, list); }
-        list.push({ entityId: entry.entityId, componentType: typeId, version: entry.version, data });
+        list.push({ entityId: entry.entityId, componentType: entry.token.wireId, version: entry.version, data });
       } catch {
         // Encoding failure — skip; stale data is better than a crash
       }

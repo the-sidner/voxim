@@ -7,6 +7,7 @@
  */
 import { defineComponent } from "@voxim/engine";
 import type { Serialiser } from "@voxim/engine"; // used by skillInProgressCodec
+import { ComponentType } from "@voxim/protocol";
 import {
   positionCodec, velocityCodec, facingCodec, buildCodec,
   staminaCodec, combatStateCodec, modelRefCodec, animationStateCodec,
@@ -24,18 +25,21 @@ export type { ModelRefData, AnimationStateData };
 
 export const Position = defineComponent({
   name: "position" as const,
+  wireId: ComponentType.position,
   codec: positionCodec,
   default: (): PositionData => ({ x: 256, y: 256, z: 4.0 }), // tile centre, default terrain height
 });
 
 export const Velocity = defineComponent({
   name: "velocity" as const,
+  wireId: ComponentType.velocity,
   codec: velocityCodec,
   default: (): VelocityData => ({ x: 0, y: 0, z: 0 }),
 });
 
 export const Facing = defineComponent({
   name: "facing" as const,
+  wireId: ComponentType.facing,
   codec: facingCodec,
   default: (): FacingData => ({ angle: 0 }),
 });
@@ -59,6 +63,7 @@ export interface InputStateData {
 
 export const InputState = defineComponent({
   name: "inputState" as const,
+  wireId: ComponentType.inputState,
   codec: buildCodec<InputStateData>({
     facing: { type: "f32" },
     movementX: { type: "f32" },
@@ -88,6 +93,7 @@ export interface HealthData {
 
 export const Health = defineComponent({
   name: "health" as const,
+  wireId: ComponentType.health,
   codec: buildCodec<HealthData>({ current: { type: "f32" }, max: { type: "f32" } }),
   default: (): HealthData => ({ current: 100, max: 100 }),
 });
@@ -100,6 +106,7 @@ export interface HungerData {
 
 export const Hunger = defineComponent({
   name: "hunger" as const,
+  wireId: ComponentType.hunger,
   codec: buildCodec<HungerData>({ value: { type: "f32" } }),
   default: (): HungerData => ({ value: 0 }),
 });
@@ -112,6 +119,7 @@ export interface ThirstData {
 
 export const Thirst = defineComponent({
   name: "thirst" as const,
+  wireId: ComponentType.thirst,
   codec: buildCodec<ThirstData>({ value: { type: "f32" } }),
   default: (): ThirstData => ({ value: 0 }),
 });
@@ -120,6 +128,7 @@ export const Thirst = defineComponent({
 
 export const Stamina = defineComponent({
   name: "stamina" as const,
+  wireId: ComponentType.stamina,
   codec: staminaCodec,
   default: (): StaminaData => ({ current: 100, max: 100, regenPerSecond: 8, exhausted: false }),
 });
@@ -191,6 +200,7 @@ export const SkillInProgress = defineComponent({
 
 export const CombatState = defineComponent({
   name: "combatState" as const,
+  wireId: ComponentType.combatState,
   codec: combatStateCodec,
   default: (): CombatStateData => ({
     blockHeldTicks: 0,
@@ -209,6 +219,7 @@ export interface LifetimeData {
 
 export const Lifetime = defineComponent({
   name: "lifetime" as const,
+  wireId: ComponentType.lifetime,
   codec: buildCodec<LifetimeData>({ ticks: { type: "i32" } }),
   default: (): LifetimeData => ({ ticks: 0 }),
 });
@@ -217,6 +228,7 @@ export const Lifetime = defineComponent({
 
 export const ModelRef = defineComponent({
   name: "modelRef" as const,
+  wireId: ComponentType.modelRef,
   codec: modelRefCodec,
   default: (): ModelRefData => ({ modelId: "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 }),
 });
@@ -225,6 +237,7 @@ export const ModelRef = defineComponent({
 
 export const AnimationState = defineComponent({
   name: "animationState" as const,
+  wireId: ComponentType.animationState,
   codec: animationStateCodec,
   default: (): AnimationStateData => ({
     layers: [],
