@@ -7,8 +7,7 @@
  *
  * T-034: reduces Heightmap cell by digStep * digPower (snapped to HEIGHT_STEP).
  * T-035: spawns a material drop (dirt, stone, etc.) based on the cell's MaterialGrid value.
- *        Drop goes directly into the digger's inventory if space is available; otherwise
- *        spawns as a world ItemData entity.
+ *        Drop always spawns as a world ItemData entity; picked up by ItemPickupSystem.
  */
 import type { World } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";

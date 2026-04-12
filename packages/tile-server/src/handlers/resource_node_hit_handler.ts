@@ -1,4 +1,4 @@
-import type { World, EntityId } from "@voxim/engine";
+import type { World } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
@@ -53,7 +53,7 @@ export class ResourceNodeHitHandler implements HitHandler {
     }
 
     // ── Node depleted ─────────────────────────────────────────────────────────
-    if (rnData) spawnYields(world, ctx.targetId, ctx.attackerId, rnData.yields, harvestPower, ctx.hitX, ctx.hitY, ctx.hitZ);
+    if (rnData) spawnYields(world, rnData.yields, harvestPower, ctx.hitX, ctx.hitY, ctx.hitZ);
 
     log.info("node depleted: entity=%s type=%s by=%s", ctx.targetId, rn.nodeTypeId, ctx.attackerId);
     events.publish(TileEvents.NodeDepleted, {
@@ -77,8 +77,6 @@ export class ResourceNodeHitHandler implements HitHandler {
 
 function spawnYields(
   world: World,
-  _nodeId: EntityId,
-  _harvesterId: EntityId,
   yields: Array<{ itemType: string; quantity: number; quantityPerHarvestPower?: number }>,
   harvestPower: number,
   hitX: number,

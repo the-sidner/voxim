@@ -1,58 +1,76 @@
 /**
- * ItemPickupSystem — auto-collects nearby ItemData entities into Inventory.
+ * ItemPickupSystem — auto-collects nearby ItemData entities into player Inventory.
  *
- * Each tick: for every entity with an Inventory, scan ItemData entities within
- * pickupRadius (from game_config.items.pickupRadius). Collect as many as fit,
- * stacking stackable types. World entity is destroyed on collection.
+ * Skips entities with NpcTag — NPCs handle food/water via NpcAiSystem's direct
+ * consumption path (seekFood/seekWater jobs), which does not go through Inventory.
+ * Mixing the two paths causes double-destroy of the same world entity and leaves
+ * unconsumed food in NPC inventories.
  *
- * This applies to players and NPCs equally — the same component query hits both.
- * NPCs use the same path (seekFood/seekWater jobs steer toward items; once within
- * radius this system collects them automatically).
+ * Uses SpatialGrid (via prepare/TickContext) to restrict candidate drops to cells
+ * within pickupRadius — O(collectors × entities_in_radius_cells) not O(N×M).
  */
 import type { World, EntityId } from "@voxim/engine";
 import type { ContentStore } from "@voxim/content";
-import type { System, EventEmitter } from "../system.ts";
+import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
 import { Inventory, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
+import { NpcTag } from "../components/npcs.ts";
+import type { SpatialGrid } from "../spatial_grid.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ItemPickupSystem");
 
 export class ItemPickupSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  private spatial: SpatialGrid | null = null;
+  private radiusSq = 0;
+  private pickupRadius = 0;
+
+  constructor(private readonly content: ContentStore) {
+    const r = content.getGameConfig().items.pickupRadius;
+    this.pickupRadius = r;
+    this.radiusSq = r * r;
+  }
+
+  prepare(_tick: number, ctx: TickContext): void {
+    this.spatial = ctx.spatial;
+  }
 
   run(world: World, _events: EventEmitter, _dt: number): void {
-    const radiusSq = this.content.getGameConfig().items.pickupRadius ** 2;
+    if (!this.spatial) return;
 
-    // Build a snapshot of all item drops this tick (position + data)
-    const drops: Array<{ entityId: EntityId; x: number; y: number; z: number; itemType: string; quantity: number }> = [];
-    for (const { entityId, position, itemData } of world.query(Position, ItemData)) {
-      drops.push({ entityId, x: position.x, y: position.y, z: position.z, itemType: itemData.itemType, quantity: itemData.quantity });
-    }
-    if (drops.length === 0) return;
-
-    // Track which drops have already been claimed this tick (prevent double-pickup)
     const claimed = new Set<EntityId>();
 
     for (const { entityId: collectorId, position, inventory } of world.query(Position, Inventory)) {
+      // NpcAiSystem owns food/water pickup for NPCs — skip to avoid double-destroy
+      if (world.has(collectorId, NpcTag)) continue;
+
+      const candidates = this.spatial.nearby(position.x, position.y, this.pickupRadius);
+      if (candidates.length === 0) continue;
+
       let slots = inventory.slots;
       let changed = false;
 
-      for (const drop of drops) {
-        if (claimed.has(drop.entityId)) continue;
+      for (const candidateId of candidates) {
+        if (claimed.has(candidateId)) continue;
 
-        const dx = drop.x - position.x;
-        const dy = drop.y - position.y;
-        if (dx * dx + dy * dy > radiusSq) continue;
+        const itemData = world.get(candidateId, ItemData);
+        if (!itemData) continue;
 
-        const newSlots = addToInventory(slots, drop.itemType, drop.quantity, inventory.capacity);
+        // Exact distance check (SpatialGrid.nearby returns cell-aligned candidates)
+        const itemPos = world.get(candidateId, Position);
+        if (!itemPos) continue;
+        const dx = itemPos.x - position.x;
+        const dy = itemPos.y - position.y;
+        if (dx * dx + dy * dy > this.radiusSq) continue;
+
+        const newSlots = addToInventory(slots, itemData.itemType, itemData.quantity, inventory.capacity);
         if (newSlots === null) continue; // no room
 
         slots = newSlots;
         changed = true;
-        claimed.add(drop.entityId);
-        log.info("pickup: collector=%s item=%sx%d", collectorId, drop.itemType, drop.quantity);
+        claimed.add(candidateId);
+        log.info("pickup: collector=%s item=%sx%d", collectorId, itemData.itemType, itemData.quantity);
       }
 
       if (changed) {
