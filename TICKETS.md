@@ -805,3 +805,37 @@ swingPath.defaultBladeLength when a weapon is equipped. Unarmed keeps the curren
 capsule. Same derivation drives the client trail ribbon length.
 Done when: equipping a long sword model gives more reach than a dagger model using the same
 swing action; trail ribbon length matches visual blade length.
+
+---
+
+## Housing
+
+### T-093 · Housing system — player-owned structures as persistent home
+Effort: L   Status: todo
+
+A house is a enclosed structure (walls + floor + roof, built via the blueprint system) that a
+dynasty claims as their home base. Claiming converts a completed enclosure into a `HouseEntity`
+tagged with the dynasty ID. The house is the social and mechanical anchor for a dynasty:
+
+**Claiming:** Player interacts with the interior of a fully enclosed structure (detected via
+T-090 room flood-fill) to claim it. Requires a placed family workbench (T-038) inside. A
+structure can only be claimed by one dynasty. Claiming transfers the structure's wall/floor
+entities to the dynasty's tag (T-083).
+
+**Shelter mechanics:** Interior cells of a claimed house provide: corruption gain suppression,
+warmth bonus (amplified further if a hearth/campfire is inside, T-089), and a safe-sleep
+anchor for NPCs (T-039). These are computed from the `RoomTag` interior cell set (T-090).
+
+**Persistence:** House ownership persists across server restarts as part of the save system.
+On heir spawn (T-079), heir always appears inside the family house if it still stands.
+
+**Destruction / capture:** Destroying enough walls dissolves the enclosure (T-090), which
+dissolves the `HouseEntity`. The dynasty loses its home anchor. A new claimant can rebuild
+and re-claim. This is the base-capture loop (T-082) applied to housing.
+
+**Furniture:** Deployable items (bed, shelf, chest, hearth) can be placed inside. Furniture
+carries the dynasty tag. Furniture items are defined in item_templates.json with a
+`deployable: true` flag and an entity template for the placed form.
+
+Done when: a player can build a fully enclosed structure, claim it as home, gain shelter
+bonuses inside, and lose the claim when the structure is sufficiently destroyed.
