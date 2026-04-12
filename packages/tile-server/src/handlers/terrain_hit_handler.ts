@@ -17,7 +17,7 @@ import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, InputState, SkillInProgress } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
-import { Inventory, ItemData } from "../components/items.ts";
+import { ItemData } from "../components/items.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("TerrainDigSystem");
@@ -74,13 +74,16 @@ export class TerrainDigSystem implements System {
         newData[idx] = newHeight;
         world.set(chunkId, Heightmap, { ...heightmap, data: newData });
 
-        // T-035: material drop
+        // T-035: material drop — always spawn as world entity, picked up by ItemPickupSystem
         const matGrid = world.get(chunkId, MaterialGrid);
         if (matGrid) {
           const matId = matGrid.data[idx];
           const dropType = cfg.materialDrops[String(matId)];
           if (dropType) {
-            spawnOrCollectDrop(world, entityId, dropType, cx, cy, currentHeight);
+            const dropId = newEntityId();
+            world.create(dropId);
+            world.write(dropId, Position, { x: cx, y: cy, z: currentHeight });
+            world.write(dropId, ItemData, { itemType: dropType, quantity: 1 });
           }
         }
 
@@ -89,31 +92,4 @@ export class TerrainDigSystem implements System {
       }
     }
   }
-}
-
-function spawnOrCollectDrop(
-  world: World,
-  diggerId: string,
-  itemType: string,
-  x: number,
-  y: number,
-  z: number,
-): void {
-  const inv = world.get(diggerId, Inventory);
-  if (inv) {
-    const total = inv.slots.reduce((s, sl) => s + sl.quantity, 0);
-    if (total < inv.capacity) {
-      const existing = inv.slots.find((s) => s.itemType === itemType && !s.parts);
-      const newSlots = existing
-        ? inv.slots.map((s) => s === existing ? { ...s, quantity: s.quantity + 1 } : s)
-        : [...inv.slots, { itemType, quantity: 1 }];
-      world.set(diggerId, Inventory, { ...inv, slots: newSlots });
-      return;
-    }
-  }
-  // Inventory full — spawn world drop
-  const id = newEntityId();
-  world.create(id);
-  world.write(id, Position, { x, y, z });
-  world.write(id, ItemData, { itemType, quantity: 1 });
 }

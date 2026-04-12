@@ -800,6 +800,10 @@ export interface GameConfig {
     /** Maps material ID → item type dropped when a cell is dug. */
     materialDrops: Record<string, string>;
   };
+  items: {
+    /** Auto-pickup radius (world units) — ItemData entities within this range are collected. */
+    pickupRadius: number;
+  };
   player: {
     defaultSpawnX: number;
     defaultSpawnY: number;

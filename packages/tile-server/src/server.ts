@@ -50,6 +50,7 @@ import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts"
 import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
 import { WorkstationHitHandler } from "./handlers/workstation_hit_handler.ts";
 import { TerrainDigSystem } from "./handlers/terrain_hit_handler.ts";
+import { ItemPickupSystem } from "./systems/item_pickup.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
 import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
@@ -202,6 +203,7 @@ export class TileServer {
       new HungerSystem(content),
       new StaminaSystem(content),
       new LifetimeSystem(),
+      new ItemPickupSystem(content),
       new EquipmentSystem(content),
       new BuildingSystem(content),
       new CraftingSystem(content),

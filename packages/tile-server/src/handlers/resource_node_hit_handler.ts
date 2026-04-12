@@ -5,8 +5,6 @@ import type { ContentStore } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { ResourceNode } from "../components/resource_node.ts";
-import { Inventory } from "../components/items.ts";
-import type { InventorySlot } from "../components/items.ts";
 import { ItemData } from "../components/items.ts";
 import { Position } from "../components/game.ts";
 import { createLogger } from "../logger.ts";
@@ -55,7 +53,7 @@ export class ResourceNodeHitHandler implements HitHandler {
     }
 
     // ── Node depleted ─────────────────────────────────────────────────────────
-    if (rnData) spawnYields(world, ctx.targetId, ctx.attackerId, rnData.yields, harvestPower);
+    if (rnData) spawnYields(world, ctx.targetId, ctx.attackerId, rnData.yields, harvestPower, ctx.hitX, ctx.hitY, ctx.hitZ);
 
     log.info("node depleted: entity=%s type=%s by=%s", ctx.targetId, rn.nodeTypeId, ctx.attackerId);
     events.publish(TileEvents.NodeDepleted, {
@@ -79,62 +77,29 @@ export class ResourceNodeHitHandler implements HitHandler {
 
 function spawnYields(
   world: World,
-  nodeId: EntityId,
-  harvesterId: EntityId,
+  _nodeId: EntityId,
+  _harvesterId: EntityId,
   yields: Array<{ itemType: string; quantity: number; quantityPerHarvestPower?: number }>,
   harvestPower: number,
+  hitX: number,
+  hitY: number,
+  hitZ: number,
 ): void {
-  const pos = world.get(nodeId, Position);
-  if (!pos) return;
-
-  const inv = world.get(harvesterId, Inventory);
-
+  // Items always drop at the hit contact point — players pick them up via ItemPickupSystem.
+  // Each yield unit spawns as a separate world entity with a small random scatter so
+  // stacked drops don't all land on the same pixel.
   for (const yld of yields) {
     const qty = yld.quantity + Math.floor((harvestPower - 1) * (yld.quantityPerHarvestPower ?? 0));
     if (qty <= 0) continue;
 
-    let deposited = false;
-    if (inv) {
-      const newSlots = addStackableItem(inv.slots, yld.itemType, qty, inv.capacity);
-      if (newSlots !== null) {
-        world.set(harvesterId, Inventory, { ...inv, slots: newSlots });
-        inv.slots = newSlots;
-        deposited = true;
-        log.info("yield collected: harvester=%s item=%sx%d", harvesterId, yld.itemType, qty);
-      }
-    }
-
-    if (!deposited) {
-      const id = newEntityId();
-      world.create(id);
-      world.write(id, Position, {
-        x: pos.x + (Math.random() - 0.5),
-        y: pos.y + (Math.random() - 0.5),
-        z: pos.z,
-      });
-      world.write(id, ItemData, { itemType: yld.itemType, quantity: qty });
-      log.info(
-        "yield dropped: item=%sx%d at (%.1f,%.1f) — inventory full",
-        yld.itemType,
-        qty,
-        pos.x,
-        pos.y,
-      );
-    }
+    const id = newEntityId();
+    world.create(id);
+    world.write(id, Position, {
+      x: hitX + (Math.random() - 0.5) * 0.6,
+      y: hitY + (Math.random() - 0.5) * 0.6,
+      z: hitZ,
+    });
+    world.write(id, ItemData, { itemType: yld.itemType, quantity: qty });
+    log.info("yield dropped: item=%sx%d at (%.2f,%.2f)", yld.itemType, qty, hitX, hitY);
   }
-}
-
-function addStackableItem(
-  slots: InventorySlot[],
-  itemType: string,
-  quantity: number,
-  capacity: number,
-): InventorySlot[] | null {
-  const total = slots.reduce((s, sl) => s + sl.quantity, 0);
-  if (total + quantity > capacity) return null;
-  const existing = slots.find((s) => s.itemType === itemType && !s.parts);
-  if (existing) {
-    return slots.map((s) => (s === existing ? { ...s, quantity: s.quantity + quantity } : s));
-  }
-  return [...slots, { itemType, quantity }];
 }

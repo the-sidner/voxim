@@ -84,6 +84,9 @@
       "4": "sand"
     }
   },
+  "items": {
+    "pickupRadius": 1.5
+  },
   "player": {
     "defaultSpawnX": 256,
     "defaultSpawnY": 256,
