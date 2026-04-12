@@ -23,7 +23,7 @@ import type { ContentStore } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import { TileEvents } from "@voxim/protocol";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Position, Velocity } from "../components/game.ts";
+import { Position, Velocity, Facing, InputState } from "../components/game.ts";
 import type { PositionData, VelocityData } from "../components/game.ts";
 import { Hitbox } from "../components/hitbox.ts";
 import { ProjectileData } from "../components/projectile.ts";
@@ -98,8 +98,11 @@ export class ProjectileSystem implements System {
         const targetPos = world.get(candidateId, Position);
         if (!targetPos) continue;
 
-        // Facing: check InputState if available, otherwise 0
-        const targetFacing = 0; // projectiles don't need lag-comp facing for hit test
+        // Use current world state — projectiles are server-authoritative, no lag comp needed
+        const targetFacing = world.get(candidateId, Facing)?.angle
+          ?? world.get(candidateId, InputState)?.facing
+          ?? 0;
+        const targetActions = world.get(candidateId, InputState)?.actions ?? 0;
 
         // Segment from prevPos → newPos (projectile trajectory this tick)
         const p0: Vec3 = prevPos;
@@ -142,9 +145,9 @@ export class ProjectileSystem implements System {
           targetId: candidateId,
           weaponStats,
           bodyPart: hitBodyPart,
-          // Projectiles travel at speed — use current target facing/actions (no lag rewind)
+          // Projectiles use current world state — no lag rewind needed
           targetSnapshotFacing: targetFacing,
-          targetSnapshotActions: 0,
+          targetSnapshotActions: targetActions,
           attackerX: prevPos.x,
           attackerY: prevPos.y,
           targetX: targetPos.x,
