@@ -282,6 +282,14 @@ export interface ItemTemplate {
    * Absent on non-weapons and non-tools. Propagated into DerivedItemStats.weaponAction.
    */
   weaponAction?: string;
+  /**
+   * ID of the EntityTemplate to spawn when this item is deployed into the world.
+   * Any item category can carry this field — it is independent of `category`.
+   * When present, the item is deployable regardless of its category value.
+   * When absent, the deploy system falls back to checking category === "deployable"
+   * and using the item ID as the template ID (backward-compat for existing workstations).
+   */
+  deployTemplateId?: string;
 }
 
 // ---- recipes ----

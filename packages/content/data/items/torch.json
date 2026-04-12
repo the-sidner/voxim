@@ -1,11 +1,15 @@
 {
   "id": "torch",
   "category": "tool",
+  "equipSlot": "weapon",
+  "deployTemplateId": "torch_placed",
   "stackable": true,
   "weight": 0.3,
-  "equipSlot": "offHand",
   "slots": [],
   "baseStats": {
+    "damage": 4,
+    "staminaCostPerSwing": 8,
+    "weaponAction": "slash",
     "lightColor": 16755780,
     "lightIntensity": 1.0,
     "lightRadius": 10.0,

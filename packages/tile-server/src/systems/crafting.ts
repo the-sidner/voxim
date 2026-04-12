@@ -154,14 +154,17 @@ export class CraftingSystem implements System {
     if (!slot) return;
 
     const itemDef = this.content.getItemTemplate(slot.itemType);
-    if (itemDef?.category !== "deployable") {
+    // deployTemplateId is the explicit link; fall back to item ID for items
+    // with category "deployable" (backward-compat for existing workstations).
+    const templateId = itemDef?.deployTemplateId ?? (itemDef?.category === "deployable" ? slot.itemType : null);
+    if (!templateId) {
       log.debug("deploy: player=%s item=%s not deployable", entityId, slot.itemType);
       return;
     }
 
-    const entityTemplate = this.content.getEntityTemplate(slot.itemType);
+    const entityTemplate = this.content.getEntityTemplate(templateId);
     if (!entityTemplate) {
-      log.warn("deploy: player=%s item=%s has no entity template", entityId, slot.itemType);
+      log.warn("deploy: player=%s item=%s has no entity template '%s'", entityId, slot.itemType, templateId);
       return;
     }
 
