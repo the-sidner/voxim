@@ -290,6 +290,10 @@ export class PropInstancePool {
     mesh.count = 0;
     mesh.castShadow    = true;
     mesh.receiveShadow = true;
+    // Disable frustum culling: the geometry bounding sphere is in model space at
+    // the origin, so Three.js would cull the entire batch whenever the origin
+    // leaves the frustum, hiding instances that are actually on screen.
+    mesh.frustumCulled = false;
     this.scene.add(mesh);
 
     const entry: PoolEntry = { mesh, freeList: [], nextSlot: 0 };
