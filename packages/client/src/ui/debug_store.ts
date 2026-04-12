@@ -32,3 +32,16 @@ export const debugOverlays = signal<DebugOverlayState>({
 export function setDebugLayer(layer: DebugLayer, on: boolean): void {
   debugOverlays.value = { ...debugOverlays.value, [layer]: on };
 }
+
+// ---- Item give list (populated by game.ts at startup) ----
+
+export interface DebugItemEntry {
+  id: string;
+  category: string;
+}
+
+export const debugItemList = signal<DebugItemEntry[]>([]);
+
+export function setDebugItemList(items: DebugItemEntry[]): void {
+  debugItemList.value = items;
+}

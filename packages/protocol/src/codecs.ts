@@ -121,6 +121,16 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       u8.set(strBytes, 1);
       return u8;
     }
+
+    case CommandType.DebugGiveItem: {
+      const strBytes = new TextEncoder().encode(cmd.itemType);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength + 1);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      u8[1 + strBytes.byteLength] = cmd.quantity;
+      return u8;
+    }
   }
 }
 
@@ -170,6 +180,13 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const strLen = bytes[0];
       const recipeId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
       return { cmd: CommandType.SelectRecipe, recipeId };
+    }
+
+    case CommandType.DebugGiveItem: {
+      const strLen = bytes[0];
+      const itemType = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      const quantity = bytes[1 + strLen] ?? 1;
+      return { cmd: CommandType.DebugGiveItem, itemType, quantity };
     }
 
     default:

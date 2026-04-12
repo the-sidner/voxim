@@ -10,13 +10,13 @@
  * Actions are dispatched via UIAction so game.ts is the only place that
  * touches the renderer/overlay state.
  */
-import { debugOverlays } from "../debug_store.ts";
+import { debugOverlays, debugItemList } from "../debug_store.ts";
 import { uiState, openPanel, closePanel } from "../ui_store.ts";
 import { usePanel } from "../use_panel.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { DebugLayer } from "../debug_store.ts";
 import { captureEnabled, capturePaused, captureSignal } from "../network_capture.ts";
-import { computed } from "@preact/signals";
+import { computed, signal } from "@preact/signals";
 
 const networkOpen = computed(() => uiState.value.openPanels.has("network"));
 
@@ -157,10 +157,104 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
         </div>
       </Section>
 
+      {/* ── Give item ─────────────────────────────────────────────────────── */}
+      <GiveItemSection onAction={onAction} />
+
       {/* ── Future sections ───────────────────────────────────────────────── */}
       {/* TODO: Physics debug (collision shapes, velocity vectors) */}
       {/* TODO: AI debug (NPC job queues, pathfinding) */}
       {/* TODO: Performance (tick timing, draw calls) */}
     </div>
+  );
+}
+
+// ── Give item section ─────────────────────────────────────────────────────────
+
+const giveFilter = signal("");
+const giveQty    = signal(1);
+
+function GiveItemSection({ onAction }: { onAction: (a: UIAction) => void }) {
+  const items = debugItemList.value;
+  const filter = giveFilter.value.toLowerCase();
+  const filtered = filter
+    ? items.filter((it) => it.id.includes(filter) || it.category.includes(filter))
+    : items;
+
+  return (
+    <Section title="Give item">
+      <div style={{ display: "flex", gap: "var(--gap-xs)", marginBottom: "var(--gap-xs)" }}>
+        <input
+          type="text"
+          placeholder="filter…"
+          value={giveFilter.value}
+          onInput={(e) => { giveFilter.value = (e.target as HTMLInputElement).value; }}
+          style={{
+            flex: 1,
+            background: "var(--col-bg-panel)",
+            border: "1px solid var(--col-border)",
+            color: "var(--col-text)",
+            borderRadius: "3px",
+            padding: "2px 6px",
+            fontSize: "var(--text-xs)",
+          }}
+        />
+        <input
+          type="number"
+          min={1}
+          max={255}
+          value={giveQty.value}
+          onInput={(e) => {
+            const v = parseInt((e.target as HTMLInputElement).value);
+            if (!isNaN(v)) giveQty.value = Math.max(1, Math.min(255, v));
+          }}
+          style={{
+            width: "44px",
+            background: "var(--col-bg-panel)",
+            border: "1px solid var(--col-border)",
+            color: "var(--col-text)",
+            borderRadius: "3px",
+            padding: "2px 4px",
+            fontSize: "var(--text-xs)",
+            textAlign: "right",
+          }}
+        />
+      </div>
+      <div style={{
+        maxHeight: "180px",
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: "2px",
+      }}>
+        {filtered.slice(0, 60).map((item) => (
+          <button
+            key={item.id}
+            class="btn interactive"
+            onClick={() => onAction({ type: "debug_give_item", itemType: item.id, quantity: giveQty.value })}
+            style={{
+              textAlign: "left",
+              padding: "3px 6px",
+              fontSize: "var(--text-xs)",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "var(--gap-xs)",
+            }}
+          >
+            <span>{item.id}</span>
+            <span style={{ color: "var(--col-text-dim)" }}>{item.category}</span>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ color: "var(--col-text-dim)", fontSize: "var(--text-xs)", padding: "4px 0" }}>
+            no items match
+          </div>
+        )}
+        {filtered.length > 60 && (
+          <div style={{ color: "var(--col-text-dim)", fontSize: "var(--text-xs)", padding: "4px 0" }}>
+            {filtered.length - 60} more — refine filter
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }

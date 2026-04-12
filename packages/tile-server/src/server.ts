@@ -110,6 +110,12 @@ export interface TileServerConfig {
    * Required for gateway self-registration.
    */
   tileAddress?: string;
+  /**
+   * Enable dev/cheat commands (e.g. DebugGiveItem).
+   * Should never be true in production deployments.
+   * Defaults to false.
+   */
+  devMode?: boolean;
 }
 
 // ── Procedural spawning helpers ───────────────────────────────────────────────
@@ -204,7 +210,7 @@ export class TileServer {
       new StaminaSystem(content),
       new LifetimeSystem(),
       new ItemPickupSystem(content),
-      new EquipmentSystem(content),
+      new EquipmentSystem(content, config.devMode ?? false),
       new BuildingSystem(content),
       new CraftingSystem(content),
       new ConsumptionSystem(content),

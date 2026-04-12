@@ -20,7 +20,7 @@ import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
-import { setDebugLayer } from "./ui/debug_store.ts";
+import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { EquipmentData, InventoryData } from "@voxim/codecs";
@@ -283,6 +283,9 @@ export class VoximGame {
     // deno-lint-ignore no-explicit-any
     this.renderer.setItemTemplates(itemTemplatesData as any);
 
+    // Populate the debug give-item list from the static item template data.
+    setDebugItemList((itemTemplatesData as any[]).map((t: any) => ({ id: t.id, category: t.category })));
+
     // Mount world overlay (entity health bars, floating damage numbers — frame-driven)
     this.overlay = new WorldOverlay();
 
@@ -416,6 +419,10 @@ export class VoximGame {
         setDebugLayer(action.layer, on);
         break;
       }
+
+      case "debug_give_item":
+        this._sendCommand({ cmd: CommandType.DebugGiveItem, itemType: action.itemType, quantity: action.quantity });
+        break;
 
       case "equip":
         this._sendCommand({ cmd: CommandType.Equip, fromInventorySlot: action.fromSlot });

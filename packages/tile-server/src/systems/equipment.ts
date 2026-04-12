@@ -32,7 +32,7 @@ const log = createLogger("EquipmentSystem");
 export class EquipmentSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentStore, private readonly devMode: boolean = false) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
     this._commands = ctx.pendingCommands;
@@ -70,6 +70,11 @@ export class EquipmentSystem implements System {
             break;
           case CommandType.UseItem:
             this._handleUseItem(world, entityId, cmd.fromSlot, inv);
+            break;
+          case CommandType.DebugGiveItem:
+            if (this.devMode) {
+              this._handleDebugGiveItem(world, entityId, cmd.itemType, cmd.quantity, inv);
+            }
             break;
         }
       }
@@ -252,6 +257,25 @@ export class EquipmentSystem implements System {
     log.info("use_item: entity=%s item=%s slot=%d", entityId, item.itemType, fromSlot);
     // Actual stat effects (hunger, health, stamina) are applied by ConsumptionSystem
     // when ACTION_CONSUME fires, or can be emitted here as an event when needed.
+  }
+
+  private _handleDebugGiveItem(
+    world: World,
+    entityId: EntityId,
+    itemType: string,
+    quantity: number,
+    inv: { slots: InventorySlot[]; capacity: number },
+  ): void {
+    if (inv.slots.length >= inv.capacity) {
+      log.debug("debug_give: entity=%s inventory full", entityId);
+      return;
+    }
+    const clampedQty = Math.max(1, Math.min(quantity, 255));
+    world.set(entityId, Inventory, {
+      ...inv,
+      slots: [...inv.slots, { itemType, quantity: clampedQty, parts: [] }],
+    });
+    log.info("debug_give: entity=%s item=%s qty=%d", entityId, itemType, clampedQty);
   }
 }
 

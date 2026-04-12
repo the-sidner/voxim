@@ -42,6 +42,7 @@ export type UIAction =
 
   // Debug
   | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa" }
+  | { type: "debug_give_item"; itemType: string; quantity: number }
 
   // Building
   | { type: "place_blueprint"; structureType: string; worldX: number; worldY: number }
