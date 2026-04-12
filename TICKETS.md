@@ -290,19 +290,17 @@ than one crafted from standard steel.
 ## Building
 
 ### T-034 · Terrain tool (shovel) — reduce heightmap cell via combat interaction
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 47a2a3d
 
-Add `shovel` item template with `weaponAction: "terrain_dig"`. When a dig action hits a terrain
-cell, submit a `Heightmap` changeset reducing the cell height by a configurable step.
-Uses the same combat interaction model as gathering and crafting.
-Done when: attacking ground with a shovel lowers the heightmap at that cell.
+wooden_shovel (digPower 1) and stone_shovel (digPower 2); DerivedItemStats.digPower field;
+game_config.terrain: digStep, minDigHeight, materialDrops map. TerrainDigSystem fires on first
+active-phase tick of a shovel swing; lowers Heightmap cell at targeted cell within DIG_REACH.
 
 ### T-035 · Terrain modification yields displaced material
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 47a2a3d
 
-When a terrain cell is dug, spawn an item entity (dirt, stone, etc.) based on the cell's
-`MaterialGrid` value. Item spawns at the dug position.
-Done when: digging produces item drops; item type matches the terrain material.
+TerrainDigSystem reads MaterialGrid after dig; drops item matching materialDrops[matId];
+auto-collects into digger inventory or spawns world ItemData entity when inventory is full.
 
 ### T-036 · Blueprint as saveable/storable Lore item
 Effort: M   Status: todo
