@@ -6,7 +6,6 @@
   "animationStyle": "thrust",
   "staminaCost": 12,
   "swingPath": {
-    "defaultBladeRadius": 0.04,
     "keyframes": [
       {
         "t": 0,
@@ -44,8 +43,7 @@
         "bladeRight": 0.0995,
         "bladeUp": 0
       }
-    ],
-    "defaultBladeLength": 1.6
+    ]
   },
   "ikChainIds": [
     "right_arm"

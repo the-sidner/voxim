@@ -8,8 +8,7 @@
   "baseStats": {
     "damage": 18,
     "staminaCostPerSwing": 14,
-    "harvestPower": 1.0,
-    "bladeRadius": 0.08
+    "harvestPower": 1.0
   },
   "toolType": "axe",
   "weaponAction": "overhead",

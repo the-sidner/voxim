@@ -42,8 +42,7 @@
     }
   ],
   "baseStats": {
-    "staminaCostPerSwing": 12,
-    "bladeRadius": 0.04
+    "staminaCostPerSwing": 12
   },
   "toolType": "spear",
   "weaponAction": "thrust",

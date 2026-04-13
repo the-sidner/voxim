@@ -8,7 +8,6 @@
   "baseStats": {
     "damage": 8,
     "staminaCostPerSwing": 12,
-    "bladeRadius": 0.1,
     "buildPower": 1.0
   },
   "toolType": "hammer",

@@ -6,7 +6,6 @@
   "animationStyle": "bite",
   "staminaCost": 0,
   "swingPath": {
-    "defaultBladeRadius": 0.14,
     "keyframes": [
       {
         "t": 0,
@@ -44,7 +43,6 @@
         "bladeRight": 0,
         "bladeUp": 0.1961
       }
-    ],
-    "defaultBladeLength": 1
+    ]
   }
 }

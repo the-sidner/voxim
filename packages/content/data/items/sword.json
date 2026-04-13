@@ -48,8 +48,7 @@
     }
   ],
   "baseStats": {
-    "staminaCostPerSwing": 18,
-    "bladeRadius": 0.06
+    "staminaCostPerSwing": 18
   },
   "toolType": "sword",
   "weaponAction": "slash",

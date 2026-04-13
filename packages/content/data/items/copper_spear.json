@@ -7,8 +7,7 @@
   "slots": [],
   "baseStats": {
     "damage": 22,
-    "staminaCostPerSwing": 12,
-    "bladeLength": 2.4
+    "staminaCostPerSwing": 12
   },
   "weaponAction": "thrust",
   "modelTemplateId": "model_spear"

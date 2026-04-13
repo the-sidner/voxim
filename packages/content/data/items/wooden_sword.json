@@ -7,8 +7,7 @@
   "slots": [],
   "baseStats": {
     "damage": 12,
-    "staminaCostPerSwing": 10,
-    "bladeRadius": 0.06
+    "staminaCostPerSwing": 10
   },
   "toolType": "sword",
   "weaponAction": "slash",

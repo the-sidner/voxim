@@ -6,7 +6,6 @@
   "animationStyle": "overhead",
   "staminaCost": 14,
   "swingPath": {
-    "defaultBladeRadius": 0.08,
     "keyframes": [
       {
         "t": 0,
@@ -44,8 +43,7 @@
         "bladeRight": 0,
         "bladeUp": -0.848
       }
-    ],
-    "defaultBladeLength": 1.5
+    ]
   },
   "ikChainIds": [
     "right_arm",

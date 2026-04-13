@@ -8,8 +8,7 @@
   "baseStats": {
     "damage": 8,
     "staminaCostPerSwing": 12,
-    "digPower": 2.0,
-    "bladeRadius": 0.12
+    "digPower": 2.0
   },
   "toolType": "shovel",
   "weaponAction": "overhead",

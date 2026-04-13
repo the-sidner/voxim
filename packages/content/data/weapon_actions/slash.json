@@ -6,7 +6,6 @@
   "animationStyle": "slash",
   "staminaCost": 10,
   "swingPath": {
-    "defaultBladeRadius": 0.06,
     "keyframes": [
       {
         "t": 0,
@@ -44,8 +43,7 @@
         "bladeRight": -0.9091,
         "bladeUp": -0.101
       }
-    ],
-    "defaultBladeLength": 1.5
+    ]
   },
   "ikChainIds": [
     "right_arm"

@@ -6,8 +6,7 @@
   "slots": [],
   "baseStats": {
     "damage": 6,
-    "staminaCostPerSwing": 0,
-    "bladeRadius": 0.14
+    "staminaCostPerSwing": 0
   },
   "weaponAction": "bite"
 }
