@@ -62,6 +62,7 @@ import { TraderSystem } from "./systems/trader.ts";
 import { DynastySystem } from "./systems/dynasty.ts";
 import { AnimationSystem } from "./systems/animation.ts";
 import { HitboxSystem } from "./systems/hitbox.ts";
+import { DebugCommandSystem } from "./systems/debug_commands.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { WorldClock, TileCorruption } from "./components/world.ts";
 import { SaveManager } from "./save_manager.ts";
@@ -210,7 +211,7 @@ export class TileServer {
       new StaminaSystem(content),
       new LifetimeSystem(),
       new ItemPickupSystem(content),
-      new EquipmentSystem(content, config.devMode ?? false),
+      new EquipmentSystem(content),
       new BuildingSystem(content),
       new CraftingSystem(content),
       new ConsumptionSystem(content),
@@ -242,6 +243,7 @@ export class TileServer {
       new DynastySystem(content),
       new AnimationSystem(content),
       new HitboxSystem(content),
+      new DebugCommandSystem(content, config.devMode ?? false),
     ];
 
     // Set up persistence (optional — only if saveDir is configured)
