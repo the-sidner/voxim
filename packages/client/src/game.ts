@@ -530,14 +530,12 @@ export class VoximGame {
     open ? closePanel("network") : openPanel("network");
   }
 
-  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa" | "sobel_edges" | "hull_outlines"): boolean {
+  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "sobel_edges"): boolean {
     if (!this.renderer) return false;
     switch (layer) {
-      case "heightmap":     return this.renderer.toggleHeightDebug();
-      case "fxaa":          return this.renderer.toggleFxaa();
-      case "sobel_edges":   return this.renderer.toggleSobelEdges();
-      case "hull_outlines": return this.renderer.toggleHullOutlines();
-      default:              return this.renderer.debugOverlayManager.toggle(layer);
+      case "heightmap":   return this.renderer.toggleHeightDebug();
+      case "sobel_edges": return this.renderer.toggleSobelEdges();
+      default:            return this.renderer.debugOverlayManager.toggle(layer);
     }
   }
 

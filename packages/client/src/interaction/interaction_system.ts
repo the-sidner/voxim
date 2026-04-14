@@ -6,8 +6,7 @@
  * The camera only renders layer 0 (default), so pick cylinders are never visible.
  * A raycaster targeting PICK_LAYER finds the entity under the cursor each frame.
  *
- * Hover state: the hovered entity's outline meshes are swapped to HOVER_OUTLINE_MAT
- * (warm bright) via setEntityHovered(); all others keep OUTLINE_MAT (dark).
+ * Hover state: tracked per-frame; handlers receive onHoverStart/onHoverEnd callbacks.
  *
  * Click dispatch: registered EntityInteractionHandlers are sorted by priority.
  * The highest-priority handler whose canHandle() returns true fires onClick().
@@ -23,7 +22,6 @@
 import * as THREE from "three";
 import type { VoximRenderer } from "../render/renderer.ts";
 import type { ClientWorld } from "../state/client_world.ts";
-import { setEntityHovered } from "../render/entity_mesh.ts";
 import type { EntityInteractionHandler, InteractionTarget } from "./types.ts";
 
 /** Three.js layer reserved for invisible pick cylinders. */
@@ -108,9 +106,7 @@ export class InteractionSystem {
 
     // Un-hover previous
     if (this.hoveredEntityId !== null) {
-      const prev = this.renderer.getEntityMesh(this.hoveredEntityId);
-      if (prev) {
-        setEntityHovered(prev, false);
+      if (this.renderer.getEntityMesh(this.hoveredEntityId)) {
         const prevTarget = this._buildTarget(this.hoveredEntityId);
         if (prevTarget) {
           for (const h of this.handlers) {
@@ -126,9 +122,7 @@ export class InteractionSystem {
 
     // Hover new
     if (entityId !== null) {
-      const mesh = this.renderer.getEntityMesh(entityId);
-      if (mesh) {
-        setEntityHovered(mesh, true);
+      if (this.renderer.getEntityMesh(entityId)) {
         this.hoveredEntityId = entityId;
         const target = this._buildTarget(entityId);
         if (target) {

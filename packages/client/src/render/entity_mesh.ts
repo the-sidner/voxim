@@ -19,7 +19,6 @@ import type { EntityState } from "../state/client_world.ts";
 import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject } from "@voxim/content";
 import { getVoxelTexture } from "./material_textures.ts";
 import { vertexDisp } from "./displacement.ts";
-import { makeOutlineMesh, OUTLINE_MAT, HOVER_OUTLINE_MAT } from "./outline.ts";
 
 // Shared placeholder geometries — never disposed individually
 const GEO_BODY  = new THREE.BoxGeometry(0.8, 1.8, 0.8);
@@ -167,12 +166,6 @@ export interface EntityMeshGroup {
    * Used by the hitbox debug overlay to convert voxel units to world units.
    */
   modelScale: number;
-  /**
-   * All inverted-hull outline meshes for this entity's voxels.
-   * Populated when the model is built (upgradeToVoxelModel / upgradeToSkeletonModel).
-   * Used by the interaction system to swap materials on hover.
-   */
-  outlineMeshes: THREE.Mesh[];
 }
 
 // ---- create ----
@@ -200,7 +193,6 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     bladeDimensions: null,
     modelSeed: 0,
     modelScale: 0,
-    outlineMeshes: [],
   };
   updateEntityMesh(mesh, state);
   return mesh;
@@ -290,17 +282,9 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
       m.parent?.remove(m);
       (m.material as THREE.Material).dispose();
       m.geometry.dispose();
-      // Dispose outline clone geometry (shared mat is never disposed).
-      for (const child of m.children) {
-        if (child instanceof THREE.Mesh && child.userData.isOutline) {
-          child.geometry.dispose();
-        }
-      }
     }
     mesh.voxelMeshes = null;
   }
-
-  mesh.outlineMeshes = [];
 
   // 4. Placeholder.
   if (mesh.placeholder) {
@@ -315,7 +299,6 @@ function buildVoxelMesh(
   node: { x: number; y: number; z: number; materialId: number },
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
-  outlines: THREE.Mesh[],
   onTop = false,
 ): THREE.Mesh {
   const matDef = materials.get(node.materialId);
@@ -345,11 +328,6 @@ function buildVoxelMesh(
   vox.position.set(px, py, pz);
   vox.castShadow = true;
   vox.receiveShadow = true;
-  // Inverted-hull outline — displaced geo ensures it matches the actual voxel
-  // shape exactly. Added as a child so it inherits the voxel's transform.
-  const ol = makeOutlineMesh(geo);
-  vox.add(ol);
-  outlines.push(ol);
   return vox;
 }
 
@@ -372,9 +350,8 @@ export function upgradeToVoxelModel(
   clearMeshContent(mesh);
 
   const voxelMeshes: THREE.Mesh[] = [];
-  const outlines: THREE.Mesh[] = [];
   for (const node of def.nodes) {
-    const vox = buildVoxelMesh(node, materials, scale, outlines);
+    const vox = buildVoxelMesh(node, materials, scale);
     mesh.group.add(vox);
     voxelMeshes.push(vox);
   }
@@ -398,14 +375,13 @@ export function upgradeToVoxelModel(
       z: scale.z * sub.transform.scaleZ,
     };
     for (const node of subDef.nodes) {
-      const vox = buildVoxelMesh(node, materials, subScale, outlines);
+      const vox = buildVoxelMesh(node, materials, subScale);
       subGroup.add(vox);
       voxelMeshes.push(vox);
     }
   }
 
   mesh.voxelMeshes = voxelMeshes;
-  mesh.outlineMeshes = outlines;
   mesh.modelId = def.id;
 }
 
@@ -473,7 +449,6 @@ export function upgradeToSkeletonModel(
 
   // Attach resolved sub-object voxels to their bone groups (or entity root)
   const voxelMeshes: THREE.Mesh[] = [];
-  const outlines: THREE.Mesh[] = [];
   for (const sub of resolvedSubs) {
     const subDef = subModelDefs.get(sub.modelId);
     if (!subDef) continue;
@@ -497,7 +472,7 @@ export function upgradeToSkeletonModel(
       z: scale.z * sub.transform.scaleZ,
     };
     for (const node of subDef.nodes) {
-      const vox = buildVoxelMesh(node, materials, subScale, outlines);
+      const vox = buildVoxelMesh(node, materials, subScale);
       subGroup.add(vox);
       voxelMeshes.push(vox);
     }
@@ -505,7 +480,6 @@ export function upgradeToSkeletonModel(
 
   mesh.boneGroups = boneGroups;
   mesh.voxelMeshes = voxelMeshes;
-  mesh.outlineMeshes = outlines;
   mesh.modelId = def.id;
   mesh.skeletonId = skeleton.id;
 
@@ -696,9 +670,8 @@ export function attachModelToSlot(
 
   const modelGroup = new THREE.Group();
   modelGroup.name = `model:${modelDef.id}`;
-  const _slotOutlines: THREE.Mesh[] = [];  // attachment slots don't contribute to entity hover
   for (const node of modelDef.nodes) {
-    modelGroup.add(buildVoxelMesh(node, materials, scale, _slotOutlines, onTop));
+    modelGroup.add(buildVoxelMesh(node, materials, scale, onTop));
   }
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
@@ -729,9 +702,8 @@ export function attachArmorToSlot(
 
   const modelGroup = new THREE.Group();
   modelGroup.name = `model:${modelDef.id}`;
-  const _armorOutlines: THREE.Mesh[] = [];  // armor slots don't contribute to entity hover
   for (const node of modelDef.nodes) {
-    modelGroup.add(buildVoxelMesh(node, materials, armorScale, _armorOutlines, true));
+    modelGroup.add(buildVoxelMesh(node, materials, armorScale, true));
   }
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
@@ -748,7 +720,7 @@ export function detachModelFromSlot(mesh: EntityMeshGroup, slotId: string): void
   for (const child of [...slot.anchor.children]) {
     slot.anchor.remove(child);
     child.traverse((obj: THREE.Object3D) => {
-      if (!(obj instanceof THREE.Mesh) || obj.userData.isOutline) return;
+      if (!(obj instanceof THREE.Mesh)) return;
       (obj.material as THREE.Material).dispose();
       obj.geometry.dispose();
     });
@@ -763,29 +735,4 @@ export function disposeEntityMesh(mesh: EntityMeshGroup): void {
   // GEO_BODY, GEO_DIR, GEO_VOXEL are shared — do NOT dispose them here
 }
 
-// ---- hover highlight ----
 
-/**
- * Swap all inverted-hull outline meshes between the default dark material and
- * the bright hover material.  Call with hovered=true on the entity under the
- * cursor; call with hovered=false when the cursor moves away.
- *
- * No-op when the entity has no outline meshes yet (placeholder mode, or before
- * the model has finished loading).
- */
-export function setEntityHovered(mesh: EntityMeshGroup, hovered: boolean): void {
-  const mat = hovered ? HOVER_OUTLINE_MAT : OUTLINE_MAT;
-  for (const ol of mesh.outlineMeshes) {
-    ol.material = mat;
-  }
-}
-
-/**
- * Show or hide all inverted-hull outline meshes across an entity group.
- * Used by the debug panel's hull-outline toggle.
- */
-export function setHullOutlinesVisible(mesh: EntityMeshGroup, visible: boolean): void {
-  for (const ol of mesh.outlineMeshes) {
-    ol.visible = visible;
-  }
-}
