@@ -23,7 +23,7 @@ export function listenQuic(
   config: QuicListenerConfig,
   onSession: (session: WebTransportSession) => void,
 ): void {
-  type QuicEndpoint = { listen(opts: unknown): AsyncIterable<{ accept(): Promise<unknown> }> };
+  type QuicEndpoint = { listen(opts: unknown): AsyncIterable<unknown> };
   // deno-lint-ignore no-explicit-any
   const DenoAny = Deno as any;
 
@@ -42,15 +42,14 @@ export function listenQuic(
     cert: config.cert,
     key: config.key,
     alpnProtocols: ["h3"],
-  }) as AsyncIterable<{ accept(): Promise<unknown> }>;
+  });
 
   console.log(`Listening on https://0.0.0.0:${config.port}/`);
 
   (async () => {
-    for await (const incoming of listener) {
-      incoming.accept()
-        // deno-lint-ignore no-explicit-any
-        .then((conn) => (Deno as any).upgradeWebTransport(conn))
+    for await (const conn of listener) {
+      // deno-lint-ignore no-explicit-any
+      Promise.resolve((Deno as any).upgradeWebTransport(conn))
         .then((wt: WebTransportSession) => onSession(wt))
         .catch((err: unknown) => {
           console.error("[TileServer] connection error", err);
