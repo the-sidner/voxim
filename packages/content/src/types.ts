@@ -210,10 +210,6 @@ export interface DerivedItemStats {
   digPower?: number;
   /** ID of the WeaponActionDef that drives this weapon's swing phases and blade path. */
   weaponAction?: string;
-  /** Blade capsule half-radius in world units — overrides WeaponSwingPath.defaultBladeRadius. */
-  bladeRadius?: number;
-  /** Blade length in world units — reserved for future tip-scale derivation. */
-  bladeLength?: number;
   // armor
   armorReduction?: number;       // 0–1 fraction of incoming damage blocked
   staminaRegenPenalty?: number;  // 0–1 fraction of stamina regen suppressed while worn
@@ -387,21 +383,13 @@ export interface SwingKeyframe {
 
 /**
  * Time-series description of the weapon hilt's path through entity-local space.
- * The blade tip is derived: hilt + bladeDir × bladeLength.
+ * Blade geometry (length and radius) is derived at runtime from the equipped
+ * weapon's model AABB (model Z axis = blade axis, scale = entity voxel scale).
+ * Unarmed swings use constants defined in ActionSystem.
  */
 export interface WeaponSwingPath {
   /** Ordered keyframes; t values must be strictly increasing from 0 to 1. */
   keyframes: SwingKeyframe[];
-  /**
-   * Default blade capsule half-radius in world units.
-   * Item templates may override via DerivedItemStats.bladeRadius.
-   */
-  defaultBladeRadius: number;
-  /**
-   * Default blade length in world units — distance from hilt to tip.
-   * Item templates may override via DerivedItemStats.bladeLength.
-   */
-  defaultBladeLength: number;
 }
 
 /**
@@ -445,7 +433,7 @@ export interface ProjectileActionConfig {
  * animation style tag, and base stamina cost.
  *
  * For melee: swingPath hilt keyframes are the single source of truth:
- *   - Server: swept capsule hit detection (tip derived from hilt + bladeDir × bladeLength)
+ *   - Server: swept capsule hit detection (blade geometry derived from weapon model AABB)
  *   - Client: IK arm animation tracks hilt via skeleton ikChains
  *   - Client: trail ribbon from derived tip position
  *

@@ -32,8 +32,9 @@ import { createLogger } from "../logger.ts";
 
 const log = createLogger("ActionSystem");
 
-/** Conservative max reach used for broad-phase culling (world units). */
-const MAX_BLADE_REACH = 3.5;
+/** Fist blade dimensions for unarmed swings — no weapon model to derive from. */
+const UNARMED_BLADE_LENGTH = 0.4;
+const UNARMED_BLADE_RADIUS = 0.1;
 
 export class ActionSystem implements System {
   private serverTick = 0;
@@ -167,8 +168,19 @@ export class ActionSystem implements System {
     const equipment = world.get(entityId, Equipment);
     const weapon = equipment?.weapon ?? null;
     const weaponStats = weapon ? this.content.deriveItemStats(weapon.itemType, weapon.parts) : unarmed;
-    const bladeRadius = weaponStats.bladeRadius ?? action.swingPath.defaultBladeRadius;
-    const bladeLength = weaponStats.bladeLength ?? action.swingPath.defaultBladeLength;
+
+    // Derive blade geometry from the equipped weapon's model AABB.
+    // Model Z axis = blade axis (voxel Z maps to Three.js Y for weapon rendering).
+    // Fall back to swingPath defaults for unarmed (no weapon model).
+    const weaponTemplate = weapon ? this.content.getItemTemplate(weapon.itemType) : null;
+    const weaponAabb = weaponTemplate?.modelTemplateId
+      ? this.content.getModelAabb(weaponTemplate.modelTemplateId)
+      : null;
+    const entityScale = world.get(entityId, ModelRef)?.scaleX ?? 0.35;
+    const bladeLength = weaponAabb ? weaponAabb.maxZ * entityScale : UNARMED_BLADE_LENGTH;
+    const bladeRadius = weaponAabb
+      ? Math.min(weaponAabb.maxX - weaponAabb.minX, weaponAabb.maxY - weaponAabb.minY) / 2 * entityScale
+      : UNARMED_BLADE_RADIUS;
 
     const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
     const globalTickPrev = action.windupTicks + sip.ticksInPhase - 1;
@@ -212,7 +224,7 @@ export class ActionSystem implements System {
 
       const bdx = target.x - ax, bdy = target.y - ay, bdz = (target.z ?? 0) - az;
       const broadDist = Math.sqrt(bdx * bdx + bdy * bdy + bdz * bdz);
-      if (broadDist > MAX_BLADE_REACH + 0.5) continue;
+      if (broadDist > bladeLength + 0.5) continue;
 
       // Gate: entity must have a Hitbox component with at least one part
       const hitbox = world.get(target.entityId, Hitbox);
