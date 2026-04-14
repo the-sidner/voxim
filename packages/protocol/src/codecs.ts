@@ -131,6 +131,40 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       u8[1 + strBytes.byteLength] = cmd.quantity;
       return u8;
     }
+
+    case CommandType.DebugSpawnNpc: {
+      const strBytes = new TextEncoder().encode(cmd.npcTemplate);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength + 1);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      u8[1 + strBytes.byteLength] = cmd.quantity;
+      return u8;
+    }
+
+    case CommandType.DebugSetTime: {
+      const buf = new ArrayBuffer(4);
+      new DataView(buf).setFloat32(0, cmd.hour, true);
+      return new Uint8Array(buf);
+    }
+
+    case CommandType.DebugTeleport: {
+      const buf = new ArrayBuffer(8);
+      const dv = new DataView(buf);
+      dv.setFloat32(0, cmd.worldX, true);
+      dv.setFloat32(4, cmd.worldY, true);
+      return new Uint8Array(buf);
+    }
+
+    case CommandType.DebugSetStat: {
+      const strBytes = new TextEncoder().encode(cmd.stat);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength + 4);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      new DataView(buf).setFloat32(1 + strBytes.byteLength, cmd.value, true);
+      return u8;
+    }
   }
 }
 
@@ -187,6 +221,31 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const itemType = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
       const quantity = bytes[1 + strLen] ?? 1;
       return { cmd: CommandType.DebugGiveItem, itemType, quantity };
+    }
+
+    case CommandType.DebugSpawnNpc: {
+      const strLen = bytes[0];
+      const npcTemplate = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      const quantity = bytes[1 + strLen] ?? 1;
+      return { cmd: CommandType.DebugSpawnNpc, npcTemplate, quantity };
+    }
+
+    case CommandType.DebugSetTime: {
+      const hour = v.getFloat32(0, true);
+      return { cmd: CommandType.DebugSetTime, hour };
+    }
+
+    case CommandType.DebugTeleport: {
+      const worldX = v.getFloat32(0, true);
+      const worldY = v.getFloat32(4, true);
+      return { cmd: CommandType.DebugTeleport, worldX, worldY };
+    }
+
+    case CommandType.DebugSetStat: {
+      const strLen = bytes[0];
+      const stat = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      const value = new DataView(bytes.buffer, bytes.byteOffset + 1 + strLen, 4).getFloat32(0, true);
+      return { cmd: CommandType.DebugSetStat, stat, value };
     }
 
     default:

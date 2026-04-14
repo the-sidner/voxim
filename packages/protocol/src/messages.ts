@@ -112,7 +112,11 @@ export const enum CommandType {
   DeployItem      = 11, // payload: u8 inventorySlot — place deployable item as world workstation
   SelectRecipe    = 12, // payload: u8 strLen + UTF-8 recipeId — set active recipe on nearest workstation (assembly step)
   DebugGiveItem   = 13, // payload: u8 strLen + UTF-8 itemType + u8 quantity — dev-only cheat; server ignores unless dev mode
-  // 14-255 reserved for future commands
+  DebugSpawnNpc   = 14, // payload: u8 strLen + UTF-8 npcTemplate + u8 quantity — spawn NPC(s) at player position
+  DebugSetTime    = 15, // payload: f32 hour (0–24) — snap WorldClock to that hour
+  DebugTeleport   = 16, // payload: f32 worldX + f32 worldY — teleport player
+  DebugSetStat    = 17, // payload: u8 strLen + UTF-8 stat + f32 value — set health/stamina/etc
+  // 18-255 reserved for future commands
 }
 
 /**
@@ -147,7 +151,11 @@ export type CommandPayload =
   | { cmd: CommandType.PlaceBlueprint; structureType: string; worldX: number; worldY: number }
   | { cmd: CommandType.DeployItem;     inventorySlot: number }
   | { cmd: CommandType.SelectRecipe;   recipeId: string }
-  | { cmd: CommandType.DebugGiveItem;  itemType: string; quantity: number };
+  | { cmd: CommandType.DebugGiveItem;  itemType: string; quantity: number }
+  | { cmd: CommandType.DebugSpawnNpc;  npcTemplate: string; quantity: number }
+  | { cmd: CommandType.DebugSetTime;   hour: number }
+  | { cmd: CommandType.DebugTeleport;  worldX: number; worldY: number }
+  | { cmd: CommandType.DebugSetStat;   stat: string; value: number };
 
 export interface CommandDatagram {
   /** Monotonically increasing, shared sequence space with MovementDatagram. */
