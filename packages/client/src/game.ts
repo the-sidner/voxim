@@ -16,6 +16,7 @@ import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
+import { workstationHandler, resourceNodeHandler, groundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
@@ -334,8 +335,10 @@ export class VoximGame {
     };
 
     // Interaction system — entity hover highlight + click dispatch.
-    // Register handlers here as the game grows (workbench, item pickup, etc.)
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);
+    this.interactionSystem.register(workstationHandler);
+    this.interactionSystem.register(resourceNodeHandler);
+    this.interactionSystem.register(groundItemHandler);
     this.renderer.setInteractionSystem(this.interactionSystem);
     this.input.onLmbClick = (cx, cy) => {
       const playerState = this.playerId ? this.world.get(this.playerId) : null;
