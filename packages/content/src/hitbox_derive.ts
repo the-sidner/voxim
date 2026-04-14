@@ -25,7 +25,6 @@
  * Sub-model AABB voxel coordinates use entity-local convention.
  */
 import type { BodyPartVolume, Hitbox, SubObjectRef } from "./types.ts";
-import type { ContentStore } from "./store.ts";
 import type { BoneTransform } from "./skeleton_solver.ts";
 import { quatFromEulerXYZ, applyQuat } from "./ik_solver.ts";
 import type { Quat } from "./ik_solver.ts";
@@ -131,6 +130,18 @@ export interface HitboxPartTemplate {
 }
 
 /**
+ * Minimal model-lookup interface required by deriveHitboxTemplate.
+ *
+ * The full ContentStore satisfies this interface. The client-side ContentCache
+ * also satisfies it — allowing hitbox templates to be derived on the client
+ * without pulling in the server-only ContentStore.
+ */
+export interface HitboxContentAdapter {
+  getModel(id: string): { subObjects?: Array<{ probability?: number; pool?: string[]; modelId?: string; boneId?: string; hitbox?: boolean; transform: SubObjectRef["transform"] }>; nodes: Array<{ x: number; y: number; z: number }> } | null;
+  getModelAabb(id: string): Hitbox | null;
+}
+
+/**
  * Derive bone-local capsule templates for a model at spawn/cache time.
  *
  * The bone rest-pose offset is NOT accumulated here — it is applied dynamically
@@ -138,13 +149,13 @@ export interface HitboxPartTemplate {
  *
  * @param modelId  Root model to derive hitbox for.
  * @param seed     Procedural seed — must match ModelRef.seed for this entity.
- * @param content  ContentStore for model lookups.
+ * @param content  HitboxContentAdapter (ContentStore or ContentCache) for model lookups.
  * @param scale    Uniform entity scale (e.g. 0.35). Converts voxel units to world units.
  */
 export function deriveHitboxTemplate(
   modelId: string,
   seed: number,
-  content: ContentStore,
+  content: HitboxContentAdapter,
   scale: number,
 ): HitboxPartTemplate[] {
   const model = content.getModel(modelId);

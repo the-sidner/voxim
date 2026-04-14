@@ -4,16 +4,20 @@
  * bidi stream.  Deduplicates in-flight requests so each definition is fetched
  * at most once per session.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask } from "@voxim/content";
-import { buildClipIndex, buildMaskIndex } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef } from "@voxim/content";
+import { buildClipIndex, buildMaskIndex, deriveHitboxTemplate } from "@voxim/content";
+import type { HitboxContentAdapter } from "@voxim/content";
 import type { TileConnection } from "../connection/tile_connection.ts";
 
 export class ContentCache {
   private readonly models    = new Map<string, ModelDefinition>();
   private readonly materials = new Map<number, MaterialDef>();
   private readonly skeletons = new Map<string, SkeletonDef>();
-  private readonly clipIndexCache = new Map<string, ReadonlyMap<string, AnimationClip>>();
-  private readonly maskIndexCache = new Map<string, ReadonlyMap<string, BoneMask>>();
+  private readonly clipIndexCache     = new Map<string, ReadonlyMap<string, AnimationClip>>();
+  private readonly maskIndexCache     = new Map<string, ReadonlyMap<string, BoneMask>>();
+  private readonly boneIndexCache     = new Map<string, ReadonlyMap<string, BoneDef>>();
+  private readonly aabbCache          = new Map<string, { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }>();
+  private readonly hitboxTemplateCache = new Map<string, HitboxPartTemplate[]>();
 
   // In-flight promises — prevents duplicate requests for the same key
   private readonly modelPending    = new Map<string, Promise<ModelDefinition | null>>();
@@ -141,5 +145,55 @@ export class ContentCache {
       this.maskIndexCache.set(skeletonId, idx);
     }
     return idx;
+  }
+
+  getBoneIndex(skeletonId: string): ReadonlyMap<string, BoneDef> {
+    let idx = this.boneIndexCache.get(skeletonId);
+    if (!idx) {
+      const skeleton = this.skeletons.get(skeletonId);
+      idx = skeleton ? new Map(skeleton.bones.map((b) => [b.id, b])) : new Map();
+      this.boneIndexCache.set(skeletonId, idx);
+    }
+    return idx;
+  }
+
+  /**
+   * Compute the voxel AABB for a model — same algorithm as server's StaticContentStore.
+   * Cached after the first call. Only accurate for models already loaded via getModelSync().
+   */
+  getModelAabb(modelId: string): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } | null {
+    const cached = this.aabbCache.get(modelId);
+    if (cached) return cached;
+    const model = this.models.get(modelId);
+    if (!model || model.nodes.length === 0) return null;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (const n of model.nodes) {
+      if (n.x     < minX) minX = n.x;     if (n.x + 1 > maxX) maxX = n.x + 1;
+      if (n.y     < minY) minY = n.y;     if (n.y + 1 > maxY) maxY = n.y + 1;
+      if (n.z     < minZ) minZ = n.z;     if (n.z + 1 > maxZ) maxZ = n.z + 1;
+    }
+    const aabb = { minX, minY, minZ, maxX, maxY, maxZ };
+    this.aabbCache.set(modelId, aabb);
+    return aabb;
+  }
+
+  /**
+   * Derive hitbox capsule templates for a (modelId, seed, scale) combination.
+   * Cached — safe to call each frame. Only works for models already loaded.
+   */
+  getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[] {
+    const key = `${modelId}:${seed}:${scale}`;
+    let tmpl = this.hitboxTemplateCache.get(key);
+    if (!tmpl) {
+      // Minimal adapter — deriveHitboxTemplate only needs getModel + getModelAabb.
+      const adapter: HitboxContentAdapter = {
+        getModel: (id) => this.models.get(id) ?? null,
+        getModelAabb: (id) => this.getModelAabb(id),
+      };
+      tmpl = deriveHitboxTemplate(modelId, seed, adapter, scale);
+      this.hitboxTemplateCache.set(key, tmpl);
+    }
+    return tmpl;
   }
 }

@@ -63,7 +63,7 @@ export type {
 } from "./src/types.ts";
 
 // ---- hitbox derivation and application ----
-export type { HitboxPartTemplate } from "./src/hitbox_derive.ts";
+export type { HitboxPartTemplate, HitboxContentAdapter } from "./src/hitbox_derive.ts";
 export { deriveHitboxTemplate, applyHitboxTemplate } from "./src/hitbox_derive.ts";
 
 // ---- sweep math (shared server + client) ----

@@ -39,6 +39,8 @@ import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
 import { HitboxDebugOverlay, HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay.ts";
+import { DebugOverlayManager } from "./debug_overlay_manager.ts";
+import type { DebugUpdateContext } from "./debug_overlay_manager.ts";
 import { HitSparkRenderer } from "./hit_spark_renderer.ts";
 import { LightManager } from "./light_manager.ts";
 import { EdgePass } from "./edge_pass.ts";
@@ -50,10 +52,18 @@ import { FxaaPass } from "./fxaa_pass.ts";
  */
 const ISO_OFFSET = new THREE.Vector3(16, 24, 16);
 
-/** One recorded frame of the weapon blade during an attack's active phase. */
+/**
+ * One recorded frame of the weapon blade during an attack's active phase.
+ * Stores the world-space blade segment (hilt → tip) plus a perpendicular
+ * direction and half-width so the trail can render the full swept volume.
+ */
 interface TrailSlice {
-  hilt: THREE.Vector3;
-  tip:  THREE.Vector3;
+  hiltX: number; hiltY: number; hiltZ: number;
+  tipX:  number; tipY:  number; tipZ:  number;
+  /** World-space unit vector perpendicular to the blade (horizontal plane). */
+  perpX: number; perpY: number; perpZ: number;
+  /** Half cross-section width in world units (from model AABB). */
+  halfW: number;
   alpha: number;
 }
 
@@ -179,11 +189,10 @@ export class VoximRenderer {
   private readonly propPool: PropInstancePool;
   private readonly propPositions  = new Map<string, THREE.Vector3>();
 
-  readonly skeletonOverlay:    SkeletonOverlay;
-  readonly facingOverlay:      FacingOverlay;
-  readonly chunkOverlay:       ChunkOverlay;
-  readonly bladeDebugOverlay:  BladeDebugOverlay;
-  readonly hitboxDebugOverlay: HitboxDebugOverlay;
+  readonly debugOverlayManager: DebugOverlayManager;
+  // Typed refs for event-driven calls (trackEntity, addChunk, etc.)
+  private readonly _skeletonOverlay: SkeletonOverlay;
+  private readonly _chunkOverlay:    ChunkOverlay;
   private readonly hitSparkRenderer: HitSparkRenderer;
   private readonly lightManager = new LightManager();
 
@@ -293,13 +302,19 @@ export class VoximRenderer {
   };
 
   constructor(canvas: HTMLCanvasElement) {
-    this.propPool        = new PropInstancePool(this.scene);
-    this.skeletonOverlay   = new SkeletonOverlay(this.scene);
-    this.facingOverlay     = new FacingOverlay(this.scene);
-    this.chunkOverlay      = new ChunkOverlay(this.scene);
-    this.bladeDebugOverlay  = new BladeDebugOverlay(this.scene);
-    this.hitboxDebugOverlay = new HitboxDebugOverlay();
-    this.hitSparkRenderer   = new HitSparkRenderer(this.scene);
+    this.propPool = new PropInstancePool(this.scene);
+
+    // Build all debug overlays and register them with the manager.
+    this._skeletonOverlay = new SkeletonOverlay(this.scene);
+    this._chunkOverlay    = new ChunkOverlay(this.scene);
+    this.debugOverlayManager = new DebugOverlayManager();
+    this.debugOverlayManager.register("skeleton",  this._skeletonOverlay);
+    this.debugOverlayManager.register("facing",    new FacingOverlay(this.scene));
+    this.debugOverlayManager.register("chunks",    this._chunkOverlay);
+    this.debugOverlayManager.register("blade",     new BladeDebugOverlay(this.scene));
+    this.debugOverlayManager.register("hitbox",    new HitboxDebugOverlay());
+
+    this.hitSparkRenderer = new HitSparkRenderer(this.scene);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(1);
@@ -455,7 +470,7 @@ export class VoximRenderer {
     if (!existing) {
       this.scene.add(mesh);
       this.terrainMeshes.set(key, mesh);
-      this.chunkOverlay.addChunk(cx, cy);
+      this._chunkOverlay.addChunk(cx, cy, this.debugOverlayManager.isOn("chunks"));
     }
   }
 
@@ -469,7 +484,7 @@ export class VoximRenderer {
       this.terrainMeshes.delete(key);
       this.terrainHmaps.delete(key);
       this.terrainMats.delete(key);
-      this.chunkOverlay.removeChunk(chunkX, chunkY);
+      this._chunkOverlay.removeChunk(chunkX, chunkY);
     }
   }
 
@@ -525,7 +540,9 @@ export class VoximRenderer {
         if (skeleton) {
           const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
           upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams);
-          this.skeletonOverlay.trackEntity(entityId, capture, skeleton);
+          capture.modelSeed  = modelRef.seed  ?? 0;
+          capture.modelScale = modelRef.scaleX ?? 0;
+          this._skeletonOverlay.trackEntity(entityId, capture, skeleton);
 
           // Record each sub-object's transform so armor anchors can be placed
           // at the same position and scale as the body-part they overlay.
@@ -589,15 +606,13 @@ export class VoximRenderer {
     if (this.propPool.hasProp(entityId)) {
       this.propPool.removeProp(entityId);
       this.propPositions.delete(entityId);
-      this.hitboxDebugOverlay.removeEntity(entityId);
+      this.debugOverlayManager.removeEntity(entityId);
       return;
     }
     const mesh = this.entityMeshes.get(entityId);
     if (mesh) {
       this.lightManager.remove(entityId, mesh.group);
-      this.skeletonOverlay.untrackEntity(entityId);
-      this.bladeDebugOverlay.remove(entityId);
-      this.hitboxDebugOverlay.removeEntity(entityId);
+      this.debugOverlayManager.removeEntity(entityId);
       this.scene.remove(mesh.group);
       disposeEntityMesh(mesh);
       this.entityMeshes.delete(entityId);
@@ -734,7 +749,7 @@ export class VoximRenderer {
 
         // IK post-pass: build drive context (hilt position etc.) then solve arm chains.
         if (skeleton?.ikChains?.length && weaponAction?.ikChainIds?.length) {
-          const driveCtx = buildDriveContext(anim, this.weaponActionsMap, elapsed);
+          const driveCtx = buildDriveContext(anim, this.weaponActionsMap, elapsed, mesh.bladeDimensions?.length);
           applyIKChains(mesh, skeleton, weaponAction.ikChainIds, driveCtx);
         }
 
@@ -791,10 +806,14 @@ export class VoximRenderer {
       }
     }
 
-    // Sync debug overlays after poses and interpolation
-    this.skeletonOverlay.update(this.entityMeshes);
-    this.facingOverlay.update(this.entityMeshes);
-    this.bladeDebugOverlay.update(this.entityMeshes, this.weaponActionsMap, now);
+    // Sync debug overlays after poses and interpolation.
+    const debugCtx: DebugUpdateContext = {
+      entityMeshes: this.entityMeshes,
+      weaponActionsMap: this.weaponActionsMap,
+      now,
+      content: this.content,
+    };
+    this.debugOverlayManager.update(debugCtx);
 
     // Smoothly transition day/night lighting (per-frame lerp toward target)
     const L = 0.015; // lerp speed — full transition over ~4 s at 60 fps
@@ -998,6 +1017,7 @@ export class VoximRenderer {
     if (modelId === (existing?.modelId ?? null)) return;
 
     detachModelFromSlot(mesh, slotId);
+    if (slotId === "main_hand") mesh.bladeDimensions = null;
     if (!modelId) return;
 
     const pendingSlot = ensureAttachment(mesh, slotId);
@@ -1015,6 +1035,22 @@ export class VoximRenderer {
         if (m) mats.set(id, m);
       }
       attachModelToSlot(mesh, slotId, def, mats, entityScale);
+
+      // Cache blade dimensions from model AABB. Model Z axis = blade direction
+      // (voxel Z maps to Three.js Y for weapon rendering via the anchor quaternion).
+      if (slotId === "main_hand" && def.nodes.length > 0) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        for (const n of def.nodes) {
+          if (n.x     < minX) minX = n.x;     if (n.x + 1 > maxX) maxX = n.x + 1;
+          if (n.y     < minY) minY = n.y;     if (n.y + 1 > maxY) maxY = n.y + 1;
+          if (n.z + 1 > maxZ) maxZ = n.z + 1;
+        }
+        const scale = entityScale.x;
+        mesh.bladeDimensions = {
+          length:    maxZ * scale,
+          halfCross: Math.max(maxX - minX, maxY - minY) / 2 * scale,
+        };
+      }
     }).catch(() => {
       const currentSlot = mesh.attachments.get(slotId);
       if (currentSlot?.modelId === modelId) currentSlot.modelId = null;
@@ -1106,7 +1142,7 @@ export class VoximRenderer {
         if (anim?.weaponActionId && weaponAction?.swingPath?.keyframes?.length) {
           // Authoritative hilt position + blade orientation from swing path.
           // Same source as server hit detection — weapon model is visually exact.
-          const bladeLength = weaponAction.swingPath.defaultBladeLength ?? 1.0;
+          const bladeLength = mesh.bladeDimensions?.length ?? 1.0;
           const s = evaluateWeaponSlice(
             weaponAction.swingPath.keyframes, t, bladeLength,
           );
@@ -1118,16 +1154,27 @@ export class VoximRenderer {
           _attachTmp.subVectors(_bladeTip, slot.anchor.position).normalize();
           slot.anchor.quaternion.setFromUnitVectors(_bladeUp, _attachTmp);
         } else {
-          // Follow hand_r: copy its world transform (position + rotation)
-          // into the anchor so the weapon sits naturally in the hand.
-          const handBone = mesh.boneGroups?.get("hand_r");
+          // At rest: position at the hand, orient blade along the forearm axis
+          // (lower_arm_r → hand_r) using setFromUnitVectors — same approach as
+          // the swing path, so the weapon always hangs along the arm regardless
+          // of animation pose. Copying the bone quaternion doesn't encode a
+          // meaningful blade direction and produces wrong orientations.
+          const handBone  = mesh.boneGroups?.get("hand_r");
+          const elbowBone = mesh.boneGroups?.get("lower_arm_r");
           if (handBone) {
             handBone.getWorldPosition(_attachTmp);
             mesh.group.worldToLocal(_attachTmp);
             slot.anchor.position.copy(_attachTmp);
-            handBone.getWorldQuaternion(_attachQuat);
-            _attachQuat.premultiply(_entityWorldQuatInv);
-            slot.anchor.quaternion.copy(_attachQuat);
+
+            if (elbowBone) {
+              elbowBone.getWorldPosition(_bladeTip);
+              mesh.group.worldToLocal(_bladeTip);
+              // Direction from elbow to wrist = arm axis = natural blade axis at rest.
+              _attachTmp.sub(_bladeTip).normalize();
+              if (_attachTmp.lengthSq() > 0.001) {
+                slot.anchor.quaternion.setFromUnitVectors(_bladeUp, _attachTmp);
+              }
+            }
           }
         }
       } else {
@@ -1185,23 +1232,32 @@ export class VoximRenderer {
 
       if (inActive && keyframes && keyframes.length > 0) {
         const t = total > 0 ? ticks / total : 0;
-        const local = evaluateWeaponSlice(keyframes, t, weaponAction?.swingPath?.defaultBladeLength ?? 1.0);
+        const bladeLength = mesh.bladeDimensions?.length ?? 1.0;
+        const halfW       = mesh.bladeDimensions?.halfCross ?? 0.1;
+        const local = evaluateWeaponSlice(keyframes, t, bladeLength);
 
         // Force matrix recompute so we get current-frame position, not last frame's.
         // (updateWeaponTrails runs before renderer.render which would normally do this.)
         mesh.group.updateWorldMatrix(true, false);
 
-        // Build the ribbon from the tip trajectory with a fixed vertical extent
-        // so the trail is visible from the isometric camera. Using hilt↔tip
-        // produces a horizontal sheet that looks flat from above.
-        const TRAIL_HALF_HEIGHT = 0.35;
-        const localTip = new THREE.Vector3(local.tipX, local.tipY, local.tipZ);
-        const worldTip = localTip.applyMatrix4(mesh.group.matrixWorld);
+        const mat = mesh.group.matrixWorld;
+        const wHilt = new THREE.Vector3(local.hiltX, local.hiltY, local.hiltZ).applyMatrix4(mat);
+        const wTip  = new THREE.Vector3(local.tipX,  local.tipY,  local.tipZ).applyMatrix4(mat);
 
-        const top    = new THREE.Vector3(worldTip.x, worldTip.y + TRAIL_HALF_HEIGHT, worldTip.z);
-        const bottom = new THREE.Vector3(worldTip.x, worldTip.y - TRAIL_HALF_HEIGHT, worldTip.z);
+        // Perpendicular to blade in the horizontal plane — gives the trail width.
+        const bx = wTip.x - wHilt.x, by = wTip.y - wHilt.y, bz = wTip.z - wHilt.z;
+        const bLen = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
+        // cross(bladeDir, world-up=(0,1,0)): px = bz/bLen, py = 0, pz = -bx/bLen
+        let px = bz / bLen, pz = -bx / bLen;
+        const pLen = Math.sqrt(px * px + pz * pz) || 1;
+        px /= pLen; pz /= pLen;
 
-        slices.push({ hilt: bottom, tip: top, alpha: 0.5 });
+        slices.push({
+          hiltX: wHilt.x, hiltY: wHilt.y, hiltZ: wHilt.z,
+          tipX:  wTip.x,  tipY:  wTip.y,  tipZ:  wTip.z,
+          perpX: px, perpY: 0, perpZ: pz,
+          halfW, alpha: 0.5,
+        });
       }
 
       // Decay all slices
@@ -1220,13 +1276,23 @@ export class VoximRenderer {
     }
   }
 
-  /** Rebuild the ribbon mesh from the current slice buffer for one entity. */
+  /**
+   * Rebuild the volumetric trail mesh from the current slice buffer.
+   *
+   * Each slice contributes 4 vertices — the corners of the blade's cross-section
+   * at that moment:
+   *   [0] hilt - perp*halfW   [1] hilt + perp*halfW
+   *   [2] tip  + perp*halfW   [3] tip  - perp*halfW
+   *
+   * Consecutive slice quads are connected with 2 side ribbons (hilt-edge and
+   * tip-edge) + 2 face quads (near and far sides), forming a closed tube that
+   * shows the physical volume swept by the blade.
+   */
   private rebuildTrailMesh(entityId: string, _ppu: number): void {
     const slices = this.trailSlices.get(entityId) ?? [];
 
     if (slices.length < 2) {
       // Remove the visual mesh but keep slices so they can accumulate.
-      // (removeTrailMesh would delete the slice data too.)
       const existing = this.trailMeshes.get(entityId);
       if (existing) {
         this.scene.remove(existing);
@@ -1241,20 +1307,37 @@ export class VoximRenderer {
     const colors:    number[] = [];
     const indices:   number[] = [];
 
+    // 4 verts per slice: hiltL, hiltR, tipR, tipL
     for (let i = 0; i < slices.length; i++) {
       const s = slices[i];
-      positions.push(s.hilt.x, s.hilt.y, s.hilt.z);
-      positions.push(s.tip.x,  s.tip.y,  s.tip.z);
-      colors.push(1, 0.35, 0, s.alpha);
-      colors.push(1, 0.6,  0, s.alpha * 0.7);
+      const a = s.alpha;
+      // hiltL
+      positions.push(s.hiltX - s.perpX * s.halfW, s.hiltY, s.hiltZ - s.perpZ * s.halfW);
+      colors.push(1, 0.35, 0, a * 0.6);
+      // hiltR
+      positions.push(s.hiltX + s.perpX * s.halfW, s.hiltY, s.hiltZ + s.perpZ * s.halfW);
+      colors.push(1, 0.35, 0, a * 0.6);
+      // tipR
+      positions.push(s.tipX + s.perpX * s.halfW, s.tipY, s.tipZ + s.perpZ * s.halfW);
+      colors.push(1, 0.65, 0, a);
+      // tipL
+      positions.push(s.tipX - s.perpX * s.halfW, s.tipY, s.tipZ - s.perpZ * s.halfW);
+      colors.push(1, 0.65, 0, a);
     }
 
-    // Each consecutive pair of slices forms a quad (two triangles)
+    // Between consecutive slices: 4 faces (left side, right side, near face, far face)
     for (let i = 0; i < slices.length - 1; i++) {
-      const h0 = i * 2,     t0 = i * 2 + 1;
-      const h1 = (i+1)*2,   t1 = (i+1)*2 + 1;
-      indices.push(h0, t0, h1);
-      indices.push(t0, t1, h1);
+      const b0 = i * 4,     b1 = (i + 1) * 4;
+      const hL0 = b0, hR0 = b0+1, tR0 = b0+2, tL0 = b0+3;
+      const hL1 = b1, hR1 = b1+1, tR1 = b1+2, tL1 = b1+3;
+      // Left side: hiltL[i] → hiltL[i+1] → tipL[i+1] → tipL[i]
+      indices.push(hL0, hL1, tL1,  hL0, tL1, tL0);
+      // Right side: hiltR[i] → tipR[i] → tipR[i+1] → hiltR[i+1]
+      indices.push(hR0, tR0, tR1,  hR0, tR1, hR1);
+      // Near face (hilt edge): hiltL[i] → hiltR[i] → hiltR[i+1] → hiltL[i+1]
+      indices.push(hL0, hR0, hR1,  hL0, hR1, hL1);
+      // Far face (tip edge): tipL[i] → tipR[i+1] → tipR[i] ... tipL[i] → tipL[i+1] → tipR[i+1]
+      indices.push(tL0, tR1, tR0,  tL0, tL1, tR1);
     }
 
     let trailMesh = this.trailMeshes.get(entityId);
@@ -1309,11 +1392,7 @@ export class VoximRenderer {
   }
 
   dispose(): void {
-    this.skeletonOverlay.dispose();
-    this.facingOverlay.dispose();
-    this.chunkOverlay.dispose();
-    this.bladeDebugOverlay.dispose();
-    this.hitboxDebugOverlay.dispose();
+    this.debugOverlayManager.dispose();
     this.hitSparkRenderer.dispose();
     this.lightManager.dispose();
     this.propPool.dispose();

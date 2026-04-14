@@ -14,31 +14,26 @@
  *
  * Wireframe spheres at hilt and tip show the capsule radius.
  * All geometry has depthTest:false so it draws over terrain and entities.
+ *
+ * Implements ManagedOverlay — registered in DebugOverlayManager as "blade".
  */
 import * as THREE from "three";
-import type { EntityMeshGroup } from "./entity_mesh.ts";
-import type { WeaponActionDef } from "@voxim/content";
+import type { ManagedOverlay, DebugUpdateContext } from "./debug_overlay_manager.ts";
 import { evaluateWeaponSlice } from "./skeleton_evaluator.ts";
 
-const COL_WINDUP   = new THREE.Color(1.0, 0.85, 0.0); // yellow
-const COL_ACTIVE   = new THREE.Color(1.0, 0.08, 0.08); // red
-const COL_WINDDOWN = new THREE.Color(1.0, 0.45, 0.0); // orange
+const COL_WINDUP   = new THREE.Color(1.0, 0.85, 0.0);
+const COL_ACTIVE   = new THREE.Color(1.0, 0.08, 0.08);
+const COL_WINDDOWN = new THREE.Color(1.0, 0.45, 0.0);
 
-/** One entity's visual blade representation. */
 interface BladeEntry {
-  /** Segment from hilt to tip. */
   line: THREE.Line;
-  /** Wireframe sphere at hilt (scaled to blade radius). */
   hiltSphere: THREE.Mesh;
-  /** Wireframe sphere at tip (scaled to blade radius). */
   tipSphere: THREE.Mesh;
 }
 
-// Shared unit sphere — cloned material per entry, shared geometry.
 const SPHERE_GEO = new THREE.SphereGeometry(1, 8, 6);
 
-export class BladeDebugOverlay {
-  private _visible = false;
+export class BladeDebugOverlay implements ManagedOverlay {
   private readonly scene: THREE.Scene;
   private readonly entries = new Map<string, BladeEntry>();
 
@@ -46,54 +41,41 @@ export class BladeDebugOverlay {
     this.scene = scene;
   }
 
-  get visible(): boolean { return this._visible; }
-
-  toggle(): boolean {
-    this._visible = !this._visible;
-    if (!this._visible) this.hideAll();
-    return this._visible;
+  onToggle(on: boolean): void {
+    if (!on) this.hideAll();
   }
 
-  /** Called every render frame — updates positions and colours for all attacking entities. */
-  update(
-    entityMeshes: Map<string, EntityMeshGroup>,
-    weaponActionsMap: Map<string, WeaponActionDef>,
-    now: number,
-  ): void {
-    if (!this._visible) return;
-
+  update(ctx: DebugUpdateContext): void {
     const seen = new Set<string>();
 
-    for (const [entityId, mesh] of entityMeshes) {
+    for (const [entityId, mesh] of ctx.entityMeshes) {
       const anim = mesh.animationState;
       if (!anim || !anim.weaponActionId) continue;
 
-      const weaponAction = weaponActionsMap.get(anim.weaponActionId);
+      const weaponAction = ctx.weaponActionsMap.get(anim.weaponActionId);
       const keyframes = weaponAction?.swingPath?.keyframes;
       if (!keyframes?.length) continue;
 
-      const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
+      const elapsed = (ctx.now - mesh.lastAnimUpdateMs) / 50;
       const total   = weaponAction
         ? weaponAction.windupTicks + weaponAction.activeTicks + weaponAction.winddownTicks
         : 0;
       const ticks   = Math.min(anim.ticksIntoAction + elapsed, total);
       const t       = total > 0 ? ticks / total : 0;
 
-      const bladeLength = weaponAction!.swingPath?.defaultBladeLength ?? 1.0;
-      const bladeRadius = weaponAction!.swingPath?.defaultBladeRadius  ?? 0.05;
+      const bladeLength = mesh.bladeDimensions?.length    ?? 1.0;
+      const bladeRadius = mesh.bladeDimensions?.halfCross ?? 0.05;
 
       const local = evaluateWeaponSlice(keyframes, t, bladeLength);
 
-      // Force world matrix recompute (same as trail system does).
       mesh.group.updateWorldMatrix(true, false);
       const mat = mesh.group.matrixWorld;
 
       const worldHilt = new THREE.Vector3(local.hiltX, local.hiltY, local.hiltZ).applyMatrix4(mat);
       const worldTip  = new THREE.Vector3(local.tipX,  local.tipY,  local.tipZ ).applyMatrix4(mat);
 
-      // Phase colour
       let color: THREE.Color;
-      if (!weaponAction || ticks < weaponAction.windupTicks)                                        color = COL_WINDUP;
+      if (!weaponAction || ticks < weaponAction.windupTicks)                                          color = COL_WINDUP;
       else if (ticks < weaponAction.windupTicks + weaponAction.activeTicks) color = COL_ACTIVE;
       else                                                                   color = COL_WINDDOWN;
 
@@ -104,7 +86,6 @@ export class BladeDebugOverlay {
         this.scene.add(entry.line, entry.hiltSphere, entry.tipSphere);
       }
 
-      // Update segment
       const positions = entry.line.geometry.getAttribute("position") as THREE.BufferAttribute;
       positions.setXYZ(0, worldHilt.x, worldHilt.y, worldHilt.z);
       positions.setXYZ(1, worldTip.x,  worldTip.y,  worldTip.z);
@@ -113,7 +94,6 @@ export class BladeDebugOverlay {
       (entry.line.material as THREE.LineBasicMaterial).color.copy(color);
       entry.line.visible = true;
 
-      // Update endpoint spheres (scaled to capsule radius)
       entry.hiltSphere.position.copy(worldHilt);
       entry.hiltSphere.scale.setScalar(bladeRadius);
       (entry.hiltSphere.material as THREE.MeshBasicMaterial).color.copy(color);
@@ -127,7 +107,6 @@ export class BladeDebugOverlay {
       seen.add(entityId);
     }
 
-    // Hide entries for entities no longer attacking
     for (const [entityId, entry] of this.entries) {
       if (!seen.has(entityId)) {
         entry.line.visible = false;
@@ -137,8 +116,7 @@ export class BladeDebugOverlay {
     }
   }
 
-  /** Remove the overlay for a specific entity (called on entity removal). */
-  remove(entityId: string): void {
+  removeEntity(entityId: string): void {
     const entry = this.entries.get(entityId);
     if (!entry) return;
     this.scene.remove(entry.line, entry.hiltSphere, entry.tipSphere);
@@ -150,11 +128,8 @@ export class BladeDebugOverlay {
   }
 
   dispose(): void {
-    for (const entityId of [...this.entries.keys()]) this.remove(entityId);
-    // SPHERE_GEO is module-level — do not dispose here.
+    for (const entityId of [...this.entries.keys()]) this.removeEntity(entityId);
   }
-
-  // ---- helpers ----
 
   private createEntry(): BladeEntry {
     const geo = new THREE.BufferGeometry();

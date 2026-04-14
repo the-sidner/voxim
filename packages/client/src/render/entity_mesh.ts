@@ -149,6 +149,23 @@ export interface EntityMeshGroup {
    * Zero for non-skeleton entities.
    */
   groundOffsetWorld: number;
+  /**
+   * Blade dimensions derived from the main-hand weapon model AABB.
+   * Set by the renderer when the weapon attachment slot is populated.
+   * Null when unarmed. Used by the trail system and weapon anchor positioning.
+   */
+  bladeDimensions: { length: number; halfCross: number } | null;
+  /**
+   * Procedural seed from ModelRef — set when the skeleton model is built.
+   * Used by the hitbox debug overlay to derive bone-local capsule templates
+   * with the same PRNG sequence as the server.
+   */
+  modelSeed: number;
+  /**
+   * Uniform entity scale from ModelRef.scaleX — set when the skeleton model is built.
+   * Used by the hitbox debug overlay to convert voxel units to world units.
+   */
+  modelScale: number;
 }
 
 // ---- create ----
@@ -173,6 +190,9 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     skeletonId: null,
     posBuffer: [],
     groundOffsetWorld: 0,
+    bladeDimensions: null,
+    modelSeed: 0,
+    modelScale: 0,
   };
   updateEntityMesh(mesh, state);
   return mesh;

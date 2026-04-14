@@ -5,18 +5,17 @@
  *   - Yellow LineSegments connecting each parent bone to its children
  *   - Orange Points marking each joint pivot
  *
- * Usage:
- *   overlay.trackEntity(entityId, mesh, skeleton)  — call after upgradeToSkeletonModel
- *   overlay.untrackEntity(entityId)                — call before removeEntity
- *   overlay.update(entityMeshes)                   — call each frame, after pose update
- *   overlay.toggle()                               — returns new enabled state
+ * Usage (event-driven, called directly via manager.get):
+ *   overlay.trackEntity(entityId, mesh, skeleton)  — after upgradeToSkeletonModel
+ *   overlay.untrackEntity(entityId)                — before removeEntity
+ *
+ * Implements ManagedOverlay — registered in DebugOverlayManager as "skeleton".
  */
 import * as THREE from "three";
 import type { SkeletonDef } from "@voxim/content";
 import type { EntityMeshGroup } from "./entity_mesh.ts";
+import type { ManagedOverlay, DebugUpdateContext } from "./debug_overlay_manager.ts";
 
-// depthTest: false + opaque pass (no transparent:true) + renderOrder:999
-// guarantees the overlay always draws on top of all entity geometry.
 const MAT_LINES = new THREE.LineBasicMaterial({
   color: 0xffff00,
   depthTest: false,
@@ -37,24 +36,20 @@ interface EntityEntry {
   joints: THREE.Points;
 }
 
-export class SkeletonOverlay {
+export class SkeletonOverlay implements ManagedOverlay {
   private readonly scene: THREE.Scene;
   private readonly entries = new Map<string, EntityEntry>();
   private readonly tmp = new THREE.Vector3();
-  enabled = false;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
   }
 
-  /** Toggle visibility; returns the new enabled state. */
-  toggle(): boolean {
-    this.enabled = !this.enabled;
-    for (const [, e] of this.entries) {
-      e.lineSegs.visible = this.enabled;
-      e.joints.visible   = this.enabled;
+  onToggle(on: boolean): void {
+    for (const e of this.entries.values()) {
+      e.lineSegs.visible = on;
+      e.joints.visible   = on;
     }
-    return this.enabled;
   }
 
   /**
@@ -62,32 +57,31 @@ export class SkeletonOverlay {
    * Call immediately after upgradeToSkeletonModel.
    */
   trackEntity(entityId: string, mesh: EntityMeshGroup, skeleton: SkeletonDef): void {
-    this.untrackEntity(entityId); // replace if already tracked
+    this.untrackEntity(entityId);
 
     const nonRootBones = skeleton.bones.filter((b) => b.parent !== null);
 
-    // LineSegments: 2 positions per non-root bone (parent → child)
     const lineBuf = new Float32Array(nonRootBones.length * 6);
     const lineGeo = new THREE.BufferGeometry();
     lineGeo.setAttribute("position", new THREE.BufferAttribute(lineBuf, 3));
     const lineSegs = new THREE.LineSegments(lineGeo, MAT_LINES);
     lineSegs.renderOrder = 999;
-    lineSegs.visible = this.enabled;
     lineSegs.frustumCulled = false;
 
-    // Points: 1 position per bone
     const pointBuf = new Float32Array(skeleton.bones.length * 3);
     const pointGeo = new THREE.BufferGeometry();
     pointGeo.setAttribute("position", new THREE.BufferAttribute(pointBuf, 3));
     const joints = new THREE.Points(pointGeo, MAT_JOINTS);
     joints.renderOrder = 999;
-    joints.visible = this.enabled;
     joints.frustumCulled = false;
+
+    // Start hidden — onToggle(true) will show them when the overlay is enabled.
+    lineSegs.visible = false;
+    joints.visible   = false;
 
     this.scene.add(lineSegs, joints);
     this.entries.set(entityId, { skeleton, lineSegs, joints });
 
-    // Run an initial sync so positions aren't at origin on first visible frame
     if (mesh.boneGroups) {
       mesh.group.updateWorldMatrix(false, true);
       this.syncEntry(this.entries.get(entityId)!, mesh.boneGroups);
@@ -104,20 +98,19 @@ export class SkeletonOverlay {
     this.entries.delete(entityId);
   }
 
-  /**
-   * Sync overlay geometry to current bone world positions.
-   * Must be called AFTER pose rotations have been applied to bone groups,
-   * and BEFORE the Three.js render call.
-   */
-  update(entityMeshes: Map<string, EntityMeshGroup>): void {
-    if (!this.enabled) return;
+  update(ctx: DebugUpdateContext): void {
     for (const [entityId, entry] of this.entries) {
-      const mesh = entityMeshes.get(entityId);
+      const mesh = ctx.entityMeshes.get(entityId);
       if (!mesh?.boneGroups) continue;
-      // Propagate rotation changes into world matrices before reading positions
       mesh.group.updateWorldMatrix(false, true);
       this.syncEntry(entry, mesh.boneGroups);
+      entry.lineSegs.visible = true;
+      entry.joints.visible   = true;
     }
+  }
+
+  removeEntity(entityId: string): void {
+    this.untrackEntity(entityId);
   }
 
   private syncEntry(entry: EntityEntry, boneGroups: Map<string, THREE.Group>): void {
@@ -125,7 +118,6 @@ export class SkeletonOverlay {
     const linePosAttr  = lineSegs.geometry.attributes.position as THREE.BufferAttribute;
     const jointPosAttr = joints.geometry.attributes.position  as THREE.BufferAttribute;
 
-    // Joint positions
     let ji = 0;
     for (const bone of skeleton.bones) {
       const bg = boneGroups.get(bone.id);
@@ -137,7 +129,6 @@ export class SkeletonOverlay {
     }
     jointPosAttr.needsUpdate = true;
 
-    // Line segment positions: one segment per non-root bone (parent → child)
     let li = 0;
     for (const bone of skeleton.bones) {
       if (bone.parent === null) continue;
@@ -151,7 +142,6 @@ export class SkeletonOverlay {
         linePosAttr.setXYZ(li, this.tmp.x, this.tmp.y, this.tmp.z);
         li++;
       } else {
-        // Missing bone — write degenerate segment (same point) to keep index stable
         linePosAttr.setXYZ(li,     0, 0, 0);
         linePosAttr.setXYZ(li + 1, 0, 0, 0);
         li += 2;
@@ -162,6 +152,5 @@ export class SkeletonOverlay {
 
   dispose(): void {
     for (const [id] of this.entries) this.untrackEntity(id);
-    // Shared materials are not disposed here — they're module-level singletons
   }
 }

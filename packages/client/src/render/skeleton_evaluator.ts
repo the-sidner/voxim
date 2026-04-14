@@ -69,6 +69,7 @@ export function buildDriveContext(
   animState: AnimationStateData | null,
   weaponActionsMap: ReadonlyMap<string, WeaponActionDef>,
   elapsed: number,
+  bladeLength?: number,
 ): DriveContext {
   const ctx: DriveContext = new Map();
   if (!animState?.weaponActionId) return ctx;
@@ -81,13 +82,13 @@ export function buildDriveContext(
 
   const ticks = Math.min(animState.ticksIntoAction + elapsed, totalTicks);
   const t = ticks / totalTicks;
-  const bladeLength = action.swingPath.defaultBladeLength ?? 1.0;
+  const effectiveBladeLength = bladeLength ?? 1.0;
   const pose = evaluateSwingPath(action.swingPath.keyframes, t);
   // Convert entity-local (right, up, fwd) → Three.js (right=X, up=Y, fwd=-Z)
   ctx.set("hilt", new THREE.Vector3(pose.hilt.right, pose.hilt.up, -pose.hilt.fwd));
 
   // "tip" is available too — future chains (e.g. shield-tip) can use it.
-  const tip = deriveTip(pose.hilt, pose.bladeDir, bladeLength);
+  const tip = deriveTip(pose.hilt, pose.bladeDir, effectiveBladeLength);
   ctx.set("tip", new THREE.Vector3(tip.right, tip.up, -tip.fwd));
 
   return ctx;

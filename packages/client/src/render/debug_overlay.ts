@@ -4,10 +4,12 @@
  * FacingOverlay   — arrow per entity showing current facing angle.
  * ChunkOverlay    — wireframe box per loaded terrain chunk.
  *
- * Both sit at renderOrder 998 with depthTest:false so they draw on top.
+ * Both implement ManagedOverlay and are registered in the DebugOverlayManager.
+ * ChunkOverlay is also accessed directly via manager.get<ChunkOverlay>("chunks")
+ * for event-driven addChunk / removeChunk calls from the renderer.
  */
 import * as THREE from "three";
-import type { EntityMeshGroup } from "./entity_mesh.ts";
+import type { ManagedOverlay, DebugUpdateContext } from "./debug_overlay_manager.ts";
 
 const CHUNK = 32;
 
@@ -29,35 +31,26 @@ const MAT_CHUNK = new THREE.LineBasicMaterial({
 
 /**
  * Draws a short cyan arrow pointing in each entity's facing direction.
- * One LineSegments object per entity, updated every frame from bone-group positions.
  */
-export class FacingOverlay {
+export class FacingOverlay implements ManagedOverlay {
   private readonly scene: THREE.Scene;
   private readonly arrows = new Map<string, THREE.LineSegments>();
-  enabled = false;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
   }
 
-  toggle(): boolean {
-    this.enabled = !this.enabled;
-    for (const [, arrow] of this.arrows) arrow.visible = this.enabled;
-    return this.enabled;
+  onToggle(on: boolean): void {
+    for (const arrow of this.arrows.values()) arrow.visible = on;
   }
 
-  /** Called after entity positions are updated each frame. */
-  update(entityMeshes: Map<string, EntityMeshGroup>): void {
+  update(ctx: DebugUpdateContext): void {
     const seen = new Set<string>();
 
-    for (const [id, mesh] of entityMeshes) {
+    for (const [id, mesh] of ctx.entityMeshes) {
       seen.add(id);
-      if (!this.enabled) continue;
-
       let arrow = this.arrows.get(id);
       if (!arrow) {
-        // Arrow: shaft (0,0,0)→(0,0,-1.5), head left (0,0,-1.5)→(0.3,0,-1.1),
-        // head right (0,0,-1.5)→(-0.3,0,-1.1)
         const buf = new Float32Array([
           0, 0, 0,    0, 0, -1.5,
           0, 0, -1.5, 0.3, 0, -1.1,
@@ -68,23 +61,16 @@ export class FacingOverlay {
         arrow = new THREE.LineSegments(geo, MAT_FACING);
         arrow.renderOrder = 998;
         arrow.frustumCulled = false;
-        arrow.visible = this.enabled;
         this.scene.add(arrow);
         this.arrows.set(id, arrow);
       }
 
-      // Position at entity group world position, at head height.
-      // arrow.rotation.y = -facingAngle matches the same convention as
-      // updateEntityMesh (group.rotation.y = -facing.angle).
       const pos = mesh.group.position;
       arrow.position.set(pos.x, pos.y + 1.8, pos.z);
-      // facingAngle=0 means cursor is to the right (+X screen), but Three.js
-      // rotation.y=0 points the arrow toward -Z. That's a quarter-turn offset,
-      // so subtract π/2 to rotate clockwise into the correct world direction.
       arrow.rotation.y = -mesh.facingAngle - Math.PI / 2;
+      arrow.visible = true;
     }
 
-    // Remove arrows for entities that no longer exist
     for (const [id, arrow] of this.arrows) {
       if (!seen.has(id)) {
         this.scene.remove(arrow);
@@ -94,8 +80,16 @@ export class FacingOverlay {
     }
   }
 
+  removeEntity(entityId: string): void {
+    const arrow = this.arrows.get(entityId);
+    if (!arrow) return;
+    this.scene.remove(arrow);
+    arrow.geometry.dispose();
+    this.arrows.delete(entityId);
+  }
+
   dispose(): void {
-    for (const [, arrow] of this.arrows) {
+    for (const arrow of this.arrows.values()) {
       this.scene.remove(arrow);
       arrow.geometry.dispose();
     }
@@ -107,48 +101,47 @@ export class FacingOverlay {
 
 /**
  * Draws an orange wireframe border around each loaded terrain chunk.
- * One LineLoop per chunk, rebuilt only when chunks are added/removed.
+ * addChunk / removeChunk are called directly from the renderer when terrain changes.
+ * update() is a no-op — chunk borders only change on terrain events.
  */
-export class ChunkOverlay {
+export class ChunkOverlay implements ManagedOverlay {
   private readonly scene: THREE.Scene;
   private readonly borders = new Map<string, THREE.LineLoop>();
-  enabled = false;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
   }
 
-  toggle(): boolean {
-    this.enabled = !this.enabled;
-    for (const [, b] of this.borders) b.visible = this.enabled;
-    return this.enabled;
+  onToggle(on: boolean): void {
+    for (const b of this.borders.values()) b.visible = on;
   }
 
-  addChunk(chunkX: number, chunkY: number): void {
+  // Called from the renderer when a terrain chunk is loaded.
+  addChunk(chunkX: number, chunkY: number, visible: boolean): void {
     const key = `${chunkX},${chunkY}`;
     if (this.borders.has(key)) return;
 
     const wx = chunkX * CHUNK;
     const wz = chunkY * CHUNK;
-    const y  = 20; // above max terrain height — depthTest:false makes it visible everywhere
+    const y  = 20;
 
-    // Four corners of the chunk in XZ
     const buf = new Float32Array([
-      wx,        y, wz,
+      wx,         y, wz,
       wx + CHUNK, y, wz,
       wx + CHUNK, y, wz + CHUNK,
-      wx,        y, wz + CHUNK,
+      wx,         y, wz + CHUNK,
     ]);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(buf, 3));
     const loop = new THREE.LineLoop(geo, MAT_CHUNK);
     loop.renderOrder = 998;
     loop.frustumCulled = false;
-    loop.visible = this.enabled;
+    loop.visible = visible;
     this.scene.add(loop);
     this.borders.set(key, loop);
   }
 
+  // Called from the renderer when a terrain chunk is unloaded.
   removeChunk(chunkX: number, chunkY: number): void {
     const key = `${chunkX},${chunkY}`;
     const border = this.borders.get(key);
@@ -158,8 +151,13 @@ export class ChunkOverlay {
     this.borders.delete(key);
   }
 
+  // Chunk borders don't change per-frame — update is a no-op.
+  update(_ctx: DebugUpdateContext): void {}
+
+  removeEntity(_entityId: string): void {}
+
   dispose(): void {
-    for (const [, b] of this.borders) {
+    for (const b of this.borders.values()) {
       this.scene.remove(b);
       b.geometry.dispose();
     }
