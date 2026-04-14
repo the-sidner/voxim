@@ -798,16 +798,24 @@ Done when: player can open a workstation, browse its recipe list, select one, an
 matching items to start crafting.
 
 ### T-092 · Blade dimensions derived from equipped item voxel model
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: (pending)
 
-Melee hit detection uses swingPath.defaultBladeLength which is a hardcoded value per weapon
-action. Instead, derive the actual blade segment from the equipped weapon model's voxel AABB:
-longest axis of the model = blade length; model forward axis = blade direction at rest.
-This unifies visual scale with collision: a longer sword model = longer reach. Overrides
-swingPath.defaultBladeLength when a weapon is equipped. Unarmed keeps the current fixed fist
-capsule. Same derivation drives the client trail ribbon length.
-Done when: equipping a long sword model gives more reach than a dagger model using the same
-swing action; trail ribbon length matches visual blade length.
+The hilt (from swingPath keyframes) is the anchor; the weapon model AABB drives blade geometry.
+Model Z axis = blade axis (voxel Z → Three.js Y via anchor quaternion). `bladeLength = aabb.maxZ
+× entityScale`, `bladeRadius = minCrossSection/2 × scale`. Unarmed uses constants in ActionSystem.
+`WeaponSwingPath.defaultBladeLength/defaultBladeRadius` and `DerivedItemStats.bladeLength/bladeRadius`
+removed — no per-action or per-item overrides. Swept-capsule hit detection (hilt→tip segment) unchanged.
+Client caches blade dimensions on `EntityMeshGroup.bladeDimensions` when weapon model loads in
+`syncHandSlot`. Volumetric trail covered by T-099.
+
+### T-099 · Volumetric weapon trail
+Effort: S   Status: done   Commit: (pending)
+
+Trail now records the full weapon blade segment (hilt + tip in world space) plus a perpendicular
+direction and half cross-section width (`halfCross` from model AABB). `rebuildTrailMesh` renders
+a closed tube: 4 verts per slice (hiltL, hiltR, tipR, tipL), 4 quad faces per slice pair (left
+side, right side, near face, far face). Shows the physical space the blade swept through rather
+than a tip-only ribbon. Trail width driven by the widest AABB cross-section dimension.
 
 ---
 
@@ -983,5 +991,35 @@ Done when:
 
 **Deleted**: `model_hitboxes.json` (was never read by the loader — orphaned
 leftover from a superseded hitbox system).
+
+---
+
+## Devtools
+
+### T-098 · Comprehensive debug panel rework
+Effort: M   Status: done   Commit: fe646e1
+
+The debug panel in `DebugPanel.tsx` is growing ad-hoc. The existing `GiveItemSection`
+(filter input → scrollable item list → quantity → button per item) establishes the right
+pattern: a self-contained `Section` component, isolated signals for local state, actions
+dispatched via `UIAction` to `game.ts`, server-side handler on `CommandType`. New sections
+should follow that same shape.
+
+Planned sections (this list will grow — add new ones here before implementing):
+- **Set time of day** — slider or input for world clock hour; dispatches a `debug_set_time`
+  action; server command sets `WorldClock` directly
+- **Spawn NPC** — filterable list of NPC template IDs; quantity input; dispatches
+  `debug_spawn_npc`; server spawns at player position
+- **Set stat** — dropdown (health / stamina / hunger / …) + numeric input; dispatches
+  `debug_set_stat`
+- **Teleport** — X/Z coordinate inputs; dispatches `debug_teleport`
+
+Done when:
+- `DebugPanel.tsx` is restructured so each capability is a self-contained `Section`
+  component following the `GiveItemSection` pattern (local signals, `onAction` dispatch)
+- `UIAction` union extended with new debug action variants
+- `game.ts` `handleAction` routes each new action to a `CommandType` send
+- Server-side command handlers implemented for each new action
+- Existing give-item flow untouched and still working
 
 Done when: `deno check` passes, adding a new item is a single JSON file drop.
