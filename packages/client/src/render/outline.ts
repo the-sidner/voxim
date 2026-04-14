@@ -56,6 +56,20 @@ export const OUTLINE_MAT = new THREE.ShaderMaterial({
   side: THREE.BackSide,
 });
 
+/**
+ * Hover variant — same shader, warm highlight color, slightly thicker.
+ * Swapped onto outline meshes in place of OUTLINE_MAT when an entity is hovered.
+ */
+export const HOVER_OUTLINE_MAT = new THREE.ShaderMaterial({
+  uniforms: {
+    thickness:    { value: 0.12 },
+    outlineColor: { value: new THREE.Color(0xf5e060) },
+  },
+  vertexShader:   VERT,
+  fragmentShader: FRAG,
+  side: THREE.BackSide,
+});
+
 // ---- geometry preparation ----
 
 /**

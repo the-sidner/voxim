@@ -1023,3 +1023,48 @@ Done when:
 - Existing give-item flow untouched and still working
 
 Done when: `deno check` passes, adding a new item is a single JSON file drop.
+
+---
+
+### T-100 · Entity hover + click interaction system
+Effort: M   Status: done   Commit: (pending)
+
+Client-side system for hovering entities and dispatching click events to
+registered handlers. Foundation for workbench UI, ground item pickup, and
+any future entity-level interaction.
+
+**Outline system** (prerequisite):
+- Inverted-hull outline meshes added to every entity voxel (`buildVoxelMesh`
+  creates them as child meshes using `makeOutlineMesh`). Stored in
+  `EntityMeshGroup.outlineMeshes[]`.
+- `HOVER_OUTLINE_MAT` — warm yellow-white variant of `OUTLINE_MAT`, thicker.
+  Material-swap on hover: `setEntityHovered(mesh, true/false)`.
+- `setHullOutlinesVisible()` — bulk toggle used by the debug panel.
+
+**InteractionSystem** (`src/interaction/`):
+- Each entity gets an invisible pick cylinder on Three.js layer 3 (`PICK_LAYER`).
+  Camera renders only layer 0 so cylinders are never drawn.
+- `update(mouseX, mouseY)` — called each frame; raycasts layer 3, swaps outline
+  materials, fires `onHoverStart`/`onHoverEnd` on the matching handler.
+- `handleClick(mouseX, mouseY, playerX, playerY)` — called on LMB via
+  `InputController.onLmbClick`; dispatches to the highest-priority handler
+  whose `canHandle()` returns true and entity is within `interactionRange`.
+  Returns `true` to consume the click (suppresses `ACTION_USE_SKILL`).
+- `register(handler)` / `unregister(id)` — extensible handler registry.
+
+**Debug panel** additions:
+- "Sobel edges" toggle — sets `edgeStrength` uniform on EdgePass to 0/1.
+- "Hull outlines" toggle — calls `toggleHullOutlines()` on renderer.
+
+Both outline types now visible and independently toggleable for comparison.
+
+**Registering a new handler** (example — workbench):
+```typescript
+is.register({
+  id: "workbench",
+  priority: 10,
+  interactionRange: 4,
+  canHandle: (t) => t.entityState.raw.has("workstationType"),
+  onClick: (t) => { openPanel("crafting"); return true; },
+});
+```

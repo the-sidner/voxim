@@ -60,8 +60,11 @@ export class InputController {
   buildMode = false;
 
   /** Canvas-relative mouse position, updated on every mousemove. */
-  private mouseCanvasX = 0;
-  private mouseCanvasY = 0;
+  private _mouseCanvasX = 0;
+  private _mouseCanvasY = 0;
+
+  get mouseCanvasX(): number { return this._mouseCanvasX; }
+  get mouseCanvasY(): number { return this._mouseCanvasY; }
 
   /** RMB long-press tracking. */
   private rmbDownTime = 0;
@@ -78,6 +81,14 @@ export class InputController {
    * Receives canvas-relative mouse coordinates at press time.
    */
   onBuildOpenMenu?: (canvasX: number, canvasY: number) => void;
+
+  /**
+   * Called on LMB mousedown before the attack action is queued.
+   * Receives canvas-relative mouse coordinates.
+   * Return true to consume the click and suppress ACTION_USE_SKILL (e.g. when
+   * the interaction system handles the click as a workbench open or item pickup).
+   */
+  onLmbClick?: (canvasX: number, canvasY: number) => boolean;
 
   private readonly _keydown: (e: KeyboardEvent) => void;
   private readonly _keyup: (e: KeyboardEvent) => void;
@@ -99,8 +110,8 @@ export class InputController {
     this._keyup = (e) => this.keys.delete(e.code);
     this._mousemove = (e) => {
       const rect = canvas.getBoundingClientRect();
-      this.mouseCanvasX = e.clientX - rect.left;
-      this.mouseCanvasY = e.clientY - rect.top;
+      this._mouseCanvasX = e.clientX - rect.left;
+      this._mouseCanvasY = e.clientY - rect.top;
       const { x: px, y: py } = this.getPlayerScreen();
       // Subtract π/4 to convert from screen-space to world-space angle.
       // The isometric camera sits at 45° azimuth, so screen-right = world-northeast.
@@ -111,7 +122,10 @@ export class InputController {
       ) - Math.PI / 4;
     };
     this._mousedown = (e) => {
-      if (e.button === 0) this.pendingActions |= ACTION_USE_SKILL;
+      if (e.button === 0) {
+        const consumed = this.onLmbClick?.(this.mouseCanvasX, this.mouseCanvasY) ?? false;
+        if (!consumed) this.pendingActions |= ACTION_USE_SKILL;
+      }
       if (e.button === 2) {
         if (this.buildMode) {
           // Track press for long/short detection; suppress ACTION_BLOCK

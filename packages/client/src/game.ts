@@ -15,6 +15,7 @@ import { InputController } from "./input/input_controller.ts";
 import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
+import { InteractionSystem } from "./interaction/interaction_system.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
@@ -59,6 +60,7 @@ export class VoximGame {
   private running = false;
   private predictor: Predictor | null = null;
   private lastFrameTime = 0;
+  private interactionSystem: InteractionSystem | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
@@ -331,6 +333,17 @@ export class VoximGame {
       this._handleUIAction({ type: "open_build_menu", canvasX: cx, canvasY: cy });
     };
 
+    // Interaction system — entity hover highlight + click dispatch.
+    // Register handlers here as the game grows (workbench, item pickup, etc.)
+    this.interactionSystem = new InteractionSystem(this.renderer, this.world);
+    this.renderer.setInteractionSystem(this.interactionSystem);
+    this.input.onLmbClick = (cx, cy) => {
+      const playerState = this.playerId ? this.world.get(this.playerId) : null;
+      const px = playerState?.position?.x ?? 0;
+      const py = playerState?.position?.y ?? 0;
+      return this.interactionSystem?.handleClick(cx, cy, px, py) ?? false;
+    };
+
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
       // deno-lint-ignore no-explicit-any
@@ -379,6 +392,10 @@ export class VoximGame {
         const terrainFn = (x: number, y: number) => this.world.getTerrainHeight(x, y);
         predictedPos = this.predictor.step(datagram.seq, physicsInput, dt, terrainFn);
       }
+    }
+    // Update hover highlight — must happen after input so mouse coords are current
+    if (this.input && this.interactionSystem) {
+      this.interactionSystem.update(this.input.mouseCanvasX, this.input.mouseCanvasY);
     }
     this.renderer?.render(this.serverTick, predictedPos);
 
@@ -513,12 +530,14 @@ export class VoximGame {
     open ? closePanel("network") : openPanel("network");
   }
 
-  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa"): boolean {
+  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa" | "sobel_edges" | "hull_outlines"): boolean {
     if (!this.renderer) return false;
     switch (layer) {
-      case "heightmap": return this.renderer.toggleHeightDebug();
-      case "fxaa":      return this.renderer.toggleFxaa();
-      default:          return this.renderer.debugOverlayManager.toggle(layer);
+      case "heightmap":     return this.renderer.toggleHeightDebug();
+      case "fxaa":          return this.renderer.toggleFxaa();
+      case "sobel_edges":   return this.renderer.toggleSobelEdges();
+      case "hull_outlines": return this.renderer.toggleHullOutlines();
+      default:              return this.renderer.debugOverlayManager.toggle(layer);
     }
   }
 
@@ -573,6 +592,8 @@ export class VoximGame {
     this.terrainChunksReceived = 0;
     this.loadingComplete = false;
     cancelAnimationFrame(this.animFrameId);
+    this.interactionSystem?.dispose();
+    this.interactionSystem = null;
     this.input?.dispose();
     this.connection.close();
     this.renderer?.dispose();

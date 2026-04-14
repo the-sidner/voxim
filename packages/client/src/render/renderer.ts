@@ -31,8 +31,10 @@ import {
   attachArmorToSlot,
   detachModelFromSlot,
   disposeEntityMesh,
+  setHullOutlinesVisible,
   type EntityMeshGroup,
 } from "./entity_mesh.ts";
+import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { PropInstancePool } from "./prop_instance_pool.ts";
 import { evaluatePose, evaluateWeaponSlice, buildDriveContext, applyIKChains } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
@@ -199,6 +201,10 @@ export class VoximRenderer {
   private cameraTarget = new THREE.Vector3(256, 4, 256);
   private localPlayerId: string | null = null;
   private content: ContentCache | null = null;
+  private interactionSystem: InteractionSystem | null = null;
+
+  /** When false, inverted-hull outline meshes are hidden on all entities. */
+  private hullOutlinesEnabled = true;
 
   /** Smooth animation tick — advances at server tick rate (20 Hz) based on real time. */
   private smoothTick = 0;
@@ -500,6 +506,7 @@ export class VoximRenderer {
       mesh = createEntityMesh(state, isLocal);
       this.scene.add(mesh.group);
       this.entityMeshes.set(entityId, mesh);
+      this.interactionSystem?.addEntity(entityId);
     } else {
       updateEntityMesh(mesh, state);
     }
@@ -562,6 +569,7 @@ export class VoximRenderer {
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
           const worldPos = capture.group.position.clone();
+          this.interactionSystem?.removeEntity(entityId);
           this.scene.remove(capture.group);
           disposeEntityMesh(capture);
           this.entityMeshes.delete(entityId);
@@ -611,12 +619,36 @@ export class VoximRenderer {
     }
     const mesh = this.entityMeshes.get(entityId);
     if (mesh) {
+      this.interactionSystem?.removeEntity(entityId);
       this.lightManager.remove(entityId, mesh.group);
       this.debugOverlayManager.removeEntity(entityId);
       this.scene.remove(mesh.group);
       disposeEntityMesh(mesh);
       this.entityMeshes.delete(entityId);
     }
+  }
+
+  // ---- interaction system ----
+
+  setInteractionSystem(is: InteractionSystem | null): void {
+    this.interactionSystem = is;
+  }
+
+  /** Public read access to an entity's mesh group — used by InteractionSystem. */
+  getEntityMesh(entityId: string): EntityMeshGroup | null {
+    return this.entityMeshes.get(entityId) ?? null;
+  }
+
+  /**
+   * Show or hide inverted-hull outline meshes on all live entities.
+   * Returns the new enabled state.
+   */
+  toggleHullOutlines(): boolean {
+    this.hullOutlinesEnabled = !this.hullOutlinesEnabled;
+    for (const mesh of this.entityMeshes.values()) {
+      setHullOutlinesVisible(mesh, this.hullOutlinesEnabled);
+    }
+    return this.hullOutlinesEnabled;
   }
 
   // ---- camera ----
@@ -715,6 +747,11 @@ export class VoximRenderer {
   toggleFxaa(): boolean {
     this.fxaaEnabled = !this.fxaaEnabled;
     return this.fxaaEnabled;
+  }
+
+  /** Toggle the screen-space Sobel edge detection pass on/off. */
+  toggleSobelEdges(): boolean {
+    return this.edgePass.toggleSobelEdges();
   }
 
   // ---- render loop ----

@@ -100,6 +100,18 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
           on={overlays.fxaa}
           onToggle={() => toggle("fxaa")}
         />
+        <ToggleRow
+          label="Sobel edges"
+          hint="screen-space outlines"
+          on={overlays.sobel_edges}
+          onToggle={() => toggle("sobel_edges")}
+        />
+        <ToggleRow
+          label="Hull outlines"
+          hint="per-entity inverted hull"
+          on={overlays.hull_outlines}
+          onToggle={() => toggle("hull_outlines")}
+        />
       </Section>
 
       {/* ── Render overlays ───────────────────────────────────────────────── */}

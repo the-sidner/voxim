@@ -118,6 +118,19 @@ export class EdgePass {
     (this.material.uniforms.texelSize.value as THREE.Vector2).set(1 / width, 1 / height);
   }
 
+  /**
+   * Toggle the Sobel edge detection contribution.
+   * When disabled, edgeStrength is set to 0 so the pass becomes a plain
+   * height-shaded sRGB blit with no outlines.
+   * Returns the new enabled state.
+   */
+  toggleSobelEdges(): boolean {
+    const u = this.material.uniforms.edgeStrength;
+    const nowEnabled = u.value === 0;
+    u.value = nowEnabled ? 1.0 : 0;
+    return nowEnabled;
+  }
+
   dispose(): void {
     this.material.dispose();
   }
