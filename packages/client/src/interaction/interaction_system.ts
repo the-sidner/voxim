@@ -118,12 +118,14 @@ export class InteractionSystem {
         }
       }
       this.hoveredEntityId = null;
+      this.renderer.setHoveredEntity(null);
     }
 
     // Hover new
     if (entityId !== null) {
       if (this.renderer.getEntityMesh(entityId)) {
         this.hoveredEntityId = entityId;
+        this.renderer.setHoveredEntity(entityId);
         const target = this._buildTarget(entityId);
         if (target) {
           for (const h of this.handlers) {

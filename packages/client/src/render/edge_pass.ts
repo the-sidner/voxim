@@ -1,9 +1,16 @@
 /**
- * Screen-space post-process pass: Sobel edge detection + height AO + sRGB output.
+ * Screen-space post-process pass: Sobel edge detection + height AO + hover
+ * silhouette outline + sRGB output.
  *
  * Uses a normalised luminance Sobel: the gradient is divided by the local mean
  * brightness, so edges fire at consistent strength across day/night cycles and
  * on dark surfaces (terrain faces, midnight shadows, etc.).
+ *
+ * Hover outline: the renderer renders the hovered entity flat-white to a separate
+ * mask texture (hoverMaskTarget).  This pass dilates that mask by uHoverRadius
+ * texels; pixels in the dilated ring (dilated − original) become the outline.
+ * The outline is composited in linear space before the final sRGB conversion so
+ * blending is perceptually correct.
  *
  * Depth texture is reserved for a future packed-depth pass; direct DEPTH_COMPONENT
  * sampling via sampler2D produces undefined results on several WebGL2 drivers due
@@ -25,10 +32,14 @@ const FRAG = /* glsl */`
 
   uniform sampler2D tColor;
   uniform sampler2D tHeight;
+  uniform sampler2D tHoverMask;
   uniform vec2      texelSize;
   uniform float     edgeStrength;
   uniform vec3      edgeColor;
   uniform float     lumThreshold;
+  uniform float     uHoverActive;
+  uniform vec3      uHoverColor;
+  uniform float     uHoverRadius;
 
   float luma(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -82,6 +93,24 @@ const FRAG = /* glsl */`
     vec3 edgeLinear = pow(max(edgeColor, vec3(0.0)), vec3(2.2));
     color.rgb = mix(color.rgb, edgeLinear, edge);
 
+    // ---- Hover silhouette outline (linear space) ------------------------
+    // Dilate the entity mask by uHoverRadius texels.  The ring between the
+    // dilated and the original mask is the outline; it wraps the whole model
+    // silhouette rather than individual voxels.
+    float hMask = texture2D(tHoverMask, vUv).r;
+    float hDil  = hMask;
+    float hr    = uHoverRadius;
+    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( hr,  0.0)).r);
+    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(-hr,  0.0)).r);
+    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( 0.0,  hr)).r);
+    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( 0.0, -hr)).r);
+    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( hr,  hr)).r);
+    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(-hr,  hr)).r);
+    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( hr, -hr)).r);
+    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(-hr, -hr)).r);
+    float hOutline = hDil * (1.0 - hMask) * uHoverActive;
+    color.rgb = mix(color.rgb, uHoverColor, hOutline);
+
     // Linear → sRGB for canvas output.
     color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
 
@@ -95,17 +124,22 @@ export class EdgePass {
   constructor(
     colorTex: THREE.Texture,
     heightTex: THREE.Texture,
+    hoverMaskTex: THREE.Texture,
     width: number,
     height: number,
   ) {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
-        tColor:       { value: colorTex },
-        tHeight:      { value: heightTex },
-        texelSize:    { value: new THREE.Vector2(1 / width, 1 / height) },
-        edgeStrength: { value: 1.0 },
-        edgeColor:    { value: new THREE.Color(0x0d0d0d) },
-        lumThreshold: { value: 0.4 },
+        tColor:        { value: colorTex },
+        tHeight:       { value: heightTex },
+        tHoverMask:    { value: hoverMaskTex },
+        texelSize:     { value: new THREE.Vector2(1 / width, 1 / height) },
+        edgeStrength:  { value: 1.0 },
+        edgeColor:     { value: new THREE.Color(0x0d0d0d) },
+        lumThreshold:  { value: 0.4 },
+        uHoverActive:  { value: 0.0 },
+        uHoverColor:   { value: new THREE.Color().setRGB(1.0, 0.96, 0.78) },
+        uHoverRadius:  { value: 2.5 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -129,6 +163,11 @@ export class EdgePass {
     const nowEnabled = u.value === 0;
     u.value = nowEnabled ? 1.0 : 0;
     return nowEnabled;
+  }
+
+  /** Enable or disable the hover silhouette outline composite. */
+  setHoverActive(active: boolean): void {
+    this.material.uniforms.uHoverActive.value = active ? 1.0 : 0.0;
   }
 
   dispose(): void {

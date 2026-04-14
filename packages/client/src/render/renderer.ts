@@ -169,6 +169,14 @@ function lerpAngle(a: number, b: number, t: number): number {
  */
 const SUN_DIR = new THREE.Vector3(20, 100, -15).normalize();
 
+/**
+ * Three.js layer used for the hover silhouette mask pass.
+ * The main camera never renders this layer (it sees layer 0 only).
+ * setHoveredEntity() enables it on the hovered entity's meshes so the mask
+ * pass can render them flat-white into hoverMaskTarget.
+ */
+const HOVER_LAYER = 4;
+
 /** Scratch objects — reused by updateAttachmentPositions to avoid per-frame allocation. */
 const _attachTmp   = new THREE.Vector3();
 const _bladeTip    = new THREE.Vector3();
@@ -201,7 +209,8 @@ export class VoximRenderer {
   private content: ContentCache | null = null;
   private interactionSystem: InteractionSystem | null = null;
 
-  /** When false, inverted-hull outline meshes are hidden on all entities. */
+  /** entityId currently hovered by the cursor, or null. */
+  private hoveredEntityId: string | null = null;
 
   /** Smooth animation tick — advances at server tick rate (20 Hz) based on real time. */
   private smoothTick = 0;
@@ -218,6 +227,10 @@ export class VoximRenderer {
   private readonly depthBlitMat: THREE.ShaderMaterial;
   /** Screen-space edge detection — runs during the blit pass. */
   private readonly edgePass: EdgePass;
+  /** Hover mask: hovered entity rendered flat-white; fed into EdgePass for silhouette outline. */
+  private readonly hoverMaskTarget: THREE.WebGLRenderTarget;
+  /** Override material used during the hover mask pass — flat white, no lighting. */
+  private readonly hoverMaskMat: THREE.MeshBasicMaterial;
   /** Fullscreen blit pass: upscales pixelTarget to the canvas. */
   private readonly blitScene: THREE.Scene;
   private readonly blitMesh: THREE.Mesh;
@@ -362,8 +375,22 @@ export class VoximRenderer {
     this.depthBlitScene = new THREE.Scene();
     this.depthBlitScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.depthBlitMat));
 
+    // ---- hover mask target + material -----------------------------------
+    this.hoverMaskTarget = new THREE.WebGLRenderTarget(pw, ph, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      stencilBuffer: false,
+      depthBuffer: false,
+    });
+    this.hoverMaskMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
     // ---- edge pass + fullscreen blit scene ----
-    this.edgePass   = new EdgePass(this.pixelTarget.texture, this.heightTarget.texture, pw, ph);
+    this.edgePass = new EdgePass(
+      this.pixelTarget.texture,
+      this.heightTarget.texture,
+      this.hoverMaskTarget.texture,
+      pw, ph,
+    );
     this.blitScene  = new THREE.Scene();
     this.blitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const blitGeo = new THREE.PlaneGeometry(2, 2);
@@ -527,6 +554,8 @@ export class VoximRenderer {
         if (skeleton) {
           const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
           upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams);
+          // Re-enable hover layer on newly built meshes if this entity is still hovered.
+          if (entityId === this.hoveredEntityId) this._setMeshHoverLayer(capture, true);
           capture.modelSeed  = modelRef.seed  ?? 0;
           capture.modelScale = modelRef.scaleX ?? 0;
           this._skeletonOverlay.trackEntity(entityId, capture, skeleton);
@@ -599,6 +628,7 @@ export class VoximRenderer {
     }
     const mesh = this.entityMeshes.get(entityId);
     if (mesh) {
+      if (entityId === this.hoveredEntityId) this.setHoveredEntity(null);
       this.interactionSystem?.removeEntity(entityId);
       this.lightManager.remove(entityId, mesh.group);
       this.debugOverlayManager.removeEntity(entityId);
@@ -617,6 +647,35 @@ export class VoximRenderer {
   /** Public read access to an entity's mesh group — used by InteractionSystem. */
   getEntityMesh(entityId: string): EntityMeshGroup | null {
     return this.entityMeshes.get(entityId) ?? null;
+  }
+
+  /**
+   * Set the entity currently under the cursor.  Enables HOVER_LAYER on its
+   * meshes so the hover mask pass renders them; disables it on the previous
+   * hovered entity.  Pass null to clear hover state.
+   */
+  setHoveredEntity(entityId: string | null): void {
+    if (entityId === this.hoveredEntityId) return;
+    if (this.hoveredEntityId !== null) {
+      const prev = this.entityMeshes.get(this.hoveredEntityId);
+      if (prev) this._setMeshHoverLayer(prev, false);
+    }
+    this.hoveredEntityId = entityId;
+    if (entityId !== null) {
+      const mesh = this.entityMeshes.get(entityId);
+      if (mesh) this._setMeshHoverLayer(mesh, true);
+    }
+    this.edgePass.setHoverActive(entityId !== null);
+  }
+
+  private _setMeshHoverLayer(mesh: EntityMeshGroup, on: boolean): void {
+    mesh.group.traverse((obj: THREE.Object3D) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      // Skip pick cylinders (added by InteractionSystem — they have entityId in userData).
+      if (obj.userData.entityId !== undefined) return;
+      if (on) obj.layers.enable(HOVER_LAYER);
+      else    obj.layers.disable(HOVER_LAYER);
+    });
   }
 
   // ---- camera ----
@@ -914,6 +973,21 @@ export class VoximRenderer {
     // Pass 1: render scene to low-res pixel target (writes colour + depth).
     this.renderer.setRenderTarget(this.pixelTarget);
     this.renderer.render(this.scene, this.camera);
+
+    // Hover mask: render hovered entity flat-white → hoverMaskTarget.
+    // Camera temporarily set to HOVER_LAYER only; overrideMaterial paints everything white.
+    // The mask is consumed by EdgePass to produce a dilated silhouette outline.
+    if (this.hoveredEntityId !== null) {
+      const savedMask = this.camera.layers.mask;
+      this.camera.layers.set(HOVER_LAYER);
+      this.scene.overrideMaterial = this.hoverMaskMat;
+      this.renderer.setRenderTarget(this.hoverMaskTarget);
+      this.renderer.setClearColor(0x000000, 0);
+      this.renderer.clear();
+      this.renderer.render(this.scene, this.camera);
+      this.scene.overrideMaterial = null;
+      this.camera.layers.mask = savedMask;
+    }
 
     // Depth blit: reconstruct world-Y from pixelTarget.depthTexture → heightTarget.
     // pixelTarget is no longer the active FBO here, so reading its depth texture is
@@ -1378,6 +1452,7 @@ export class VoximRenderer {
     const nph = Math.max(1, h);
     this.pixelTarget.setSize(npw, nph);
     this.heightTarget.setSize(npw, nph);
+    this.hoverMaskTarget.setSize(npw, nph);
     this.edgePass.setSize(npw, nph);
   }
 
@@ -1389,6 +1464,8 @@ export class VoximRenderer {
     this.edgePass.dispose();
     this.pixelTarget.dispose();
     this.heightTarget.dispose();
+    this.hoverMaskTarget.dispose();
+    this.hoverMaskMat.dispose();
     this.depthBlitMat.dispose();
     this.renderer.dispose();
     for (const [entityId] of this.trailMeshes) this.removeTrailMesh(entityId);
