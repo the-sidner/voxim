@@ -47,6 +47,13 @@ export interface EntityInteractionHandler {
   /** Return true when this handler applies to the given entity. */
   canHandle(target: InteractionTarget): boolean;
 
+  /**
+   * When true, the entity gets a silhouette outline while hovered.
+   * Default (omitted or false): no outline — e.g. enemies that can be
+   * attacked but not explicitly interacted with.
+   */
+  readonly showHoverOutline?: boolean;
+
   /** Called once when the cursor enters the entity's pick area. */
   onHoverStart?(target: InteractionTarget): void;
   /** Called once when the cursor leaves the entity's pick area. */

@@ -125,8 +125,11 @@ export class InteractionSystem {
     if (entityId !== null) {
       if (this.renderer.getEntityMesh(entityId)) {
         this.hoveredEntityId = entityId;
-        this.renderer.setHoveredEntity(entityId);
         const target = this._buildTarget(entityId);
+        // Only show the silhouette outline when at least one matching handler opts in.
+        const wantsOutline = target !== null &&
+          this.handlers.some((h) => h.showHoverOutline && h.canHandle(target));
+        this.renderer.setHoveredEntity(wantsOutline ? entityId : null);
         if (target) {
           for (const h of this.handlers) {
             if (h.onHoverStart && h.canHandle(target)) {
