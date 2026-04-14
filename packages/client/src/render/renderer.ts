@@ -978,14 +978,17 @@ export class VoximRenderer {
     // Camera temporarily set to HOVER_LAYER only; overrideMaterial paints everything white.
     // The mask is consumed by EdgePass to produce a dilated silhouette outline.
     if (this.hoveredEntityId !== null) {
-      const savedMask = this.camera.layers.mask;
+      const savedMask       = this.camera.layers.mask;
+      const savedBackground = this.scene.background;
       this.camera.layers.set(HOVER_LAYER);
       this.scene.overrideMaterial = this.hoverMaskMat;
+      this.scene.background = null;   // prevent sky color flooding the mask
       this.renderer.setRenderTarget(this.hoverMaskTarget);
       this.renderer.setClearColor(0x000000, 0);
       this.renderer.clear();
       this.renderer.render(this.scene, this.camera);
       this.scene.overrideMaterial = null;
+      this.scene.background = savedBackground;
       this.camera.layers.mask = savedMask;
     }
 
