@@ -424,6 +424,22 @@ export class VoximGame {
         this._sendCommand({ cmd: CommandType.DebugGiveItem, itemType: action.itemType, quantity: action.quantity });
         break;
 
+      case "debug_spawn_npc":
+        this._sendCommand({ cmd: CommandType.DebugSpawnNpc, npcTemplate: action.npcTemplate, quantity: action.quantity });
+        break;
+
+      case "debug_set_time":
+        this._sendCommand({ cmd: CommandType.DebugSetTime, hour: action.hour });
+        break;
+
+      case "debug_teleport":
+        this._sendCommand({ cmd: CommandType.DebugTeleport, worldX: action.worldX, worldY: action.worldY });
+        break;
+
+      case "debug_set_stat":
+        this._sendCommand({ cmd: CommandType.DebugSetStat, stat: action.stat, value: action.value });
+        break;
+
       case "equip":
         this._sendCommand({ cmd: CommandType.Equip, fromInventorySlot: action.fromSlot });
         break;
@@ -500,13 +516,9 @@ export class VoximGame {
   toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa"): boolean {
     if (!this.renderer) return false;
     switch (layer) {
-      case "skeleton":   return this.renderer.skeletonOverlay.toggle();
-      case "facing":     return this.renderer.facingOverlay.toggle();
-      case "chunks":     return this.renderer.chunkOverlay.toggle();
-      case "heightmap":  return this.renderer.toggleHeightDebug();
-      case "blade":      return this.renderer.bladeDebugOverlay.toggle();
-      case "hitbox":     return this.renderer.hitboxDebugOverlay.toggle();
-      case "fxaa":       return this.renderer.toggleFxaa();
+      case "heightmap": return this.renderer.toggleHeightDebug();
+      case "fxaa":      return this.renderer.toggleFxaa();
+      default:          return this.renderer.debugOverlayManager.toggle(layer);
     }
   }
 

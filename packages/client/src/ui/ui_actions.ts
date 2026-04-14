@@ -42,7 +42,11 @@ export type UIAction =
 
   // Debug
   | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "fxaa" }
-  | { type: "debug_give_item"; itemType: string; quantity: number }
+  | { type: "debug_give_item";  itemType: string; quantity: number }
+  | { type: "debug_spawn_npc";  npcTemplate: string; quantity: number }
+  | { type: "debug_set_time";   hour: number }
+  | { type: "debug_teleport";   worldX: number; worldY: number }
+  | { type: "debug_set_stat";   stat: "health" | "stamina"; value: number }
 
   // Building
   | { type: "place_blueprint"; structureType: string; worldX: number; worldY: number }

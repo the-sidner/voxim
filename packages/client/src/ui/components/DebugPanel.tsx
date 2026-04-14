@@ -18,6 +18,15 @@ import type { DebugLayer } from "../debug_store.ts";
 import { captureEnabled, capturePaused, captureSignal } from "../network_capture.ts";
 import { computed, signal } from "@preact/signals";
 
+const INPUT_STYLE = {
+  background: "var(--col-bg-panel)",
+  border: "1px solid var(--col-border)",
+  color: "var(--col-text)",
+  borderRadius: "3px",
+  padding: "2px 6px",
+  fontSize: "var(--text-xs)",
+} as const;
+
 const networkOpen = computed(() => uiState.value.openPanels.has("network"));
 
 // ── Sub-section wrapper ────────────────────────────────────────────────────────
@@ -160,13 +169,24 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
       {/* ── Give item ─────────────────────────────────────────────────────── */}
       <GiveItemSection onAction={onAction} />
 
-      {/* ── Future sections ───────────────────────────────────────────────── */}
-      {/* TODO: Physics debug (collision shapes, velocity vectors) */}
-      {/* TODO: AI debug (NPC job queues, pathfinding) */}
-      {/* TODO: Performance (tick timing, draw calls) */}
+      {/* ── Spawn NPC ─────────────────────────────────────────────────────── */}
+      <SpawnNpcSection onAction={onAction} />
+
+      {/* ── Set time ──────────────────────────────────────────────────────── */}
+      <SetTimeSection onAction={onAction} />
+
+      {/* ── Teleport ──────────────────────────────────────────────────────── */}
+      <TeleportSection onAction={onAction} />
+
+      {/* ── Set stat ──────────────────────────────────────────────────────── */}
+      <SetStatSection onAction={onAction} />
     </div>
   );
 }
+
+// ── Shared action props type ──────────────────────────────────────────────────
+
+type ActionProps = { onAction: (a: UIAction) => void };
 
 // ── Give item section ─────────────────────────────────────────────────────────
 
@@ -255,6 +275,161 @@ function GiveItemSection({ onAction }: { onAction: (a: UIAction) => void }) {
           </div>
         )}
       </div>
+    </Section>
+  );
+}
+
+// ── Spawn NPC section ─────────────────────────────────────────────────────────
+
+const spawnNpcTemplate = signal("");
+const spawnNpcQty      = signal(1);
+
+function SpawnNpcSection({ onAction }: ActionProps) {
+  return (
+    <Section title="Spawn NPC">
+      <div style={{ display: "flex", gap: "var(--gap-xs)", marginBottom: "var(--gap-xs)" }}>
+        <input
+          type="text"
+          placeholder="template id…"
+          value={spawnNpcTemplate.value}
+          onInput={(e) => { spawnNpcTemplate.value = (e.target as HTMLInputElement).value.trim(); }}
+          style={{ flex: 1, ...INPUT_STYLE }}
+        />
+        <input
+          type="number"
+          min={1}
+          max={20}
+          value={spawnNpcQty.value}
+          onInput={(e) => {
+            const v = parseInt((e.target as HTMLInputElement).value);
+            if (!isNaN(v)) spawnNpcQty.value = Math.max(1, Math.min(20, v));
+          }}
+          style={{ width: "44px", textAlign: "right", ...INPUT_STYLE }}
+        />
+      </div>
+      <button
+        type="button"
+        class="btn interactive"
+        disabled={!spawnNpcTemplate.value}
+        onClick={() => onAction({ type: "debug_spawn_npc", npcTemplate: spawnNpcTemplate.value, quantity: spawnNpcQty.value })}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)" }}
+      >
+        Spawn
+      </button>
+    </Section>
+  );
+}
+
+// ── Set time section ──────────────────────────────────────────────────────────
+
+const setTimeHour = signal(12);
+
+function SetTimeSection({ onAction }: ActionProps) {
+  return (
+    <Section title="Set time">
+      <div style={{ display: "flex", gap: "var(--gap-xs)", alignItems: "center", marginBottom: "var(--gap-xs)" }}>
+        <input
+          type="range"
+          min={0}
+          max={24}
+          step={0.5}
+          value={setTimeHour.value}
+          onInput={(e) => { setTimeHour.value = parseFloat((e.target as HTMLInputElement).value); }}
+          style={{ flex: 1 }}
+        />
+        <span style={{ fontSize: "var(--text-xs)", minWidth: "32px", textAlign: "right", color: "var(--col-text-dim)" }}>
+          {setTimeHour.value.toFixed(1)}h
+        </span>
+      </div>
+      <button
+        type="button"
+        class="btn interactive"
+        onClick={() => onAction({ type: "debug_set_time", hour: setTimeHour.value })}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)" }}
+      >
+        Set time
+      </button>
+    </Section>
+  );
+}
+
+// ── Teleport section ──────────────────────────────────────────────────────────
+
+const teleportX = signal(256);
+const teleportY = signal(256);
+
+function TeleportSection({ onAction }: ActionProps) {
+  function parseCoord(raw: string, fallback: number): number {
+    const v = parseFloat(raw);
+    return isNaN(v) ? fallback : v;
+  }
+
+  return (
+    <Section title="Teleport">
+      <div style={{ display: "flex", gap: "var(--gap-xs)", marginBottom: "var(--gap-xs)" }}>
+        <input
+          type="number"
+          placeholder="X"
+          value={teleportX.value}
+          onInput={(e) => { teleportX.value = parseCoord((e.target as HTMLInputElement).value, teleportX.value); }}
+          style={{ flex: 1, ...INPUT_STYLE }}
+        />
+        <input
+          type="number"
+          placeholder="Y"
+          value={teleportY.value}
+          onInput={(e) => { teleportY.value = parseCoord((e.target as HTMLInputElement).value, teleportY.value); }}
+          style={{ flex: 1, ...INPUT_STYLE }}
+        />
+      </div>
+      <button
+        type="button"
+        class="btn interactive"
+        onClick={() => onAction({ type: "debug_teleport", worldX: teleportX.value, worldY: teleportY.value })}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)" }}
+      >
+        Go
+      </button>
+    </Section>
+  );
+}
+
+// ── Set stat section ──────────────────────────────────────────────────────────
+
+const setStatStat  = signal<"health" | "stamina">("health");
+const setStatValue = signal(100);
+
+function SetStatSection({ onAction }: ActionProps) {
+  return (
+    <Section title="Set stat">
+      <div style={{ display: "flex", gap: "var(--gap-xs)", marginBottom: "var(--gap-xs)" }}>
+        <select
+          value={setStatStat.value}
+          onChange={(e) => { setStatStat.value = (e.target as HTMLSelectElement).value as "health" | "stamina"; }}
+          style={{ flex: 1, ...INPUT_STYLE }}
+        >
+          <option value="health">health</option>
+          <option value="stamina">stamina</option>
+        </select>
+        <input
+          type="number"
+          min={0}
+          value={setStatValue.value}
+          onInput={(e) => {
+            const v = parseFloat((e.target as HTMLInputElement).value);
+            if (!isNaN(v)) setStatValue.value = Math.max(0, v);
+          }}
+          style={{ width: "64px", textAlign: "right", ...INPUT_STYLE }}
+        />
+      </div>
+      <button
+        type="button"
+        class="btn interactive"
+        onClick={() => onAction({ type: "debug_set_stat", stat: setStatStat.value, value: setStatValue.value })}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)" }}
+      >
+        Set
+      </button>
     </Section>
   );
 }
