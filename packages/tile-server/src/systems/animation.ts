@@ -24,15 +24,11 @@ import { Velocity, Health, SkillInProgress, AnimationState, InputState } from ".
 
 // ---- constants ----
 
-const WALK_THRESHOLD_SQ = 0.01;
-
 /**
- * Reference speed (world units/tick) for the walk clip.
- * Walk animation plays at 1× rate when entity speed equals this value.
- * Set to match maxGroundSpeed/tickRate (6 units/sec ÷ 20 Hz = 0.3 units/tick),
- * so a full gait cycle completes in ~1 second at top speed.
+ * Minimum speed (world units/sec, squared) to trigger the walk clip.
+ * Below this the entity plays idle.  0.1 u/s is well below any intentional walk.
  */
-const WALK_SPEED_REFERENCE = 0.3;
+const WALK_THRESHOLD_SQ = 0.01;
 
 /**
  * Base time advance per tick for fixed-rate clips (speedScale is a number).
@@ -48,6 +44,11 @@ export class AnimationSystem implements System {
   prepare(_tick: number): void {}
 
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
+    // Reference speed for velocity-scaled clips: the entity's max ground speed
+    // in world units/sec, matching the units stored in the Velocity component.
+    // Walk animation plays at 1× when the entity moves at this speed.
+    const walkSpeedRef = this.content.getGameConfig().physics.maxGroundSpeed;
+
     for (const { entityId, velocity } of world.query(Velocity, AnimationState)) {
       const health = world.get(entityId, Health);
       const isDead = health !== null && health.current <= 0;
@@ -79,7 +80,7 @@ export class AnimationSystem implements System {
 
       const layers = isDead
         ? buildDeathLayers(prevByClip)
-        : buildLocomotionLayers(prevByClip, crouching, moving, speed);
+        : buildLocomotionLayers(prevByClip, crouching, moving, speed, walkSpeedRef);
 
       const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
 
@@ -111,15 +112,16 @@ function buildLocomotionLayers(
   crouching: boolean,
   moving: boolean,
   speed: number,
+  walkSpeedRef: number,
 ): AnimationLayer[] {
   if (crouching && moving) {
-    return [makeLoop("crouch_walk", prevByClip, "velocity", WALK_SPEED_REFERENCE, speed)];
+    return [makeLoop("crouch_walk", prevByClip, "velocity", walkSpeedRef, speed)];
   }
   if (crouching) {
     return [makeLoop("crouch", prevByClip, 0.4)];
   }
   if (moving) {
-    return [makeLoop("walk", prevByClip, "velocity", WALK_SPEED_REFERENCE, speed)];
+    return [makeLoop("walk", prevByClip, "velocity", walkSpeedRef, speed)];
   }
   return [makeLoop("idle", prevByClip, 0.4)];
 }
