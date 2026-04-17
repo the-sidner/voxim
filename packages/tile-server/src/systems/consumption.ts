@@ -8,7 +8,6 @@ import type { InventorySlot } from "../components/items.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ConsumptionSystem");
-const CONSUME_COOLDOWN_TICKS = 20;
 
 export class ConsumptionSystem implements System {
   constructor(private readonly content: ContentStore) {}
@@ -31,7 +30,9 @@ export class ConsumptionSystem implements System {
       const slot = inventory.slots[idx];
       const stats = this.content.deriveItemStats(slot.itemType, slot.parts);
 
-      world.set(entityId, InteractCooldown, { remaining: CONSUME_COOLDOWN_TICKS });
+      world.set(entityId, InteractCooldown, {
+        remaining: this.content.getGameConfig().consumption.cooldownTicks,
+      });
 
       let hungerBefore = 0, thirstBefore = 0;
 

@@ -1,6 +1,6 @@
 import type { World } from "@voxim/engine";
 import { ACTION_USE_SKILL } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentStore, GameConfig } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import { Position, InputState, Health, Hunger, Thirst } from "../components/game.ts";
@@ -11,39 +11,17 @@ import { createLogger } from "../logger.ts";
 
 const log = createLogger("NpcAiSystem");
 
-// ---------------------------------------------------------------------------
-// Tuning constants
-// ---------------------------------------------------------------------------
-
-/** World units between consecutive waypoints in a plan. */
-const WAYPOINT_SPACING = 4.0;
-/** Distance² at which a waypoint is considered reached. */
-const WAYPOINT_ARRIVAL_SQ = 4.0;
-/** Ticks before a wander / flee / seek plan expires and is rebuilt. */
-const DEFAULT_PLAN_EXPIRY = 60;
-/** Ticks before an attack plan expires (shorter = more responsive tracking). */
-const ATTACK_PLAN_EXPIRY = 30;
-/** If the attack target moves further than this (units²) from lastKnown, replan. */
-const ATTACK_REPLAN_DIST_SQ = 16.0;
-
-// ---------------------------------------------------------------------------
-// System
-// ---------------------------------------------------------------------------
-
-/** Max NPC plans built per tick — prevents replan spikes from overrunning the budget. */
-const REPLAN_BUDGET = 16;
-
 export class NpcAiSystem implements System {
   private currentTick = 0;
   private spatial: SpatialGrid | null = null;
-  private replansRemaining = REPLAN_BUDGET;
+  private replansRemaining = 0;
 
   constructor(private readonly content: ContentStore) {}
 
   prepare(serverTick: number, ctx: TickContext): void {
     this.currentTick = serverTick;
     this.spatial = ctx.spatial;
-    this.replansRemaining = REPLAN_BUDGET;
+    this.replansRemaining = this.content.getGameConfig().npcAiDefaults.replanBudgetPerTick;
   }
 
   run(world: World, _events: EventEmitter, _dt: number): void {
@@ -97,7 +75,7 @@ export class NpcAiSystem implements System {
         dirty = true;
       } else if (fleeRatio > 0 && health.current < health.max * fleeRatio && queue.current?.type !== "flee") {
         log.info("emergency flee: entity=%s hp=%.1f/%.1f", entityId, health.current, health.max);
-        const threat = findNearestOther(this.spatial!, world, entityId, pos.x, pos.y);
+        const threat = findNearestOther(this.spatial!, world, entityId, pos.x, pos.y, defaults.seekScanRadius);
         queue = {
           current: {
             type: "flee",
@@ -125,7 +103,7 @@ export class NpcAiSystem implements System {
             dirty = true;
           } else {
             // No target found — set a cooldown so we don't scan every tick.
-            const cooldownPlan = { steps: [], stepIdx: 0, expiresAt: this.currentTick + ATTACK_PLAN_EXPIRY };
+            const cooldownPlan = { steps: [], stepIdx: 0, expiresAt: this.currentTick + defaults.attackPlanExpiryTicks };
             queue = { ...queue, plan: cooldownPlan };
             dirty = true;
           }
@@ -154,7 +132,7 @@ export class NpcAiSystem implements System {
       // ── Food / water item pickup ──────────────────────────────────────────
       const activeJob = queue.current!;
       if (activeJob.type === "seekFood") {
-        const food = findNearestConsumable(this.spatial!, world, pos.x, pos.y, this.content, "food");
+        const food = findNearestConsumable(this.spatial!, world, pos.x, pos.y, this.content, "food", defaults.seekScanRadius);
         if (food) {
           const dx = food.x - pos.x;
           const dy = food.y - pos.y;
@@ -166,7 +144,7 @@ export class NpcAiSystem implements System {
           }
         }
       } else if (activeJob.type === "seekWater") {
-        const water = findNearestConsumable(this.spatial!, world, pos.x, pos.y, this.content, "water");
+        const water = findNearestConsumable(this.spatial!, world, pos.x, pos.y, this.content, "water", defaults.seekScanRadius);
         if (water) {
           const dx = water.x - pos.x;
           const dy = water.y - pos.y;
@@ -186,10 +164,10 @@ export class NpcAiSystem implements System {
       if (currentJob.type !== "idle") {
         const needsReplan = !plan
           || this.currentTick >= plan.expiresAt
-          || (currentJob.type === "attackTarget" && targetDrifted(world, currentJob.targetId, plan));
+          || (currentJob.type === "attackTarget" && targetDrifted(world, currentJob.targetId, plan, defaults.attackReplanDistSq));
 
         if (needsReplan && this.replansRemaining > 0) {
-          plan = buildPlan(currentJob, pos.x, pos.y, world, this.content, this.currentTick, this.spatial!, attackRangeSq);
+          plan = buildPlan(currentJob, pos.x, pos.y, world, this.content, this.currentTick, this.spatial!, attackRangeSq, defaults);
           this.replansRemaining--;
           dirty = true;
         }
@@ -202,7 +180,7 @@ export class NpcAiSystem implements System {
       let movementY = 0;
 
       if (plan && plan.steps.length > 0) {
-        const result = advancePlan(plan, pos.x, pos.y);
+        const result = advancePlan(plan, pos.x, pos.y, defaults.waypointArrivalDistSq);
         if (result.plan.stepIdx !== plan.stepIdx) { plan = result.plan; dirty = true; }
         else { plan = result.plan; }
         movementX = result.x;
@@ -283,7 +261,8 @@ function buildPlan(
   content: ContentStore,
   currentTick: number,
   spatial: SpatialGrid,
-  attackRangeSq = 2.25,
+  attackRangeSq: number,
+  defaults: GameConfig["npcAiDefaults"],
 ): NpcPlanData | null {
   switch (job.type) {
     case "idle":
@@ -291,9 +270,9 @@ function buildPlan(
 
     case "wander":
       return {
-        steps: moveSteps(px, py, job.targetX, job.targetY),
+        steps: moveSteps(px, py, job.targetX, job.targetY, defaults.waypointSpacing),
         stepIdx: 0,
-        expiresAt: currentTick + DEFAULT_PLAN_EXPIRY,
+        expiresAt: currentTick + defaults.planExpiryTicks,
       };
 
     case "attackTarget": {
@@ -309,9 +288,9 @@ function buildPlan(
       const destX = targetPos.x + (dx0 / dist0) * APPROACH_RADIUS;
       const destY = targetPos.y + (dy0 / dist0) * APPROACH_RADIUS;
       return {
-        steps: moveSteps(px, py, destX, destY),
+        steps: moveSteps(px, py, destX, destY, defaults.waypointSpacing),
         stepIdx: 0,
-        expiresAt: currentTick + ATTACK_PLAN_EXPIRY,
+        expiresAt: currentTick + defaults.attackPlanExpiryTicks,
         lastKnownTargetX: targetPos.x,
         lastKnownTargetY: targetPos.y,
       };
@@ -324,28 +303,28 @@ function buildPlan(
       const fleeX = Math.max(1, Math.min(511, px + (dx / dist) * 24));
       const fleeY = Math.max(1, Math.min(511, py + (dy / dist) * 24));
       return {
-        steps: moveSteps(px, py, fleeX, fleeY),
+        steps: moveSteps(px, py, fleeX, fleeY, defaults.waypointSpacing),
         stepIdx: 0,
-        expiresAt: currentTick + DEFAULT_PLAN_EXPIRY,
+        expiresAt: currentTick + defaults.planExpiryTicks,
       };
     }
 
     case "seekFood":
     case "seekWater": {
       const kind = job.type === "seekFood" ? "food" : "water";
-      const target = findNearestConsumable(spatial, world, px, py, content, kind);
+      const target = findNearestConsumable(spatial, world, px, py, content, kind, defaults.seekScanRadius);
       if (!target) {
         const angle = Math.random() * Math.PI * 2;
         return {
-          steps: moveSteps(px, py, px + Math.cos(angle) * 20, py + Math.sin(angle) * 20),
+          steps: moveSteps(px, py, px + Math.cos(angle) * 20, py + Math.sin(angle) * 20, defaults.waypointSpacing),
           stepIdx: 0,
-          expiresAt: currentTick + DEFAULT_PLAN_EXPIRY,
+          expiresAt: currentTick + defaults.planExpiryTicks,
         };
       }
       return {
-        steps: moveSteps(px, py, target.x, target.y),
+        steps: moveSteps(px, py, target.x, target.y, defaults.waypointSpacing),
         stepIdx: 0,
-        expiresAt: currentTick + DEFAULT_PLAN_EXPIRY,
+        expiresAt: currentTick + defaults.planExpiryTicks,
       };
     }
   }
@@ -353,16 +332,16 @@ function buildPlan(
 
 /**
  * Build a sequence of moveTo steps along a straight line from start to end,
- * spaced WAYPOINT_SPACING apart. Always ends exactly at the destination.
+ * spaced `waypointSpacing` apart. Always ends exactly at the destination.
  */
-function moveSteps(startX: number, startY: number, endX: number, endY: number): PlanStep[] {
+function moveSteps(startX: number, startY: number, endX: number, endY: number, waypointSpacing: number): PlanStep[] {
   const dx = endX - startX;
   const dy = endY - startY;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < WAYPOINT_SPACING) {
+  if (dist < waypointSpacing) {
     return [{ kind: "moveTo", x: endX, y: endY }];
   }
-  const count = Math.floor(dist / WAYPOINT_SPACING);
+  const count = Math.floor(dist / waypointSpacing);
   const steps: PlanStep[] = [];
   for (let i = 1; i <= count; i++) {
     const t = i / count;
@@ -376,13 +355,13 @@ function moveSteps(startX: number, startY: number, endX: number, endY: number): 
  * Returns true if the attack target has drifted far enough from the plan's
  * last known position to warrant rebuilding the path.
  */
-function targetDrifted(world: World, targetId: string, plan: NpcPlanData): boolean {
+function targetDrifted(world: World, targetId: string, plan: NpcPlanData, attackReplanDistSq: number): boolean {
   if (plan.lastKnownTargetX === undefined) return false;
   const targetPos = world.get(targetId, Position);
   if (!targetPos) return false;
   const dx = targetPos.x - plan.lastKnownTargetX;
   const dy = targetPos.y - (plan.lastKnownTargetY ?? 0);
-  return dx * dx + dy * dy > ATTACK_REPLAN_DIST_SQ;
+  return dx * dx + dy * dy > attackReplanDistSq;
 }
 
 // ---------------------------------------------------------------------------
@@ -399,6 +378,7 @@ function advancePlan(
   plan: NpcPlanData,
   px: number,
   py: number,
+  waypointArrivalDistSq: number,
 ): { plan: NpcPlanData; x: number; y: number } {
   let idx = plan.stepIdx;
   const steps = plan.steps;
@@ -409,7 +389,7 @@ function advancePlan(
     if (step.kind !== "moveTo") break; // non-movement steps are handled below
     const dx = step.x - px;
     const dy = step.y - py;
-    if (dx * dx + dy * dy > WAYPOINT_ARRIVAL_SQ) break;
+    if (dx * dx + dy * dy > waypointArrivalDistSq) break;
     idx++;
   }
 
@@ -453,8 +433,6 @@ function resolveAttackAction(
 // Spatial query helpers — use SpatialGrid for O(cells) instead of O(entities)
 // ---------------------------------------------------------------------------
 
-const SEEK_SCAN_RADIUS = 48;
-
 function findNearestNonNpc(
   spatial: SpatialGrid,
   world: World,
@@ -484,8 +462,9 @@ function findNearestOther(
   selfId: string,
   px: number,
   py: number,
+  scanRadius: number,
 ): { x: number; y: number } | null {
-  const candidates = spatial.nearby(px, py, SEEK_SCAN_RADIUS);
+  const candidates = spatial.nearby(px, py, scanRadius);
   let best: { x: number; y: number } | null = null;
   let bestDistSq = Infinity;
   for (const entityId of candidates) {
@@ -505,8 +484,9 @@ function findNearestConsumable(
   py: number,
   content: ContentStore,
   kind: "food" | "water",
+  scanRadius: number,
 ): { entityId: string; x: number; y: number } | null {
-  const candidates = spatial.nearby(px, py, SEEK_SCAN_RADIUS);
+  const candidates = spatial.nearby(px, py, scanRadius);
   let best: { entityId: string; x: number; y: number } | null = null;
   let bestDistSq = Infinity;
   for (const entityId of candidates) {

@@ -25,14 +25,9 @@ import { Velocity, Health, SkillInProgress, AnimationState, InputState } from ".
 // ---- constants ----
 
 /**
- * Minimum speed (world units/sec, squared) to trigger the walk clip.
- * Below this the entity plays idle.  0.1 u/s is well below any intentional walk.
- */
-const WALK_THRESHOLD_SQ = 0.01;
-
-/**
  * Base time advance per tick for fixed-rate clips (speedScale is a number).
  * speedScale=1 → one full cycle per 20 ticks (1 second at 20 Hz).
+ * Structural: derived from the server tick rate, not a tuning knob.
  */
 const TICK_DT = 1 / 20;
 
@@ -44,10 +39,12 @@ export class AnimationSystem implements System {
   prepare(_tick: number): void {}
 
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
+    const cfg = this.content.getGameConfig();
     // Reference speed for velocity-scaled clips: the entity's max ground speed
     // in world units/sec, matching the units stored in the Velocity component.
     // Walk animation plays at 1× when the entity moves at this speed.
-    const walkSpeedRef = this.content.getGameConfig().physics.maxGroundSpeed;
+    const walkSpeedRef = cfg.physics.maxGroundSpeed;
+    const walkThresholdSq = cfg.animation.walkSpeedThresholdSq;
 
     for (const { entityId, velocity } of world.query(Velocity, AnimationState)) {
       const health = world.get(entityId, Health);
@@ -57,7 +54,7 @@ export class AnimationSystem implements System {
 
       const speed  = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
       const crouching = input !== null && hasAction(input.actions, ACTION_CROUCH);
-      const moving    = speed * speed > WALK_THRESHOLD_SQ;
+      const moving    = speed * speed > walkThresholdSq;
 
       // Determine locomotion clip and advance its time.
       const current = world.get(entityId, AnimationState);

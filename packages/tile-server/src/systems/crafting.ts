@@ -29,13 +29,6 @@ import { createLogger } from "../logger.ts";
 
 const log = createLogger("CraftingSystem");
 
-/** How close a player must be to interact with a workstation (world units). */
-const INTERACT_RANGE = 3.0;
-/** Ticks between placement attempts to prevent button-hold spam. */
-const INTERACT_COOLDOWN_TICKS = 10;
-/** How far ahead of the player to place a deployed workstation (world units). */
-const DEPLOY_OFFSET = 1.5;
-
 export class CraftingSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
   private _spatial: SpatialGrid | null = null;
@@ -69,7 +62,9 @@ export class CraftingSystem implements System {
       }
       if (!hasAction(inputState.actions, ACTION_INTERACT)) continue;
 
-      world.set(entityId, InteractCooldown, { remaining: INTERACT_COOLDOWN_TICKS });
+      world.set(entityId, InteractCooldown, {
+        remaining: this.content.getGameConfig().crafting.interactCooldownTicks,
+      });
 
       if (inventory.slots.length === 0) continue;
 
@@ -172,8 +167,9 @@ export class CraftingSystem implements System {
     const pos = world.get(entityId, Position);
     if (!pos) return;
     const facing = world.get(entityId, InputState)?.facing ?? 0;
-    const wx = pos.x + Math.sin(facing) * DEPLOY_OFFSET;
-    const wy = pos.y + Math.cos(facing) * DEPLOY_OFFSET;
+    const deployOffset = this.content.getGameConfig().crafting.deployOffsetWorldUnits;
+    const wx = pos.x + Math.sin(facing) * deployOffset;
+    const wy = pos.y + Math.cos(facing) * deployOffset;
 
     spawnEntity(world, this.content, { x: wx, y: wy, z: pos.z, template: entityTemplate });
 
@@ -217,10 +213,11 @@ export class CraftingSystem implements System {
 
   private findNearestWorkstation(world: World, x: number, y: number): EntityId | null {
     if (!this._spatial) return null;
+    const interactRange = this.content.getGameConfig().crafting.interactRange;
     let bestId: EntityId | null = null;
-    let bestDistSq = INTERACT_RANGE * INTERACT_RANGE;
+    let bestDistSq = interactRange * interactRange;
 
-    for (const candidateId of this._spatial.nearby(x, y, INTERACT_RANGE)) {
+    for (const candidateId of this._spatial.nearby(x, y, interactRange)) {
       if (!world.has(candidateId, WorkstationTag)) continue;
       const pos = world.get(candidateId, Position);
       if (!pos) continue;

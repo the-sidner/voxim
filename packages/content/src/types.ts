@@ -809,6 +809,10 @@ export interface GameConfig {
     unarmedWeaponAction: string;
     /** Base damage dealt by an unarmed swing's active phase. */
     unarmedDamage: number;
+    /** Fist "blade" length for unarmed swing hitbox (world units). */
+    unarmedBladeLength: number;
+    /** Fist "blade" radius for unarmed swing hitbox (world units). */
+    unarmedBladeRadius: number;
     unarmed: DerivedItemStats;
   };
   dodge: {
@@ -867,8 +871,30 @@ export interface GameConfig {
     digStep: number;
     /** Minimum terrain height — shovels cannot dig below this. */
     minDigHeight: number;
+    /** Max distance (world units) from digger to target cell centre. */
+    digReach: number;
     /** Maps material ID → item type dropped when a cell is dug. */
     materialDrops: Record<string, string>;
+  };
+  crafting: {
+    /** How close a player must be to a workstation to interact (world units). */
+    interactRange: number;
+    /** Ticks between placement attempts; prevents button-hold spam. */
+    interactCooldownTicks: number;
+    /** How far ahead of the player to place a deployed workstation (world units). */
+    deployOffsetWorldUnits: number;
+  };
+  consumption: {
+    /** Ticks between consume actions; prevents button-hold spam. */
+    cooldownTicks: number;
+  };
+  animation: {
+    /** Minimum speed² (world units/s)² to trigger the walk clip instead of idle. */
+    walkSpeedThresholdSq: number;
+  };
+  building: {
+    /** Max distance from placer to blueprint cell centre (world units). */
+    maxReachWorldUnits: number;
   };
   items: {
     /** Auto-pickup radius (world units) — ItemData entities within this range are collected. */
@@ -910,6 +936,20 @@ export interface GameConfig {
     arrivalThreshold: number;
     attackRangeSq: number;
     defaultAggroRangeSq: number;
+    /** World units between consecutive waypoints in an NPC plan. */
+    waypointSpacing: number;
+    /** Distance² at which a waypoint is considered reached. */
+    waypointArrivalDistSq: number;
+    /** Ticks before a wander / flee / seek plan expires and is rebuilt. */
+    planExpiryTicks: number;
+    /** Ticks before an attack plan expires; shorter = more responsive tracking. */
+    attackPlanExpiryTicks: number;
+    /** If the attack target moves further than this² from lastKnown, replan. */
+    attackReplanDistSq: number;
+    /** Max NPC plans built per tick — prevents replan spikes. */
+    replanBudgetPerTick: number;
+    /** Radius (world units) used for food/water/target spatial scans. */
+    seekScanRadius: number;
   };
 }
 

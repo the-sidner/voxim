@@ -32,10 +32,6 @@ import { createLogger } from "../logger.ts";
 
 const log = createLogger("ActionSystem");
 
-/** Fist blade dimensions for unarmed swings — no weapon model to derive from. */
-const UNARMED_BLADE_LENGTH = 0.4;
-const UNARMED_BLADE_RADIUS = 0.1;
-
 export class ActionSystem implements System {
   private serverTick = 0;
 
@@ -177,10 +173,11 @@ export class ActionSystem implements System {
       ? this.content.getModelAabb(weaponTemplate.modelTemplateId)
       : null;
     const entityScale = world.get(entityId, ModelRef)?.scaleX ?? 0.35;
-    const bladeLength = weaponAabb ? weaponAabb.maxZ * entityScale : UNARMED_BLADE_LENGTH;
+    const combat = this.content.getGameConfig().combat;
+    const bladeLength = weaponAabb ? weaponAabb.maxZ * entityScale : combat.unarmedBladeLength;
     const bladeRadius = weaponAabb
       ? Math.min(weaponAabb.maxX - weaponAabb.minX, weaponAabb.maxY - weaponAabb.minY) / 2 * entityScale
-      : UNARMED_BLADE_RADIUS;
+      : combat.unarmedBladeRadius;
 
     const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
     const globalTickPrev = action.windupTicks + sip.ticksInPhase - 1;

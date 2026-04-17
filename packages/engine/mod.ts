@@ -12,5 +12,7 @@ export { World } from "./src/world.ts";
 
 export { EventBus } from "./src/events.ts";
 
+export { Registry } from "./src/registry.ts";
+
 export type { PhysicsBody, PhysicsInput, PhysicsConfig } from "./src/physics.ts";
 export { DEFAULT_PHYSICS, applyImpulse, stepPhysics } from "./src/physics.ts";

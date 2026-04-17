@@ -1068,3 +1068,103 @@ is.register({
   onClick: (t) => { openPanel("crafting"); return true; },
 });
 ```
+
+## Registry Refactor (REGISTRY_REFACTOR_PLAN.md)
+
+Multi-phase scaffolding effort to move string-dispatch in systems onto a unified
+registry pattern. Each phase ships with deletion of replaced code — no
+deprecation shims, feature flags, or legacy fallbacks. See
+`REGISTRY_REFACTOR_PLAN.md` at repo root for full plan.
+
+### T-101 · Phase 0.2 — generic `Registry<T>` helper in `@voxim/engine`
+Effort: S   Status: done
+
+Added `packages/engine/src/registry.ts` with a typed `Registry<H>` class that
+throws on duplicate ids and unknown id lookups. Exported from `@voxim/engine`.
+Used by subsequent phases (EffectRegistry, JobHandler, BehaviorTree nodes,
+RecipeStepHandler).
+
+### T-102 · Phase 0.1 — move hardcoded tuning constants to `game_config.json`
+Effort: S   Status: done
+
+Moved 16 module-level `const` tuning values out of tile-server system files
+into `data/game_config.json` under new / extended sub-objects
+(`crafting`, `consumption`, `animation`, `building`, `terrain.digReach`,
+`combat.unarmedBladeLength`/`unarmedBladeRadius`, and 7 new
+`npcAiDefaults.*` fields). `GameConfig` type in `@voxim/content` extended
+to match. All original constants deleted from systems; helper functions in
+`npc_ai.ts` now take explicit config values through their signatures rather
+than reading module-level constants.
+
+### T-103 · Phase 1 — `EffectRegistry` for skill/buff effect dispatch
+Effort: M   Status: todo
+
+Replace `if (effectStat === "...")` dispatch in `SkillSystem` and `BuffSystem`
+with three registries (apply / tick / compose). Move existing 4 effects
+(`health`, `speed`, `flee`, `damage_boost`) into handler files.
+Fail-fast validation at server startup that every `effectStat` in content
+resolves to a registered handler.
+Done when: zero `effectStat ===` branches remain; `effectStat` field type
+becomes `string`; `CONSUME_ON_USE_SENTINEL` import removed from
+skill/buff systems.
+
+### T-104 · Phase 2 — `DeathSystem` + `RequestDeath` event
+Effort: M   Status: todo
+
+Consolidate entity destruction from health loss into one system. Systems
+publish `RequestDeath` instead of calling `world.destroy()`. DeathSystem
+runs last in tick, dedupes, publishes `EntityDied`, runs `DeathHook`
+registry (empty initially), then destroys. Sets up future drop-tables /
+heirs / corpses as pure data additions.
+Done when: every non-spawner-cleanup `world.destroy` in systems/handlers
+is gone; every non-death-system `EntityDied` publish is gone.
+
+### T-105 · Phase 3 — `JobHandler` registry in NpcAiSystem
+Effort: M   Status: todo
+
+Break up `switch (job.type)` in `NpcAiSystem`. Each of the 6 existing job
+types becomes a handler file implementing the `JobHandler` interface.
+Emergency priority cascade stays for now (moves out in T-106).
+Done when: zero `job.type ===` branches in `npc_ai.ts`.
+
+### T-106 · Phase 4 — Behavior trees for NPC decision-making
+Effort: L   Status: todo
+
+NPC priority cascade moves out of code into `data/behavior_trees/*.json`.
+Ships with `hostile.json` and `passive.json` encoding current behavior.
+`NpcTemplate.behaviorTreeId` is required; `behavior` field deleted.
+Fail-fast validation at load that every BT node type resolves to a
+registered factory.
+Done when: hardcoded cascade in `npc_ai.ts` is gone; every NPC JSON
+references a `behaviorTreeId`; no TS-hardcoded default trees anywhere.
+
+### T-107 · Phase 5 — `RecipeStepHandler` registry
+Effort: S   Status: todo
+
+Crafting step dispatch via registry. 3 existing step types (`attack`,
+`assembly`, `time`) become handlers. Unblocks new step types (ritual,
+channeled) as pure content additions.
+Done when: zero `stepType ===` branches in crafting system or workstation
+hit handler.
+
+### T-108 · Phase 6 — biome + zone as content data
+Effort: M   Status: todo
+
+Move biome climate thresholds, material assignments, zone profiles, and
+spawn densities from `packages/world/` code into `data/biomes/*.json` and
+`data/zones/*.json`. Delete `MAT_*` constants, `ZONE_PROFILES`,
+`ZoneType` enum, and hardcoded `NPC_DENSITY`/`NODE_DENSITY` in favour
+of per-zone data.
+Done when: `packages/world/` has zero hardcoded numeric thresholds or
+material IDs; adding a new biome or zone is a JSON file drop.
+
+### T-109 · Phase 7 — recipe schema expansion
+Effort: S   Status: todo
+
+Rewrite `Recipe` type: `inputs[]` with `alternates?`, `outputs[]`
+(replaces single output), `requiredTools[]`, optional `chainNextRecipeId`.
+Rewrite every existing recipe JSON in the same PR; loader accepts only
+new shape.
+Done when: old `outputType`/`outputQuantity`/`requiredTool` fields removed
+from type and all content files.
+

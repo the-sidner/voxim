@@ -21,14 +21,12 @@ import { createLogger } from "../logger.ts";
 
 const log = createLogger("TerrainDigSystem");
 
-/** Maximum distance (world units) from attacker to cell centre to accept a dig. */
-const DIG_REACH = 3.5;
-
 export class TerrainDigSystem implements System {
   constructor(private readonly content: ContentStore) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().terrain;
+    const digReach = cfg.digReach;
 
     for (const { entityId, skillInProgress, position } of world.query(SkillInProgress, Position)) {
       // Fire only on the first tick of the active phase (prevents multi-dig per swing)
@@ -54,7 +52,7 @@ export class TerrainDigSystem implements System {
       const cy = cellY + 0.5;
       const dx = position.x - cx;
       const dy = position.y - cy;
-      if (dx * dx + dy * dy > DIG_REACH * DIG_REACH) continue;
+      if (dx * dx + dy * dy > digReach * digReach) continue;
 
       const chunkX = Math.floor(cellX / CHUNK_SIZE);
       const chunkY = Math.floor(cellY / CHUNK_SIZE);

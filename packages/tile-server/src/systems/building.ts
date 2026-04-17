@@ -11,9 +11,6 @@ import { createLogger } from "../logger.ts";
 
 const log = createLogger("BuildingSystem");
 
-/** Maximum reach from placer to target cell centre (world units). */
-const MAX_REACH = 4.0;
-
 /**
  * BuildingSystem — handles PlaceBlueprint commands.
  *
@@ -66,11 +63,12 @@ export class BuildingSystem implements System {
     // Placer must be within reach
     const pos = world.get(placerId, Position);
     if (!pos) return;
+    const maxReach = this.content.getGameConfig().building.maxReachWorldUnits;
     const cellCX = Math.floor(worldX) + 0.5;
     const cellCY = Math.floor(worldY) + 0.5;
     const dx = pos.x - cellCX;
     const dy = pos.y - cellCY;
-    if (dx * dx + dy * dy > MAX_REACH * MAX_REACH) {
+    if (dx * dx + dy * dy > maxReach * maxReach) {
       log.warn(
         "PlaceBlueprint: out of reach placer=%s dist=%.1f",
         placerId,
