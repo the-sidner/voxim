@@ -61,6 +61,7 @@ import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
 import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
+import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
 import { Registry } from "@voxim/engine";
 import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
@@ -238,11 +239,27 @@ export class TileServer {
     const jobs = createJobRegistry();
     registerBuiltinJobs(jobs);
 
+    // Behavior tree node registry + compiled trees. Every NpcTemplate
+    // references a behaviorTreeId; trees are built from data/behavior_trees/
+    // JSON at startup using the node registry. Unknown node types or missing
+    // tree references fail fast here.
+    const btNodes = createBTNodeRegistry();
+    registerBuiltinBTNodes(btNodes);
+    const behaviorTrees = buildAllBehaviorTrees(content, btNodes);
+    for (const tmpl of content.getAllNpcTemplates()) {
+      if (!behaviorTrees.has(tmpl.behaviorTreeId)) {
+        throw new Error(
+          `NpcTemplate "${tmpl.id}" references behaviorTreeId "${tmpl.behaviorTreeId}" ` +
+          `but no such tree was loaded. Available: [${[...behaviorTrees.keys()].join(", ")}]`,
+        );
+      }
+    }
+
     // System execution order matches the spec's declared order.
     // DeathSystem runs last: it processes RequestDeath calls collected during
     // the tick (dedupes, runs hooks, publishes EntityDied, destroys).
     this.systems = [
-      new NpcAiSystem(content, jobs),
+      new NpcAiSystem(content, jobs, behaviorTrees),
       new HungerSystem(content, deathSystem),
       new StaminaSystem(content),
       new LifetimeSystem(),

@@ -26,6 +26,7 @@ import type {
   Recipe,
   StructureDef,
   NpcTemplate,
+  BehaviorTreeSpec,
   LoreFragment,
   EntityTemplate,
   ConceptVerbEntry,
@@ -82,6 +83,10 @@ export interface ContentStore {
   // ---- NPC templates ----
   getNpcTemplate(id: string): NpcTemplate | null;
   getAllNpcTemplates(): readonly NpcTemplate[];
+
+  // ---- behavior trees ----
+  getBehaviorTree(id: string): BehaviorTreeSpec | null;
+  getAllBehaviorTrees(): readonly BehaviorTreeSpec[];
 
   // ---- entity templates ----
   getEntityTemplate(id: string): EntityTemplate | null;
@@ -146,6 +151,7 @@ export class StaticContentStore implements ContentStore {
   private recipes = new Map<string, Recipe>();
   private structures = new Map<string, StructureDef>();
   private npcTemplates = new Map<string, NpcTemplate>();
+  private behaviorTrees = new Map<string, BehaviorTreeSpec>();
   private entityTemplates = new Map<string, EntityTemplate>();
   private loreFragments = new Map<string, LoreFragment>();
   private conceptVerbEntries = new Map<string, ConceptVerbEntry>();
@@ -206,6 +212,10 @@ export class StaticContentStore implements ContentStore {
 
   registerNpcTemplate(template: NpcTemplate): void {
     this.npcTemplates.set(template.id, template);
+  }
+
+  registerBehaviorTree(spec: BehaviorTreeSpec): void {
+    this.behaviorTrees.set(spec.id, spec);
   }
 
   registerEntityTemplate(template: EntityTemplate): void {
@@ -352,6 +362,16 @@ export class StaticContentStore implements ContentStore {
 
   getAllNpcTemplates(): readonly NpcTemplate[] {
     return Array.from(this.npcTemplates.values());
+  }
+
+  // ---- behavior trees ----
+
+  getBehaviorTree(id: string): BehaviorTreeSpec | null {
+    return this.behaviorTrees.get(id) ?? null;
+  }
+
+  getAllBehaviorTrees(): readonly BehaviorTreeSpec[] {
+    return Array.from(this.behaviorTrees.values());
   }
 
   // ---- entity templates ----

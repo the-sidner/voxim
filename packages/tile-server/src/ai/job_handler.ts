@@ -27,7 +27,6 @@ export interface NpcTuning {
   readonly foodHungerRestore: number;
   readonly waterThirstRestore: number;
   readonly fleeHealthRatio: number;
-  readonly behavior: string;
 }
 
 export interface JobContext {

@@ -12,7 +12,7 @@
  *   const template = content.getItemTemplate("wooden_sword");
  */
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, StructureDef, LoreFragment, ItemTemplate, NpcTemplate, EntityTemplate, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, StructureDef, LoreFragment, ItemTemplate, NpcTemplate, EntityTemplate, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec } from "./types.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
 const DEFAULT_DATA_DIR = new URL("../data", import.meta.url).pathname;
@@ -25,7 +25,7 @@ export async function loadContentStore(
   const [
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw,
     loreRaw, itemTemplatesRaw, entityTemplatesRaw, npcTemplatesRaw,
-    conceptVerbRaw, weaponActionsRaw, verbsRaw,
+    conceptVerbRaw, weaponActionsRaw, verbsRaw, behaviorTreesRaw,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -39,6 +39,7 @@ export async function loadContentStore(
     readJsonFile(dataDir, "concept_verb_matrix.json"),
     readJsonDir(dataDir, "weapon_actions"),
     readJsonFile(dataDir, "verbs.json"),
+    readJsonDir(dataDir, "behavior_trees"),
   ]);
 
   for (const raw of materialsRaw as RawMaterialDef[]) {
@@ -87,6 +88,10 @@ export async function loadContentStore(
 
   for (const raw of verbsRaw as VerbDef[]) {
     store.registerVerbDef(raw);
+  }
+
+  for (const raw of behaviorTreesRaw as BehaviorTreeSpec[]) {
+    store.registerBehaviorTree(raw);
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;

@@ -1167,15 +1167,36 @@ for this phase — Phase 4 behavior trees will replace both.
 NpcAiSystem: 523 lines → 245 lines.
 
 ### T-106 · Phase 4 — Behavior trees for NPC decision-making
-Effort: L   Status: todo
+Effort: L   Status: done
 
-NPC priority cascade moves out of code into `data/behavior_trees/*.json`.
-Ships with `hostile.json` and `passive.json` encoding current behavior.
-`NpcTemplate.behaviorTreeId` is required; `behavior` field deleted.
-Fail-fast validation at load that every BT node type resolves to a
-registered factory.
-Done when: hardcoded cascade in `npc_ai.ts` is gone; every NPC JSON
-references a `behaviorTreeId`; no TS-hardcoded default trees anywhere.
+NPC decision-making moved from hardcoded priority cascade into data. Added
+BT infrastructure under `packages/tile-server/src/ai/bt/`: evaluator,
+`BTNodeFactory` interface, and 13 node factories — 2 composites
+(`sequence`, `selector`), 6 condition checks
+(`check_hunger_critical`, `check_thirst_critical`, `check_health_critical`,
+`check_current_job_not`, `check_queue_empty_or_expired`, `check_plan_expired`)
+and 5 actions (`set_job_seek_food`, `set_job_seek_water`,
+`set_job_flee_from_nearest`, `set_job_attack_nearest`, `set_job_default`).
+
+ContentStore gained `getBehaviorTree` / `getAllBehaviorTrees` and the
+`behavior_trees/` directory. Two BT JSON files encode the old cascade:
+`hostile.json` (aggro scan included) and `passive.json` (no aggro).
+
+`NpcTemplate.behavior` (union) deleted and replaced with
+`behaviorTreeId: string` (required). All 5 existing NPC JSON files
+updated in the same commit — bandit (previously "neutral") remapped to
+"passive" since neutral and passive were behaviorally identical today.
+
+Server startup validates every NpcTemplate's behaviorTreeId resolves to
+a loaded tree; `buildBehaviorTree` throws on unknown node types.
+NpcAiSystem's tick flow now:
+  evaluate BT → apply BTOutput (replaceCurrent / cooldownPlan) →
+  dispatch through JobHandler registry from Phase 3 → advance plan →
+  handler.tick → write InputState.
+
+Zero `behavior` references remain anywhere in the codebase.
+NpcAiSystem went from 245 lines to 211 lines; the emergency cascade and
+`generateDefaultJob` helper are both gone.
 
 ### T-107 · Phase 5 — `RecipeStepHandler` registry
 Effort: S   Status: todo

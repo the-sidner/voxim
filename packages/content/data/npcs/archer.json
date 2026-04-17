@@ -3,7 +3,7 @@
   "displayName": "Archer",
   "maxHealth": 80,
   "fleeHealthRatio": 0.15,
-  "behavior": "hostile",
+  "behaviorTreeId": "hostile",
   "aggroRange": 30,
   "attackRange": 7.0,
   "wanderRadius": 25,

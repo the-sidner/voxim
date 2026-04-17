@@ -6,28 +6,29 @@ import { Position, InputState, Health, Hunger, Thirst } from "../components/game
 import { NpcTag, NpcJobQueue } from "../components/npcs.ts";
 import type { Job, NpcJobQueueData } from "../components/npcs.ts";
 import type { JobHandler, JobContext, NpcTuning } from "../ai/job_handler.ts";
-import { advancePlan, findNearestNonNpc, findNearestOther } from "../ai/plan_helpers.ts";
+import { advancePlan } from "../ai/plan_helpers.ts";
+import type { BTNode, BTContext, BTOutput } from "../ai/bt/mod.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("NpcAiSystem");
 
 /**
- * NpcAiSystem — runs NPCs by dispatching their current job through the
- * `JobHandler` registry.
+ * NpcAiSystem — evaluates each NPC's behavior tree to decide its current
+ * job, then dispatches the job through the `JobHandler` registry.
  *
  * Per tick, per NPC:
- *   1. Emergency overrides (hunger / thirst / flee / aggro) — writes
- *      queue.current directly. (Future: moves into behavior-tree in Phase 4.)
- *   2. If queue.current expired or missing, pop from scheduled or generate
- *      a default idle/wander job.
+ *   1. Evaluate the BT referenced by the NPC's template. BT action leaves
+ *      populate `BTOutput` (replaceCurrent / cooldownPlan).
+ *   2. Apply BTOutput to the queue.
  *   3. Look up the handler for queue.current.type.
- *   4. Build or rebuild plan if needed (expired, absent, or handler signals).
+ *   4. Build or rebuild plan if expired / missing / handler signals.
  *   5. Advance plan → direction vector.
  *   6. Handler.tick(...) → movement / actions / facing / optional transition.
- *   7. Apply transition (replaceJob / clearJob) and write InputState.
+ *   7. Write InputState.
  *
- * All job-specific logic lives in handlers; this system never branches on
- * `job.type` beyond the registry lookup.
+ * All decision-making lives in BT JSON; all job-specific execution lives in
+ * handler files. This system never branches on `job.type` beyond registry
+ * lookup and never branches on `behavior`.
  */
 export class NpcAiSystem implements System {
   private currentTick = 0;
@@ -37,6 +38,7 @@ export class NpcAiSystem implements System {
   constructor(
     private readonly content: ContentStore,
     private readonly jobs: Registry<JobHandler>,
+    private readonly behaviorTrees: ReadonlyMap<string, BTNode>,
   ) {}
 
   prepare(serverTick: number, ctx: TickContext): void {
@@ -55,83 +57,71 @@ export class NpcAiSystem implements System {
       if (!pos) continue;
 
       const template = this.content.getNpcTemplate(npcTag.npcType);
-      if (!template) log.warn("no template for npcType=%s entity=%s", npcTag.npcType, entityId);
+      if (!template) {
+        log.warn("no template for npcType=%s entity=%s", npcTag.npcType, entityId);
+        continue;
+      }
+
+      const bt = this.behaviorTrees.get(template.behaviorTreeId);
+      if (!bt) {
+        log.warn("no behavior tree id=%s for npcType=%s entity=%s",
+          template.behaviorTreeId, npcTag.npcType, entityId);
+        continue;
+      }
 
       const tuning: NpcTuning = {
-        wanderRadius:      template?.wanderRadius     ?? defaults.wanderRadius,
-        wanderTicks:       template?.wanderTicks      ?? defaults.wanderTicks,
-        idleTicks:         template?.idleTicks        ?? defaults.idleTicks,
-        attackTicks:       template?.attackTicks      ?? defaults.attackTicks,
-        fleeTicks:         template?.fleeTicks        ?? defaults.fleeTicks,
-        seekFoodTicks:     template?.seekFoodTicks    ?? defaults.seekFoodTicks,
-        attackRangeSq:     template?.attackRange !== undefined
-                             ? template.attackRange * template.attackRange
-                             : defaults.attackRangeSq,
-        aggroRangeSq:      template?.aggroRange !== undefined
-                             ? template.aggroRange * template.aggroRange
-                             : defaults.defaultAggroRangeSq,
-        hungerEmergency:   template?.hungerEmergency  ?? defaults.hungerEmergency,
-        thirstEmergency:   template?.thirstEmergency  ?? defaults.thirstEmergency,
-        foodHungerRestore: template?.foodHungerRestore ?? defaults.foodHungerRestore,
-        waterThirstRestore: template?.waterThirstRestore ?? defaults.waterThirstRestore,
-        fleeHealthRatio:   template?.fleeHealthRatio  ?? 0.3,
-        behavior:          template?.behavior         ?? "passive",
+        wanderRadius:       template.wanderRadius     ?? defaults.wanderRadius,
+        wanderTicks:        template.wanderTicks      ?? defaults.wanderTicks,
+        idleTicks:          template.idleTicks        ?? defaults.idleTicks,
+        attackTicks:        template.attackTicks      ?? defaults.attackTicks,
+        fleeTicks:          template.fleeTicks        ?? defaults.fleeTicks,
+        seekFoodTicks:      template.seekFoodTicks    ?? defaults.seekFoodTicks,
+        attackRangeSq:      template.attackRange !== undefined
+                              ? template.attackRange * template.attackRange
+                              : defaults.attackRangeSq,
+        aggroRangeSq:       template.aggroRange !== undefined
+                              ? template.aggroRange * template.aggroRange
+                              : defaults.defaultAggroRangeSq,
+        hungerEmergency:    template.hungerEmergency  ?? defaults.hungerEmergency,
+        thirstEmergency:    template.thirstEmergency  ?? defaults.thirstEmergency,
+        foodHungerRestore:  template.foodHungerRestore ?? defaults.foodHungerRestore,
+        waterThirstRestore: template.waterThirstRestore ?? defaults.waterThirstRestore,
+        fleeHealthRatio:    template.fleeHealthRatio,
       };
 
       let queue: NpcJobQueueData = npcJobQueue;
       let dirty = false;
 
-      // ── 1. Emergency overrides ───────────────────────────────────────────
-      if (hunger.value >= tuning.hungerEmergency && queue.current?.type !== "seekFood") {
-        log.info("emergency seekFood: entity=%s hunger=%.1f", entityId, hunger.value);
-        queue = { current: { type: "seekFood", expiresAt: this.currentTick + tuning.seekFoodTicks }, scheduled: [], plan: null };
+      // ── 1. Evaluate behavior tree → BTOutput ─────────────────────────────
+      const btCtx: BTContext = {
+        world, spatial: this.spatial!, content: this.content,
+        currentTick: this.currentTick, entityId,
+        pos: { x: pos.x, y: pos.y },
+        tuning, defaults,
+        hunger: hunger.value,
+        thirst: thirst.value,
+        healthCurrent: health.current,
+        healthMax: health.max,
+        queue,
+      };
+      const btOut: BTOutput = {};
+      bt.tick(btCtx, btOut);
+
+      // ── 2. Apply BTOutput to queue ───────────────────────────────────────
+      if (btOut.replaceCurrent) {
+        log.debug("bt emit: entity=%s job=%s", entityId, btOut.replaceCurrent.type);
+        queue = { current: btOut.replaceCurrent, scheduled: [], plan: null };
         dirty = true;
-      } else if (thirst.value >= tuning.thirstEmergency && queue.current?.type !== "seekWater") {
-        log.info("emergency seekWater: entity=%s thirst=%.1f", entityId, thirst.value);
-        queue = { current: { type: "seekWater", expiresAt: this.currentTick + tuning.seekFoodTicks }, scheduled: [], plan: null };
+      } else if (btOut.cooldownPlan) {
+        queue = { ...queue, plan: btOut.cooldownPlan };
         dirty = true;
-      } else if (tuning.fleeHealthRatio > 0 && health.current < health.max * tuning.fleeHealthRatio && queue.current?.type !== "flee") {
-        log.info("emergency flee: entity=%s hp=%.1f/%.1f", entityId, health.current, health.max);
-        const threat = findNearestOther(this.spatial!, world, entityId, pos.x, pos.y, defaults.seekScanRadius);
-        queue = {
-          current: {
-            type: "flee",
-            fromX: threat?.x ?? pos.x + (Math.random() - 0.5) * 20,
-            fromY: threat?.y ?? pos.y + (Math.random() - 0.5) * 20,
-            expiresAt: this.currentTick + tuning.fleeTicks,
-          },
-          scheduled: [], plan: null,
-        };
-        dirty = true;
-      } else if (tuning.behavior === "hostile" && queue.current?.type !== "attackTarget") {
-        // Aggro scan — throttled via plan.expiresAt so it doesn't run every tick.
-        const scanAllowed = !queue.plan || this.currentTick >= queue.plan.expiresAt;
-        if (scanAllowed) {
-          const target = findNearestNonNpc(this.spatial!, world, entityId, pos.x, pos.y, tuning.aggroRangeSq);
-          if (target) {
-            log.info("aggro: entity=%s target=%s", entityId, target.entityId);
-            queue = {
-              current: { type: "attackTarget", targetId: target.entityId, expiresAt: this.currentTick + tuning.attackTicks },
-              scheduled: [], plan: null,
-            };
-            dirty = true;
-          } else {
-            // Cooldown so we don't scan every tick when no target exists.
-            const cooldownPlan = { steps: [], stepIdx: 0, expiresAt: this.currentTick + defaults.attackPlanExpiryTicks };
-            queue = { ...queue, plan: cooldownPlan };
-            dirty = true;
-          }
-        }
       }
 
-      // ── 2. Expire + advance the queue ────────────────────────────────────
-      const active = queue.current;
-      if (!active || this.currentTick >= active.expiresAt) {
-        const next = queue.scheduled.length > 0
-          ? queue.scheduled[0]
-          : generateDefaultJob(pos.x, pos.y, tuning, this.currentTick);
-        log.debug("new job: entity=%s type=%s", entityId, next.type);
-        queue = { current: next, scheduled: queue.scheduled.slice(1), plan: null };
+      // Guard: BT is responsible for populating queue.current; if it didn't
+      // (e.g., the "queue_empty_or_expired → set_job_default" branch was
+      // skipped because of a tick-local race), keep idle as a safety valve.
+      if (!queue.current) {
+        queue = { current: { type: "idle", expiresAt: this.currentTick + tuning.idleTicks }, scheduled: [], plan: null };
         dirty = true;
       }
 
@@ -144,7 +134,7 @@ export class NpcAiSystem implements System {
         currentTick: this.currentTick,
         entityId,
         pos: { x: pos.x, y: pos.y },
-        template: template ?? null,
+        template,
         tuning, defaults,
       };
 
@@ -215,31 +205,9 @@ export class NpcAiSystem implements System {
         });
       }
 
-      // Only persist queue when something actually changed.
       if (dirty) {
         world.set(entityId, NpcJobQueue, { current: queue.current, scheduled: queue.scheduled, plan });
       }
     }
   }
-}
-
-/**
- * Default job generator — used when the queue empties and no emergency is
- * active. Stays in NpcAiSystem for Phase 3; Phase 4 behavior trees will
- * supersede this with data-driven default behavior.
- */
-function generateDefaultJob(
-  px: number,
-  py: number,
-  tuning: NpcTuning,
-  currentTick: number,
-): Job {
-  if (Math.random() < 0.4) {
-    return { type: "idle", expiresAt: currentTick + tuning.idleTicks };
-  }
-  const angle = Math.random() * Math.PI * 2;
-  const radius = Math.random() * tuning.wanderRadius;
-  const tx = Math.max(1, Math.min(511, px + Math.cos(angle) * radius));
-  const ty = Math.max(1, Math.min(511, py + Math.sin(angle) * radius));
-  return { type: "wander", targetX: tx, targetY: ty, expiresAt: currentTick + tuning.wanderTicks };
 }

@@ -1,0 +1,39 @@
+{
+  "id": "passive",
+  "root": {
+    "type": "selector",
+    "children": [
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_hunger_critical" },
+          { "type": "check_current_job_not", "jobType": "seekFood" },
+          { "type": "set_job_seek_food" }
+        ]
+      },
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_thirst_critical" },
+          { "type": "check_current_job_not", "jobType": "seekWater" },
+          { "type": "set_job_seek_water" }
+        ]
+      },
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_health_critical" },
+          { "type": "check_current_job_not", "jobType": "flee" },
+          { "type": "set_job_flee_from_nearest" }
+        ]
+      },
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_queue_empty_or_expired" },
+          { "type": "set_job_default" }
+        ]
+      }
+    ]
+  }
+}

@@ -3,7 +3,7 @@
   "displayName": "Wolf",
   "maxHealth": 60,
   "fleeHealthRatio": 0.0,
-  "behavior": "hostile",
+  "behaviorTreeId": "hostile",
   "aggroRange": 25,
   "wanderRadius": 40,
   "modelTemplateId": "wolf",

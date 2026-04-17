@@ -498,6 +498,20 @@ export interface VerbDef {
   baseMagnitude: number;
 }
 
+// ---- behavior trees ----
+
+/**
+ * A named behavior tree definition loaded from
+ * `data/behavior_trees/{id}.json`. `root` is the raw, untyped node spec;
+ * tile-server builds it into a `BTNode` tree at startup using its BT node
+ * registry. The content store only holds the JSON — it does not depend on
+ * tile-server's runtime node types.
+ */
+export interface BehaviorTreeSpec {
+  id: string;
+  root: unknown;
+}
+
 // ---- NPC templates ----
 
 /**
@@ -515,11 +529,11 @@ export interface NpcTemplate {
    */
   fleeHealthRatio: number;
   /**
-   * passive  — never initiates combat; flees when threatened.
-   * neutral  — attacks only when attacked (or when defending allies).
-   * hostile  — attacks any player on sight within aggroRange.
+   * Id of the behavior tree this NPC runs (matches a file in
+   * `data/behavior_trees/{id}.json`). Validated at server startup —
+   * unknown ids fail fast.
    */
-  behavior: "passive" | "neutral" | "hostile";
+  behaviorTreeId: string;
   /**
    * Euclidean range (world units) within which a hostile NPC spots players.
    * Ignored for passive and neutral types.
