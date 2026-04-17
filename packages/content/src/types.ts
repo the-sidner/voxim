@@ -498,6 +498,84 @@ export interface VerbDef {
   baseMagnitude: number;
 }
 
+// ---- biomes ----
+
+/**
+ * One rule in a biome's classification cascade. A biome matches a sample
+ * when every listed range contains the sample's value. Ranges are inclusive
+ * on both ends; absent bounds mean no limit on that side.
+ */
+export interface BiomeClassifyRule {
+  altitude?: { min?: number; max?: number };
+  temperature?: { min?: number; max?: number };
+  moisture?: { min?: number; max?: number };
+}
+
+/**
+ * One rule in a biome's material assignment cascade. First matching rule
+ * wins. A rule with no conditions matches any sample (fallback).
+ */
+export interface BiomeMaterialRule {
+  normalizedHeight?: { min?: number; max?: number };
+  moisture?: { min?: number; max?: number };
+  detailNoise?: { min?: number; max?: number };
+  /** Material `name` from packages/content/data/materials/. */
+  materialName: string;
+}
+
+export interface BiomeDef {
+  id: string;
+  /**
+   * Classification priority. Lower number runs first. When a biome has
+   * classifyRules and any rule matches, the biome wins. When classifyRules
+   * is empty, the biome is the fallback — only wins if every other biome
+   * of lower priority fails.
+   */
+  priority: number;
+  classifyRules: BiomeClassifyRule[];
+  /** Ordered material rules. First match wins; last should be a fallback. */
+  materialRules: BiomeMaterialRule[];
+  /** Height scale multiplier applied to combined base noise. */
+  heightScale: number;
+  /** Roughness multiplier applied to detail noise. */
+  roughness: number;
+}
+
+// ---- zones ----
+
+/**
+ * One rule in a zone's classification cascade. Every listed condition must
+ * pass for the rule to match. `spawnZoneOnly` matches when the cell is
+ * within the configured spawn zone. `biomes` restricts to a set of biome
+ * ids. `tectonicMin` / `altitudeMin` are numeric thresholds. `probability`
+ * is a final random gate (runs after other conditions pass).
+ */
+export interface ZoneClassifyRule {
+  spawnZoneOnly?: boolean;
+  biomes?: string[];
+  tectonicMin?: number;
+  altitudeMin?: number;
+  probability?: number;
+}
+
+export interface ZoneDef {
+  id: string;
+  /** Lower priority runs first during classification. */
+  priority: number;
+  classifyRules: ZoneClassifyRule[];
+  dangerLevel: number;
+  corruptionBaseline: number;
+  /** Expected NPC spawns per zone cell; fractional values are probabilistic. */
+  npcSpawnDensity: number;
+  /** Expected resource-node spawns per zone cell. */
+  nodeSpawnDensity: number;
+  /** Expected decorative prop spawns per zone cell. */
+  propSpawnDensity: number;
+  npcWeights: Record<string, number>;
+  entityWeights: Record<string, number>;
+  propWeights: Record<string, number>;
+}
+
 // ---- behavior trees ----
 
 /**

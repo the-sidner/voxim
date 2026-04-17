@@ -1,0 +1,15 @@
+{
+  "id": "swamp",
+  "priority": 40,
+  "classifyRules": [
+    { "biomes": ["swamp"] }
+  ],
+  "dangerLevel": 5,
+  "corruptionBaseline": 60,
+  "npcSpawnDensity": 0.08,
+  "nodeSpawnDensity": 0.5,
+  "propSpawnDensity": 1.5,
+  "npcWeights": { "wolf": 3, "archer": 3, "villager": 3 },
+  "entityWeights": { "tree": 3, "bush": 4, "mushroom_patch": 6 },
+  "propWeights": { "model_dead_tree": 6, "model_building_ruin_wall": 2 }
+}

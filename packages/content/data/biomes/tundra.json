@@ -1,0 +1,14 @@
+{
+  "id": "tundra",
+  "priority": 30,
+  "classifyRules": [
+    { "temperature": { "max": 0.22 } }
+  ],
+  "materialRules": [
+    { "normalizedHeight": { "min": 0.70 }, "materialName": "snow" },
+    { "normalizedHeight": { "min": 0.50 }, "materialName": "gravel" },
+    { "materialName": "snow" }
+  ],
+  "heightScale": 0.9,
+  "roughness": 0.8
+}

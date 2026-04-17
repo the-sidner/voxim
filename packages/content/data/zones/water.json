@@ -1,0 +1,15 @@
+{
+  "id": "water",
+  "priority": 10,
+  "classifyRules": [
+    { "biomes": ["water"] }
+  ],
+  "dangerLevel": 2,
+  "corruptionBaseline": 0,
+  "npcSpawnDensity": 0,
+  "nodeSpawnDensity": 0,
+  "propSpawnDensity": 0,
+  "npcWeights": {},
+  "entityWeights": {},
+  "propWeights": {}
+}

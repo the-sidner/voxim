@@ -1,0 +1,15 @@
+{
+  "id": "forest",
+  "priority": 70,
+  "classifyRules": [
+    { "moisture": { "min": 0.52 } },
+    { "moisture": { "min": 0.40 }, "temperature": { "max": 0.60 } }
+  ],
+  "materialRules": [
+    { "normalizedHeight": { "min": 0.72 }, "materialName": "stone" },
+    { "detailNoise": { "min": 0.75 }, "materialName": "dirt" },
+    { "materialName": "grass" }
+  ],
+  "heightScale": 0.85,
+  "roughness": 0.85
+}

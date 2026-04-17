@@ -1,0 +1,14 @@
+{
+  "id": "hills",
+  "priority": 50,
+  "classifyRules": [
+    { "moisture": { "max": 0.32 } }
+  ],
+  "materialRules": [
+    { "normalizedHeight": { "min": 0.60 }, "materialName": "stone" },
+    { "normalizedHeight": { "min": 0.45 }, "materialName": "gravel" },
+    { "materialName": "grass" }
+  ],
+  "heightScale": 1.0,
+  "roughness": 1.0
+}

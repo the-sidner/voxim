@@ -1,0 +1,18 @@
+{
+  "id": "tundra",
+  "priority": 50,
+  "classifyRules": [
+    { "biomes": ["tundra"] }
+  ],
+  "dangerLevel": 6,
+  "corruptionBaseline": 20,
+  "npcSpawnDensity": 0.08,
+  "nodeSpawnDensity": 0.5,
+  "propSpawnDensity": 1.5,
+  "npcWeights": { "wolf": 3, "archer": 3, "villager": 3 },
+  "entityWeights": {
+    "stone_deposit": 5, "iron_ore_vein": 2, "pine_tree": 4,
+    "rock_small": 3, "coal_seam": 2, "flint_deposit": 2
+  },
+  "propWeights": { "model_dead_tree": 3 }
+}

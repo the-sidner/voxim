@@ -1,0 +1,13 @@
+{
+  "id": "desert",
+  "priority": 40,
+  "classifyRules": [
+    { "temperature": { "min": 0.55 }, "moisture": { "max": 0.28 } }
+  ],
+  "materialRules": [
+    { "normalizedHeight": { "min": 0.55 }, "materialName": "gravel" },
+    { "materialName": "sand" }
+  ],
+  "heightScale": 0.6,
+  "roughness": 0.4
+}

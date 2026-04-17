@@ -1,0 +1,11 @@
+{
+  "id": "plains",
+  "priority": 99,
+  "classifyRules": [],
+  "materialRules": [
+    { "normalizedHeight": { "min": 0.65 }, "materialName": "dirt" },
+    { "materialName": "grass" }
+  ],
+  "heightScale": 0.7,
+  "roughness": 0.6
+}

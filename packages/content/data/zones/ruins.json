@@ -1,0 +1,16 @@
+{
+  "id": "ruins",
+  "priority": 70,
+  "classifyRules": [
+    { "biomes": ["hills"], "altitudeMin": 0.38, "probability": 0.06 },
+    { "tectonicMin": 0.6, "altitudeMin": 0.38, "probability": 0.06 }
+  ],
+  "dangerLevel": 8,
+  "corruptionBaseline": 85,
+  "npcSpawnDensity": 0.08,
+  "nodeSpawnDensity": 0.5,
+  "propSpawnDensity": 1.5,
+  "npcWeights": { "wolf": 3, "archer": 3, "villager": 3 },
+  "entityWeights": { "iron_ore_vein": 5, "coal_seam": 2 },
+  "propWeights": { "model_building_ruin_wall": 8, "model_building_ruin_tower": 5, "model_dead_tree": 3 }
+}

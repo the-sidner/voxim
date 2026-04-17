@@ -1,5 +1,5 @@
 // @voxim/world — terrain model, chunk management, world generation
-// Depends on: @voxim/engine, @voxim/codecs
+// Depends on: @voxim/engine, @voxim/codecs, @voxim/content (biome + zone defs)
 
 export { Heightmap, MaterialGrid } from "./src/components.ts";
 export type { HeightmapData, MaterialGridData } from "./src/components.ts";
@@ -21,8 +21,8 @@ export {
 
 export { createChunk, setChunkHeights, setChunkMaterials } from "./src/chunk.ts";
 
-export { generateFlatTile, generateTile, buildTerrainBuffers, chunksFromBuffers, seedFromTileId } from "./src/generator.ts";
-export type { GeneratedTile } from "./src/generator.ts";
+export { buildTerrainBuffers, chunksFromBuffers, seedFromTileId } from "./src/generator.ts";
+export type { GeneratedTile, WorldGenContent } from "./src/generator.ts";
 
 export { saveTerrainCache, loadTerrainCache } from "./src/terrain_cache.ts";
 
@@ -43,18 +43,8 @@ export type {
 } from "./src/terrain_config.ts";
 export { DEFAULT_TERRAIN_CONFIG } from "./src/terrain_config.ts";
 
-export {
-  BiomeId,
-  classifyBiome,
-  biomeMaterial,
-  biomeHeightScale,
-  biomeRoughness,
-} from "./src/biomes.ts";
+export { classifyBiome, biomeMaterialName } from "./src/biomes.ts";
+export type { BiomeSample, BiomeMaterialSample } from "./src/biomes.ts";
 
-export {
-  ZoneType,
-  ZONE_PROFILES,
-  getZoneAt,
-  classifyZone,
-} from "./src/zones.ts";
-export type { ZoneGridData, ZoneCell, ZoneSpawnProfile } from "./src/zones.ts";
+export { classifyZone, getZoneAt } from "./src/zones.ts";
+export type { ZoneGridData, ZoneCell, ZoneSample } from "./src/zones.ts";

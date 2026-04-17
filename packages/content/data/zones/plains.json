@@ -1,0 +1,18 @@
+{
+  "id": "plains",
+  "priority": 99,
+  "classifyRules": [
+    {}
+  ],
+  "dangerLevel": 1,
+  "corruptionBaseline": 5,
+  "npcSpawnDensity": 0.08,
+  "nodeSpawnDensity": 0.5,
+  "propSpawnDensity": 1.5,
+  "npcWeights": { "villager": 3, "archer": 3, "wolf": 3 },
+  "entityWeights": {
+    "tree": 4, "stone_deposit": 2, "bush": 5, "flower_patch": 4,
+    "rock_small": 2, "berry_bush": 3, "clay_deposit": 2, "flint_deposit": 1
+  },
+  "propWeights": { "model_dead_tree": 1 }
+}

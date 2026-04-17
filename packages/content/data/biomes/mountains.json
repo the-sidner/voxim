@@ -1,0 +1,14 @@
+{
+  "id": "mountains",
+  "priority": 20,
+  "classifyRules": [
+    { "altitude": { "min": 0.72 } }
+  ],
+  "materialRules": [
+    { "normalizedHeight": { "min": 0.80 }, "materialName": "snow" },
+    { "normalizedHeight": { "min": 0.55 }, "materialName": "stone" },
+    { "materialName": "gravel" }
+  ],
+  "heightScale": 1.4,
+  "roughness": 1.2
+}

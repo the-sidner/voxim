@@ -1,0 +1,19 @@
+{
+  "id": "hills",
+  "priority": 80,
+  "classifyRules": [
+    { "biomes": ["hills"] },
+    { "tectonicMin": 0.6 }
+  ],
+  "dangerLevel": 4,
+  "corruptionBaseline": 15,
+  "npcSpawnDensity": 0.08,
+  "nodeSpawnDensity": 0.5,
+  "propSpawnDensity": 1.5,
+  "npcWeights": { "wolf": 3, "archer": 3, "villager": 3 },
+  "entityWeights": {
+    "stone_deposit": 8, "iron_ore_vein": 3, "tree": 2, "rock_small": 4,
+    "rock_large": 3, "bush": 2, "coal_seam": 3, "copper_ore_vein": 2, "flint_deposit": 2
+  },
+  "propWeights": { "model_dead_tree": 2 }
+}

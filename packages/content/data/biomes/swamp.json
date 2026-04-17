@@ -1,0 +1,15 @@
+{
+  "id": "swamp",
+  "priority": 60,
+  "classifyRules": [
+    { "temperature": { "min": 0.35 }, "moisture": { "min": 0.70 } }
+  ],
+  "materialRules": [
+    { "moisture": { "min": 0.78 }, "materialName": "mud" },
+    { "normalizedHeight": { "max": 0.25 }, "materialName": "mud" },
+    { "detailNoise": { "min": 0.60 }, "materialName": "corrupted" },
+    { "materialName": "grass" }
+  ],
+  "heightScale": 0.65,
+  "roughness": 0.7
+}

@@ -14,7 +14,7 @@
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
-import { chunksFromBuffers, loadTerrainCache, seedFromTileId, ZONE_PROFILES, Heightmap } from "@voxim/world";
+import { chunksFromBuffers, loadTerrainCache, seedFromTileId, Heightmap } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
 import { TileEvents, binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
@@ -827,7 +827,6 @@ export class TileServer {
 
     const grid = this.zoneGrid;
     const cellWorldSize = 512 / grid.gridSize; // world-units per zone cell side
-    const NPC_DENSITY = 0.08; // expected spawns per zone cell (~80 total)
     const MARGIN = 1.5; // world-units away from cell edges
     const rng = mulberry32(this.tileSeed ^ 0xdeadbeef);
     let total = 0;
@@ -835,16 +834,18 @@ export class TileServer {
     for (let cy = 0; cy < grid.gridSize; cy++) {
       for (let cx = 0; cx < grid.gridSize; cx++) {
         const cell = grid.cells[cx + cy * grid.gridSize];
-        const profile = ZONE_PROFILES[cell.zoneType];
-        const totalWeight = Object.values(profile.npcWeights).reduce((s, w) => s + w, 0);
+        const zone = content.getZone(cell.zoneId);
+        if (!zone) continue;
+        const totalWeight = Object.values(zone.npcWeights).reduce((s, w) => s + w, 0);
         if (totalWeight === 0) continue;
 
         // Poisson-approximate: integer part always spawns; fractional part spawns with that probability
-        const spawns = Math.floor(NPC_DENSITY) + (rng() < NPC_DENSITY % 1 ? 1 : 0);
+        const density = zone.npcSpawnDensity;
+        const spawns = Math.floor(density) + (rng() < density % 1 ? 1 : 0);
         for (let i = 0; i < spawns; i++) {
           const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const npcType = weightedPick(profile.npcWeights, rng);
+          const npcType = weightedPick(zone.npcWeights, rng);
           if (!npcType) continue;
           const template = content.getEntityTemplate(npcType);
           if (!template) continue;
@@ -883,7 +884,6 @@ export class TileServer {
 
     const grid = this.zoneGrid;
     const cellWorldSize = 512 / grid.gridSize;
-    const NODE_DENSITY = 0.5;
     const MARGIN = 1.0;
     const rng = mulberry32(this.tileSeed ^ 0xcafebabe);
     let total = 0;
@@ -891,15 +891,17 @@ export class TileServer {
     for (let cy = 0; cy < grid.gridSize; cy++) {
       for (let cx = 0; cx < grid.gridSize; cx++) {
         const cell = grid.cells[cx + cy * grid.gridSize];
-        const profile = ZONE_PROFILES[cell.zoneType];
-        const totalWeight = Object.values(profile.entityWeights).reduce((s, w) => s + w, 0);
+        const zone = content.getZone(cell.zoneId);
+        if (!zone) continue;
+        const totalWeight = Object.values(zone.entityWeights).reduce((s, w) => s + w, 0);
         if (totalWeight === 0) continue;
 
-        const spawns = Math.floor(NODE_DENSITY) + (rng() < NODE_DENSITY % 1 ? 1 : 0);
+        const density = zone.nodeSpawnDensity;
+        const spawns = Math.floor(density) + (rng() < density % 1 ? 1 : 0);
         for (let i = 0; i < spawns; i++) {
           const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const entityTemplateId = weightedPick(profile.entityWeights, rng);
+          const entityTemplateId = weightedPick(zone.entityWeights, rng);
           if (!entityTemplateId) continue;
           const template = content.getEntityTemplate(entityTemplateId);
           if (!template) continue;
@@ -934,7 +936,6 @@ export class TileServer {
 
     const grid = this.zoneGrid;
     const cellWorldSize = 512 / grid.gridSize;
-    const PROP_DENSITY = 1.5; // expected props per zone cell (~1500 total)
     const MARGIN = 2.0;
     const rng = mulberry32(this.tileSeed ^ 0xf00dcafe);
     let total = 0;
@@ -942,15 +943,17 @@ export class TileServer {
     for (let cy = 0; cy < grid.gridSize; cy++) {
       for (let cx = 0; cx < grid.gridSize; cx++) {
         const cell = grid.cells[cx + cy * grid.gridSize];
-        const profile = ZONE_PROFILES[cell.zoneType];
-        const totalWeight = Object.values(profile.propWeights).reduce((s, w) => s + w, 0);
+        const zone = content.getZone(cell.zoneId);
+        if (!zone) continue;
+        const totalWeight = Object.values(zone.propWeights).reduce((s, w) => s + w, 0);
         if (totalWeight === 0) continue;
 
-        const spawns = Math.floor(PROP_DENSITY) + (rng() < PROP_DENSITY % 1 ? 1 : 0);
+        const density = zone.propSpawnDensity;
+        const spawns = Math.floor(density) + (rng() < density % 1 ? 1 : 0);
         for (let i = 0; i < spawns; i++) {
           const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const propTemplateId = weightedPick(profile.propWeights, rng);
+          const propTemplateId = weightedPick(zone.propWeights, rng);
           if (!propTemplateId) continue;
           const propTemplate = content.getEntityTemplate(propTemplateId);
           if (!propTemplate) continue;

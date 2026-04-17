@@ -1,0 +1,15 @@
+{
+  "id": "desert",
+  "priority": 60,
+  "classifyRules": [
+    { "biomes": ["desert"] }
+  ],
+  "dangerLevel": 4,
+  "corruptionBaseline": 15,
+  "npcSpawnDensity": 0.08,
+  "nodeSpawnDensity": 0.5,
+  "propSpawnDensity": 1.5,
+  "npcWeights": { "wolf": 3, "archer": 3, "villager": 3 },
+  "entityWeights": { "stone_deposit": 4, "rock_large": 2, "flint_deposit": 4 },
+  "propWeights": { "model_building_ruin_wall": 3, "model_building_ruin_tower": 2 }
+}

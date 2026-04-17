@@ -1,0 +1,12 @@
+{
+  "id": "shore",
+  "priority": 10,
+  "classifyRules": [
+    { "altitude": { "max": 0.17 } }
+  ],
+  "materialRules": [
+    { "materialName": "sand" }
+  ],
+  "heightScale": 0.5,
+  "roughness": 0.3
+}

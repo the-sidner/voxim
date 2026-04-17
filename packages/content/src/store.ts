@@ -27,6 +27,8 @@ import type {
   StructureDef,
   NpcTemplate,
   BehaviorTreeSpec,
+  BiomeDef,
+  ZoneDef,
   LoreFragment,
   EntityTemplate,
   ConceptVerbEntry,
@@ -87,6 +89,16 @@ export interface ContentStore {
   // ---- behavior trees ----
   getBehaviorTree(id: string): BehaviorTreeSpec | null;
   getAllBehaviorTrees(): readonly BehaviorTreeSpec[];
+
+  // ---- biomes ----
+  /** All biomes, pre-sorted by ascending priority. */
+  getAllBiomes(): readonly BiomeDef[];
+  getBiome(id: string): BiomeDef | null;
+
+  // ---- zones ----
+  /** All zones, pre-sorted by ascending priority. */
+  getAllZones(): readonly ZoneDef[];
+  getZone(id: string): ZoneDef | null;
 
   // ---- entity templates ----
   getEntityTemplate(id: string): EntityTemplate | null;
@@ -152,6 +164,10 @@ export class StaticContentStore implements ContentStore {
   private structures = new Map<string, StructureDef>();
   private npcTemplates = new Map<string, NpcTemplate>();
   private behaviorTrees = new Map<string, BehaviorTreeSpec>();
+  private biomes = new Map<string, BiomeDef>();
+  private biomesByPriority: BiomeDef[] = [];
+  private zones = new Map<string, ZoneDef>();
+  private zonesByPriority: ZoneDef[] = [];
   private entityTemplates = new Map<string, EntityTemplate>();
   private loreFragments = new Map<string, LoreFragment>();
   private conceptVerbEntries = new Map<string, ConceptVerbEntry>();
@@ -216,6 +232,18 @@ export class StaticContentStore implements ContentStore {
 
   registerBehaviorTree(spec: BehaviorTreeSpec): void {
     this.behaviorTrees.set(spec.id, spec);
+  }
+
+  registerBiome(def: BiomeDef): void {
+    this.biomes.set(def.id, def);
+    this.biomesByPriority.push(def);
+    this.biomesByPriority.sort((a, b) => a.priority - b.priority);
+  }
+
+  registerZone(def: ZoneDef): void {
+    this.zones.set(def.id, def);
+    this.zonesByPriority.push(def);
+    this.zonesByPriority.sort((a, b) => a.priority - b.priority);
   }
 
   registerEntityTemplate(template: EntityTemplate): void {
@@ -372,6 +400,26 @@ export class StaticContentStore implements ContentStore {
 
   getAllBehaviorTrees(): readonly BehaviorTreeSpec[] {
     return Array.from(this.behaviorTrees.values());
+  }
+
+  // ---- biomes ----
+
+  getAllBiomes(): readonly BiomeDef[] {
+    return this.biomesByPriority;
+  }
+
+  getBiome(id: string): BiomeDef | null {
+    return this.biomes.get(id) ?? null;
+  }
+
+  // ---- zones ----
+
+  getAllZones(): readonly ZoneDef[] {
+    return this.zonesByPriority;
+  }
+
+  getZone(id: string): ZoneDef | null {
+    return this.zones.get(id) ?? null;
   }
 
   // ---- entity templates ----

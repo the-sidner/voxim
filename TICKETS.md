@@ -1226,15 +1226,45 @@ parameter and (b) the assembly handler's self-identity check
 cross-system dispatch branch.
 
 ### T-108 · Phase 6 — biome + zone as content data
-Effort: M   Status: todo
+Effort: M   Status: done
 
-Move biome climate thresholds, material assignments, zone profiles, and
-spawn densities from `packages/world/` code into `data/biomes/*.json` and
-`data/zones/*.json`. Delete `MAT_*` constants, `ZONE_PROFILES`,
-`ZoneType` enum, and hardcoded `NPC_DENSITY`/`NODE_DENSITY` in favour
-of per-zone data.
-Done when: `packages/world/` has zero hardcoded numeric thresholds or
-material IDs; adding a new biome or zone is a JSON file drop.
+Moved biome climate thresholds, material assignments, zone profiles,
+and spawn densities out of `packages/world/` code into
+`packages/content/data/biomes/*.json` (9 files) and
+`packages/content/data/zones/*.json` (11 files). Added `BiomeDef` +
+`ZoneDef` types with range-based classify rules and material rules to
+`@voxim/content`; registered on `ContentStore` with `getAllBiomes` /
+`getBiome` / `getAllZones` / `getZone` (both pre-sorted by priority).
+
+Rewrote `packages/world/src/biomes.ts` and `zones.ts` as pure functions
+over `BiomeDef[]` / `ZoneDef[]`: `classifyBiome(defs, sample)`,
+`biomeMaterialName(def, sample)`, `classifyZone(defs, sample)`.
+
+Generator takes a new `WorldGenContent` argument carrying the biomes,
+zones, and a material-name → id resolver. Per-cell height scale and
+roughness read directly from `BiomeDef` fields.
+
+Terrain cache format bumped to v2: `biomeId` and `zoneId` serialized as
+length-prefixed UTF-8 strings instead of u8 enum values. `ZoneCell`
+gained string `zoneId` / `biomeId`.
+
+Deletions:
+- `BiomeId` const-enum and `MAT_*` constants in biomes.ts
+- `ZoneType` const-enum and `ZONE_PROFILES` in zones.ts
+- `biomeMaterial`, `biomeHeightScale`, `biomeRoughness` functions
+- `NPC_DENSITY`, `NODE_DENSITY`, `PROP_DENSITY` constants in server.ts —
+  densities now per-zone in data
+- Unused `generateTile` and `generateFlatTile` convenience functions
+- Tectonic-based hills fallthrough hardcoded in classifyZone;
+  now expressed as two rules on `hills.json`.
+
+Server spawn functions (spawnProceduralNpcs / Nodes / Props) read
+weights + densities from the per-zone def via `content.getZone(cell.zoneId)`.
+`gen_terrain.ts` loads ContentStore and builds a `WorldGenContent`
+adapter before calling `buildTerrainBuffers`.
+
+Adding a new biome or zone is a JSON file drop; the `packages/world/`
+package holds only generic rule-matching logic and noise evaluation.
 
 ### T-109 · Phase 7 — recipe schema expansion
 Effort: S   Status: todo

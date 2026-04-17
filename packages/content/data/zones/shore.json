@@ -1,0 +1,15 @@
+{
+  "id": "shore",
+  "priority": 20,
+  "classifyRules": [
+    { "biomes": ["shore"] }
+  ],
+  "dangerLevel": 1,
+  "corruptionBaseline": 0,
+  "npcSpawnDensity": 0.08,
+  "nodeSpawnDensity": 0.5,
+  "propSpawnDensity": 1.5,
+  "npcWeights": { "villager": 3, "archer": 3, "wolf": 3 },
+  "entityWeights": { "tree": 2, "flower_patch": 3, "bush": 2, "clay_deposit": 4 },
+  "propWeights": {}
+}

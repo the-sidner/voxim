@@ -1,0 +1,12 @@
+{
+  "id": "water",
+  "priority": 0,
+  "classifyRules": [
+    { "altitude": { "max": 0.08 } }
+  ],
+  "materialRules": [
+    { "materialName": "water" }
+  ],
+  "heightScale": 0.4,
+  "roughness": 0.1
+}

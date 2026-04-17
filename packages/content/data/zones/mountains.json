@@ -1,0 +1,18 @@
+{
+  "id": "mountains",
+  "priority": 30,
+  "classifyRules": [
+    { "biomes": ["mountains"] }
+  ],
+  "dangerLevel": 7,
+  "corruptionBaseline": 25,
+  "npcSpawnDensity": 0.08,
+  "nodeSpawnDensity": 0.5,
+  "propSpawnDensity": 1.5,
+  "npcWeights": { "wolf": 3, "archer": 3, "villager": 3 },
+  "entityWeights": {
+    "stone_deposit": 10, "iron_ore_vein": 8, "rock_large": 6,
+    "pine_tree": 2, "coal_seam": 5, "copper_ore_vein": 4, "flint_deposit": 3
+  },
+  "propWeights": { "model_building_ruin_wall": 1 }
+}

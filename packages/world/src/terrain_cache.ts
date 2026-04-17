@@ -4,13 +4,18 @@
  * File format (little-endian):
  *   Offset  Size   Field
  *   0       4      magic uint32 = 0x504D5856 ("VXMP")
- *   4       4      version uint32 = 1
+ *   4       4      version uint32 = 2
  *   8       4      tileSize uint32
  *   12      4      zoneGridSize uint32
  *   16      4      reserved uint32 = 0
  *   20      tileSize*tileSize*4   heights Float32Array
  *   +       tileSize*tileSize*2   materials Uint16Array
- *   +       zoneGridSize*zoneGridSize*10  zone cells (1+1+4+4 bytes each)
+ *   +       for each zone cell: u8 zoneIdLen, zoneId bytes, u8 biomeIdLen,
+ *           biomeId bytes, f32 avgHeight, f32 corruption
+ *
+ * Version 2: zoneId and biomeId are length-prefixed UTF-8 strings (previously
+ * u8 numeric enum values). Biome + zone sets are now data-driven, so names
+ * are the stable identifiers.
  */
 
 import type { ZoneGridData, ZoneCell } from "./zones.ts";
@@ -18,13 +23,20 @@ import { TILE_SIZE } from "./terrain.ts";
 import { DEFAULT_TERRAIN_CONFIG } from "./terrain_config.ts";
 
 const MAGIC = 0x504d5856; // "VXMP" little-endian
-const VERSION = 1;
+const VERSION = 2;
 const HEADER_SIZE = 20;
-const ZONE_CELL_BYTES = 10; // 1 (zoneType) + 1 (biomeId) + 4 (avgHeight f32) + 4 (corruption f32)
 
-/**
- * Serialize terrain buffers and zone grid to a binary file.
- */
+const TEXT_ENCODER = new TextEncoder();
+const TEXT_DECODER = new TextDecoder();
+
+function zoneCellByteLength(cell: ZoneCell): number {
+  const zoneBytes = TEXT_ENCODER.encode(cell.zoneId).byteLength;
+  const biomeBytes = TEXT_ENCODER.encode(cell.biomeId).byteLength;
+  // u8 len + bytes, u8 len + bytes, f32 avgHeight, f32 corruption
+  return 1 + zoneBytes + 1 + biomeBytes + 4 + 4;
+}
+
+/** Serialize terrain buffers and zone grid to a binary file. */
 export async function saveTerrainCache(
   path: string,
   heightBuffer: Float32Array,
@@ -34,51 +46,48 @@ export async function saveTerrainCache(
   const tileSize = TILE_SIZE;
   const zoneGridSize = zoneGrid.gridSize;
   const cellCount = tileSize * tileSize;
-  const zoneCount = zoneGridSize * zoneGridSize;
+
+  let zoneBytes = 0;
+  for (const cell of zoneGrid.cells) zoneBytes += zoneCellByteLength(cell);
 
   const totalBytes =
     HEADER_SIZE +
-    cellCount * 4 + // Float32Array heights
-    cellCount * 2 + // Uint16Array materials
-    zoneCount * ZONE_CELL_BYTES;
+    cellCount * 4 + // heights
+    cellCount * 2 + // materials
+    zoneBytes;
 
   const buf = new ArrayBuffer(totalBytes);
   const view = new DataView(buf);
+  const u8 = new Uint8Array(buf);
 
-  // Header
   view.setUint32(0, MAGIC, true);
   view.setUint32(4, VERSION, true);
   view.setUint32(8, tileSize, true);
   view.setUint32(12, zoneGridSize, true);
-  view.setUint32(16, 0, true); // reserved
+  view.setUint32(16, 0, true);
 
-  // Heights — copy Float32Array
   let offset = HEADER_SIZE;
   new Float32Array(buf, offset, cellCount).set(heightBuffer);
   offset += cellCount * 4;
 
-  // Materials — copy Uint16Array
   new Uint16Array(buf, offset, cellCount).set(materialBuffer);
   offset += cellCount * 2;
 
-  // Zone cells
-  for (let i = 0; i < zoneCount; i++) {
-    const cell = zoneGrid.cells[i];
-    view.setUint8(offset, cell.zoneType);
-    view.setUint8(offset + 1, cell.biomeId);
-    view.setFloat32(offset + 2, cell.avgHeight, true);
-    view.setFloat32(offset + 6, cell.corruption, true);
-    offset += ZONE_CELL_BYTES;
+  for (const cell of zoneGrid.cells) {
+    const zoneIdBytes = TEXT_ENCODER.encode(cell.zoneId);
+    const biomeIdBytes = TEXT_ENCODER.encode(cell.biomeId);
+    view.setUint8(offset, zoneIdBytes.byteLength); offset += 1;
+    u8.set(zoneIdBytes, offset); offset += zoneIdBytes.byteLength;
+    view.setUint8(offset, biomeIdBytes.byteLength); offset += 1;
+    u8.set(biomeIdBytes, offset); offset += biomeIdBytes.byteLength;
+    view.setFloat32(offset, cell.avgHeight, true); offset += 4;
+    view.setFloat32(offset, cell.corruption, true); offset += 4;
   }
 
   await Deno.writeFile(path, new Uint8Array(buf));
 }
 
-/**
- * Load terrain buffers and zone grid from a binary cache file.
- * Returns null if the file is absent or the header does not match
- * expected magic/version/tileSize values — caller should regenerate.
- */
+/** Load terrain buffers and zone grid from a binary cache file. */
 export async function loadTerrainCache(path: string): Promise<{
   heightBuffer: Float32Array;
   materialBuffer: Uint16Array;
@@ -88,13 +97,12 @@ export async function loadTerrainCache(path: string): Promise<{
   try {
     raw = await Deno.readFile(path);
   } catch {
-    // File does not exist — normal cold-start path
     return null;
   }
 
-  // Copy into a fresh ArrayBuffer to guarantee byteOffset === 0
   const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
   const view = new DataView(buf);
+  const u8 = new Uint8Array(buf);
 
   if (buf.byteLength < HEADER_SIZE) {
     console.warn(`[terrain_cache] ${path}: file too small to contain header`);
@@ -130,37 +138,23 @@ export async function loadTerrainCache(path: string): Promise<{
   const cellCount = tileSize * tileSize;
   const zoneCount = zoneGridSize * zoneGridSize;
 
-  const expectedSize =
-    HEADER_SIZE +
-    cellCount * 4 +
-    cellCount * 2 +
-    zoneCount * ZONE_CELL_BYTES;
-
-  if (buf.byteLength < expectedSize) {
-    console.warn(`[terrain_cache] ${path}: file truncated (${buf.byteLength} < ${expectedSize})`);
-    return null;
-  }
-
   let offset = HEADER_SIZE;
-
-  // Heights
   const heightBuffer = new Float32Array(buf, offset, cellCount);
   offset += cellCount * 4;
-
-  // Materials
   const materialBuffer = new Uint16Array(buf, offset, cellCount);
   offset += cellCount * 2;
 
-  // Zone cells
   const cells: ZoneCell[] = new Array(zoneCount);
   for (let i = 0; i < zoneCount; i++) {
-    cells[i] = {
-      zoneType: view.getUint8(offset),
-      biomeId: view.getUint8(offset + 1),
-      avgHeight: view.getFloat32(offset + 2, true),
-      corruption: view.getFloat32(offset + 6, true),
-    };
-    offset += ZONE_CELL_BYTES;
+    const zoneIdLen = view.getUint8(offset); offset += 1;
+    const zoneId = TEXT_DECODER.decode(u8.subarray(offset, offset + zoneIdLen));
+    offset += zoneIdLen;
+    const biomeIdLen = view.getUint8(offset); offset += 1;
+    const biomeId = TEXT_DECODER.decode(u8.subarray(offset, offset + biomeIdLen));
+    offset += biomeIdLen;
+    const avgHeight = view.getFloat32(offset, true); offset += 4;
+    const corruption = view.getFloat32(offset, true); offset += 4;
+    cells[i] = { zoneId, biomeId, avgHeight, corruption };
   }
 
   return {
