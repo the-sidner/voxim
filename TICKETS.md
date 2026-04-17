@@ -1145,12 +1145,26 @@ resource depletion, player disconnect) — these stay direct.
 corpses will register as additive hooks with no system-file edits.
 
 ### T-105 · Phase 3 — `JobHandler` registry in NpcAiSystem
-Effort: M   Status: todo
+Effort: M   Status: done
 
-Break up `switch (job.type)` in `NpcAiSystem`. Each of the 6 existing job
-types becomes a handler file implementing the `JobHandler` interface.
-Emergency priority cascade stays for now (moves out in T-106).
-Done when: zero `job.type ===` branches in `npc_ai.ts`.
+Added `JobHandler` interface in `packages/tile-server/src/ai/job_handler.ts`
+and registry factory in `ai/mod.ts`. Six handlers, one file each:
+`idle`, `wander`, `flee`, `seekFood`, `seekWater`, `attackTarget`.
+
+NpcAiSystem no longer switches on `job.type`. Per-tick flow:
+emergency overrides → queue advance → `registry.get(job.type)` →
+plan/replan → `advancePlan` for direction → `handler.tick(...)` → apply
+transition (replaceJob / clearJob) and write InputState. Job-specific
+logic (attack stop-in-range, seek auto-consume, target validation) all
+lives in the handlers.
+
+Shared AI utilities (`moveSteps`, `advancePlan`, spatial scans) extracted
+into `ai/plan_helpers.ts`. `NpcTuning` type consolidates per-NPC values
+resolved from template + game_config defaults.
+
+Emergency priority cascade and `generateDefaultJob` stay in `npc_ai.ts`
+for this phase — Phase 4 behavior trees will replace both.
+NpcAiSystem: 523 lines → 245 lines.
 
 ### T-106 · Phase 4 — Behavior trees for NPC decision-making
 Effort: L   Status: todo

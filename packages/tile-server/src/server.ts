@@ -60,6 +60,7 @@ import { BuffSystem } from "./systems/buff.ts";
 import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
 import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
+import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { Registry } from "@voxim/engine";
 import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
@@ -231,11 +232,17 @@ export class TileServer {
     const deathHooks = new Registry<DeathHook>();
     const deathSystem = new DeathSystem(deathHooks);
 
+    // Job handler registry — NpcAiSystem dispatches each NPC's current Job
+    // through this. Built-in handlers: idle, wander, flee, seekFood, seekWater,
+    // attackTarget. Adding a job type is a new handler file + one register call.
+    const jobs = createJobRegistry();
+    registerBuiltinJobs(jobs);
+
     // System execution order matches the spec's declared order.
     // DeathSystem runs last: it processes RequestDeath calls collected during
     // the tick (dedupes, runs hooks, publishes EntityDied, destroys).
     this.systems = [
-      new NpcAiSystem(content),
+      new NpcAiSystem(content, jobs),
       new HungerSystem(content, deathSystem),
       new StaminaSystem(content),
       new LifetimeSystem(),
