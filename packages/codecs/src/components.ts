@@ -8,7 +8,7 @@
 import type { Serialiser } from "@voxim/engine";
 import { buildCodec } from "./binary.ts";
 import { WireWriter, WireReader } from "./wire.ts";
-import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb, SkillEffectStat, BodyPartVolume } from "@voxim/content";
+import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb, BodyPartVolume } from "@voxim/content";
 
 // ---- Position ---- 24 bytes (3 × f64)
 
@@ -119,7 +119,7 @@ export const materialGridCodec: Serialiser<MaterialGridData> = {
 // ============================================================================
 
 // Re-export the content types we encode so consumers can import from one place.
-export type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb, SkillEffectStat };
+export type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb };
 
 // ---- ItemPart ---------------------------------------------------------------
 // { slot: string, materialName: string }
@@ -722,7 +722,7 @@ export const resourceNodeCodec: Serialiser<ResourceNodeData> = {
   },
 };
 
-// ---- SkillVerb / SkillEffectStat enum maps ----------------------------------
+// ---- SkillVerb enum map -----------------------------------------------------
 
 export const SKILL_VERB_TO_U8: Record<string, number> = {
   strike: 0,
@@ -732,16 +732,6 @@ export const SKILL_VERB_TO_U8: Record<string, number> = {
 };
 
 export const U8_TO_SKILL_VERB: string[] = ["strike", "invoke", "ward", "step"];
-
-export const SKILL_EFFECT_STAT_TO_U8: Record<string, number> = {
-  health:       0,
-  speed:        1,
-  damage_boost: 2,
-  shield:       3,
-  flee:         4,
-};
-
-export const U8_TO_SKILL_EFFECT_STAT: string[] = ["health", "speed", "damage_boost", "shield", "flee"];
 
 // ---- LoreSkillSlot ----------------------------------------------------------
 // { verb: SkillVerb, outwardFragmentId: string, inwardFragmentId: string }
@@ -820,7 +810,7 @@ export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
 // { effectStat, magnitude, ticksRemaining, sourceEntityId, tickDeltaPerSec? }
 
 export interface ActiveEffect {
-  effectStat: SkillEffectStat;
+  effectStat: string;
   magnitude: number;
   ticksRemaining: number;
   sourceEntityId: string;
@@ -828,7 +818,7 @@ export interface ActiveEffect {
 }
 
 function writeActiveEffect(w: WireWriter, v: ActiveEffect): void {
-  w.writeU8(SKILL_EFFECT_STAT_TO_U8[v.effectStat] ?? 0);
+  w.writeStr(v.effectStat);
   w.writeF32(v.magnitude);
   w.writeI32(v.ticksRemaining);
   w.writeStr(v.sourceEntityId);
@@ -840,7 +830,7 @@ function writeActiveEffect(w: WireWriter, v: ActiveEffect): void {
 }
 
 function readActiveEffect(r: WireReader): ActiveEffect {
-  const effectStat = (U8_TO_SKILL_EFFECT_STAT[r.readU8()] ?? "health") as SkillEffectStat;
+  const effectStat = r.readStr();
   const magnitude = r.readF32();
   const ticksRemaining = r.readI32();
   const sourceEntityId = r.readStr();

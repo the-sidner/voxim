@@ -5,7 +5,7 @@ export { buildCodec, encodeF64, decodeF64, encodeF32, decodeF32, encodeI32, deco
 
 export type {
   PositionData, VelocityData, FacingData, HeightmapData, MaterialGridData,
-  ItemPart, ModelRefData, AnimationStateData, SkillVerb, SkillEffectStat,
+  ItemPart, ModelRefData, AnimationStateData, SkillVerb,
   InventorySlot, StaminaData, CombatStateData, EquipmentData, InventoryData,
   ItemDataData, CraftingQueueData, TraderListing, TraderInventoryData,
   HeritageTrait, HeritageData, BlueprintMaterial, BlueprintData,
@@ -24,7 +24,7 @@ export {
   heritageTraitCodec, heritageCodec,
   blueprintMaterialCodec, blueprintCodec,
   resourceNodeCodec,
-  SKILL_VERB_TO_U8, U8_TO_SKILL_VERB, SKILL_EFFECT_STAT_TO_U8, U8_TO_SKILL_EFFECT_STAT,
+  SKILL_VERB_TO_U8, U8_TO_SKILL_VERB,
   loreSkillSlotCodec, loreLoadoutCodec,
   activeEffectCodec, activeEffectsCodec,
   npcTagCodec, npcJobQueueCodec,

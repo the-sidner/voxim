@@ -57,6 +57,7 @@ import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { BuffSystem } from "./systems/buff.ts";
+import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
 import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
 import { DynastySystem } from "./systems/dynasty.ts";
@@ -204,6 +205,22 @@ export class TileServer {
     this.content = await loadContentStore(config.dataDir);
     const content = this.content;
 
+    // Effect handler registries — apply/tick/compose are plug-in points for
+    // SkillSystem and BuffSystem. Built-in effects are registered here; every
+    // `effectStat` in the concept-verb matrix must resolve to a registered
+    // apply handler. Validated below; fail-fast on mismatch.
+    const effects = createEffectRegistries();
+    registerBuiltinEffects(effects);
+    for (const entry of content.getAllConceptVerbEntries()) {
+      if (!effects.apply.has(entry.effectStat)) {
+        throw new Error(
+          `ContentStore references effectStat "${entry.effectStat}" ` +
+          `(verb=${entry.verb} outward=${entry.outwardConcept} inward=${entry.inwardConcept}) ` +
+          `but no apply handler is registered. Registered: [${effects.apply.ids().join(", ")}]`
+        );
+      }
+    }
+
     // System execution order matches the spec's declared order
     this.systems = [
       new NpcAiSystem(content),
@@ -223,11 +240,11 @@ export class TileServer {
       // writing the final SpeedModifier. PhysicsSystem reads SpeedModifier.
       // Order must be: Encumbrance → Buff → Physics.
       new EncumbranceSystem(content),
-      new BuffSystem(),
+      new BuffSystem(effects.tick, effects.compose),
       new PhysicsSystem(content),
       new DodgeSystem(content),
       ...((): [SkillSystem, ActionSystem, ProjectileSystem] => {
-        const skill = new SkillSystem(content);
+        const skill = new SkillSystem(content, effects.apply);
         const hitHandlers = [
           new HealthHitHandler(content, skill),
           new ResourceNodeHitHandler(content),

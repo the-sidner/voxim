@@ -11,9 +11,10 @@ import type { ContentStore, ConceptVerbEntry } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import { InputState, Health, Stamina, Position } from "../components/game.ts";
-import { LoreLoadout, ActiveEffects, CONSUME_ON_USE_SENTINEL } from "../components/lore_loadout.ts";
-import type { LoreLoadoutData, ActiveEffect } from "../components/lore_loadout.ts";
-import { NpcJobQueue } from "../components/npcs.ts";
+import { LoreLoadout } from "../components/lore_loadout.ts";
+import type { LoreLoadoutData } from "../components/lore_loadout.ts";
+import type { Registry } from "@voxim/engine";
+import type { EffectApplyHandler } from "../effects/effect_handler.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("SkillSystem");
@@ -23,7 +24,10 @@ export class SkillSystem implements System {
   private currentTick = 0;
   private spatial: SpatialGrid | null = null;
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(
+    private readonly content: ContentStore,
+    private readonly applyRegistry: Registry<EffectApplyHandler>,
+  ) {}
 
   prepare(serverTick: number, ctx: TickContext): void {
     this.currentTick = serverTick;
@@ -89,7 +93,7 @@ export class SkillSystem implements System {
         log.info("skill activated: entity=%s slot=%d verb=%s effect=%s magnitude=%.2f targeting=%s",
           entityId, slot, entry.verb, entry.effectStat, magnitude, entry.targeting);
 
-        applyEffect(world, events, entityId, slot, entry, magnitude, this.currentTick, this.spatial);
+        this.dispatch(world, events, entityId, slot, entry, magnitude, null);
       }
 
       if (loadoutDirty) {
@@ -155,186 +159,36 @@ export class SkillSystem implements System {
     log.info("skill resolved (strike): caster=%s slot=%d effect=%s magnitude=%.2f target=%s",
       casterId, slot, entry.effectStat, magnitude, targetId ?? "none");
 
-    if (targetId) {
-      // For strike verb, apply directly to the target instead of targeting logic
-      applyEffectToTarget(world, events, casterId, targetId, entry, magnitude, this.currentTick);
-    } else {
-      applyEffect(world, events, casterId, slot, entry, magnitude, this.currentTick, this.spatial);
-    }
+    this.dispatch(world, events, casterId, slot, entry, magnitude, targetId);
     return true;
   }
-}
 
-function applyEffect(
-  world: World,
-  events: EventEmitter,
-  casterId: EntityId,
-  slot: number,
-  entry: ConceptVerbEntry,
-  magnitude: number,
-  currentTick: number,
-  spatial: SpatialGrid | null,
-): void {
-  const casterPos = world.get(casterId, Position);
-  if (!casterPos) return;
+  private dispatch(
+    world: World,
+    events: EventEmitter,
+    casterId: EntityId,
+    slot: number,
+    entry: ConceptVerbEntry,
+    magnitude: number,
+    overrideTargetId: EntityId | null,
+  ): void {
+    const casterPos = world.get(casterId, Position);
+    if (!casterPos) return;
 
-  events.publish(TileEvents.SkillActivated, { casterId, slot, effectType: entry.effectType });
+    events.publish(TileEvents.SkillActivated, { casterId, slot, effectType: entry.effectType });
 
-  if (entry.effectStat === "flee") {
-    const fleeTicks = entry.durationTicks > 0 ? entry.durationTicks : 60;
-    const rangeSq = entry.range * entry.range;
-    let affected = 0;
-    const candidates = spatial
-      ? spatial.nearby(casterPos.x, casterPos.y, entry.range)
-      : world.query(NpcJobQueue).map((r) => r.entityId);
-    for (const targetId of candidates) {
-      const npcJobQueue = world.get(targetId, NpcJobQueue);
-      if (!npcJobQueue) continue;
-      const pos = world.get(targetId, Position);
-      if (!pos) continue;
-      const dx = pos.x - casterPos.x;
-      const dy = pos.y - casterPos.y;
-      if (dx * dx + dy * dy > rangeSq) continue;
-      world.set(targetId, NpcJobQueue, {
-        ...npcJobQueue,
-        current: { type: "flee", fromX: casterPos.x, fromY: casterPos.y, expiresAt: currentTick + fleeTicks },
-      });
-      affected++;
-    }
-    log.debug("fear aura: caster=%s affected=%d npcs for %d ticks", casterId, affected, fleeTicks);
-    return;
-  }
-
-  if (entry.targeting === "self") {
-    if (entry.effectStat === "health") {
-      const health = world.get(casterId, Health);
-      if (health) {
-        const newHp = Math.min(health.max, health.current + magnitude);
-        log.debug("instant heal: entity=%s +%.1f hp (%.1f→%.1f)", casterId, magnitude, health.current, newHp);
-        world.set(casterId, Health, { ...health, current: newHp });
-      }
-    } else {
-      const ticksRemaining = entry.effectStat === "damage_boost" ? CONSUME_ON_USE_SENTINEL : entry.durationTicks;
-      log.debug("self buff: entity=%s effect=%s magnitude=%.2f ticks=%d",
-        casterId, entry.effectStat, magnitude, ticksRemaining);
-      addActiveEffect(world, casterId, { effectStat: entry.effectStat, magnitude, ticksRemaining, sourceEntityId: casterId });
-    }
-    return;
-  }
-
-  const targets = entry.targeting === "area"
-    ? targetsInRange(world, spatial, casterId, casterPos.x, casterPos.y, entry.range)
-    : nearestTarget(world, spatial, casterId, casterPos.x, casterPos.y, entry.range);
-
-  for (const targetId of targets) {
-    if (entry.durationTicks > 0) {
-      log.debug("dot applied: target=%s effect=%s dps=%.2f ticks=%d", targetId, entry.effectStat, magnitude, entry.durationTicks);
-      addActiveEffect(world, targetId, {
-        effectStat: entry.effectStat,
-        magnitude,
-        ticksRemaining: entry.durationTicks,
-        sourceEntityId: casterId,
-        tickDeltaPerSec: -magnitude,
-      });
-    } else {
-      const targetHealth = world.get(targetId, Health);
-      if (!targetHealth) continue;
-      const stolen = Math.min(magnitude, targetHealth.current);
-      const newTargetHP = targetHealth.current - stolen;
-      world.set(targetId, Health, { ...targetHealth, current: newTargetHP });
-      events.publish(TileEvents.DamageDealt, { targetId, sourceId: casterId, amount: stolen, blocked: false });
-      log.debug("instant damage: caster=%s target=%s dmg=%.1f drain=%s", casterId, targetId, stolen, entry.drainToCaster);
-      if (newTargetHP <= 0) {
-        world.destroy(targetId);
-        events.publish(TileEvents.EntityDied, { entityId: targetId, killerId: casterId });
-      }
-      if (entry.drainToCaster) {
-        const casterHealth = world.get(casterId, Health);
-        if (casterHealth) {
-          world.set(casterId, Health, { ...casterHealth, current: Math.min(casterHealth.max, casterHealth.current + stolen) });
-        }
-      }
-    }
-  }
-}
-
-function addActiveEffect(world: World, entityId: EntityId, effect: ActiveEffect): void {
-  const current = world.get(entityId, ActiveEffects) ?? { effects: [] };
-  world.set(entityId, ActiveEffects, { effects: [...current.effects, effect] });
-}
-
-function targetsInRange(world: World, spatial: SpatialGrid | null, casterId: EntityId, cx: number, cy: number, range: number): EntityId[] {
-  const rangeSq = range * range;
-  const result: EntityId[] = [];
-  const candidates = spatial ? spatial.nearby(cx, cy, range) : world.query(Position, Health).map((r) => r.entityId);
-  for (const entityId of candidates) {
-    if (entityId === casterId) continue;
-    if (!world.get(entityId, Health)) continue;
-    const pos = world.get(entityId, Position);
-    if (!pos) continue;
-    const dx = pos.x - cx;
-    const dy = pos.y - cy;
-    if (dx * dx + dy * dy <= rangeSq) result.push(entityId);
-  }
-  return result;
-}
-
-function nearestTarget(world: World, spatial: SpatialGrid | null, casterId: EntityId, cx: number, cy: number, range: number): EntityId[] {
-  const rangeSq = range * range;
-  let nearestId: EntityId | null = null;
-  let nearestDist = Infinity;
-  const candidates = spatial ? spatial.nearby(cx, cy, range) : world.query(Position, Health).map((r) => r.entityId);
-  for (const entityId of candidates) {
-    if (entityId === casterId) continue;
-    if (!world.get(entityId, Health)) continue;
-    const pos = world.get(entityId, Position);
-    if (!pos) continue;
-    const dx = pos.x - cx;
-    const dy = pos.y - cy;
-    const d = dx * dx + dy * dy;
-    if (d <= rangeSq && d < nearestDist) { nearestDist = d; nearestId = entityId; }
-  }
-  return nearestId ? [nearestId] : [];
-}
-
-/**
- * Apply an effect directly to a known target — used by ActionSystem for "strike" verb
- * hits where the target entity is already resolved from the melee hitbox.
- */
-function applyEffectToTarget(
-  world: World,
-  events: EventEmitter,
-  casterId: EntityId,
-  targetId: EntityId,
-  entry: ConceptVerbEntry,
-  magnitude: number,
-  _currentTick: number,
-): void {
-  if (entry.durationTicks > 0) {
-    addActiveEffect(world, targetId, {
-      effectStat: entry.effectStat,
+    this.applyRegistry.get(entry.effectStat).apply({
+      world,
+      events,
+      casterId,
+      casterX: casterPos.x,
+      casterY: casterPos.y,
+      casterZ: casterPos.z,
+      entry,
       magnitude,
-      ticksRemaining: entry.durationTicks,
-      sourceEntityId: casterId,
-      tickDeltaPerSec: -magnitude,
+      currentTick: this.currentTick,
+      spatial: this.spatial,
+      overrideTargetId,
     });
-    return;
-  }
-
-  const targetHealth = world.get(targetId, Health);
-  if (!targetHealth) return;
-  const stolen = Math.min(magnitude, targetHealth.current);
-  const newTargetHP = targetHealth.current - stolen;
-  world.set(targetId, Health, { ...targetHealth, current: newTargetHP });
-  events.publish(TileEvents.DamageDealt, { targetId, sourceId: casterId, amount: stolen, blocked: false });
-  if (newTargetHP <= 0) {
-    world.destroy(targetId);
-    events.publish(TileEvents.EntityDied, { entityId: targetId, killerId: casterId });
-  }
-  if (entry.drainToCaster) {
-    const casterHealth = world.get(casterId, Health);
-    if (casterHealth) {
-      world.set(casterId, Health, { ...casterHealth, current: Math.min(casterHealth.max, casterHealth.current + stolen) });
-    }
   }
 }

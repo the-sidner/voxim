@@ -48,7 +48,6 @@ export type {
   SkillVerb,
   SkillSlot,
   SkillEffectType,
-  SkillEffectStat,
   ConceptVerbEntry,
   WeaponActionDef,
   SwingKeyframe,

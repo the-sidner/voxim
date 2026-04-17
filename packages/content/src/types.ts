@@ -688,18 +688,6 @@ export type SkillEffectType =
   | "poison_aura";   // periodic damage to entities within range for duration
 
 /**
- * Which entity stat this effect targets at runtime.
- * Drives generic dispatch in SkillSystem and BuffSystem — no switch statements.
- *
- *   health       — health pool: used for damage, heal, drain, and DoT
- *   speed        — movement speed: applied as a multiplier bonus via SpeedModifier
- *   damage_boost — stored as ActiveEffect, consumed by ActionSystem on next attack
- *   shield       — damage absorb pool, stored as ActiveEffect, consumed by ActionSystem
- *   flee         — forces NPC job queues into flee state (not a numeric stat)
- */
-export type SkillEffectStat = "health" | "speed" | "damage_boost" | "shield" | "flee";
-
-/**
  * One cell in the concept-verb matrix.
  * The triple (verb, outwardConcept, inwardConcept) uniquely identifies a skill.
  * outwardConcept determines WHAT the skill does.
@@ -711,11 +699,12 @@ export interface ConceptVerbEntry {
   inwardConcept: LoreConcept;
   effectType: SkillEffectType;
   /**
-   * Which stat this effect targets at runtime.
-   * Drives generic dispatch — SkillSystem and BuffSystem branch on this,
-   * not on effectType strings. New effectTypes only need a new JSON row; no code change.
+   * Handler id in the effect registries (apply/tick/compose). Each value must
+   * match a registered apply handler in the server at startup; validated then
+   * and fail-fast on mismatch. New effect types are added as one handler file
+   * plus a registration call — no code changes in SkillSystem/BuffSystem.
    */
-  effectStat: SkillEffectStat;
+  effectStat: string;
   /**
    * When true, health stolen from the target is also restored to the caster.
    * Used for drain_life effects. Default false.

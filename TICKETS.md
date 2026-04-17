@@ -1097,16 +1097,26 @@ to match. All original constants deleted from systems; helper functions in
 than reading module-level constants.
 
 ### T-103 · Phase 1 — `EffectRegistry` for skill/buff effect dispatch
-Effort: M   Status: todo
+Effort: M   Status: done
 
-Replace `if (effectStat === "...")` dispatch in `SkillSystem` and `BuffSystem`
-with three registries (apply / tick / compose). Move existing 4 effects
-(`health`, `speed`, `flee`, `damage_boost`) into handler files.
-Fail-fast validation at server startup that every `effectStat` in content
-resolves to a registered handler.
-Done when: zero `effectStat ===` branches remain; `effectStat` field type
-becomes `string`; `CONSUME_ON_USE_SENTINEL` import removed from
-skill/buff systems.
+Added three registries (apply / tick / compose) in
+`packages/tile-server/src/effects/`. Five handlers created:
+`health_effect` (apply + tick), `speed_effect` (apply + compose),
+`damage_boost_effect` (apply), `shield_effect` (apply), `flee_effect` (apply).
+SkillSystem and BuffSystem both dispatch through registries — zero
+`effectStat ===` string branches remain in either system.
+
+Wire-level `effectStat` changed from closed u8 enum to length-prefixed
+string in `activeEffectCodec`, so new effect ids are addable via JSON +
+handler file with no codec changes. `SkillEffectStat` union deleted from
+`@voxim/content`, `@voxim/codecs`, and lore_loadout component.
+`SKILL_EFFECT_STAT_TO_U8`/`U8_TO_SKILL_EFFECT_STAT` maps deleted.
+`CONSUME_ON_USE_SENTINEL` only referenced by `damage_boost_effect.ts`
+(apply) and lore_loadout's generic `isConsumeOnUse()` helper (used by
+BuffSystem without effect-specific knowledge).
+
+Startup validation in `server.ts` iterates every ConceptVerbEntry and
+throws if its `effectStat` has no registered apply handler.
 
 ### T-104 · Phase 2 — `DeathSystem` + `RequestDeath` event
 Effort: M   Status: todo

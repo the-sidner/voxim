@@ -1,15 +1,34 @@
 import type { World } from "@voxim/engine";
-import { TileEvents } from "@voxim/protocol";
+import type { Registry } from "@voxim/engine";
 import type { System, EventEmitter } from "../system.ts";
-import { Health } from "../components/game.ts";
-import { ActiveEffects, CONSUME_ON_USE_SENTINEL } from "../components/lore_loadout.ts";
+import { ActiveEffects, isConsumeOnUse } from "../components/lore_loadout.ts";
 import type { ActiveEffect } from "../components/lore_loadout.ts";
 import { SpeedModifier, EncumbrancePenalty } from "../components/world.ts";
-import { createLogger } from "../logger.ts";
+import type {
+  EffectTickHandler,
+  EffectComposeHandler,
+} from "../effects/effect_handler.ts";
 
-const log = createLogger("BuffSystem");
-
+/**
+ * BuffSystem — iterates ActiveEffects each tick.
+ *
+ *   1. For every effect, invoke its tick handler (if any). Health DoTs/HoTs live
+ *      here; cosmetic buffs (speed, damage_boost, shield) need no tick handler.
+ *   2. For every effect, invoke its compose handler (if any). Speed effects
+ *      contribute a speedBonus; future stats (damage mult, armor) plug into the
+ *      same compose pass.
+ *   3. Decrement ticksRemaining unless the effect is `consume on use`.
+ *   4. Write final SpeedModifier = EncumbrancePenalty × (1 + Σ speedBonus).
+ *
+ * Single writer of SpeedModifier: no other system composes speed. The tick →
+ * compose → decrement loop is generic; no `effectStat ===` branches remain.
+ */
 export class BuffSystem implements System {
+  constructor(
+    private readonly tickRegistry: Registry<EffectTickHandler>,
+    private readonly composeRegistry: Registry<EffectComposeHandler>,
+  ) {}
+
   run(world: World, events: EventEmitter, dt: number): void {
     for (const { entityId, activeEffects } of world.query(ActiveEffects)) {
       if (activeEffects.effects.length === 0) continue;
@@ -20,41 +39,16 @@ export class BuffSystem implements System {
       for (const effect of activeEffects.effects) {
         if (effect.ticksRemaining === 0) continue;
 
-        if (effect.effectStat === "health" && effect.tickDeltaPerSec !== undefined) {
-          const delta = effect.tickDeltaPerSec * dt;
-          const health = world.get(entityId, Health);
-          if (health) {
-            const newHP = Math.max(0, health.current + delta);
-            world.set(entityId, Health, { ...health, current: newHP });
-            if (delta < 0) {
-              log.debug("dot tick: entity=%s effect=%s delta=%.3f hp=%.1f",
-                entityId, effect.effectStat, delta, newHP);
-              events.publish(TileEvents.DamageDealt, {
-                targetId: entityId,
-                sourceId: effect.sourceEntityId,
-                amount: -delta,
-                blocked: false,
-              });
-            }
-            if (newHP <= 0) {
-              log.info("entity died from effect: entity=%s effect=%s source=%s",
-                entityId, effect.effectStat, effect.sourceEntityId);
-              world.destroy(entityId);
-              events.publish(TileEvents.EntityDied, { entityId, killerId: effect.sourceEntityId });
-            }
-          }
-        } else if (effect.effectStat === "speed") {
-          speedBonus += effect.magnitude;
+        if (this.tickRegistry.has(effect.effectStat)) {
+          this.tickRegistry.get(effect.effectStat).tick({ world, events, entityId, effect, dt });
         }
 
-        const nextTicks = effect.ticksRemaining === CONSUME_ON_USE_SENTINEL
-          ? CONSUME_ON_USE_SENTINEL
-          : effect.ticksRemaining - 1;
-
-        if (nextTicks === 0) {
-          log.debug("effect expired: entity=%s effect=%s", entityId, effect.effectStat);
+        if (this.composeRegistry.has(effect.effectStat)) {
+          const c = this.composeRegistry.get(effect.effectStat).contribute(effect);
+          if (c.speedBonus) speedBonus += c.speedBonus;
         }
 
+        const nextTicks = isConsumeOnUse(effect) ? effect.ticksRemaining : effect.ticksRemaining - 1;
         if (nextTicks > 0) {
           surviving.push({ ...effect, ticksRemaining: nextTicks });
         }
