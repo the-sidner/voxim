@@ -62,6 +62,7 @@ import type { DeathHook } from "./systems/death.ts";
 import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
+import { createRecipeStepRegistry, registerBuiltinSteps } from "./crafting/mod.ts";
 import { Registry } from "@voxim/engine";
 import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
@@ -255,6 +256,22 @@ export class TileServer {
       }
     }
 
+    // Recipe step handler registry — WorkstationHitHandler + CraftingSystem
+    // both dispatch through this. Built-ins: assembly (first, so explicit
+    // selection wins), attack, time. Adding a step type is one handler file
+    // + one register call.
+    const recipeSteps = createRecipeStepRegistry();
+    registerBuiltinSteps(recipeSteps);
+    for (const recipe of content.getAllRecipes()) {
+      const stepType = recipe.stepType ?? "time";
+      if (!recipeSteps.has(stepType)) {
+        throw new Error(
+          `Recipe "${recipe.id}" references stepType "${stepType}" but no step ` +
+          `handler is registered. Registered: [${recipeSteps.ids().join(", ")}]`,
+        );
+      }
+    }
+
     // System execution order matches the spec's declared order.
     // DeathSystem runs last: it processes RequestDeath calls collected during
     // the tick (dedupes, runs hooks, publishes EntityDied, destroys).
@@ -266,7 +283,7 @@ export class TileServer {
       new ItemPickupSystem(content),
       new EquipmentSystem(content),
       new BuildingSystem(content),
-      new CraftingSystem(content),
+      new CraftingSystem(content, recipeSteps),
       new ConsumptionSystem(content),
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
@@ -285,7 +302,7 @@ export class TileServer {
           new HealthHitHandler(content, skill, deathSystem),
           new ResourceNodeHitHandler(content),
           new BlueprintHitHandler(),
-          new WorkstationHitHandler(content),
+          new WorkstationHitHandler(content, recipeSteps),
         ];
         const action = new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers);
         const projectile = new ProjectileSystem(content, hitHandlers);

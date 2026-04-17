@@ -1,21 +1,20 @@
 /**
- * CraftingSystem — physical workstation crafting.
+ * CraftingSystem — workstation placement and per-tick step dispatch.
  *
  * Responsibilities:
- *   1. Placement  — ACTION_INTERACT near a workstation moves the first item from
- *                   the player's inventory into the WorkstationBuffer.
- *   2. Time-based — WorkstationBuffers whose progressTicks is counting down are
- *                   advanced each tick; output is spawned on completion.
- *   3. Auto-start — When a time-based recipe's inputs are fully placed, the
- *                   countdown begins automatically.
+ *   1. Placement — ACTION_INTERACT near a workstation moves the first item
+ *      from the player's inventory into the WorkstationBuffer.
+ *   2. Dispatch  — each tick, every registered RecipeStepHandler with an
+ *      `onTick` method runs once per workstation. Step-specific logic
+ *      (time recipe auto-start and countdown) lives in the handlers.
  *
- * Attack-based and assembly resolution are handled by WorkstationHitHandler,
- * which is registered as a HitHandler in server.ts.
+ * Hit-based resolution (attack / assembly) goes through WorkstationHitHandler
+ * which dispatches to the same RecipeStepHandler registry via `onHit`.
  */
-import type { World, EntityId } from "@voxim/engine";
+import type { World, EntityId, Registry } from "@voxim/engine";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import { newEntityId } from "@voxim/engine";
-import { TileEvents, ACTION_INTERACT, hasAction, CommandType } from "@voxim/protocol";
+import { ACTION_INTERACT, hasAction, CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore, Recipe } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
@@ -24,6 +23,7 @@ import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
+import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 import { spawnEntity } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
@@ -33,7 +33,10 @@ export class CraftingSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
   private _spatial: SpatialGrid | null = null;
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(
+    private readonly content: ContentStore,
+    private readonly steps: Registry<RecipeStepHandler>,
+  ) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
     this._commands = ctx.pendingCommands;
@@ -52,6 +55,7 @@ export class CraftingSystem implements System {
         }
       }
     }
+
     // ── 1. Placement via ACTION_INTERACT ─────────────────────────────────
     for (const { entityId, inputState, inventory, interactCooldown } of world.query(
       InputState, Inventory, InteractCooldown,
@@ -95,49 +99,22 @@ export class CraftingSystem implements System {
         entityId, slot.itemType, slot.quantity, stationId, buffer.stationType);
     }
 
-    // ── 2. Auto-start time-based recipes ────────────────────────────────
-    for (const { entityId, workstationBuffer: buf } of world.query(WorkstationBuffer)) {
-      if (buf.progressTicks !== null) continue; // already running
-      if (buf.slots.length === 0) continue;
-
-      const recipe = findMatchingRecipe(this.content, buf.stationType, "time", buf.slots);
-      if (!recipe) continue;
-
-      world.set(entityId, WorkstationBuffer, {
-        ...buf,
-        progressTicks: recipe.ticks,
-        activeRecipeId: recipe.id,
-      });
-      log.info("time-recipe started: station=%s recipe=%s ticks=%d", entityId, recipe.id, recipe.ticks);
-    }
-
-    // ── 3. Advance time-based recipes ────────────────────────────────────
-    for (const { entityId, workstationBuffer: buf } of world.query(WorkstationBuffer)) {
-      if (buf.progressTicks === null || buf.progressTicks <= 0) continue;
-
-      const newTicks = buf.progressTicks - 1;
-      if (newTicks > 0) {
-        world.set(entityId, WorkstationBuffer, { ...buf, progressTicks: newTicks });
-        continue;
-      }
-
-      // Completed
-      const recipe = buf.activeRecipeId ? this.content.getRecipe(buf.activeRecipeId) : null;
-      if (recipe) {
-        const newSlots = consumeFromBuffer(buf.slots, recipe.inputs);
-        world.set(entityId, WorkstationBuffer, {
-          ...buf,
-          slots: newSlots,
-          progressTicks: null,
-          activeRecipeId: null,
+    // ── 2. Per-tick step dispatch ────────────────────────────────────────
+    // Every registered step handler's onTick runs once per workstation. The
+    // handlers decide whether to act based on their own stepType filter.
+    for (const stepId of this.steps.ids()) {
+      const handler = this.steps.get(stepId);
+      if (!handler.onTick) continue;
+      for (const { entityId, workstationBuffer: buf } of world.query(WorkstationBuffer)) {
+        // Re-read the buffer — a previous step handler on the same station
+        // may have mutated it this tick.
+        const current = world.get(entityId, WorkstationBuffer);
+        if (!current) continue;
+        handler.onTick({
+          world, events, content: this.content,
+          stationId: entityId, stationType: buf.stationType,
+          buffer: current,
         });
-
-        spawnOutputNear(world, entityId, recipe.outputType, recipe.outputQuantity);
-        events.publish(TileEvents.CraftingCompleted, { crafterId: entityId, recipeId: recipe.id });
-        log.info("time-recipe done: station=%s recipe=%s output=%sx%d",
-          entityId, recipe.id, recipe.outputType, recipe.outputQuantity);
-      } else {
-        world.set(entityId, WorkstationBuffer, { ...buf, progressTicks: null, activeRecipeId: null });
       }
     }
   }

@@ -1199,13 +1199,31 @@ NpcAiSystem went from 245 lines to 211 lines; the emergency cascade and
 `generateDefaultJob` helper are both gone.
 
 ### T-107 · Phase 5 — `RecipeStepHandler` registry
-Effort: S   Status: todo
+Effort: S   Status: done
 
-Crafting step dispatch via registry. 3 existing step types (`attack`,
-`assembly`, `time`) become handlers. Unblocks new step types (ritual,
-channeled) as pure content additions.
-Done when: zero `stepType ===` branches in crafting system or workstation
-hit handler.
+Added `RecipeStepHandler` interface in
+`packages/tile-server/src/crafting/step_handler.ts` plus registry factory
+in `crafting/mod.ts`. Three handlers, one file each: `attack_step`
+(onHit, tool-gated instant resolve), `assembly_step` (onHit, requires
+active selection), `time_step` (onTick, auto-start + countdown).
+
+Shared `resolveRecipe` + `toolMatches` helpers in `crafting/util.ts`.
+
+`WorkstationHitHandler` is now a generic dispatcher — iterates the
+registry's `onHit` handlers in registration order (assembly before
+attack so explicit selection wins). `CraftingSystem` keeps the
+ACTION_INTERACT placement phase and iterates every registered `onTick`
+handler per workstation; all time-specific code (auto-start,
+progressTicks countdown, completion resolve) moved into `time_step`.
+
+Server startup validates every recipe's `stepType` resolves to a
+registered handler — fail fast on mismatch.
+
+Zero `stepType === "..."` branches remain in systems or handlers.
+The only remaining comparisons are (a) `findMatchingRecipe`'s filter
+parameter and (b) the assembly handler's self-identity check
+(`ID` constant referenced from its own factory). Neither is a
+cross-system dispatch branch.
 
 ### T-108 · Phase 6 — biome + zone as content data
 Effort: M   Status: todo
