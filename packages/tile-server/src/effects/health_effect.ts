@@ -25,7 +25,7 @@ const log = createLogger("HealthEffect");
 export const healthEffectApply: EffectApplyHandler = {
   id: "health",
   apply(ctx: EffectApplyContext): void {
-    const { world, events, casterId, casterX, casterY, entry, magnitude, spatial, overrideTargetId } = ctx;
+    const { world, events, casterId, casterX, casterY, entry, magnitude, spatial, overrideTargetId, deaths } = ctx;
 
     if (entry.targeting === "self") {
       const health = world.get(casterId, Health);
@@ -68,8 +68,7 @@ export const healthEffectApply: EffectApplyHandler = {
       events.publish(TileEvents.DamageDealt, { targetId, sourceId: casterId, amount: stolen, blocked: false });
       log.debug("instant damage: caster=%s target=%s dmg=%.1f drain=%s", casterId, targetId, stolen, entry.drainToCaster);
       if (newTargetHP <= 0) {
-        world.destroy(targetId);
-        events.publish(TileEvents.EntityDied, { entityId: targetId, killerId: casterId });
+        deaths.request({ entityId: targetId, killerId: casterId, cause: "effect" });
       }
       if (entry.drainToCaster) {
         const casterHealth = world.get(casterId, Health);
@@ -87,7 +86,7 @@ export const healthEffectApply: EffectApplyHandler = {
 export const healthEffectTick: EffectTickHandler = {
   id: "health",
   tick(ctx: EffectTickContext): void {
-    const { world, events, entityId, effect, dt } = ctx;
+    const { world, events, entityId, effect, dt, deaths } = ctx;
     if (effect.tickDeltaPerSec === undefined) return;
 
     const delta = effect.tickDeltaPerSec * dt;
@@ -108,8 +107,7 @@ export const healthEffectTick: EffectTickHandler = {
     }
     if (newHP <= 0) {
       log.info("entity died from effect: entity=%s source=%s", entityId, effect.sourceEntityId);
-      world.destroy(entityId);
-      events.publish(TileEvents.EntityDied, { entityId, killerId: effect.sourceEntityId });
+      deaths.request({ entityId, killerId: effect.sourceEntityId, cause: "effect" });
     }
   },
 };

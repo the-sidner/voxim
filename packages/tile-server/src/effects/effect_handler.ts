@@ -14,6 +14,7 @@ import type { ConceptVerbEntry } from "@voxim/content";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import type { EventEmitter } from "../system.ts";
 import type { ActiveEffect } from "../components/lore_loadout.ts";
+import type { DeathRequestPort } from "../events/death.ts";
 
 // ---- apply ----
 
@@ -35,6 +36,7 @@ export interface EffectApplyContext {
    * melee target is already known.
    */
   readonly overrideTargetId: EntityId | null;
+  readonly deaths: DeathRequestPort;
 }
 
 export interface EffectApplyHandler {
@@ -50,6 +52,7 @@ export interface EffectTickContext {
   readonly entityId: EntityId;
   readonly effect: ActiveEffect;
   readonly dt: number;
+  readonly deaths: DeathRequestPort;
 }
 
 export interface EffectTickHandler {

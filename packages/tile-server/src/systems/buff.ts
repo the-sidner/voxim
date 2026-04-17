@@ -8,6 +8,7 @@ import type {
   EffectTickHandler,
   EffectComposeHandler,
 } from "../effects/effect_handler.ts";
+import type { DeathRequestPort } from "../events/death.ts";
 
 /**
  * BuffSystem — iterates ActiveEffects each tick.
@@ -27,6 +28,7 @@ export class BuffSystem implements System {
   constructor(
     private readonly tickRegistry: Registry<EffectTickHandler>,
     private readonly composeRegistry: Registry<EffectComposeHandler>,
+    private readonly deaths: DeathRequestPort,
   ) {}
 
   run(world: World, events: EventEmitter, dt: number): void {
@@ -40,7 +42,9 @@ export class BuffSystem implements System {
         if (effect.ticksRemaining === 0) continue;
 
         if (this.tickRegistry.has(effect.effectStat)) {
-          this.tickRegistry.get(effect.effectStat).tick({ world, events, entityId, effect, dt });
+          this.tickRegistry.get(effect.effectStat).tick({
+            world, events, entityId, effect, dt, deaths: this.deaths,
+          });
         }
 
         if (this.composeRegistry.has(effect.effectStat)) {

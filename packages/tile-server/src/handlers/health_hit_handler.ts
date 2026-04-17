@@ -8,6 +8,7 @@ import { Equipment } from "../components/equipment.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
 import type { SkillSystem } from "../systems/skill.ts";
+import type { DeathRequestPort } from "../events/death.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("HealthHitHandler");
@@ -23,6 +24,7 @@ export class HealthHitHandler implements HitHandler {
   constructor(
     private readonly content: ContentStore,
     private readonly skillSystem: SkillSystem,
+    private readonly deaths: DeathRequestPort,
   ) {}
 
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
@@ -162,8 +164,7 @@ export class HealthHitHandler implements HitHandler {
 
     // ── Death / knockback ─────────────────────────────────────────────────────
     if (newHealth <= 0) {
-      world.destroy(ctx.targetId);
-      events.publish(TileEvents.EntityDied, { entityId: ctx.targetId, killerId: ctx.attackerId });
+      this.deaths.request({ entityId: ctx.targetId, killerId: ctx.attackerId, cause: "damage" });
     } else if (!isBlocking) {
       const dx = ctx.targetX - ctx.attackerX;
       const dy = ctx.targetY - ctx.attackerY;

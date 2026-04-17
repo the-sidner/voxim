@@ -57,7 +57,10 @@ import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { BuffSystem } from "./systems/buff.ts";
+import { DeathSystem } from "./systems/death.ts";
+import type { DeathHook } from "./systems/death.ts";
 import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
+import { Registry } from "@voxim/engine";
 import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
 import { DynastySystem } from "./systems/dynasty.ts";
@@ -221,10 +224,19 @@ export class TileServer {
       }
     }
 
-    // System execution order matches the spec's declared order
+    // DeathSystem owns the single RequestDeath queue — systems with health-loss
+    // kill paths publish here instead of calling world.destroy directly.
+    // Hook registry is empty for now; later populated with drop-table, heir-spawn,
+    // corpse-spawn hooks — additive, no system-file edits required.
+    const deathHooks = new Registry<DeathHook>();
+    const deathSystem = new DeathSystem(deathHooks);
+
+    // System execution order matches the spec's declared order.
+    // DeathSystem runs last: it processes RequestDeath calls collected during
+    // the tick (dedupes, runs hooks, publishes EntityDied, destroys).
     this.systems = [
       new NpcAiSystem(content),
-      new HungerSystem(content),
+      new HungerSystem(content, deathSystem),
       new StaminaSystem(content),
       new LifetimeSystem(),
       new ItemPickupSystem(content),
@@ -234,19 +246,19 @@ export class TileServer {
       new ConsumptionSystem(content),
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
-      new CorruptionSystem(content),
+      new CorruptionSystem(content, deathSystem),
       // EncumbranceSystem writes EncumbrancePenalty (the base speed multiplier from weight).
       // BuffSystem reads EncumbrancePenalty and composes it with all speed ActiveEffects,
       // writing the final SpeedModifier. PhysicsSystem reads SpeedModifier.
       // Order must be: Encumbrance → Buff → Physics.
       new EncumbranceSystem(content),
-      new BuffSystem(effects.tick, effects.compose),
+      new BuffSystem(effects.tick, effects.compose, deathSystem),
       new PhysicsSystem(content),
       new DodgeSystem(content),
       ...((): [SkillSystem, ActionSystem, ProjectileSystem] => {
-        const skill = new SkillSystem(content, effects.apply);
+        const skill = new SkillSystem(content, effects.apply, deathSystem);
         const hitHandlers = [
-          new HealthHitHandler(content, skill),
+          new HealthHitHandler(content, skill, deathSystem),
           new ResourceNodeHitHandler(content),
           new BlueprintHitHandler(),
           new WorkstationHitHandler(content),
@@ -261,6 +273,7 @@ export class TileServer {
       new AnimationSystem(content),
       new HitboxSystem(content),
       new DebugCommandSystem(content, config.devMode ?? false),
+      deathSystem,
     ];
 
     // Set up persistence (optional — only if saveDir is configured)

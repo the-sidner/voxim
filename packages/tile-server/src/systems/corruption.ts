@@ -3,12 +3,16 @@ import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Health } from "../components/game.ts";
 import { WorldClock, TileCorruption, CorruptionExposure, isDay } from "../components/world.ts";
+import type { DeathRequestPort } from "../events/death.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("CorruptionSystem");
 
 export class CorruptionSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  constructor(
+    private readonly content: ContentStore,
+    private readonly deaths: DeathRequestPort,
+  ) {}
 
   run(world: World, _events: EventEmitter, dt: number): void {
     const cfg = this.content.getGameConfig().corruption;
@@ -55,7 +59,7 @@ export class CorruptionSystem implements System {
           world.set(entityId, Health, { ...health, current: newHp });
           if (newHp <= 0) {
             log.info("corruption kill: entity=%s", entityId);
-            world.destroy(entityId);
+            this.deaths.request({ entityId, cause: "corruption" });
           }
         }
       }

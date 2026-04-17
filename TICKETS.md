@@ -1119,15 +1119,30 @@ Startup validation in `server.ts` iterates every ConceptVerbEntry and
 throws if its `effectStat` has no registered apply handler.
 
 ### T-104 · Phase 2 — `DeathSystem` + `RequestDeath` event
-Effort: M   Status: todo
+Effort: M   Status: done
 
-Consolidate entity destruction from health loss into one system. Systems
-publish `RequestDeath` instead of calling `world.destroy()`. DeathSystem
-runs last in tick, dedupes, publishes `EntityDied`, runs `DeathHook`
-registry (empty initially), then destroys. Sets up future drop-tables /
-heirs / corpses as pure data additions.
-Done when: every non-spawner-cleanup `world.destroy` in systems/handlers
-is gone; every non-death-system `EntityDied` publish is gone.
+Consolidated entity destruction from health loss into one system. Added
+`DeathRequestPort` interface + `DeathSystem` that collects requests during
+a tick, dedupes, runs registered `DeathHook`s, publishes
+`TileEvents.EntityDied`, and destroys. Runs last in the tick chain.
+
+`DeathRequestPort` is a direct port (not a deferred event) so death
+happens same-tick. Systems receive `deathSystem` by constructor injection
+and hold it as a port: `HungerSystem`, `CorruptionSystem`, `SkillSystem`,
+`BuffSystem`, `HealthHitHandler`. Effect handler contexts
+(`EffectApplyContext`, `EffectTickContext`) carry the port so
+`healthEffectApply` and `healthEffectTick` can request deaths without
+knowing about `DeathSystem`.
+
+All 5 health-driven destroys redirected to `RequestDeath`:
+`HungerSystem` (starvation), `CorruptionSystem` (corruption),
+`HealthHitHandler` (damage), `healthEffectApply` (effect instant/drain),
+`healthEffectTick` (DoT). Remaining `world.destroy` calls are all
+non-death (item pickup, projectile expiry, blueprint completion,
+resource depletion, player disconnect) — these stay direct.
+
+`DeathHook` registry is empty today; future drop-tables / heirs /
+corpses will register as additive hooks with no system-file edits.
 
 ### T-105 · Phase 3 — `JobHandler` registry in NpcAiSystem
 Effort: M   Status: todo

@@ -15,6 +15,7 @@ import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { LoreLoadoutData } from "../components/lore_loadout.ts";
 import type { Registry } from "@voxim/engine";
 import type { EffectApplyHandler } from "../effects/effect_handler.ts";
+import type { DeathRequestPort } from "../events/death.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("SkillSystem");
@@ -27,6 +28,7 @@ export class SkillSystem implements System {
   constructor(
     private readonly content: ContentStore,
     private readonly applyRegistry: Registry<EffectApplyHandler>,
+    private readonly deaths: DeathRequestPort,
   ) {}
 
   prepare(serverTick: number, ctx: TickContext): void {
@@ -189,6 +191,7 @@ export class SkillSystem implements System {
       currentTick: this.currentTick,
       spatial: this.spatial,
       overrideTargetId,
+      deaths: this.deaths,
     });
   }
 }

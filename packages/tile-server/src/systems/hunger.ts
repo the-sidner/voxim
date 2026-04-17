@@ -3,12 +3,16 @@ import { TileEvents } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Hunger, Thirst, Health } from "../components/game.ts";
+import type { DeathRequestPort } from "../events/death.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("HungerSystem");
 
 export class HungerSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  constructor(
+    private readonly content: ContentStore,
+    private readonly deaths: DeathRequestPort,
+  ) {}
 
   run(world: World, events: EventEmitter, dt: number): void {
     const cfg = this.content.getGameConfig().survival;
@@ -37,8 +41,7 @@ export class HungerSystem implements System {
         log.debug("starvation/dehydration: entity=%s dmg=%.3f hp=%.1f", entityId, dmg, newHp);
         world.set(entityId, Health, { ...health, current: newHp });
         if (newHp <= 0 && health.current > 0) {
-          world.destroy(entityId);
-          events.publish(TileEvents.EntityDied, { entityId, killerId: undefined });
+          this.deaths.request({ entityId, cause: "starvation" });
         }
       }
     }
