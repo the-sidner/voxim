@@ -10,6 +10,11 @@
  *   export interface EntityDiedEvent { entityId: EntityId; killer?: EntityId }
  *
  * subscribe() returns an unsubscribe function.
+ *
+ * Subscribers are isolated: a thrown error in one handler is logged and the
+ * remaining handlers still run. This is critical because the tick loop
+ * publishes save / AoI / network events through the same bus — one buggy
+ * UI subscriber must not break the whole tick.
  */
 
 // deno-lint-ignore no-explicit-any
@@ -29,7 +34,17 @@ export class EventBus {
   }
 
   publish<T>(type: symbol, event: T): void {
-    this.handlers.get(type)?.forEach((h) => h(event));
+    const set = this.handlers.get(type);
+    if (!set) return;
+    for (const h of set) {
+      try {
+        h(event);
+      } catch (err) {
+        // Identify the event type via its symbol description.
+        const name = type.description ?? "<anonymous>";
+        console.error(`[EventBus] subscriber threw on "${name}":`, err);
+      }
+    }
   }
 
   /** Remove all subscribers. */
