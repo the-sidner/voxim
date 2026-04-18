@@ -303,6 +303,34 @@ Phases:
 Done when: research/crafting/ contains the framing doc, one file per category, and a summary
 extracting the verb vocabulary, workstation inventory, and engine-gap list across all chains.
 
+### T-117 · Items-as-entities refactor (`ITEMS_AS_ENTITIES_PLAN.md`)
+Effort: L   Status: in-progress
+
+Collapse `ItemTemplate` into `Prefab`. Move every item behaviour onto composable
+server-only components (Equippable, Swingable, Tool, Deployable, Edible,
+Illuminator, Armor, MaterialSource, Composed, Stackable, Weight, Renderable).
+Migrate all 53 item JSON files into `data/prefabs/items/` with the new shape.
+Make every unique (non-stackable) item a World entity carried by inventory /
+equipment entity-refs; stackables stay as `{ prefabId, quantity }` compact
+slots. Instance state (parts, durability, quality, inscription, history) lives
+as components on the item entity.
+
+Full plan and per-phase acceptance criteria in `ITEMS_AS_ENTITIES_PLAN.md`.
+
+Phases:
+  1. Template component vocabulary (additive, non-breaking)
+  2. `ItemTemplate` → `Prefab` migration (breaking)
+  3. Unique items become entities; inventory/equipment entity-refs (breaking)
+  4. Instance components: Durability, Inscribed, QualityStamped, History
+  5. Polish, benchmarks, cleanup
+
+Each breaking phase is its own atomic diff per CLAUDE.md's refactor philosophy.
+Checkpoint sign-off gates each breaking phase.
+
+Done when: `grep -r "ItemTemplate" packages/` returns zero matches, every item
+in the simulation is either a compact stackable slot or an entity with its own
+components, and benchmark confirms the entity budget holds.
+
 ---
 
 ## Building

@@ -22,29 +22,63 @@
 import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
 import { Heightmap, MaterialGrid } from "@voxim/world";
 import {
-  Position, Velocity, Facing, InputState,
-  Health, Hunger, Thirst, Stamina,
-  CombatState, Lifetime,
-  ModelRef, AnimationState,
+  AnimationState,
+  CombatState,
+  Facing,
+  Health,
+  Hunger,
+  InputState,
+  Lifetime,
+  ModelRef,
+  Position,
+  Stamina,
+  Thirst,
+  Velocity,
 } from "./components/game.ts";
 import { SkillInProgress } from "./components/combat.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
-import { ItemData, Inventory, CraftingQueue, InteractCooldown } from "./components/items.ts";
-import { Blueprint, WorkstationTag, WorkstationBuffer } from "./components/building.ts";
+import {
+  CraftingQueue,
+  InteractCooldown,
+  Inventory,
+  ItemData,
+} from "./components/items.ts";
+import {
+  Blueprint,
+  WorkstationBuffer,
+  WorkstationTag,
+} from "./components/building.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import {
-  WorldClock, TileCorruption, CorruptionExposure,
-  SpeedModifier, EncumbrancePenalty,
+  CorruptionExposure,
+  EncumbrancePenalty,
+  SpeedModifier,
+  TileCorruption,
+  WorldClock,
 } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
-import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
-import { LightEmitter, DarknessModifier } from "./components/light.ts";
+import { ActiveEffects, LoreLoadout } from "./components/lore_loadout.ts";
+import { DarknessModifier, LightEmitter } from "./components/light.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { Hearth } from "./components/hearth.ts";
-import { JobBoard, AssignedJobBoard } from "./components/job_board.ts";
-import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
+import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
+import { NpcJobQueue, NpcTag } from "./components/npcs.ts";
 import { ProjectileData } from "./components/projectile.ts";
+import {
+  Armor,
+  Composed,
+  Deployable,
+  Edible,
+  Equippable,
+  Illuminator,
+  MaterialSource,
+  Renderable,
+  Stackable,
+  Swingable,
+  Tool,
+  Weight,
+} from "./components/item_behaviours.ts";
 
 /** All networked component defs. wireId is on each def — no separate typeId mapping needed. */
 export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
@@ -85,9 +119,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
-export const DEF_BY_TYPE_ID: ReadonlyMap<number, NetworkedComponentDef<any>> = new Map(
-  NETWORKED_DEFS.map((d) => [d.wireId, d]),
-);
+export const DEF_BY_TYPE_ID: ReadonlyMap<number, NetworkedComponentDef<any>> =
+  new Map(
+    NETWORKED_DEFS.map((d) => [d.wireId, d]),
+  );
 
 /**
  * Every ComponentDef, networked and server-only. The prefab loader resolves
@@ -108,6 +143,22 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ProjectileData,
   SpeedModifier,
   EncumbrancePenalty,
+  // ── Item-behaviour template defs (T-117 Phase 1) ─────────────────────────
+  // Declared on any prefab that represents a holdable/wearable/usable thing.
+  // Server-only: clients reconstruct item behaviour from the prefab id they
+  // already have. No JSON declares these yet — Phase 2 migrates item JSON.
+  Equippable,
+  Swingable,
+  Tool,
+  Deployable,
+  Edible,
+  Illuminator,
+  Armor,
+  MaterialSource,
+  Composed,
+  Stackable,
+  Weight,
+  Renderable,
 ];
 
 /**
@@ -118,7 +169,9 @@ export const DEF_BY_NAME: ReadonlyMap<string, ComponentDef<any>> = (() => {
   const map = new Map<string, ComponentDef<any>>();
   for (const def of ALL_DEFS) {
     if (map.has(def.name)) {
-      throw new Error(`[component_registry] duplicate component name "${def.name}"`);
+      throw new Error(
+        `[component_registry] duplicate component name "${def.name}"`,
+      );
     }
     map.set(def.name, def);
   }
