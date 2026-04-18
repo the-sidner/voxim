@@ -35,6 +35,15 @@ interface ComponentDefBase<T, N extends string> {
    * type to required.
    */
   readonly schema?: ComponentSchema<T>;
+  /**
+   * Names of other components that must be present on any entity (or prefab)
+   * that declares this one. Validated at content-load so invalid prefabs fail
+   * fast. Example: WorkstationTag requires WorkstationBuffer.
+   *
+   * Only the declared direction is checked — the loader does not infer the
+   * reverse. Author both sides if the relationship is bidirectional.
+   */
+  readonly requires?: readonly string[];
 }
 
 /**
@@ -86,6 +95,7 @@ export function defineComponent<T, N extends string>(opts: {
   codec: Serialiser<T>;
   default: () => T;
   schema?: ComponentSchema<T>;
+  requires?: readonly string[];
   networked?: true;
 }): NetworkedComponentDef<T, N>;
 
@@ -106,6 +116,7 @@ export function defineComponent<T, N extends string>(opts: {
   codec: Serialiser<T>;
   default: () => T;
   schema?: ComponentSchema<T>;
+  requires?: readonly string[];
 }): ServerOnlyComponentDef<T, N>;
 
 export function defineComponent<T, N extends string>(opts: {
@@ -114,6 +125,7 @@ export function defineComponent<T, N extends string>(opts: {
   codec: Serialiser<T>;
   default: () => T;
   schema?: ComponentSchema<T>;
+  requires?: readonly string[];
   networked?: boolean;
 }): ComponentDef<T, N> {
   if (opts.networked === false) {
@@ -123,6 +135,7 @@ export function defineComponent<T, N extends string>(opts: {
       default: opts.default,
       codec: opts.codec,
       ...(opts.schema !== undefined && { schema: opts.schema }),
+      ...(opts.requires !== undefined && { requires: opts.requires }),
       networked: false,
     };
   }
@@ -132,6 +145,7 @@ export function defineComponent<T, N extends string>(opts: {
     default: opts.default,
     codec: opts.codec,
     ...(opts.schema !== undefined && { schema: opts.schema }),
+    ...(opts.requires !== undefined && { requires: opts.requires }),
     networked: true,
     wireId: opts.wireId!,
   };

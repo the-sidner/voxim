@@ -1,8 +1,8 @@
 {
   "id": "altar",
+  "extends": "_workbench_base",
   "components": {
-    "workstation": {
-      "stationType": "altar"
-    }
+    "workstationTag":    { "stationType": "altar" },
+    "workstationBuffer": { "stationType": "altar" }
   }
 }

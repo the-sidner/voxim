@@ -730,24 +730,6 @@ export interface PrefabPlayerData {
   startingEquipment?: Partial<Record<"weapon" | "offHand" | "head" | "chest" | "legs" | "feet" | "back", string>>;
 }
 
-/**
- * Workstation archetype component — attaches a crafting station to a prefab.
- * Read by the `workstation` installer in spawnPrefab.
- */
-export interface PrefabWorkstationData {
-  /** Matches WorkstationDef.id — drives recipe resolution. */
-  stationType: string;
-  /** How many input slots the station exposes. Default 4. */
-  capacity?: number;
-}
-
-/** Light-emitter archetype component — a placed light source on a prop. */
-export interface PrefabLightEmitterData {
-  color: number;
-  intensity: number;
-  radius: number;
-  flicker: number;
-}
 
 /**
  * Prefab — declarative definition of a spawnable world entity.
@@ -771,12 +753,29 @@ export interface PrefabLightEmitterData {
 export interface Prefab {
   id: string;
   /**
+   * Parent prefab id. The loader resolves the chain root-to-leaf and
+   * deep-merges `components` (and top-level `modelId` / `modelScale`) so a
+   * child overrides only the fields it declares. Cycles fail loud at load.
+   *
+   * Prefabs whose id begins with `_` are *abstract* — they participate in
+   * inheritance but cannot be spawned directly. `spawnPrefab("_foo")` throws.
+   */
+  extends?: string;
+  /**
    * Model to render this entity with. Optional — absent means no visual
    * representation (placeholder/invisible entity).
    */
   modelId?: string;
   /** Multiplier applied on top of the base entity scale at spawn. Defaults to 1. */
   modelScale?: number;
+  /**
+   * Open-set component dictionary. Each key is either a `ComponentDef.name`
+   * registered in the tile-server component registry (written directly at
+   * spawn) or a known compound-archetype key consumed by `spawnPrefab`'s
+   * installer chain (`player`, `npc`, `resourceNode`, etc.). The loader
+   * validates the shape of each entry against the matching component's
+   * schema — unknown keys and schema violations both fail at content-load.
+   */
   components: Record<string, unknown>;
 }
 

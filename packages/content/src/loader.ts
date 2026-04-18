@@ -73,8 +73,8 @@ export async function loadContentStore(
     store.registerItemTemplate(raw);
   }
 
-  for (const raw of prefabsRaw as Prefab[]) {
-    store.registerPrefab(raw);
+  for (const effective of resolvePrefabInheritance(prefabsRaw as Prefab[])) {
+    store.registerPrefab(effective);
   }
 
   for (const raw of npcTemplatesRaw as NpcTemplate[]) {
@@ -182,6 +182,84 @@ const DEFAULT_PROPERTIES: MaterialProperties = {
   flammability: 0.0,
   toughness: 0.5,
 };
+
+/**
+ * Resolve prefab `extends` inheritance. Walks the chain root-to-leaf,
+ * deep-merging `components` (and `modelId` / `modelScale`) so a child only
+ * needs to declare the delta from its parent.
+ *
+ * Detects cycles and missing parents at load — the server fails fast rather
+ * than spawning malformed entities. Arrays inside component data are replaced
+ * wholesale by the child (never concatenated); nested objects are merged.
+ */
+export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
+  const byId = new Map<string, Prefab>();
+  for (const p of raw) {
+    if (byId.has(p.id)) {
+      throw new Error(`Prefab '${p.id}' declared more than once`);
+    }
+    byId.set(p.id, p);
+  }
+
+  const resolved = new Map<string, Prefab>();
+
+  const resolve = (id: string, stack: string[]): Prefab => {
+    const cached = resolved.get(id);
+    if (cached) return cached;
+    if (stack.includes(id)) {
+      throw new Error(
+        `Prefab inheritance cycle: ${[...stack, id].join(" → ")}`,
+      );
+    }
+    const self = byId.get(id);
+    if (!self) throw new Error(`Prefab '${id}' not found`);
+
+    let effective: Prefab;
+    if (self.extends) {
+      const parent = resolve(self.extends, [...stack, id]);
+      effective = {
+        id: self.id,
+        ...(self.extends !== undefined && { extends: self.extends }),
+        modelId:    self.modelId    ?? parent.modelId,
+        modelScale: self.modelScale ?? parent.modelScale,
+        components: mergeComponents(parent.components, self.components),
+      };
+    } else {
+      effective = { ...self };
+    }
+    resolved.set(id, effective);
+    return effective;
+  };
+
+  for (const p of raw) resolve(p.id, []);
+  return Array.from(resolved.values());
+}
+
+/** Deep-merge two component dicts. Arrays are replaced, not concatenated. */
+function mergeComponents(
+  parent: Record<string, unknown>,
+  child: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...parent };
+  for (const [key, value] of Object.entries(child)) {
+    out[key] = mergeValues(parent[key], value);
+  }
+  return out;
+}
+
+function mergeValues(parent: unknown, child: unknown): unknown {
+  if (isPlainObject(parent) && isPlainObject(child)) {
+    const merged: Record<string, unknown> = { ...parent };
+    for (const [k, v] of Object.entries(child)) merged[k] = mergeValues(parent[k], v);
+    return merged;
+  }
+  // Arrays, primitives, null — child wins outright.
+  return child;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
 
 function parseMaterial(raw: RawMaterialDef): MaterialDef {
   const color =

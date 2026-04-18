@@ -31,6 +31,7 @@ import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
 import { spawnPrefab } from "./spawner.ts";
+import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
 import { Heritage } from "./components/heritage.ts";
@@ -201,6 +202,9 @@ export class TileServer {
     // Systems receive the store by injection — no hardcoded tables in game logic.
     this.content = await loadContentStore(config.dataDir);
     const content = this.content;
+    // Validate every prefab against the component registry + schemas + requires.
+    // Fails fast on malformed content so a booted server is known-good.
+    validatePrefabs(content);
 
     // Effect handler registries — apply/tick/compose are plug-in points for
     // SkillSystem and BuffSystem. Built-in effects are registered here; every

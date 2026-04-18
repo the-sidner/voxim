@@ -70,6 +70,7 @@ export interface WorkstationTagData {
 export const WorkstationTag = defineComponent({
   name: "workstationTag" as const,
   networked: false,
+  requires: ["workstationBuffer"],
   codec: {
     encode(v: WorkstationTagData): Uint8Array {
       const w = new WireWriter(); w.writeStr(v.stationType); return w.toBytes();
@@ -89,6 +90,7 @@ export { type WorkstationBufferData };
 export const WorkstationBuffer = defineComponent({
   name: "workstationBuffer" as const,
   wireId: ComponentType.workstationBuffer,
+  requires: ["workstationTag"],
   codec: workstationBufferCodec,
   default: (): WorkstationBufferData => ({
     stationType: "",

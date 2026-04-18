@@ -42,8 +42,6 @@ export type {
   PrefabResourceNodeData,
   PrefabNpcData,
   PrefabPlayerData,
-  PrefabWorkstationData,
-  PrefabLightEmitterData,
   Prefab,
   LoreConcept,
   LoreDomain,

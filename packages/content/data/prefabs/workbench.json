@@ -1,9 +1,9 @@
 {
   "id": "workbench",
+  "extends": "_workbench_base",
   "modelId": "model_workbench",
   "components": {
-    "workstation": {
-      "stationType": "workbench"
-    }
+    "workstationTag":    { "stationType": "workbench" },
+    "workstationBuffer": { "stationType": "workbench" }
   }
 }

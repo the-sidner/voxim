@@ -1,8 +1,8 @@
 {
   "id": "writing_desk",
+  "extends": "_workbench_base",
   "components": {
-    "workstation": {
-      "stationType": "writing_desk"
-    }
+    "workstationTag":    { "stationType": "writing_desk" },
+    "workstationBuffer": { "stationType": "writing_desk" }
   }
 }

@@ -2,9 +2,14 @@
  * Entity spawning — the single path from a Prefab to a live world entity.
  *
  * `spawnPrefab(world, content, prefabId, overrides)` is the only public entry
- * point. Every other spawn shape (player, NPC, workstation, resource node,
- * decorative prop) is expressed as a prefab with archetype components, and
- * dispatched through the installer chain below.
+ * point. For every key in `prefab.components`:
+ *   - If the key matches a compound-archetype installer (player, npc,
+ *     resourceNode) its installer runs; these expand into multiple component
+ *     writes and may consult overrides, templates, or config.
+ *   - Otherwise the key is looked up in `DEF_BY_NAME`. The component's
+ *     default is merged with the prefab data and written directly.
+ *   - Unknown keys throw — the content loader should have caught them at
+ *     startup, this is the last line of defence.
  *
  * Blueprints still go through `spawnBlueprint` because they are parameterised
  * by a StructureDef picked at placement time rather than a fixed prefab —
@@ -32,9 +37,8 @@ import { Heritage } from "./components/heritage.ts";
 import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
-import { Blueprint, WorkstationTag, WorkstationBuffer } from "./components/building.ts";
+import { Blueprint } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
-import { LightEmitter } from "./components/light.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import type {
@@ -43,17 +47,12 @@ import type {
   PrefabResourceNodeData,
   PrefabNpcData,
   PrefabPlayerData,
-  PrefabWorkstationData,
-  PrefabLightEmitterData,
 } from "@voxim/content";
 import { applyHitboxTemplate, solveSkeleton, REST_POSE, resolveMorphParams } from "@voxim/content";
+import { DEF_BY_NAME } from "./component_registry.ts";
 
 // ---- small helpers ----
 
-/**
- * Write the component's default value. Keeps spawn sites declarative — the
- * default lives with the component def, and changes propagate automatically.
- */
 function writeDefault<T>(world: World, id: EntityId, def: ComponentDef<T>): void {
   world.write(id, def, def.default());
 }
@@ -63,7 +62,6 @@ function writeDefaults(world: World, id: EntityId, ...defs: ComponentDef<any>[])
   for (const def of defs) writeDefault(world, id, def);
 }
 
-/** Full empty equipment — used as the starting point for Equipment writes. */
 function emptyEquipment(): EquipmentData {
   return {
     weapon: null, offHand: null, head: null,
@@ -71,28 +69,25 @@ function emptyEquipment(): EquipmentData {
   };
 }
 
-// ---- archetype installers ----
+// ---- compound archetype installers ----
 //
-// Each installer inspects prefab.components for its archetype key and, if
-// present, writes the matching components to the entity. Installers are
-// strictly additive: unrelated entities simply skip them. Spawn-time inputs
-// the prefab can't know about (heritage, instanceName) arrive via `overrides`.
+// These keys in `prefab.components` fan out to several engine components at
+// spawn, or need runtime inputs the prefab can't know about (heritage,
+// NpcTemplate, overrides). A direct-write in the generic loop is insufficient,
+// so they live here and short-circuit the generic dispatch.
 
-/**
- * Player archetype — writes the mobile character components (movement +
- * survival + combat state) plus Heritage-derived Health and the prefab's
- * declared starting inventory/equipment.
- */
-function installPlayer(
+type CompoundInstaller = (
   world: World,
   content: ContentStore,
   id: EntityId,
   prefab: Prefab,
+  data: unknown,
   overrides: SpawnPrefabOverrides,
-): void {
-  const data = prefab.components.player as PrefabPlayerData | undefined;
-  if (!data) return;
+) => void;
 
+/** Player: Heritage-derived Health + declared starter loadout + survival defaults. */
+const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, overrides) => {
+  const data = rawData as PrefabPlayerData;
   const heritage = overrides.heritage ?? {
     dynastyId: newEntityId(),
     generation: 0,
@@ -123,24 +118,11 @@ function installPlayer(
     Hunger, Thirst, CombatState, Stamina, CorruptionExposure,
     LoreLoadout, ActiveEffects, CraftingQueue, InteractCooldown, AnimationState,
   );
-}
+};
 
-/**
- * NPC archetype — writes the mobile character components plus NpcTag and a
- * skill loadout sourced from the referenced NpcTemplate. NpcTemplate is the
- * single source of stats (health, speed, weapon, skills, model override);
- * the prefab only names which template to use via `npc.npcType`.
- */
-function installNpc(
-  world: World,
-  content: ContentStore,
-  id: EntityId,
-  prefab: Prefab,
-  overrides: SpawnPrefabOverrides,
-): void {
-  const data = prefab.components.npc as PrefabNpcData | undefined;
-  if (!data) return;
-
+/** NPC: NpcTemplate-driven stats + NpcTag + survival defaults. */
+const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, overrides) => {
+  const data = rawData as PrefabNpcData;
   const template = content.getNpcTemplate(data.npcType);
   const maxHealth = template?.maxHealth ?? 80;
   const speedMultiplier = template?.speedMultiplier ?? 1.0;
@@ -171,94 +153,30 @@ function installNpc(
     Hunger, Thirst, CombatState, CorruptionExposure,
     NpcJobQueue, AnimationState, ActiveEffects,
   );
-}
+};
 
-/**
- * Workstation archetype — WorkstationTag (server-only) + WorkstationBuffer
- * (networked). Hit detection and recipe resolution run via WorkstationHitHandler.
- */
-function installWorkstation(
-  world: World,
-  _content: ContentStore,
-  id: EntityId,
-  prefab: Prefab,
-  _overrides: SpawnPrefabOverrides,
-): void {
-  const data = prefab.components.workstation as PrefabWorkstationData | undefined;
-  if (!data) return;
-
-  world.write(id, WorkstationTag, { stationType: data.stationType });
-  world.write(id, WorkstationBuffer, {
-    stationType: data.stationType,
-    slots: [],
-    capacity: data.capacity ?? 4,
-    activeRecipeId: null,
-    progressTicks: null,
-  });
-  // Workstations without a prefab.modelId fall back to a swingable stub hitbox.
-  if (!prefab.modelId) {
-    world.write(id, Hitbox, {
-      parts: [{
-        id: "body",
-        fromFwd: 0, fromRight: 0, fromUp: 0,
-        toFwd:   0, toRight:   0, toUp: 1.2,
-        radius: 0.6,
-      }],
-    });
-  }
-}
-
-/** Resource-node archetype — attaches the ResourceNode state component. */
-function installResourceNode(
-  world: World,
-  _content: ContentStore,
-  id: EntityId,
-  prefab: Prefab,
-  _overrides: SpawnPrefabOverrides,
-): void {
-  const data = prefab.components.resourceNode as PrefabResourceNodeData | undefined;
-  if (!data) return;
+/** Resource node: the static harvest-behaviour data lives on the prefab; runtime state is derived. */
+const installResourceNode: CompoundInstaller = (world, _content, id, prefab, rawData) => {
+  const data = rawData as PrefabResourceNodeData;
   world.write(id, ResourceNode, {
     nodeTypeId: prefab.id,
     hitPoints: data.hitPoints,
     depleted: false,
     respawnTicksRemaining: null,
   });
-}
+};
 
-/** Light-emitter archetype — placed light source on a prop (torch, lantern). */
-function installLightEmitter(
-  world: World,
-  _content: ContentStore,
-  id: EntityId,
-  prefab: Prefab,
-  _overrides: SpawnPrefabOverrides,
-): void {
-  const data = prefab.components.lightEmitter as PrefabLightEmitterData | undefined;
-  if (!data) return;
-  world.write(id, LightEmitter, data);
-}
-
-type PrefabInstaller = (
-  world: World,
-  content: ContentStore,
-  id: EntityId,
-  prefab: Prefab,
-  overrides: SpawnPrefabOverrides,
-) => void;
+const COMPOUND_INSTALLERS: ReadonlyMap<string, CompoundInstaller> = new Map([
+  ["player",       installPlayer],
+  ["npc",          installNpc],
+  ["resourceNode", installResourceNode],
+]);
 
 /**
- * Ordered installer chain. Each inspects its archetype key and no-ops when
- * absent, so the order matters only for writes that overwrite one another
- * (none do at present). Add new archetypes here.
+ * Keys consumed by compound installers — exposed so the loader validator can
+ * treat them as legal without requiring a corresponding ComponentDef.
  */
-const INSTALLERS: PrefabInstaller[] = [
-  installPlayer,
-  installNpc,
-  installWorkstation,
-  installResourceNode,
-  installLightEmitter,
-];
+export const COMPOUND_ARCHETYPE_KEYS: ReadonlySet<string> = new Set(COMPOUND_INSTALLERS.keys());
 
 // ---- visual shell ----
 
@@ -309,22 +227,21 @@ export interface SpawnPrefabOverrides {
   z?: number;
   /** Per-spawn visual variation (morph params, pool selection). Defaults to 0. */
   seed?: number;
-  /** Heritage record applied by installPlayer. Absent = default-lineage player. */
+  /** Heritage record applied by the player installer. Absent = default-lineage player. */
   heritage?: HeritageData;
-  /** Display-name override applied by installNpc to NpcTag.name. */
+  /** Display-name override applied by the npc installer to NpcTag.name. */
   instanceName?: string;
 }
 
 /**
  * Spawn a world entity from a prefab id.
  *
- * Writes Position universally, then runs the visual shell installer followed
- * by every archetype installer. Installers consult `prefab.components` for
- * their archetype key and skip when absent, so the same entry point covers
- * players, NPCs, workstations, resource nodes, and decorative props.
+ * Walks `prefab.components` once: compound archetype keys fan out through
+ * their installer; other keys are looked up in `DEF_BY_NAME` and written
+ * directly with their default merged in for omitted fields.
  *
- * Throws if the prefab id is unknown — callers that may receive untrusted ids
- * should guard with `content.getPrefab()` first.
+ * Throws if the prefab id is unknown, if the prefab is abstract (id starts
+ * with `_`), or if any component name is not registered.
  */
 export function spawnPrefab(
   world: World,
@@ -334,6 +251,9 @@ export function spawnPrefab(
 ): EntityId {
   const prefab = content.getPrefab(prefabId);
   if (!prefab) throw new Error(`spawnPrefab: unknown prefab '${prefabId}'`);
+  if (prefab.id.startsWith("_")) {
+    throw new Error(`spawnPrefab: '${prefab.id}' is abstract and cannot be spawned directly`);
+  }
 
   const id = overrides.id ?? newEntityId();
   const x = overrides.x ?? 256;
@@ -344,7 +264,20 @@ export function spawnPrefab(
   world.create(id);
   world.write(id, Position, { x, y, z });
   installVisualShell(world, content, id, prefab, seed);
-  for (const install of INSTALLERS) install(world, content, id, prefab, overrides);
+
+  for (const [name, data] of Object.entries(prefab.components)) {
+    const compound = COMPOUND_INSTALLERS.get(name);
+    if (compound) {
+      compound(world, content, id, prefab, data, overrides);
+      continue;
+    }
+    const def = DEF_BY_NAME.get(name);
+    if (!def) {
+      throw new Error(`spawnPrefab '${prefab.id}': unknown component '${name}'`);
+    }
+    const merged = { ...def.default(), ...(data as Record<string, unknown>) };
+    world.write(id, def, merged);
+  }
 
   return id;
 }
@@ -380,7 +313,6 @@ export function spawnBlueprint(world: World, content: ContentStore, opts: SpawnB
   const localX = ((cellX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
   const localY = ((cellY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
 
-  // Center the entity in the cell
   const posX = cellX + 0.5;
   const posY = cellY + 0.5;
 
