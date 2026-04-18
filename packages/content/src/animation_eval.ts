@@ -29,11 +29,17 @@ export function buildClipIndex(skeleton: SkeletonDef): ReadonlyMap<string, Anima
 /**
  * Build a bone mask lookup map for a skeleton (maskId → BoneMask).
  * Pre-computed once by ContentStore.getMaskIndex().
+ *
+ * Throws on duplicate mask ids — silently keeping one and dropping the
+ * other would surface as missing bones in animation layers.
  */
 export function buildMaskIndex(skeleton: SkeletonDef): ReadonlyMap<string, BoneMask> {
   const m = new Map<string, BoneMask>();
   for (const mask of skeleton.boneMasks ?? []) {
-    m.set(mask.id, m.get(mask.id) ?? mask);
+    if (m.has(mask.id)) {
+      throw new Error(`skeleton "${skeleton.id}": duplicate boneMask id "${mask.id}"`);
+    }
+    m.set(mask.id, mask);
   }
   return m;
 }
