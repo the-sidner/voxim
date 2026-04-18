@@ -299,7 +299,7 @@ export class TileServer {
       ...((): [SkillSystem, ActionSystem, ProjectileSystem] => {
         const skill = new SkillSystem(content, effects.apply, deathSystem);
         const hitHandlers = [
-          new HealthHitHandler(content, skill, deathSystem),
+          new HealthHitHandler(content, skill, deathSystem, effects.outgoingDamage, effects.incomingDamage),
           new ResourceNodeHitHandler(content),
           new BlueprintHitHandler(),
           new WorkstationHitHandler(content, recipeSteps),

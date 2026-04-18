@@ -1,4 +1,4 @@
-import type { World } from "@voxim/engine";
+import type { World, Registry } from "@voxim/engine";
 import { ACTION_BLOCK, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
@@ -9,22 +9,30 @@ import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
 import type { SkillSystem } from "../systems/skill.ts";
 import type { DeathRequestPort } from "../events/death.ts";
+import type { OutgoingDamageHook, IncomingDamageHook } from "../effects/damage_hook.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("HealthHitHandler");
 
 /**
  * Handles hits on entities that have a Health component.
- * All combat resolution logic lives here — block/parry, damage calculation,
- * armor, shield absorption, skill-on-hit, death, knockback.
  *
- * Extracted verbatim from ActionSystem.resolveHits().
+ * Combat resolution flow:
+ *   block/parry → outgoing damage hooks (attacker effects modify multiplier)
+ *   → armor + block reduction → incoming damage hooks (target effects absorb /
+ *   reduce) → apply HP change → skill on hit → death request or knockback.
+ *
+ * Per-effect damage logic (damage_boost consumption, shield absorption) lives
+ * in OutgoingDamageHook / IncomingDamageHook implementations registered in
+ * `effects/mod.ts`. This handler holds zero `effectStat ===` checks.
  */
 export class HealthHitHandler implements HitHandler {
   constructor(
     private readonly content: ContentStore,
     private readonly skillSystem: SkillSystem,
     private readonly deaths: DeathRequestPort,
+    private readonly outgoingHooks: Registry<OutgoingDamageHook>,
+    private readonly incomingHooks: Registry<IncomingDamageHook>,
   ) {}
 
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
@@ -85,15 +93,13 @@ export class HealthHitHandler implements HitHandler {
       world.set(ctx.attackerId, CombatState, { ...attackerCombatState, counterReady: false });
     }
 
+    // Outgoing damage hooks — attacker-side effect modifiers (e.g. damage_boost).
     const attackerEffects = world.get(ctx.attackerId, ActiveEffects);
     if (attackerEffects) {
-      const boostIdx = attackerEffects.effects.findIndex((e) => e.effectStat === "damage_boost");
-      if (boostIdx !== -1) {
-        damageMult *= 1 + attackerEffects.effects[boostIdx].magnitude;
-        const updated = attackerEffects.effects.map((e, i) =>
-          i === boostIdx ? { ...e, ticksRemaining: 0 } : e
-        );
-        world.set(ctx.attackerId, ActiveEffects, { effects: updated });
+      for (const id of this.outgoingHooks.ids()) {
+        damageMult *= this.outgoingHooks.get(id).apply({
+          world, attackerId: ctx.attackerId, attackerEffects, hit: ctx,
+        });
       }
     }
 
@@ -120,23 +126,13 @@ export class HealthHitHandler implements HitHandler {
     const baseDamage = ctx.weaponStats.damage ?? 0;
     let damage = baseDamage * damageMult * blockMult * (1 - armorReduction);
 
-    // ── Shield absorption ─────────────────────────────────────────────────────
+    // ── Incoming damage hooks (shield absorption, etc.) ───────────────────────
     const targetEffects = world.get(ctx.targetId, ActiveEffects);
     if (targetEffects) {
-      const shieldIdx = targetEffects.effects.findIndex((e) => e.effectStat === "shield");
-      if (shieldIdx !== -1) {
-        const shield = targetEffects.effects[shieldIdx];
-        const absorbed = Math.min(shield.magnitude, damage);
-        damage -= absorbed;
-        const remaining = shield.magnitude - absorbed;
-        const updated = remaining > 0
-          ? targetEffects.effects.map((e, i) =>
-              i === shieldIdx ? { ...e, magnitude: remaining } : e
-            )
-          : targetEffects.effects.map((e, i) =>
-              i === shieldIdx ? { ...e, ticksRemaining: 0 } : e
-            );
-        world.set(ctx.targetId, ActiveEffects, { effects: updated });
+      for (const id of this.incomingHooks.ids()) {
+        damage = this.incomingHooks.get(id).apply({
+          world, targetId: ctx.targetId, targetEffects, incomingDamage: damage, hit: ctx,
+        });
       }
     }
 
