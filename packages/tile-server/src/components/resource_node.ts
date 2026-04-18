@@ -3,7 +3,7 @@ import { ComponentType } from "@voxim/protocol";
 import { resourceNodeCodec } from "@voxim/codecs";
 
 export interface ResourceNodeData {
-  /** References EntityTemplate.id — used to look up harvest data at runtime. */
+  /** References Prefab.id — used to look up harvest data at runtime. */
   nodeTypeId: string;
   /** Remaining hit points. 0 = depleted. */
   hitPoints: number;

@@ -25,8 +25,26 @@ import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./compone
 import { LightEmitter } from "./components/light.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
-import type { ContentStore, EntityTemplate, SkillSlot, EntityTemplateComponents } from "@voxim/content";
+import type { ContentStore, Prefab, SkillSlot, PrefabResourceNodeData } from "@voxim/content";
 import { applyHitboxTemplate, solveSkeleton, REST_POSE, resolveMorphParams } from "@voxim/content";
+
+/**
+ * Known archetype keys in a Prefab's open-set components dict. A prefab can
+ * declare any of these to opt into the corresponding spawn-time behaviour.
+ * The dict is `Record<string, unknown>` on the wire; this type is a read-side
+ * convenience for the spawner's dispatch only.
+ *
+ * Full "every key is a ComponentDef reference" comes in a later phase — see
+ * PREFAB_SYSTEM_PLAN.md. Until then, these four archetype shapes are
+ * interpreted by spawnEntity below, and any other key with a matching
+ * ComponentDef in DEF_BY_NAME is written directly as a component.
+ */
+interface PrefabArchetypeComponents {
+  resourceNode?: PrefabResourceNodeData;
+  npc?: { npcType: string };
+  workstation?: { stationType: string; capacity?: number };
+  lightEmitter?: { color: number; intensity: number; radius: number; flicker: number };
+}
 
 // ---- spawn helpers ----
 
@@ -297,30 +315,44 @@ export interface SpawnEntityOpts {
   x?: number;
   y?: number;
   z?: number;
-  template: EntityTemplate;
+  template: Prefab;
   seed?: number;
   /** Display name override — forwarded to NPC entities, overrides npc_template.displayName. */
   instanceName?: string;
 }
 
 /**
- * Per-template-component installer.
+ * Read a known archetype block from a Prefab's open-set components dict.
+ * The dict is `Record<string, unknown>`; this is a tiny, local convenience
+ * to avoid repeated casts below. Full open-set dispatch (attaching any
+ * ComponentDef-named key directly) arrives in the next prefab-plan phase.
+ */
+function readArchetype<K extends keyof PrefabArchetypeComponents>(
+  prefab: Prefab,
+  key: K,
+): PrefabArchetypeComponents[K] | undefined {
+  return prefab.components[key] as PrefabArchetypeComponents[K] | undefined;
+}
+
+/**
+ * Per-prefab-archetype installer.
  *
  * When spawnEntity runs it iterates `opts.template.components` and dispatches
- * each key to the matching installer. Adding a new optional component to
- * EntityTemplateComponents is two steps: add the shape to the types file and
- * register an installer here — no churn in the main spawnEntity body.
+ * known archetype keys to the matching installer. New archetype shapes are
+ * added to PrefabArchetypeComponents (in this file) plus a new installer
+ * below. The plan is to collapse this pattern entirely once every prefab
+ * key resolves to a ComponentDef in DEF_BY_NAME — see PREFAB_SYSTEM_PLAN.md.
  */
-type TemplateInstaller = (
+type PrefabInstaller = (
   world: World,
   id: EntityId,
-  template: EntityTemplate,
+  template: Prefab,
   content: ContentStore,
 ) => void;
 
-/** Resource-node installer — just attaches the component from template data. */
-const installResourceNode: TemplateInstaller = (world, id, template) => {
-  const rn = template.components.resourceNode;
+/** Resource-node installer — just attaches the component from prefab data. */
+const installResourceNode: PrefabInstaller = (world, id, template) => {
+  const rn = readArchetype(template, "resourceNode");
   if (!rn) return;
   world.write(id, ResourceNode, {
     nodeTypeId: template.id,
@@ -330,8 +362,8 @@ const installResourceNode: TemplateInstaller = (world, id, template) => {
   });
 };
 
-const installLightEmitter: TemplateInstaller = (world, id, template) => {
-  const le = template.components.lightEmitter;
+const installLightEmitter: PrefabInstaller = (world, id, template) => {
+  const le = readArchetype(template, "lightEmitter");
   if (!le) return;
   world.write(id, LightEmitter, le);
 };
@@ -342,7 +374,7 @@ const installLightEmitter: TemplateInstaller = (world, id, template) => {
  * full different entity shapes rather than additive components on a visual
  * prop.
  */
-const INSTALLERS: { [K in keyof EntityTemplateComponents]?: TemplateInstaller } = {
+const INSTALLERS: Partial<Record<keyof PrefabArchetypeComponents, PrefabInstaller>> = {
   resourceNode: installResourceNode,
   lightEmitter: installLightEmitter,
 };
@@ -354,7 +386,7 @@ const INSTALLERS: { [K in keyof EntityTemplateComponents]?: TemplateInstaller } 
 function installVisualShell(
   world: World,
   id: EntityId,
-  template: EntityTemplate,
+  template: Prefab,
   content: ContentStore,
   seed: number,
 ): boolean {
@@ -379,7 +411,7 @@ function installVisualShell(
 }
 
 /**
- * Create a world entity from an EntityTemplate.
+ * Create a world entity from a Prefab.
  *
  * Dispatch:
  *   components.npc         → full NPC entity (delegates to spawnNpc)
@@ -390,7 +422,7 @@ function installVisualShell(
  */
 export function spawnEntity(world: World, content: ContentStore, opts: SpawnEntityOpts): EntityId {
   // ── NPC entities ────────────────────────────────────────────────────────────
-  const npcComp = opts.template.components.npc;
+  const npcComp = readArchetype(opts.template, "npc");
   if (npcComp) {
     const npcTemplate = content.getNpcTemplate(npcComp.npcType);
     return spawnNpc(world, content, {
@@ -407,7 +439,7 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
   }
 
   // ── Workstation entities ─────────────────────────────────────────────────────
-  const wsComp = opts.template.components.workstation;
+  const wsComp = readArchetype(opts.template, "workstation");
   if (wsComp) {
     const wsId = spawnWorkstation(world, content, {
       x: opts.x, y: opts.y, z: opts.z,
@@ -416,7 +448,7 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
       modelId: opts.template.modelId,
     });
     // Additive installers run on the existing workstation entity.
-    for (const key of Object.keys(opts.template.components) as (keyof EntityTemplateComponents)[]) {
+    for (const key of Object.keys(opts.template.components) as (keyof PrefabArchetypeComponents)[]) {
       const installer = INSTALLERS[key];
       if (installer) installer(world, wsId, opts.template, content);
     }
@@ -433,8 +465,8 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
   world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
   installVisualShell(world, id, opts.template, content, seed);
 
-  // Run any additive installers declared by the template.
-  for (const key of Object.keys(opts.template.components) as (keyof EntityTemplateComponents)[]) {
+  // Run any additive installers declared by the prefab.
+  for (const key of Object.keys(opts.template.components) as (keyof PrefabArchetypeComponents)[]) {
     const installer = INSTALLERS[key];
     if (installer) installer(world, id, opts.template, content);
   }

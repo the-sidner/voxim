@@ -134,7 +134,7 @@ export class CraftingSystem implements System {
       return;
     }
 
-    const entityTemplate = this.content.getEntityTemplate(templateId);
+    const entityTemplate = this.content.getPrefab(templateId);
     if (!entityTemplate) {
       log.warn("deploy: player=%s item=%s has no entity template '%s'", entityId, slot.itemType, templateId);
       return;

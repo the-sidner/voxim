@@ -30,7 +30,7 @@ import type {
   BiomeDef,
   ZoneDef,
   LoreFragment,
-  EntityTemplate,
+  Prefab,
   ConceptVerbEntry,
   SkillVerb,
   LoreConcept,
@@ -100,9 +100,9 @@ export interface ContentStore {
   getAllZones(): readonly ZoneDef[];
   getZone(id: string): ZoneDef | null;
 
-  // ---- entity templates ----
-  getEntityTemplate(id: string): EntityTemplate | null;
-  getAllEntityTemplates(): readonly EntityTemplate[];
+  // ---- prefabs ----
+  getPrefab(id: string): Prefab | null;
+  getAllPrefabs(): readonly Prefab[];
 
   // ---- lore fragments ----
   getLoreFragment(id: string): LoreFragment | null;
@@ -168,7 +168,7 @@ export class StaticContentStore implements ContentStore {
   private biomesByPriority: BiomeDef[] = [];
   private zones = new Map<string, ZoneDef>();
   private zonesByPriority: ZoneDef[] = [];
-  private entityTemplates = new Map<string, EntityTemplate>();
+  private prefabs = new Map<string, Prefab>();
   private loreFragments = new Map<string, LoreFragment>();
   private conceptVerbEntries = new Map<string, ConceptVerbEntry>();
   private weaponActions = new Map<string, WeaponActionDef>();
@@ -246,8 +246,8 @@ export class StaticContentStore implements ContentStore {
     this.zonesByPriority.sort((a, b) => a.priority - b.priority);
   }
 
-  registerEntityTemplate(template: EntityTemplate): void {
-    this.entityTemplates.set(template.id, template);
+  registerPrefab(prefab: Prefab): void {
+    this.prefabs.set(prefab.id, prefab);
   }
 
   registerLoreFragment(fragment: LoreFragment): void {
@@ -425,14 +425,14 @@ export class StaticContentStore implements ContentStore {
     return this.zones.get(id) ?? null;
   }
 
-  // ---- entity templates ----
+  // ---- prefabs ----
 
-  getEntityTemplate(id: string): EntityTemplate | null {
-    return this.entityTemplates.get(id) ?? null;
+  getPrefab(id: string): Prefab | null {
+    return this.prefabs.get(id) ?? null;
   }
 
-  getAllEntityTemplates(): readonly EntityTemplate[] {
-    return Array.from(this.entityTemplates.values());
+  getAllPrefabs(): readonly Prefab[] {
+    return Array.from(this.prefabs.values());
   }
 
   // ---- lore ----

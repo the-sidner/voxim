@@ -1,9 +1,9 @@
 {
   "tileId": "tile_0",
   "entities": [
-    { "entityTemplateId": "chopping_block", "x": 259, "y": 256, "z": 4.0 },
-    { "entityTemplateId": "workbench",      "x": 261, "y": 256, "z": 4.0 },
-    { "entityTemplateId": "campfire",       "x": 259, "y": 258, "z": 4.0 }
+    { "prefabId": "chopping_block", "x": 259, "y": 256, "z": 4.0 },
+    { "prefabId": "workbench",      "x": 261, "y": 256, "z": 4.0 },
+    { "prefabId": "campfire",       "x": 259, "y": 258, "z": 4.0 }
   ],
   "npcs": [],
   "proceduralNodes": true,

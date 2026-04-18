@@ -1,5 +1,5 @@
 import type { World } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentStore, PrefabResourceNodeData } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { ResourceNode } from "../components/resource_node.ts";
 import { createLogger } from "../logger.ts";
@@ -22,8 +22,8 @@ export class ResourceNodeSystem implements System {
 
       const remaining = rn.respawnTicksRemaining - 1;
       if (remaining <= 0) {
-        const entityTemplate = this.content.getEntityTemplate(rn.nodeTypeId);
-        const template = entityTemplate?.components.resourceNode;
+        const prefab = this.content.getPrefab(rn.nodeTypeId);
+        const template = prefab?.components.resourceNode as PrefabResourceNodeData | undefined;
         log.info("node respawned: entity=%s type=%s", entityId, rn.nodeTypeId);
         world.set(entityId, ResourceNode, {
           nodeTypeId: rn.nodeTypeId,

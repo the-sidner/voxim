@@ -1,7 +1,7 @@
 import type { World } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentStore, PrefabResourceNodeData } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { ResourceNode } from "../components/resource_node.ts";
@@ -25,8 +25,11 @@ export class ResourceNodeHitHandler implements HitHandler {
     if (!rn) return;
     if (rn.depleted) return;
 
-    const entityTemplate = this.content.getEntityTemplate(rn.nodeTypeId);
-    const rnData = entityTemplate?.components.resourceNode;
+    const prefab = this.content.getPrefab(rn.nodeTypeId);
+    // Prefab.components is open-set; resource-node archetype data is cast
+    // through its known shape. Full schema-backed lookup arrives with the
+    // prefab plan's later phases.
+    const rnData = prefab?.components.resourceNode as PrefabResourceNodeData | undefined;
     const harvestPower = ctx.weaponStats.harvestPower ?? 1;
 
     const toolMatches =

@@ -279,7 +279,7 @@ export interface ItemTemplate {
    */
   weaponAction?: string;
   /**
-   * ID of the EntityTemplate to spawn when this item is deployed into the world.
+   * ID of the Prefab to spawn when this item is deployed into the world.
    * Any item category can carry this field — it is independent of `category`.
    * When present, the item is deployable regardless of its category value.
    * When absent, the deploy system falls back to checking category === "deployable"
@@ -700,8 +700,8 @@ export interface ResourceNodeYield {
   quantityPerHarvestPower?: number;
 }
 
-/** Harvest/resource-node behaviour data. Lives inside EntityTemplate.components. */
-export interface EntityTemplateResourceNodeData {
+/** Harvest/resource-node behaviour data. Lives inside Prefab.components.resourceNode. */
+export interface PrefabResourceNodeData {
   hitPoints: number;
   yields: ResourceNodeYield[];
   requiredToolType: string | null;
@@ -709,65 +709,43 @@ export interface EntityTemplateResourceNodeData {
 }
 
 /**
- * NPC component — links an entity template to an NPC archetype.
+ * NPC component — links a prefab to an NPC archetype.
  * All AI tuning lives in the referenced NpcTemplate; this just says "spawn one of these".
  */
-export interface EntityTemplateNpcData {
+export interface PrefabNpcData {
   /** ID of the entry in npc_templates.json that drives this NPC's behaviour. */
   npcType: string;
 }
 
-/** Component data declared by an entity template. Extend as new component types are added. */
-export interface EntityTemplateComponents {
-  resourceNode?: EntityTemplateResourceNodeData;
-  /**
-   * When present, spawnEntity() creates a full NPC entity (Health, AI, Equipment…)
-   * using the referenced npc_template for all tuning values.
-   */
-  npc?: EntityTemplateNpcData;
-  /**
-   * When present, spawnEntity() creates a WorkstationTag + WorkstationBuffer entity.
-   * stationType must match a recipe source key and a deployable item ID.
-   */
-  workstation?: {
-    stationType: string;
-    capacity?: number;
-  };
-  /**
-   * When present, spawnEntity() writes a LightEmitter component at spawn.
-   * Used for placed torches, campfires, hearths, and other static light sources.
-   */
-  lightEmitter?: {
-    /** Packed RGB color (0xRRGGBB). */
-    color: number;
-    intensity: number;
-    radius: number;
-    flicker: number;
-  };
-}
-
 /**
- * EntityTemplate — prefab-style definition of a spawnable world entity.
+ * Prefab — declarative definition of a spawnable world entity.
  *
- * Owns: which model to render (and derive hitbox from) and which optional
- * behavioural components are attached at spawn.
+ * One prefab file per id in `data/prefabs/*.json`. Referenced by
+ * `tile_layout.json`, by recipe outputs, by item `deploysTo`, and by any
+ * caller of `spawnPrefab`. The prefab IS the archetype — looked up at
+ * runtime (e.g. during harvest for yields) as well as at spawn.
  *
- * Dispatch table in spawnEntity():
- *   components.npc         → full NPC entity
- *   components.workstation → WorkstationTag + WorkstationBuffer + Hitbox
- *   components.resourceNode → ModelRef + Hitbox + ResourceNode
- *   (no components)        → ModelRef + Hitbox only (decorative prop)
+ * `components` is deliberately an open-set dictionary: the loader
+ * validates each entry against `@voxim/tile-server`'s component registry
+ * (see `DEF_BY_NAME`). Unknown keys fail at content-load, not at runtime.
+ * A handful of well-known "archetype" keys (resourceNode, npc,
+ * workstation) carry shapes that aren't directly runtime components —
+ * `spawnPrefab` interprets them. The rest are component data, written
+ * to the entity as-is.
+ *
+ * Prefab inheritance (`extends`) lands in Phase 2 of the prefab plan;
+ * the field is reserved here but not yet honoured.
  */
-export interface EntityTemplate {
+export interface Prefab {
   id: string;
   /**
    * Model to render this entity with. Optional — absent means no visual
-   * representation yet (placeholder/invisible entity).
+   * representation (placeholder/invisible entity).
    */
   modelId?: string;
-  /** Multiplier applied on top of the base ENTITY_SCALE at spawn. Defaults to 1. */
+  /** Multiplier applied on top of the base entity scale at spawn. Defaults to 1. */
   modelScale?: number;
-  components: EntityTemplateComponents;
+  components: Record<string, unknown>;
 }
 
 // ---- concept verb matrix ----
@@ -1104,8 +1082,8 @@ export interface TileTraderListing {
  * transient spawns (NPCs, re-spawned on every server start).
  */
 export interface TileEntityConfig {
-  /** Matches an EntityTemplate id — determines which components are written. */
-  entityTemplateId: string;
+  /** Matches a Prefab id — determines which components are written. */
+  prefabId: string;
   x: number;
   y: number;
   /** World-unit height. Defaults to 4.0 (slightly above ground). */

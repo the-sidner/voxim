@@ -93,9 +93,9 @@ export class ProceduralSpawner {
     if (layout) {
       let spawned = 0;
       for (const cfg of layout.entities) {
-        const template = this.content.getEntityTemplate(cfg.entityTemplateId);
+        const template = this.content.getPrefab(cfg.prefabId);
         if (!template) {
-          console.warn(`[ProceduralSpawner] unknown template "${cfg.entityTemplateId}"`);
+          console.warn(`[ProceduralSpawner] unknown template "${cfg.prefabId}"`);
           continue;
         }
         spawnEntity(this.world, this.content, {
@@ -119,9 +119,9 @@ export class ProceduralSpawner {
     const layout = this.content.getTileLayout();
     if (layout) {
       for (const cfg of layout.npcs) {
-        const template = this.content.getEntityTemplate(cfg.entityTemplateId);
+        const template = this.content.getPrefab(cfg.prefabId);
         if (!template) {
-          console.warn(`[ProceduralSpawner] unknown template "${cfg.entityTemplateId}"`);
+          console.warn(`[ProceduralSpawner] unknown template "${cfg.prefabId}"`);
           continue;
         }
         const id = spawnEntity(this.world, this.content, {
@@ -168,7 +168,7 @@ export class ProceduralSpawner {
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const npcType = weightedPick(zone.npcWeights, rng);
           if (!npcType) continue;
-          const template = this.content.getEntityTemplate(npcType);
+          const template = this.content.getPrefab(npcType);
           if (!template) continue;
           spawnEntity(this.world, this.content, { x: wx, y: wy, template });
           total++;
@@ -205,9 +205,9 @@ export class ProceduralSpawner {
         for (let i = 0; i < spawns; i++) {
           const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const entityTemplateId = weightedPick(zone.entityWeights, rng);
-          if (!entityTemplateId) continue;
-          const template = this.content.getEntityTemplate(entityTemplateId);
+          const prefabId = weightedPick(zone.entityWeights, rng);
+          if (!prefabId) continue;
+          const template = this.content.getPrefab(prefabId);
           if (!template) continue;
           spawnEntity(this.world, this.content, {
             x: wx, y: wy, z: getTerrainZ(wx, wy),
@@ -246,7 +246,7 @@ export class ProceduralSpawner {
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const propTemplateId = weightedPick(zone.propWeights, rng);
           if (!propTemplateId) continue;
-          const propTemplate = this.content.getEntityTemplate(propTemplateId);
+          const propTemplate = this.content.getPrefab(propTemplateId);
           if (!propTemplate) continue;
           spawnEntity(this.world, this.content, {
             x: wx, y: wy, z: getTerrainZ(wx, wy),

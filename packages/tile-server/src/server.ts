@@ -375,7 +375,7 @@ export class TileServer {
       `| ${content.getAllRecipes().length} recipes,`,
       `${content.getAllStructureDefs().length} structures,`,
       `${content.getAllNpcTemplates().length} NPC types,`,
-      `${content.getAllEntityTemplates().length} entity templates,`,
+      `${content.getAllPrefabs().length} entity templates,`,
       `${content.getAllLoreFragments().length} lore fragments,`,
       `${content.getAllConceptVerbEntries().length} skill entries loaded`,
     );
