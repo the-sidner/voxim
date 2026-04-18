@@ -1323,7 +1323,7 @@ Tickets T-110 through T-115 build this in order. T-110 and T-111 are
 independent and can parallel.
 
 ### T-110 · Account storage layer — AccountStore + binary/JSON file format
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: ea1d769
 
 New `packages/gateway/src/account/store.ts` exposes:
 
@@ -1359,7 +1359,12 @@ read round-trip via the codec; missing files return null without throwing;
 two concurrent writes to different users do not interfere.
 
 ### T-111 · Auth primitives — argon2id hashing + opaque session tokens
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 2fe46a6
+
+Note: shipped with PBKDF2-HMAC-SHA256 (600k iterations) rather than
+argon2id — pure Web Crypto, zero new deps. Hash format is self-describing
+so a future swap is a prefix-dispatch in verifyPassword + rehash on
+login.
 
 New `packages/gateway/src/account/auth.ts`.
 
@@ -1386,7 +1391,7 @@ Done when: a hashed password round-trips through verify; a generated token
 validates exactly once per value; expired tokens reject.
 
 ### T-112 · HTTP endpoints — client-facing and server-to-server
-Effort: M   Status: todo   Depends on: T-110, T-111
+Effort: M   Status: done   Commit: 0a290dc
 
 New `packages/gateway/src/account/endpoints.ts`. Routed from the existing
 `handleRequest` in `server.ts` under the `/account/*` prefix.
@@ -1425,7 +1430,7 @@ The server-to-server secret is read from `VOXIM_SERVICE_SECRET` env var and
 the gateway refuses to start without it.
 
 ### T-113 · Gateway handshake requires a session token
-Effort: S   Status: todo   Depends on: T-112
+Effort: S   Status: done   Commit: 1125d71
 
 Kill the auth stub at `packages/gateway/src/session.ts:48-49`
 (`// Auth stub — always accept`).
@@ -1449,7 +1454,11 @@ client that presents a valid token is routed to the tile identified by its
 user record's `lastTileId` (or default tile if null).
 
 ### T-114 · Delete HeritageStore; tile-server becomes an account-service client
-Effort: M   Status: todo   Depends on: T-112
+Effort: M   Status: done   Commit: 49c1c49
+
+Tile server now also re-validates the session token in TileJoinRequest
+against the gateway's /internal/session endpoint. Prevents a client that
+skips the gateway (direct WebTransport) from claiming any userId.
 
 - Delete `packages/tile-server/src/heritage_store.ts` and
   `@voxim/tile-server`'s export of `HeritageStore` from `mod.ts`.
@@ -1488,7 +1497,7 @@ tile posts to the gateway and a restart of the tile server preserves the
 dynasty's generation count; no tile-local persistence of heritage remains.
 
 ### T-115 · Client login UI + connect flow
-Effort: M   Status: todo   Depends on: T-112, T-113
+Effort: M   Status: done   Commit: b91928f
 
 Currently the client connects to the gateway with no credentials. After this
 ticket, the client acquires a session token via HTTP then uses it in the
