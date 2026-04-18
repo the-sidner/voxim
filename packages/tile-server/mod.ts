@@ -62,10 +62,6 @@ export type { EquipmentData } from "./src/components/equipment.ts";
 export { Blueprint } from "./src/components/building.ts";
 export type { BlueprintData, BlueprintMaterial } from "./src/components/building.ts";
 
-// Spawner helpers
-export { spawnPlayer, spawnNpc } from "./src/spawner.ts";
-export type { SpawnPlayerOpts, SpawnNpcOpts } from "./src/spawner.ts";
-
 export { InputRingBuffer } from "./src/input_buffer.ts";
 export { StateHistoryBuffer } from "./src/state_history.ts";
 export type { TickSnapshot, EntitySnapshot } from "./src/state_history.ts";
@@ -84,8 +80,8 @@ export type {
 } from "./src/components/world.ts";
 
 // Spawner
-export { spawnEntity } from "./src/spawner.ts";
-export type { SpawnEntityOpts } from "./src/spawner.ts";
+export { spawnPrefab } from "./src/spawner.ts";
+export type { SpawnPrefabOverrides } from "./src/spawner.ts";
 
 // Lore / skill components
 export { LoreLoadout, ActiveEffects } from "./src/components/lore_loadout.ts";

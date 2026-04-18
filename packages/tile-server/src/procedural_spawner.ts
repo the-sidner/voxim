@@ -15,7 +15,7 @@ import type { World } from "@voxim/engine";
 import type { ContentStore } from "@voxim/content";
 import type { ZoneGridData } from "@voxim/world";
 import { Heightmap } from "@voxim/world";
-import { spawnEntity } from "./spawner.ts";
+import { spawnPrefab } from "./spawner.ts";
 import { TraderInventory } from "./components/trader.ts";
 
 const TILE_WORLD_SIZE = 512;
@@ -93,14 +93,13 @@ export class ProceduralSpawner {
     if (layout) {
       let spawned = 0;
       for (const cfg of layout.entities) {
-        const template = this.content.getPrefab(cfg.prefabId);
-        if (!template) {
-          console.warn(`[ProceduralSpawner] unknown template "${cfg.prefabId}"`);
+        if (!this.content.getPrefab(cfg.prefabId)) {
+          console.warn(`[ProceduralSpawner] unknown prefab "${cfg.prefabId}"`);
           continue;
         }
-        spawnEntity(this.world, this.content, {
+        spawnPrefab(this.world, this.content, cfg.prefabId, {
           x: cfg.x, y: cfg.y, z: cfg.z,
-          template, seed: positionSeed(cfg.x, cfg.y),
+          seed: positionSeed(cfg.x, cfg.y),
         });
         spawned++;
       }
@@ -119,14 +118,12 @@ export class ProceduralSpawner {
     const layout = this.content.getTileLayout();
     if (layout) {
       for (const cfg of layout.npcs) {
-        const template = this.content.getPrefab(cfg.prefabId);
-        if (!template) {
-          console.warn(`[ProceduralSpawner] unknown template "${cfg.prefabId}"`);
+        if (!this.content.getPrefab(cfg.prefabId)) {
+          console.warn(`[ProceduralSpawner] unknown prefab "${cfg.prefabId}"`);
           continue;
         }
-        const id = spawnEntity(this.world, this.content, {
+        const id = spawnPrefab(this.world, this.content, cfg.prefabId, {
           x: cfg.x, y: cfg.y,
-          template,
           instanceName: cfg.name,
         });
         if (cfg.traderListings?.length) {
@@ -168,9 +165,8 @@ export class ProceduralSpawner {
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const npcType = weightedPick(zone.npcWeights, rng);
           if (!npcType) continue;
-          const template = this.content.getPrefab(npcType);
-          if (!template) continue;
-          spawnEntity(this.world, this.content, { x: wx, y: wy, template });
+          if (!this.content.getPrefab(npcType)) continue;
+          spawnPrefab(this.world, this.content, npcType, { x: wx, y: wy });
           total++;
         }
       }
@@ -207,11 +203,10 @@ export class ProceduralSpawner {
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const prefabId = weightedPick(zone.entityWeights, rng);
           if (!prefabId) continue;
-          const template = this.content.getPrefab(prefabId);
-          if (!template) continue;
-          spawnEntity(this.world, this.content, {
+          if (!this.content.getPrefab(prefabId)) continue;
+          spawnPrefab(this.world, this.content, prefabId, {
             x: wx, y: wy, z: getTerrainZ(wx, wy),
-            template, seed: positionSeed(wx, wy),
+            seed: positionSeed(wx, wy),
           });
           total++;
         }
@@ -244,13 +239,12 @@ export class ProceduralSpawner {
         for (let i = 0; i < spawns; i++) {
           const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const propTemplateId = weightedPick(zone.propWeights, rng);
-          if (!propTemplateId) continue;
-          const propTemplate = this.content.getPrefab(propTemplateId);
-          if (!propTemplate) continue;
-          spawnEntity(this.world, this.content, {
+          const propPrefabId = weightedPick(zone.propWeights, rng);
+          if (!propPrefabId) continue;
+          if (!this.content.getPrefab(propPrefabId)) continue;
+          spawnPrefab(this.world, this.content, propPrefabId, {
             x: wx, y: wy, z: getTerrainZ(wx, wy),
-            template: propTemplate, seed: positionSeed(wx, wy),
+            seed: positionSeed(wx, wy),
           });
           total++;
         }

@@ -455,7 +455,7 @@ extracted into separate modules:
 | `admin_server.ts` | HTTP admin endpoint (`/status`, `/save`), gateway registration |
 | `quic_server.ts` | `listenQuic()` — opens Deno.QuicEndpoint, upgrades to WebTransport |
 | `session.ts` | `ClientSession` — per-player input ring buffer, reliable stream writer |
-| `spawner.ts` | `spawnPlayer()`, `spawnNpc()`, `spawnEntity()`, prop/blueprint spawning |
+| `spawner.ts` | `spawnPrefab()` — single entry point for every entity type; `spawnBlueprint()` for structure placement |
 | `aoi.ts` | `computeSessionUpdate()` — AoI diff, entity spawn/despawn, event filter |
 | `component_registry.ts` | `NETWORKED_DEFS[]`, `DEF_BY_TYPE_ID` — derived from `def.wireId` |
 | `save_manager.ts` | Binary save/load for terrain + world state |

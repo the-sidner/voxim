@@ -718,6 +718,38 @@ export interface PrefabNpcData {
 }
 
 /**
+ * Player archetype component — flags a prefab as the player character type and
+ * declares the starter loadout written at spawn. Read by the `player` installer
+ * in spawnPrefab; the actual character identity (id, heritage, spawn position)
+ * is supplied as spawn-time overrides, not declared in the prefab.
+ */
+export interface PrefabPlayerData {
+  /** ItemTemplate ids written to each slot of Inventory at spawn. */
+  startingInventory: Array<{ itemType: string; quantity: number }>;
+  /** Items written to Equipment at spawn. Keys match EquipSlot. */
+  startingEquipment?: Partial<Record<"weapon" | "offHand" | "head" | "chest" | "legs" | "feet" | "back", string>>;
+}
+
+/**
+ * Workstation archetype component — attaches a crafting station to a prefab.
+ * Read by the `workstation` installer in spawnPrefab.
+ */
+export interface PrefabWorkstationData {
+  /** Matches WorkstationDef.id — drives recipe resolution. */
+  stationType: string;
+  /** How many input slots the station exposes. Default 4. */
+  capacity?: number;
+}
+
+/** Light-emitter archetype component — a placed light source on a prop. */
+export interface PrefabLightEmitterData {
+  color: number;
+  intensity: number;
+  radius: number;
+  flicker: number;
+}
+
+/**
  * Prefab — declarative definition of a spawnable world entity.
  *
  * One prefab file per id in `data/prefabs/*.json`. Referenced by

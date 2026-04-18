@@ -24,7 +24,7 @@ import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
-import { spawnEntity } from "../spawner.ts";
+import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("CraftingSystem");
@@ -134,9 +134,8 @@ export class CraftingSystem implements System {
       return;
     }
 
-    const entityTemplate = this.content.getPrefab(templateId);
-    if (!entityTemplate) {
-      log.warn("deploy: player=%s item=%s has no entity template '%s'", entityId, slot.itemType, templateId);
+    if (!this.content.getPrefab(templateId)) {
+      log.warn("deploy: player=%s item=%s has no prefab '%s'", entityId, slot.itemType, templateId);
       return;
     }
 
@@ -148,7 +147,7 @@ export class CraftingSystem implements System {
     const wx = pos.x + Math.sin(facing) * deployOffset;
     const wy = pos.y + Math.cos(facing) * deployOffset;
 
-    spawnEntity(world, this.content, { x: wx, y: wy, z: pos.z, template: entityTemplate });
+    spawnPrefab(world, this.content, templateId, { x: wx, y: wy, z: pos.z });
 
     // Consume one from inventory
     const newSlots = [...inventory.slots];

@@ -30,7 +30,7 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
-import { spawnPlayer } from "./spawner.ts";
+import { spawnPrefab } from "./spawner.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
 import { Heritage } from "./components/heritage.ts";
@@ -712,7 +712,7 @@ export class TileServer {
             return null;
           })) ?? undefined
         : undefined;
-      spawnPlayer(this.world, this.content, {
+      spawnPrefab(this.world, this.content, "player", {
         id: playerId,
         x: spawn.defaultSpawnX,
         y: spawn.defaultSpawnY,

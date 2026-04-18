@@ -1,3 +1,15 @@
+/**
+ * Entity spawning — the single path from a Prefab to a live world entity.
+ *
+ * `spawnPrefab(world, content, prefabId, overrides)` is the only public entry
+ * point. Every other spawn shape (player, NPC, workstation, resource node,
+ * decorative prop) is expressed as a prefab with archetype components, and
+ * dispatched through the installer chain below.
+ *
+ * Blueprints still go through `spawnBlueprint` because they are parameterised
+ * by a StructureDef picked at placement time rather than a fixed prefab —
+ * PREFAB_SYSTEM_PLAN.md Phase 4 folds structures into prefabs as well.
+ */
 import type { World, EntityId, ComponentDef } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import {
@@ -17,7 +29,7 @@ import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { Inventory, CraftingQueue, InteractCooldown } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
-import type { HeritageData } from "@voxim/codecs";
+import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag, WorkstationBuffer } from "./components/building.ts";
@@ -25,179 +37,319 @@ import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./compone
 import { LightEmitter } from "./components/light.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
-import type { ContentStore, Prefab, SkillSlot, PrefabResourceNodeData } from "@voxim/content";
+import type {
+  ContentStore,
+  Prefab,
+  PrefabResourceNodeData,
+  PrefabNpcData,
+  PrefabPlayerData,
+  PrefabWorkstationData,
+  PrefabLightEmitterData,
+} from "@voxim/content";
 import { applyHitboxTemplate, solveSkeleton, REST_POSE, resolveMorphParams } from "@voxim/content";
 
-/**
- * Known archetype keys in a Prefab's open-set components dict. A prefab can
- * declare any of these to opt into the corresponding spawn-time behaviour.
- * The dict is `Record<string, unknown>` on the wire; this type is a read-side
- * convenience for the spawner's dispatch only.
- *
- * Full "every key is a ComponentDef reference" comes in a later phase — see
- * PREFAB_SYSTEM_PLAN.md. Until then, these four archetype shapes are
- * interpreted by spawnEntity below, and any other key with a matching
- * ComponentDef in DEF_BY_NAME is written directly as a component.
- */
-interface PrefabArchetypeComponents {
-  resourceNode?: PrefabResourceNodeData;
-  npc?: { npcType: string };
-  workstation?: { stationType: string; capacity?: number };
-  lightEmitter?: { color: number; intensity: number; radius: number; flicker: number };
-}
-
-// ---- spawn helpers ----
+// ---- small helpers ----
 
 /**
- * Write the component's default value to an entity. Use this instead of
- * duplicating the default literal inline — changes to the default() function
- * propagate automatically, and the spawn sites stay declarative ("attach
- * these components") rather than repeating tuning values already owned by
- * the component definition.
+ * Write the component's default value. Keeps spawn sites declarative — the
+ * default lives with the component def, and changes propagate automatically.
  */
 function writeDefault<T>(world: World, id: EntityId, def: ComponentDef<T>): void {
   world.write(id, def, def.default());
 }
 
-/** Variadic form: attach a list of components in their default state. */
 // deno-lint-ignore no-explicit-any
 function writeDefaults(world: World, id: EntityId, ...defs: ComponentDef<any>[]): void {
   for (const def of defs) writeDefault(world, id, def);
 }
 
+/** Full empty equipment — used as the starting point for Equipment writes. */
+function emptyEquipment(): EquipmentData {
+  return {
+    weapon: null, offHand: null, head: null,
+    chest: null, legs: null, feet: null, back: null,
+  };
+}
+
+// ---- archetype installers ----
+//
+// Each installer inspects prefab.components for its archetype key and, if
+// present, writes the matching components to the entity. Installers are
+// strictly additive: unrelated entities simply skip them. Spawn-time inputs
+// the prefab can't know about (heritage, instanceName) arrive via `overrides`.
+
 /**
- * Write components that every mobile entity (player or NPC) needs. Position
- * and Facing go on every spawn — only the starting x/y vary per-entity, so
- * those are explicit while the rest use component defaults.
+ * Player archetype — writes the mobile character components (movement +
+ * survival + combat state) plus Heritage-derived Health and the prefab's
+ * declared starting inventory/equipment.
  */
-function writeMovementComponents(
+function installPlayer(
   world: World,
+  content: ContentStore,
   id: EntityId,
-  x: number,
-  y: number,
-  speedMultiplier = 1.0,
+  prefab: Prefab,
+  overrides: SpawnPrefabOverrides,
 ): void {
-  world.write(id, Position, { x, y, z: 4.0 });
-  writeDefaults(world, id, Velocity, Facing, InputState);
-  world.write(id, SpeedModifier, { multiplier: speedMultiplier });
-  writeDefault(world, id, EncumbrancePenalty);
-}
+  const data = prefab.components.player as PrefabPlayerData | undefined;
+  if (!data) return;
 
-// ---- player spawning ----
-
-export interface SpawnPlayerOpts {
-  id?: EntityId;
-  x?: number;
-  y?: number;
-  /**
-   * Heritage already fetched from the account service. Required when the
-   * caller wants inherited traits applied to this character; omit for
-   * brand-new sessions with no prior dynasty (tests / dev spawns).
-   * The component is populated from this value; maxHealth is derived via
-   * maxHealthFor.
-   */
-  heritage?: HeritageData;
-}
-
-/**
- * Create a player entity with all required components.
- * Heritage is passed in (the tile fetches it from the account service on
- * join); this function no longer knows anything about dynasty persistence.
- */
-export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlayerOpts = {}): EntityId {
-  const id = opts.id ?? newEntityId();
-  const x = opts.x ?? 256;
-  const y = opts.y ?? 256;
-
-  const heritage = opts.heritage ?? {
+  const heritage = overrides.heritage ?? {
     dynastyId: newEntityId(),
     generation: 0,
     traits: [],
   };
   const maxHealth = maxHealthFor(heritage);
 
-  const scale = content.getGameConfig().world.defaultEntityScale;
-
-  world.create(id);
-  writeMovementComponents(world, id, x, y);
-  // Customised writes: values that differ from the component's default.
+  writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
+  world.write(id, SpeedModifier, { multiplier: 1.0 });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
-  world.write(id, Equipment, {
-    weapon:  { itemType: "wooden_sword", quantity: 1, parts: [] },
-    offHand: null, head: null, chest: null, legs: null, feet: null, back: null,
-  });
-  world.write(id, Inventory, {
-    slots: [
-      { itemType: "stone_axe",      quantity: 1, parts: [] },
-      { itemType: "stone_pickaxe",  quantity: 1, parts: [] },
-      { itemType: "hammer",         quantity: 1, parts: [] },
-      { itemType: "plank",          quantity: 16, parts: [] },
-    ],
-    capacity: 20,
-  });
   world.write(id, Heritage, heritage);
-  world.write(id, ModelRef, { modelId: "human_base", scaleX: scale, scaleY: scale, scaleZ: scale, seed: 0 });
-  // Everything else is the component's default.
+
+  const capacity = content.getGameConfig().player.inventoryCapacity;
+  const slots: InventoryData["slots"] = data.startingInventory.map((s) => ({
+    itemType: s.itemType, quantity: s.quantity, parts: [],
+  }));
+  world.write(id, Inventory, { slots, capacity });
+
+  const eq = emptyEquipment();
+  for (const [slot, itemType] of Object.entries(data.startingEquipment ?? {})) {
+    if (!itemType) continue;
+    eq[slot as keyof EquipmentData] = { itemType, quantity: 1, parts: [] };
+  }
+  world.write(id, Equipment, eq);
+
   writeDefaults(
     world, id,
     Hunger, Thirst, CombatState, Stamina, CorruptionExposure,
     LoreLoadout, ActiveEffects, CraftingQueue, InteractCooldown, AnimationState,
   );
-  // Hitbox not written at spawn — HitboxSystem derives it from the live skeleton each tick.
-
-  return id;
-}
-
-// ---- NPC spawning ----
-
-export interface SpawnNpcOpts {
-  x?: number;
-  y?: number;
-  npcType?: string;
-  name?: string;
-  maxHealth?: number;
-  /** Model ID from the NPC template. Defaults to "human_base" if absent. */
-  modelId?: string;
-  /** Movement speed multiplier from the NPC template (default 1.0). */
-  speedMultiplier?: number;
-  /** Item type to equip as weapon (e.g. "wolf_bite"). Null = unarmed. */
-  weaponItemType?: string | null;
-  /** Skill slots from the NPC template. Written to LoreLoadout if provided. */
-  skillLoadout?: (SkillSlot | null)[];
 }
 
 /**
- * Create an NPC entity. NPCs share the same physics path as players —
- * NpcAiSystem writes their movement intent to InputState each tick.
+ * NPC archetype — writes the mobile character components plus NpcTag and a
+ * skill loadout sourced from the referenced NpcTemplate. NpcTemplate is the
+ * single source of stats (health, speed, weapon, skills, model override);
+ * the prefab only names which template to use via `npc.npcType`.
  */
-export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts = {}): EntityId {
-  const id = newEntityId();
-  const x = opts.x ?? 256;
-  const y = opts.y ?? 256;
-  const maxHealth = opts.maxHealth ?? 80;
-  const scale = content.getGameConfig().world.defaultEntityScale;
+function installNpc(
+  world: World,
+  content: ContentStore,
+  id: EntityId,
+  prefab: Prefab,
+  overrides: SpawnPrefabOverrides,
+): void {
+  const data = prefab.components.npc as PrefabNpcData | undefined;
+  if (!data) return;
 
-  world.create(id);
-  writeMovementComponents(world, id, x, y, opts.speedMultiplier);
+  const template = content.getNpcTemplate(data.npcType);
+  const maxHealth = template?.maxHealth ?? 80;
+  const speedMultiplier = template?.speedMultiplier ?? 1.0;
+
+  writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
+  world.write(id, SpeedModifier, { multiplier: speedMultiplier });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
-  world.write(id, NpcTag, { npcType: opts.npcType ?? "villager", name: opts.name ?? "Villager" });
-  world.write(id, ModelRef, { modelId: opts.modelId ?? "human_base", scaleX: scale, scaleY: scale, scaleZ: scale, seed: 0 });
-  const weapon = opts.weaponItemType ? { itemType: opts.weaponItemType, quantity: 1, parts: [] } : null;
-  world.write(id, Equipment, { weapon, offHand: null, head: null, chest: null, legs: null, feet: null, back: null });
-  const slots = opts.skillLoadout ?? [null, null, null, null];
-  world.write(id, LoreLoadout, { skills: slots, learnedFragmentIds: [], skillCooldowns: slots.map(() => 0) });
-  // Defaulted components.
+  world.write(id, NpcTag, {
+    npcType: data.npcType,
+    name: overrides.instanceName ?? template?.displayName ?? data.npcType,
+  });
+
+  const eq = emptyEquipment();
+  if (template?.weaponItemType) {
+    eq.weapon = { itemType: template.weaponItemType, quantity: 1, parts: [] };
+  }
+  world.write(id, Equipment, eq);
+
+  const slots = template?.skillLoadout ?? [null, null, null, null];
+  world.write(id, LoreLoadout, {
+    skills: slots,
+    learnedFragmentIds: [],
+    skillCooldowns: slots.map(() => 0),
+  });
+
   writeDefaults(
     world, id,
     Hunger, Thirst, CombatState, CorruptionExposure,
     NpcJobQueue, AnimationState, ActiveEffects,
   );
-  // Hitbox not written at spawn — HitboxSystem derives it from the live skeleton each tick.
+}
+
+/**
+ * Workstation archetype — WorkstationTag (server-only) + WorkstationBuffer
+ * (networked). Hit detection and recipe resolution run via WorkstationHitHandler.
+ */
+function installWorkstation(
+  world: World,
+  _content: ContentStore,
+  id: EntityId,
+  prefab: Prefab,
+  _overrides: SpawnPrefabOverrides,
+): void {
+  const data = prefab.components.workstation as PrefabWorkstationData | undefined;
+  if (!data) return;
+
+  world.write(id, WorkstationTag, { stationType: data.stationType });
+  world.write(id, WorkstationBuffer, {
+    stationType: data.stationType,
+    slots: [],
+    capacity: data.capacity ?? 4,
+    activeRecipeId: null,
+    progressTicks: null,
+  });
+  // Workstations without a prefab.modelId fall back to a swingable stub hitbox.
+  if (!prefab.modelId) {
+    world.write(id, Hitbox, {
+      parts: [{
+        id: "body",
+        fromFwd: 0, fromRight: 0, fromUp: 0,
+        toFwd:   0, toRight:   0, toUp: 1.2,
+        radius: 0.6,
+      }],
+    });
+  }
+}
+
+/** Resource-node archetype — attaches the ResourceNode state component. */
+function installResourceNode(
+  world: World,
+  _content: ContentStore,
+  id: EntityId,
+  prefab: Prefab,
+  _overrides: SpawnPrefabOverrides,
+): void {
+  const data = prefab.components.resourceNode as PrefabResourceNodeData | undefined;
+  if (!data) return;
+  world.write(id, ResourceNode, {
+    nodeTypeId: prefab.id,
+    hitPoints: data.hitPoints,
+    depleted: false,
+    respawnTicksRemaining: null,
+  });
+}
+
+/** Light-emitter archetype — placed light source on a prop (torch, lantern). */
+function installLightEmitter(
+  world: World,
+  _content: ContentStore,
+  id: EntityId,
+  prefab: Prefab,
+  _overrides: SpawnPrefabOverrides,
+): void {
+  const data = prefab.components.lightEmitter as PrefabLightEmitterData | undefined;
+  if (!data) return;
+  world.write(id, LightEmitter, data);
+}
+
+type PrefabInstaller = (
+  world: World,
+  content: ContentStore,
+  id: EntityId,
+  prefab: Prefab,
+  overrides: SpawnPrefabOverrides,
+) => void;
+
+/**
+ * Ordered installer chain. Each inspects its archetype key and no-ops when
+ * absent, so the order matters only for writes that overwrite one another
+ * (none do at present). Add new archetypes here.
+ */
+const INSTALLERS: PrefabInstaller[] = [
+  installPlayer,
+  installNpc,
+  installWorkstation,
+  installResourceNode,
+  installLightEmitter,
+];
+
+// ---- visual shell ----
+
+/**
+ * Attach ModelRef + rest-pose-derived Hitbox when the prefab declares a
+ * `modelId`. The Hitbox is a placeholder for tick 0 only: HitboxSystem
+ * overwrites it from the live skeleton each tick for animated entities;
+ * for static props the rest-pose derivation IS the final hitbox.
+ */
+function installVisualShell(
+  world: World,
+  content: ContentStore,
+  id: EntityId,
+  prefab: Prefab,
+  seed: number,
+): void {
+  if (!prefab.modelId) return;
+  const defaultScale = content.getGameConfig().world.defaultEntityScale;
+  const entityScale = defaultScale * (prefab.modelScale ?? 1);
+  world.write(id, ModelRef, {
+    modelId: prefab.modelId,
+    scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
+    seed,
+  });
+  const hitboxParts = content.getHitboxTemplate(prefab.modelId, seed, entityScale);
+  if (hitboxParts.length === 0) return;
+  const skeleton = content.getSkeletonForModel(prefab.modelId);
+  const boneTransforms = skeleton
+    ? solveSkeleton(
+        skeleton,
+        content.getBoneIndex(skeleton.id),
+        REST_POSE,
+        entityScale,
+        resolveMorphParams(skeleton, seed),
+      )
+    : new Map();
+  const parts = applyHitboxTemplate(hitboxParts, boneTransforms);
+  if (parts.length > 0) world.write(id, Hitbox, { parts });
+}
+
+// ---- spawnPrefab ----
+
+export interface SpawnPrefabOverrides {
+  /** Pre-allocated entity id. Used for players, whose id comes from the account service. */
+  id?: EntityId;
+  x?: number;
+  y?: number;
+  z?: number;
+  /** Per-spawn visual variation (morph params, pool selection). Defaults to 0. */
+  seed?: number;
+  /** Heritage record applied by installPlayer. Absent = default-lineage player. */
+  heritage?: HeritageData;
+  /** Display-name override applied by installNpc to NpcTag.name. */
+  instanceName?: string;
+}
+
+/**
+ * Spawn a world entity from a prefab id.
+ *
+ * Writes Position universally, then runs the visual shell installer followed
+ * by every archetype installer. Installers consult `prefab.components` for
+ * their archetype key and skip when absent, so the same entry point covers
+ * players, NPCs, workstations, resource nodes, and decorative props.
+ *
+ * Throws if the prefab id is unknown — callers that may receive untrusted ids
+ * should guard with `content.getPrefab()` first.
+ */
+export function spawnPrefab(
+  world: World,
+  content: ContentStore,
+  prefabId: string,
+  overrides: SpawnPrefabOverrides = {},
+): EntityId {
+  const prefab = content.getPrefab(prefabId);
+  if (!prefab) throw new Error(`spawnPrefab: unknown prefab '${prefabId}'`);
+
+  const id = overrides.id ?? newEntityId();
+  const x = overrides.x ?? 256;
+  const y = overrides.y ?? 256;
+  const z = overrides.z ?? 4.0;
+  const seed = overrides.seed ?? 0;
+
+  world.create(id);
+  world.write(id, Position, { x, y, z });
+  installVisualShell(world, content, id, prefab, seed);
+  for (const install of INSTALLERS) install(world, content, id, prefab, overrides);
 
   return id;
 }
 
-// ---- blueprint spawning ----
+// ---- blueprint spawning (separate path — StructureDef, not Prefab) ----
 
 const CHUNK_SIZE = 32;
 
@@ -246,7 +398,6 @@ export function spawnBlueprint(world: World, content: ContentStore, opts: SpawnB
     materialsDeducted: false,
   });
 
-  // Hitbox: a capsule tall enough to swing at.
   // Walls (heightDelta > 0) get a full-height capsule; floors get a short stub.
   const capsuleHeight = def.heightDelta > 0 ? def.heightDelta : 0.8;
   world.write(id, Hitbox, {
@@ -257,219 +408,6 @@ export function spawnBlueprint(world: World, content: ContentStore, opts: SpawnB
       radius:  0.5,
     }],
   });
-
-  return id;
-}
-
-// ---- workstation spawning ----
-
-export interface SpawnWorkstationOpts {
-  x?: number;
-  y?: number;
-  z?: number;
-  stationType: string;
-  capacity?: number;
-  /** Model ID to render. Provided by the entity template's modelId field. */
-  modelId?: string;
-}
-
-/**
- * Create a workstation entity: WorkstationTag (server-only) + WorkstationBuffer (networked) + Hitbox.
- * Players place items on it via ACTION_INTERACT; attacks resolve recipes via WorkstationHitHandler.
- */
-export function spawnWorkstation(world: World, content: ContentStore, opts: SpawnWorkstationOpts): EntityId {
-  const id = newEntityId();
-  const x = opts.x ?? 256;
-  const y = opts.y ?? 256;
-
-  world.create(id);
-  world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
-  world.write(id, WorkstationTag, { stationType: opts.stationType });
-  world.write(id, WorkstationBuffer, {
-    stationType: opts.stationType,
-    slots: [],
-    capacity: opts.capacity ?? 4,
-    activeRecipeId: null,
-    progressTicks: null,
-  });
-  world.write(id, Hitbox, {
-    parts: [{
-      id: "body",
-      fromFwd: 0, fromRight: 0, fromUp: 0,
-      toFwd:   0, toRight:   0, toUp: 1.2,
-      radius: 0.6,
-    }],
-  });
-
-  if (opts.modelId) {
-    const scale = content.getGameConfig().world.defaultEntityScale;
-    world.write(id, ModelRef, { modelId: opts.modelId, scaleX: scale, scaleY: scale, scaleZ: scale, seed: 0 });
-  }
-
-  return id;
-}
-
-// ---- entity spawning ----
-
-export interface SpawnEntityOpts {
-  x?: number;
-  y?: number;
-  z?: number;
-  template: Prefab;
-  seed?: number;
-  /** Display name override — forwarded to NPC entities, overrides npc_template.displayName. */
-  instanceName?: string;
-}
-
-/**
- * Read a known archetype block from a Prefab's open-set components dict.
- * The dict is `Record<string, unknown>`; this is a tiny, local convenience
- * to avoid repeated casts below. Full open-set dispatch (attaching any
- * ComponentDef-named key directly) arrives in the next prefab-plan phase.
- */
-function readArchetype<K extends keyof PrefabArchetypeComponents>(
-  prefab: Prefab,
-  key: K,
-): PrefabArchetypeComponents[K] | undefined {
-  return prefab.components[key] as PrefabArchetypeComponents[K] | undefined;
-}
-
-/**
- * Per-prefab-archetype installer.
- *
- * When spawnEntity runs it iterates `opts.template.components` and dispatches
- * known archetype keys to the matching installer. New archetype shapes are
- * added to PrefabArchetypeComponents (in this file) plus a new installer
- * below. The plan is to collapse this pattern entirely once every prefab
- * key resolves to a ComponentDef in DEF_BY_NAME — see PREFAB_SYSTEM_PLAN.md.
- */
-type PrefabInstaller = (
-  world: World,
-  id: EntityId,
-  template: Prefab,
-  content: ContentStore,
-) => void;
-
-/** Resource-node installer — just attaches the component from prefab data. */
-const installResourceNode: PrefabInstaller = (world, id, template) => {
-  const rn = readArchetype(template, "resourceNode");
-  if (!rn) return;
-  world.write(id, ResourceNode, {
-    nodeTypeId: template.id,
-    hitPoints: rn.hitPoints,
-    depleted: false,
-    respawnTicksRemaining: null,
-  });
-};
-
-const installLightEmitter: PrefabInstaller = (world, id, template) => {
-  const le = readArchetype(template, "lightEmitter");
-  if (!le) return;
-  world.write(id, LightEmitter, le);
-};
-
-/**
- * Non-npc / non-workstation installers. NPC and workstation entities take the
- * delegation path in spawnEntity before this map is consulted, since they're
- * full different entity shapes rather than additive components on a visual
- * prop.
- */
-const INSTALLERS: Partial<Record<keyof PrefabArchetypeComponents, PrefabInstaller>> = {
-  resourceNode: installResourceNode,
-  lightEmitter: installLightEmitter,
-};
-
-/**
- * Attach the default visual shell: ModelRef + derived Hitbox from the model's
- * rest-pose skeleton. Returns true if a model was attached.
- */
-function installVisualShell(
-  world: World,
-  id: EntityId,
-  template: Prefab,
-  content: ContentStore,
-  seed: number,
-): boolean {
-  if (!template.modelId) return false;
-  const defaultScale = content.getGameConfig().world.defaultEntityScale;
-  const entityScale = defaultScale * (template.modelScale ?? 1);
-  world.write(id, ModelRef, {
-    modelId: template.modelId,
-    scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
-    seed,
-  });
-  const hitboxParts = content.getHitboxTemplate(template.modelId, seed, entityScale);
-  if (hitboxParts.length > 0) {
-    const skeleton = content.getSkeletonForModel(template.modelId);
-    const boneTransforms = skeleton
-      ? solveSkeleton(skeleton, content.getBoneIndex(skeleton.id), REST_POSE, entityScale, resolveMorphParams(skeleton, seed))
-      : new Map();
-    const parts = applyHitboxTemplate(hitboxParts, boneTransforms);
-    if (parts.length > 0) world.write(id, Hitbox, { parts });
-  }
-  return true;
-}
-
-/**
- * Create a world entity from a Prefab.
- *
- * Dispatch:
- *   components.npc         → full NPC entity (delegates to spawnNpc)
- *   components.workstation → workstation entity (delegates to spawnWorkstation,
- *                            then applies additive installers like lightEmitter)
- *   else                   → visual shell (ModelRef + derived Hitbox) +
- *                            any matching installers from INSTALLERS
- */
-export function spawnEntity(world: World, content: ContentStore, opts: SpawnEntityOpts): EntityId {
-  // ── NPC entities ────────────────────────────────────────────────────────────
-  const npcComp = readArchetype(opts.template, "npc");
-  if (npcComp) {
-    const npcTemplate = content.getNpcTemplate(npcComp.npcType);
-    return spawnNpc(world, content, {
-      x: opts.x,
-      y: opts.y,
-      npcType: npcComp.npcType,
-      name:            opts.instanceName ?? npcTemplate?.displayName,
-      maxHealth:       npcTemplate?.maxHealth,
-      modelId:         npcTemplate?.modelTemplateId,
-      speedMultiplier: npcTemplate?.speedMultiplier,
-      weaponItemType:  npcTemplate?.weaponItemType ?? null,
-      skillLoadout:    npcTemplate?.skillLoadout ?? undefined,
-    });
-  }
-
-  // ── Workstation entities ─────────────────────────────────────────────────────
-  const wsComp = readArchetype(opts.template, "workstation");
-  if (wsComp) {
-    const wsId = spawnWorkstation(world, content, {
-      x: opts.x, y: opts.y, z: opts.z,
-      stationType: wsComp.stationType,
-      capacity: wsComp.capacity,
-      modelId: opts.template.modelId,
-    });
-    // Additive installers run on the existing workstation entity.
-    for (const key of Object.keys(opts.template.components) as (keyof PrefabArchetypeComponents)[]) {
-      const installer = INSTALLERS[key];
-      if (installer) installer(world, wsId, opts.template, content);
-    }
-    return wsId;
-  }
-
-  // ── Visual shell (resource nodes, decorative props) ─────────────────────────
-  const id = newEntityId();
-  const x = opts.x ?? 256;
-  const y = opts.y ?? 256;
-  const seed = opts.seed ?? 0;
-
-  world.create(id);
-  world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
-  installVisualShell(world, id, opts.template, content, seed);
-
-  // Run any additive installers declared by the prefab.
-  for (const key of Object.keys(opts.template.components) as (keyof PrefabArchetypeComponents)[]) {
-    const installer = INSTALLERS[key];
-    if (installer) installer(world, id, opts.template, content);
-  }
 
   return id;
 }

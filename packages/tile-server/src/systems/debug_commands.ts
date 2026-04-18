@@ -24,7 +24,7 @@ import { Position, Health, Stamina } from "../components/game.ts";
 import { Inventory } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
 import { WorldClock } from "../components/world.ts";
-import { spawnNpc } from "../spawner.ts";
+import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("DebugCommandSystem");
@@ -85,9 +85,8 @@ export class DebugCommandSystem implements System {
   private _spawnNpc(world: World, entityId: EntityId, npcTemplate: string, quantity: number): void {
     const pos = world.get(entityId, Position);
     if (!pos) return;
-    const npcTmpl = this.content.getNpcTemplate(npcTemplate);
-    if (!npcTmpl) {
-      log.warn("debug_spawn_npc: unknown template '%s'", npcTemplate);
+    if (!this.content.getPrefab(npcTemplate)) {
+      log.warn("debug_spawn_npc: unknown prefab '%s'", npcTemplate);
       return;
     }
     const clampedQty = Math.max(1, Math.min(quantity, 20));
@@ -95,18 +94,12 @@ export class DebugCommandSystem implements System {
       // Scatter spawns in a 3-unit radius ring around the player.
       const angle = (i / clampedQty) * Math.PI * 2;
       const r = 2 + Math.random() * 1.5;
-      spawnNpc(world, this.content, {
+      spawnPrefab(world, this.content, npcTemplate, {
         x: pos.x + Math.cos(angle) * r,
         y: pos.y + Math.sin(angle) * r,
-        npcType:         npcTemplate,
-        modelId:         npcTmpl.modelTemplateId,
-        maxHealth:       npcTmpl.maxHealth,
-        speedMultiplier: npcTmpl.speedMultiplier ?? 1,
-        weaponItemType:  npcTmpl.weaponItemType ?? null,
-        skillLoadout:    npcTmpl.skillLoadout,
       });
     }
-    log.info("debug_spawn_npc: entity=%s template=%s qty=%d", entityId, npcTemplate, clampedQty);
+    log.info("debug_spawn_npc: entity=%s prefab=%s qty=%d", entityId, npcTemplate, clampedQty);
   }
 
   private _setTime(world: World, hour: number): void {

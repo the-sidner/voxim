@@ -8,7 +8,8 @@ import { Position } from "./game.ts";
 // ---- LightEmitter ----
 // Present on any entity that currently emits light: held torch (player/NPC),
 // placed torch, campfire, hearth. EquipmentSystem writes it when a torch is
-// equipped and removes it on unequip. spawnEntity() writes it for placed emitters.
+// equipped and removes it on unequip. spawnPrefab() writes it for placed emitters
+// via the `lightEmitter` prefab archetype.
 
 export const LightEmitter = defineComponent({
   name: "lightEmitter" as const,
