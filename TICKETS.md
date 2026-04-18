@@ -1292,3 +1292,233 @@ does the same; `resolveRecipe` spawns each output and chains via
 `chainNextRecipeId`; `attack_step`, `assembly_step`, `time_step` log
 the full outputs list.
 
+---
+
+## Account service (gateway-hosted)
+
+The gateway gains a second responsibility alongside tile routing: it is the
+outward-facing account service. It owns user identity, credentials, session
+tokens, per-user settings, and persistent heritage. Tile servers become
+stateless with respect to cross-session data — they call the account service
+on player join/death/disconnect instead of keeping their own stores.
+
+**Architecture summary**
+
+- Single process, same as today's `deno task gateway`. New code lives under
+  `packages/gateway/src/account/` with a narrow interface to the existing
+  routing code — clean enough to extract into its own service later if load
+  ever demands it.
+- Password auth (argon2id), opaque session tokens (hashed at rest).
+- Storage is two files per user, same directory:
+  - `users/{userId}.json` — login + settings + activeDynastyId + lastTileId.
+    JSON because these fields evolve freely (new settings, new features).
+  - `users/{userId}.heritage.bin` — `heritageCodec` payload only. Binary
+    because the shape is stable and the codec already exists.
+  - No cross-reference stored; the filename stem is the link. No field is
+    duplicated between the two files, so cross-file atomicity is a non-issue.
+- Tiles call the account service via HTTP using a shared secret in a header.
+- HeritageStore class is deleted entirely; tile-server gains an AccountClient.
+
+Tickets T-110 through T-115 build this in order. T-110 and T-111 are
+independent and can parallel.
+
+### T-110 · Account storage layer — AccountStore + binary/JSON file format
+Effort: M   Status: todo
+
+New `packages/gateway/src/account/store.ts` exposes:
+
+```
+class AccountStore {
+  constructor(rootDir: string)
+  async createUser(loginName, passwordHash): Promise<User>
+  async getUserById(userId): Promise<User | null>
+  async getUserByLogin(loginName): Promise<User | null>
+  async updateUser(userId, patch): Promise<void>          // JSON side only
+  async getHeritage(userId): Promise<HeritageData | null>
+  async putHeritage(userId, data): Promise<void>          // binary side only
+}
+```
+
+Files on disk:
+- `users/{userId}.json` — `{ userId, loginName, passwordHash, createdAt,
+  lastLoginAt, activeDynastyId, lastTileId, settings }`. `settings` is a
+  free-form object; no schema enforced by the store.
+- `users/{userId}.heritage.bin` — `heritageCodec.encode(data)` with file
+  header `u32 magic "VXUH" | u32 version | f64 savedAt | bytes payload`.
+
+Implementation notes:
+- Atomic write via `write tmp + rename`, same as `save_manager.ts`.
+- Login-name → userId lookup: maintain a sibling `users/_index_by_login.json`
+  that maps loginName → userId. Rebuilt lazily by scanning on first use if
+  missing. No DB.
+- Store is oblivious to auth — it does not hash passwords. Caller passes the
+  hash in.
+
+Done when: unit can create, load, patch a user; heritage can be written and
+read round-trip via the codec; missing files return null without throwing;
+two concurrent writes to different users do not interfere.
+
+### T-111 · Auth primitives — argon2id hashing + opaque session tokens
+Effort: M   Status: todo
+
+New `packages/gateway/src/account/auth.ts`.
+
+- Import `hash-wasm` or equivalent Deno-compatible argon2id implementation.
+  Constants: memory 64 MiB, iterations 3, parallelism 1 (sensible defaults;
+  tune on measured hardware).
+- `hashPassword(plain): Promise<string>` returns the full argon2id-encoded
+  string (includes salt + params).
+- `verifyPassword(plain, stored): Promise<boolean>`.
+- `generateToken(): string` — 32 random bytes, base64url-encoded (~43 chars).
+- `hashToken(token): string` — SHA-256 hex. Only the hash is stored; the
+  client holds the raw token.
+
+New `packages/gateway/src/account/session_store.ts` — in-memory for MVP.
+`Map<tokenHash, { userId, expiresAt }>`. On login: generate token, store
+hashed form, return raw to client. On validate: hash incoming, look up, check
+expiry. Token TTL: 7 days, rolling. Revocation is store removal.
+
+Rationale for in-memory first: session state doesn't need to survive gateway
+restarts (users re-login), and a single gateway process is the MVP shape. A
+persistent sessions layer can be added later without changing the API.
+
+Done when: a hashed password round-trips through verify; a generated token
+validates exactly once per value; expired tokens reject.
+
+### T-112 · HTTP endpoints — client-facing and server-to-server
+Effort: M   Status: todo   Depends on: T-110, T-111
+
+New `packages/gateway/src/account/endpoints.ts`. Routed from the existing
+`handleRequest` in `server.ts` under the `/account/*` prefix.
+
+Client endpoints (authenticated by session token in `Authorization: Bearer`):
+- `POST /account/register`    body: `{ loginName, password }`
+                              → 201 `{ userId, token }`
+                              → 409 if loginName taken
+- `POST /account/login`       body: `{ loginName, password }`
+                              → 200 `{ userId, token, activeDynastyId, lastTileId }`
+                              → 401 on bad creds
+- `POST /account/logout`      → 204 (invalidates the bearer token)
+- `GET  /account/me`          → 200 `{ userId, loginName, settings,
+                              activeDynastyId, lastTileId }`
+- `PATCH /account/me/settings` body: arbitrary JSON object
+                              → 204 (merged into settings, atomic)
+
+Server-to-server endpoints (authenticated by `X-Voxim-Service-Secret`
+matching a shared env var; no token):
+- `GET  /internal/session/:token`     → `{ userId, activeDynastyId, lastTileId }`
+                                      Used by gateway handshake; takes the raw
+                                      token, not the hash, for operational
+                                      simplicity.
+- `GET  /internal/user/:userId/heritage` → heritageCodec payload as
+                                      `application/octet-stream`
+- `POST /internal/user/:userId/death`  body: `{ killerId?, cause }`
+                                      Advances `HeritageData.generation`
+                                      and appends a trait per the current
+                                      `HeritageStore.recordDeath` logic.
+                                      → 204
+- `PATCH /internal/user/:userId/location` body: `{ lastTileId }` → 204
+
+Done when: curl against each endpoint with the right auth produces the
+expected status + body; wrong auth returns 401; malformed bodies return 400.
+The server-to-server secret is read from `VOXIM_SERVICE_SECRET` env var and
+the gateway refuses to start without it.
+
+### T-113 · Gateway handshake requires a session token
+Effort: S   Status: todo   Depends on: T-112
+
+Kill the auth stub at `packages/gateway/src/session.ts:48-49`
+(`// Auth stub — always accept`).
+
+Protocol change in `@voxim/protocol`:
+- `GatewayConnectRequest` gains `token: string` (required).
+- `GatewayErrorResponse.code` gains `"unauthenticated"`.
+
+In `handleGatewaySession`:
+- Read `req.token`, hash it, look up in SessionStore via the `/internal/
+  session/:token` endpoint (or directly against the store — the endpoints
+  file exports the store).
+- If invalid/expired: respond `{ type: "error", code: "unauthenticated" }`.
+- If valid: use `session.userId` (not a generated playerId); resolve tile via
+  `TileDirectory.tileForPlayer(userId)` with `userId` as the routing key.
+- Carry `userId` through the `tile` response so the client passes it to the
+  tile server on WT connect.
+
+Done when: a client that presents no token or a bad token is refused; a
+client that presents a valid token is routed to the tile identified by its
+user record's `lastTileId` (or default tile if null).
+
+### T-114 · Delete HeritageStore; tile-server becomes an account-service client
+Effort: M   Status: todo   Depends on: T-112
+
+- Delete `packages/tile-server/src/heritage_store.ts` and
+  `@voxim/tile-server`'s export of `HeritageStore` from `mod.ts`.
+- Add `packages/tile-server/src/account_client.ts` exposing:
+
+  ```
+  class AccountClient {
+    constructor(baseUrl: string, serviceSecret: string)
+    async getHeritage(userId): Promise<HeritageData | null>
+    async recordDeath(userId, killerId?, cause): Promise<void>
+    async updateLocation(userId, tileId): Promise<void>
+  }
+  ```
+
+  Sends `X-Voxim-Service-Secret` on every call. Uses
+  `heritageCodec.decode()` on the response bytes — no JSON parse.
+
+- `spawnPlayer` (and its callers) take `AccountClient` instead of
+  `HeritageStore`. On player join, `await accountClient.getHeritage(userId)`
+  replaces `heritageStore.get(dynastyId)`. `maxHealthFor` moves into a
+  pure function that takes `HeritageData` as input (no store dependency).
+
+- `TileServer.handleSession` disconnect path: `accountClient.recordDeath(userId, …)`
+  replaces `heritageStore.recordDeath(...)`. Make that call `await`ed (the
+  path is already async).
+
+- New `TileServerConfig.gatewayUrl` (already exists) +
+  `TileServerConfig.serviceSecret` (new) wire the client.
+
+- The `dynastyId` concept inside the tile server goes away for tracking
+  purposes — the `Heritage` component still carries it (that's wire-facing
+  data) but it comes from the `getHeritage` response, not from a local map.
+
+Done when: `grep HeritageStore packages/` returns nothing; player death on a
+tile posts to the gateway and a restart of the tile server preserves the
+dynasty's generation count; no tile-local persistence of heritage remains.
+
+### T-115 · Client login UI + connect flow
+Effort: M   Status: todo   Depends on: T-112, T-113
+
+Currently the client connects to the gateway with no credentials. After this
+ticket, the client acquires a session token via HTTP then uses it in the
+WebTransport handshake.
+
+- Add `packages/client/src/ui/login.ts` rendering a minimal login/register
+  form. Two fields (loginName, password), two buttons.
+- On login success: store the token in `localStorage` (acceptable for MVP;
+  XSS is not in scope until we have a moderation story).
+- On page load: if a token exists, try `GET /account/me` first; if 200,
+  skip the login screen and proceed to the game. If 401, clear the stored
+  token and show login.
+- `GatewayConnectRequest` — populate `token` from storage. On
+  `"unauthenticated"` response, clear token and re-show login.
+
+Served by the gateway (via `/account/login.html` or just served alongside
+the existing game client asset bundle). Match the existing theme CSS —
+bare minimum, no framework.
+
+Done when: a fresh browser session asks for login; after register, the
+player connects to the game; after a death and reconnect the player's
+heritage is visible (generation + bonus max-health applied).
+
+---
+
+**Out of scope for T-110–T-115 (explicitly deferred):**
+- Email verification, password reset, OAuth — T-11x future tickets.
+- Rate limiting on login / registration — add when we care about brute-force.
+- Persistent session store — add when gateway horizontal scaling matters.
+- Account deletion / GDPR-style export — add when we have a privacy policy.
+- Admin tools (ban, reset, promote) — separate ticket line.
+- `deno task inspect-user` CLI — nice to have, T-116 candidate.
+
