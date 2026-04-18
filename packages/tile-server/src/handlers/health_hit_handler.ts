@@ -3,11 +3,12 @@ import { ACTION_BLOCK, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
-import { Health, Stamina, CombatState, SkillInProgress } from "../components/game.ts";
+import { Health, Stamina, CombatState } from "../components/game.ts";
+import { SkillInProgress } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
-import type { SkillSystem } from "../systems/skill.ts";
+import type { ResolveStrikePort } from "../events/resolve_strike.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 import type { OutgoingDamageHook, IncomingDamageHook } from "../effects/damage_hook.ts";
 import { createLogger } from "../logger.ts";
@@ -29,7 +30,7 @@ const log = createLogger("HealthHitHandler");
 export class HealthHitHandler implements HitHandler {
   constructor(
     private readonly content: ContentStore,
-    private readonly skillSystem: SkillSystem,
+    private readonly strikes: ResolveStrikePort,
     private readonly deaths: DeathRequestPort,
     private readonly outgoingHooks: Registry<OutgoingDamageHook>,
     private readonly incomingHooks: Registry<IncomingDamageHook>,
@@ -155,7 +156,7 @@ export class HealthHitHandler implements HitHandler {
     const sip = world.get(ctx.attackerId, SkillInProgress);
     if (sip?.pendingSkillVerb.startsWith("strike:")) {
       const slot = parseInt(sip.pendingSkillVerb.slice(7), 10);
-      this.skillSystem.resolve(world, events, ctx.attackerId, slot, ctx.targetId);
+      this.strikes.resolveStrike(world, events, ctx.attackerId, slot, ctx.targetId);
     }
 
     // ── Death / knockback ─────────────────────────────────────────────────────

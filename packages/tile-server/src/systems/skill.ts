@@ -16,12 +16,17 @@ import type { LoreLoadoutData } from "../components/lore_loadout.ts";
 import type { Registry } from "@voxim/engine";
 import type { EffectApplyHandler } from "../effects/effect_handler.ts";
 import type { DeathRequestPort } from "../events/death.ts";
+import type { ResolveStrikePort } from "../events/resolve_strike.ts";
+import { decrementCooldown, deductStamina } from "../combat/helpers.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("SkillSystem");
 const SKILL_ACTION_FLAGS = [ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4];
 
-export class SkillSystem implements System {
+export class SkillSystem implements System, ResolveStrikePort {
+  /** Reads InputState written by NpcAi via world.write(); must precede. */
+  readonly dependsOn = ["NpcAiSystem"];
+
   private currentTick = 0;
   private spatial: SpatialGrid | null = null;
 
@@ -38,7 +43,7 @@ export class SkillSystem implements System {
 
   run(world: World, events: EventEmitter, _dt: number): void {
     for (const { entityId, inputState, loreLoadout } of world.query(InputState, LoreLoadout)) {
-      const newCooldowns = loreLoadout.skillCooldowns.map((c) => Math.max(0, c - 1));
+      const newCooldowns = loreLoadout.skillCooldowns.map(decrementCooldown);
       let loadoutDirty = newCooldowns.some((c, i) => c !== loreLoadout.skillCooldowns[i]);
 
       for (let slot = 0; slot < 4; slot++) {
@@ -67,15 +72,9 @@ export class SkillSystem implements System {
         const healthCost = entry.healthCostBase;
 
         const stamina = world.get(entityId, Stamina);
-        if (stamina) {
-          if (stamina.current < staminaCost) {
-            log.debug("skill blocked: entity=%s slot=%d need=%.1f have=%.1f stamina",
-              entityId, slot, staminaCost, stamina.current);
-            continue;
-          }
-          const next = Math.max(0, stamina.current - staminaCost);
-          world.set(entityId, Stamina, { ...stamina, current: next, exhausted: next <= 0 });
-        } else if (staminaCost > 0) {
+        if (!deductStamina(world, entityId, stamina, staminaCost)) {
+          log.debug("skill blocked: entity=%s slot=%d need=%.1f have=%.1f stamina",
+            entityId, slot, staminaCost, stamina?.current ?? 0);
           continue;
         }
 
@@ -109,12 +108,13 @@ export class SkillSystem implements System {
 
   /**
    * Resolve a skill from a specific slot on a caster targeting a single entity.
-   * Called by ActionSystem when a melee hit connects and pendingSkillVerb === "strike",
-   * or by other systems for invoke/ward/step verbs without a swing.
+   * Called by hit handlers via the ResolveStrikePort interface when a melee
+   * hit connects and pendingSkillVerb === "strike:{slot}". Also reused
+   * internally for invoke/ward/step verbs that fire without a swing.
    *
    * Returns false if the skill fizzled (cooldown, insufficient stamina, no entry).
    */
-  resolve(
+  resolveStrike(
     world: World,
     events: EventEmitter,
     casterId: EntityId,
@@ -139,13 +139,7 @@ export class SkillSystem implements System {
 
     const staminaCost = entry.staminaCostBase + f2.magnitude * entry.inwardScale;
     const stamina = world.get(casterId, Stamina);
-    if (stamina) {
-      if (stamina.current < staminaCost) return false;
-      const next = Math.max(0, stamina.current - staminaCost);
-      world.set(casterId, Stamina, { ...stamina, current: next, exhausted: next <= 0 });
-    } else if (staminaCost > 0) {
-      return false;
-    }
+    if (!deductStamina(world, casterId, stamina, staminaCost)) return false;
 
     const healthCost = entry.healthCostBase;
     if (healthCost > 0) {
@@ -154,7 +148,7 @@ export class SkillSystem implements System {
       world.set(casterId, Health, { ...health, current: health.current - healthCost });
     }
 
-    const newCooldowns = cooldowns.map((c, i) => i === slot ? entry.cooldownTicks : Math.max(0, c - 1));
+    const newCooldowns = cooldowns.map((c, i) => i === slot ? entry.cooldownTicks : decrementCooldown(c));
     world.set(casterId, LoreLoadout, { ...loreLoadout, skillCooldowns: newCooldowns } as LoreLoadoutData);
 
     const magnitude = f1.magnitude * entry.outwardScale;

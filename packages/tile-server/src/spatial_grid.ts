@@ -6,11 +6,12 @@
  * 9 cells (~9 entities on average), versus iterating all ~930 entities.
  *
  * Usage:
- *   grid.rebuild(world);                    // once per tick
- *   const ids = grid.nearby(x, y, radius); // O(cells in radius)
+ *   grid.rebuild(world);                   // once per tick
+ *   const ids = grid.nearby(x, y, radius); // O(cells in radius), fresh array
  *   const ids = grid.cell(cx, cy);         // exact cell, O(1)
  *
- * nearby() returns a reused internal buffer — iterate immediately, do not store.
+ * nearby() allocates a fresh array per call so callers can safely store or
+ * pass it to an async handler without aliasing a shared scratch buffer.
  */
 
 import type { World, EntityId } from "@voxim/engine";
@@ -26,7 +27,6 @@ function cellKey(cx: number, cy: number): number {
 
 export class SpatialGrid {
   private readonly cells = new Map<number, EntityId[]>();
-  private readonly _buf: EntityId[] = [];
 
   /** Repopulate from all entities with a Position component. O(entities). */
   rebuild(world: World): void {
@@ -45,25 +45,25 @@ export class SpatialGrid {
 
   /**
    * All entity IDs in cells that overlap the circle (x, y, radius).
-   * May include entities slightly outside the exact radius — distance-check if needed.
-   * Returns a shared internal buffer; iterate and discard before the next call.
+   * May include entities slightly outside the exact radius — distance-check
+   * if needed. Returns a freshly-allocated array; safe to store or alias.
    */
-  nearby(x: number, y: number, radius: number): readonly EntityId[] {
+  nearby(x: number, y: number, radius: number): EntityId[] {
     const cx0 = Math.max(0, Math.floor((x - radius) / CELL_SIZE));
     const cy0 = Math.max(0, Math.floor((y - radius) / CELL_SIZE));
     const cx1 = Math.min(GRID_WIDTH - 1, Math.floor((x + radius) / CELL_SIZE));
     const cy1 = Math.min(GRID_WIDTH - 1, Math.floor((y + radius) / CELL_SIZE));
 
-    this._buf.length = 0;
+    const out: EntityId[] = [];
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
         const cell = this.cells.get(cellKey(cx, cy));
         if (cell) {
-          for (let i = 0; i < cell.length; i++) this._buf.push(cell[i]);
+          for (let i = 0; i < cell.length; i++) out.push(cell[i]);
         }
       }
     }
-    return this._buf;
+    return out;
   }
 
   /** Entities in one exact cell. Returns empty array if cell is empty. */

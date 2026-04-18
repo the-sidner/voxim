@@ -6,12 +6,10 @@
  * Game-logic components (Health, Hunger, InputState, etc.) are defined here.
  */
 import { defineComponent } from "@voxim/engine";
-import type { Serialiser } from "@voxim/engine"; // used by skillInProgressCodec
 import { ComponentType } from "@voxim/protocol";
 import {
   positionCodec, velocityCodec, facingCodec, buildCodec,
   staminaCodec, combatStateCodec, modelRefCodec, animationStateCodec,
-  WireWriter, WireReader,
 } from "@voxim/codecs";
 import type { PositionData, VelocityData, FacingData, StaminaData, CombatStateData, ModelRefData, AnimationStateData } from "@voxim/codecs";
 
@@ -131,69 +129,6 @@ export const Stamina = defineComponent({
   wireId: ComponentType.stamina,
   codec: staminaCodec,
   default: (): StaminaData => ({ current: 100, max: 100, regenPerSecond: 8, exhausted: false }),
-});
-
-// ---- SkillInProgress ---- present while an action (windup→active→winddown) is executing
-
-/** A single hit record from a sweep — stores which entity and which body part was struck. */
-export interface HitRecord {
-  entityId: string;
-  bodyPart: string;
-}
-
-export interface SkillInProgressData {
-  weaponActionId: string;
-  phase: "windup" | "active" | "winddown";
-  ticksInPhase: number;
-  hitEntities: HitRecord[];
-  /**
-   * Server tick to rewind to for lag-compensated hit detection.
-   * -1 = not yet computed (set on first active tick from InputState.rttMs).
-   * Stable across all ticks of the active phase so every hit in a multi-tick
-   * active window is evaluated against the same historical snapshot.
-   */
-  rewindTick: number;
-  pendingSkillVerb: string;
-}
-
-const skillInProgressCodec: Serialiser<SkillInProgressData> = {
-  encode(v: SkillInProgressData): Uint8Array {
-    const w = new WireWriter();
-    w.writeStr(v.weaponActionId);
-    w.writeStr(v.phase);
-    w.writeU16(v.ticksInPhase);
-    w.writeU16(v.hitEntities.length);
-    for (const h of v.hitEntities) { w.writeStr(h.entityId); w.writeStr(h.bodyPart); }
-    w.writeI32(v.rewindTick);
-    w.writeStr(v.pendingSkillVerb);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): SkillInProgressData {
-    const r = new WireReader(bytes);
-    const weaponActionId = r.readStr();
-    const phase = r.readStr() as SkillInProgressData["phase"];
-    const ticksInPhase = r.readU16();
-    const count = r.readU16();
-    const hitEntities: HitRecord[] = [];
-    for (let i = 0; i < count; i++) hitEntities.push({ entityId: r.readStr(), bodyPart: r.readStr() });
-    const rewindTick = r.readI32();
-    const pendingSkillVerb = r.readStr();
-    return { weaponActionId, phase, ticksInPhase, hitEntities, rewindTick, pendingSkillVerb };
-  },
-};
-
-export const SkillInProgress = defineComponent({
-  name: "skillInProgress" as const,
-  codec: skillInProgressCodec,
-  networked: false,
-  default: (): SkillInProgressData => ({
-    weaponActionId: "unarmed",
-    phase: "windup",
-    ticksInPhase: 0,
-    hitEntities: [] as HitRecord[],
-    rewindTick: -1,
-    pendingSkillVerb: "",
-  }),
 });
 
 // ---- CombatState ---- per-entity combat lifecycle counters

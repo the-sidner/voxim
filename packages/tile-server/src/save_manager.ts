@@ -124,7 +124,12 @@ export class SaveManager {
       encodeEntity(entity.entityId, entity.components, w);
     }
 
-    await Deno.writeFile(this.savePath, w.toBytes());
+    // Atomic write: serialize to a sibling temp file then rename.
+    // A crash (or ENOSPC) between the writeFile and the rename leaves the
+    // original save intact; a successful rename is atomic on POSIX filesystems.
+    const tmpPath = `${this.savePath}.tmp`;
+    await Deno.writeFile(tmpPath, w.toBytes());
+    await Deno.rename(tmpPath, this.savePath);
   }
 
   // ---- load ----
@@ -189,6 +194,20 @@ export class SaveManager {
         }
       }
       loaded++;
+    }
+
+    // EOF validation: a complete save is fully consumed. Trailing bytes are
+    // a sign of truncation or a format mismatch — refuse rather than silently
+    // dropping state.
+    if (!r.done) {
+      console.warn(
+        `[SaveManager] save file has ${bytes.byteLength - r.offset} trailing bytes after the declared ${numEntities} entities — refusing to use`,
+      );
+      return false;
+    }
+    if (loaded !== numEntities) {
+      console.warn(`[SaveManager] save declared ${numEntities} entities but only ${loaded} were recovered — refusing to use`);
+      return false;
     }
 
     console.log(

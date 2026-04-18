@@ -1,4 +1,4 @@
-import type { World, EntityId } from "@voxim/engine";
+import type { World, EntityId, ComponentDef } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import {
   Position,
@@ -24,14 +24,32 @@ import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./compone
 import { LightEmitter } from "./components/light.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
-import type { ContentStore, EntityTemplate, SkillSlot } from "@voxim/content";
+import type { ContentStore, EntityTemplate, SkillSlot, EntityTemplateComponents } from "@voxim/content";
 import { applyHitboxTemplate, solveSkeleton, REST_POSE, resolveMorphParams } from "@voxim/content";
 
-// ---- shared spawn helpers ----
+// ---- spawn helpers ----
 
 /**
- * Write components that every mobile entity (player or NPC) needs:
- * position, velocity, facing, input slot, and movement modifiers.
+ * Write the component's default value to an entity. Use this instead of
+ * duplicating the default literal inline — changes to the default() function
+ * propagate automatically, and the spawn sites stay declarative ("attach
+ * these components") rather than repeating tuning values already owned by
+ * the component definition.
+ */
+function writeDefault<T>(world: World, id: EntityId, def: ComponentDef<T>): void {
+  world.write(id, def, def.default());
+}
+
+/** Variadic form: attach a list of components in their default state. */
+// deno-lint-ignore no-explicit-any
+function writeDefaults(world: World, id: EntityId, ...defs: ComponentDef<any>[]): void {
+  for (const def of defs) writeDefault(world, id, def);
+}
+
+/**
+ * Write components that every mobile entity (player or NPC) needs. Position
+ * and Facing go on every spawn — only the starting x/y vary per-entity, so
+ * those are explicit while the rest use component defaults.
  */
 function writeMovementComponents(
   world: World,
@@ -41,13 +59,9 @@ function writeMovementComponents(
   speedMultiplier = 1.0,
 ): void {
   world.write(id, Position, { x, y, z: 4.0 });
-  world.write(id, Velocity, { x: 0, y: 0, z: 0 });
-  world.write(id, Facing, { angle: 0 });
-  world.write(id, InputState, {
-    facing: 0, movementX: 0, movementY: 0, actions: 0, seq: 0, timestamp: 0, rttMs: 0,
-  });
+  writeDefaults(world, id, Velocity, Facing, InputState);
   world.write(id, SpeedModifier, { multiplier: speedMultiplier });
-  world.write(id, EncumbrancePenalty, { multiplier: 1.0 });
+  writeDefault(world, id, EncumbrancePenalty);
 }
 
 // ---- player spawning ----
@@ -77,20 +91,16 @@ export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlay
   };
   const maxHealth = opts.heritageStore?.maxHealthFor(dynastyId) ?? 100;
 
+  const scale = content.getGameConfig().world.defaultEntityScale;
+
   world.create(id);
   writeMovementComponents(world, id, x, y);
+  // Customised writes: values that differ from the component's default.
   world.write(id, Health, { current: maxHealth, max: maxHealth });
-  world.write(id, Hunger, { value: 0 });
-  world.write(id, Thirst, { value: 0 });
-  world.write(id, CombatState, { blockHeldTicks: 0, staggerTicksRemaining: 0, counterReady: false, iFrameTicksRemaining: 0, dodgeCooldownTicks: 0 });
-  world.write(id, Stamina, { current: 100, max: 100, regenPerSecond: 8, exhausted: false });
-  world.write(id, CorruptionExposure, { level: 0 });
   world.write(id, Equipment, {
     weapon:  { itemType: "wooden_sword", quantity: 1, parts: [] },
     offHand: null, head: null, chest: null, legs: null, feet: null, back: null,
   });
-  world.write(id, LoreLoadout, { skills: [null, null, null, null], learnedFragmentIds: [], skillCooldowns: [0, 0, 0, 0] });
-  world.write(id, ActiveEffects, { effects: [] });
   world.write(id, Inventory, {
     slots: [
       { itemType: "stone_axe",      quantity: 1, parts: [] },
@@ -100,11 +110,14 @@ export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlay
     ],
     capacity: 20,
   });
-  world.write(id, CraftingQueue, { activeRecipeId: null, progressTicks: 0, queued: [] });
-  world.write(id, InteractCooldown, { remaining: 0 });
   world.write(id, Heritage, heritage);
-  world.write(id, ModelRef, { modelId: "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
-  world.write(id, AnimationState, { layers: [], weaponActionId: "", ticksIntoAction: 0 });
+  world.write(id, ModelRef, { modelId: "human_base", scaleX: scale, scaleY: scale, scaleZ: scale, seed: 0 });
+  // Everything else is the component's default.
+  writeDefaults(
+    world, id,
+    Hunger, Thirst, CombatState, Stamina, CorruptionExposure,
+    LoreLoadout, ActiveEffects, CraftingQueue, InteractCooldown, AnimationState,
+  );
   // Hitbox not written at spawn — HitboxSystem derives it from the live skeleton each tick.
 
   return id;
@@ -137,23 +150,23 @@ export function spawnNpc(world: World, content: ContentStore, opts: SpawnNpcOpts
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
   const maxHealth = opts.maxHealth ?? 80;
+  const scale = content.getGameConfig().world.defaultEntityScale;
 
   world.create(id);
   writeMovementComponents(world, id, x, y, opts.speedMultiplier);
   world.write(id, Health, { current: maxHealth, max: maxHealth });
-  world.write(id, Hunger, { value: 0 });
-  world.write(id, Thirst, { value: 0 });
-  world.write(id, CombatState, { blockHeldTicks: 0, staggerTicksRemaining: 0, counterReady: false, iFrameTicksRemaining: 0, dodgeCooldownTicks: 0 });
-  world.write(id, CorruptionExposure, { level: 0 });
   world.write(id, NpcTag, { npcType: opts.npcType ?? "villager", name: opts.name ?? "Villager" });
-  world.write(id, NpcJobQueue, { current: null, scheduled: [], plan: null });
-  world.write(id, ModelRef, { modelId: opts.modelId ?? "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
+  world.write(id, ModelRef, { modelId: opts.modelId ?? "human_base", scaleX: scale, scaleY: scale, scaleZ: scale, seed: 0 });
   const weapon = opts.weaponItemType ? { itemType: opts.weaponItemType, quantity: 1, parts: [] } : null;
   world.write(id, Equipment, { weapon, offHand: null, head: null, chest: null, legs: null, feet: null, back: null });
-  world.write(id, AnimationState, { layers: [], weaponActionId: "", ticksIntoAction: 0 });
   const slots = opts.skillLoadout ?? [null, null, null, null];
   world.write(id, LoreLoadout, { skills: slots, learnedFragmentIds: [], skillCooldowns: slots.map(() => 0) });
-  world.write(id, ActiveEffects, { effects: [] });
+  // Defaulted components.
+  writeDefaults(
+    world, id,
+    Hunger, Thirst, CombatState, CorruptionExposure,
+    NpcJobQueue, AnimationState, ActiveEffects,
+  );
   // Hitbox not written at spawn — HitboxSystem derives it from the live skeleton each tick.
 
   return id;
@@ -239,7 +252,7 @@ export interface SpawnWorkstationOpts {
  * Create a workstation entity: WorkstationTag (server-only) + WorkstationBuffer (networked) + Hitbox.
  * Players place items on it via ACTION_INTERACT; attacks resolve recipes via WorkstationHitHandler.
  */
-export function spawnWorkstation(world: World, _content: ContentStore, opts: SpawnWorkstationOpts): EntityId {
+export function spawnWorkstation(world: World, content: ContentStore, opts: SpawnWorkstationOpts): EntityId {
   const id = newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
@@ -264,43 +277,9 @@ export function spawnWorkstation(world: World, _content: ContentStore, opts: Spa
   });
 
   if (opts.modelId) {
-    world.write(id, ModelRef, { modelId: opts.modelId, scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 });
+    const scale = content.getGameConfig().world.defaultEntityScale;
+    world.write(id, ModelRef, { modelId: opts.modelId, scaleX: scale, scaleY: scale, scaleZ: scale, seed: 0 });
   }
-
-  return id;
-}
-
-// ---- prop spawning ----
-
-export interface SpawnPropOpts {
-  x?: number;
-  y?: number;
-  /** World-unit height (z). Should be the terrain surface height at (x, y). */
-  z?: number;
-  modelId: string;
-  scale?: number;
-  /**
-   * Seed for procedural model variation.  Pass a non-zero value when the model
-   * uses pool sub-objects so each prop instance looks distinct.
-   * Use positionSeed(x, y) for stable, position-based variation that survives
-   * server restarts without needing to be persisted.
-   */
-  seed?: number;
-}
-
-/**
- * Create a purely decorative prop entity (Position + ModelRef only).
- * Props are not interactive and carry no game-state components.
- */
-export function spawnProp(world: World, opts: SpawnPropOpts): EntityId {
-  const id = newEntityId();
-  const x = opts.x ?? 256;
-  const y = opts.y ?? 256;
-  const scale = opts.scale ?? 0.35;
-
-  world.create(id);
-  world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
-  world.write(id, ModelRef, { modelId: opts.modelId, scaleX: scale, scaleY: scale, scaleZ: scale, seed: opts.seed ?? 0 });
 
   return id;
 }
@@ -317,16 +296,90 @@ export interface SpawnEntityOpts {
   instanceName?: string;
 }
 
-const ENTITY_SCALE = 0.35;
+/**
+ * Per-template-component installer.
+ *
+ * When spawnEntity runs it iterates `opts.template.components` and dispatches
+ * each key to the matching installer. Adding a new optional component to
+ * EntityTemplateComponents is two steps: add the shape to the types file and
+ * register an installer here — no churn in the main spawnEntity body.
+ */
+type TemplateInstaller = (
+  world: World,
+  id: EntityId,
+  template: EntityTemplate,
+  content: ContentStore,
+) => void;
+
+/** Resource-node installer — just attaches the component from template data. */
+const installResourceNode: TemplateInstaller = (world, id, template) => {
+  const rn = template.components.resourceNode;
+  if (!rn) return;
+  world.write(id, ResourceNode, {
+    nodeTypeId: template.id,
+    hitPoints: rn.hitPoints,
+    depleted: false,
+    respawnTicksRemaining: null,
+  });
+};
+
+const installLightEmitter: TemplateInstaller = (world, id, template) => {
+  const le = template.components.lightEmitter;
+  if (!le) return;
+  world.write(id, LightEmitter, le);
+};
+
+/**
+ * Non-npc / non-workstation installers. NPC and workstation entities take the
+ * delegation path in spawnEntity before this map is consulted, since they're
+ * full different entity shapes rather than additive components on a visual
+ * prop.
+ */
+const INSTALLERS: { [K in keyof EntityTemplateComponents]?: TemplateInstaller } = {
+  resourceNode: installResourceNode,
+  lightEmitter: installLightEmitter,
+};
+
+/**
+ * Attach the default visual shell: ModelRef + derived Hitbox from the model's
+ * rest-pose skeleton. Returns true if a model was attached.
+ */
+function installVisualShell(
+  world: World,
+  id: EntityId,
+  template: EntityTemplate,
+  content: ContentStore,
+  seed: number,
+): boolean {
+  if (!template.modelId) return false;
+  const defaultScale = content.getGameConfig().world.defaultEntityScale;
+  const entityScale = defaultScale * (template.modelScale ?? 1);
+  world.write(id, ModelRef, {
+    modelId: template.modelId,
+    scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
+    seed,
+  });
+  const hitboxParts = content.getHitboxTemplate(template.modelId, seed, entityScale);
+  if (hitboxParts.length > 0) {
+    const skeleton = content.getSkeletonForModel(template.modelId);
+    const boneTransforms = skeleton
+      ? solveSkeleton(skeleton, content.getBoneIndex(skeleton.id), REST_POSE, entityScale, resolveMorphParams(skeleton, seed))
+      : new Map();
+    const parts = applyHitboxTemplate(hitboxParts, boneTransforms);
+    if (parts.length > 0) world.write(id, Hitbox, { parts });
+  }
+  return true;
+}
 
 /**
  * Create a world entity from an EntityTemplate.
  *
- * Dispatch table (checked in order):
+ * Dispatch:
  *   components.npc         → full NPC entity (delegates to spawnNpc)
- *   components.workstation → WorkstationTag + WorkstationBuffer + Hitbox + optional ModelRef
- *   components.resourceNode → ModelRef + Hitbox + ResourceNode
- *   (no components)        → ModelRef + Hitbox only (decorative prop)
+ *   components.workstation → workstation entity (delegates to spawnWorkstation,
+ *                            then applies additive installers like lightEmitter)
+ *   else                   → visual shell (ModelRef + derived Hitbox) +
+ *                            any matching installers from INSTALLERS
  */
 export function spawnEntity(world: World, content: ContentStore, opts: SpawnEntityOpts): EntityId {
   // ── NPC entities ────────────────────────────────────────────────────────────
@@ -355,12 +408,15 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
       capacity: wsComp.capacity,
       modelId: opts.template.modelId,
     });
-    const le = opts.template.components.lightEmitter;
-    if (le) world.write(wsId, LightEmitter, le);
+    // Additive installers run on the existing workstation entity.
+    for (const key of Object.keys(opts.template.components) as (keyof EntityTemplateComponents)[]) {
+      const installer = INSTALLERS[key];
+      if (installer) installer(world, wsId, opts.template, content);
+    }
     return wsId;
   }
 
-  // ── Resource nodes and decorative props ─────────────────────────────────────
+  // ── Visual shell (resource nodes, decorative props) ─────────────────────────
   const id = newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
@@ -368,38 +424,12 @@ export function spawnEntity(world: World, content: ContentStore, opts: SpawnEnti
 
   world.create(id);
   world.write(id, Position, { x, y, z: opts.z ?? 4.0 });
+  installVisualShell(world, id, opts.template, content, seed);
 
-  if (opts.template.modelId) {
-    const entityScale = ENTITY_SCALE * (opts.template.modelScale ?? 1);
-    world.write(id, ModelRef, {
-      modelId: opts.template.modelId,
-      scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
-      seed,
-    });
-    const hitboxParts = content.getHitboxTemplate(opts.template.modelId, seed, entityScale);
-    if (hitboxParts.length > 0) {
-      const skeleton = content.getSkeletonForModel(opts.template.modelId);
-      const boneTransforms = skeleton
-        ? solveSkeleton(skeleton, content.getBoneIndex(skeleton.id), REST_POSE, entityScale, resolveMorphParams(skeleton, seed))
-        : new Map();
-      const parts = applyHitboxTemplate(hitboxParts, boneTransforms);
-      if (parts.length > 0) world.write(id, Hitbox, { parts });
-    }
-  }
-
-  const rn = opts.template.components.resourceNode;
-  if (rn) {
-    world.write(id, ResourceNode, {
-      nodeTypeId: opts.template.id,
-      hitPoints: rn.hitPoints,
-      depleted: false,
-      respawnTicksRemaining: null,
-    });
-  }
-
-  const le = opts.template.components.lightEmitter;
-  if (le) {
-    world.write(id, LightEmitter, le);
+  // Run any additive installers declared by the template.
+  for (const key of Object.keys(opts.template.components) as (keyof EntityTemplateComponents)[]) {
+    const installer = INSTALLERS[key];
+    if (installer) installer(world, id, opts.template, content);
   }
 
   return id;

@@ -18,7 +18,6 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { Heightmap, CHUNK_SIZE } from "@voxim/world";
-import { localToWorld, segSegDistSq } from "@voxim/content";
 import type { ContentStore } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import { TileEvents } from "@voxim/protocol";
@@ -30,6 +29,7 @@ import { ProjectileData } from "../components/projectile.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import type { DerivedItemStats } from "@voxim/content";
+import { testHitboxIntersection } from "../combat/hit_resolver.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ProjectileSystem");
@@ -106,25 +106,22 @@ export class ProjectileSystem implements System {
           ?? 0;
         const targetActions = world.get(candidateId, InputState)?.actions ?? 0;
 
-        // Segment from prevPos → newPos (projectile trajectory this tick)
+        // Projectile trajectory for this tick: prevPos → newPos.
+        // Single segment (no swept prev/curr) — projectiles are small and fast,
+        // but the tick dt is short enough that a single segment is faithful.
         const p0: Vec3 = prevPos;
         const p1: Vec3 = { x: newPos.x, y: newPos.y, z: newPos.z };
         const tPos: Vec3 = { x: targetPos.x, y: targetPos.y, z: targetPos.z };
 
-        let hitBodyPart = "";
-        for (const part of hitbox.parts) {
-          const partFrom = localToWorld(part.fromFwd, part.fromRight, part.fromUp, tPos, targetFacing);
-          const partTo   = localToWorld(part.toFwd,   part.toRight,   part.toUp,   tPos, targetFacing);
-
-          const combinedRadiusSq = (projectileData.radius + part.radius) ** 2;
-          const distSq = segSegDistSq(p0, p1, partFrom, partTo);
-          if (distSq <= combinedRadiusSq) {
-            hitBodyPart = part.id;
-            break;
-          }
-        }
-
-        if (!hitBodyPart) continue;
+        const hit = testHitboxIntersection(
+          hitbox,
+          tPos,
+          targetFacing,
+          projectileData.radius,
+          [{ from: p0, to: p1 }],
+        );
+        if (!hit) continue;
+        const hitBodyPart = hit.partId;
 
         log.info("projectile hit: entity=%s owner=%s target=%s part=%s",
           entityId, projectileData.ownerId, candidateId, hitBodyPart);

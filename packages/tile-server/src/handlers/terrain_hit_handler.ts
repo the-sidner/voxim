@@ -14,7 +14,8 @@ import { newEntityId } from "@voxim/engine";
 import { Heightmap, MaterialGrid, CHUNK_SIZE, snapHeight } from "@voxim/world";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
-import { Position, InputState, SkillInProgress } from "../components/game.ts";
+import { Position, InputState } from "../components/game.ts";
+import { SkillInProgress } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
 import { ItemData } from "../components/items.ts";
 import { createLogger } from "../logger.ts";
@@ -22,6 +23,12 @@ import { createLogger } from "../logger.ts";
 const log = createLogger("TerrainDigSystem");
 
 export class TerrainDigSystem implements System {
+  /**
+   * Reads InputState (NpcAi writes via world.write()) and SkillInProgress
+   * (Action writes via world.write() on swing start); both must precede.
+   */
+  readonly dependsOn = ["NpcAiSystem", "ActionSystem"];
+
   constructor(private readonly content: ContentStore) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {

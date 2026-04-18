@@ -16,7 +16,6 @@ export {
   Stamina,
   Lifetime,
   CombatState,
-  SkillInProgress,
 } from "./src/components/game.ts";
 export type {
   PositionData,
@@ -29,8 +28,9 @@ export type {
   StaminaData,
   LifetimeData,
   CombatStateData,
-  SkillInProgressData,
 } from "./src/components/game.ts";
+export { SkillInProgress } from "./src/components/combat.ts";
+export type { SkillInProgressData, HitRecord } from "./src/components/combat.ts";
 
 // NPC components
 export { NpcTag, NpcJobQueue } from "./src/components/npcs.ts";

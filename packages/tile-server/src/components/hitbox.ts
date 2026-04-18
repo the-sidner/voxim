@@ -5,9 +5,7 @@ import type { HitboxData } from "@voxim/codecs";
 export type { HitboxData };
 
 /**
- * Collision geometry for hit detection.
- *
- * Networked — sent to clients so they can visualise hitboxes in debug mode.
+ * Collision geometry for hit detection. Server-only — clients never receive it.
  * All coordinates are entity-local (right=X, fwd=Y, up=Z).
  *
  * For animated entities (players, NPCs): written each tick by HitboxSystem,
@@ -17,6 +15,9 @@ export type { HitboxData };
  *
  * An entity without this component (or with an empty parts array) is invisible
  * to ActionSystem's hit detection. This is the single gate for hittability.
+ *
+ * Lives in @voxim/codecs despite being server-only because it reuses the codec
+ * building blocks there; the client never imports it.
  */
 export const Hitbox = defineComponent({
   name: "hitbox" as const,

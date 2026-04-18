@@ -14,15 +14,15 @@
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
-import { chunksFromBuffers, loadTerrainCache, seedFromTileId, Heightmap } from "@voxim/world";
+import { chunksFromBuffers, loadTerrainCache, seedFromTileId } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
-import { TileEvents, binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
+import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 
 // Bits that represent held keys — use latest-wins rather than OR across the tick.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
-import type { BinaryComponentDelta, CommandPayload, GameEvent, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
+import type { BinaryComponentDelta, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
 import { loadContentStore, type ContentStore } from "@voxim/content";
 import { ClientSession } from "./session.ts";
@@ -30,9 +30,10 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { HeritageStore } from "./heritage_store.ts";
-import { spawnPlayer, spawnEntity } from "./spawner.ts";
+import { spawnPlayer } from "./spawner.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
+import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
 import { PhysicsSystem } from "./systems/physics.ts";
@@ -70,11 +71,13 @@ import { DynastySystem } from "./systems/dynasty.ts";
 import { AnimationSystem } from "./systems/animation.ts";
 import { HitboxSystem } from "./systems/hitbox.ts";
 import { DebugCommandSystem } from "./systems/debug_commands.ts";
-import { TraderInventory } from "./components/trader.ts";
 import { WorldClock, TileCorruption } from "./components/world.ts";
 import { SaveManager } from "./save_manager.ts";
 import { serializePlayer } from "./handoff.ts";
 import { SpatialGrid } from "./spatial_grid.ts";
+import { ProceduralSpawner } from "./procedural_spawner.ts";
+import { EventRouter } from "./event_router.ts";
+import { sortSystemsByDependencies } from "./system_order.ts";
 import type { TickContext } from "./system.ts";
 
 export interface TileServerConfig {
@@ -126,42 +129,6 @@ export interface TileServerConfig {
   devMode?: boolean;
 }
 
-// ── Procedural spawning helpers ───────────────────────────────────────────────
-
-/**
- * Mulberry32 seeded PRNG — returns a function that yields [0, 1) each call.
- */
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return function (): number {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/**
- * Pick a key from a weight table using a single [0,1) random sample.
- */
-/** Deterministic position-based seed — same (x,y) always gives same visual/hitbox variation. */
-function positionSeed(x: number, y: number): number {
-  return ((Math.imul(x * 100 | 0, 0x45d9f3b) ^ Math.imul(y * 100 | 0, 0x119de1f3)) >>> 0);
-}
-
-function weightedPick(weights: Record<string, number>, rng: () => number): string | null {
-  const entries = Object.entries(weights).filter(([, w]) => w > 0);
-  if (entries.length === 0) return null;
-  const total = entries.reduce((s, [, w]) => s + w, 0);
-  let r = rng() * total;
-  for (const [key, w] of entries) {
-    r -= w;
-    if (r <= 0) return key;
-  }
-  return entries[entries.length - 1][0];
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 export class TileServer {
   private world = new World();
@@ -175,24 +142,22 @@ export class TileServer {
   private tickLoop = new TickLoop();
   private stateHistory = new StateHistoryBuffer();
   private heritageStore = new HeritageStore();
-  /** Maps playerId → dynastyId so heritage can be recorded on death. */
-  private playerDynasties = new Map<EntityId, string>();
   private content!: ContentStore;
-
-  // Events accumulated by EventBus subscribers during a tick, sent in the next StateMessage
-  private pendingEvents: GameEvent[] = [];
+  // Initialised in start() — subscribes to the event bus and drained each tick.
+  private events!: EventRouter;
 
   // Initialised in start() — ActionSystem needs tickRateHz and stateHistory
   private systems: System[] = [];
 
-  /** Zone grid built during terrain generation — used for biome-aware NPC/node placement. */
-  private zoneGrid: ZoneGridData | null = null;
-  /** Tile seed stored for deterministic procedural spawning RNG. */
-  private tileSeed = 0;
   private saveManager: SaveManager | null = null;
   private saveTickCounter = 0;
-  private static readonly SAVE_INTERVAL_TICKS = 6000; // 5 min at 20 Hz
   private gatewayUrl: string | null = null;
+  /**
+   * Players for whom a handoff fetch is in flight. Prevents a second
+   * GateApproached event (or rapidly-repeated collisions) from initiating a
+   * duplicate handoff while the first is still pending its gateway round-trip.
+   */
+  private handingOff = new Set<EntityId>();
 
   async start(config: TileServerConfig): Promise<void> {
     const tickRateHz = config.tickRateHz ?? 20;
@@ -272,10 +237,29 @@ export class TileServer {
       }
     }
 
-    // System execution order matches the spec's declared order.
-    // DeathSystem runs last: it processes RequestDeath calls collected during
-    // the tick (dedupes, runs hooks, publishes EntityDied, destroys).
-    this.systems = [
+    // SkillSystem is constructed up front because HealthHitHandler depends on
+    // it via the ResolveStrikePort interface. Both land in the systems array
+    // below; SkillSystem runs before ActionSystem so cooldown decrements are
+    // visible to swings initiated the same tick.
+    const skill = new SkillSystem(content, effects.apply, deathSystem);
+    const hitHandlers = [
+      new HealthHitHandler(content, skill, deathSystem, effects.outgoingDamage, effects.incomingDamage),
+      new ResourceNodeHitHandler(content),
+      new BlueprintHitHandler(),
+      new WorkstationHitHandler(content, recipeSteps),
+    ];
+
+    // System pipeline, declared in reading order. Real ordering constraints
+    // live on each system as `dependsOn` (e.g. PhysicsSystem.dependsOn =
+    // ["NpcAiSystem"] because NpcAi writes InputState via world.write() that
+    // Physics must see this tick). sortSystemsByDependencies computes the
+    // final order: it honours dependsOn and preserves this reading order for
+    // any pair whose relative ordering isn't load-bearing.
+    //
+    // DeathSystem stays last so it drains RequestDeath calls accumulated
+    // this tick; its position is implicit in the declaration order since no
+    // other system depends on it.
+    const declared: System[] = [
       new NpcAiSystem(content, jobs, behaviorTrees),
       new HungerSystem(content, deathSystem),
       new StaminaSystem(content),
@@ -288,26 +272,13 @@ export class TileServer {
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
       new CorruptionSystem(content, deathSystem),
-      // EncumbranceSystem writes EncumbrancePenalty (the base speed multiplier from weight).
-      // BuffSystem reads EncumbrancePenalty and composes it with all speed ActiveEffects,
-      // writing the final SpeedModifier. PhysicsSystem reads SpeedModifier.
-      // Order must be: Encumbrance → Buff → Physics.
       new EncumbranceSystem(content),
       new BuffSystem(effects.tick, effects.compose, deathSystem),
       new PhysicsSystem(content),
       new DodgeSystem(content),
-      ...((): [SkillSystem, ActionSystem, ProjectileSystem] => {
-        const skill = new SkillSystem(content, effects.apply, deathSystem);
-        const hitHandlers = [
-          new HealthHitHandler(content, skill, deathSystem, effects.outgoingDamage, effects.incomingDamage),
-          new ResourceNodeHitHandler(content),
-          new BlueprintHitHandler(),
-          new WorkstationHitHandler(content, recipeSteps),
-        ];
-        const action = new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers);
-        const projectile = new ProjectileSystem(content, hitHandlers);
-        return [skill, action, projectile];
-      })(),
+      skill,
+      new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers),
+      new ProjectileSystem(content, hitHandlers),
       new TerrainDigSystem(content),
       new TraderSystem(content),
       new DynastySystem(content),
@@ -316,6 +287,7 @@ export class TileServer {
       new DebugCommandSystem(content, config.devMode ?? false),
       deathSystem,
     ];
+    this.systems = sortSystemsByDependencies(declared);
 
     // Set up persistence (optional — only if saveDir is configured)
     if (config.saveDir) {
@@ -324,8 +296,10 @@ export class TileServer {
 
     // Populate the world — load from save if one exists, otherwise generate fresh terrain
     const loaded = this.saveManager ? await this.saveManager.load(this.world) : false;
+    let zoneGrid: ZoneGridData | null = null;
+    let tileSeed = 0;
     if (!loaded) {
-      this.tileSeed = seedFromTileId(config.tileId);
+      tileSeed = seedFromTileId(config.tileId);
       const cachePath = config.terrainCacheFile ?? `./terrain_${config.tileId}.bin`;
       const loadedBuffers = await loadTerrainCache(cachePath);
       if (!loadedBuffers) {
@@ -335,19 +309,19 @@ export class TileServer {
       }
       console.log(`[TileServer] loaded terrain from cache: ${cachePath}`);
       chunksFromBuffers(this.world, loadedBuffers.heightBuffer, loadedBuffers.materialBuffer);
-      this.zoneGrid = loadedBuffers.zoneGrid;
+      zoneGrid = loadedBuffers.zoneGrid;
       this.spawnWorldState(content);
-      this.spawnInitialEntities(content);
     }
 
-    // NPCs are always re-spawned from layout (not persisted across restarts)
-    this.spawnInitialNpcs(content);
+    const procedural = new ProceduralSpawner(this.world, content, zoneGrid, tileSeed);
+    if (!loaded) procedural.spawnInitialEntities();
+    // NPCs and props are always re-spawned from layout (not persisted across restarts).
+    procedural.spawnInitialNpcs();
+    procedural.spawnProceduralProps();
 
-    // Props are always re-spawned (decorative, not persisted)
-    this.spawnProceduralProps(content);
-
-    // Subscribe to tile events that need to reach clients as GameEvents
-    this.subscribeNetworkEvents();
+    // Subscribe to tile events that need to reach clients as GameEvents.
+    // The router is responsible for translation; handoff side-effects stay here.
+    this.events = new EventRouter(this.eventBus, (p) => this.initiateHandoff(p));
 
     // Start the WebTransport QUIC server (Deno.QuicEndpoint, requires --unstable-net)
     listenQuic(config, (session) => this.handleSession(session));
@@ -462,7 +436,7 @@ export class TileServer {
     deferredEvents.flush(this.eventBus);
 
     // ── 5. BUILD DELTA ──────────────────────────────────────────────────────
-    const events = this.pendingEvents.splice(0); // drain accumulated events
+    const events = this.events.drain();
     const hasSessions = this.sessions.size > 0;
 
     // Skip serialization and send entirely when no clients are connected.
@@ -492,9 +466,10 @@ export class TileServer {
 
     // ── 7. ADVANCE TICK ─────────────────────────────────────────────────────
     // Periodic autosave — fire-and-forget, errors are logged and swallowed.
-    if (this.saveManager) {
+    const saveIntervalTicks = this.content.getGameConfig().persistence.saveIntervalTicks;
+    if (this.saveManager && saveIntervalTicks > 0) {
       this.saveTickCounter++;
-      if (this.saveTickCounter >= TileServer.SAVE_INTERVAL_TICKS) {
+      if (this.saveTickCounter >= saveIntervalTicks) {
         this.saveTickCounter = 0;
         this.saveManager.save(this.world).catch((err: unknown) => {
           console.error("[TileServer] autosave failed:", err);
@@ -588,163 +563,42 @@ export class TileServer {
     return map;
   }
 
-  // ---- event subscriptions ----
+  // ---- handoff side-effect ----
 
-  private subscribeNetworkEvents(): void {
-    // Convert tile bus events into GameEvents for the network delta
-    this.eventBus.subscribe(TileEvents.EntityDied, (p: { entityId: EntityId; killerId?: EntityId }) => {
-      this.pendingEvents.push({ type: "EntityDied", entityId: p.entityId, killerId: p.killerId });
-    });
-
-    this.eventBus.subscribe(TileEvents.HitSpark, (p: { x: number; y: number; z: number }) => {
-      this.pendingEvents.push({ type: "HitSpark", x: p.x, y: p.y, z: p.z });
-    });
-
-    this.eventBus.subscribe(TileEvents.DamageDealt, (p: {
-      targetId: EntityId;
-      sourceId: EntityId;
-      amount: number;
-      blocked: boolean;
-      hitX: number;
-      hitY: number;
-      hitZ: number;
-    }) => {
-      this.pendingEvents.push({
-        type: "DamageDealt",
-        targetId: p.targetId,
-        sourceId: p.sourceId,
-        amount: p.amount,
-        blocked: p.blocked,
-        hitX: p.hitX,
-        hitY: p.hitY,
-        hitZ: p.hitZ,
-      });
-    });
-
-    this.eventBus.subscribe(TileEvents.BuildingCompleted, (p: {
-      builderId: EntityId;
-      blueprintId: EntityId;
-      structureType: string;
-    }) => {
-      this.pendingEvents.push({
-        type: "BuildingCompleted",
-        builderId: p.builderId,
-        blueprintId: p.blueprintId,
-        structureType: p.structureType,
-      });
-    });
-
-    this.eventBus.subscribe(TileEvents.BuildingMaterialsConsumed, (p: {
-      builderId: EntityId;
-      structureType: string;
-      consumed: { itemType: string; quantity: number }[];
-    }) => {
-      this.pendingEvents.push({
-        type: "BuildingMaterialsConsumed",
-        builderId: p.builderId,
-        structureType: p.structureType,
-        consumed: p.consumed,
-      });
-    });
-
-    this.eventBus.subscribe(TileEvents.BuildingMissingMaterials, (p: {
-      builderId: EntityId;
-      structureType: string;
-      missing: { itemType: string; quantity: number }[];
-    }) => {
-      this.pendingEvents.push({
-        type: "BuildingMissingMaterials",
-        builderId: p.builderId,
-        structureType: p.structureType,
-        missing: p.missing,
-      });
-    });
-
-    this.eventBus.subscribe(TileEvents.CraftingCompleted, (p: {
-      crafterId: EntityId;
-      recipeId: string;
-    }) => {
-      this.pendingEvents.push({ type: "CraftingCompleted", crafterId: p.crafterId, recipeId: p.recipeId });
-    });
-
-    this.eventBus.subscribe(TileEvents.HungerCritical, (p: { entityId: EntityId }) => {
-      this.pendingEvents.push({ type: "HungerCritical", entityId: p.entityId });
-    });
-
-    this.eventBus.subscribe(TileEvents.GateApproached, (p: {
-      entityId: EntityId;
-      gateId: string;
-      destinationTileId: string;
-    }) => {
-      this.pendingEvents.push({
-        type: "GateApproached",
-        entityId: p.entityId,
-        gateId: p.gateId,
-        destinationTileId: p.destinationTileId,
-      });
-      // Initiate tile handoff: serialize player and forward to gateway
-      if (this.gatewayUrl) {
-        const dynastyId = this.playerDynasties.get(p.entityId) ?? p.entityId;
-        const payload = serializePlayer(this.world, p.entityId, dynastyId, p.destinationTileId);
-        fetch(`${this.gatewayUrl}/handoff`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(payload),
-        }).then((r) => {
-          if (r.ok) {
-            // Destroy the entity here — it will be restored on the destination tile
-            if (this.world.isAlive(p.entityId)) this.world.destroy(p.entityId);
-            const session = this.sessions.get(p.entityId);
-            session?.close();
-            this.sessions.delete(p.entityId);
-          } else {
-            console.error(`[TileServer] handoff failed for ${p.entityId}: ${r.status}`);
-          }
-        }).catch((err: unknown) => {
-          console.error("[TileServer] handoff fetch error:", err);
-        });
+  /**
+   * Fire-and-forget handoff to the destination tile via the gateway. The
+   * re-entry guard prevents a second GateApproached event from starting a
+   * parallel handoff while the first is still pending its round-trip; the
+   * destination tile deduplicates retries on handoffId.
+   */
+  private initiateHandoff(payload: { entityId: EntityId; gateId: string; destinationTileId: string }): void {
+    if (!this.gatewayUrl || this.handingOff.has(payload.entityId)) return;
+    this.handingOff.add(payload.entityId);
+    const dynastyId = this.world.get(payload.entityId, Heritage)?.dynastyId ?? payload.entityId;
+    const handoffId = crypto.randomUUID();
+    const body = serializePlayer(this.world, payload.entityId, dynastyId, payload.destinationTileId, handoffId);
+    fetch(`${this.gatewayUrl}/handoff`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => {
+      if (r.ok) {
+        // Destroy the entity here — it will be restored on the destination tile
+        if (this.world.isAlive(payload.entityId)) this.world.destroy(payload.entityId);
+        const session = this.sessions.get(payload.entityId);
+        session?.close();
+        this.sessions.delete(payload.entityId);
+      } else {
+        console.error(`[TileServer] handoff failed for ${payload.entityId}: ${r.status}`);
       }
-    });
-
-    this.eventBus.subscribe(TileEvents.NodeDepleted, (p: {
-      nodeId: EntityId;
-      nodeTypeId: string;
-      harvesterId: EntityId;
-    }) => {
-      this.pendingEvents.push({
-        type: "NodeDepleted",
-        nodeId: p.nodeId,
-        nodeTypeId: p.nodeTypeId,
-        harvesterId: p.harvesterId,
-      });
-    });
-
-    this.eventBus.subscribe(TileEvents.DayPhaseChanged, (p: { phase: string; timeOfDay: number }) => {
-      this.pendingEvents.push({ type: "DayPhaseChanged", phase: p.phase, timeOfDay: p.timeOfDay });
-    });
-
-    this.eventBus.subscribe(TileEvents.TradeCompleted, (p: {
-      buyerId: EntityId; traderId: EntityId; itemType: string; quantity: number; coinDelta: number;
-    }) => {
-      this.pendingEvents.push({
-        type: "TradeCompleted",
-        buyerId: p.buyerId,
-        traderId: p.traderId,
-        itemType: p.itemType,
-        quantity: p.quantity,
-        coinDelta: p.coinDelta,
-      });
-    });
-
-    this.eventBus.subscribe(TileEvents.LoreExternalised, (p: { entityId: EntityId; fragmentId: string }) => {
-      this.pendingEvents.push({ type: "LoreExternalised", entityId: p.entityId, fragmentId: p.fragmentId });
-    });
-
-    this.eventBus.subscribe(TileEvents.LoreInternalised, (p: { entityId: EntityId; fragmentId: string }) => {
-      this.pendingEvents.push({ type: "LoreInternalised", entityId: p.entityId, fragmentId: p.fragmentId });
+    }).catch((err: unknown) => {
+      console.error("[TileServer] handoff fetch error:", err);
+    }).finally(() => {
+      // On success the entity is gone so no subsequent handoff can even fire;
+      // on failure the player is still here and should be allowed to retry.
+      this.handingOff.delete(payload.entityId);
     });
   }
-
 
   private spawnWorldState(content: ContentStore): void {
     const dayLengthTicks = content.getGameConfig().dayNight.dayLengthTicks;
@@ -753,221 +607,7 @@ export class TileServer {
     this.world.write(id, WorldClock, { ticksElapsed: 0, dayLengthTicks });
     this.world.write(id, TileCorruption, { level: 0 });
     console.log("[TileServer] world-state entity created");
-
     // Starter entities (workstations, nodes) are declared in tile_layout.json.
-  }
-
-  /**
-   * Spawn persistent world entities (resource nodes, workstations) from tile_layout.json.
-   * Only called on fresh world — these entities are saved and reloaded.
-   * Falls back to procedural node scattering when no layout file is present.
-   */
-  private spawnInitialEntities(content: ContentStore): void {
-    const layout = content.getTileLayout();
-    if (layout) {
-      let spawned = 0;
-      for (const cfg of layout.entities) {
-        const template = content.getEntityTemplate(cfg.entityTemplateId);
-        if (!template) {
-          console.warn(`[TileServer] spawnInitialEntities: unknown template "${cfg.entityTemplateId}"`);
-          continue;
-        }
-        spawnEntity(this.world, content, {
-          x: cfg.x, y: cfg.y, z: cfg.z,
-          template, seed: positionSeed(cfg.x, cfg.y),
-        });
-        spawned++;
-      }
-      console.log(`[TileServer] spawned ${spawned} entities from tile_layout`);
-      if (layout.proceduralNodes) this.spawnProceduralNodes(content);
-    } else {
-      this.spawnProceduralNodes(content);
-    }
-  }
-
-  /**
-   * Spawn NPCs from tile_layout.json or procedurally.
-   * Always called — NPCs are not persisted across restarts.
-   */
-  private spawnInitialNpcs(content: ContentStore): void {
-    const layout = content.getTileLayout();
-    if (layout) {
-      for (const cfg of layout.npcs) {
-        const template = content.getEntityTemplate(cfg.entityTemplateId);
-        if (!template) {
-          console.warn(`[TileServer] spawnInitialNpcs: unknown template "${cfg.entityTemplateId}"`);
-          continue;
-        }
-        const id = spawnEntity(this.world, content, {
-          x: cfg.x, y: cfg.y,
-          template,
-          instanceName: cfg.name,
-        });
-        if (cfg.traderListings?.length) {
-          this.world.write(id, TraderInventory, { listings: cfg.traderListings });
-        }
-      }
-      console.log(`[TileServer] spawned ${layout.npcs.length} NPCs from tile_layout`);
-      if (layout.proceduralNpcs) this.spawnProceduralNpcs(content);
-    } else {
-      this.spawnProceduralNpcs(content);
-    }
-  }
-
-  /**
-   * Procedurally scatter NPCs across the tile based on zone spawn profiles.
-   * Used when no tile_layout.json is present.
-   *
-   * Density: on average 0.4 NPC spawns per zone cell.  Water / Shore cells
-   * are skipped.  The RNG is seeded from the tile seed so results are stable
-   * across server restarts.
-   */
-  private spawnProceduralNpcs(content: ContentStore): void {
-    if (!this.zoneGrid) return;
-
-    const grid = this.zoneGrid;
-    const cellWorldSize = 512 / grid.gridSize; // world-units per zone cell side
-    const MARGIN = 1.5; // world-units away from cell edges
-    const rng = mulberry32(this.tileSeed ^ 0xdeadbeef);
-    let total = 0;
-
-    for (let cy = 0; cy < grid.gridSize; cy++) {
-      for (let cx = 0; cx < grid.gridSize; cx++) {
-        const cell = grid.cells[cx + cy * grid.gridSize];
-        const zone = content.getZone(cell.zoneId);
-        if (!zone) continue;
-        const totalWeight = Object.values(zone.npcWeights).reduce((s, w) => s + w, 0);
-        if (totalWeight === 0) continue;
-
-        // Poisson-approximate: integer part always spawns; fractional part spawns with that probability
-        const density = zone.npcSpawnDensity;
-        const spawns = Math.floor(density) + (rng() < density % 1 ? 1 : 0);
-        for (let i = 0; i < spawns; i++) {
-          const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const npcType = weightedPick(zone.npcWeights, rng);
-          if (!npcType) continue;
-          const template = content.getEntityTemplate(npcType);
-          if (!template) continue;
-          spawnEntity(this.world, content, { x: wx, y: wy, template });
-          total++;
-        }
-      }
-    }
-
-    console.log(`[TileServer] procedurally spawned ${total} NPCs from zone grid`);
-  }
-
-  /**
-   * Procedurally scatter resource nodes across the tile based on zone spawn profiles.
-   * Used when no tile_layout.json is present.
-   *
-   * Density: on average 1.5 node spawns per zone cell.  Water cells are skipped.
-   */
-  private spawnProceduralNodes(content: ContentStore): void {
-    if (!this.zoneGrid) return;
-
-    const CHUNK_CELLS = 32;
-    const heightChunks = new Map<string, Float32Array>();
-    for (const { heightmap } of this.world.query(Heightmap)) {
-      heightChunks.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap.data);
-    }
-    const getTerrainZ = (wx: number, wy: number): number => {
-      const cx = Math.floor(wx / CHUNK_CELLS);
-      const cy = Math.floor(wy / CHUNK_CELLS);
-      const data = heightChunks.get(`${cx},${cy}`);
-      if (!data) return 4.0;
-      const lx = Math.min(CHUNK_CELLS - 1, Math.floor(wx) - cx * CHUNK_CELLS);
-      const ly = Math.min(CHUNK_CELLS - 1, Math.floor(wy) - cy * CHUNK_CELLS);
-      return data[lx + ly * CHUNK_CELLS];
-    };
-
-    const grid = this.zoneGrid;
-    const cellWorldSize = 512 / grid.gridSize;
-    const MARGIN = 1.0;
-    const rng = mulberry32(this.tileSeed ^ 0xcafebabe);
-    let total = 0;
-
-    for (let cy = 0; cy < grid.gridSize; cy++) {
-      for (let cx = 0; cx < grid.gridSize; cx++) {
-        const cell = grid.cells[cx + cy * grid.gridSize];
-        const zone = content.getZone(cell.zoneId);
-        if (!zone) continue;
-        const totalWeight = Object.values(zone.entityWeights).reduce((s, w) => s + w, 0);
-        if (totalWeight === 0) continue;
-
-        const density = zone.nodeSpawnDensity;
-        const spawns = Math.floor(density) + (rng() < density % 1 ? 1 : 0);
-        for (let i = 0; i < spawns; i++) {
-          const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const entityTemplateId = weightedPick(zone.entityWeights, rng);
-          if (!entityTemplateId) continue;
-          const template = content.getEntityTemplate(entityTemplateId);
-          if (!template) continue;
-          spawnEntity(this.world, this.content, { x: wx, y: wy, z: getTerrainZ(wx, wy), template, seed: positionSeed(wx, wy) });
-          total++;
-        }
-      }
-    }
-
-    console.log(`[TileServer] procedurally spawned ${total} resource nodes from zone grid`);
-  }
-
-  private spawnProceduralProps(content: ContentStore): void {
-    if (!this.zoneGrid) return;
-    void content;
-
-    // Build terrain height lookup from chunk entities (32×32 cells per chunk).
-    const CHUNK_CELLS = 32;
-    const heightChunks = new Map<string, Float32Array>();
-    for (const { heightmap } of this.world.query(Heightmap)) {
-      heightChunks.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap.data);
-    }
-    const getTerrainZ = (wx: number, wy: number): number => {
-      const cx = Math.floor(wx / CHUNK_CELLS);
-      const cy = Math.floor(wy / CHUNK_CELLS);
-      const data = heightChunks.get(`${cx},${cy}`);
-      if (!data) return 4.0;
-      const lx = Math.min(CHUNK_CELLS - 1, Math.floor(wx) - cx * CHUNK_CELLS);
-      const ly = Math.min(CHUNK_CELLS - 1, Math.floor(wy) - cy * CHUNK_CELLS);
-      return data[lx + ly * CHUNK_CELLS];
-    };
-
-    const grid = this.zoneGrid;
-    const cellWorldSize = 512 / grid.gridSize;
-    const MARGIN = 2.0;
-    const rng = mulberry32(this.tileSeed ^ 0xf00dcafe);
-    let total = 0;
-
-    for (let cy = 0; cy < grid.gridSize; cy++) {
-      for (let cx = 0; cx < grid.gridSize; cx++) {
-        const cell = grid.cells[cx + cy * grid.gridSize];
-        const zone = content.getZone(cell.zoneId);
-        if (!zone) continue;
-        const totalWeight = Object.values(zone.propWeights).reduce((s, w) => s + w, 0);
-        if (totalWeight === 0) continue;
-
-        const density = zone.propSpawnDensity;
-        const spawns = Math.floor(density) + (rng() < density % 1 ? 1 : 0);
-        for (let i = 0; i < spawns; i++) {
-          const wx = cx * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
-          const propTemplateId = weightedPick(zone.propWeights, rng);
-          if (!propTemplateId) continue;
-          const propTemplate = content.getEntityTemplate(propTemplateId);
-          if (!propTemplate) continue;
-          const propSeed = (Math.imul(wx * 100 | 0, 0x45d9f3b) ^ Math.imul(wy * 100 | 0, 0x119de1f3)) >>> 0;
-          spawnEntity(this.world, content, {
-            x: wx, y: wy, z: getTerrainZ(wx, wy),
-            template: propTemplate, seed: propSeed,
-          });
-          total++;
-        }
-      }
-    }
-
-    console.log(`[TileServer] procedurally spawned ${total} props from zone grid`);
   }
 
   private async handleSession(session: WebTransportSession): Promise<void> {
@@ -999,16 +639,14 @@ export class TileServer {
 
     const requestedId = joinMsg?.playerId as EntityId | undefined;
     if (requestedId && this.world.isAlive(requestedId)) {
-      // Entity was pre-created by restorePlayer() — reuse it
+      // Entity was pre-created by restorePlayer() — reuse it; dynastyId lives on Heritage.
       playerId = requestedId;
-      dynastyId = this.playerDynasties.get(playerId) ?? newEntityId();
-      this.playerDynasties.set(playerId, dynastyId);
+      dynastyId = (this.world.get(playerId, Heritage)?.dynastyId as EntityId | undefined) ?? newEntityId();
       console.log(`[TileServer] player ${playerId} rejoining (post-handoff)`);
     } else {
       dynastyId = newEntityId();
       const spawn = this.content.getGameConfig().player;
       playerId = spawnPlayer(this.world, this.content, { x: spawn.defaultSpawnX, y: spawn.defaultSpawnY, dynastyId, heritageStore: this.heritageStore });
-      this.playerDynasties.set(playerId, dynastyId);
     }
 
     // Send ack with canonical playerId
@@ -1083,7 +721,6 @@ export class TileServer {
       // Entity was destroyed by combat — record the death in heritage
       this.heritageStore.recordDeath(dynastyId, 0);
     }
-    this.playerDynasties.delete(playerId);
     console.log(`[TileServer] player ${playerId} disconnected`);
   }
 }

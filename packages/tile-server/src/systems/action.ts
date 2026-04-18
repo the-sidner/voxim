@@ -17,22 +17,28 @@ import type { World } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore, DerivedItemStats } from "@voxim/content";
-import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq, segSegContactPoint } from "@voxim/content";
+import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Position, Facing, Velocity, InputState, Stamina, SkillInProgress, CombatState, Lifetime, ModelRef } from "../components/game.ts";
-import type { SkillInProgressData, HitRecord } from "../components/game.ts";
+import { Position, Facing, Velocity, InputState, Stamina, CombatState, Lifetime, ModelRef } from "../components/game.ts";
+import { SkillInProgress } from "../components/combat.ts";
+import type { SkillInProgressData, HitRecord } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { Hitbox } from "../components/hitbox.ts";
 import { ProjectileData } from "../components/projectile.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import type { StateHistoryBuffer, TickSnapshot, EntitySnapshot } from "../state_history.ts";
+import { deductStamina } from "../combat/helpers.ts";
+import { testHitboxIntersection } from "../combat/hit_resolver.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ActionSystem");
 
 export class ActionSystem implements System {
+  /** Reads InputState written by NpcAi via world.write(); must precede. */
+  readonly dependsOn = ["NpcAiSystem"];
+
   private serverTick = 0;
 
   constructor(
@@ -72,10 +78,7 @@ export class ActionSystem implements System {
 
       const staminaCost = weaponStats.staminaCostPerSwing ?? unarmed.staminaCostPerSwing!;
       const stamina = world.get(entityId, Stamina);
-      if (stamina) {
-        const next = Math.max(0, stamina.current - staminaCost);
-        world.set(entityId, Stamina, { ...stamina, current: next, exhausted: next <= 0 });
-      }
+      deductStamina(world, entityId, stamina, staminaCost);
 
       // Find which skill slot (if any) has verb "strike" to fire on connect
       const loreLoadout = world.get(entityId, LoreLoadout);
@@ -185,7 +188,17 @@ export class ActionSystem implements System {
     const tPrev = Math.max(0, globalTickPrev / totalTicks);
     const tCurr = globalTickCurr / totalTicks;
 
-    const snap = this.stateHistory.getAt(rewindTick) ?? this.buildCurrentSnapshot(world);
+    let snap = this.stateHistory.getAt(rewindTick);
+    if (!snap) {
+      // Rewind fell outside the retained history window (very high RTT or
+      // early-session). Fall back to current world state — hit reg degrades
+      // but still resolves. Log at debug so it's visible without spamming.
+      const oldest = this.stateHistory.oldestTick();
+      const newest = this.stateHistory.newestTick();
+      log.debug("rewind out of window: entity=%s rewindTick=%d window=[%s,%s] — using current state",
+        entityId, rewindTick, oldest ?? "?", newest ?? "?");
+      snap = this.buildCurrentSnapshot(world);
+    }
     if (!snap) return sip.hitEntities;
 
     const attackerSnap = snap.entities.find((e) => e.entityId === entityId);
@@ -230,26 +243,18 @@ export class ActionSystem implements System {
       const targetPos: Vec3 = { x: target.x, y: target.y, z: target.z ?? 0 };
       const targetFacing = target.facing ?? 0;
 
-      let hitBodyPart = "";
-      let hitContact: Vec3 = targetPos;
-      for (const part of hitbox.parts) {
-        const partFrom = localToWorld(part.fromFwd, part.fromRight, part.fromUp, targetPos, targetFacing);
-        const partTo   = localToWorld(part.toFwd,   part.toRight,   part.toUp,   targetPos, targetFacing);
+      // Swept capsule: prev-tick and curr-tick blade segments. Passing both
+      // prevents fast swings from tunneling through a narrow target between
+      // ticks, and keeps the contact point precise whichever segment connected.
+      const hit = testHitboxIntersection(
+        hitbox,
+        targetPos,
+        targetFacing,
+        bladeRadius,
+        [{ from: hiltPrev, to: tipPrev }, { from: hiltCurr, to: tipCurr }],
+      );
 
-        const combinedRadiusSq = (bladeRadius + part.radius) ** 2;
-        const distSqPrev = segSegDistSq(hiltPrev, tipPrev, partFrom, partTo);
-        const distSqCurr = segSegDistSq(hiltCurr, tipCurr, partFrom, partTo);
-
-        if (distSqPrev <= combinedRadiusSq || distSqCurr <= combinedRadiusSq) {
-          hitBodyPart = part.id;
-          const blade1 = distSqCurr <= combinedRadiusSq ? hiltCurr : hiltPrev;
-          const blade2 = distSqCurr <= combinedRadiusSq ? tipCurr  : tipPrev;
-          hitContact = segSegContactPoint(blade1, blade2, partFrom, partTo);
-          break;
-        }
-      }
-
-      if (!hitBodyPart) {
+      if (!hit) {
         const dists = hitbox.parts.map((p) => {
           const pf = localToWorld(p.fromFwd, p.fromRight, p.fromUp, targetPos, targetFacing);
           const pt = localToWorld(p.toFwd, p.toRight, p.toUp, targetPos, targetFacing);
@@ -264,6 +269,8 @@ export class ActionSystem implements System {
         continue;
       }
 
+      const hitBodyPart = hit.partId;
+      const hitContact = hit.contact;
       newHitEntities.push({ entityId: target.entityId, bodyPart: hitBodyPart });
 
       events.publish(TileEvents.HitSpark, { x: hitContact.x, y: hitContact.y, z: hitContact.z });
@@ -296,7 +303,16 @@ export class ActionSystem implements System {
 
   /**
    * Spawns a projectile entity for a ranged action on the first active tick.
-   * Uses world.write() (spawn-time immediate writes) for all components.
+   *
+   * Spawn origin is resolved in priority order:
+   *   1. action.projectile.spawnOffset — explicit per-weapon muzzle (bow string, spear tip)
+   *   2. action.swingPath hilt at t=active-start — derived from the same path that
+   *      drives melee hit detection and client arm IK, keeping server and client
+   *      weapon geometry consistent
+   *   3. combat.projectileDefaults.spawnOffset — global fallback
+   * All three resolve to entity-local (fwd, right, up) coordinates and are
+   * transformed by localToWorld using the shooter's facing. There is no
+   * hand-picked shoulder-height constant in this code.
    */
   private spawnProjectile(
     world: World,
@@ -317,19 +333,34 @@ export class ActionSystem implements System {
     const facing = inputState.facing;
     const { speed, gravityScale, radius, maxHits, lifetimeTicks } = action.projectile;
 
-    // Spawn offset: in front of the shooter at shoulder height
-    const spawnX = pos.x + Math.cos(facing) * 0.6;
-    const spawnY = pos.y + Math.sin(facing) * 0.6;
-    const spawnZ = pos.z + 1.4; // shoulder height
+    const combatCfg = this.content.getGameConfig().combat;
+    const worldCfg = this.content.getGameConfig().world;
 
-    // Velocity: horizontal component along facing; small upward arc for gravity projectiles
+    // Resolve entity-local muzzle position.
+    let localMuzzle: { fwd: number; right: number; up: number };
+    if (action.projectile.spawnOffset) {
+      localMuzzle = action.projectile.spawnOffset;
+    } else if (action.swingPath?.keyframes.length) {
+      // Use the hilt at the start of the active phase — same geometry as melee.
+      const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
+      const tActive = totalTicks > 0 ? action.windupTicks / totalTicks : 0;
+      const pose = evaluateSwingPath(action.swingPath.keyframes, tActive);
+      localMuzzle = pose.hilt;
+    } else {
+      localMuzzle = combatCfg.projectileDefaults.spawnOffset;
+    }
+
+    const attackerOrigin = { x: pos.x, y: pos.y, z: pos.z };
+    const spawn = localToWorld(localMuzzle.fwd, localMuzzle.right, localMuzzle.up, attackerOrigin, facing);
+
+    // Velocity: horizontal component along facing; upward arc seeded for gravity projectiles.
     const vx = Math.cos(facing) * speed;
     const vy = Math.sin(facing) * speed;
-    const vz = gravityScale > 0 ? speed * 0.08 : 0;
+    const vz = gravityScale > 0 ? speed * combatCfg.projectileDefaults.arcFactor : 0;
 
     const projId = newEntityId();
     world.create(projId);
-    world.write(projId, Position, { x: spawnX, y: spawnY, z: spawnZ });
+    world.write(projId, Position, { x: spawn.x, y: spawn.y, z: spawn.z });
     world.write(projId, Velocity, { x: vx, y: vy, z: vz });
     world.write(projId, Lifetime, { ticks: lifetimeTicks });
     world.write(projId, ProjectileData, {
@@ -346,7 +377,7 @@ export class ActionSystem implements System {
     });
 
     if (action.projectile.modelId) {
-      const s = 0.35;
+      const s = worldCfg.defaultEntityScale;
       world.write(projId, ModelRef, { modelId: action.projectile.modelId, scaleX: s, scaleY: s, scaleZ: s, seed: 0 });
     }
 

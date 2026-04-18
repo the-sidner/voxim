@@ -16,24 +16,46 @@ export interface AdminServerDeps {
 }
 
 export function startAdminServer(port: number, deps: AdminServerDeps): void {
+  // Bounded cache of handoffIds seen recently; a second POST with the same id
+  // is acked immediately without re-spawning. Capped to avoid unbounded growth
+  // from a misbehaving source; oldest ids are evicted first.
+  const seenHandoffs = new Map<string, number>();
+  const HANDOFF_CACHE_MAX = 1024;
+
   Deno.serve(
     { port, hostname: "127.0.0.1" },
-    (req) => handleAdminRequest(req, deps),
+    (req) => handleAdminRequest(req, deps, seenHandoffs, HANDOFF_CACHE_MAX),
   );
   console.log(`[TileServer] admin HTTP listening on 127.0.0.1:${port}`);
 }
 
-async function handleAdminRequest(req: Request, deps: AdminServerDeps): Promise<Response> {
+async function handleAdminRequest(
+  req: Request,
+  deps: AdminServerDeps,
+  seenHandoffs: Map<string, number>,
+  handoffCacheMax: number,
+): Promise<Response> {
   const url = new URL(req.url);
 
   if (req.method === "POST" && url.pathname === "/handoff") {
     try {
       const payload = await req.json();
-      if (!payload.playerId || !payload.components) {
+      if (!payload.playerId || !payload.components || !payload.handoffId) {
         return new Response("bad request", { status: 400 });
       }
+      // Idempotency: second POST with the same handoffId is a retry; ack and
+      // return without touching the world again.
+      if (seenHandoffs.has(payload.handoffId)) {
+        return Response.json({ type: "handoff_ack", playerId: payload.playerId, replay: true });
+      }
+      // Cap cache size: drop oldest insertion before adding.
+      if (seenHandoffs.size >= handoffCacheMax) {
+        const oldest = seenHandoffs.keys().next().value;
+        if (oldest !== undefined) seenHandoffs.delete(oldest);
+      }
+      seenHandoffs.set(payload.handoffId, Date.now());
       restorePlayer(deps.world, payload);
-      console.log(`[TileServer] received handoff for player ${payload.playerId}`);
+      console.log(`[TileServer] received handoff ${payload.handoffId.slice(0, 8)} for player ${payload.playerId}`);
       return Response.json({ type: "handoff_ack", playerId: payload.playerId });
     } catch {
       return new Response("bad request", { status: 400 });

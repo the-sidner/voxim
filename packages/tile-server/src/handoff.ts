@@ -24,6 +24,12 @@ export interface HandoffPayload {
   playerId: string;
   dynastyId: string;
   destinationTileId: string;
+  /**
+   * Unique per-attempt token. Lets the destination detect and swallow retries
+   * (e.g. if the source tile network-timeouts and re-POSTs the same handoff).
+   * Destinations track recent tokens and return a fast success on re-delivery.
+   */
+  handoffId: string;
   /** All serialized component data */
   components: SerializedComponents;
 }
@@ -47,12 +53,21 @@ interface SerializedComponents {
 
 /**
  * Read all persistent components from a player entity into a plain object.
+ * `handoffId` should be a fresh UUID per handoff attempt so the destination can
+ * deduplicate retries.
  */
-export function serializePlayer(world: World, playerId: EntityId, dynastyId: string, destinationTileId: string): HandoffPayload {
+export function serializePlayer(
+  world: World,
+  playerId: EntityId,
+  dynastyId: string,
+  destinationTileId: string,
+  handoffId: string,
+): HandoffPayload {
   return {
     playerId,
     dynastyId,
     destinationTileId,
+    handoffId,
     components: {
       position: world.get(playerId, Position) ?? null,
       velocity: world.get(playerId, Velocity) ?? null,
@@ -75,9 +90,14 @@ export function serializePlayer(world: World, playerId: EntityId, dynastyId: str
 /**
  * Create a new entity in the world from a handoff payload.
  * The entity's position and dynasty are restored; combat state is reset.
+ *
+ * Idempotent when the entity already exists: if `payload.playerId` names a live
+ * entity (retry of an already-processed handoff), the function returns the
+ * existing id without re-creating or overwriting anything.
  */
 export function restorePlayer(world: World, payload: HandoffPayload): EntityId {
   const id = payload.playerId as EntityId;
+  if (world.isAlive(id)) return id;
   world.create(id);
   const c = payload.components;
   if (c.position) world.write(id, Position, c.position);

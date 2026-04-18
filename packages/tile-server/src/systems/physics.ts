@@ -18,6 +18,9 @@ import { SpeedModifier } from "../components/world.ts";
  * Physics tuning values come from GameConfig.physics — no hardcoded constants.
  */
 export class PhysicsSystem implements System {
+  /** NpcAi writes NPC InputState via world.write() (immediate); must precede. */
+  readonly dependsOn = ["NpcAiSystem"];
+
   /**
    * Heightmaps are written once at world-load and never change.
    * Cache the lookup closure on first use so we never query + rebuild the Map

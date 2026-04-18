@@ -20,7 +20,8 @@ import type { DeferredEventQueue } from "../deferred_events.ts";
 import type { System } from "../system.ts";
 import type { ContentStore, AnimationStateData, AnimationLayer } from "@voxim/content";
 import { ACTION_CROUCH, hasAction } from "@voxim/protocol";
-import { Velocity, Health, SkillInProgress, AnimationState, InputState } from "../components/game.ts";
+import { Velocity, Health, AnimationState, InputState } from "../components/game.ts";
+import { SkillInProgress } from "../components/combat.ts";
 
 // ---- constants ----
 
@@ -34,6 +35,13 @@ const TICK_DT = 1 / 20;
 // ---- AnimationSystem ----
 
 export class AnimationSystem implements System {
+  /**
+   * Reads InputState (NpcAi writes via world.write() for crouch detection)
+   * and SkillInProgress (Action writes via world.write() on swing start).
+   * Both must precede so this tick's animation layers reflect this tick's input.
+   */
+  readonly dependsOn = ["NpcAiSystem", "ActionSystem"];
+
   constructor(private readonly content: ContentStore) {}
 
   prepare(_tick: number): void {}
@@ -45,6 +53,7 @@ export class AnimationSystem implements System {
     // Walk animation plays at 1× when the entity moves at this speed.
     const walkSpeedRef = cfg.physics.maxGroundSpeed;
     const walkThresholdSq = cfg.animation.walkSpeedThresholdSq;
+    const animCfg = cfg.animation;
 
     for (const { entityId, velocity } of world.query(Velocity, AnimationState)) {
       const health = world.get(entityId, Health);
@@ -76,8 +85,8 @@ export class AnimationSystem implements System {
       }
 
       const layers = isDead
-        ? buildDeathLayers(prevByClip)
-        : buildLocomotionLayers(prevByClip, crouching, moving, speed, walkSpeedRef);
+        ? buildDeathLayers(prevByClip, animCfg.deathSpeedScale)
+        : buildLocomotionLayers(prevByClip, crouching, moving, speed, walkSpeedRef, animCfg.idleSpeedScale, animCfg.crouchSpeedScale);
 
       const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
 
@@ -90,17 +99,17 @@ export class AnimationSystem implements System {
 
 // ---- layer builders ----
 
-function buildDeathLayers(prevByClip: Map<string, number>): AnimationLayer[] {
+function buildDeathLayers(prevByClip: Map<string, number>, deathSpeedScale: number): AnimationLayer[] {
   const prev = prevByClip.get("death") ?? 0;
   // Clamp at 1.0 — death clip plays once and holds last frame.
-  const time = Math.min(prev + 0.5 * TICK_DT, 1.0);
+  const time = Math.min(prev + deathSpeedScale * TICK_DT, 1.0);
   return [{
     clipId: "death",
     maskId: "",
     time,
     weight: 1,
     blend: "override",
-    speedScale: 0.5,
+    speedScale: deathSpeedScale,
   }];
 }
 
@@ -110,17 +119,19 @@ function buildLocomotionLayers(
   moving: boolean,
   speed: number,
   walkSpeedRef: number,
+  idleSpeedScale: number,
+  crouchSpeedScale: number,
 ): AnimationLayer[] {
   if (crouching && moving) {
     return [makeLoop("crouch_walk", prevByClip, "velocity", walkSpeedRef, speed)];
   }
   if (crouching) {
-    return [makeLoop("crouch", prevByClip, 0.4)];
+    return [makeLoop("crouch", prevByClip, crouchSpeedScale)];
   }
   if (moving) {
     return [makeLoop("walk", prevByClip, "velocity", walkSpeedRef, speed)];
   }
-  return [makeLoop("idle", prevByClip, 0.4)];
+  return [makeLoop("idle", prevByClip, idleSpeedScale)];
 }
 
 /** Build one looping layer with time advanced from the previous value. */

@@ -200,6 +200,14 @@ export class NpcAiSystem implements System {
         if (actions !== 0) {
           log.info("npc action: entity=%s actions=%d facing=%.2f job=%s", entityId, actions, newFacing, currentJob.type);
         }
+        // Intentional use of world.write() (immediate) rather than world.set()
+        // (deferred). InputState is the *stimulus* for the tick — every
+        // downstream system (physics, dodge, action…) reads it this tick, not
+        // next tick, so it must land before the changeset apply. This is the
+        // only system-internal write() in the codebase; the tick loop writes
+        // player InputState the same way for the same reason. If you find
+        // yourself reaching for world.write() from any other system, the
+        // answer is almost certainly world.set() instead.
         world.write(entityId, InputState, {
           ...inputState, movementX, movementY, facing: newFacing, actions,
         });
