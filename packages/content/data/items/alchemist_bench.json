@@ -1,9 +1,0 @@
-{
-  "id": "alchemist_bench",
-  "category": "deployable",
-  "stackable": true,
-  "weight": 22.0,
-  "slots": [],
-  "baseStats": {},
-  "deploysTo": "alchemist_bench"
-}

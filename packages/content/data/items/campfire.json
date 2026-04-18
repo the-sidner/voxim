@@ -1,9 +1,0 @@
-{
-  "id": "campfire",
-  "category": "resource",
-  "stackable": false,
-  "weight": 5.0,
-  "slots": [],
-  "baseStats": {},
-  "modelTemplateId": "model_campfire"
-}

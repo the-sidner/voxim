@@ -31,8 +31,19 @@ export type {
   StatContribution,
   ItemSlotDef,
   DerivedItemStats,
-  ItemTemplate,
   EquipSlot,
+  EquippableData,
+  SwingableData,
+  ToolData,
+  DeployableData,
+  EdibleData,
+  IlluminatorData,
+  ArmorData,
+  MaterialSourceData,
+  ComposedData,
+  StackableData,
+  WeightData,
+  RenderableData,
   RecipeInput,
   Recipe,
   NpcTemplate,
@@ -101,4 +112,3 @@ export { loadContentStore } from "./src/loader.ts";
 
 // ---- static aggregations (used by the browser client bundle) ----
 export { weapon_actions } from "./src/weapon_actions_static.ts";
-export { item_templates } from "./src/item_templates_static.ts";

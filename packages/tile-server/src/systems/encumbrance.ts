@@ -25,8 +25,7 @@ export class EncumbranceSystem implements System {
       let totalWeight = 0;
 
       for (const slot of inventory.slots) {
-        const template = this.content.getItemTemplate(slot.itemType);
-        if (template) totalWeight += template.weight * slot.quantity;
+        totalWeight += this.content.deriveItemStats(slot.itemType).weight * slot.quantity;
       }
 
       const equipment = world.get(entityId, Equipment);

@@ -1,9 +1,0 @@
-{
-  "id": "writing_desk",
-  "category": "deployable",
-  "stackable": true,
-  "weight": 18.0,
-  "slots": [],
-  "baseStats": {},
-  "deploysTo": "writing_desk"
-}

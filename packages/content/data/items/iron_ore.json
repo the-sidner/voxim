@@ -1,8 +1,0 @@
-{
-  "id": "iron_ore",
-  "category": "resource",
-  "stackable": true,
-  "weight": 3.0,
-  "slots": [],
-  "baseStats": {}
-}

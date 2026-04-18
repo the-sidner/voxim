@@ -168,9 +168,9 @@ export class ActionSystem implements System {
     // Derive blade geometry from the equipped weapon's model AABB.
     // Model Z axis = blade axis (voxel Z maps to Three.js Y for weapon rendering).
     // Fall back to swingPath defaults for unarmed (no weapon model).
-    const weaponTemplate = weapon ? this.content.getItemTemplate(weapon.itemType) : null;
-    const weaponAabb = weaponTemplate?.modelTemplateId
-      ? this.content.getModelAabb(weaponTemplate.modelTemplateId)
+    const weaponPrefab = weapon ? this.content.getPrefab(weapon.itemType) : null;
+    const weaponAabb = weaponPrefab?.modelId
+      ? this.content.getModelAabb(weaponPrefab.modelId)
       : null;
     const entityScale = world.get(entityId, ModelRef)?.scaleX ?? 0.35;
     const combat = this.content.getGameConfig().combat;

@@ -1,8 +1,0 @@
-{
-  "id": "coal",
-  "category": "resource",
-  "stackable": true,
-  "weight": 0.5,
-  "slots": [],
-  "baseStats": {}
-}

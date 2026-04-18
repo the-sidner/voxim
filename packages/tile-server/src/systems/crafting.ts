@@ -132,8 +132,8 @@ export class CraftingSystem implements System {
     const slot = inventory.slots[slotIndex];
     if (!slot) return;
 
-    const itemDef = this.content.getItemTemplate(slot.itemType);
-    const templateId = itemDef?.deploysTo ?? null;
+    const deployable = this.content.getPrefab(slot.itemType)?.components["deployable"] as { prefabId?: string } | undefined;
+    const templateId = deployable?.prefabId ?? null;
     if (!templateId) {
       log.debug("deploy: player=%s item=%s not deployable", entityId, slot.itemType);
       return;

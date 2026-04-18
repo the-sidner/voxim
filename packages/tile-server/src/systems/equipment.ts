@@ -88,13 +88,14 @@ export class EquipmentSystem implements System {
     if (fromInventorySlot < 0 || fromInventorySlot >= inv.slots.length) return;
 
     const item = inv.slots[fromInventorySlot];
-    const template = this.content.getItemTemplate(item.itemType);
-    if (!template?.equipSlot) {
-      log.debug("equip rejected: entity=%s item=%s has no equipSlot", entityId, item.itemType);
+    const prefab = this.content.getPrefab(item.itemType);
+    const equippable = prefab?.components["equippable"] as { slot: string } | undefined;
+    if (!equippable) {
+      log.debug("equip rejected: entity=%s item=%s has no equippable component", entityId, item.itemType);
       return;
     }
 
-    const slot = template.equipSlot as EquipSlot;
+    const slot = equippable.slot as EquipSlot;
     if (equipment[slot] !== null) {
       log.debug("equip rejected: entity=%s slot=%s already occupied", entityId, slot);
       return;
@@ -236,9 +237,9 @@ export class EquipmentSystem implements System {
     if (fromSlot < 0 || fromSlot >= inv.slots.length) return;
 
     const item = inv.slots[fromSlot];
-    const template = this.content.getItemTemplate(item.itemType);
-    if (template?.category !== "consumable") {
-      log.debug("use_item rejected: entity=%s item=%s is not consumable", entityId, item.itemType);
+    const prefab = this.content.getPrefab(item.itemType);
+    if (!prefab?.components["edible"]) {
+      log.debug("use_item rejected: entity=%s item=%s has no edible component", entityId, item.itemType);
       return;
     }
 

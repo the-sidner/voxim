@@ -1,9 +1,0 @@
-{
-  "id": "plank",
-  "category": "component",
-  "stackable": true,
-  "weight": 0.8,
-  "slots": [],
-  "baseStats": {},
-  "materialName": "wood"
-}

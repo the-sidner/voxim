@@ -21,7 +21,12 @@
 import { defineComponent } from "@voxim/engine";
 import { WireReader, WireWriter } from "@voxim/codecs";
 import * as v from "valibot";
-import type { EquipSlot, ItemSlotDef, StatContribution } from "@voxim/content";
+import type {
+  EquipSlot, ItemSlotDef, StatContribution,
+  EquippableData, SwingableData, ToolData, DeployableData,
+  EdibleData, IlluminatorData, ArmorData, MaterialSourceData,
+  ComposedData, StackableData, WeightData, RenderableData,
+} from "@voxim/content";
 
 // ---------------------------------------------------------------------------
 // Shared schemas
@@ -57,10 +62,6 @@ const itemSlotDefSchema = v.object({
 // Equippable — item can be worn in a specific equipment slot
 // ---------------------------------------------------------------------------
 
-export interface EquippableData {
-  slot: EquipSlot;
-}
-
 const equippableSchema = v.object({
   slot: equipSlotSchema,
 });
@@ -86,11 +87,6 @@ export const Equippable = defineComponent({
 // ---------------------------------------------------------------------------
 // Swingable — item can be swung; drives ActionSystem + AnimationSystem
 // ---------------------------------------------------------------------------
-
-export interface SwingableData {
-  /** WeaponActionDef id — drives windup/active/winddown, swing path, animation. */
-  weaponActionId: string;
-}
 
 const swingableSchema = v.object({
   weaponActionId: v.string(),
@@ -119,10 +115,6 @@ export const Swingable = defineComponent({
 // specify requiredTools. Mirrors the current ItemTemplate.toolType field.
 // ---------------------------------------------------------------------------
 
-export interface ToolData {
-  toolType: string;
-}
-
 const toolSchema = v.object({
   toolType: v.string(),
 });
@@ -150,11 +142,6 @@ export const Tool = defineComponent({
 // prefab is spawned at the deploy location.
 // ---------------------------------------------------------------------------
 
-export interface DeployableData {
-  /** Prefab id spawned when this item is deployed into the world. */
-  prefabId: string;
-}
-
 const deployableSchema = v.object({
   prefabId: v.string(),
 });
@@ -181,17 +168,6 @@ export const Deployable = defineComponent({
 // Edible — item can be consumed to restore needs / buffs. Replaces the
 // foodValue / waterValue fields currently on DerivedItemStats.
 // ---------------------------------------------------------------------------
-
-export interface EdibleData {
-  /** Hunger reduction on consume (units match Hunger component). */
-  food: number;
-  /** Thirst reduction on consume (units match Thirst component). */
-  water: number;
-  /** Flat health restore on consume. */
-  health: number;
-  /** Flat stamina restore on consume. */
-  stamina: number;
-}
 
 const edibleSchema = v.object({
   food: v.number(),
@@ -232,17 +208,6 @@ export const Edible = defineComponent({
 // component which is attached to the equipper (EquipmentSystem reads the
 // item's Illuminator and writes lightEmitter on the holder).
 // ---------------------------------------------------------------------------
-
-export interface IlluminatorData {
-  /** Light radius in world units. */
-  radius: number;
-  /** Packed 0xRRGGBB colour. */
-  color: number;
-  /** Intensity 0..1. */
-  intensity: number;
-  /** Flicker amplitude 0..1. */
-  flicker: number;
-}
 
 const illuminatorSchema = v.object({
   radius: v.number(),
@@ -287,13 +252,6 @@ export const Illuminator = defineComponent({
 // while worn. Replaces armor* fields currently on DerivedItemStats.
 // ---------------------------------------------------------------------------
 
-export interface ArmorData {
-  /** Fraction of incoming damage blocked, 0..1. */
-  reduction: number;
-  /** Fraction of stamina regen suppressed while worn, 0..1. */
-  staminaPenalty: number;
-}
-
 const armorSchema = v.object({
   reduction: v.number(),
   staminaPenalty: v.number(),
@@ -324,11 +282,6 @@ export const Armor = defineComponent({
 // ItemTemplate.materialName.
 // ---------------------------------------------------------------------------
 
-export interface MaterialSourceData {
-  /** MaterialDef.name — e.g. "iron", "oak", "leather". */
-  materialName: string;
-}
-
 const materialSourceSchema = v.object({
   materialName: v.string(),
 });
@@ -358,10 +311,6 @@ export const MaterialSource = defineComponent({
 // fills each slot on a specific item) lives in InventorySlot.parts today and
 // will migrate to an instance component on the item entity in Phase 4.
 // ---------------------------------------------------------------------------
-
-export interface ComposedData {
-  slots: ItemSlotDef[];
-}
 
 const composedSchema = v.object({
   slots: v.array(itemSlotDefSchema),
@@ -431,8 +380,6 @@ export const Composed = defineComponent({
 // produce { entityId } slots backed by a real item entity.
 // ---------------------------------------------------------------------------
 
-export type StackableData = Record<never, never>;
-
 const stackableSchema = v.object({});
 
 export const Stackable = defineComponent({
@@ -454,10 +401,6 @@ export const Stackable = defineComponent({
 // Weight — base weight per unit. Material density (via Composed slots) may
 // modulate the effective weight at derivation time.
 // ---------------------------------------------------------------------------
-
-export interface WeightData {
-  baseWeight: number;
-}
 
 const weightSchema = v.object({
   baseWeight: v.number(),
@@ -486,11 +429,6 @@ export const Weight = defineComponent({
 // Prefab.modelId / Prefab.modelScale top-level fields; those fields stay
 // functional through Phase 1 and are removed in Phase 2.
 // ---------------------------------------------------------------------------
-
-export interface RenderableData {
-  modelId: string;
-  scale: number;
-}
 
 const renderableSchema = v.object({
   modelId: v.string(),

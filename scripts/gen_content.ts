@@ -27,7 +27,6 @@ interface Target {
 
 const TARGETS: Target[] = [
   { name: "weapon_actions", typeName: "WeaponActionDef", subdir: "weapon_actions" },
-  { name: "item_templates", typeName: "ItemTemplate",    subdir: "items"          },
 ];
 
 for (const { name, typeName, subdir } of TARGETS) {

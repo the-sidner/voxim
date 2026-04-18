@@ -1,8 +1,0 @@
-{
-  "id": "copper_ore",
-  "category": "resource",
-  "stackable": true,
-  "weight": 1.5,
-  "slots": [],
-  "baseStats": {}
-}

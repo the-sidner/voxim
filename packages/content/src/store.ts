@@ -12,7 +12,6 @@
 import type {
   MaterialId,
   MaterialDef,
-  MaterialProperties,
   ModelDefinition,
   Hitbox,
   SubObjectRef,
@@ -20,9 +19,7 @@ import type {
   SkeletonDef,
   BoneDef,
   ItemPart,
-  ItemTemplate,
   DerivedItemStats,
-  StatContribution,
   Recipe,
   NpcTemplate,
   BehaviorTreeSpec,
@@ -63,15 +60,13 @@ export interface ContentStore {
   // ---- skeletons ----
   getSkeleton(id: string): SkeletonDef | null;
 
-  // ---- item templates ----
-  getItemTemplate(id: string): ItemTemplate | null;
-  getAllItemTemplates(): readonly ItemTemplate[];
   /**
-   * Derive the full stat block for a specific item instance.
-   * Combines the template's baseStats with material property contributions
-   * from each part.  Returns baseStats only when parts is empty/undefined.
+   * Derive the stat block for a prefab-based item.
+   * Reads behaviour components (Weight, Armor, Edible, Illuminator, Tool, Swingable)
+   * from the prefab's components dict. The `parts` parameter is accepted for call-site
+   * compatibility but is not used in Phase 2 — material-axis stat derivation is deferred.
    */
-  deriveItemStats(templateId: string, parts?: ItemPart[]): DerivedItemStats;
+  deriveItemStats(prefabId: string, parts?: ItemPart[]): DerivedItemStats;
 
   // ---- recipes ----
   getRecipe(id: string): Recipe | null;
@@ -158,7 +153,6 @@ export class StaticContentStore implements ContentStore {
   private materialsByName = new Map<string, MaterialDef>();
   private models = new Map<string, ModelDefinition>();
   private skeletons = new Map<string, SkeletonDef>();
-  private itemTemplates = new Map<string, ItemTemplate>();
   private recipes = new Map<string, Recipe>();
   /** Cached reverse index. Invalidated by registerRecipe; built on first access. */
   private recipeGraph: RecipeGraph | null = null;
@@ -212,10 +206,6 @@ export class StaticContentStore implements ContentStore {
 
   registerSkeleton(def: SkeletonDef): void {
     this.skeletons.set(def.id, def);
-  }
-
-  registerItemTemplate(template: ItemTemplate): void {
-    this.itemTemplates.set(template.id, template);
   }
 
   registerRecipe(recipe: Recipe): void {
@@ -302,47 +292,31 @@ export class StaticContentStore implements ContentStore {
     return this.skeletons.get(id) ?? null;
   }
 
-  // ---- item templates ----
+  deriveItemStats(prefabId: string, _parts?: ItemPart[]): DerivedItemStats {
+    const prefab = this.getPrefab(prefabId);
+    if (!prefab) return { weight: 1 };
 
-  getItemTemplate(id: string): ItemTemplate | null {
-    return this.itemTemplates.get(id) ?? null;
-  }
+    const c = prefab.components;
+    const weight = c["weight"] as { baseWeight?: number } | undefined;
+    const armor = c["armor"] as { reduction?: number; staminaPenalty?: number } | undefined;
+    const edible = c["edible"] as { food?: number; water?: number } | undefined;
+    const illuminator = c["illuminator"] as { radius?: number; color?: number; intensity?: number; flicker?: number } | undefined;
+    const tool = c["tool"] as { toolType?: string } | undefined;
+    const swingable = c["swingable"] as { weaponActionId?: string } | undefined;
 
-  getAllItemTemplates(): readonly ItemTemplate[] {
-    return Array.from(this.itemTemplates.values());
-  }
-
-  deriveItemStats(templateId: string, parts?: ItemPart[]): DerivedItemStats {
-    const template = this.getItemTemplate(templateId);
-    if (!template) return { weight: 1 };
-
-    // Start from base stats
-    const stats: DerivedItemStats = {
-      weight: template.weight,
-      ...template.baseStats,
-    };
-
-    // Preserve non-numeric/non-accumulating fields from the template
-    if (template.toolType !== undefined) stats.toolType = template.toolType;
-    else if (template.baseStats.toolType !== undefined) stats.toolType = template.baseStats.toolType;
-    if (template.weaponAction !== undefined) stats.weaponAction = template.weaponAction;
-
-    if (!parts || parts.length === 0 || template.slots.length === 0) {
-      return stats;
+    const stats: DerivedItemStats = { weight: weight?.baseWeight ?? 1 };
+    if (armor?.reduction !== undefined) stats.armorReduction = armor.reduction;
+    if (armor?.staminaPenalty !== undefined) stats.staminaRegenPenalty = armor.staminaPenalty;
+    if (edible?.food !== undefined) stats.foodValue = edible.food;
+    if (edible?.water !== undefined) stats.waterValue = edible.water;
+    if (illuminator?.intensity) {
+      stats.lightRadius = illuminator.radius;
+      stats.lightColor = illuminator.color;
+      stats.lightIntensity = illuminator.intensity;
+      stats.lightFlicker = illuminator.flicker;
     }
-
-    // Accumulate material property contributions per part
-    for (const part of parts) {
-      const slotDef = template.slots.find((s) => s.id === part.slot);
-      if (!slotDef) continue;
-
-      const material = this.getMaterialByName(part.materialName);
-      if (!material) continue;
-
-      for (const contrib of slotDef.statContributions) {
-        accumulateStat(stats, contrib, material.properties);
-      }
-    }
+    if (tool?.toolType) stats.toolType = tool.toolType;
+    if (swingable?.weaponActionId) stats.weaponAction = swingable.weaponActionId;
 
     return stats;
   }
@@ -603,18 +577,3 @@ export function resolveMorphParams(
 
 // ---- helpers ----
 
-/**
- * Apply one StatContribution to the stats object.
- * stat += material.properties[property] * multiplier
- */
-function accumulateStat(
-  stats: DerivedItemStats,
-  contrib: StatContribution,
-  props: MaterialProperties,
-): void {
-  const propValue = props[contrib.property];
-  const key = contrib.stat as string;
-  if (key === "toolType") return; // string field — not numeric, skip accumulation
-  const current = (stats as unknown as Record<string, number | undefined>)[key] ?? 0;
-  (stats as unknown as Record<string, number>)[key] = current + propValue * contrib.multiplier;
-}

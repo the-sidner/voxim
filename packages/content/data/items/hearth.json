@@ -1,9 +1,0 @@
-{
-  "id": "hearth",
-  "category": "deployable",
-  "stackable": true,
-  "weight": 40.0,
-  "slots": [],
-  "baseStats": {},
-  "deploysTo": "hearth"
-}

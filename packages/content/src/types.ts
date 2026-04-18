@@ -228,63 +228,29 @@ export interface DerivedItemStats {
 }
 
 /**
- * Template for all items of a given type.
- * Defines slots (for crafted multi-part items), base stats, model reference,
- * and what material this item contributes when used as a crafting input.
- *
- * Simple resources and consumables use slots: [] with hardcoded baseStats.
- * Crafted items (swords, armor) declare slots whose material contributions
- * accumulate on top of baseStats at crafting time.
- */
-/**
  * Which equipment slot an item occupies when equipped.
  * Matches the field names on EquipmentData in @voxim/codecs.
- * Absent on items that cannot be equipped (resources, consumables, components).
  */
 export type EquipSlot = "weapon" | "offHand" | "head" | "chest" | "legs" | "feet" | "back";
 
-export interface ItemTemplate {
-  id: string;
-  category: "weapon" | "armor" | "tool" | "consumable" | "resource" | "component" | "deployable";
-  /** Resources and consumables stack; crafted items (with parts) do not. */
-  stackable: boolean;
-  /** Base weight before material density contributions. */
-  weight: number;
-  /**
-   * Which equipment slot this item occupies when equipped.
-   * Absent on items that cannot be equipped (resources, consumables, components).
-   * Note: `slots` below refers to crafting material slots — a separate concept.
-   */
-  equipSlot?: EquipSlot;
-  /** Named material slots — empty for simple items. */
-  slots: ItemSlotDef[];
-  /** Stat values applied before slot contributions. */
-  baseStats: Partial<DerivedItemStats>;
-  /** References a ModelDefinition for client-side rendering and server hitbox lookup. */
-  modelTemplateId?: string;
-  /**
-   * The material name this item contributes when placed in a recipe's output slot.
-   * Example: "iron_ingot" → materialName "iron"; "oak_plank" → materialName "wood".
-   * Undefined for items that aren't material sources (consumables, complex tools).
-   */
-  materialName?: string;
-  /**
-   * Tool classification — used by gathering system to check tool compatibility.
-   * Mirrors DerivedItemStats.toolType; kept top-level for readability in JSON.
-   */
-  toolType?: string;
-  /**
-   * Which WeaponActionDef drives this weapon's swing phases, hitbox, and animation.
-   * Absent on non-weapons and non-tools. Propagated into DerivedItemStats.weaponAction.
-   */
-  weaponAction?: string;
-  /**
-   * Prefab id to spawn when this item is deployed (placed in the world).
-   * When absent, the item is not deployable. The `category` field is purely
-   * a UI/filter classifier — deployability is determined solely by this field.
-   */
-  deploysTo?: string;
-}
+// ---- item behaviour data interfaces ----
+// These are the data shapes for the server-only template components declared in
+// packages/tile-server/src/components/item_behaviours.ts. They live here so
+// both @voxim/content (store accessor) and @voxim/tile-server (defineComponent)
+// can share the types without creating a circular dependency.
+
+export interface EquippableData { slot: EquipSlot; }
+export interface SwingableData { weaponActionId: string; }
+export interface ToolData { toolType: string; }
+export interface DeployableData { prefabId: string; }
+export interface EdibleData { food: number; water: number; health: number; stamina: number; }
+export interface IlluminatorData { radius: number; color: number; intensity: number; flicker: number; }
+export interface ArmorData { reduction: number; staminaPenalty: number; }
+export interface MaterialSourceData { materialName: string; }
+export interface ComposedData { slots: ItemSlotDef[]; }
+export type StackableData = Record<never, never>;
+export interface WeightData { baseWeight: number; }
+export interface RenderableData { modelId: string; scale: number; }
 
 // ---- recipes ----
 

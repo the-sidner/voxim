@@ -20,7 +20,7 @@ export class ConsumptionSystem implements System {
       if (!hasAction(inputState.actions, ACTION_CONSUME)) continue;
 
       const idx = inventory.slots.findIndex(
-        (s) => this.content.getItemTemplate(s.itemType)?.category === "consumable",
+        (s) => !!this.content.getPrefab(s.itemType)?.components["edible"],
       );
       if (idx === -1) {
         log.debug("consume: entity=%s no consumable in inventory", entityId);
