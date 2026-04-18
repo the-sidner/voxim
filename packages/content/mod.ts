@@ -92,6 +92,10 @@ export { ModelRef } from "./src/component.ts";
 export type { ContentStore } from "./src/store.ts";
 export { StaticContentStore, resolveSubObjects, resolveMorphParams } from "./src/store.ts";
 
+// ---- recipe graph (reverse index for crafting planner) ----
+export type { RecipeGraph } from "./src/recipe_graph.ts";
+export { buildRecipeGraph } from "./src/recipe_graph.ts";
+
 // ---- file loader (Deno server-side) ----
 export { loadContentStore } from "./src/loader.ts";
 

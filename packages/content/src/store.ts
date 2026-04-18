@@ -42,6 +42,8 @@ import type { HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
 import type { AnimationClip, BoneMask } from "./types.ts";
 import { buildClipIndex, buildMaskIndex } from "./animation_eval.ts";
+import type { RecipeGraph } from "./recipe_graph.ts";
+import { buildRecipeGraph } from "./recipe_graph.ts";
 
 export interface ContentStore {
   // ---- materials ----
@@ -76,6 +78,8 @@ export interface ContentStore {
   getAllRecipes(): readonly Recipe[];
   /** First recipe whose inputs are fully covered by the given inventory map. */
   findCraftableRecipe(inventory: Map<string, number>): Recipe | null;
+  /** Reverse index: producers by item, recipes by workstation, primitive items. */
+  getRecipeGraph(): RecipeGraph;
 
   // ---- NPC templates ----
   getNpcTemplate(id: string): NpcTemplate | null;
@@ -156,6 +160,8 @@ export class StaticContentStore implements ContentStore {
   private skeletons = new Map<string, SkeletonDef>();
   private itemTemplates = new Map<string, ItemTemplate>();
   private recipes = new Map<string, Recipe>();
+  /** Cached reverse index. Invalidated by registerRecipe; built on first access. */
+  private recipeGraph: RecipeGraph | null = null;
   private npcTemplates = new Map<string, NpcTemplate>();
   private behaviorTrees = new Map<string, BehaviorTreeSpec>();
   private biomes = new Map<string, BiomeDef>();
@@ -214,6 +220,7 @@ export class StaticContentStore implements ContentStore {
 
   registerRecipe(recipe: Recipe): void {
     this.recipes.set(recipe.id, recipe);
+    this.recipeGraph = null;
   }
 
   registerNpcTemplate(template: NpcTemplate): void {
@@ -363,6 +370,16 @@ export class StaticContentStore implements ContentStore {
       if (ok) return recipe;
     }
     return null;
+  }
+
+  getRecipeGraph(): RecipeGraph {
+    // Built lazily on first access; invalidated whenever a new recipe is
+    // registered (registerRecipe clears the cache). In practice the store
+    // is fully loaded before any planner touches the graph.
+    if (!this.recipeGraph) {
+      this.recipeGraph = buildRecipeGraph(Array.from(this.recipes.values()));
+    }
+    return this.recipeGraph;
   }
 
   // ---- NPC templates ----
