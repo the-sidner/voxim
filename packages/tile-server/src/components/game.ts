@@ -7,6 +7,7 @@
  */
 import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
+import * as v from "valibot";
 import {
   positionCodec, velocityCodec, facingCodec, buildCodec,
   staminaCodec, combatStateCodec, modelRefCodec, animationStateCodec,
@@ -89,10 +90,16 @@ export interface HealthData {
   max: number;
 }
 
+const healthSchema = v.object({
+  current: v.number(),
+  max: v.number(),
+});
+
 export const Health = defineComponent({
   name: "health" as const,
   wireId: ComponentType.health,
   codec: buildCodec<HealthData>({ current: { type: "f32" }, max: { type: "f32" } }),
+  schema: healthSchema,
   default: (): HealthData => ({ current: 100, max: 100 }),
 });
 
@@ -102,10 +109,15 @@ export interface HungerData {
   value: number;
 }
 
+const hungerSchema = v.object({
+  value: v.number(),
+});
+
 export const Hunger = defineComponent({
   name: "hunger" as const,
   wireId: ComponentType.hunger,
   codec: buildCodec<HungerData>({ value: { type: "f32" } }),
+  schema: hungerSchema,
   default: (): HungerData => ({ value: 0 }),
 });
 
@@ -115,28 +127,50 @@ export interface ThirstData {
   value: number;
 }
 
+const thirstSchema = v.object({
+  value: v.number(),
+});
+
 export const Thirst = defineComponent({
   name: "thirst" as const,
   wireId: ComponentType.thirst,
   codec: buildCodec<ThirstData>({ value: { type: "f32" } }),
+  schema: thirstSchema,
   default: (): ThirstData => ({ value: 0 }),
 });
 
 // ---- Stamina ---- 0 (exhausted) → max (full)
 
+const staminaSchema = v.object({
+  current: v.number(),
+  max: v.number(),
+  regenPerSecond: v.number(),
+  exhausted: v.boolean(),
+});
+
 export const Stamina = defineComponent({
   name: "stamina" as const,
   wireId: ComponentType.stamina,
   codec: staminaCodec,
+  schema: staminaSchema,
   default: (): StaminaData => ({ current: 100, max: 100, regenPerSecond: 8, exhausted: false }),
 });
 
 // ---- CombatState ---- per-entity combat lifecycle counters
 
+const combatStateSchema = v.object({
+  blockHeldTicks: v.number(),
+  staggerTicksRemaining: v.number(),
+  counterReady: v.boolean(),
+  iFrameTicksRemaining: v.number(),
+  dodgeCooldownTicks: v.number(),
+});
+
 export const CombatState = defineComponent({
   name: "combatState" as const,
   wireId: ComponentType.combatState,
   codec: combatStateCodec,
+  schema: combatStateSchema,
   default: (): CombatStateData => ({
     blockHeldTicks: 0,
     staggerTicksRemaining: 0,

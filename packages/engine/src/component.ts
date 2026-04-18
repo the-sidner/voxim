@@ -1,3 +1,5 @@
+import type { GenericSchema } from "valibot";
+
 /**
  * Serialiser interface — the only abstraction between the engine and wire formats.
  * Engine code calls encode/decode; it never imports protobuf or any specific format.
@@ -8,11 +10,31 @@ export interface Serialiser<T> {
   decode(bytes: Uint8Array): T;
 }
 
+/**
+ * Optional schema describing the component's data shape.
+ *
+ * Where it's used:
+ *   - Content load validates prefab component entries against the schema.
+ *   - Tests round-trip through the codec and assert `v.is(schema, decoded)`.
+ *   - Future tooling (editors, JSON schema export) consumes it generically.
+ *
+ * Codecs (wire format) stay hand-written for now — schema describes
+ * structure, codec describes bytes. They describe the same data, and the
+ * round-trip test is the contract that keeps them in sync.
+ */
+export type ComponentSchema<T> = GenericSchema<unknown, T>;
+
 interface ComponentDefBase<T, N extends string> {
   readonly id: symbol;
   readonly name: N;
   readonly default: () => T;
   readonly codec: Serialiser<T>;
+  /**
+   * Component shape contract. Optional while schemas are rolled out
+   * incrementally; once every ComponentDef has one we will tighten the
+   * type to required.
+   */
+  readonly schema?: ComponentSchema<T>;
 }
 
 /**
@@ -63,6 +85,7 @@ export function defineComponent<T, N extends string>(opts: {
   wireId: number;
   codec: Serialiser<T>;
   default: () => T;
+  schema?: ComponentSchema<T>;
   networked?: true;
 }): NetworkedComponentDef<T, N>;
 
@@ -82,6 +105,7 @@ export function defineComponent<T, N extends string>(opts: {
   networked: false;
   codec: Serialiser<T>;
   default: () => T;
+  schema?: ComponentSchema<T>;
 }): ServerOnlyComponentDef<T, N>;
 
 export function defineComponent<T, N extends string>(opts: {
@@ -89,6 +113,7 @@ export function defineComponent<T, N extends string>(opts: {
   wireId?: number;
   codec: Serialiser<T>;
   default: () => T;
+  schema?: ComponentSchema<T>;
   networked?: boolean;
 }): ComponentDef<T, N> {
   if (opts.networked === false) {
@@ -97,6 +122,7 @@ export function defineComponent<T, N extends string>(opts: {
       name: opts.name,
       default: opts.default,
       codec: opts.codec,
+      ...(opts.schema !== undefined && { schema: opts.schema }),
       networked: false,
     };
   }
@@ -105,6 +131,7 @@ export function defineComponent<T, N extends string>(opts: {
     name: opts.name,
     default: opts.default,
     codec: opts.codec,
+    ...(opts.schema !== undefined && { schema: opts.schema }),
     networked: true,
     wireId: opts.wireId!,
   };

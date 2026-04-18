@@ -10,6 +10,9 @@
     "packages/gateway",
     "packages/devtools"
   ],
+  "imports": {
+    "valibot": "jsr:@valibot/valibot@^1.0.0"
+  },
   "tasks": {
     "gateway":      "deno run --allow-net --allow-read --allow-env --unstable-net packages/gateway/main.ts",
     "tile":         "deno run --allow-net --allow-read --allow-write --allow-env --unstable-net packages/tile-server/main.ts",
