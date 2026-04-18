@@ -5,5 +5,6 @@
   "weight": 25.0,
   "slots": [],
   "baseStats": {},
-  "modelTemplateId": "model_workbench"
+  "modelTemplateId": "model_workbench",
+  "deploysTo": "workbench"
 }

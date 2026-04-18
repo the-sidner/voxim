@@ -12,7 +12,7 @@
  *   const template = content.getItemTemplate("wooden_sword");
  */
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, StructureDef, LoreFragment, ItemTemplate, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, ItemTemplate, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef } from "./types.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
 const DEFAULT_DATA_DIR = new URL("../data", import.meta.url).pathname;
@@ -23,7 +23,7 @@ export async function loadContentStore(
   const store = new StaticContentStore();
 
   const [
-    materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw,
+    materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, itemTemplatesRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, verbsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw,
@@ -32,7 +32,6 @@ export async function loadContentStore(
     readJsonDir(dataDir, "models"),
     readJsonDir(dataDir, "skeletons"),
     readJsonDir(dataDir, "recipes"),
-    readJsonDir(dataDir, "structures"),
     readJsonDir(dataDir, "lore"),
     readJsonDir(dataDir, "items"),
     readJsonDir(dataDir, "prefabs"),
@@ -59,10 +58,6 @@ export async function loadContentStore(
 
   for (const raw of recipesRaw as Recipe[]) {
     store.registerRecipe(raw);
-  }
-
-  for (const raw of structuresRaw as StructureDef[]) {
-    store.registerStructureDef(raw);
   }
 
   for (const raw of loreRaw as LoreFragment[]) {

@@ -4,5 +4,6 @@
   "stackable": true,
   "weight": 22.0,
   "slots": [],
-  "baseStats": {}
+  "baseStats": {},
+  "deploysTo": "alchemist_bench"
 }

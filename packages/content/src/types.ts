@@ -279,13 +279,11 @@ export interface ItemTemplate {
    */
   weaponAction?: string;
   /**
-   * ID of the Prefab to spawn when this item is deployed into the world.
-   * Any item category can carry this field — it is independent of `category`.
-   * When present, the item is deployable regardless of its category value.
-   * When absent, the deploy system falls back to checking category === "deployable"
-   * and using the item ID as the template ID (backward-compat for existing workstations).
+   * Prefab id to spawn when this item is deployed (placed in the world).
+   * When absent, the item is not deployable. The `category` field is purely
+   * a UI/filter classifier — deployability is determined solely by this field.
    */
-  deployTemplateId?: string;
+  deploysTo?: string;
 }
 
 // ---- recipes ----
@@ -354,27 +352,6 @@ export interface Recipe {
   chainNextRecipeId?: string;
   /** Timer length at 20 Hz. 0 for instant "attack" steps. */
   ticks: number;
-}
-
-// ---- structures ----
-
-export interface StructureMaterial {
-  itemType: string;
-  quantity: number;
-}
-
-/**
- * A buildable terrain element.
- * heightDelta: height added to the terrain cell on completion (0 for floor-only).
- * materialId:  material ID written to MaterialGrid on completion.
- * totalTicks:  construction time at 20 Hz.
- */
-export interface StructureDef {
-  id: string;
-  materialCost: StructureMaterial[];
-  heightDelta: number;
-  materialId: number;
-  totalTicks: number;
 }
 
 // ---- weapon actions ----

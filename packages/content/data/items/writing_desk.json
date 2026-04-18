@@ -4,5 +4,6 @@
   "stackable": true,
   "weight": 18.0,
   "slots": [],
-  "baseStats": {}
+  "baseStats": {},
+  "deploysTo": "writing_desk"
 }

@@ -280,7 +280,6 @@ data/
   npcs/             {id}.json    — NpcTemplate (archetype stats, skill loadout, behavior)
   weapon_actions/   {id}.json    — WeaponActionDef (swing timing, hitbox shape, IK targets)
   recipes/          {id}.json    — Recipe (crafting inputs/outputs, station requirement)
-  structures/       {id}.json    — StructureDef (blueprint building parameters)
   lore/             {id}.json    — LoreFragment (skill concept + magnitude)
   materials/        {name}.json  — MaterialDef (numeric id in file, name is filename)
 
@@ -455,7 +454,7 @@ extracted into separate modules:
 | `admin_server.ts` | HTTP admin endpoint (`/status`, `/save`), gateway registration |
 | `quic_server.ts` | `listenQuic()` — opens Deno.QuicEndpoint, upgrades to WebTransport |
 | `session.ts` | `ClientSession` — per-player input ring buffer, reliable stream writer |
-| `spawner.ts` | `spawnPrefab()` — single entry point for every entity type; `spawnBlueprint()` for structure placement |
+| `spawner.ts` | `spawnPrefab()` — single entry point for every entity type; installs visual shell + compound archetypes + direct components |
 | `aoi.ts` | `computeSessionUpdate()` — AoI diff, entity spawn/despawn, event filter |
 | `component_registry.ts` | `NETWORKED_DEFS[]`, `DEF_BY_TYPE_ID` — derived from `def.wireId` |
 | `save_manager.ts` | Binary save/load for terrain + world state |

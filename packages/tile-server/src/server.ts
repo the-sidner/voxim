@@ -377,9 +377,8 @@ export class TileServer {
     console.log(
       `[TileServer] ${config.tileId} listening on port ${config.port} at ${tickRateHz}Hz`,
       `| ${content.getAllRecipes().length} recipes,`,
-      `${content.getAllStructureDefs().length} structures,`,
       `${content.getAllNpcTemplates().length} NPC types,`,
-      `${content.getAllPrefabs().length} entity templates,`,
+      `${content.getAllPrefabs().length} prefabs,`,
       `${content.getAllLoreFragments().length} lore fragments,`,
       `${content.getAllConceptVerbEntries().length} skill entries loaded`,
     );

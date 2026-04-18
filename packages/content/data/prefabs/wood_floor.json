@@ -1,0 +1,22 @@
+{
+  "id": "wood_floor",
+  "components": {
+    "blueprint": {
+      "structureType": "wood_floor",
+      "heightDelta": 0.0,
+      "materialId": 2,
+      "materialCost": [ { "itemType": "plank", "quantity": 2 } ],
+      "totalTicks": 2,
+      "ticksRemaining": 2
+    },
+    "hitbox": {
+      "derive": false,
+      "parts": [
+        { "id": "body",
+          "fromFwd": 0, "fromRight": 0, "fromUp": 0,
+          "toFwd":   0, "toRight":   0, "toUp":  0.8,
+          "radius":  0.5 }
+      ]
+    }
+  }
+}

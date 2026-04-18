@@ -1,0 +1,22 @@
+{
+  "id": "stone_wall",
+  "components": {
+    "blueprint": {
+      "structureType": "stone_wall",
+      "heightDelta": 3.0,
+      "materialId": 3,
+      "materialCost": [ { "itemType": "stone_block", "quantity": 4 } ],
+      "totalTicks": 2,
+      "ticksRemaining": 2
+    },
+    "hitbox": {
+      "derive": false,
+      "parts": [
+        { "id": "body",
+          "fromFwd": 0, "fromRight": 0, "fromUp": 0,
+          "toFwd":   0, "toRight":   0, "toUp":  3.0,
+          "radius":  0.5 }
+      ]
+    }
+  }
+}

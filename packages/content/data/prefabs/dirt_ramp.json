@@ -1,0 +1,22 @@
+{
+  "id": "dirt_ramp",
+  "components": {
+    "blueprint": {
+      "structureType": "dirt_ramp",
+      "heightDelta": 1.0,
+      "materialId": 4,
+      "materialCost": [ { "itemType": "dirt", "quantity": 4 } ],
+      "totalTicks": 2,
+      "ticksRemaining": 2
+    },
+    "hitbox": {
+      "derive": false,
+      "parts": [
+        { "id": "body",
+          "fromFwd": 0, "fromRight": 0, "fromUp": 0,
+          "toFwd":   0, "toRight":   0, "toUp":  1.0,
+          "radius":  0.5 }
+      ]
+    }
+  }
+}

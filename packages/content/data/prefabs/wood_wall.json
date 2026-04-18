@@ -1,0 +1,22 @@
+{
+  "id": "wood_wall",
+  "components": {
+    "blueprint": {
+      "structureType": "wood_wall",
+      "heightDelta": 3.0,
+      "materialId": 2,
+      "materialCost": [ { "itemType": "plank", "quantity": 4 } ],
+      "totalTicks": 2,
+      "ticksRemaining": 2
+    },
+    "hitbox": {
+      "derive": false,
+      "parts": [
+        { "id": "body",
+          "fromFwd": 0, "fromRight": 0, "fromUp": 0,
+          "toFwd":   0, "toRight":   0, "toUp":  3.0,
+          "radius":  0.5 }
+      ]
+    }
+  }
+}

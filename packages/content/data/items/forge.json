@@ -4,5 +4,6 @@
   "stackable": true,
   "weight": 50.0,
   "slots": [],
-  "baseStats": {}
+  "baseStats": {},
+  "deploysTo": "forge"
 }

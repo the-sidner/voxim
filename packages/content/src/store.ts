@@ -24,7 +24,6 @@ import type {
   DerivedItemStats,
   StatContribution,
   Recipe,
-  StructureDef,
   NpcTemplate,
   BehaviorTreeSpec,
   BiomeDef,
@@ -77,10 +76,6 @@ export interface ContentStore {
   getAllRecipes(): readonly Recipe[];
   /** First recipe whose inputs are fully covered by the given inventory map. */
   findCraftableRecipe(inventory: Map<string, number>): Recipe | null;
-
-  // ---- structures ----
-  getStructureDef(id: string): StructureDef | null;
-  getAllStructureDefs(): readonly StructureDef[];
 
   // ---- NPC templates ----
   getNpcTemplate(id: string): NpcTemplate | null;
@@ -161,7 +156,6 @@ export class StaticContentStore implements ContentStore {
   private skeletons = new Map<string, SkeletonDef>();
   private itemTemplates = new Map<string, ItemTemplate>();
   private recipes = new Map<string, Recipe>();
-  private structures = new Map<string, StructureDef>();
   private npcTemplates = new Map<string, NpcTemplate>();
   private behaviorTrees = new Map<string, BehaviorTreeSpec>();
   private biomes = new Map<string, BiomeDef>();
@@ -220,10 +214,6 @@ export class StaticContentStore implements ContentStore {
 
   registerRecipe(recipe: Recipe): void {
     this.recipes.set(recipe.id, recipe);
-  }
-
-  registerStructureDef(def: StructureDef): void {
-    this.structures.set(def.id, def);
   }
 
   registerNpcTemplate(template: NpcTemplate): void {
@@ -373,16 +363,6 @@ export class StaticContentStore implements ContentStore {
       if (ok) return recipe;
     }
     return null;
-  }
-
-  // ---- structures ----
-
-  getStructureDef(id: string): StructureDef | null {
-    return this.structures.get(id) ?? null;
-  }
-
-  getAllStructureDefs(): readonly StructureDef[] {
-    return Array.from(this.structures.values());
   }
 
   // ---- NPC templates ----

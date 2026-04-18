@@ -4,5 +4,6 @@
   "stackable": true,
   "weight": 30.0,
   "slots": [],
-  "baseStats": {}
+  "baseStats": {},
+  "deploysTo": "altar"
 }

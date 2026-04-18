@@ -11,9 +11,9 @@
  *   - Unknown keys throw — the content loader should have caught them at
  *     startup, this is the last line of defence.
  *
- * Blueprints still go through `spawnBlueprint` because they are parameterised
- * by a StructureDef picked at placement time rather than a fixed prefab —
- * PREFAB_SYSTEM_PLAN.md Phase 4 folds structures into prefabs as well.
+ * Blueprints are ordinary prefabs (data/prefabs/wood_wall.json etc.);
+ * BuildingSystem spawns them via spawnPrefab and patches in the cell
+ * coordinates once the placement is validated.
  */
 import type { World, EntityId, ComponentDef } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
@@ -37,7 +37,6 @@ import { Heritage } from "./components/heritage.ts";
 import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
-import { Blueprint } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -287,65 +286,3 @@ export function spawnPrefab(
   return id;
 }
 
-// ---- blueprint spawning (separate path — StructureDef, not Prefab) ----
-
-const CHUNK_SIZE = 32;
-
-export interface SpawnBlueprintOpts {
-  structureType: string;
-  /** World-space placement coordinates (server x/y plane). */
-  worldX: number;
-  worldY: number;
-  /** Surface height at this position — used as the entity z position. */
-  surfaceZ: number;
-}
-
-/**
- * Place a Blueprint entity in the world.
- * Returns the entity ID on success, or null if the structure type is unknown.
- *
- * Snaps to cell grid: (worldX, worldY) → (chunkX, chunkY, localX, localY).
- * The entity position is the cell center so the player can swing at it.
- */
-export function spawnBlueprint(world: World, content: ContentStore, opts: SpawnBlueprintOpts): EntityId | null {
-  const def = content.getStructureDef(opts.structureType);
-  if (!def) return null;
-
-  const cellX = Math.floor(opts.worldX);
-  const cellY = Math.floor(opts.worldY);
-  const chunkX = Math.floor(cellX / CHUNK_SIZE);
-  const chunkY = Math.floor(cellY / CHUNK_SIZE);
-  const localX = ((cellX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-  const localY = ((cellY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-
-  const posX = cellX + 0.5;
-  const posY = cellY + 0.5;
-
-  const id = newEntityId();
-  world.create(id);
-  world.write(id, Position, { x: posX, y: posY, z: opts.surfaceZ });
-  world.write(id, Blueprint, {
-    structureType: def.id,
-    chunkX, chunkY, localX, localY,
-    heightDelta:   def.heightDelta,
-    materialId:    def.materialId,
-    materialCost:  def.materialCost,
-    totalTicks:    def.totalTicks,
-    ticksRemaining: def.totalTicks,
-    materialsDeducted: false,
-  });
-
-  // Walls (heightDelta > 0) get a full-height capsule; floors get a short stub.
-  const capsuleHeight = def.heightDelta > 0 ? def.heightDelta : 0.8;
-  world.write(id, Hitbox, {
-    derive: false,
-    parts: [{
-      id: "body",
-      fromFwd: 0, fromRight: 0, fromUp: 0,
-      toFwd:   0, toRight:   0, toUp: capsuleHeight,
-      radius:  0.5,
-    }],
-  });
-
-  return id;
-}

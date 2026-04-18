@@ -4,5 +4,6 @@
   "stackable": true,
   "weight": 60.0,
   "slots": [],
-  "baseStats": {}
+  "baseStats": {},
+  "deploysTo": "furnace"
 }

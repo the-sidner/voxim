@@ -126,9 +126,7 @@ export class CraftingSystem implements System {
     if (!slot) return;
 
     const itemDef = this.content.getItemTemplate(slot.itemType);
-    // deployTemplateId is the explicit link; fall back to item ID for items
-    // with category "deployable" (backward-compat for existing workstations).
-    const templateId = itemDef?.deployTemplateId ?? (itemDef?.category === "deployable" ? slot.itemType : null);
+    const templateId = itemDef?.deploysTo ?? null;
     if (!templateId) {
       log.debug("deploy: player=%s item=%s not deployable", entityId, slot.itemType);
       return;

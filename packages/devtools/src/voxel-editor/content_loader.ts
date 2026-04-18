@@ -11,10 +11,9 @@ import type {
   ModelDefinition,
   SkeletonDef,
   Recipe,
-  StructureDef,
   LoreFragment,
   ItemTemplate,
-  EntityTemplate,
+  Prefab,
   NpcTemplate,
   ConceptVerbEntry,
   GameConfig,
@@ -63,18 +62,17 @@ export async function loadContentBrowser(): Promise<BrowserContentStore> {
   const store = new StaticContentStore() as BrowserContentStore;
 
   const [
-    materialsRaw, modelsRaw, skeletonsRaw, recipesRaw, structuresRaw,
-    loreRaw, itemTemplatesRaw, entityTemplatesRaw, npcTemplatesRaw,
+    materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
+    loreRaw, itemTemplatesRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, verbsRaw, gameConfigRaw,
   ] = await Promise.all([
     fetchArray("materials.json"),
     fetchArray("models.json"),
     fetchArray("skeletons.json"),
     fetchArray("recipes.json"),
-    fetchArray("structures.json"),
     fetchArray("lore_fragments.json"),
     fetchArray("item_templates.json"),
-    fetchArray("entity_templates.json"),
+    fetchArray("prefabs.json"),
     fetchArray("npc_templates.json"),
     fetchArray("concept_verb_matrix.json"),
     fetchArray("weapon_actions.json"),
@@ -86,10 +84,9 @@ export async function loadContentBrowser(): Promise<BrowserContentStore> {
   for (const raw of modelsRaw as ModelDefinition[]) store.registerModel(raw);
   for (const raw of skeletonsRaw as SkeletonDef[]) store.registerSkeleton(raw);
   for (const raw of recipesRaw as Recipe[]) store.registerRecipe(raw);
-  for (const raw of structuresRaw as StructureDef[]) store.registerStructureDef(raw);
   for (const raw of loreRaw as LoreFragment[]) store.registerLoreFragment(raw);
   for (const raw of itemTemplatesRaw as ItemTemplate[]) store.registerItemTemplate(raw);
-  for (const raw of entityTemplatesRaw as EntityTemplate[]) store.registerEntityTemplate(raw);
+  for (const raw of prefabsRaw as Prefab[]) store.registerPrefab(raw);
   for (const raw of npcTemplatesRaw as NpcTemplate[]) store.registerNpcTemplate(raw);
   for (const raw of conceptVerbRaw as ConceptVerbEntry[]) store.registerConceptVerbEntry(raw);
   for (const raw of weaponActionsRaw as WeaponActionDef[]) store.registerWeaponAction(raw);

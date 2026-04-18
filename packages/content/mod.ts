@@ -35,8 +35,6 @@ export type {
   EquipSlot,
   RecipeInput,
   Recipe,
-  StructureMaterial,
-  StructureDef,
   NpcTemplate,
   ResourceNodeYield,
   PrefabResourceNodeData,

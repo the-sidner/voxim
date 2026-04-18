@@ -6,16 +6,21 @@ import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
 import { Blueprint } from "../components/building.ts";
-import { spawnBlueprint } from "../spawner.ts";
+import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("BuildingSystem");
 
+const CHUNK_SIZE = 32;
+
 /**
  * BuildingSystem — handles PlaceBlueprint commands.
  *
- * Validates placement (hammer equipped, within reach, cell unoccupied) and
- * calls spawnBlueprint() to create the Blueprint entity.
+ * Validates placement (hammer equipped, within reach, cell unoccupied),
+ * spawns the requested blueprint prefab, and overwrites its Blueprint
+ * component with the cell-specific runtime coordinates. The prefab carries
+ * the static build parameters (heightDelta, materialCost, totalTicks); the
+ * system fills in chunkX/Y, localX/Y before the tick ends.
  *
  * Construction (swinging at the blueprint) is handled entirely by
  * BlueprintHitHandler — this system only handles spawning.
@@ -47,9 +52,8 @@ export class BuildingSystem implements System {
     worldX: number,
     worldY: number,
   ): void {
-    // Structure type must exist
-    const def = this.content.getStructureDef(structureType);
-    if (!def) {
+    const prefab = this.content.getPrefab(structureType);
+    if (!prefab || !prefab.components.blueprint) {
       log.warn("PlaceBlueprint: unknown structureType=%s", structureType);
       return;
     }
@@ -81,29 +85,30 @@ export class BuildingSystem implements System {
     const cellX = Math.floor(worldX);
     const cellY = Math.floor(worldY);
     for (const { blueprint } of world.query(Blueprint)) {
-      const bx = blueprint.chunkX * 32 + blueprint.localX;
-      const by = blueprint.chunkY * 32 + blueprint.localY;
+      const bx = blueprint.chunkX * CHUNK_SIZE + blueprint.localX;
+      const by = blueprint.chunkY * CHUNK_SIZE + blueprint.localY;
       if (bx === cellX && by === cellY) {
         log.warn("PlaceBlueprint: cell already occupied x=%d y=%d", cellX, cellY);
         return;
       }
     }
 
-    const id = spawnBlueprint(world, this.content, {
-      structureType,
-      worldX,
-      worldY,
-      surfaceZ: pos.z,
+    // Place blueprint at cell center so it is swing-targetable.
+    const chunkX = Math.floor(cellX / CHUNK_SIZE);
+    const chunkY = Math.floor(cellY / CHUNK_SIZE);
+    const localX = ((cellX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const localY = ((cellY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const id = spawnPrefab(world, this.content, structureType, {
+      x: cellX + 0.5, y: cellY + 0.5, z: pos.z,
     });
 
-    if (id) {
-      log.info(
-        "blueprint placed: placer=%s type=%s cell=(%d,%d)",
-        placerId,
-        structureType,
-        cellX,
-        cellY,
-      );
-    }
+    // Patch in cell coordinates — the prefab can't know these statically.
+    const bp = world.get(id, Blueprint);
+    if (bp) world.write(id, Blueprint, { ...bp, chunkX, chunkY, localX, localY });
+
+    log.info(
+      "blueprint placed: placer=%s type=%s cell=(%d,%d)",
+      placerId, structureType, cellX, cellY,
+    );
   }
 }
