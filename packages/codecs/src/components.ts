@@ -932,7 +932,17 @@ export type Job =
   | { type: "seekFood";      expiresAt: number }
   | { type: "seekWater";     expiresAt: number }
   | { type: "flee";          fromX: number; fromY: number; expiresAt: number }
-  | { type: "attackTarget";  targetId: string; expiresAt: number };
+  | { type: "attackTarget";  targetId: string; expiresAt: number }
+  | {
+      type: "craftAtWorkbench";
+      workbenchType: string;
+      inputs: ReadonlyArray<{ itemType: string; quantity: number }>;
+      /** Set once the job handler has resolved a specific workstation entity to approach. */
+      workbenchId: string | null;
+      /** approach → place → hit → (job cleared). */
+      phase: "approach" | "place" | "hit";
+      expiresAt: number;
+    };
 
 export type PlanStep =
   | { kind: "moveTo";   x: number; y: number }
@@ -961,6 +971,12 @@ const JOB_SEEK_FOOD   = 2;
 const JOB_SEEK_WATER  = 3;
 const JOB_FLEE        = 4;
 const JOB_ATTACK      = 5;
+const JOB_CRAFT_AT    = 6;
+
+// craftAtWorkbench phase discriminants
+const CRAFT_APPROACH = 0;
+const CRAFT_PLACE    = 1;
+const CRAFT_HIT      = 2;
 
 // Plan step discriminants
 const STEP_MOVE_TO  = 0;
@@ -976,6 +992,15 @@ function writeJob(w: WireWriter, job: Job): void {
     case "seekWater":    w.writeU8(JOB_SEEK_WATER); w.writeI32(job.expiresAt); break;
     case "flee":         w.writeU8(JOB_FLEE); w.writeF32(job.fromX); w.writeF32(job.fromY); w.writeI32(job.expiresAt); break;
     case "attackTarget": w.writeU8(JOB_ATTACK); w.writeStr(job.targetId); w.writeI32(job.expiresAt); break;
+    case "craftAtWorkbench":
+      w.writeU8(JOB_CRAFT_AT);
+      w.writeStr(job.workbenchType);
+      w.writeU8(job.phase === "approach" ? CRAFT_APPROACH : job.phase === "place" ? CRAFT_PLACE : CRAFT_HIT);
+      w.writeStr(job.workbenchId ?? "");
+      w.writeU16(job.inputs.length);
+      for (const inp of job.inputs) { w.writeStr(inp.itemType); w.writeU16(inp.quantity); }
+      w.writeI32(job.expiresAt);
+      break;
   }
 }
 
@@ -988,6 +1013,20 @@ function readJob(r: WireReader): Job {
     case JOB_SEEK_WATER: return { type: "seekWater",     expiresAt: r.readI32() };
     case JOB_FLEE:       return { type: "flee",          fromX: r.readF32(), fromY: r.readF32(), expiresAt: r.readI32() };
     case JOB_ATTACK:     return { type: "attackTarget",  targetId: r.readStr(), expiresAt: r.readI32() };
+    case JOB_CRAFT_AT: {
+      const workbenchType = r.readStr();
+      const phaseDisc = r.readU8();
+      const phase: "approach" | "place" | "hit" =
+        phaseDisc === CRAFT_APPROACH ? "approach" :
+        phaseDisc === CRAFT_PLACE    ? "place" : "hit";
+      const wbid = r.readStr();
+      const workbenchId = wbid === "" ? null : wbid;
+      const n = r.readU16();
+      const inputs: Array<{ itemType: string; quantity: number }> = [];
+      for (let i = 0; i < n; i++) inputs.push({ itemType: r.readStr(), quantity: r.readU16() });
+      const expiresAt = r.readI32();
+      return { type: "craftAtWorkbench", workbenchType, phase, workbenchId, inputs, expiresAt };
+    }
     default: throw new Error(`Unknown job kind: ${kind}`);
   }
 }
