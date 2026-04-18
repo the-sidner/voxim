@@ -41,6 +41,7 @@ import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { LightEmitter, DarknessModifier } from "./components/light.ts";
 import { Hitbox } from "./components/hitbox.ts";
+import { Hearth } from "./components/hearth.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { ProjectileData } from "./components/projectile.ts";
 
@@ -98,6 +99,7 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   Hitbox,
   SkillInProgress,
   WorkstationTag,
+  Hearth,
   NpcTag,
   NpcJobQueue,
   ProjectileData,

@@ -30,6 +30,7 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
+import type { SessionInfo } from "./account_client.ts";
 import { spawnPrefab } from "./spawner.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
@@ -297,7 +298,7 @@ export class TileServer {
       new ItemPickupSystem(content),
       new EquipmentSystem(content),
       new BuildingSystem(content),
-      new CraftingSystem(content, recipeSteps),
+      new CraftingSystem(content, recipeSteps, this.accountClient ?? null, this.tileId),
       new ConsumptionSystem(content),
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
@@ -678,6 +679,7 @@ export class TileServer {
     // (no gateway), we trust the claimed playerId as-is.
     let playerId: EntityId;
     let dynastyId: EntityId;
+    let info: SessionInfo | null = null;
 
     if (this.accountClient) {
       if (!joinMsg.token) {
@@ -685,7 +687,7 @@ export class TileServer {
         jWriter.close().catch(() => {}); jWriter.releaseLock();
         return;
       }
-      const info = await this.accountClient.validateSession(joinMsg.token).catch((err: unknown) => {
+      info = await this.accountClient.validateSession(joinMsg.token).catch((err: unknown) => {
         console.error("[TileServer] session validation failed:", err);
         return null;
       });
@@ -715,10 +717,21 @@ export class TileServer {
             return null;
           })) ?? undefined
         : undefined;
+      // Use the hearth anchor as spawn point when it's on this tile; otherwise
+      // fall back to the default spawn. Cross-tile routing is the gateway's job.
+      const anchor = info?.hearthAnchor ?? null;
+      const spawnAtHearth = anchor && anchor.tileId === this.tileId;
+      const spawnX = spawnAtHearth ? anchor.position.x : spawn.defaultSpawnX;
+      const spawnY = spawnAtHearth ? anchor.position.y : spawn.defaultSpawnY;
+      const spawnZ = spawnAtHearth ? anchor.position.z : undefined;
+      if (spawnAtHearth) {
+        console.log(`[TileServer] player ${playerId.slice(0, 8)} spawning at hearth (%.1f, %.1f)`, spawnX, spawnY);
+      }
       spawnPrefab(this.world, this.content, "player", {
         id: playerId,
-        x: spawn.defaultSpawnX,
-        y: spawn.defaultSpawnY,
+        x: spawnX,
+        y: spawnY,
+        z: spawnZ,
         heritage,
       });
     }

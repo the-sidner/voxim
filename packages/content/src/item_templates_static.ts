@@ -25,6 +25,7 @@ import flint from "../data/items/flint.json" with { type: "json" };
 import forge from "../data/items/forge.json" with { type: "json" };
 import furnace from "../data/items/furnace.json" with { type: "json" };
 import hammer from "../data/items/hammer.json" with { type: "json" };
+import hearth from "../data/items/hearth.json" with { type: "json" };
 import helmet from "../data/items/helmet.json" with { type: "json" };
 import iron_ingot from "../data/items/iron_ingot.json" with { type: "json" };
 import iron_ore from "../data/items/iron_ore.json" with { type: "json" };
@@ -78,6 +79,7 @@ export const item_templates: readonly ItemTemplate[] = [
   forge as unknown as ItemTemplate,
   furnace as unknown as ItemTemplate,
   hammer as unknown as ItemTemplate,
+  hearth as unknown as ItemTemplate,
   helmet as unknown as ItemTemplate,
   iron_ingot as unknown as ItemTemplate,
   iron_ore as unknown as ItemTemplate,

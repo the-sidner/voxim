@@ -16,10 +16,16 @@
 import { heritageCodec } from "@voxim/codecs";
 import type { HeritageData } from "@voxim/codecs";
 
+export interface HearthAnchor {
+  tileId: string;
+  position: { x: number; y: number; z: number };
+}
+
 export interface SessionInfo {
   userId: string;
   activeDynastyId: string;
   lastTileId: string | null;
+  hearthAnchor: HearthAnchor | null;
 }
 
 export class AccountClient {
@@ -102,6 +108,23 @@ export class AccountClient {
     });
     if (!res.ok) {
       throw new Error(`AccountClient.updateLocation: HTTP ${res.status}`);
+    }
+  }
+
+  /**
+   * Record the user's new hearth anchor — the location their heir spawns
+   * at on next login post-death. Pass `null` to clear the anchor (e.g.
+   * when the hearth entity is destroyed).
+   */
+  async updateHearth(userId: string, anchor: HearthAnchor | null): Promise<void> {
+    const body = anchor ?? { tileId: null, position: null };
+    const res = await fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/hearth`, {
+      method: "PATCH",
+      headers: this.headers({ "content-type": "application/json" }),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      throw new Error(`AccountClient.updateHearth: HTTP ${res.status}`);
     }
   }
 }

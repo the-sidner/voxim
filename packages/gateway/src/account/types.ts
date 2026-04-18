@@ -36,10 +36,23 @@ export interface UserRecord {
   lastTileId: string | null;
 
   /**
+   * Respawn anchor set when the user places a Hearth. On login after death,
+   * the gateway routes to `tileId` and the tile spawns the heir at
+   * `position`. Null when no hearth has been placed yet (first character).
+   */
+  hearthAnchor: HearthAnchor | null;
+
+  /**
    * Free-form UI + gameplay preferences. Deliberately untyped here so the
    * store doesn't need to evolve when clients add settings.
    */
   settings: Record<string, unknown>;
+}
+
+/** Where a dynasty's heir spawns after a death. */
+export interface HearthAnchor {
+  tileId: string;
+  position: { x: number; y: number; z: number };
 }
 
 /** Minimal projection used by the handshake: what the gateway needs to route. */
@@ -47,4 +60,5 @@ export interface SessionInfo {
   userId: string;
   activeDynastyId: string;
   lastTileId: string | null;
+  hearthAnchor: HearthAnchor | null;
 }

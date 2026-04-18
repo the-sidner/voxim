@@ -26,6 +26,7 @@ import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
+import type { AccountClient } from "../account_client.ts";
 
 const log = createLogger("CraftingSystem");
 
@@ -36,6 +37,9 @@ export class CraftingSystem implements System {
   constructor(
     private readonly content: ContentStore,
     private readonly steps: Registry<RecipeStepHandler>,
+    /** Optional: enables hearth-anchor sync when hearth-carrying prefabs are deployed. */
+    private readonly accountClient: AccountClient | null = null,
+    private readonly tileId: string = "",
   ) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
@@ -148,7 +152,20 @@ export class CraftingSystem implements System {
     const wx = pos.x + Math.sin(facing) * deployOffset;
     const wy = pos.y + Math.cos(facing) * deployOffset;
 
-    spawnPrefab(world, this.content, templateId, { x: wx, y: wy, z: pos.z });
+    const deployedId = spawnPrefab(world, this.content, templateId, { x: wx, y: wy, z: pos.z });
+
+    // Hearth placement: tell the account service so the heir spawns here
+    // on next login post-death. Fire-and-forget — a failed write is logged
+    // and the anchor stays at its previous value, not a correctness risk.
+    const prefab = this.content.getPrefab(templateId);
+    if (prefab?.components.hearth && this.accountClient && this.tileId) {
+      this.accountClient.updateHearth(entityId, {
+        tileId: this.tileId,
+        position: { x: wx, y: wy, z: pos.z },
+      }).catch((err) => log.warn("updateHearth failed: entity=%s err=%s", entityId, err));
+      log.info("hearth anchored: player=%s entity=%s at (%.1f, %.1f) on %s",
+        entityId, deployedId, wx, wy, this.tileId);
+    }
 
     // Consume one from inventory
     const newSlots = [...inventory.slots];

@@ -170,6 +170,7 @@ export class AccountStore {
       lastLoginAt: now,
       activeDynastyId: dynastyId,
       lastTileId: null,
+      hearthAnchor: null,
       settings: {},
     };
 

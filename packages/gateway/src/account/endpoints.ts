@@ -138,6 +138,7 @@ export class AccountEndpoints {
         if (req.method === "GET"  && sub === "/heritage") return this.internalGetHeritage(userId);
         if (req.method === "POST" && sub === "/death")    return this.internalDeath(userId, req);
         if (req.method === "PATCH" && sub === "/location") return this.internalLocation(userId, req);
+        if (req.method === "PATCH" && sub === "/hearth")   return this.internalSetHearth(userId, req);
       }
 
       return textError("not found", 404);
@@ -240,6 +241,7 @@ export class AccountEndpoints {
       userId: user.userId,
       activeDynastyId: user.activeDynastyId,
       lastTileId: user.lastTileId,
+      hearthAnchor: user.hearthAnchor,
     };
     return json(info);
   }
@@ -278,6 +280,29 @@ export class AccountEndpoints {
     if (typeof body.lastTileId !== "string") return textError("lastTileId required", 400);
     const updated = await this.deps.store.updateUser(userId, { lastTileId: body.lastTileId });
     if (!updated) return textError("user not found", 404);
+    return new Response(null, { status: 204 });
+  }
+
+  private async internalSetHearth(userId: string, req: Request): Promise<Response> {
+    let body: { tileId?: string; position?: { x?: number; y?: number; z?: number } | null };
+    try { body = await req.json(); } catch { return textError("bad request", 400); }
+    // Null body clears the anchor (e.g. on hearth destruction).
+    if (body.tileId === null || body.position === null) {
+      const updated = await this.deps.store.updateUser(userId, { hearthAnchor: null });
+      if (!updated) return textError("user not found", 404);
+      return new Response(null, { status: 204 });
+    }
+    if (typeof body.tileId !== "string" || !body.position
+      || typeof body.position.x !== "number"
+      || typeof body.position.y !== "number"
+      || typeof body.position.z !== "number") {
+      return textError("tileId and position {x,y,z} required", 400);
+    }
+    const updated = await this.deps.store.updateUser(userId, {
+      hearthAnchor: { tileId: body.tileId, position: { x: body.position.x, y: body.position.y, z: body.position.z } },
+    });
+    if (!updated) return textError("user not found", 404);
+    console.log(`[Account] hearth anchor set for user ${userId} on tile ${body.tileId}`);
     return new Response(null, { status: 204 });
   }
 }
