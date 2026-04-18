@@ -7,7 +7,6 @@
   "aggroRange": 30,
   "attackRange": 7.0,
   "wanderRadius": 25,
-  "modelTemplateId": "human_base",
   "wanderTicks": 60,
   "attackTicks": 35,
   "fleeTicks": 100,

@@ -93,7 +93,6 @@ export const WorkstationBuffer = defineComponent({
   requires: ["workstationTag"],
   codec: workstationBufferCodec,
   default: (): WorkstationBufferData => ({
-    stationType: "",
     slots: [],
     capacity: 4,
     activeRecipeId: null,

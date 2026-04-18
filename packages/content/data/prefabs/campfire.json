@@ -3,8 +3,17 @@
   "extends": "_workbench_base",
   "modelId": "model_campfire",
   "components": {
-    "workstationTag":    { "stationType": "campfire" },
-    "workstationBuffer": { "stationType": "campfire", "capacity": 2 },
-    "lightEmitter":      { "color": 16740384, "intensity": 1.0, "radius": 14.0, "flicker": 0.35 }
+    "workstationTag": {
+      "stationType": "campfire"
+    },
+    "workstationBuffer": {
+      "capacity": 2
+    },
+    "lightEmitter": {
+      "color": 16740384,
+      "intensity": 1.0,
+      "radius": 14.0,
+      "flicker": 0.35
+    }
   }
 }

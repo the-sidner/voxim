@@ -134,7 +134,6 @@ export class NpcAiSystem implements System {
         currentTick: this.currentTick,
         entityId,
         pos: { x: pos.x, y: pos.y },
-        template,
         tuning, defaults,
       };
 

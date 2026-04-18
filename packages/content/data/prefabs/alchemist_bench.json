@@ -2,7 +2,9 @@
   "id": "alchemist_bench",
   "extends": "_workbench_base",
   "components": {
-    "workstationTag":    { "stationType": "alchemist_bench" },
-    "workstationBuffer": { "stationType": "alchemist_bench" }
+    "workstationTag": {
+      "stationType": "alchemist_bench"
+    },
+    "workstationBuffer": {}
   }
 }

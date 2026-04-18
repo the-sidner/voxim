@@ -21,9 +21,6 @@ export const NpcTag = defineComponent({
 // Current job and scheduled follow-ups.
 // Emergency states (starving, fleeing) write directly to `current`, discarding the queue.
 
-/** @deprecated Use PlanStep with kind:"moveTo" instead. Kept for transition. */
-export type NpcWaypoint = { x: number; y: number };
-
 export const NpcJobQueue = defineComponent({
   name: "npcJobQueue" as const,
   codec: npcJobQueueCodec,

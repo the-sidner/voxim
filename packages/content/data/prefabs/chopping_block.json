@@ -3,7 +3,9 @@
   "extends": "_workbench_base",
   "modelId": "model_chopping_block",
   "components": {
-    "workstationTag":    { "stationType": "chopping_block" },
-    "workstationBuffer": { "stationType": "chopping_block" }
+    "workstationTag": {
+      "stationType": "chopping_block"
+    },
+    "workstationBuffer": {}
   }
 }

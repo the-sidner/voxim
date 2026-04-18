@@ -276,7 +276,7 @@ data/
   models/           {id}.json    — ModelDefinition (voxel geometry + skeleton binding)
   skeletons/        {id}.json    — SkeletonDef (bone hierarchy + animation clips)
   items/            {id}.json    — ItemTemplate (item categories, material slots, base stats)
-  templates/        {id}.json    — EntityTemplate (prefab: which model + which components)
+  prefabs/          {id}.json    — Prefab (model + open-set component data; extends for inheritance)
   npcs/             {id}.json    — NpcTemplate (archetype stats, skill loadout, behavior)
   weapon_actions/   {id}.json    — WeaponActionDef (swing timing, hitbox shape, IK targets)
   recipes/          {id}.json    — Recipe (crafting inputs/outputs, station requirement)
@@ -342,7 +342,7 @@ Injected into every system constructor. Never import JSON files directly. Never 
 ```typescript
 content.getWeaponAction("slash")
 content.getItemTemplate("wooden_sword")
-content.getEntityTemplate("wolf")
+content.getPrefab("wolf")
 content.deriveItemStats(itemType, parts)   // combines template + material multipliers at runtime
 ```
 

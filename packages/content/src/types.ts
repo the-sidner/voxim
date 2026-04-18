@@ -647,16 +647,10 @@ export interface NpcTemplate {
   foodHungerRestore?: number;
   /** Thirst reduction when drinking a water item. */
   waterThirstRestore?: number;
-  modelTemplateId?: string;
   /** Movement speed multiplier applied at spawn (default 1.0). */
   speedMultiplier?: number;
   /** Item type to equip as weapon at spawn (e.g. "wolf_bite"). Null/absent = unarmed. */
   weaponItemType?: string;
-  /**
-   * Which WeaponActionDef drives this NPC's melee swing.
-   * Absent = falls back to unarmedWeaponAction in GameConfig.
-   */
-  weaponAction?: string;
   /**
    * Initial skill loadout spawned onto this NPC.
    * References fragment IDs from lore_fragments.json.

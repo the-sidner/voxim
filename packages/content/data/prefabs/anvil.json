@@ -2,7 +2,9 @@
   "id": "anvil",
   "extends": "_workbench_base",
   "components": {
-    "workstationTag":    { "stationType": "anvil" },
-    "workstationBuffer": { "stationType": "anvil" }
+    "workstationTag": {
+      "stationType": "anvil"
+    },
+    "workstationBuffer": {}
   }
 }

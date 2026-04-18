@@ -1,7 +1,11 @@
 {
   "id": "_workbench_base",
   "components": {
-    "workstationTag":    { "stationType": "" },
-    "workstationBuffer": { "stationType": "", "capacity": 4 }
+    "workstationTag": {
+      "stationType": ""
+    },
+    "workstationBuffer": {
+      "capacity": 4
+    }
   }
 }

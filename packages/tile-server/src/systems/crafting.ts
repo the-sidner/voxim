@@ -95,8 +95,9 @@ export class CraftingSystem implements System {
       const newBufferSlots = [...buffer.slots, { itemType: slot.itemType, quantity: slot.quantity }];
       world.set(stationId, WorkstationBuffer, { ...buffer, slots: newBufferSlots });
 
+      const tag = world.get(stationId, WorkstationTag);
       log.info("placed: player=%s item=%sx%d on station=%s (%s)",
-        entityId, slot.itemType, slot.quantity, stationId, buffer.stationType);
+        entityId, slot.itemType, slot.quantity, stationId, tag?.stationType ?? "?");
     }
 
     // ── 2. Per-tick step dispatch ────────────────────────────────────────
@@ -105,14 +106,16 @@ export class CraftingSystem implements System {
     for (const stepId of this.steps.ids()) {
       const handler = this.steps.get(stepId);
       if (!handler.onTick) continue;
-      for (const { entityId, workstationBuffer: buf } of world.query(WorkstationBuffer)) {
+      for (const { entityId } of world.query(WorkstationBuffer)) {
         // Re-read the buffer — a previous step handler on the same station
         // may have mutated it this tick.
         const current = world.get(entityId, WorkstationBuffer);
         if (!current) continue;
+        const tag = world.get(entityId, WorkstationTag);
+        if (!tag) continue;
         handler.onTick({
           world, events, content: this.content,
-          stationId: entityId, stationType: buf.stationType,
+          stationId: entityId, stationType: tag.stationType,
           buffer: current,
         });
       }

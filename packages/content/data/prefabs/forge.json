@@ -2,7 +2,9 @@
   "id": "forge",
   "extends": "_workbench_base",
   "components": {
-    "workstationTag":    { "stationType": "forge" },
-    "workstationBuffer": { "stationType": "forge" }
+    "workstationTag": {
+      "stationType": "forge"
+    },
+    "workstationBuffer": {}
   }
 }

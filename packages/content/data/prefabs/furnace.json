@@ -2,7 +2,9 @@
   "id": "furnace",
   "extends": "_workbench_base",
   "components": {
-    "workstationTag":    { "stationType": "furnace" },
-    "workstationBuffer": { "stationType": "furnace" }
+    "workstationTag": {
+      "stationType": "furnace"
+    },
+    "workstationBuffer": {}
   }
 }

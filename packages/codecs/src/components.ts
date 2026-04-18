@@ -1157,11 +1157,13 @@ export const darknessModifierCodec: Serialiser<DarknessModifierData> = {
 
 // ---- WorkstationBuffer ----
 // Wire layout:
-//   stationType:    [u16 len][UTF-8 bytes]
 //   capacity:       u8
 //   activeRecipeId: u8 present + [u16 len][UTF-8 bytes] if present
 //   progressTicks:  i32 (-1 = null)
 //   slots:          [u16 count] per slot: u8 present + [u16 str][u16 qty] if present
+//
+// stationType is intentionally NOT stored here — it lives on WorkstationTag
+// on the same entity. Consumers read the tag when they need the type.
 
 export interface WorkstationSlot {
   itemType: string;
@@ -1169,7 +1171,6 @@ export interface WorkstationSlot {
 }
 
 export interface WorkstationBufferData {
-  stationType: string;
   slots: Array<WorkstationSlot | null>;
   capacity: number;
   /** Set by SelectRecipe command for "assembly" step recipes. */
@@ -1181,7 +1182,6 @@ export interface WorkstationBufferData {
 export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
   encode(v: WorkstationBufferData): Uint8Array {
     const w = new WireWriter();
-    w.writeStr(v.stationType);
     w.writeU8(v.capacity);
     if (v.activeRecipeId !== null) { w.writeU8(1); w.writeStr(v.activeRecipeId); }
     else                           { w.writeU8(0); }
@@ -1195,7 +1195,6 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
   },
   decode(bytes: Uint8Array): WorkstationBufferData {
     const r = new WireReader(bytes);
-    const stationType    = r.readStr();
     const capacity       = r.readU8();
     const hasRecipe      = r.readU8() === 1;
     const activeRecipeId = hasRecipe ? r.readStr() : null;
@@ -1208,6 +1207,6 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
       if (present) { const itemType = r.readStr(); const quantity = r.readU16(); slots.push({ itemType, quantity }); }
       else         { slots.push(null); }
     }
-    return { stationType, capacity, activeRecipeId, progressTicks, slots };
+    return { capacity, activeRecipeId, progressTicks, slots };
   },
 };

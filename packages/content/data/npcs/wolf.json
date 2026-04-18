@@ -6,7 +6,6 @@
   "behaviorTreeId": "hostile",
   "aggroRange": 25,
   "wanderRadius": 40,
-  "modelTemplateId": "wolf",
   "wanderTicks": 60,
   "idleTicks": 30,
   "attackTicks": 6000,
@@ -14,7 +13,6 @@
   "seekFoodTicks": 150,
   "speedMultiplier": 1.4,
   "weaponItemType": "wolf_bite",
-  "weaponAction": "bite",
   "skillLoadout": [
     {
       "verb": "strike",
