@@ -1,0 +1,9 @@
+{
+  "id": "job_board",
+  "category": "deployable",
+  "stackable": true,
+  "weight": 15.0,
+  "slots": [],
+  "baseStats": {},
+  "deploysTo": "job_board"
+}

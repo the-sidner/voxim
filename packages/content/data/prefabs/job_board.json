@@ -1,0 +1,9 @@
+{
+  "id": "job_board",
+  "extends": "_workbench_base",
+  "components": {
+    "workstationTag":    { "stationType": "job_board" },
+    "workstationBuffer": { "capacity": 1 },
+    "jobBoard":          { "pending": [] }
+  }
+}

@@ -4,8 +4,10 @@
  * Runs on a separate port from WebTransport so TLS is not required.
  */
 import { serveDir } from "@std/http/file-server";
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
+import { newEntityId } from "@voxim/engine";
 import { restorePlayer } from "./handoff.ts";
+import { JobBoard, AssignedJobBoard } from "./components/job_board.ts";
 
 export interface AdminServerDeps {
   world: World;
@@ -64,6 +66,55 @@ async function handleAdminRequest(
 
   if (req.method === "GET" && url.pathname === "/health") {
     return Response.json({ status: "ok" });
+  }
+
+  // ---- Job board admin ----
+  // POST /jobs        body: { boardId, goal: "produce", itemType, priority? }
+  //                   Appends a job to the named JobBoard entity's pending list.
+  // POST /assign-job-board body: { npcId, boardId }
+  //                   Assigns the NPC to pull work from the named board.
+  if (req.method === "POST" && url.pathname === "/jobs") {
+    try {
+      const body = await req.json() as { boardId?: string; goal?: string; itemType?: string; priority?: number };
+      if (!body.boardId || body.goal !== "produce" || !body.itemType) {
+        return new Response("bad request: boardId, goal=produce, itemType required", { status: 400 });
+      }
+      const boardId = body.boardId as EntityId;
+      const board = deps.world.get(boardId, JobBoard);
+      if (!board || !deps.world.isAlive(boardId)) {
+        return new Response("board not found", { status: 404 });
+      }
+      const jobId = newEntityId();
+      const next = {
+        pending: [...board.pending, {
+          id: jobId,
+          goal: "produce" as const,
+          itemType: body.itemType,
+          priority: body.priority ?? 0,
+          claimedBy: null,
+        }],
+      };
+      deps.world.set(boardId, JobBoard, next);
+      return Response.json({ jobId });
+    } catch {
+      return new Response("bad request", { status: 400 });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/assign-job-board") {
+    try {
+      const body = await req.json() as { npcId?: string; boardId?: string };
+      if (!body.npcId || !body.boardId) {
+        return new Response("bad request: npcId and boardId required", { status: 400 });
+      }
+      if (!deps.world.isAlive(body.npcId as EntityId) || !deps.world.isAlive(body.boardId as EntityId)) {
+        return new Response("entity not found", { status: 404 });
+      }
+      deps.world.set(body.npcId as EntityId, AssignedJobBoard, { boardId: body.boardId });
+      return Response.json({ ok: true });
+    } catch {
+      return new Response("bad request", { status: 400 });
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/cert-hash") {

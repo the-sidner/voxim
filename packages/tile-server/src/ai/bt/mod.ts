@@ -27,6 +27,7 @@ import { setJobAttackNearestFactory } from "./nodes/set_job_attack_nearest.ts";
 import { setJobDefaultFactory } from "./nodes/set_job_default.ts";
 import { setJobCraftAtWorkbenchFactory } from "./nodes/set_job_craft_at_workbench.ts";
 import { tryProduceFactory } from "./nodes/try_produce.ts";
+import { executeAssignedJobFactory } from "./nodes/execute_assigned_job.ts";
 
 export type {
   BTNode, BTNodeFactory, BTContext, BTOutput, NodeResult,
@@ -54,6 +55,7 @@ export function registerBuiltinBTNodes(registry: Registry<BTNodeFactory>): void 
   registry.register(setJobDefaultFactory);
   registry.register(setJobCraftAtWorkbenchFactory);
   registry.register(tryProduceFactory);
+  registry.register(executeAssignedJobFactory);
 }
 
 /**

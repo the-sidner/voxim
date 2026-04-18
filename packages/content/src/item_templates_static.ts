@@ -29,6 +29,7 @@ import hearth from "../data/items/hearth.json" with { type: "json" };
 import helmet from "../data/items/helmet.json" with { type: "json" };
 import iron_ingot from "../data/items/iron_ingot.json" with { type: "json" };
 import iron_ore from "../data/items/iron_ore.json" with { type: "json" };
+import job_board from "../data/items/job_board.json" with { type: "json" };
 import leather_strip from "../data/items/leather_strip.json" with { type: "json" };
 import leggings from "../data/items/leggings.json" with { type: "json" };
 import mushroom from "../data/items/mushroom.json" with { type: "json" };
@@ -83,6 +84,7 @@ export const item_templates: readonly ItemTemplate[] = [
   helmet as unknown as ItemTemplate,
   iron_ingot as unknown as ItemTemplate,
   iron_ore as unknown as ItemTemplate,
+  job_board as unknown as ItemTemplate,
   leather_strip as unknown as ItemTemplate,
   leggings as unknown as ItemTemplate,
   mushroom as unknown as ItemTemplate,

@@ -42,6 +42,7 @@ import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { LightEmitter, DarknessModifier } from "./components/light.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { Hearth } from "./components/hearth.ts";
+import { JobBoard, AssignedJobBoard } from "./components/job_board.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { ProjectileData } from "./components/projectile.ts";
 
@@ -100,6 +101,8 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   SkillInProgress,
   WorkstationTag,
   Hearth,
+  JobBoard,
+  AssignedJobBoard,
   NpcTag,
   NpcJobQueue,
   ProjectileData,
