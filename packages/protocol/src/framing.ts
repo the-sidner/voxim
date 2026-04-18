@@ -3,10 +3,22 @@
  *
  * Wire format: [4-byte LE uint32 payload length][payload bytes]
  * Used for all JSON and binary messages on WebTransport bidirectional streams.
+ *
+ * Payloads are capped at MAX_FRAME_PAYLOAD_BYTES (16 MiB). A frame whose
+ * length header exceeds the cap is rejected before allocation — protects
+ * the server and client from a malformed or hostile peer requesting a
+ * gigabyte allocation.
  */
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
+
+/**
+ * Hard cap on a single frame payload, applied at decode. Generous enough
+ * for full state messages including AoI bursts; tight enough that a
+ * malicious peer can't OOM us with a single bad header.
+ */
+export const MAX_FRAME_PAYLOAD_BYTES = 16 * 1024 * 1024;
 
 /** Encode a JSON value as a length-prefixed frame. */
 export function encodeFrame(value: unknown): Uint8Array {
@@ -26,6 +38,11 @@ export function makeFrameReader(reader: ReadableStreamDefaultReader<Uint8Array>)
   let overflow: Uint8Array | null = null;
 
   async function readExact(n: number): Promise<Uint8Array | null> {
+    if (n > MAX_FRAME_PAYLOAD_BYTES) {
+      throw new Error(
+        `frame payload ${n} bytes exceeds MAX_FRAME_PAYLOAD_BYTES (${MAX_FRAME_PAYLOAD_BYTES})`,
+      );
+    }
     const buf = new Uint8Array(n);
     let offset = 0;
     if (overflow) {

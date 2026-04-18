@@ -111,7 +111,12 @@ export class WireWriter {
 // WireReader
 // ---------------------------------------------------------------------------
 
-/** Cursor-based reader that wraps an existing Uint8Array. */
+/**
+ * Cursor-based reader that wraps an existing Uint8Array.
+ *
+ * Every read checks that the cursor would not advance past the end of the
+ * backing buffer; truncation throws rather than silently returning garbage.
+ */
 export class WireReader {
   private readonly view: DataView;
   private readonly u8: Uint8Array;
@@ -128,39 +133,54 @@ export class WireReader {
   get offset(): number { return this.pos; }
   get done(): boolean  { return this.pos >= this.u8.byteLength; }
 
+  /** Throw if reading `n` bytes from the current position would overrun the buffer. */
+  private require(n: number): void {
+    if (this.pos + n > this.u8.byteLength) {
+      throw new Error(
+        `WireReader: truncated payload — need ${n} more bytes at offset ${this.pos}, only ${this.u8.byteLength - this.pos} remain`,
+      );
+    }
+  }
+
   // -- read methods --
 
   readU8(): number {
+    this.require(1);
     const v = this.view.getUint8(this.pos);
     this.pos += 1;
     return v;
   }
 
   readU16(): number {
+    this.require(2);
     const v = this.view.getUint16(this.pos, true);
     this.pos += 2;
     return v;
   }
 
   readU32(): number {
+    this.require(4);
     const v = this.view.getUint32(this.pos, true);
     this.pos += 4;
     return v;
   }
 
   readI32(): number {
+    this.require(4);
     const v = this.view.getInt32(this.pos, true);
     this.pos += 4;
     return v;
   }
 
   readF32(): number {
+    this.require(4);
     const v = this.view.getFloat32(this.pos, true);
     this.pos += 4;
     return v;
   }
 
   readF64(): number {
+    this.require(8);
     const v = this.view.getFloat64(this.pos, true);
     this.pos += 8;
     return v;
@@ -172,8 +192,9 @@ export class WireReader {
     return TEXT_DECODER.decode(this.readBytes(len));
   }
 
-  /** Reads exactly n bytes, advancing the cursor. */
+  /** Reads exactly n bytes, advancing the cursor. Throws on truncation. */
   readBytes(n: number): Uint8Array {
+    this.require(n);
     const slice = this.u8.subarray(this.pos, this.pos + n);
     this.pos += n;
     return slice;
@@ -181,6 +202,7 @@ export class WireReader {
 
   /** Reads 16 bytes and returns a UUID string. */
   readUuid(): string {
+    this.require(16);
     const start = this.pos;
     this.pos += 16;
     return bytesToUuid(this.u8, start);
