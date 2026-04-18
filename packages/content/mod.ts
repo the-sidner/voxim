@@ -3,9 +3,9 @@
  * No rendering code. No Three.js. Pure data and types.
  * Depends on: @voxim/engine, @voxim/codecs
  *
- * All game content (materials, models, recipes, structures, lore fragments)
+ * All game content (materials, models, recipes, prefabs, lore fragments)
  * is declared in packages/content/data/ as JSON files and accessed at runtime
- * via the ContentStore interface.  Systems receive a ContentStore by injection
+ * via the ContentStore interface. Systems receive a ContentStore by injection
  * rather than importing hardcoded data tables.
  */
 

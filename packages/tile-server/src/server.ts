@@ -198,7 +198,7 @@ export class TileServer {
       this.accountClient = new AccountClient(config.gatewayUrl, config.serviceSecret);
     }
 
-    // Load all game content (recipes, structures, lore, materials) from data files.
+    // Load all game content (recipes, prefabs, lore, materials) from data files.
     // Systems receive the store by injection — no hardcoded tables in game logic.
     this.content = await loadContentStore(config.dataDir);
     const content = this.content;

@@ -2,7 +2,7 @@
  * Core content type definitions.
  *
  * These are the schemas for all data-driven game content: materials, models,
- * recipes, structures, lore, item templates.  Actual data lives in
+ * recipes, prefabs, lore, item templates. Actual data lives in
  * packages/content/data/ as JSON files loaded at startup via loadContentStore().
  *
  * The server loads only what it needs (hitboxes, item stats, recipe logic).

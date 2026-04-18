@@ -19,7 +19,7 @@ export interface BlueprintMaterial {
  * this entity.
  */
 export interface BlueprintData {
-  /** Key into STRUCTURES table — determines defaults for new blueprints. */
+  /** Prefab id this blueprint was spawned from — drives event stream and completion hooks. */
   structureType: string;
   /** Target chunk coordinates. */
   chunkX: number;

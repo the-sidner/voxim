@@ -146,9 +146,6 @@ export class ActionSystem implements System {
 
       world.set(entityId, SkillInProgress, next);
     }
-
-    const _unused = [Facing, Velocity];
-    void _unused;
   }
 
   private resolveHits(

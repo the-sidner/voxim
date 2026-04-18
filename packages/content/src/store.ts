@@ -1,7 +1,7 @@
 /**
  * ContentStore — interface and in-memory implementation.
  *
- * All game content (materials, models, recipes, structures, lore, item templates)
+ * All game content (materials, models, recipes, prefabs, lore, item templates)
  * is accessed through this interface.  The server populates it at startup by
  * reading the JSON data files via loadContentStore().  The future client will
  * have a NetworkContentStore that fetches definitions via WebTransport on demand.
