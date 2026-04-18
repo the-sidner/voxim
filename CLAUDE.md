@@ -41,6 +41,37 @@ If a change spans multiple packages, list the primary one first.
 
 ---
 
+## Refactoring philosophy
+
+Refactors **replace, they don't accrete**. When a system changes shape, the old code is
+deleted in the same commit as the new code lands — not beside it. The goal of a refactor
+is a codebase that reads like it was designed this way from the start.
+
+Hard rules:
+
+- **No shims or re-export bridges.** If `oldFoo.ts` becomes `new/foo.ts`, every import
+  site updates. The old path does not survive as a thin re-export "for transition".
+- **No `@deprecated` markers with parallel new implementations.** Either the thing is
+  authoritative or it's gone. Deprecation with two live paths is how codebases turn into
+  layers of half-truth that future readers have to reconcile.
+- **No feature flags or "legacy" / "classic" branches to ease migration.** If
+  `if (useNewFoo)` appears in the diff, rewrite the patch.
+- **No backwards compatibility with on-disk state or wire formats.** Saves, heritage
+  files, save files, and the binary protocol may all break between refactors. Users
+  reconnect; worlds regenerate from seed; data regenerates via `deno task gen-content`.
+  This freedom is why the code stays shapely — defend it.
+- **Data and code move together.** Renaming a field means updating every JSON file that
+  uses it in the same commit as the TypeScript rename. Regenerated static files go in
+  the same commit too.
+- **Delete the plan or the scaffolding once the refactor lands.** If a phased plan
+  exists for the refactor, mark it done in `TICKETS.md` with the commit hash in the
+  same commit that finishes the last phase — don't leave a "done" document floating.
+
+A refactor that doubles the surface area (old + new both live) is not a refactor — it's
+a migration debt you've signed yourself up for. Take the big diff instead.
+
+---
+
 ## Running the project
 
 ```
