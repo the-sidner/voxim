@@ -26,6 +26,9 @@ import { WorldEvents } from "@voxim/protocol";
 import type { GatewayRegisterRequest } from "@voxim/protocol";
 import { TileDirectory } from "./tile_directory.ts";
 import { handleGatewaySession } from "./session.ts";
+import { AccountStore } from "./account/store.ts";
+import { SessionStore } from "./account/session_store.ts";
+import { AccountEndpoints } from "./account/endpoints.ts";
 
 export interface GatewayConfig {
   port: number;
@@ -39,14 +42,25 @@ export interface GatewayConfig {
    * adminUrl defaults to "http://localhost:14434" when omitted.
    */
   initialTiles?: Array<{ tileId: string; address: string; adminUrl?: string }>;
+  /** Directory for the account service's user files. Required for auth. */
+  accountsDir: string;
+  /**
+   * Shared secret gating the `/internal/*` server-to-server endpoints.
+   * Must be non-empty (>=16 chars). Tile servers present this in the
+   * `X-Voxim-Service-Secret` header when calling the account service.
+   */
+  serviceSecret: string;
 }
 
 export class GatewayServer {
   readonly directory = new TileDirectory();
   /** World event bus — tile servers publish cross-tile events here. Stub: no subscribers yet. */
   readonly worldEvents = new EventBus();
+  accountStore!: AccountStore;
+  sessions!: SessionStore;
+  private accountEndpoints!: AccountEndpoints;
 
-  start(config: GatewayConfig): void {
+  async start(config: GatewayConfig): Promise<void> {
     // Pre-register tiles from config (vertical slice convenience)
     for (const tile of config.initialTiles ?? []) {
       this.directory.register({
@@ -55,6 +69,15 @@ export class GatewayServer {
         adminUrl: tile.adminUrl ?? "http://localhost:14434",
       });
     }
+
+    this.accountStore = new AccountStore(config.accountsDir);
+    await this.accountStore.init();
+    this.sessions = new SessionStore();
+    this.accountEndpoints = new AccountEndpoints({
+      store: this.accountStore,
+      sessions: this.sessions,
+      serviceSecret: config.serviceSecret,
+    });
 
     // Stub: subscribe to world events for future macro simulation
     this.worldEvents.subscribe(WorldEvents.PlayerCrossedGate, (_payload) => {
@@ -75,7 +98,7 @@ export class GatewayServer {
     console.log(`[Gateway] listening on port ${config.port}`);
   }
 
-  private handleRequest(req: Request): Response | Promise<Response> {
+  private async handleRequest(req: Request): Promise<Response> {
     const url = new URL(req.url);
 
     // WebTransport upgrade — client initiating a new session
@@ -87,6 +110,12 @@ export class GatewayServer {
       );
       return response as Response;
     }
+
+    // Account service — client /account/* and server-to-server /internal/*.
+    // Returns null when the path doesn't match, so we fall through to the
+    // tile-registration / handoff handlers below.
+    const accountResponse = await this.accountEndpoints.handle(req, url);
+    if (accountResponse) return accountResponse;
 
     // Tile server self-registration
     if (req.method === "POST" && url.pathname === "/register") {
