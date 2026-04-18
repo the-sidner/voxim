@@ -304,12 +304,11 @@ Done when: research/crafting/ contains the framing doc, one file per category, a
 extracting the verb vocabulary, workstation inventory, and engine-gap list across all chains.
 
 ### T-117 · Items-as-entities refactor (`ITEMS_AS_ENTITIES_PLAN.md`)
-Effort: L   Status: in-progress
+Effort: L   Status: in-progress   Commit (Ph1): 26a4546   Commit (Ph2): 46d638b
 
 Collapse `ItemTemplate` into `Prefab`. Move every item behaviour onto composable
 server-only components (Equippable, Swingable, Tool, Deployable, Edible,
 Illuminator, Armor, MaterialSource, Composed, Stackable, Weight, Renderable).
-Migrate all 53 item JSON files into `data/prefabs/items/` with the new shape.
 Make every unique (non-stackable) item a World entity carried by inventory /
 equipment entity-refs; stackables stay as `{ prefabId, quantity }` compact
 slots. Instance state (parts, durability, quality, inscription, history) lives
@@ -318,8 +317,9 @@ as components on the item entity.
 Full plan and per-phase acceptance criteria in `ITEMS_AS_ENTITIES_PLAN.md`.
 
 Phases:
-  1. Template component vocabulary (additive, non-breaking)
-  2. `ItemTemplate` → `Prefab` migration (breaking)
+  1. Template component vocabulary (additive, non-breaking) — DONE 26a4546
+  2. `ItemTemplate` → `Prefab` migration (breaking) — DONE 46d638b
+     Old item JSON scratched; new item prefabs authored fresh in content sprint.
   3. Unique items become entities; inventory/equipment entity-refs (breaking)
   4. Instance components: Durability, Inscribed, QualityStamped, History
   5. Polish, benchmarks, cleanup
