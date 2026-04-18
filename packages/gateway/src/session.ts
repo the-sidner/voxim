@@ -5,18 +5,32 @@
  * Lifecycle:
  *   1. Session opens (client connected to gateway WebTransport)
  *   2. Client opens a bidirectional stream
- *   3. Client sends GatewayConnectRequest
- *   4. Gateway responds with GatewayTileResponse (or GatewayErrorResponse)
- *   5. Stream closes — client connects directly to the tile server
+ *   3. Client sends GatewayConnectRequest with a session token
+ *   4. Gateway validates the token via SessionStore, looks up the user's
+ *      activeDynastyId + lastTileId, and picks a tile to route them to
+ *   5. Gateway responds with GatewayTileResponse (or GatewayErrorResponse)
+ *   6. Stream closes — client connects directly to the tile server, passing
+ *      the same session token through to the tile on the join handshake.
+ *
+ * The routing key is userId (not a fresh per-session ID) — one user always
+ * owns the same entity across reconnects. Tile servers can use userId as
+ * the EntityId for the player entity without any translation layer.
  */
 import type { GatewayConnectRequest, GatewayResponse } from "@voxim/protocol";
 import type { TileDirectory } from "./tile_directory.ts";
-import { TileDirectory as TD } from "./tile_directory.ts";
+import type { AccountStore } from "./account/store.ts";
+import type { SessionStore } from "./account/session_store.ts";
 import { makeFrameReader, encodeJson } from "./codec.ts";
+
+export interface GatewaySessionDeps {
+  directory: TileDirectory;
+  accountStore: AccountStore;
+  sessions: SessionStore;
+}
 
 export async function handleGatewaySession(
   session: WebTransportSession,
-  directory: TileDirectory,
+  deps: GatewaySessionDeps,
 ): Promise<void> {
   await session.ready;
 
@@ -45,10 +59,43 @@ export async function handleGatewaySession(
 
     const req = msg as GatewayConnectRequest;
 
-    // Auth stub — always accept
-    const playerId = req.playerId ?? TD.newPlayerId();
+    // Validate session token. Missing, unknown, or expired tokens all
+    // collapse to "unauthenticated" — clients treat this as a signal to
+    // clear the locally-stored token and re-show the login screen.
+    if (!req.token) {
+      await sendResponse(writer, {
+        type: "error",
+        code: "unauthenticated",
+        message: "session token required",
+      });
+      return;
+    }
+    const userId = await deps.sessions.validate(req.token);
+    if (!userId) {
+      await sendResponse(writer, {
+        type: "error",
+        code: "unauthenticated",
+        message: "invalid or expired session",
+      });
+      return;
+    }
 
-    const tile = directory.tileForPlayer(playerId);
+    // The user's record tells us where they were last seen so we can route
+    // them back to the same tile after reconnect.
+    const user = await deps.accountStore.getUserById(userId);
+    if (!user) {
+      await sendResponse(writer, {
+        type: "error",
+        code: "unauthenticated",
+        message: "user record missing",
+      });
+      return;
+    }
+
+    // Prefer the user's last tile when it is still registered; otherwise
+    // fall back to the directory's default selection.
+    const preferred = user.lastTileId ? deps.directory.get(user.lastTileId) : null;
+    const tile = preferred ?? deps.directory.tileForPlayer(userId);
     if (!tile) {
       await sendResponse(writer, {
         type: "error",
@@ -58,17 +105,17 @@ export async function handleGatewaySession(
       return;
     }
 
-    directory.setPlayerTile(playerId, tile.tileId);
+    deps.directory.setPlayerTile(userId, tile.tileId);
 
     const response: GatewayResponse = {
       type: "tile",
       tileId: tile.tileId,
       tileAddress: tile.address,
-      playerId,
+      playerId: userId,
     };
     await sendResponse(writer, response);
 
-    console.log(`[Gateway] player ${playerId} → tile ${tile.tileId} (${tile.address})`);
+    console.log(`[Gateway] user ${userId.slice(0, 8)} → tile ${tile.tileId} (${tile.address})`);
   } finally {
     reader.releaseLock();
     writer.releaseLock();
@@ -77,7 +124,7 @@ export async function handleGatewaySession(
 
 async function sendResponse(
   writer: WritableStreamDefaultWriter<Uint8Array>,
-  msg: unknown,
+  msg: GatewayResponse,
 ): Promise<void> {
   await writer.write(encodeJson(msg));
   await writer.close();

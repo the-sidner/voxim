@@ -17,10 +17,12 @@
 
 export interface GatewayConnectRequest {
   type: "connect";
-  /** Optional pre-issued auth token from the auth service. Stub: ignored. */
-  authToken?: string;
-  /** Resume: client's existing player ID, if reconnecting. */
-  playerId?: string;
+  /**
+   * Session token issued by the account service (see POST /account/login).
+   * The gateway validates this via SessionStore and refuses the connection
+   * with code: "unauthenticated" when it is missing, unknown, or expired.
+   */
+  token: string;
 }
 
 // ---- gateway → client ----
@@ -39,7 +41,7 @@ export interface GatewayTileResponse {
 
 export interface GatewayErrorResponse {
   type: "error";
-  code: "not_found" | "auth_failed" | "server_full";
+  code: "not_found" | "auth_failed" | "server_full" | "unauthenticated";
   message: string;
 }
 

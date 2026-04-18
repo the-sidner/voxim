@@ -22,11 +22,16 @@ export interface GatewayResult {
  * Perform the gateway handshake.
  *
  * @param gatewayUrl  Full WebTransport URL, e.g. "https://localhost:8080"
- * @param playerId    Existing player ID for reconnect. Omit for a new session.
+ * @param token       Session token from POST /account/login. Required — the
+ *                    gateway rejects connections without one. Missing or
+ *                    expired tokens produce a GatewayError with
+ *                    code="unauthenticated"; callers should treat that as a
+ *                    signal to clear the locally-stored token and re-show
+ *                    the login screen.
  */
 export async function connectViaGateway(
   gatewayUrl: string,
-  playerId?: string,
+  token: string,
 ): Promise<GatewayResult> {
   const transport = new WebTransport(gatewayUrl);
   await transport.ready;
@@ -36,10 +41,7 @@ export async function connectViaGateway(
   const reader = stream.readable.getReader();
 
   try {
-    const req: GatewayConnectRequest = {
-      type: "connect",
-      ...(playerId ? { playerId } : {}),
-    };
+    const req: GatewayConnectRequest = { type: "connect", token };
     await writer.write(encodeFrame(req));
     await writer.close();
 

@@ -105,7 +105,11 @@ export class GatewayServer {
     if (req.headers.get("upgrade") === "webtransport") {
       // deno-lint-ignore no-explicit-any
       const { session, response } = (Deno as any).upgradeWebTransport(req);
-      handleGatewaySession(session as WebTransportSession, this.directory).catch(
+      handleGatewaySession(session as WebTransportSession, {
+        directory: this.directory,
+        accountStore: this.accountStore,
+        sessions: this.sessions,
+      }).catch(
         (err: unknown) => console.error("[Gateway] session error", err),
       );
       return response as Response;

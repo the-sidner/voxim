@@ -37,8 +37,15 @@ export interface GameConfig {
   /**
    * Full WebTransport URL of the gateway, e.g. "https://localhost:8080".
    * Used in production. Mutually exclusive with directTile.
+   * When set, `sessionToken` is required — the gateway refuses connections
+   * without a valid session token.
    */
   gatewayUrl?: string;
+  /**
+   * Session token from POST /account/login on the gateway. Required with
+   * gatewayUrl; ignored with directTile (dev-only mode has no auth).
+   */
+  sessionToken?: string;
   /**
    * Direct connection to a tile server — skips the gateway entirely.
    * Used for demo/dev. address is "hostname:port".
@@ -264,7 +271,10 @@ export class VoximGame {
       tileAddress = config.directTile.address;
       certHashHex = config.directTile.certHashHex;
     } else {
-      const gatewayResult = await connectViaGateway(config.gatewayUrl!);
+      if (!config.sessionToken) {
+        throw new Error("gatewayUrl mode requires sessionToken — log in first and pass the returned token");
+      }
+      const gatewayResult = await connectViaGateway(config.gatewayUrl!, config.sessionToken);
       this.playerId = gatewayResult.playerId;
       tileAddress = gatewayResult.tileAddress;
     }

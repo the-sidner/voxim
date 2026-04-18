@@ -65,7 +65,19 @@ addEventListener("resize", () => {
       params.get("gateway") ??
       "https://localhost:8080";
 
-    game.start({ canvas, gatewayUrl })
+    // Session token is produced by the login UI (T-115) and cached in
+    // localStorage. Until that UI lands, the token can also be supplied by
+    // an enclosing page via globalThis.VOXIM_SESSION_TOKEN for testing.
+    const sessionToken: string | null =
+      (g.VOXIM_SESSION_TOKEN as string | undefined) ??
+      (typeof localStorage !== "undefined" ? localStorage.getItem("voxim.session_token") : null);
+
+    if (!sessionToken) {
+      console.error("[Voxim] no session token — log in via /account/login and store the returned token in localStorage['voxim.session_token']");
+      return;
+    }
+
+    game.start({ canvas, gatewayUrl, sessionToken })
       .catch((err) => console.error("[Voxim] failed to start:", err));
   }
 })();
