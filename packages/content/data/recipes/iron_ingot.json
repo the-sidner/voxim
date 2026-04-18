@@ -2,6 +2,7 @@
   "id": "iron_ingot",
   "stationType": "campfire",
   "stepType": "time",
+  "requiredTools": [],
   "inputs": [
     {
       "itemType": "iron_ore",
@@ -12,7 +13,11 @@
       "quantity": 1
     }
   ],
-  "outputType": "iron_ingot",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 1
+    }
+  ],
   "ticks": 120
 }

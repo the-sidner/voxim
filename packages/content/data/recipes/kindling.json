@@ -2,14 +2,20 @@
   "id": "kindling",
   "stationType": "chopping_block",
   "stepType": "attack",
-  "requiredTool": "axe",
+  "requiredTools": [
+    "axe"
+  ],
   "inputs": [
     {
       "itemType": "wood",
       "quantity": 1
     }
   ],
-  "outputType": "coal",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "coal",
+      "quantity": 1
+    }
+  ],
   "ticks": 0
 }

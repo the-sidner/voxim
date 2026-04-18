@@ -291,8 +291,16 @@ export interface ItemTemplate {
 // ---- recipes ----
 
 export interface RecipeInput {
+  /** Primary acceptable item type. */
   itemType: string;
+  /** Quantity required (sum across primary + alternates per input slot). */
   quantity: number;
+  /**
+   * Other item types accepted in place of `itemType`. The recipe matches
+   * when the primary OR any alternate has at least `quantity` in the buffer.
+   * Consumption picks the first acceptable type with sufficient quantity.
+   */
+  alternates?: string[];
   /**
    * When set, this input's material (from the item template's materialName)
    * is bound to the named slot on the output item.
@@ -301,11 +309,16 @@ export interface RecipeInput {
   outputSlot?: string;
 }
 
+export interface RecipeOutput {
+  itemType: string;
+  quantity: number;
+}
+
 /**
  * How a recipe step is resolved.
- *   "attack"   — player attacks the workstation with the requiredTool; instant output.
+ *   "attack"   — player attacks the workstation with a requiredTool; instant output.
  *   "time"     — timer starts when inputs are placed; output when ticks reach 0.
- *   "assembly" — player selects a recipe explicitly, then attacks with requiredTool.
+ *   "assembly" — player selects a recipe explicitly, then attacks with a requiredTool.
  */
 export type RecipeStepType = "attack" | "time" | "assembly";
 
@@ -313,8 +326,7 @@ export type RecipeStepType = "attack" | "time" | "assembly";
  * A crafting recipe.
  *
  * Physical model: inputs are placed on a WorkstationBuffer entity; the step
- * type determines how resolution is triggered.  Legacy recipes with no
- * stationType are currently unreachable (menu crafting removed).
+ * type determines how resolution is triggered.
  */
 export interface Recipe {
   id: string;
@@ -322,16 +334,24 @@ export interface Recipe {
   stationType?: string;
   /** How this recipe is resolved. Default "time" when absent. */
   stepType?: RecipeStepType;
-  /** toolType the attacker must wield for "attack"/"assembly" steps. null = any tool. */
-  requiredTool?: string | null;
+  /**
+   * Acceptable tool types for "attack"/"assembly" steps. Empty array = any
+   * tool (or none). On match, any one of the listed tool types is acceptable.
+   */
+  requiredTools: string[];
   /**
    * LoreFragment ID the player must have in learnedFragmentIds to select this recipe.
    * Absent = freely available to any player.
    */
   requiredFragmentId?: string;
   inputs: RecipeInput[];
-  outputType: string;
-  outputQuantity: number;
+  outputs: RecipeOutput[];
+  /**
+   * When set, on completion the workstation's `activeRecipeId` is set to
+   * this id (instead of cleared) so the next swing or tick continues the
+   * chain. Step handlers honor `activeRecipeId` when present.
+   */
+  chainNextRecipeId?: string;
   /** Timer length at 20 Hz. 0 for instant "attack" steps. */
   ticks: number;
 }

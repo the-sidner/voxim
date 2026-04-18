@@ -2,6 +2,7 @@
   "id": "cooked_mushroom",
   "stationType": "campfire",
   "stepType": "time",
+  "requiredTools": [],
   "inputs": [
     {
       "itemType": "mushroom",
@@ -12,7 +13,11 @@
       "quantity": 1
     }
   ],
-  "outputType": "cooked_meat",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "cooked_meat",
+      "quantity": 1
+    }
+  ],
   "ticks": 60
 }

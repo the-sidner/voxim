@@ -2,14 +2,20 @@
   "id": "plank",
   "stationType": "chopping_block",
   "stepType": "attack",
-  "requiredTool": "axe",
+  "requiredTools": [
+    "axe"
+  ],
   "inputs": [
     {
       "itemType": "wood",
       "quantity": 1
     }
   ],
-  "outputType": "plank",
-  "outputQuantity": 2,
+  "outputs": [
+    {
+      "itemType": "plank",
+      "quantity": 2
+    }
+  ],
   "ticks": 0
 }

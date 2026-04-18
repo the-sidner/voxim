@@ -2,7 +2,9 @@
   "id": "torch",
   "stationType": "workbench",
   "stepType": "attack",
-  "requiredTool": "hammer",
+  "requiredTools": [
+    "hammer"
+  ],
   "inputs": [
     {
       "itemType": "wood",
@@ -13,7 +15,11 @@
       "quantity": 1
     }
   ],
-  "outputType": "torch",
-  "outputQuantity": 2,
+  "outputs": [
+    {
+      "itemType": "torch",
+      "quantity": 2
+    }
+  ],
   "ticks": 0
 }

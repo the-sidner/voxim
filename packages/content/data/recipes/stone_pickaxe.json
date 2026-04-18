@@ -2,7 +2,9 @@
   "id": "stone_pickaxe",
   "stationType": "workbench",
   "stepType": "attack",
-  "requiredTool": "hammer",
+  "requiredTools": [
+    "hammer"
+  ],
   "inputs": [
     {
       "itemType": "stone",
@@ -13,7 +15,11 @@
       "quantity": 2
     }
   ],
-  "outputType": "stone_pickaxe",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "stone_pickaxe",
+      "quantity": 1
+    }
+  ],
   "ticks": 0
 }

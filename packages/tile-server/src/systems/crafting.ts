@@ -224,13 +224,30 @@ export function findMatchingRecipe(
   return null;
 }
 
+/**
+ * An input matches when the primary itemType OR any alternate has at least
+ * the required quantity available in the buffer.
+ */
 export function recipeInputsMatch(
   inputs: Recipe["inputs"],
   bufferMap: Map<string, number>,
 ): boolean {
-  return inputs.every((inp) => (bufferMap.get(inp.itemType) ?? 0) >= inp.quantity);
+  return inputs.every((inp) => {
+    if ((bufferMap.get(inp.itemType) ?? 0) >= inp.quantity) return true;
+    if (inp.alternates) {
+      for (const alt of inp.alternates) {
+        if ((bufferMap.get(alt) ?? 0) >= inp.quantity) return true;
+      }
+    }
+    return false;
+  });
 }
 
+/**
+ * Consume each input from the buffer. For inputs with alternates, the first
+ * acceptable type with sufficient quantity is consumed (primary preferred).
+ * Assumes `recipeInputsMatch` has already passed.
+ */
 export function consumeFromBuffer(
   slots: WorkstationBufferData["slots"],
   inputs: Recipe["inputs"],
@@ -240,10 +257,16 @@ export function consumeFromBuffer(
     if (s !== null) remaining.set(s.itemType, (remaining.get(s.itemType) ?? 0) + s.quantity);
   }
   for (const inp of inputs) {
-    const cur = remaining.get(inp.itemType) ?? 0;
-    const after = cur - inp.quantity;
-    if (after <= 0) remaining.delete(inp.itemType);
-    else remaining.set(inp.itemType, after);
+    const acceptable = inp.alternates ? [inp.itemType, ...inp.alternates] : [inp.itemType];
+    for (const t of acceptable) {
+      const cur = remaining.get(t) ?? 0;
+      if (cur >= inp.quantity) {
+        const after = cur - inp.quantity;
+        if (after <= 0) remaining.delete(t);
+        else remaining.set(t, after);
+        break;
+      }
+    }
   }
   return Array.from(remaining.entries()).map(([itemType, quantity]) => ({ itemType, quantity }));
 }

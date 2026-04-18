@@ -16,18 +16,20 @@ export const attackStep: RecipeStepHandler = {
   onHit(ctx: RecipeHitContext): void {
     const recipe = findMatchingRecipe(ctx.content, ctx.stationType, "attack", ctx.buffer.slots);
     if (!recipe) return;
-    if (!toolMatches(ctx.hit.weaponStats.toolType, recipe.requiredTool)) {
+    if (!toolMatches(ctx.hit.weaponStats.toolType, recipe.requiredTools)) {
       log.debug(
-        "attack: attacker=%s station=%s wrong tool=%s needs=%s",
+        "attack: attacker=%s station=%s wrong tool=%s accepts=[%s]",
         ctx.hit.attackerId, ctx.stationId,
-        ctx.hit.weaponStats.toolType ?? "none", recipe.requiredTool ?? "any",
+        ctx.hit.weaponStats.toolType ?? "none",
+        recipe.requiredTools.join(", ") || "any",
       );
       return;
     }
     resolveRecipe(ctx.world, ctx.events, ctx.stationId, ctx.buffer, recipe, ctx.hit.attackerId);
     log.info(
-      "crafted: attacker=%s station=%s recipe=%s output=%sx%d",
-      ctx.hit.attackerId, ctx.stationId, recipe.id, recipe.outputType, recipe.outputQuantity,
+      "crafted: attacker=%s station=%s recipe=%s outputs=[%s]",
+      ctx.hit.attackerId, ctx.stationId, recipe.id,
+      recipe.outputs.map((o) => `${o.itemType}x${o.quantity}`).join(", "),
     );
   },
 };

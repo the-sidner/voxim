@@ -50,8 +50,9 @@ export const timeStep: RecipeStepHandler = {
     }
     resolveRecipe(world, events, stationId, buffer, recipe, null);
     log.info(
-      "time-recipe done: station=%s recipe=%s output=%sx%d",
-      stationId, recipe.id, recipe.outputType, recipe.outputQuantity,
+      "time-recipe done: station=%s recipe=%s outputs=[%s]",
+      stationId, recipe.id,
+      recipe.outputs.map((o) => `${o.itemType}x${o.quantity}`).join(", "),
     );
   },
 };

@@ -361,13 +361,16 @@ export class StaticContentStore implements ContentStore {
 
   findCraftableRecipe(inventory: Map<string, number>): Recipe | null {
     for (const recipe of this.recipes.values()) {
-      if (
-        recipe.inputs.every(
-          (inp) => (inventory.get(inp.itemType) ?? 0) >= inp.quantity,
-        )
-      ) {
-        return recipe;
-      }
+      const ok = recipe.inputs.every((inp) => {
+        if ((inventory.get(inp.itemType) ?? 0) >= inp.quantity) return true;
+        if (inp.alternates) {
+          for (const alt of inp.alternates) {
+            if ((inventory.get(alt) ?? 0) >= inp.quantity) return true;
+          }
+        }
+        return false;
+      });
+      if (ok) return recipe;
     }
     return null;
   }

@@ -2,14 +2,20 @@
   "id": "stone_block",
   "stationType": "chopping_block",
   "stepType": "attack",
-  "requiredTool": "pickaxe",
+  "requiredTools": [
+    "pickaxe"
+  ],
   "inputs": [
     {
       "itemType": "stone",
       "quantity": 2
     }
   ],
-  "outputType": "stone_block",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "stone_block",
+      "quantity": 1
+    }
+  ],
   "ticks": 0
 }

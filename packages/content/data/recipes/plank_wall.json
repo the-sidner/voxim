@@ -2,14 +2,20 @@
   "id": "plank_wall",
   "stationType": "workbench",
   "stepType": "attack",
-  "requiredTool": "hammer",
+  "requiredTools": [
+    "hammer"
+  ],
   "inputs": [
     {
       "itemType": "plank",
       "quantity": 4
     }
   ],
-  "outputType": "wood_wall",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "wood_wall",
+      "quantity": 1
+    }
+  ],
   "ticks": 0
 }

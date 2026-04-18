@@ -2,7 +2,9 @@
   "id": "campfire",
   "stationType": "workbench",
   "stepType": "attack",
-  "requiredTool": "hammer",
+  "requiredTools": [
+    "hammer"
+  ],
   "inputs": [
     {
       "itemType": "wood",
@@ -13,7 +15,11 @@
       "quantity": 2
     }
   ],
-  "outputType": "campfire",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "campfire",
+      "quantity": 1
+    }
+  ],
   "ticks": 0
 }

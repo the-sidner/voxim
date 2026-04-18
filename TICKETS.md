@@ -1267,12 +1267,28 @@ Adding a new biome or zone is a JSON file drop; the `packages/world/`
 package holds only generic rule-matching logic and noise evaluation.
 
 ### T-109 · Phase 7 — recipe schema expansion
-Effort: S   Status: todo
+Effort: S   Status: done
 
-Rewrite `Recipe` type: `inputs[]` with `alternates?`, `outputs[]`
-(replaces single output), `requiredTools[]`, optional `chainNextRecipeId`.
-Rewrite every existing recipe JSON in the same PR; loader accepts only
-new shape.
-Done when: old `outputType`/`outputQuantity`/`requiredTool` fields removed
-from type and all content files.
+Rewrote `Recipe` type:
+- `inputs[]` gained `alternates?: string[]` — recipe matches when any
+  primary or alternate item type has the required quantity in the buffer;
+  consumption picks the first acceptable type (primary preferred).
+- `outputs: RecipeOutput[]` replaces single `outputType` / `outputQuantity`.
+  `resolveRecipe` spawns one item entity per output.
+- `requiredTools: string[]` replaces `requiredTool: string | null`.
+  Empty array = any tool. `toolMatches` accepts the weapon when its
+  toolType is in the list.
+- `chainNextRecipeId?: string` — when set, on completion the workstation's
+  `activeRecipeId` is set to this id (rather than cleared) so the next
+  swing or tick continues the chain.
+
+All 18 existing recipe JSON files rewritten in the same commit to the
+new shape via a one-shot Python transform. Loader accepts only the new
+shape; old field names are gone from `Recipe` and from all content.
+
+Consumers updated: `recipeInputsMatch` and `consumeFromBuffer` in
+`crafting.ts` honor alternates; `findCraftableRecipe` in ContentStore
+does the same; `resolveRecipe` spawns each output and chains via
+`chainNextRecipeId`; `attack_step`, `assembly_step`, `time_step` log
+the full outputs list.
 

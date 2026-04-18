@@ -25,20 +25,30 @@ export function resolveRecipe(
   crafterId: EntityId | null,
 ): void {
   const newSlots = consumeFromBuffer(buffer.slots, recipe.inputs);
+  // chainNextRecipeId carries the chain forward: keep the buffer primed with
+  // the next recipe id so attack/assembly swings or the time-step auto-start
+  // can pick it up. Without a chain, both fields clear.
   world.set(stationId, WorkstationBuffer, {
     ...buffer,
     slots: newSlots,
-    activeRecipeId: null,
+    activeRecipeId: recipe.chainNextRecipeId ?? null,
     progressTicks: null,
   });
-  spawnOutputNear(world, stationId, recipe.outputType, recipe.outputQuantity);
+  for (const output of recipe.outputs) {
+    spawnOutputNear(world, stationId, output.itemType, output.quantity);
+  }
   events.publish(TileEvents.CraftingCompleted, {
     crafterId: crafterId ?? stationId,
     recipeId: recipe.id,
   });
 }
 
-export function toolMatches(weaponToolType: string | null | undefined, requiredTool: string | null | undefined): boolean {
-  if (!requiredTool) return true;
-  return weaponToolType === requiredTool;
+/**
+ * `requiredTools` matches when the array is empty (any tool, including
+ * unarmed) or when the weapon's toolType is in the list.
+ */
+export function toolMatches(weaponToolType: string | null | undefined, requiredTools: readonly string[]): boolean {
+  if (requiredTools.length === 0) return true;
+  if (!weaponToolType) return false;
+  return requiredTools.includes(weaponToolType);
 }

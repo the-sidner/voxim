@@ -21,7 +21,7 @@ export const assemblyStep: RecipeStepHandler = {
     if (!recipe) return;
     if ((recipe.stepType ?? "time") !== ID) return;
     if (recipe.stationType !== ctx.stationType) return;
-    if (!toolMatches(ctx.hit.weaponStats.toolType, recipe.requiredTool)) return;
+    if (!toolMatches(ctx.hit.weaponStats.toolType, recipe.requiredTools)) return;
 
     const bufferMap = new Map<string, number>();
     for (const s of ctx.buffer.slots) {
@@ -31,8 +31,9 @@ export const assemblyStep: RecipeStepHandler = {
 
     resolveRecipe(ctx.world, ctx.events, ctx.stationId, ctx.buffer, recipe, ctx.hit.attackerId);
     log.info(
-      "assembled: attacker=%s station=%s recipe=%s output=%sx%d",
-      ctx.hit.attackerId, ctx.stationId, recipe.id, recipe.outputType, recipe.outputQuantity,
+      "assembled: attacker=%s station=%s recipe=%s outputs=[%s]",
+      ctx.hit.attackerId, ctx.stationId, recipe.id,
+      recipe.outputs.map((o) => `${o.itemType}x${o.quantity}`).join(", "),
     );
   },
 };

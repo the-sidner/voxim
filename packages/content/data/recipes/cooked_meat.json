@@ -2,6 +2,7 @@
   "id": "cooked_meat",
   "stationType": "campfire",
   "stepType": "time",
+  "requiredTools": [],
   "inputs": [
     {
       "itemType": "raw_meat",
@@ -12,7 +13,11 @@
       "quantity": 1
     }
   ],
-  "outputType": "cooked_meat",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "cooked_meat",
+      "quantity": 1
+    }
+  ],
   "ticks": 80
 }

@@ -2,7 +2,9 @@
   "id": "copper_spear",
   "stationType": "workbench",
   "stepType": "attack",
-  "requiredTool": "hammer",
+  "requiredTools": [
+    "hammer"
+  ],
   "inputs": [
     {
       "itemType": "copper_ingot",
@@ -13,7 +15,11 @@
       "quantity": 2
     }
   ],
-  "outputType": "copper_spear",
-  "outputQuantity": 1,
+  "outputs": [
+    {
+      "itemType": "copper_spear",
+      "quantity": 1
+    }
+  ],
   "ticks": 0
 }
