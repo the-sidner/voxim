@@ -15,8 +15,15 @@
  *     1. globalThis.VOXIM_CERT_HASH    — hex string, set by embedding page
  *     2. ?certHash=<hex>               — URL query param
  *     3. GET /cert-hash                — fetched from same-origin admin server (demo default)
+ *
+ * Gateway mode requires a session token. Resolution order:
+ *     1. globalThis.VOXIM_SESSION_TOKEN — test-only injection
+ *     2. localStorage['voxim.session_token'] — populated by the login UI
+ *     3. (absent) — show the login screen, which populates localStorage on
+ *        success and then continues into the game.
  */
 import { VoximGame } from "./game.ts";
+import { clearToken, loadToken, showLoginScreen, validateStoredToken } from "./ui/login.ts";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 canvas.width  = innerWidth;
@@ -65,19 +72,48 @@ addEventListener("resize", () => {
       params.get("gateway") ??
       "https://localhost:8080";
 
-    // Session token is produced by the login UI (T-115) and cached in
-    // localStorage. Until that UI lands, the token can also be supplied by
-    // an enclosing page via globalThis.VOXIM_SESSION_TOKEN for testing.
-    const sessionToken: string | null =
-      (g.VOXIM_SESSION_TOKEN as string | undefined) ??
-      (typeof localStorage !== "undefined" ? localStorage.getItem("voxim.session_token") : null);
+    const injectedToken = g.VOXIM_SESSION_TOKEN as string | undefined;
+    const storedToken = injectedToken ?? loadToken();
 
-    if (!sessionToken) {
-      console.error("[Voxim] no session token — log in via /account/login and store the returned token in localStorage['voxim.session_token']");
-      return;
+    // If we have a cached token, probe /account/me to see if it still works.
+    // A 401 on the probe is benign — we drop the token and show login.
+    // A network error (null) degrades to "show login so the user can retry
+    // manually" — better than a stuck spinner.
+    let existing: string | null = null;
+    if (storedToken) {
+      const ok = await validateStoredToken(gatewayUrl, storedToken);
+      if (ok === true) {
+        existing = storedToken;
+      } else if (ok === false) {
+        clearToken();
+      }
     }
 
-    game.start({ canvas, gatewayUrl, sessionToken })
-      .catch((err) => console.error("[Voxim] failed to start:", err));
+    const host = document.getElementById("ui") ?? document.body;
+    const startGame = (token: string) => {
+      game.start({ canvas, gatewayUrl, sessionToken: token }).catch((err) => {
+        // The gateway rejected us at the WebTransport handshake — most likely
+        // the token expired between the /account/me probe and the connect.
+        // Clear it and fall back to the login screen rather than leaving the
+        // player stuck.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("unauthenticated")) {
+          clearToken();
+          showLoginScreen({ gatewayUrl, container: host, onAuthenticated: startGame });
+          return;
+        }
+        console.error("[Voxim] failed to start:", err);
+      });
+    };
+
+    if (existing) {
+      startGame(existing);
+    } else {
+      showLoginScreen({
+        gatewayUrl,
+        container: host,
+        onAuthenticated: startGame,
+      });
+    }
   }
 })();
