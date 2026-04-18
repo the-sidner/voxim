@@ -1,6 +1,15 @@
 import { assertEquals, assert } from "jsr:@std/assert";
 import { buildRecipeGraph } from "./recipe_graph.ts";
-import type { Recipe } from "./types.ts";
+import type { Recipe, Prefab } from "./types.ts";
+
+function node(id: string, yields: Array<{ itemType: string; quantity: number }>): Prefab {
+  return {
+    id,
+    components: {
+      resourceNode: { hitPoints: 1, yields, requiredToolType: null, respawnTicks: null },
+    },
+  };
+}
 
 /** Minimal recipe helper — only fields the graph actually reads. */
 function recipe(
@@ -87,6 +96,25 @@ Deno.test("empty recipe list yields empty graph", () => {
   assertEquals(g.producers.size, 0);
   assertEquals(g.byStation.size, 0);
   assertEquals(g.primitives.size, 0);
+  assertEquals(g.gatherers.size, 0);
+});
+
+Deno.test("gatherers map yields from resource-node prefabs", () => {
+  const rock = node("rock_large",     [{ itemType: "stone", quantity: 5 }, { itemType: "iron_ore", quantity: 1 }]);
+  const vein = node("iron_ore_vein",  [{ itemType: "iron_ore", quantity: 3 }]);
+  const tree = node("tree",           [{ itemType: "wood", quantity: 4 }]);
+  const g = buildRecipeGraph([], [rock, vein, tree]);
+  assertEquals(g.gatherers.get("stone"),    ["rock_large"]);
+  assertEquals(g.gatherers.get("wood"),     ["tree"]);
+  // iron_ore is yielded by two prefabs — both listed, de-duped.
+  const iron = g.gatherers.get("iron_ore") ?? [];
+  assertEquals(new Set(iron), new Set(["rock_large", "iron_ore_vein"]));
+});
+
+Deno.test("non-resource-node prefabs are ignored by gatherers", () => {
+  const campfire: Prefab = { id: "campfire", components: { workstationTag: { stationType: "campfire" } } };
+  const g = buildRecipeGraph([], [campfire]);
+  assertEquals(g.gatherers.size, 0);
 });
 
 Deno.test("ContentStore graph is cached across calls but rebuilt after registerRecipe", async () => {

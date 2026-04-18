@@ -280,6 +280,29 @@ Crafter Lore (via `craft` verb in skill system) scales quality at each action st
 Done when: a sword crafted from high-flexibility steel has a different `flexStrength` property
 than one crafted from standard steel.
 
+### T-116 · Research pass — pre-industrial artisan crafting chains
+Effort: L   Status: in-progress
+
+Compile a curated catalog of real-world pre-industrial artisanal production chains (metallurgy,
+ceramics, textiles, leather, wood/pyrolysis, food/preservation, chemistry/dyes, stone/mineral)
+into `research/crafting/`. Each chain is documented with a canonical schema (steps, workstations,
+primitive verbs, byproducts, gameplay role, engine-gap flags) so we can later decide which chains
+to author as content and which engine features — if any — need to be added to express them.
+
+Scope: pre-1500 tech, observable physical transformations, chains that fit Voxim's gamified
+simulation tempo (long chains OK, month-long real-world durations compressed, NPCs handling
+boring intermediate steps). Explicitly NOT a 1:1 history simulator.
+
+Phases:
+  1. Framing doc + schema (README.md)
+  2. Per-category research files (one markdown per category)
+  3. Synthesis: cross-category verb vocabulary, workstation inventory, engine-gap list
+  4. (Separate ticket, later) — decisions on which chains to author as content,
+     and which engine gaps to close.
+
+Done when: research/crafting/ contains the framing doc, one file per category, and a summary
+extracting the verb vocabulary, workstation inventory, and engine-gap list across all chains.
+
 ---
 
 ## Building

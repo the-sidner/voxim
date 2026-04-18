@@ -245,6 +245,7 @@ export class StaticContentStore implements ContentStore {
 
   registerPrefab(prefab: Prefab): void {
     this.prefabs.set(prefab.id, prefab);
+    this.recipeGraph = null;
   }
 
   registerLoreFragment(fragment: LoreFragment): void {
@@ -373,11 +374,15 @@ export class StaticContentStore implements ContentStore {
   }
 
   getRecipeGraph(): RecipeGraph {
-    // Built lazily on first access; invalidated whenever a new recipe is
-    // registered (registerRecipe clears the cache). In practice the store
-    // is fully loaded before any planner touches the graph.
+    // Built lazily on first access; invalidated whenever a recipe or prefab
+    // is registered (registerRecipe / registerPrefab clear the cache). In
+    // practice the store is fully loaded before any planner touches the
+    // graph.
     if (!this.recipeGraph) {
-      this.recipeGraph = buildRecipeGraph(Array.from(this.recipes.values()));
+      this.recipeGraph = buildRecipeGraph(
+        Array.from(this.recipes.values()),
+        Array.from(this.prefabs.values()),
+      );
     }
     return this.recipeGraph;
   }

@@ -1,22 +1,24 @@
 /**
- * Recipe reverse index — answers two queries in O(1) after build:
+ * Item-sourcing reverse index — answers the planner's "where does X come
+ * from" queries in O(1) after build:
  *
- *   producers.get(itemType) — which recipes produce this item
- *   byStation.get(stationType) — which recipes this workstation type supports
- *   primitives.has(itemType) — this item appears as an input but no recipe
- *                              produces it (so it must be gathered from a
- *                              resource node or spawned directly)
+ *   producers.get(itemType)  — recipes whose outputs include the item
+ *   byStation.get(station)   — recipes requiring a specific workstation
+ *   gatherers.get(itemType)  — resource-node prefab ids whose yields include
+ *                              the item
+ *   primitives.has(itemType) — item is consumed by some recipe but produced
+ *                              by no recipe (must come from a gatherer)
  *
- * Built once at content-load. CraftingPlanner (W1) and the goal-regression
- * BT nodes (W2, W3) consume the graph; no runtime mutation.
+ * Built once at content-load from the full (recipes, prefabs) pair.
+ * CraftingPlanner (W1) and the TryProduce BT node (W3) consume the graph;
+ * no runtime mutation.
  *
- * Primitive detection is the single interesting algorithm here: an item is a
- * primitive iff (a) at least one recipe consumes it as an input, and (b) no
- * recipe's output list contains it. An item that is neither input nor output
- * of any recipe (e.g. display-only props) is not a primitive — it simply
- * doesn't participate in the graph.
+ * Primitive detection: an item is primitive iff (a) at least one recipe
+ * consumes it and (b) no recipe's output list contains it. An item that is
+ * neither input nor output of any recipe (display-only props) doesn't
+ * participate in the graph.
  */
-import type { Recipe } from "./types.ts";
+import type { Recipe, Prefab, PrefabResourceNodeData } from "./types.ts";
 
 export interface RecipeGraph {
   /** itemType → recipes whose outputs include this item. */
@@ -24,13 +26,19 @@ export interface RecipeGraph {
   /** stationType → recipes requiring that workstation. Recipes without a
    *  stationType are grouped under the empty string. */
   readonly byStation: ReadonlyMap<string, readonly Recipe[]>;
+  /** itemType → resource-node prefab ids whose yields include this item. */
+  readonly gatherers: ReadonlyMap<string, readonly string[]>;
   /** itemTypes consumed by some recipe but produced by none. */
   readonly primitives: ReadonlySet<string>;
 }
 
-export function buildRecipeGraph(recipes: readonly Recipe[]): RecipeGraph {
+export function buildRecipeGraph(
+  recipes: readonly Recipe[],
+  prefabs: readonly Prefab[] = [],
+): RecipeGraph {
   const producers = new Map<string, Recipe[]>();
   const byStation = new Map<string, Recipe[]>();
+  const gatherers = new Map<string, string[]>();
   const allInputs = new Set<string>();
   const allOutputs = new Set<string>();
 
@@ -53,10 +61,20 @@ export function buildRecipeGraph(recipes: readonly Recipe[]): RecipeGraph {
     }
   }
 
+  for (const prefab of prefabs) {
+    const rn = prefab.components.resourceNode as PrefabResourceNodeData | undefined;
+    if (!rn) continue;
+    for (const y of rn.yields) {
+      const list = gatherers.get(y.itemType);
+      if (list) { if (!list.includes(prefab.id)) list.push(prefab.id); }
+      else gatherers.set(y.itemType, [prefab.id]);
+    }
+  }
+
   const primitives = new Set<string>();
   for (const itemType of allInputs) {
     if (!allOutputs.has(itemType)) primitives.add(itemType);
   }
 
-  return { producers, byStation, primitives };
+  return { producers, byStation, gatherers, primitives };
 }

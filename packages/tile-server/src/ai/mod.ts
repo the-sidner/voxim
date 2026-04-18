@@ -18,6 +18,7 @@ import { seekFoodJob } from "./jobs/seek_food.ts";
 import { seekWaterJob } from "./jobs/seek_water.ts";
 import { attackTargetJob } from "./jobs/attack_target.ts";
 import { craftAtWorkbenchJob } from "./jobs/craft_at_workbench.ts";
+import { gatherResourceJob } from "./jobs/gather_resource.ts";
 
 export type {
   JobHandler,
@@ -40,4 +41,5 @@ export function registerBuiltinJobs(registry: Registry<JobHandler>): void {
   registry.register(seekWaterJob);
   registry.register(attackTargetJob);
   registry.register(craftAtWorkbenchJob);
+  registry.register(gatherResourceJob);
 }

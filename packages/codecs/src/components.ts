@@ -942,6 +942,17 @@ export type Job =
       /** approach → place → hit → (job cleared). */
       phase: "approach" | "place" | "hit";
       expiresAt: number;
+    }
+  | {
+      type: "gatherResource";
+      itemType: string;
+      /** Acceptable resource-node prefab ids whose yields include itemType. */
+      resourceNodeTypes: ReadonlyArray<string>;
+      /** Total inventory count of itemType the NPC wants to end with. */
+      targetQuantity: number;
+      /** Set once the job handler has resolved a specific node entity to approach. */
+      nodeId: string | null;
+      expiresAt: number;
     };
 
 export type PlanStep =
@@ -972,6 +983,7 @@ const JOB_SEEK_WATER  = 3;
 const JOB_FLEE        = 4;
 const JOB_ATTACK      = 5;
 const JOB_CRAFT_AT    = 6;
+const JOB_GATHER      = 7;
 
 // craftAtWorkbench phase discriminants
 const CRAFT_APPROACH = 0;
@@ -1001,6 +1013,15 @@ function writeJob(w: WireWriter, job: Job): void {
       for (const inp of job.inputs) { w.writeStr(inp.itemType); w.writeU16(inp.quantity); }
       w.writeI32(job.expiresAt);
       break;
+    case "gatherResource":
+      w.writeU8(JOB_GATHER);
+      w.writeStr(job.itemType);
+      w.writeU16(job.targetQuantity);
+      w.writeStr(job.nodeId ?? "");
+      w.writeU16(job.resourceNodeTypes.length);
+      for (const t of job.resourceNodeTypes) w.writeStr(t);
+      w.writeI32(job.expiresAt);
+      break;
   }
 }
 
@@ -1026,6 +1047,17 @@ function readJob(r: WireReader): Job {
       for (let i = 0; i < n; i++) inputs.push({ itemType: r.readStr(), quantity: r.readU16() });
       const expiresAt = r.readI32();
       return { type: "craftAtWorkbench", workbenchType, phase, workbenchId, inputs, expiresAt };
+    }
+    case JOB_GATHER: {
+      const itemType = r.readStr();
+      const targetQuantity = r.readU16();
+      const rawId = r.readStr();
+      const nodeId = rawId === "" ? null : rawId;
+      const n = r.readU16();
+      const resourceNodeTypes: string[] = [];
+      for (let i = 0; i < n; i++) resourceNodeTypes.push(r.readStr());
+      const expiresAt = r.readI32();
+      return { type: "gatherResource", itemType, targetQuantity, nodeId, resourceNodeTypes, expiresAt };
     }
     default: throw new Error(`Unknown job kind: ${kind}`);
   }
