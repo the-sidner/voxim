@@ -445,6 +445,13 @@ export interface ProjectileActionConfig {
   lifetimeTicks: number;
   /** Model ID for the in-flight projectile. Absent = invisible (e.g. magic bolt). */
   modelId?: string;
+  /**
+   * Where the projectile originates in entity-local (fwd, right, up) coordinates.
+   * Lets each weapon declare its own muzzle (e.g. bow string, spear tip, wand tip).
+   * If absent and the action has a swingPath, the hilt pose at t=active-start is
+   * used; if both are absent, combat.projectileDefaults.spawnOffset is the fallback.
+   */
+  spawnOffset?: { fwd: number; right: number; up: number };
 }
 
 /**
@@ -915,6 +922,17 @@ export interface GameConfig {
     /** Fist "blade" radius for unarmed swing hitbox (world units). */
     unarmedBladeRadius: number;
     unarmed: DerivedItemStats;
+    /**
+     * Fallback projectile spawn parameters used only when a ranged weapon action
+     * has no swingPath (no hilt pose) and no explicit ProjectileActionConfig.spawnOffset.
+     * Values are entity-local (fwd, right, up) coordinates applied via localToWorld
+     * from the shooter's facing — i.e. approximately "from the shoulder, forward".
+     */
+    projectileDefaults: {
+      spawnOffset: { fwd: number; right: number; up: number };
+      /** For projectiles with gravity, multiplies speed to seed an upward arc. */
+      arcFactor: number;
+    };
   };
   dodge: {
     staminaCost: number;
@@ -992,6 +1010,12 @@ export interface GameConfig {
   animation: {
     /** Minimum speed² (world units/s)² to trigger the walk clip instead of idle. */
     walkSpeedThresholdSq: number;
+    /** Clip speedScale for the death animation (plays once, clamps at 1.0). */
+    deathSpeedScale: number;
+    /** Clip speedScale for the stationary idle loop. */
+    idleSpeedScale: number;
+    /** Clip speedScale for the stationary crouch loop. */
+    crouchSpeedScale: number;
   };
   building: {
     /** Max distance from placer to blueprint cell centre (world units). */
@@ -1008,6 +1032,16 @@ export interface GameConfig {
     maxStamina: number;
     staminaRegenPerSec: number;
     inventoryCapacity: number;
+  };
+  /** Server-side persistence tuning — autosave cadence and future knobs. */
+  persistence: {
+    /** Autosave cadence in server ticks. 0 disables autosave (save on shutdown only). */
+    saveIntervalTicks: number;
+  };
+  /** World / rendering scale defaults shared by server and client. */
+  world: {
+    /** Default entity model scale when no per-template override is set. */
+    defaultEntityScale: number;
   };
   /** Per-client network tuning. */
   network: {

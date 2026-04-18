@@ -10,6 +10,28 @@ import { buildCodec } from "./binary.ts";
 import { WireWriter, WireReader } from "./wire.ts";
 import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb, BodyPartVolume } from "@voxim/content";
 
+/**
+ * Hard array-size caps for variable-length component payloads. Purely a
+ * safety-rail against pathological growth (cheat client, bug) — these are not
+ * gameplay tuning. All values are u16 on the wire, so codec decoders always
+ * tolerate up to 65535; these ceilings just fail fast on the encode side so
+ * a runaway system doesn't ship garbage across the wire.
+ */
+export const WIRE_LIMITS = {
+  inventorySlots: 64,
+  craftingQueue: 16,
+  traderListings: 64,
+  heritageTraits: 64,
+  activeEffects: 32,
+  hitRecordsPerSwing: 32,
+} as const;
+
+function assertMaxLen(name: string, len: number, max: number): void {
+  if (len > max) {
+    throw new Error(`[codec] ${name} length ${len} exceeds wire cap ${max}`);
+  }
+}
+
 // ---- Position ---- 24 bytes (3 × f64)
 
 export interface PositionData {
@@ -402,6 +424,7 @@ export interface InventoryData {
 
 export const inventoryCodec: Serialiser<InventoryData> = {
   encode(v: InventoryData): Uint8Array {
+    assertMaxLen("Inventory.slots", v.slots.length, WIRE_LIMITS.inventorySlots);
     const w = new WireWriter();
     w.writeU16(v.slots.length);
     for (const s of v.slots) writeInventorySlot(w, s);
@@ -475,6 +498,7 @@ export interface CraftingQueueData {
 
 export const craftingQueueCodec: Serialiser<CraftingQueueData> = {
   encode(v: CraftingQueueData): Uint8Array {
+    assertMaxLen("CraftingQueue.queued", v.queued.length, WIRE_LIMITS.craftingQueue);
     const w = new WireWriter();
     if (v.activeRecipeId !== null) { w.writeU8(1); w.writeStr(v.activeRecipeId); } else { w.writeU8(0); }
     w.writeI32(v.progressTicks);
@@ -535,6 +559,7 @@ export interface TraderInventoryData {
 
 export const traderInventoryCodec: Serialiser<TraderInventoryData> = {
   encode(v: TraderInventoryData): Uint8Array {
+    assertMaxLen("TraderInventory.listings", v.listings.length, WIRE_LIMITS.traderListings);
     const w = new WireWriter();
     w.writeU16(v.listings.length);
     for (const l of v.listings) writeTraderListing(w, l);
@@ -590,6 +615,7 @@ export interface HeritageData {
 
 export const heritageCodec: Serialiser<HeritageData> = {
   encode(v: HeritageData): Uint8Array {
+    assertMaxLen("Heritage.traits", v.traits.length, WIRE_LIMITS.heritageTraits);
     const w = new WireWriter();
     w.writeStr(v.dynastyId);
     w.writeU32(v.generation);
@@ -859,6 +885,7 @@ export interface ActiveEffectsData {
 
 export const activeEffectsCodec: Serialiser<ActiveEffectsData> = {
   encode(v: ActiveEffectsData): Uint8Array {
+    assertMaxLen("ActiveEffects.effects", v.effects.length, WIRE_LIMITS.activeEffects);
     const w = new WireWriter();
     w.writeU16(v.effects.length);
     for (const e of v.effects) writeActiveEffect(w, e);

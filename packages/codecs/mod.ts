@@ -31,6 +31,7 @@ export {
   hitboxCodec,
   workstationBufferCodec,
   lightEmitterCodec, darknessModifierCodec,
+  WIRE_LIMITS,
 } from "./src/components.ts";
 
 export { uuidToBytes, bytesToUuid } from "./src/uuid.ts";

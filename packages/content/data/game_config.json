@@ -23,6 +23,10 @@
       "attackRange": 2.0,
       "attackArcHalf": 1.0471975511965976,
       "staminaCostPerSwing": 5
+    },
+    "projectileDefaults": {
+      "spawnOffset": { "fwd": 0.6, "right": 0.0, "up": 1.4 },
+      "arcFactor": 0.08
     }
   },
   "dodge": {
@@ -96,7 +100,10 @@
     "cooldownTicks": 20
   },
   "animation": {
-    "walkSpeedThresholdSq": 0.01
+    "walkSpeedThresholdSq": 0.01,
+    "deathSpeedScale": 0.5,
+    "idleSpeedScale": 0.4,
+    "crouchSpeedScale": 0.4
   },
   "building": {
     "maxReachWorldUnits": 4.0
@@ -111,6 +118,12 @@
     "maxStamina": 100,
     "staminaRegenPerSec": 8,
     "inventoryCapacity": 20
+  },
+  "persistence": {
+    "saveIntervalTicks": 6000
+  },
+  "world": {
+    "defaultEntityScale": 0.35
   },
   "network": {
     "rttEmaAlpha": 0.15
