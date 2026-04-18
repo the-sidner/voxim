@@ -48,7 +48,7 @@ import type {
   PrefabNpcData,
   PrefabPlayerData,
 } from "@voxim/content";
-import { applyHitboxTemplate, solveSkeleton, REST_POSE, resolveMorphParams } from "@voxim/content";
+import { applyHitboxTemplate } from "@voxim/content";
 import { DEF_BY_NAME } from "./component_registry.ts";
 
 // ---- small helpers ----
@@ -181,10 +181,17 @@ export const COMPOUND_ARCHETYPE_KEYS: ReadonlySet<string> = new Set(COMPOUND_INS
 // ---- visual shell ----
 
 /**
- * Attach ModelRef + rest-pose-derived Hitbox when the prefab declares a
- * `modelId`. The Hitbox is a placeholder for tick 0 only: HitboxSystem
- * overwrites it from the live skeleton each tick for animated entities;
- * for static props the rest-pose derivation IS the final hitbox.
+ * Attach ModelRef + initial Hitbox when the prefab declares a `modelId`.
+ *
+ * Skeletal models (humans, wolves) get `{ derive: true, parts: [] }` — the
+ * HitboxSystem fills parts each tick from the live pose.
+ * Non-skeletal models (trees, rocks, props) get `{ derive: false, parts }`
+ * derived once at spawn from the rest-pose template — HitboxSystem skips
+ * them for the rest of their life.
+ *
+ * A prefab may override by declaring its own `hitbox` component; the generic
+ * direct-write in spawnPrefab runs after this and wins. This function never
+ * writes a Hitbox if the prefab already declares one.
  */
 function installVisualShell(
   world: World,
@@ -201,20 +208,18 @@ function installVisualShell(
     scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
     seed,
   });
-  const hitboxParts = content.getHitboxTemplate(prefab.modelId, seed, entityScale);
-  if (hitboxParts.length === 0) return;
+
+  if ("hitbox" in prefab.components) return;
+
   const skeleton = content.getSkeletonForModel(prefab.modelId);
-  const boneTransforms = skeleton
-    ? solveSkeleton(
-        skeleton,
-        content.getBoneIndex(skeleton.id),
-        REST_POSE,
-        entityScale,
-        resolveMorphParams(skeleton, seed),
-      )
-    : new Map();
-  const parts = applyHitboxTemplate(hitboxParts, boneTransforms);
-  if (parts.length > 0) world.write(id, Hitbox, { parts });
+  if (skeleton) {
+    world.write(id, Hitbox, { derive: true, parts: [] });
+    return;
+  }
+
+  const template = content.getHitboxTemplate(prefab.modelId, seed, entityScale);
+  const parts = applyHitboxTemplate(template, new Map());
+  world.write(id, Hitbox, { derive: false, parts });
 }
 
 // ---- spawnPrefab ----
@@ -333,6 +338,7 @@ export function spawnBlueprint(world: World, content: ContentStore, opts: SpawnB
   // Walls (heightDelta > 0) get a full-height capsule; floors get a short stub.
   const capsuleHeight = def.heightDelta > 0 ? def.heightDelta : 0.8;
   world.write(id, Hitbox, {
+    derive: false,
     parts: [{
       id: "body",
       fromFwd: 0, fromRight: 0, fromUp: 0,

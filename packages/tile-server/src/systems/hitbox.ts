@@ -1,6 +1,7 @@
 /**
  * HitboxSystem — derives entity-local hitbox capsules from the live animation
- * layer stack each tick.
+ * layer stack each tick, but only for entities whose Hitbox component has
+ * `derive: true`.
  *
  * Pipeline per entity:
  *   1. evaluateAnimationLayers → bone rotations (Euler XYZ per bone)
@@ -8,8 +9,9 @@
  *   3. applyHitboxTemplate     → solver-space → entity-local BodyPartVolume[]
  *   4. dirty check             → world.set only when parts changed
  *
- * Static entities (trees, resources) have no AnimationState and are skipped.
- * Their hitbox is written once at spawn by spawner.ts.
+ * Entities with `derive: false` (static props, blueprints, hand-authored
+ * hitboxes) are owned by whoever wrote them and are skipped here. Entities
+ * without AnimationState or ModelRef drop out of the query naturally.
  *
  * Performance optimisations:
  *   - posePool / transformPool: pre-allocated Maps per entity, cleared and
@@ -46,6 +48,8 @@ export class HitboxSystem implements System {
 
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
     for (const { entityId, animationState, modelRef } of world.query(AnimationState, ModelRef)) {
+      const current = world.get(entityId, Hitbox);
+      if (current && !current.derive) continue;
       const skeleton = this.content.getSkeletonForModel(modelRef.modelId);
       if (!skeleton) continue;
 
@@ -78,11 +82,11 @@ export class HitboxSystem implements System {
         // No template parts — fall back to rest-pose static hitbox.
         const restTransforms = solveSkeleton(skeleton, boneIndex, REST_POSE, modelRef.scaleX, morphParams);
         const restParts = applyHitboxTemplate(template, restTransforms);
-        if (restParts.length > 0 && !partsEqual(world.get(entityId, Hitbox)?.parts, restParts)) {
-          world.set(entityId, Hitbox, { parts: restParts } as HitboxData);
+        if (restParts.length > 0 && !partsEqual(current?.parts, restParts)) {
+          world.set(entityId, Hitbox, { derive: true, parts: restParts } as HitboxData);
         }
-      } else if (!partsEqual(world.get(entityId, Hitbox)?.parts, parts)) {
-        world.set(entityId, Hitbox, { parts } as HitboxData);
+      } else if (!partsEqual(current?.parts, parts)) {
+        world.set(entityId, Hitbox, { derive: true, parts } as HitboxData);
       }
     }
   }

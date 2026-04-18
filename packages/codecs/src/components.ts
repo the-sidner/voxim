@@ -1057,7 +1057,18 @@ export const npcJobQueueCodec: Serialiser<NpcJobQueueData> = {
 
 // ---- Hitbox ----
 
+/**
+ * Hit geometry for an entity. Always server-only.
+ *
+ * `derive` is the authority flag:
+ *   true  — HitboxSystem repopulates `parts` each tick from ModelRef + the
+ *           live skeleton pose. Prefabs for animated entities use this.
+ *   false — `parts` is static and owned by whoever wrote it (spawner's
+ *           one-shot derivation for non-skeletal models, or a prefab with
+ *           hand-authored capsule geometry). HitboxSystem ignores the entity.
+ */
 export interface HitboxData {
+  derive: boolean;
   parts: BodyPartVolume[];
 }
 
@@ -1079,16 +1090,18 @@ function readBodyPart(r: WireReader): BodyPartVolume {
 export const hitboxCodec: Serialiser<HitboxData> = {
   encode(v: HitboxData): Uint8Array {
     const w = new WireWriter();
+    w.writeU8(v.derive ? 1 : 0);
     w.writeU16(v.parts.length);
     for (const p of v.parts) writeBodyPart(w, p);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): HitboxData {
     const r = new WireReader(bytes);
+    const derive = r.readU8() === 1;
     const count = r.readU16();
     const parts: BodyPartVolume[] = [];
     for (let i = 0; i < count; i++) parts.push(readBodyPart(r));
-    return { parts };
+    return { derive, parts };
   },
 };
 
