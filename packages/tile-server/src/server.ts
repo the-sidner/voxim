@@ -29,7 +29,7 @@ import { ClientSession } from "./session.ts";
 import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
-import { HeritageStore } from "./heritage_store.ts";
+import { AccountClient } from "./account_client.ts";
 import { spawnPlayer } from "./spawner.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState } from "./components/game.ts";
@@ -112,8 +112,10 @@ export interface TileServerConfig {
    */
   terrainCacheFile?: string;
   /**
-   * Gateway HTTP base URL for self-registration, e.g. "http://localhost:8080".
-   * When set alongside tileAddress, the tile registers itself on startup.
+   * Gateway HTTP base URL — used for self-registration AND for account
+   * service calls (session validation, heritage read/write, location
+   * updates). Setting this enables the account-backed join path; omitting
+   * it falls back to anonymous spawns (dev only).
    */
   gatewayUrl?: string;
   /**
@@ -121,6 +123,13 @@ export interface TileServerConfig {
    * Required for gateway self-registration.
    */
   tileAddress?: string;
+  /**
+   * Shared secret the tile presents in the X-Voxim-Service-Secret header
+   * when calling the gateway's /internal/* endpoints. Must match the
+   * gateway's VOXIM_SERVICE_SECRET; at least 16 chars. Required when
+   * gatewayUrl is set.
+   */
+  serviceSecret?: string;
   /**
    * Enable dev/cheat commands (e.g. DebugGiveItem).
    * Should never be true in production deployments.
@@ -141,7 +150,14 @@ export class TileServer {
   private wtPort = 4434;
   private tickLoop = new TickLoop();
   private stateHistory = new StateHistoryBuffer();
-  private heritageStore = new HeritageStore();
+  /**
+   * RPC interface to the gateway-hosted account service. Null when running
+   * without a gateway (dev/demo), in which case join spawns brand-new
+   * characters with no inherited heritage and deaths do not persist.
+   */
+  private accountClient: AccountClient | null = null;
+  /** Cached from config so disconnect paths can tell the gateway where the player logged off. */
+  private tileId = "";
   private content!: ContentStore;
   // Initialised in start() — subscribes to the event bus and drained each tick.
   private events!: EventRouter;
@@ -170,6 +186,16 @@ export class TileServer {
     this.certHashHex = Array.from(new Uint8Array(hashBuf))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
+
+    this.tileId = config.tileId;
+
+    // Account service RPC — required in production, omitted in dev/demo. When
+    // absent, join spawns anonymous characters and deaths/location updates
+    // are silently dropped (intentional: single-tile dev builds should run
+    // without a gateway at all).
+    if (config.gatewayUrl && config.serviceSecret) {
+      this.accountClient = new AccountClient(config.gatewayUrl, config.serviceSecret);
+    }
 
     // Load all game content (recipes, structures, lore, materials) from data files.
     // Systems receive the store by injection — no hardcoded tables in game logic.
@@ -633,20 +659,65 @@ export class TileServer {
     const joinMsg = await makeFrameReader(jReader).readJson() as TileJoinRequest | null;
     jReader.releaseLock();
 
-    // Determine playerId: reuse existing entity (post-handoff) or spawn fresh
+    if (!joinMsg || joinMsg.type !== "join" || !joinMsg.playerId) {
+      console.warn("[TileServer] rejecting malformed join");
+      jWriter.close().catch(() => {}); jWriter.releaseLock();
+      return;
+    }
+
+    // ── Validate the session token ────────────────────────────────────────────
+    // The gateway already validated the token when routing this client to us,
+    // but we re-validate here because nothing stops a direct WebTransport
+    // connection from skipping the gateway. Token must resolve to the same
+    // userId the client claims in joinMsg.playerId.
+    //
+    // If an account client is configured we enforce this. In dev/demo mode
+    // (no gateway), we trust the claimed playerId as-is.
     let playerId: EntityId;
     let dynastyId: EntityId;
 
-    const requestedId = joinMsg?.playerId as EntityId | undefined;
-    if (requestedId && this.world.isAlive(requestedId)) {
-      // Entity was pre-created by restorePlayer() — reuse it; dynastyId lives on Heritage.
-      playerId = requestedId;
-      dynastyId = (this.world.get(playerId, Heritage)?.dynastyId as EntityId | undefined) ?? newEntityId();
-      console.log(`[TileServer] player ${playerId} rejoining (post-handoff)`);
+    if (this.accountClient) {
+      if (!joinMsg.token) {
+        console.warn("[TileServer] rejecting join without token");
+        jWriter.close().catch(() => {}); jWriter.releaseLock();
+        return;
+      }
+      const info = await this.accountClient.validateSession(joinMsg.token).catch((err: unknown) => {
+        console.error("[TileServer] session validation failed:", err);
+        return null;
+      });
+      if (!info || info.userId !== joinMsg.playerId) {
+        console.warn(`[TileServer] rejecting join: token/playerId mismatch`);
+        jWriter.close().catch(() => {}); jWriter.releaseLock();
+        return;
+      }
+      playerId = info.userId as EntityId;
+      dynastyId = info.activeDynastyId as EntityId;
     } else {
-      dynastyId = newEntityId();
+      // No account service — accept the claimed playerId verbatim (dev mode).
+      playerId = joinMsg.playerId as EntityId;
+      dynastyId = playerId;
+    }
+
+    // Determine spawn vs reuse: post-handoff the entity already exists; for
+    // a fresh join we create it. Heritage is fetched from the account service
+    // for real users and from a default (generation 0) for dev-mode spawns.
+    if (this.world.isAlive(playerId)) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} rejoining (post-handoff)`);
+    } else {
       const spawn = this.content.getGameConfig().player;
-      playerId = spawnPlayer(this.world, this.content, { x: spawn.defaultSpawnX, y: spawn.defaultSpawnY, dynastyId, heritageStore: this.heritageStore });
+      const heritage = this.accountClient
+        ? (await this.accountClient.getHeritage(playerId).catch((err: unknown) => {
+            console.error("[TileServer] heritage fetch failed:", err);
+            return null;
+          })) ?? undefined
+        : undefined;
+      spawnPlayer(this.world, this.content, {
+        id: playerId,
+        x: spawn.defaultSpawnX,
+        y: spawn.defaultSpawnY,
+        heritage,
+      });
     }
 
     // Send ack with canonical playerId
@@ -703,25 +774,36 @@ export class TileServer {
       },
     ).catch(() => { contentStreamReader.releaseLock(); });
 
+    const heritageOnJoin = this.world.get(playerId, Heritage);
     console.log(
-      `[TileServer] player ${playerId} connected (dynasty ${dynastyId}, ` +
-        `gen ${this.heritageStore.get(dynastyId).generation})`,
+      `[TileServer] player ${playerId.slice(0, 8)} connected ` +
+        `(dynasty ${dynastyId.slice(0, 8)}, gen ${heritageOnJoin?.generation ?? 0})`,
     );
 
     // Input receiver runs concurrently — returns when the session closes
     await clientSession.receiveInputs(session);
 
-    // Session ended — record heritage if the player died (entity already destroyed by combat)
+    // Session ended. Two paths:
+    //   - entity still alive → clean disconnect, destroy locally. Also tell
+    //     the account service which tile the player last occupied so the
+    //     next login routes back here.
+    //   - entity gone → combat death already destroyed it; inform the
+    //     account service so heritage advances a generation.
     clientSession.close();
     this.sessions.delete(playerId);
     if (this.world.isAlive(playerId)) {
-      // Clean disconnect — entity still alive, destroy it
       this.world.destroy(playerId);
-    } else {
-      // Entity was destroyed by combat — record the death in heritage
-      this.heritageStore.recordDeath(dynastyId, 0);
+      if (this.accountClient) {
+        await this.accountClient.updateLocation(playerId, this.tileId).catch((err: unknown) => {
+          console.error("[TileServer] updateLocation failed:", err);
+        });
+      }
+    } else if (this.accountClient) {
+      await this.accountClient.recordDeath(playerId, "damage").catch((err: unknown) => {
+        console.error("[TileServer] recordDeath failed:", err);
+      });
     }
-    console.log(`[TileServer] player ${playerId} disconnected`);
+    console.log(`[TileServer] player ${playerId.slice(0, 8)} disconnected`);
   }
 }
 

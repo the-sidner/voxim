@@ -267,9 +267,16 @@ export class VoximGame {
     let tileAddress: string;
     let certHashHex: string | undefined;
 
+    // Tile join needs a playerId and a token. In gateway mode both come from
+    // the handshake. In direct-tile dev mode we fabricate a stand-in pair
+    // (random playerId, literal "dev-token") since the tile runs without an
+    // account client and trusts the claim.
+    let tileToken: string;
     if (config.directTile) {
       tileAddress = config.directTile.address;
       certHashHex = config.directTile.certHashHex;
+      this.playerId = this.playerId ?? crypto.randomUUID();
+      tileToken = "dev-token";
     } else {
       if (!config.sessionToken) {
         throw new Error("gatewayUrl mode requires sessionToken — log in first and pass the returned token");
@@ -277,10 +284,11 @@ export class VoximGame {
       const gatewayResult = await connectViaGateway(config.gatewayUrl!, config.sessionToken);
       this.playerId = gatewayResult.playerId;
       tileAddress = gatewayResult.tileAddress;
+      tileToken = config.sessionToken;
     }
 
     // Step 3: connect — handlers are already wired so no messages can be dropped
-    const assignedId = await this.connection.connect(tileAddress, this.playerId ?? undefined, certHashHex);
+    const assignedId = await this.connection.connect(tileAddress, this.playerId, tileToken, certHashHex);
     this.playerId = assignedId;
     console.log(`[Game] tile-assigned player ID: ${this.playerId}`);
     (globalThis as unknown as Record<string, unknown>)._voxim_connected = true;

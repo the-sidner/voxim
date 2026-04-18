@@ -73,8 +73,18 @@ export interface GatewayRegisterResponse {
 
 export interface TileJoinRequest {
   type: "join";
-  /** The player ID assigned by the gateway. Omit for a brand-new session. */
-  playerId?: string;
+  /**
+   * The user ID assigned by the gateway (becomes this player's EntityId on
+   * the tile). The tile server verifies this matches the token's owner.
+   */
+  playerId: string;
+  /**
+   * The same session token the client used against the gateway. The tile
+   * validates it against the gateway's /internal/session endpoint and
+   * refuses the join if the token is invalid, expired, or belongs to a
+   * different user than the one claimed in `playerId`.
+   */
+  token: string;
 }
 
 export interface TileJoinAck {

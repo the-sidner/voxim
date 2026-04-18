@@ -17,7 +17,8 @@ import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { Inventory, CraftingQueue, InteractCooldown } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
-import type { HeritageStore } from "./heritage_store.ts";
+import type { HeritageData } from "@voxim/codecs";
+import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag, WorkstationBuffer } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
@@ -70,26 +71,32 @@ export interface SpawnPlayerOpts {
   id?: EntityId;
   x?: number;
   y?: number;
-  dynastyId?: string;
-  heritageStore?: HeritageStore;
+  /**
+   * Heritage already fetched from the account service. Required when the
+   * caller wants inherited traits applied to this character; omit for
+   * brand-new sessions with no prior dynasty (tests / dev spawns).
+   * The component is populated from this value; maxHealth is derived via
+   * maxHealthFor.
+   */
+  heritage?: HeritageData;
 }
 
 /**
  * Create a player entity with all required components.
- * Heritage bonuses are applied if a dynastyId and HeritageStore are provided.
+ * Heritage is passed in (the tile fetches it from the account service on
+ * join); this function no longer knows anything about dynasty persistence.
  */
 export function spawnPlayer(world: World, content: ContentStore, opts: SpawnPlayerOpts = {}): EntityId {
   const id = opts.id ?? newEntityId();
   const x = opts.x ?? 256;
   const y = opts.y ?? 256;
 
-  const dynastyId = opts.dynastyId ?? newEntityId();
-  const heritage = opts.heritageStore?.get(dynastyId) ?? {
-    dynastyId,
+  const heritage = opts.heritage ?? {
+    dynastyId: newEntityId(),
     generation: 0,
     traits: [],
   };
-  const maxHealth = opts.heritageStore?.maxHealthFor(dynastyId) ?? 100;
+  const maxHealth = maxHealthFor(heritage);
 
   const scale = content.getGameConfig().world.defaultEntityScale;
 

@@ -32,12 +32,15 @@ export class TileConnection {
    * Connect to the tile server and perform the join handshake.
    *
    * @param tileAddress  "hostname:port" as returned by the gateway.
-   * @param playerId     The player ID assigned by the gateway (for handoff reconnects).
-   * @param certHashHex  SHA-256 fingerprint (hex) of the server TLS cert — required for
-   *                     self-signed certs (dev/demo). Omit when the cert is CA-signed.
+   * @param playerId     The player ID (== userId) assigned by the gateway.
+   * @param token        Session token. Tile server re-validates it against
+   *                     the gateway before accepting the join.
+   * @param certHashHex  SHA-256 fingerprint (hex) of the server TLS cert —
+   *                     required for self-signed certs (dev/demo). Omit when
+   *                     the cert is CA-signed.
    * @returns            The canonical player ID assigned by the tile server.
    */
-  async connect(tileAddress: string, playerId?: string, certHashHex?: string): Promise<string> {
+  async connect(tileAddress: string, playerId: string, token: string, certHashHex?: string): Promise<string> {
     // deno-lint-ignore no-explicit-any
     const options: Record<string, any> = {};
     if (certHashHex) {
@@ -58,7 +61,7 @@ export class TileConnection {
     const jWriter = joinStream.writable.getWriter();
     const jReader = joinStream.readable.getReader();
 
-    const req: TileJoinRequest = { type: "join", ...(playerId ? { playerId } : {}) };
+    const req: TileJoinRequest = { type: "join", playerId, token };
     await jWriter.write(encodeFrame(req));
     jWriter.close().catch(() => {}); // signal FIN without blocking on remote ACK
 

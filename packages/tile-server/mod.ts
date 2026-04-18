@@ -46,10 +46,13 @@ export type {
   InteractCooldownData,
 } from "./src/components/items.ts";
 
-// Heritage
+// Heritage — component lives on entities; persistence is owned by the
+// gateway-hosted account service. The tile server reads/writes it via
+// AccountClient.
 export { Heritage } from "./src/components/heritage.ts";
 export type { HeritageData, HeritageTrait } from "./src/components/heritage.ts";
-export { HeritageStore } from "./src/heritage_store.ts";
+export { AccountClient, maxHealthFor, heritageHealthBonus } from "./src/account_client.ts";
+export type { SessionInfo } from "./src/account_client.ts";
 
 // Equipment component
 export { Equipment } from "./src/components/equipment.ts";
