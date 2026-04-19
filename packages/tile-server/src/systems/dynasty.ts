@@ -4,7 +4,8 @@ import { CommandType, TileEvents } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Inventory, InteractCooldown, ItemData, TomeData } from "../components/items.ts";
+import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
+import { Inscribed } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { createLogger } from "../logger.ts";
 
@@ -55,7 +56,7 @@ export class DynastySystem implements System {
           const tomeId = newEntityId();
           world.create(tomeId);
           world.write(tomeId, ItemData, { prefabId: cfg.tomeItemType, quantity: 1 });
-          world.write(tomeId, TomeData, { fragmentId });
+          world.write(tomeId, Inscribed, { fragmentId });
 
           world.set(entityId, Inventory, {
             ...inventory,
@@ -78,7 +79,7 @@ export class DynastySystem implements System {
           const itemData = world.get(tomeEntityId, ItemData);
           if (itemData?.prefabId !== cfg.tomeItemType) continue;
 
-          const tomeData = world.get(tomeEntityId, TomeData);
+          const tomeData = world.get(tomeEntityId, Inscribed);
           if (!tomeData) continue;
           const fragmentId = tomeData.fragmentId;
           const alreadyKnown = loreLoadout.learnedFragmentIds.includes(fragmentId);

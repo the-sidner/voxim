@@ -65,8 +65,11 @@ export interface ContentStore {
    * Reads behaviour components (Weight, Armor, Edible, Illuminator, Tool, Swingable)
    * from the prefab's components dict. The `parts` parameter is accepted for call-site
    * compatibility but is not used in Phase 2 — material-axis stat derivation is deferred.
+   *
+   * `quality` (0–1, default 1.0) scales stats written by a crafting workstation's quality tier.
+   * Pass `world.get(itemEntityId, QualityStamped)?.quality` at call sites that care about it.
    */
-  deriveItemStats(prefabId: string, parts?: ItemPart[]): DerivedItemStats;
+  deriveItemStats(prefabId: string, parts?: ItemPart[], quality?: number): DerivedItemStats;
 
   // ---- recipes ----
   getRecipe(id: string): Recipe | null;
@@ -292,7 +295,7 @@ export class StaticContentStore implements ContentStore {
     return this.skeletons.get(id) ?? null;
   }
 
-  deriveItemStats(prefabId: string, _parts?: ItemPart[]): DerivedItemStats {
+  deriveItemStats(prefabId: string, _parts?: ItemPart[], quality = 1): DerivedItemStats {
     const prefab = this.getPrefab(prefabId);
     if (!prefab) return { weight: 1 };
 
@@ -305,14 +308,14 @@ export class StaticContentStore implements ContentStore {
     const swingable = c["swingable"] as { weaponActionId?: string } | undefined;
 
     const stats: DerivedItemStats = { weight: weight?.baseWeight ?? 1 };
-    if (armor?.reduction !== undefined) stats.armorReduction = armor.reduction;
+    if (armor?.reduction !== undefined) stats.armorReduction = armor.reduction * quality;
     if (armor?.staminaPenalty !== undefined) stats.staminaRegenPenalty = armor.staminaPenalty;
-    if (edible?.food !== undefined) stats.foodValue = edible.food;
-    if (edible?.water !== undefined) stats.waterValue = edible.water;
+    if (edible?.food !== undefined) stats.foodValue = edible.food * quality;
+    if (edible?.water !== undefined) stats.waterValue = edible.water * quality;
     if (illuminator?.intensity) {
       stats.lightRadius = illuminator.radius;
       stats.lightColor = illuminator.color;
-      stats.lightIntensity = illuminator.intensity;
+      stats.lightIntensity = illuminator.intensity * quality;
       stats.lightFlicker = illuminator.flicker;
     }
     if (tool?.toolType) stats.toolType = tool.toolType;

@@ -43,8 +43,14 @@ import {
   InteractCooldown,
   Inventory,
   ItemData,
-  TomeData,
 } from "./components/items.ts";
+import {
+  Durability,
+  History,
+  Inscribed,
+  Owned,
+  QualityStamped,
+} from "./components/instance.ts";
 import {
   Blueprint,
   WorkstationBuffer,
@@ -144,7 +150,12 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ProjectileData,
   SpeedModifier,
   EncumbrancePenalty,
-  TomeData,
+  // ── Instance-lifetime components (T-117 Phase 4) ─────────────────────────
+  Durability,
+  Inscribed,
+  QualityStamped,
+  History,
+  Owned,
   // ── Item-behaviour template defs (T-117 Phase 1) ─────────────────────────
   // Declared on any prefab that represents a holdable/wearable/usable thing.
   // Server-only: clients reconstruct item behaviour from the prefab id they

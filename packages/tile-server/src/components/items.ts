@@ -1,7 +1,6 @@
-import type { Serialiser } from "@voxim/engine";
 import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
-import { itemDataCodec, inventoryCodec, craftingQueueCodec, buildCodec, WireWriter, WireReader } from "@voxim/codecs";
+import { itemDataCodec, inventoryCodec, craftingQueueCodec, buildCodec } from "@voxim/codecs";
 import type { ItemDataData, InventorySlot, InventoryData } from "@voxim/codecs";
 
 // ---- ItemData ----
@@ -51,30 +50,6 @@ export const CraftingQueue = defineComponent({
     progressTicks: 0,
     queued: [],
   }),
-});
-
-// ---- TomeData ----
-// Server-only component on unique tome item entities (kind: "unique" slots).
-// Carries the lore fragment encoded in this tome so DynastySystem can read it.
-
-export interface TomeDataData {
-  fragmentId: string;
-}
-
-const tomeDataCodec: Serialiser<TomeDataData> = {
-  encode(v: TomeDataData): Uint8Array {
-    const w = new WireWriter(); w.writeStr(v.fragmentId); return w.toBytes();
-  },
-  decode(bytes: Uint8Array): TomeDataData {
-    return { fragmentId: new WireReader(bytes).readStr() };
-  },
-};
-
-export const TomeData = defineComponent({
-  name: "tomeData" as const,
-  networked: false as const,
-  codec: tomeDataCodec,
-  default: (): TomeDataData => ({ fragmentId: "" }),
 });
 
 // ---- InteractCooldown ----

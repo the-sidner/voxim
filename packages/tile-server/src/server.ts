@@ -70,6 +70,7 @@ import { Registry } from "@voxim/engine";
 import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
 import { DynastySystem } from "./systems/dynasty.ts";
+import { DurabilitySystem } from "./systems/durability.ts";
 import { AnimationSystem } from "./systems/animation.ts";
 import { HitboxSystem } from "./systems/hitbox.ts";
 import { DebugCommandSystem } from "./systems/debug_commands.ts";
@@ -313,6 +314,7 @@ export class TileServer {
       new TerrainDigSystem(content),
       new TraderSystem(content),
       new DynastySystem(content),
+      new DurabilitySystem(),
       new AnimationSystem(content),
       new HitboxSystem(content),
       new DebugCommandSystem(content, config.devMode ?? false),
