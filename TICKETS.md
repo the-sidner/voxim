@@ -304,7 +304,7 @@ Done when: research/crafting/ contains the framing doc, one file per category, a
 extracting the verb vocabulary, workstation inventory, and engine-gap list across all chains.
 
 ### T-117 · Items-as-entities refactor (`ITEMS_AS_ENTITIES_PLAN.md`)
-Effort: L   Status: in-progress   Commit (Ph1): 26a4546   Commit (Ph2): 46d638b   Commit (Ph3): 2dc9fd6
+Effort: L   Status: done   Commit (Ph1): 26a4546   Commit (Ph2): 46d638b   Commit (Ph3): 2dc9fd6   Commit (Ph4): 690de19
 
 Collapse `ItemTemplate` into `Prefab`. Move every item behaviour onto composable
 server-only components (Equippable, Swingable, Tool, Deployable, Edible,
@@ -321,8 +321,8 @@ Phases:
   2. `ItemTemplate` → `Prefab` migration (breaking) — DONE 46d638b
      Old item JSON scratched; new item prefabs authored fresh in content sprint.
   3. Unique items become entities; inventory/equipment entity-refs (breaking) — DONE 2dc9fd6
-  4. Instance components: Durability, Inscribed, QualityStamped, History — in-progress
-  5. Polish, benchmarks, cleanup
+  4. Instance components: Durability, Inscribed, QualityStamped, History — DONE 690de19
+  5. Polish, benchmarks, cleanup — DONE (this commit)
 
 Each breaking phase is its own atomic diff per CLAUDE.md's refactor philosophy.
 Checkpoint sign-off gates each breaking phase.

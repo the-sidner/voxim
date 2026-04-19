@@ -9,7 +9,7 @@
  *
  * Usage:
  *   const content = await loadContentStore();
- *   const template = content.getItemTemplate("wooden_sword");
+ *   const prefab = content.getPrefab("wooden_sword");
  */
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef } from "./types.ts";

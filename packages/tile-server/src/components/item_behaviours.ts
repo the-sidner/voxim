@@ -1,22 +1,14 @@
 /**
- * Item-behaviour components.
- *
- * Template components declared on any prefab that represents a "thing you can
- * have, hold, wear, swing, eat, or deploy". An item is just a prefab that
- * carries one or more of these components.
+ * Item-behaviour components — template components declared on any prefab that
+ * represents a "thing you can have, hold, wear, swing, eat, or deploy".
  *
  * All are server-only: the client reconstructs item behaviour from the prefab
  * id it already has in its prefab store, so these never travel over the wire
- * as runtime deltas. When a unique item is spawned as an entity
- * (Phase 3 of T-117), these components are written onto the entity by the
- * prefab spawner and stay put for its lifetime.
+ * as runtime deltas. Written onto the entity by the prefab spawner and stay
+ * put for the entity's lifetime.
  *
  * Instance-lifetime components (Durability, Inscribed, QualityStamped,
- * History) arrive in Phase 4.
- *
- * Added as part of T-117 — Phase 1 (additive, non-breaking). No JSON file
- * declares these yet and no system reads them yet; Phase 2 migrates item
- * JSON to use them in place of the flat ItemTemplate fields.
+ * History, Owned) live in instance.ts.
  */
 import { defineComponent } from "@voxim/engine";
 import { WireReader, WireWriter } from "@voxim/codecs";
@@ -44,7 +36,7 @@ const EQUIP_SLOT_VALUES = [
 
 const equipSlotSchema = v.picklist(EQUIP_SLOT_VALUES);
 
-// ItemSlotDef used by Composed — the same shape currently on ItemTemplate.slots.
+// ItemSlotDef used by Composed — named material slots that define the item's stat contributions.
 const statContributionSchema = v.object({
   stat: v.string(),
   property: v.string(),

@@ -306,8 +306,8 @@ NPC, or recipe requires dropping a single file; no code changes needed.
 data/
   models/           {id}.json    — ModelDefinition (voxel geometry + skeleton binding)
   skeletons/        {id}.json    — SkeletonDef (bone hierarchy + animation clips)
-  items/            {id}.json    — ItemTemplate (item categories, material slots, base stats)
   prefabs/          {id}.json    — Prefab (model + open-set component data; extends for inheritance)
+  prefabs/items/    {id}.json    — item prefabs (weapon, tool, armour, food, etc.)
   npcs/             {id}.json    — NpcTemplate (archetype stats, skill loadout, behavior)
   weapon_actions/   {id}.json    — WeaponActionDef (swing timing, hitbox shape, IK targets)
   recipes/          {id}.json    — Recipe (crafting inputs/outputs, station requirement)
@@ -328,12 +328,11 @@ sorts filenames alphabetically for deterministic registration order, and loads e
 
 ### Client bundle
 
-The browser client cannot use `Deno.readDir`. Two generated TypeScript files in
-`packages/content/src/` aggregate per-item imports statically for bundling:
+The browser client cannot use `Deno.readDir`. A generated TypeScript file in
+`packages/content/src/` aggregates per-item imports statically for bundling:
 - `weapon_actions_static.ts` — all weapon actions
-- `item_templates_static.ts` — all item templates
 
-**After adding or renaming a data file in those categories, run:**
+**After adding or renaming a weapon action file, run:**
 ```
 deno task gen-content
 ```
@@ -363,7 +362,7 @@ Drop a file in `data/weapon_actions/spear_thrust.json`:
   ]
 }
 ```
-Set `weaponAction: "spear_thrust"` in the item template's `baseStats`. Run `deno task gen-content`.
+Set `weaponActionId: "spear_thrust"` in the item prefab's `swingable` component. Run `deno task gen-content`.
 No other code changes needed — the swingPath drives hit detection, arm IK, and trail rendering.
 
 ### ContentStore access
@@ -372,10 +371,28 @@ Injected into every system constructor. Never import JSON files directly. Never 
 
 ```typescript
 content.getWeaponAction("slash")
-content.getItemTemplate("wooden_sword")
+content.getPrefab("wooden_sword")          // items are prefabs; no getItemTemplate()
 content.getPrefab("wolf")
-content.deriveItemStats(itemType, parts)   // combines template + material multipliers at runtime
+content.deriveItemStats(prefabId)          // reads Swingable, Armor, Edible, etc. from prefab.components
+content.deriveItemStats(prefabId, [], q)   // optional quality 0-1 multiplier for QualityStamped items
 ```
+
+### Items as prefabs and entities
+
+Every "thing you can hold, wear, swing, eat, or deploy" is a `Prefab` carrying one or more
+item-behaviour components (`Equippable`, `Swingable`, `Tool`, `Deployable`, `Edible`,
+`Illuminator`, `Armor`, `MaterialSource`, `Composed`, `Stackable`, `Weight`, `Renderable`).
+
+Stackable items (grain, ingots, arrows) stay as `{ kind: "stack", prefabId, quantity }` compact
+inventory slots — they are interchangeable and don't justify entities.
+
+Unique items (swords, armour, tomes) are world entities carried by inventory / equipment
+entity-refs (`{ kind: "unique", entityId }`). Each unique item entity can carry instance
+components (`Durability`, `Inscribed`, `QualityStamped`, `History`, `Owned`) that give it
+mutable per-instance state independent of its prefab.
+
+The discriminator is `Stackable`: a prefab with `stackable: {}` in its components produces
+stack slots; without it, each crafted copy is its own entity.
 
 ---
 

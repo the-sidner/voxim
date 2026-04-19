@@ -12,7 +12,6 @@ import type {
   SkeletonDef,
   Recipe,
   LoreFragment,
-  ItemTemplate,
   Prefab,
   NpcTemplate,
   ConceptVerbEntry,
@@ -63,7 +62,7 @@ export async function loadContentBrowser(): Promise<BrowserContentStore> {
 
   const [
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
-    loreRaw, itemTemplatesRaw, prefabsRaw, npcTemplatesRaw,
+    loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, verbsRaw, gameConfigRaw,
   ] = await Promise.all([
     fetchArray("materials.json"),
@@ -71,7 +70,6 @@ export async function loadContentBrowser(): Promise<BrowserContentStore> {
     fetchArray("skeletons.json"),
     fetchArray("recipes.json"),
     fetchArray("lore_fragments.json"),
-    fetchArray("item_templates.json"),
     fetchArray("prefabs.json"),
     fetchArray("npc_templates.json"),
     fetchArray("concept_verb_matrix.json"),
@@ -85,7 +83,6 @@ export async function loadContentBrowser(): Promise<BrowserContentStore> {
   for (const raw of skeletonsRaw as SkeletonDef[]) store.registerSkeleton(raw);
   for (const raw of recipesRaw as Recipe[]) store.registerRecipe(raw);
   for (const raw of loreRaw as LoreFragment[]) store.registerLoreFragment(raw);
-  for (const raw of itemTemplatesRaw as ItemTemplate[]) store.registerItemTemplate(raw);
   for (const raw of prefabsRaw as Prefab[]) store.registerPrefab(raw);
   for (const raw of npcTemplatesRaw as NpcTemplate[]) store.registerNpcTemplate(raw);
   for (const raw of conceptVerbRaw as ConceptVerbEntry[]) store.registerConceptVerbEntry(raw);

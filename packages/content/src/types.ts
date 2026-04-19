@@ -266,9 +266,9 @@ export interface RecipeInput {
    */
   alternates?: string[];
   /**
-   * When set, this input's material (from the item template's materialName)
+   * When set, this input's material (from the item prefab's materialSource component)
    * is bound to the named slot on the output item.
-   * Only relevant when the output ItemTemplate has matching slots.
+   * Only relevant when the output prefab has a Composed component with matching slots.
    */
   outputSlot?: string;
 }
@@ -409,7 +409,7 @@ export interface ProjectileActionConfig {
  *
  * For ranged: projectile config drives spawn on first active tick; no blade sweep.
  *
- * Weapons reference this by id via ItemTemplate.weaponAction.
+ * Weapons reference this by id via the Swingable component (`weaponActionId` field).
  */
 export interface WeaponActionDef {
   id: string;
@@ -661,7 +661,7 @@ export interface PrefabNpcData {
  * is supplied as spawn-time overrides, not declared in the prefab.
  */
 export interface PrefabPlayerData {
-  /** ItemTemplate ids written to each slot of Inventory at spawn. */
+  /** Prefab ids written to each slot of Inventory at spawn. */
   startingInventory: Array<{ itemType: string; quantity: number }>;
   /** Items written to Equipment at spawn. Keys match EquipSlot. */
   startingEquipment?: Partial<Record<"weapon" | "offHand" | "head" | "chest" | "legs" | "feet" | "back", string>>;
