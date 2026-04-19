@@ -1,0 +1,7 @@
+{
+  "id": "horn",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.3 }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "padded_gambeson_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "linen_cloth",
+      "quantity": 8
+    },
+    {
+      "itemType": "raw_wool",
+      "quantity": 4
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 6
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "padded_gambeson",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,21 @@
+{
+  "id": "iron_latch_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_latch",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

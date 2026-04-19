@@ -1,0 +1,22 @@
+{
+  "id": "quicklime_burn",
+  "stationType": "furnace",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "limestone",
+      "quantity": 3
+    },
+    {
+      "itemType": "charcoal",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "quicklime",
+      "quantity": 2
+    }
+  ],
+  "ticks": 900
+}

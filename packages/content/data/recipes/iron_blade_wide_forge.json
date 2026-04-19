@@ -1,0 +1,21 @@
+{
+  "id": "iron_blade_wide_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_blade_wide",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

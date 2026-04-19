@@ -1,0 +1,26 @@
+{
+  "id": "ink_iron_gall",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "oak_gall",
+      "quantity": 2
+    },
+    {
+      "itemType": "iron_rivet",
+      "quantity": 1
+    },
+    {
+      "itemType": "water",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "ink_iron_gall",
+      "quantity": 3
+    }
+  ],
+  "ticks": 200
+}

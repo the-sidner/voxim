@@ -1,0 +1,18 @@
+{
+  "id": "flax_scutch",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "flax_stalks",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "flax_stalks",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

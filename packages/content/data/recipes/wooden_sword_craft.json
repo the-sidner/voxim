@@ -1,0 +1,18 @@
+{
+  "id": "wooden_sword_craft",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wooden_sword",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

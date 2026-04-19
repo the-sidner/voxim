@@ -1,0 +1,29 @@
+{
+  "id": "iron_knife_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_short",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_short",
+      "quantity": 1
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_knife",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

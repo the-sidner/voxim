@@ -1,0 +1,29 @@
+{
+  "id": "padded_chausses_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "linen_cloth",
+      "quantity": 6
+    },
+    {
+      "itemType": "raw_wool",
+      "quantity": 3
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "padded_chausses",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

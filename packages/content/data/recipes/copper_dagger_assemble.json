@@ -1,0 +1,25 @@
+{
+  "id": "copper_dagger_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "copper_blade_short",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_short",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "copper_dagger",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

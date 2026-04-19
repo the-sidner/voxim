@@ -1,0 +1,8 @@
+{
+  "id": "iron_mace",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "overhead" },
+    "weight": { "baseWeight": 2.5 }
+  }
+}

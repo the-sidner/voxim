@@ -1,0 +1,8 @@
+{
+  "id": "rye_bread",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 45, "water": 10, "health": 0, "stamina": 12 },
+    "weight": { "baseWeight": 0.4 }
+  }
+}

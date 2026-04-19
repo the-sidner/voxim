@@ -1,0 +1,8 @@
+{
+  "id": "leather_trousers",
+  "components": {
+    "equippable": { "slot": "legs" },
+    "armor": { "reduction": 0.08, "staminaPenalty": 1.5 },
+    "weight": { "baseWeight": 1.5 }
+  }
+}

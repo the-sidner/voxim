@@ -1,0 +1,7 @@
+{
+  "id": "fatwood",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 4.0 }
+  }
+}

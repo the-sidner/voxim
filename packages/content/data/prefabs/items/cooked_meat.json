@@ -1,0 +1,8 @@
+{
+  "id": "cooked_meat",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 45, "water": 5, "health": 5, "stamina": 10 },
+    "weight": { "baseWeight": 0.8 }
+  }
+}

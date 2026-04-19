@@ -1,0 +1,29 @@
+{
+  "id": "arrow_iron_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "shaft_arrow",
+      "quantity": 6
+    },
+    {
+      "itemType": "iron_arrow_tip",
+      "quantity": 6
+    },
+    {
+      "itemType": "feather",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "arrow_iron",
+      "quantity": 6
+    }
+  ],
+  "ticks": 0
+}

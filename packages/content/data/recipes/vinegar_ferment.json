@@ -1,0 +1,18 @@
+{
+  "id": "vinegar_ferment",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "ale",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "vinegar",
+      "quantity": 2
+    }
+  ],
+  "ticks": 4800
+}

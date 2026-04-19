@@ -1,0 +1,8 @@
+{
+  "id": "iron_lantern",
+  "components": {
+    "illuminator": { "radius": 14.0, "color": 16755780, "intensity": 1.2, "flicker": 0.1 },
+    "equippable": { "slot": "offHand" },
+    "weight": { "baseWeight": 1.0 }
+  }
+}

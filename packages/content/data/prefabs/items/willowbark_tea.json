@@ -1,0 +1,8 @@
+{
+  "id": "willowbark_tea",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 0, "water": 20, "health": 5, "stamina": 0 },
+    "weight": { "baseWeight": 0.2 }
+  }
+}

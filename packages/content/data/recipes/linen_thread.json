@@ -1,0 +1,21 @@
+{
+  "id": "linen_thread",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "linen_yarn",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "thread_linen",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,22 @@
+{
+  "id": "lye_soap_make",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "tallow",
+      "quantity": 3
+    },
+    {
+      "itemType": "concentrated_lye",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "lye_soap",
+      "quantity": 4
+    }
+  ],
+  "ticks": 400
+}

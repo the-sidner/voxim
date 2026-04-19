@@ -1,0 +1,9 @@
+{
+  "id": "drawknife",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "drawknife" },
+    "weight": { "baseWeight": 0.5 }
+  }
+}

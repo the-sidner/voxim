@@ -1,0 +1,21 @@
+{
+  "id": "bow_stave_from_wood",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "froe"
+  ],
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bow_stave",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

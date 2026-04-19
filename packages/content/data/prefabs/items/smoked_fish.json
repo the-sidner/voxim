@@ -1,0 +1,8 @@
+{
+  "id": "smoked_fish",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 65, "water": 0, "health": 2, "stamina": 8 },
+    "weight": { "baseWeight": 0.4 }
+  }
+}

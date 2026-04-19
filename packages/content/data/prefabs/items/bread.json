@@ -1,0 +1,8 @@
+{
+  "id": "bread",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 50, "water": 10, "health": 0, "stamina": 15 },
+    "weight": { "baseWeight": 0.4 }
+  }
+}

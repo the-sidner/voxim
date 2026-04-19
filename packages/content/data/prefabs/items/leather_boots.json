@@ -1,0 +1,8 @@
+{
+  "id": "leather_boots",
+  "components": {
+    "equippable": { "slot": "feet" },
+    "armor": { "reduction": 0.05, "staminaPenalty": 0.5 },
+    "weight": { "baseWeight": 0.8 }
+  }
+}

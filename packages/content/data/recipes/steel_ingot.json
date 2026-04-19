@@ -1,0 +1,22 @@
+{
+  "id": "steel_ingot",
+  "stationType": "furnace",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 3
+    },
+    {
+      "itemType": "charcoal",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "steel_ingot",
+      "quantity": 3
+    }
+  ],
+  "ticks": 1800
+}

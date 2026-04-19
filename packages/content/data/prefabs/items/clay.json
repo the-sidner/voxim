@@ -1,0 +1,7 @@
+{
+  "id": "clay",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 2.5 }
+  }
+}

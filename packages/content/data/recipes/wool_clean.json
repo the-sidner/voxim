@@ -1,0 +1,22 @@
+{
+  "id": "wool_clean",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_wool",
+      "quantity": 1
+    },
+    {
+      "itemType": "water",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "raw_wool",
+      "quantity": 1
+    }
+  ],
+  "ticks": 300
+}

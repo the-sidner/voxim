@@ -1,0 +1,8 @@
+{
+  "id": "milk",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 10, "water": 40, "health": 3, "stamina": 5 },
+    "weight": { "baseWeight": 0.8 }
+  }
+}

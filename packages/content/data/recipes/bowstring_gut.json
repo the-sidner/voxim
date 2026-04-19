@@ -1,0 +1,18 @@
+{
+  "id": "bowstring_gut",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "gut",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bowstring",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,8 @@
+{
+  "id": "iron_vambrace",
+  "components": {
+    "equippable": { "slot": "offHand" },
+    "armor": { "reduction": 0.10, "staminaPenalty": 1.0 },
+    "weight": { "baseWeight": 1.5 }
+  }
+}

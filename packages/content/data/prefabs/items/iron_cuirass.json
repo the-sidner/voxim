@@ -1,0 +1,8 @@
+{
+  "id": "iron_cuirass",
+  "components": {
+    "equippable": { "slot": "chest" },
+    "armor": { "reduction": 0.35, "staminaPenalty": 10.0 },
+    "weight": { "baseWeight": 12.0 }
+  }
+}

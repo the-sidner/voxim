@@ -1,0 +1,18 @@
+{
+  "id": "stockfish_rack",
+  "stationType": "rack",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_fish",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "stockfish",
+      "quantity": 2
+    }
+  ],
+  "ticks": 1800
+}

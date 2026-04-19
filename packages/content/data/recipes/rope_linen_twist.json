@@ -1,0 +1,18 @@
+{
+  "id": "rope_linen_twist",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "linen_yarn",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "rope_linen",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

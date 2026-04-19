@@ -1,0 +1,29 @@
+{
+  "id": "leather_boots_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "leather",
+      "quantity": 4
+    },
+    {
+      "itemType": "sole_leather",
+      "quantity": 2
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "leather_boots",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,26 @@
+{
+  "id": "silver_ingot",
+  "stationType": "furnace",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "lead_ingot",
+      "quantity": 3
+    },
+    {
+      "itemType": "bone_ash",
+      "quantity": 1
+    },
+    {
+      "itemType": "charcoal",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "silver_ingot",
+      "quantity": 1
+    }
+  ],
+  "ticks": 600
+}

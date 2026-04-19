@@ -1,0 +1,9 @@
+{
+  "id": "fishing_rod",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "thrust" },
+    "tool": { "toolType": "fishing_rod" },
+    "weight": { "baseWeight": 0.5 }
+  }
+}

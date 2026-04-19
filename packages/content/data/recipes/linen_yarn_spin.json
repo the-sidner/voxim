@@ -1,0 +1,18 @@
+{
+  "id": "linen_yarn_spin",
+  "stationType": "loom_device",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "flax_stalks",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "linen_yarn",
+      "quantity": 2
+    }
+  ],
+  "ticks": 200
+}

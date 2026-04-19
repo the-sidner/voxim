@@ -1,0 +1,8 @@
+{
+  "id": "iron_shield",
+  "components": {
+    "equippable": { "slot": "offHand" },
+    "armor": { "reduction": 0.30, "staminaPenalty": 5.0 },
+    "weight": { "baseWeight": 6.0 }
+  }
+}

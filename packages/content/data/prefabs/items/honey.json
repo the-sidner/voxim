@@ -1,0 +1,8 @@
+{
+  "id": "honey",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 30, "water": 0, "health": 5, "stamina": 10 },
+    "weight": { "baseWeight": 0.3 }
+  }
+}

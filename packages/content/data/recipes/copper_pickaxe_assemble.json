@@ -1,0 +1,25 @@
+{
+  "id": "copper_pickaxe_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "copper_axe_head",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_long",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "copper_pickaxe",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

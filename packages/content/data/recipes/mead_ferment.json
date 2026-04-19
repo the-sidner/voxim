@@ -1,0 +1,22 @@
+{
+  "id": "mead_ferment",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "honey_comb",
+      "quantity": 2
+    },
+    {
+      "itemType": "water",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "mead",
+      "quantity": 4
+    }
+  ],
+  "ticks": 2400
+}

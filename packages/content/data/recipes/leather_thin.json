@@ -1,0 +1,21 @@
+{
+  "id": "leather_thin",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "leather",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "thin_leather",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

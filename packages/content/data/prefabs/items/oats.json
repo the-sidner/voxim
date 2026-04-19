@@ -1,0 +1,8 @@
+{
+  "id": "oats",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 8, "water": 0, "health": 0, "stamina": 4 },
+    "weight": { "baseWeight": 0.5 }
+  }
+}

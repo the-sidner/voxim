@@ -1,0 +1,22 @@
+{
+  "id": "bread_bake",
+  "stationType": "oven",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "grain",
+      "quantity": 3
+    },
+    {
+      "itemType": "water",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bread",
+      "quantity": 2
+    }
+  ],
+  "ticks": 300
+}

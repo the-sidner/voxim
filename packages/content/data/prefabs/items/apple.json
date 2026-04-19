@@ -1,0 +1,8 @@
+{
+  "id": "apple",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 15, "water": 10, "health": 2, "stamina": 3 },
+    "weight": { "baseWeight": 0.2 }
+  }
+}

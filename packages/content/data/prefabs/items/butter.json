@@ -1,0 +1,8 @@
+{
+  "id": "butter",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 15, "water": 0, "health": 0, "stamina": 5 },
+    "weight": { "baseWeight": 0.2 }
+  }
+}

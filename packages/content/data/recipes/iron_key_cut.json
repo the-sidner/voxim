@@ -1,0 +1,21 @@
+{
+  "id": "iron_key_cut",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "chisel"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_key_blank",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_key",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

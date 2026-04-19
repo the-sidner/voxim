@@ -1,0 +1,1 @@
+{ "id": "stone_block", "components": { "stackable": {}, "weight": { "baseWeight": 3.5 } } }

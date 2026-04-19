@@ -1,0 +1,21 @@
+{
+  "id": "haft_short_carve",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "axe"
+  ],
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "haft_short",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

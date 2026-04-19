@@ -1,0 +1,9 @@
+{
+  "id": "iron_shovel",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "shovel" },
+    "weight": { "baseWeight": 1.8 }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "stone_pickaxe_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "inputs": [
+    {
+      "itemType": "stone",
+      "quantity": 2
+    },
+    {
+      "itemType": "haft_medium",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "stone_pickaxe",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

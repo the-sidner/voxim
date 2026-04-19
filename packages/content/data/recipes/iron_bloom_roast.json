@@ -1,0 +1,22 @@
+{
+  "id": "iron_bloom_roast",
+  "stationType": "furnace",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "iron_ore",
+      "quantity": 3
+    },
+    {
+      "itemType": "wood",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "roasted_ore",
+      "quantity": 3
+    }
+  ],
+  "ticks": 600
+}

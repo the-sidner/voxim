@@ -1,0 +1,18 @@
+{
+  "id": "flint_flake_knap",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "flint_nodule",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "flint_flake",
+      "quantity": 3
+    }
+  ],
+  "ticks": 0
+}

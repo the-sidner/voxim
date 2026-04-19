@@ -1,0 +1,21 @@
+{
+  "id": "iron_blade_short_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_blade_short",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

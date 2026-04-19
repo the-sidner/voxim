@@ -1,0 +1,22 @@
+{
+  "id": "bone_glue_render",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "bone",
+      "quantity": 4
+    },
+    {
+      "itemType": "water",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bone_glue",
+      "quantity": 3
+    }
+  ],
+  "ticks": 300
+}

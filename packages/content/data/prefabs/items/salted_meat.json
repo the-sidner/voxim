@@ -1,0 +1,8 @@
+{
+  "id": "salted_meat",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 70, "water": 0, "health": 2, "stamina": 10 },
+    "weight": { "baseWeight": 0.8 }
+  }
+}

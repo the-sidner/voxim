@@ -1,0 +1,9 @@
+{
+  "id": "froe",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "froe" },
+    "weight": { "baseWeight": 1.0 }
+  }
+}

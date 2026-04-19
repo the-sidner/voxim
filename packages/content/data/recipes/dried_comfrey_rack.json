@@ -1,0 +1,18 @@
+{
+  "id": "dried_comfrey_rack",
+  "stationType": "rack",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "herb_comfrey",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "dried_comfrey",
+      "quantity": 3
+    }
+  ],
+  "ticks": 400
+}

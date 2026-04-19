@@ -1,0 +1,7 @@
+{
+  "id": "pine_wood",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 5.0 }
+  }
+}

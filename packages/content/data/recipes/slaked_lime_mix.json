@@ -1,0 +1,22 @@
+{
+  "id": "slaked_lime_mix",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "quicklime",
+      "quantity": 1
+    },
+    {
+      "itemType": "water",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "slaked_lime",
+      "quantity": 1
+    }
+  ],
+  "ticks": 100
+}

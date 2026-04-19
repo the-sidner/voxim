@@ -1,0 +1,18 @@
+{
+  "id": "bowstring_linen",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "linen_yarn",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bowstring",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

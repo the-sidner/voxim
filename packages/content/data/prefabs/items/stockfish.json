@@ -1,0 +1,8 @@
+{
+  "id": "stockfish",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 55, "water": 0, "health": 2, "stamina": 6 },
+    "weight": { "baseWeight": 0.4 }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "saw",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "saw" },
+    "weight": { "baseWeight": 0.8 }
+  }
+}

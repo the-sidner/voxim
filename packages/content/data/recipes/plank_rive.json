@@ -1,0 +1,21 @@
+{
+  "id": "plank_rive",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "froe"
+  ],
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "plank",
+      "quantity": 3
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,18 @@
+{
+  "id": "linseed_press",
+  "stationType": "press",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "flax_seed",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "linseed_oil",
+      "quantity": 2
+    }
+  ],
+  "ticks": 300
+}

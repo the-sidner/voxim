@@ -1,0 +1,18 @@
+{
+  "id": "tallow_render_fat",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "animal_fat",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "tallow",
+      "quantity": 3
+    }
+  ],
+  "ticks": 150
+}

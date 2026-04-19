@@ -1,0 +1,25 @@
+{
+  "id": "die_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 2
+    },
+    {
+      "itemType": "iron_punch",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "die_obverse",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

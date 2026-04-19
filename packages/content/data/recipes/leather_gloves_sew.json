@@ -1,0 +1,25 @@
+{
+  "id": "leather_gloves_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "thin_leather",
+      "quantity": 3
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "leather_gloves",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,21 @@
+{
+  "id": "iron_chain_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "chain_link",
+      "quantity": 20
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_chain",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

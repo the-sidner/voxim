@@ -1,0 +1,9 @@
+{
+  "id": "copper_axe",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "axe" },
+    "weight": { "baseWeight": 2.2 }
+  }
+}

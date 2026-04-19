@@ -1,0 +1,18 @@
+{
+  "id": "fired_brick_burn",
+  "stationType": "kiln",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "green_brick",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "fired_brick",
+      "quantity": 4
+    }
+  ],
+  "ticks": 600
+}

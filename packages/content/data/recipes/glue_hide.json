@@ -1,0 +1,22 @@
+{
+  "id": "glue_hide",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_hide",
+      "quantity": 2
+    },
+    {
+      "itemType": "water",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "glue_hide",
+      "quantity": 3
+    }
+  ],
+  "ticks": 300
+}

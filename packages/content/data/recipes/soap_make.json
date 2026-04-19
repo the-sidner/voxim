@@ -1,0 +1,22 @@
+{
+  "id": "soap_make",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "tallow",
+      "quantity": 3
+    },
+    {
+      "itemType": "lye",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "soap",
+      "quantity": 4
+    }
+  ],
+  "ticks": 400
+}

@@ -1,0 +1,22 @@
+{
+  "id": "salted_meat_vat",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_meat",
+      "quantity": 3
+    },
+    {
+      "itemType": "salt_rock",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "salted_meat",
+      "quantity": 3
+    }
+  ],
+  "ticks": 600
+}

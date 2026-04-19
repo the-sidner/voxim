@@ -1,0 +1,26 @@
+{
+  "id": "brass_ingot",
+  "stationType": "furnace",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "copper_ingot",
+      "quantity": 3
+    },
+    {
+      "itemType": "calamine",
+      "quantity": 1
+    },
+    {
+      "itemType": "charcoal",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "brass_ingot",
+      "quantity": 3
+    }
+  ],
+  "ticks": 900
+}

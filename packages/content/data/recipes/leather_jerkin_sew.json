@@ -1,0 +1,29 @@
+{
+  "id": "leather_jerkin_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "leather",
+      "quantity": 6
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 4
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "leather_jerkin",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

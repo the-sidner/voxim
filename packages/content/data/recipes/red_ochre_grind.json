@@ -1,0 +1,18 @@
+{
+  "id": "red_ochre_grind",
+  "stationType": "millstone",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "red_earth",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "pigment_red_ochre",
+      "quantity": 3
+    }
+  ],
+  "ticks": 0
+}

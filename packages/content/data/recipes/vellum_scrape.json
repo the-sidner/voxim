@@ -1,0 +1,21 @@
+{
+  "id": "vellum_scrape",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "raw_hide",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "vellum_sheet",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

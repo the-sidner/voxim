@@ -1,0 +1,7 @@
+{
+  "id": "fireclay",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 2.5 }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "padded_coif_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "linen_cloth",
+      "quantity": 3
+    },
+    {
+      "itemType": "raw_wool",
+      "quantity": 2
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "padded_coif",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

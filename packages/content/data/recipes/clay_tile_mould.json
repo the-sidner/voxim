@@ -1,0 +1,18 @@
+{
+  "id": "clay_tile_mould",
+  "stationType": "mould",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "clay",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "clay_tile_unfired",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

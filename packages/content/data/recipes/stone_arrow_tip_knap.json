@@ -1,0 +1,18 @@
+{
+  "id": "stone_arrow_tip_knap",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "flint_nodule",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "stone_arrow_tip",
+      "quantity": 3
+    }
+  ],
+  "ticks": 0
+}

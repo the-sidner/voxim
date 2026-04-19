@@ -1,0 +1,7 @@
+{
+  "id": "alum_crystal",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.5 }
+  }
+}

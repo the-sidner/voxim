@@ -1,0 +1,29 @@
+{
+  "id": "iron_padlock_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_lock_body",
+      "quantity": 1
+    },
+    {
+      "itemType": "iron_key_blank",
+      "quantity": 1
+    },
+    {
+      "itemType": "iron_ring",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_padlock",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,7 @@
+{
+  "id": "woad_leaves",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.1 }
+  }
+}

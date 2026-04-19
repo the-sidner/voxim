@@ -1,0 +1,18 @@
+{
+  "id": "salt_boil",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "brine",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "salt_rock",
+      "quantity": 2
+    }
+  ],
+  "ticks": 400
+}

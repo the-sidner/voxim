@@ -1,0 +1,18 @@
+{
+  "id": "dried_meat_rack",
+  "stationType": "rack",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_meat",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "dried_meat",
+      "quantity": 2
+    }
+  ],
+  "ticks": 1200
+}

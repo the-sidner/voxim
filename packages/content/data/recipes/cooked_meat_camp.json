@@ -1,0 +1,22 @@
+{
+  "id": "cooked_meat_camp",
+  "stationType": "campfire",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_meat",
+      "quantity": 1
+    },
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "cooked_meat",
+      "quantity": 1
+    }
+  ],
+  "ticks": 80
+}

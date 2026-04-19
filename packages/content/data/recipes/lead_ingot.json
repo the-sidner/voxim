@@ -1,0 +1,22 @@
+{
+  "id": "lead_ingot",
+  "stationType": "furnace",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "lead_ore",
+      "quantity": 2
+    },
+    {
+      "itemType": "charcoal",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "lead_ingot",
+      "quantity": 1
+    }
+  ],
+  "ticks": 300
+}

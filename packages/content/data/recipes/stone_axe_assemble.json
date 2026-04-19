@@ -1,0 +1,22 @@
+{
+  "id": "stone_axe_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "inputs": [
+    {
+      "itemType": "stone",
+      "quantity": 2
+    },
+    {
+      "itemType": "haft_medium",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "stone_axe",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,21 @@
+{
+  "id": "iron_hinge_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_hinge",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

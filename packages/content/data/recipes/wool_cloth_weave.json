@@ -1,0 +1,18 @@
+{
+  "id": "wool_cloth_weave",
+  "stationType": "loom_device",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "wool_yarn",
+      "quantity": 6
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wool_cloth",
+      "quantity": 1
+    }
+  ],
+  "ticks": 400
+}

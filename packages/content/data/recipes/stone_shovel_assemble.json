@@ -1,0 +1,22 @@
+{
+  "id": "stone_shovel_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "inputs": [
+    {
+      "itemType": "plank",
+      "quantity": 2
+    },
+    {
+      "itemType": "haft_long",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "stone_shovel",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

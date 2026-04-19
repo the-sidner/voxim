@@ -1,0 +1,9 @@
+{
+  "id": "oil_lamp",
+  "components": {
+    "stackable": {},
+    "illuminator": { "radius": 8.0, "color": 16748574, "intensity": 0.9, "flicker": 0.15 },
+    "deployable": { "prefabId": "oil_lamp_placed" },
+    "weight": { "baseWeight": 0.8 }
+  }
+}

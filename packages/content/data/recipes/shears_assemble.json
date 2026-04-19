@@ -1,0 +1,25 @@
+{
+  "id": "shears_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_medium",
+      "quantity": 2
+    },
+    {
+      "itemType": "iron_rivet",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "shears",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

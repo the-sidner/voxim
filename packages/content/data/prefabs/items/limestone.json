@@ -1,0 +1,7 @@
+{
+  "id": "limestone",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 4.0 }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "brine",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 1.0 }
+  }
+}

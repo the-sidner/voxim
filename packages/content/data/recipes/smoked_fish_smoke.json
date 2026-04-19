@@ -1,0 +1,22 @@
+{
+  "id": "smoked_fish_smoke",
+  "stationType": "smokehouse",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_fish",
+      "quantity": 2
+    },
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "smoked_fish",
+      "quantity": 2
+    }
+  ],
+  "ticks": 800
+}

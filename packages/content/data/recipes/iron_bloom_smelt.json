@@ -1,0 +1,22 @@
+{
+  "id": "iron_bloom_smelt",
+  "stationType": "furnace",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "roasted_ore",
+      "quantity": 3
+    },
+    {
+      "itemType": "charcoal",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "raw_bloom",
+      "quantity": 1
+    }
+  ],
+  "ticks": 800
+}

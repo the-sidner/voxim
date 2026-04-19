@@ -1,0 +1,8 @@
+{
+  "id": "mail_coif",
+  "components": {
+    "equippable": { "slot": "head" },
+    "armor": { "reduction": 0.15, "staminaPenalty": 2.0 },
+    "weight": { "baseWeight": 1.5 }
+  }
+}

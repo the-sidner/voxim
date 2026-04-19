@@ -1,0 +1,7 @@
+{
+  "id": "walnut_husk",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.1 }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "bone_ash_burn",
+  "stationType": "furnace",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "bone",
+      "quantity": 3
+    },
+    {
+      "itemType": "charcoal",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bone_ash",
+      "quantity": 2
+    }
+  ],
+  "ticks": 400
+}

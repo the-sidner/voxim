@@ -1,0 +1,21 @@
+{
+  "id": "shaft_arrow_rive",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "froe"
+  ],
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "shaft_arrow",
+      "quantity": 6
+    }
+  ],
+  "ticks": 0
+}

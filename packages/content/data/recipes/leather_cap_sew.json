@@ -1,0 +1,25 @@
+{
+  "id": "leather_cap_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "leather",
+      "quantity": 2
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "leather_cap",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

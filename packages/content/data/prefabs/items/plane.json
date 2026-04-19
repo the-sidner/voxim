@@ -1,0 +1,9 @@
+{
+  "id": "plane",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "plane" },
+    "weight": { "baseWeight": 0.6 }
+  }
+}

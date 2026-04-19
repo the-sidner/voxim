@@ -1,0 +1,21 @@
+{
+  "id": "stone_block_dress",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "chisel"
+  ],
+  "inputs": [
+    {
+      "itemType": "stone",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "stone_block",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

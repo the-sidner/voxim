@@ -1,0 +1,7 @@
+{
+  "id": "copper_ore",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 3.0 }
+  }
+}

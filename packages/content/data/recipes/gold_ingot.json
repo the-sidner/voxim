@@ -1,0 +1,18 @@
+{
+  "id": "gold_ingot",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "gold_nugget",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "gold_ingot",
+      "quantity": 1
+    }
+  ],
+  "ticks": 150
+}

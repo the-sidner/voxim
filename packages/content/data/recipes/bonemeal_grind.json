@@ -1,0 +1,18 @@
+{
+  "id": "bonemeal_grind",
+  "stationType": "millstone",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "bone",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bonemeal",
+      "quantity": 3
+    }
+  ],
+  "ticks": 0
+}

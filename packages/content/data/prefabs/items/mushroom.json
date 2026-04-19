@@ -1,0 +1,8 @@
+{
+  "id": "mushroom",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 5, "water": 3, "health": 0, "stamina": 2 },
+    "weight": { "baseWeight": 0.1 }
+  }
+}

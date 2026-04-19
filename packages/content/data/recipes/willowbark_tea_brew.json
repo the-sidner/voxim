@@ -1,0 +1,22 @@
+{
+  "id": "willowbark_tea_brew",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "dried_willowbark",
+      "quantity": 1
+    },
+    {
+      "itemType": "water",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "willowbark_tea",
+      "quantity": 2
+    }
+  ],
+  "ticks": 60
+}

@@ -1,0 +1,21 @@
+{
+  "id": "bone_needle_carve",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "bone",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bone_needle",
+      "quantity": 3
+    }
+  ],
+  "ticks": 0
+}

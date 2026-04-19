@@ -1,0 +1,21 @@
+{
+  "id": "fish_hook_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "fish_hook",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

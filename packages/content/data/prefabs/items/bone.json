@@ -1,0 +1,7 @@
+{
+  "id": "bone",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.4 }
+  }
+}

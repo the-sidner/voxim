@@ -1,0 +1,8 @@
+{
+  "id": "pickled_veg",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 25, "water": 15, "health": 2, "stamina": 5 },
+    "weight": { "baseWeight": 0.3 }
+  }
+}

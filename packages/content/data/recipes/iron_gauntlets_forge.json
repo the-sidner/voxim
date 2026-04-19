@@ -1,0 +1,29 @@
+{
+  "id": "iron_gauntlets_forge",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_plate_small",
+      "quantity": 2
+    },
+    {
+      "itemType": "chain_link",
+      "quantity": 20
+    },
+    {
+      "itemType": "leather",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_gauntlets",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

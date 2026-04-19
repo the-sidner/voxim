@@ -1,0 +1,21 @@
+{
+  "id": "kindling_split",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "axe"
+  ],
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "kindling",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

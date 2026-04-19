@@ -1,0 +1,7 @@
+{
+  "id": "nitre_earth",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 1.0 }
+  }
+}

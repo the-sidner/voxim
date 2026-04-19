@@ -1,0 +1,7 @@
+{
+  "id": "bog_ore",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 2.5 }
+  }
+}

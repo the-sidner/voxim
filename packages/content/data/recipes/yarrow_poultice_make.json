@@ -1,0 +1,25 @@
+{
+  "id": "yarrow_poultice_make",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "dried_yarrow",
+      "quantity": 2
+    },
+    {
+      "itemType": "linen_cloth",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "yarrow_poultice",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,9 @@
+{
+  "id": "adze",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "overhead" },
+    "tool": { "toolType": "adze" },
+    "weight": { "baseWeight": 1.2 }
+  }
+}

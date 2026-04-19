@@ -1,0 +1,22 @@
+{
+  "id": "candle_dip",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "tallow",
+      "quantity": 2
+    },
+    {
+      "itemType": "linen_yarn",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "candle",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

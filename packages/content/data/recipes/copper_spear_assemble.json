@@ -1,0 +1,25 @@
+{
+  "id": "copper_spear_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "copper_spearhead",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_long",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "copper_spear",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

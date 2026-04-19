@@ -1,0 +1,18 @@
+{
+  "id": "wool_yarn_spin",
+  "stationType": "loom_device",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_wool",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wool_yarn",
+      "quantity": 2
+    }
+  ],
+  "ticks": 200
+}

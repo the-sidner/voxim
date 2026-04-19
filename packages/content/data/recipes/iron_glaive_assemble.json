@@ -1,0 +1,29 @@
+{
+  "id": "iron_glaive_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_long",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_long",
+      "quantity": 1
+    },
+    {
+      "itemType": "iron_nails",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_glaive",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,21 @@
+{
+  "id": "bone_flute_carve",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "bone",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bone_flute",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,7 @@
+{
+  "id": "quill_feather",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.02 }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "mail_hauberk_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "chain_link",
+      "quantity": 200
+    },
+    {
+      "itemType": "linen_cloth",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "mail_hauberk",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

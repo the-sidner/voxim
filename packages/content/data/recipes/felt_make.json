@@ -1,0 +1,22 @@
+{
+  "id": "felt_make",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_wool",
+      "quantity": 4
+    },
+    {
+      "itemType": "water",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "felt",
+      "quantity": 2
+    }
+  ],
+  "ticks": 600
+}

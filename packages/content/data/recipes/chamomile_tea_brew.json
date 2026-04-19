@@ -1,0 +1,22 @@
+{
+  "id": "chamomile_tea_brew",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "dried_chamomile",
+      "quantity": 1
+    },
+    {
+      "itemType": "water",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "chamomile_tea",
+      "quantity": 2
+    }
+  ],
+  "ticks": 60
+}

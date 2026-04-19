@@ -1,0 +1,18 @@
+{
+  "id": "crushed_stone",
+  "stationType": "millstone",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "stone",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "crushed_stone",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

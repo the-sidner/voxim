@@ -1,0 +1,21 @@
+{
+  "id": "bow_stave_split",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "froe"
+  ],
+  "inputs": [
+    {
+      "itemType": "yew_wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bow_stave",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

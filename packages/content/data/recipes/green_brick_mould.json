@@ -1,0 +1,18 @@
+{
+  "id": "green_brick_mould",
+  "stationType": "mould",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "clay",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "green_brick",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

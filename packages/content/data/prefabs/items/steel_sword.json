@@ -1,0 +1,8 @@
+{
+  "id": "steel_sword",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "weight": { "baseWeight": 1.8 }
+  }
+}

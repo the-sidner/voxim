@@ -1,0 +1,9 @@
+{
+  "id": "iron_hoe",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "hoe" },
+    "weight": { "baseWeight": 1.5 }
+  }
+}

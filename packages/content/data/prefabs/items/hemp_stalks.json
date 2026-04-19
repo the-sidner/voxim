@@ -1,0 +1,7 @@
+{
+  "id": "hemp_stalks",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.5 }
+  }
+}

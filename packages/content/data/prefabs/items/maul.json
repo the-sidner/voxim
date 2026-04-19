@@ -1,0 +1,9 @@
+{
+  "id": "maul",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "overhead" },
+    "tool": { "toolType": "maul" },
+    "weight": { "baseWeight": 3.0 }
+  }
+}

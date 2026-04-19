@@ -1,0 +1,25 @@
+{
+  "id": "scissors_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_short",
+      "quantity": 2
+    },
+    {
+      "itemType": "iron_rivet",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "scissors",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

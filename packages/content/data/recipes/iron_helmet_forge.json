@@ -1,0 +1,25 @@
+{
+  "id": "iron_helmet_forge",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_plate_large",
+      "quantity": 2
+    },
+    {
+      "itemType": "leather_pad",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_helmet",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

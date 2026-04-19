@@ -1,0 +1,22 @@
+{
+  "id": "flax_ret",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "flax_stalks",
+      "quantity": 1
+    },
+    {
+      "itemType": "water",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "flax_stalks",
+      "quantity": 1
+    }
+  ],
+  "ticks": 1800
+}

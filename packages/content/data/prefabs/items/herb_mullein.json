@@ -1,0 +1,7 @@
+{
+  "id": "herb_mullein",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.05 }
+  }
+}

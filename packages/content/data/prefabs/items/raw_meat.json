@@ -1,0 +1,8 @@
+{
+  "id": "raw_meat",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 10, "water": 0, "health": -10, "stamina": 0 },
+    "weight": { "baseWeight": 1.5 }
+  }
+}

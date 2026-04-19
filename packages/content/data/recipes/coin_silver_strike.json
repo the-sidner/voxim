@@ -1,0 +1,29 @@
+{
+  "id": "coin_silver_strike",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "silver_ingot",
+      "quantity": 1
+    },
+    {
+      "itemType": "die_obverse",
+      "quantity": 1
+    },
+    {
+      "itemType": "die_reverse",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "coin_silver",
+      "quantity": 10
+    }
+  ],
+  "ticks": 0
+}

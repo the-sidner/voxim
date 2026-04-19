@@ -1,0 +1,25 @@
+{
+  "id": "mail_chausses_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "chain_link",
+      "quantity": 120
+    },
+    {
+      "itemType": "linen_cloth",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "mail_chausses",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

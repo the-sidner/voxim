@@ -1,0 +1,21 @@
+{
+  "id": "stave_barrel_split",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "froe"
+  ],
+  "inputs": [
+    {
+      "itemType": "oak_wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "stave_barrel",
+      "quantity": 8
+    }
+  ],
+  "ticks": 0
+}

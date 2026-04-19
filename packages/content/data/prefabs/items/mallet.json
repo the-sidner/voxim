@@ -1,0 +1,9 @@
+{
+  "id": "mallet",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "overhead" },
+    "tool": { "toolType": "mallet" },
+    "weight": { "baseWeight": 1.0 }
+  }
+}

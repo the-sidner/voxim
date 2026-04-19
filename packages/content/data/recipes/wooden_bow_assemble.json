@@ -1,0 +1,22 @@
+{
+  "id": "wooden_bow_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "inputs": [
+    {
+      "itemType": "bow_stave",
+      "quantity": 1
+    },
+    {
+      "itemType": "bowstring",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wooden_bow",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

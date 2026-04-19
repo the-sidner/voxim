@@ -1,0 +1,7 @@
+{
+  "id": "animal_fat",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.8 }
+  }
+}

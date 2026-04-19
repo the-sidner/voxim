@@ -1,0 +1,29 @@
+{
+  "id": "copper_sword_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "copper_blade_medium",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_medium",
+      "quantity": 1
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "copper_sword",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,29 @@
+{
+  "id": "leather_hauberk_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "leather",
+      "quantity": 10
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 8
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "leather_hauberk",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

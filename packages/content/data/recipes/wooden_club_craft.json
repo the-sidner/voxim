@@ -1,0 +1,18 @@
+{
+  "id": "wooden_club_craft",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wooden_club",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

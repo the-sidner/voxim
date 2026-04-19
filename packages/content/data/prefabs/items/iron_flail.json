@@ -1,0 +1,8 @@
+{
+  "id": "iron_flail",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "overhead" },
+    "weight": { "baseWeight": 2.8 }
+  }
+}

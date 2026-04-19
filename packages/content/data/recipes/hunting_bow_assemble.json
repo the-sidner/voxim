@@ -1,0 +1,26 @@
+{
+  "id": "hunting_bow_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "inputs": [
+    {
+      "itemType": "bow_stave",
+      "quantity": 1
+    },
+    {
+      "itemType": "bowstring",
+      "quantity": 1
+    },
+    {
+      "itemType": "linen_yarn",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "hunting_bow",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

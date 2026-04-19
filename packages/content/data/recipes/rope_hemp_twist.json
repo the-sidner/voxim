@@ -1,0 +1,18 @@
+{
+  "id": "rope_hemp_twist",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "hemp_stalks",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "rope_hemp",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,18 @@
+{
+  "id": "dried_chamomile_rack",
+  "stationType": "rack",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "herb_chamomile",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "dried_chamomile",
+      "quantity": 3
+    }
+  ],
+  "ticks": 400
+}

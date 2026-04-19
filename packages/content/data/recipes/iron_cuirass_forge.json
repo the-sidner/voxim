@@ -1,0 +1,29 @@
+{
+  "id": "iron_cuirass_forge",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_plate_large",
+      "quantity": 4
+    },
+    {
+      "itemType": "iron_rivet",
+      "quantity": 8
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_cuirass",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

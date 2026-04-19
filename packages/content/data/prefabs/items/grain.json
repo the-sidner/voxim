@@ -1,0 +1,8 @@
+{
+  "id": "grain",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 5, "water": 0, "health": 0, "stamina": 3 },
+    "weight": { "baseWeight": 0.5 }
+  }
+}

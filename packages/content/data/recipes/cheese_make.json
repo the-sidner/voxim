@@ -1,0 +1,22 @@
+{
+  "id": "cheese_make",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "milk",
+      "quantity": 6
+    },
+    {
+      "itemType": "lye",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "cheese",
+      "quantity": 2
+    }
+  ],
+  "ticks": 800
+}

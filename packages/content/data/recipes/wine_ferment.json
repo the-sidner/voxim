@@ -1,0 +1,22 @@
+{
+  "id": "wine_ferment",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "grape",
+      "quantity": 6
+    },
+    {
+      "itemType": "water",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wine",
+      "quantity": 4
+    }
+  ],
+  "ticks": 3600
+}

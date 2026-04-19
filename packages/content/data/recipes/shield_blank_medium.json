@@ -1,0 +1,21 @@
+{
+  "id": "shield_blank_medium",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "axe"
+  ],
+  "inputs": [
+    {
+      "itemType": "plank",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "shield_blank_medium",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

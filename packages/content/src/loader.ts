@@ -111,24 +111,32 @@ export async function loadContentStore(
 // ---- helpers ----
 
 /**
- * Read all *.json files in `dir/subdir`, parse each as a single item, and
- * return them sorted by filename for deterministic registration order.
+ * Read all *.json files in `dir/subdir` (and any subdirectories) recursively,
+ * parse each as a single item, and return them sorted by path for deterministic
+ * registration order.
  */
 async function readJsonDir(dir: string, subdir: string): Promise<unknown[]> {
   const fullDir = `${dir}/${subdir}`;
-  const names: string[] = [];
-  for await (const entry of Deno.readDir(fullDir)) {
-    if (entry.isFile && entry.name.endsWith(".json")) {
-      names.push(entry.name);
-    }
-  }
-  names.sort();
+  const paths: string[] = [];
+  await collectJsonPaths(fullDir, paths);
+  paths.sort();
   return Promise.all(
-    names.map(async (name) => {
-      const text = await Deno.readTextFile(`${fullDir}/${name}`);
+    paths.map(async (path) => {
+      const text = await Deno.readTextFile(path);
       return JSON.parse(text);
     }),
   );
+}
+
+async function collectJsonPaths(dir: string, out: string[]): Promise<void> {
+  for await (const entry of Deno.readDir(dir)) {
+    const full = `${dir}/${entry.name}`;
+    if (entry.isDirectory) {
+      await collectJsonPaths(full, out);
+    } else if (entry.isFile && entry.name.endsWith(".json")) {
+      out.push(full);
+    }
+  }
 }
 
 /**

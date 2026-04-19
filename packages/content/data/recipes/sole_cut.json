@@ -1,0 +1,21 @@
+{
+  "id": "sole_cut",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "thick_leather",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "sole_leather",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

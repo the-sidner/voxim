@@ -1,0 +1,7 @@
+{
+  "id": "sinew",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.1 }
+  }
+}

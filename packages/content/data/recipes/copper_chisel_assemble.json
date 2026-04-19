@@ -1,0 +1,25 @@
+{
+  "id": "copper_chisel_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_short",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_short",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "copper_chisel",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

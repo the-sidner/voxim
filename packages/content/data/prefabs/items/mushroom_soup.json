@@ -1,0 +1,8 @@
+{
+  "id": "mushroom_soup",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 30, "water": 30, "health": 5, "stamina": 10 },
+    "weight": { "baseWeight": 0.3 }
+  }
+}

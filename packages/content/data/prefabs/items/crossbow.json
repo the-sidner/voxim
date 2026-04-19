@@ -1,0 +1,8 @@
+{
+  "id": "crossbow",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "crossbow_shot" },
+    "weight": { "baseWeight": 3.0 }
+  }
+}

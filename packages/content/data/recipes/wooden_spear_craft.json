@@ -1,0 +1,22 @@
+{
+  "id": "wooden_spear_craft",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_long",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wooden_spear",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

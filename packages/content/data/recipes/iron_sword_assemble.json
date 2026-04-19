@@ -1,0 +1,37 @@
+{
+  "id": "iron_sword_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_medium",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_medium",
+      "quantity": 1
+    },
+    {
+      "itemType": "iron_crossguard",
+      "quantity": 1
+    },
+    {
+      "itemType": "iron_pommel",
+      "quantity": 1
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_sword",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

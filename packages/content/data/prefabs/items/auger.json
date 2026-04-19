@@ -1,0 +1,9 @@
+{
+  "id": "auger",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "thrust" },
+    "tool": { "toolType": "auger" },
+    "weight": { "baseWeight": 0.7 }
+  }
+}

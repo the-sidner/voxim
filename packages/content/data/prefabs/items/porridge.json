@@ -1,0 +1,8 @@
+{
+  "id": "porridge",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 35, "water": 20, "health": 0, "stamina": 12 },
+    "weight": { "baseWeight": 0.4 }
+  }
+}

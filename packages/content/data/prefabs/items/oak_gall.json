@@ -1,0 +1,7 @@
+{
+  "id": "oak_gall",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.05 }
+  }
+}

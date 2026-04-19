@@ -1,0 +1,22 @@
+{
+  "id": "hardtack_bake",
+  "stationType": "oven",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "grain",
+      "quantity": 2
+    },
+    {
+      "itemType": "water",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "hardtack",
+      "quantity": 4
+    }
+  ],
+  "ticks": 600
+}

@@ -1,0 +1,8 @@
+{
+  "id": "cooked_grain",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 30, "water": 10, "health": 0, "stamina": 10 },
+    "weight": { "baseWeight": 0.4 }
+  }
+}

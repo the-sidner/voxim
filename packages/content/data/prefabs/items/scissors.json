@@ -1,0 +1,9 @@
+{
+  "id": "scissors",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "scissors" },
+    "weight": { "baseWeight": 0.3 }
+  }
+}

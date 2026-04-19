@@ -1,0 +1,18 @@
+{
+  "id": "cider_ferment",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "apple",
+      "quantity": 8
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "cider",
+      "quantity": 4
+    }
+  ],
+  "ticks": 2400
+}

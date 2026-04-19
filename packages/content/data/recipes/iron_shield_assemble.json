@@ -1,0 +1,33 @@
+{
+  "id": "iron_shield_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "shield_blank_medium",
+      "quantity": 1
+    },
+    {
+      "itemType": "iron_plate_large",
+      "quantity": 1
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 2
+    },
+    {
+      "itemType": "iron_nails",
+      "quantity": 6
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_shield",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

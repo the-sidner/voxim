@@ -1,0 +1,18 @@
+{
+  "id": "willowbark_dry",
+  "stationType": "rack",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "herb_willowbark",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "dried_willowbark",
+      "quantity": 3
+    }
+  ],
+  "ticks": 400
+}

@@ -1,0 +1,9 @@
+{
+  "id": "needle",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "thrust" },
+    "tool": { "toolType": "needle" },
+    "weight": { "baseWeight": 0.01 }
+  }
+}

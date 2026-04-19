@@ -1,0 +1,18 @@
+{
+  "id": "clay_offering_bowl_mould",
+  "stationType": "mould",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "clay",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "clay_offering_bowl",
+      "quantity": 2
+    }
+  ],
+  "ticks": 0
+}

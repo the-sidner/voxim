@@ -1,0 +1,26 @@
+{
+  "id": "fishing_rod_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "inputs": [
+    {
+      "itemType": "haft_long",
+      "quantity": 1
+    },
+    {
+      "itemType": "linen_yarn",
+      "quantity": 2
+    },
+    {
+      "itemType": "fish_hook",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "fishing_rod",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

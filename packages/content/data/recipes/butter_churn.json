@@ -1,0 +1,18 @@
+{
+  "id": "butter_churn",
+  "stationType": "press",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "milk",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "butter",
+      "quantity": 2
+    }
+  ],
+  "ticks": 200
+}

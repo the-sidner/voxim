@@ -1,0 +1,33 @@
+{
+  "id": "crossbow_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "bow_stave",
+      "quantity": 1
+    },
+    {
+      "itemType": "plank",
+      "quantity": 2
+    },
+    {
+      "itemType": "bowstring",
+      "quantity": 1
+    },
+    {
+      "itemType": "iron_nails",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "crossbow",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

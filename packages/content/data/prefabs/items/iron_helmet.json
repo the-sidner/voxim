@@ -1,0 +1,8 @@
+{
+  "id": "iron_helmet",
+  "components": {
+    "equippable": { "slot": "head" },
+    "armor": { "reduction": 0.20, "staminaPenalty": 3.0 },
+    "weight": { "baseWeight": 2.5 }
+  }
+}

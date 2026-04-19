@@ -1,0 +1,25 @@
+{
+  "id": "drawknife_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_long",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_short",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "drawknife",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

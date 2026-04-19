@@ -1,0 +1,26 @@
+{
+  "id": "arrow_stone_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "inputs": [
+    {
+      "itemType": "shaft_arrow",
+      "quantity": 6
+    },
+    {
+      "itemType": "stone_arrow_tip",
+      "quantity": 6
+    },
+    {
+      "itemType": "feather",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "arrow_stone",
+      "quantity": 6
+    }
+  ],
+  "ticks": 0
+}

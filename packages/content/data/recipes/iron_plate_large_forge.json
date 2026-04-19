@@ -1,0 +1,21 @@
+{
+  "id": "iron_plate_large_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_plate_large",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

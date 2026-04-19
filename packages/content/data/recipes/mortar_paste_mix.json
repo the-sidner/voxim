@@ -1,0 +1,26 @@
+{
+  "id": "mortar_paste_mix",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "slaked_lime",
+      "quantity": 1
+    },
+    {
+      "itemType": "sand",
+      "quantity": 2
+    },
+    {
+      "itemType": "water",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "mortar_paste",
+      "quantity": 3
+    }
+  ],
+  "ticks": 60
+}

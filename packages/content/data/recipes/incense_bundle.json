@@ -1,0 +1,22 @@
+{
+  "id": "incense_bundle",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "herb_sage",
+      "quantity": 2
+    },
+    {
+      "itemType": "herb_rosemary",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "incense_bundle",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

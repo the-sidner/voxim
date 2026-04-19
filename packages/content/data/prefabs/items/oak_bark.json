@@ -1,0 +1,7 @@
+{
+  "id": "oak_bark",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.6 }
+  }
+}

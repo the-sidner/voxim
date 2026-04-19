@@ -1,0 +1,18 @@
+{
+  "id": "charcoal_kiln",
+  "stationType": "kiln",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 10
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "charcoal",
+      "quantity": 7
+    }
+  ],
+  "ticks": 1800
+}

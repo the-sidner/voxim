@@ -1,0 +1,21 @@
+{
+  "id": "wooden_idol_carve",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wooden_idol",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

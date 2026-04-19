@@ -1,0 +1,25 @@
+{
+  "id": "saw_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_long",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_medium",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "saw",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

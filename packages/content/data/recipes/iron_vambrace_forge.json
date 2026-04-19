@@ -1,0 +1,29 @@
+{
+  "id": "iron_vambrace_forge",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_plate_small",
+      "quantity": 2
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 2
+    },
+    {
+      "itemType": "iron_rivet",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_vambrace",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

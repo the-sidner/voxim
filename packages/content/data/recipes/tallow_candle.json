@@ -1,0 +1,22 @@
+{
+  "id": "tallow_candle",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "tallow",
+      "quantity": 3
+    },
+    {
+      "itemType": "sinew_thread",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "candle_tallow",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

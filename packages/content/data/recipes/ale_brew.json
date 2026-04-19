@@ -1,0 +1,22 @@
+{
+  "id": "ale_brew",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "barley_grain",
+      "quantity": 4
+    },
+    {
+      "itemType": "water",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "ale",
+      "quantity": 4
+    }
+  ],
+  "ticks": 2400
+}

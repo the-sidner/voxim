@@ -1,0 +1,7 @@
+{
+  "id": "stone",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 4.0 }
+  }
+}

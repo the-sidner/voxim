@@ -1,0 +1,8 @@
+{
+  "id": "cider",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 5, "water": 35, "health": 0, "stamina": 12 },
+    "weight": { "baseWeight": 0.8 }
+  }
+}

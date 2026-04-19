@@ -1,0 +1,8 @@
+{
+  "id": "hardtack",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 40, "water": 0, "health": 0, "stamina": 8 },
+    "weight": { "baseWeight": 0.2 }
+  }
+}

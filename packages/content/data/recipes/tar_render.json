@@ -1,0 +1,18 @@
+{
+  "id": "tar_render",
+  "stationType": "cauldron",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "fatwood",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "tar",
+      "quantity": 2
+    }
+  ],
+  "ticks": 800
+}

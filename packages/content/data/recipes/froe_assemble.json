@@ -1,0 +1,25 @@
+{
+  "id": "froe_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_blade_medium",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_short",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "froe",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

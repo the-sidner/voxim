@@ -1,0 +1,21 @@
+{
+  "id": "treenail_make",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "axe"
+  ],
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "treenail",
+      "quantity": 6
+    }
+  ],
+  "ticks": 0
+}

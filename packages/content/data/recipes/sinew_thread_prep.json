@@ -1,0 +1,21 @@
+{
+  "id": "sinew_thread_prep",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "sinew",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "sinew_thread",
+      "quantity": 3
+    }
+  ],
+  "ticks": 0
+}

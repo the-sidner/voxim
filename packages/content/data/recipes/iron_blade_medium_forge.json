@@ -1,0 +1,21 @@
+{
+  "id": "iron_blade_medium_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_blade_medium",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

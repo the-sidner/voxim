@@ -1,0 +1,9 @@
+{
+  "id": "wooden_hammer",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "overhead" },
+    "tool": { "toolType": "hammer" },
+    "weight": { "baseWeight": 1.5 }
+  }
+}

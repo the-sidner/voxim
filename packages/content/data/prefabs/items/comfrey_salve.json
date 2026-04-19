@@ -1,0 +1,8 @@
+{
+  "id": "comfrey_salve",
+  "components": {
+    "stackable": {},
+    "edible": { "food": 0, "water": 0, "health": 20, "stamina": 0 },
+    "weight": { "baseWeight": 0.1 }
+  }
+}

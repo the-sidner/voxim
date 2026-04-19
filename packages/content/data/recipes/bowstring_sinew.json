@@ -1,0 +1,18 @@
+{
+  "id": "bowstring_sinew",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "sinew",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bowstring",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

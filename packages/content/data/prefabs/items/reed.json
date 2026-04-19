@@ -1,0 +1,7 @@
+{
+  "id": "reed",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 0.3 }
+  }
+}

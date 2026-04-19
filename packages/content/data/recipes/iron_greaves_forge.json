@@ -1,0 +1,29 @@
+{
+  "id": "iron_greaves_forge",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_plate_small",
+      "quantity": 4
+    },
+    {
+      "itemType": "leather_strap",
+      "quantity": 2
+    },
+    {
+      "itemType": "iron_rivet",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_greaves",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

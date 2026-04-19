@@ -1,0 +1,9 @@
+{
+  "id": "awl",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "thrust" },
+    "tool": { "toolType": "awl" },
+    "weight": { "baseWeight": 0.05 }
+  }
+}

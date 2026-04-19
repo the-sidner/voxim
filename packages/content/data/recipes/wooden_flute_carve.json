@@ -1,0 +1,21 @@
+{
+  "id": "wooden_flute_carve",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wooden_flute",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

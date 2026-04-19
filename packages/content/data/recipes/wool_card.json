@@ -1,0 +1,18 @@
+{
+  "id": "wool_card",
+  "stationType": "bench",
+  "stepType": "attack",
+  "inputs": [
+    {
+      "itemType": "raw_wool",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "raw_wool",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

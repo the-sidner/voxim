@@ -1,0 +1,21 @@
+{
+  "id": "iron_arrow_tip_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_arrow_tip",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

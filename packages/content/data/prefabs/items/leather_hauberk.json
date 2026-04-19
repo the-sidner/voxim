@@ -1,0 +1,8 @@
+{
+  "id": "leather_hauberk",
+  "components": {
+    "equippable": { "slot": "chest" },
+    "armor": { "reduction": 0.18, "staminaPenalty": 4.0 },
+    "weight": { "baseWeight": 3.5 }
+  }
+}

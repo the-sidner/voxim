@@ -1,0 +1,7 @@
+{
+  "id": "raw_pelt",
+  "components": {
+    "stackable": {},
+    "weight": { "baseWeight": 2.0 }
+  }
+}

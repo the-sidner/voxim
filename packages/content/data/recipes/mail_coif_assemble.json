@@ -1,0 +1,29 @@
+{
+  "id": "mail_coif_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "chain_link",
+      "quantity": 40
+    },
+    {
+      "itemType": "linen_cloth",
+      "quantity": 2
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "mail_coif",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

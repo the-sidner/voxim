@@ -1,0 +1,22 @@
+{
+  "id": "flint_knife_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "inputs": [
+    {
+      "itemType": "flint_flake",
+      "quantity": 2
+    },
+    {
+      "itemType": "haft_short",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "flint_knife",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

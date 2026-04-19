@@ -1,0 +1,21 @@
+{
+  "id": "horn_cup_shape",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "horn",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "horn_cup",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

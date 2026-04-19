@@ -1,0 +1,25 @@
+{
+  "id": "leather_trousers_sew",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "leather",
+      "quantity": 5
+    },
+    {
+      "itemType": "thread_linen",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "leather_trousers",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

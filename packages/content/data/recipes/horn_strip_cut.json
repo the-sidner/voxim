@@ -1,0 +1,21 @@
+{
+  "id": "horn_strip_cut",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "knife"
+  ],
+  "inputs": [
+    {
+      "itemType": "horn",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "horn_strip",
+      "quantity": 4
+    }
+  ],
+  "ticks": 0
+}

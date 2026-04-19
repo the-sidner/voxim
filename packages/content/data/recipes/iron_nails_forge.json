@@ -1,0 +1,21 @@
+{
+  "id": "iron_nails_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_nails",
+      "quantity": 8
+    }
+  ],
+  "ticks": 0
+}

@@ -1,0 +1,25 @@
+{
+  "id": "iron_hoe_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_plate_small",
+      "quantity": 1
+    },
+    {
+      "itemType": "haft_long",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_hoe",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

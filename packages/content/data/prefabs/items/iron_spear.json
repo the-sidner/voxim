@@ -1,0 +1,8 @@
+{
+  "id": "iron_spear",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "thrust" },
+    "weight": { "baseWeight": 2.2 }
+  }
+}

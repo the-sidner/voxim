@@ -1,0 +1,21 @@
+{
+  "id": "copper_axe_head_forge",
+  "stationType": "bench",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "copper_ingot",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "copper_axe_head",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

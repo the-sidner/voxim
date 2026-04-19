@@ -1,0 +1,9 @@
+{
+  "id": "iron_knife",
+  "components": {
+    "equippable": { "slot": "weapon" },
+    "swingable": { "weaponActionId": "slash" },
+    "tool": { "toolType": "knife" },
+    "weight": { "baseWeight": 0.5 }
+  }
+}

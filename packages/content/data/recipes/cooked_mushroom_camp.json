@@ -1,0 +1,22 @@
+{
+  "id": "cooked_mushroom_camp",
+  "stationType": "campfire",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "mushroom",
+      "quantity": 1
+    },
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "cooked_mushroom",
+      "quantity": 1
+    }
+  ],
+  "ticks": 40
+}

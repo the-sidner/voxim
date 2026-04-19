@@ -1,0 +1,29 @@
+{
+  "id": "drum_assemble",
+  "stationType": "bench",
+  "stepType": "assembly",
+  "requiredTools": [
+    "needle"
+  ],
+  "inputs": [
+    {
+      "itemType": "haft_long",
+      "quantity": 1
+    },
+    {
+      "itemType": "raw_hide",
+      "quantity": 2
+    },
+    {
+      "itemType": "rope_hemp",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "drum_frame",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

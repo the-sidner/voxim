@@ -1,0 +1,22 @@
+{
+  "id": "raw_hide_soak",
+  "stationType": "vat",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_hide",
+      "quantity": 1
+    },
+    {
+      "itemType": "lye",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "raw_hide",
+      "quantity": 1
+    }
+  ],
+  "ticks": 1200
+}

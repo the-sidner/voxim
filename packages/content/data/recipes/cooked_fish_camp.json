@@ -1,0 +1,22 @@
+{
+  "id": "cooked_fish_camp",
+  "stationType": "campfire",
+  "stepType": "time",
+  "inputs": [
+    {
+      "itemType": "raw_fish",
+      "quantity": 1
+    },
+    {
+      "itemType": "wood",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "cooked_fish",
+      "quantity": 1
+    }
+  ],
+  "ticks": 60
+}
