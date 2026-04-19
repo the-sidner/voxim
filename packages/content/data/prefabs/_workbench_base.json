@@ -1,6 +1,9 @@
 {
   "id": "_workbench_base",
   "components": {
+    "placeable": {
+      "alignment": "forward-facing"
+    },
     "workstationTag": {
       "stationType": ""
     },

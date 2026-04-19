@@ -33,6 +33,7 @@ import {
   Armor,
   Composed,
   Deployable,
+  Placeable,
   Edible,
   Equippable,
   Illuminator,
@@ -160,6 +161,15 @@ Deno.test("Deployable — schema/codec agreement", () => {
     { prefabId: "chair_entity" },
     { prefabId: "" },
   ], "Deployable");
+});
+
+Deno.test("Placeable — schema/codec agreement", () => {
+  roundTrip(Placeable, [
+    { alignment: "forward-facing" },
+    { alignment: "cell-aligned", requiresToolType: "hammer", cellMustBeEmpty: true },
+    { alignment: "forward-facing", reach: 3.5 },
+    { alignment: "cell-aligned", requiresToolType: "hammer", reach: 2.0, cellMustBeEmpty: true },
+  ], "Placeable");
 });
 
 Deno.test("Edible — schema/codec agreement", () => {

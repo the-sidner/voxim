@@ -1,6 +1,11 @@
 {
   "id": "wood_floor",
   "components": {
+    "placeable": {
+      "alignment": "cell-aligned",
+      "requiresToolType": "hammer",
+      "cellMustBeEmpty": true
+    },
     "blueprint": {
       "structureType": "wood_floor",
       "heightDelta": 0.0,

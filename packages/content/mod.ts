@@ -36,6 +36,7 @@ export type {
   SwingableData,
   ToolData,
   DeployableData,
+  PlaceableData,
   EdibleData,
   IlluminatorData,
   ArmorData,

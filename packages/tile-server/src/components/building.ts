@@ -13,10 +13,10 @@ export interface BlueprintMaterial {
  * Represents a single pending construction cell: one terrain modification
  * (height change and/or material change) at a specific chunk + cell location.
  *
- * Workers with ACTION_INTERACT within interact range contribute materials
- * (once) then advance construction each tick until ticksRemaining reaches 0,
- * at which point the BuildingSystem applies the terrain change and destroys
- * this entity.
+ * Workers swinging a hammer at the blueprint contribute materials (once) then
+ * advance construction each hit until ticksRemaining reaches 0, at which
+ * point BlueprintHitHandler applies the terrain change and destroys this
+ * entity.
  */
 export interface BlueprintData {
   /** Prefab id this blueprint was spawned from — drives event stream and completion hooks. */

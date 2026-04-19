@@ -15,7 +15,7 @@ import { WireReader, WireWriter } from "@voxim/codecs";
 import * as v from "valibot";
 import type {
   EquipSlot, ItemSlotDef, StatContribution,
-  EquippableData, SwingableData, ToolData, DeployableData,
+  EquippableData, SwingableData, ToolData, DeployableData, PlaceableData,
   EdibleData, IlluminatorData, ArmorData, MaterialSourceData,
   ComposedData, StackableData, WeightData, RenderableData,
 } from "@voxim/content";
@@ -154,6 +154,50 @@ export const Deployable = defineComponent({
     },
   },
   default: (): DeployableData => ({ prefabId: "" }),
+});
+
+// ---------------------------------------------------------------------------
+// Placeable — placement rules for a prefab that can be spawned into the
+// world via a Place command. Lives on the SPAWNED prefab (hearth, wood_wall,
+// torch_placed), not on the inventory item that triggered placement. Read
+// by PlacementSystem when it resolves a Place command; never written at
+// runtime.
+// ---------------------------------------------------------------------------
+
+const placeableSchema = v.object({
+  alignment: v.picklist(["forward-facing", "cell-aligned"]),
+  requiresToolType: v.optional(v.string()),
+  reach: v.optional(v.number()),
+  cellMustBeEmpty: v.optional(v.boolean()),
+});
+
+export const Placeable = defineComponent({
+  name: "placeable" as const,
+  networked: false,
+  schema: placeableSchema,
+  codec: {
+    encode(v: PlaceableData): Uint8Array {
+      const w = new WireWriter();
+      w.writeStr(v.alignment);
+      w.writeStr(v.requiresToolType ?? "");
+      w.writeF32(v.reach ?? -1);
+      w.writeU8(v.cellMustBeEmpty ? 1 : 0);
+      return w.toBytes();
+    },
+    decode(b: Uint8Array): PlaceableData {
+      const r = new WireReader(b);
+      const alignment = r.readStr() as PlaceableData["alignment"];
+      const tool = r.readStr();
+      const reach = r.readF32();
+      const cellMustBeEmpty = r.readU8() === 1;
+      const out: PlaceableData = { alignment };
+      if (tool !== "") out.requiresToolType = tool;
+      if (reach >= 0) out.reach = reach;
+      if (cellMustBeEmpty) out.cellMustBeEmpty = true;
+      return out;
+    },
+  },
+  default: (): PlaceableData => ({ alignment: "forward-facing" }),
 });
 
 // ---------------------------------------------------------------------------

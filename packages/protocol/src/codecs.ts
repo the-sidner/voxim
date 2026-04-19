@@ -98,20 +98,30 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
     case CommandType.TradeSell:
       return new Uint8Array([cmd.inventorySlot]);
 
-    case CommandType.PlaceBlueprint: {
-      const strBytes = new TextEncoder().encode(cmd.structureType);
-      const buf = new ArrayBuffer(1 + strBytes.byteLength + 4 + 4);
-      const v = new DataView(buf);
-      const u8 = new Uint8Array(buf);
-      v.setUint8(0, strBytes.byteLength);
-      u8.set(strBytes, 1);
-      v.setFloat32(1 + strBytes.byteLength,     cmd.worldX, true);
-      v.setFloat32(1 + strBytes.byteLength + 4, cmd.worldY, true);
-      return u8;
+    case CommandType.Place: {
+      // Layout: u8 source (0=prefab, 1=inventory) + f32 worldX + f32 worldY
+      //         + (source=prefab    ? u8 strLen + UTF-8 prefabId
+      //         :  source=inventory ? u8 fromInventorySlot)
+      if (cmd.source === "prefab") {
+        const strBytes = new TextEncoder().encode(cmd.prefabId);
+        const buf = new ArrayBuffer(1 + 4 + 4 + 1 + strBytes.byteLength);
+        const dv = new DataView(buf);
+        const u8 = new Uint8Array(buf);
+        dv.setUint8(0, 0);
+        dv.setFloat32(1, cmd.worldX, true);
+        dv.setFloat32(5, cmd.worldY, true);
+        dv.setUint8(9, strBytes.byteLength);
+        u8.set(strBytes, 10);
+        return u8;
+      }
+      const buf = new ArrayBuffer(1 + 4 + 4 + 1);
+      const dv = new DataView(buf);
+      dv.setUint8(0, 1);
+      dv.setFloat32(1, cmd.worldX, true);
+      dv.setFloat32(5, cmd.worldY, true);
+      dv.setUint8(9, cmd.fromInventorySlot);
+      return new Uint8Array(buf);
     }
-
-    case CommandType.DeployItem:
-      return new Uint8Array([cmd.inventorySlot]);
 
     case CommandType.SelectRecipe: {
       const strBytes = new TextEncoder().encode(cmd.recipeId);
@@ -198,17 +208,20 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
     case CommandType.TradeSell:
       return { cmd: CommandType.TradeSell, inventorySlot: bytes[0] };
 
-    case CommandType.PlaceBlueprint: {
-      const strLen = bytes[0];
-      const structureType = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
-      const dv = new DataView(bytes.buffer, bytes.byteOffset + 1 + strLen, 8);
+    case CommandType.Place: {
+      // See encodeCommandPayload for the wire layout. Source discriminant
+      // picks the tail shape.
+      const source = bytes[0];
+      const dv = new DataView(bytes.buffer, bytes.byteOffset + 1, 8);
       const worldX = dv.getFloat32(0, true);
       const worldY = dv.getFloat32(4, true);
-      return { cmd: CommandType.PlaceBlueprint, structureType, worldX, worldY };
+      if (source === 0) {
+        const strLen = bytes[9];
+        const prefabId = new TextDecoder().decode(bytes.slice(10, 10 + strLen));
+        return { cmd: CommandType.Place, source: "prefab", prefabId, worldX, worldY };
+      }
+      return { cmd: CommandType.Place, source: "inventory", fromInventorySlot: bytes[9], worldX, worldY };
     }
-
-    case CommandType.DeployItem:
-      return { cmd: CommandType.DeployItem, inventorySlot: bytes[0] };
 
     case CommandType.SelectRecipe: {
       const strLen = bytes[0];

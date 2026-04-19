@@ -108,15 +108,19 @@ export const enum CommandType {
   Internalise     = 7,  // payload: u8 inventorySlot (slot holding the tome)
   TradeBuy        = 8,  // payload: u32 listingSlot
   TradeSell       = 9,  // payload: u8 inventorySlot
-  PlaceBlueprint  = 10, // payload: u8 strLen + UTF-8 structureType + f32 worldX + f32 worldY
-  DeployItem      = 11, // payload: u8 inventorySlot — place deployable item as world workstation
+  // 10 (PlaceBlueprint) retired — collapsed into Place (18)
+  // 11 (DeployItem) retired — collapsed into Place (18)
   SelectRecipe    = 12, // payload: u8 strLen + UTF-8 recipeId — set active recipe on nearest workstation (assembly step)
   DebugGiveItem   = 13, // payload: u8 strLen + UTF-8 itemType + u8 quantity — dev-only cheat; server ignores unless dev mode
   DebugSpawnNpc   = 14, // payload: u8 strLen + UTF-8 npcTemplate + u8 quantity — spawn NPC(s) at player position
   DebugSetTime    = 15, // payload: f32 hour (0–24) — snap WorldClock to that hour
   DebugTeleport   = 16, // payload: f32 worldX + f32 worldY — teleport player
   DebugSetStat    = 17, // payload: u8 strLen + UTF-8 stat + f32 value — set health/stamina/etc
-  // 18-255 reserved for future commands
+  Place           = 18, // payload: u8 source (0=prefab, 1=inventory) + f32 worldX + f32 worldY
+                        //   source=prefab:    + u8 strLen + UTF-8 prefabId
+                        //   source=inventory: + u8 fromInventorySlot
+                        // Validated against the spawn prefab's `placeable` component.
+  // 19-255 reserved for future commands
 }
 
 /**
@@ -148,8 +152,8 @@ export type CommandPayload =
   | { cmd: CommandType.Internalise;    inventorySlot: number }
   | { cmd: CommandType.TradeBuy;       listingSlot: number }
   | { cmd: CommandType.TradeSell;      inventorySlot: number }
-  | { cmd: CommandType.PlaceBlueprint; structureType: string; worldX: number; worldY: number }
-  | { cmd: CommandType.DeployItem;     inventorySlot: number }
+  | { cmd: CommandType.Place;          source: "prefab";    prefabId: string;        worldX: number; worldY: number }
+  | { cmd: CommandType.Place;          source: "inventory"; fromInventorySlot: number; worldX: number; worldY: number }
   | { cmd: CommandType.SelectRecipe;   recipeId: string }
   | { cmd: CommandType.DebugGiveItem;  itemType: string; quantity: number }
   | { cmd: CommandType.DebugSpawnNpc;  npcTemplate: string; quantity: number }

@@ -17,7 +17,8 @@ import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
 import { chunksFromBuffers, loadTerrainCache, seedFromTileId } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
-import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
+import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
+import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 
@@ -46,7 +47,7 @@ import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionSystem } from "./systems/action.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
-import { BuildingSystem } from "./systems/building.ts";
+import { PlacementSystem } from "./systems/placement.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { ConsumptionSystem } from "./systems/consumption.ts";
 import { ResourceNodeSystem } from "./systems/resource_node_system.ts";
@@ -277,6 +278,31 @@ export class TileServer {
     // visible to swings initiated the same tick.
     const skill = new SkillSystem(content, effects.apply, deathSystem);
     skill.registerSubscribers(this.eventBus, this.world);
+
+    // Hearth anchor subscriber — when a prefab carrying the `hearth` component
+    // is placed, tell the account service so the heir spawns at the new
+    // location on next login. Fire-and-forget; a failed write leaves the
+    // previous anchor in place and is logged. Runs during the post-changeset
+    // flush; requires no world mutation, so a 1-tick latency is irrelevant.
+    if (this.accountClient && config.tileId) {
+      const accountClient = this.accountClient;
+      const tileId = config.tileId;
+      this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
+        const prefab = content.getPrefab(p.prefabId);
+        if (!prefab?.components.hearth) return;
+        accountClient.updateHearth(p.placerId, {
+          tileId,
+          position: { x: p.worldX, y: p.worldY, z: p.worldZ },
+        }).catch((err: unknown) =>
+          console.warn(`[hearth] updateHearth failed for ${p.placerId.slice(0, 8)}:`, err)
+        );
+        console.log(
+          `[hearth] anchored player=${p.placerId.slice(0, 8)} entity=${p.entityId.slice(0, 8)} ` +
+          `at (${p.worldX.toFixed(1)}, ${p.worldY.toFixed(1)}) on ${tileId}`,
+        );
+      });
+    }
+
     const hitHandlers = [
       new HealthHitHandler(content, deathSystem, effects.outgoingDamage, effects.incomingDamage),
       new ResourceNodeHitHandler(content),
@@ -306,8 +332,8 @@ export class TileServer {
       new LifetimeSystem(),
       new ItemPickupSystem(content),
       new EquipmentSystem(content),
-      new BuildingSystem(content),
-      new CraftingSystem(content, recipeSteps, this.accountClient ?? null, this.tileId),
+      new PlacementSystem(content),
+      new CraftingSystem(content, recipeSteps),
       new ConsumptionSystem(content),
       new ResourceNodeSystem(content),
       new DayNightSystem(content),

@@ -1,12 +1,18 @@
 /**
- * CraftingSystem — workstation placement and per-tick step dispatch.
+ * CraftingSystem — workstation buffer loading, recipe selection, and per-tick
+ * step dispatch.
  *
  * Responsibilities:
- *   1. Placement — ACTION_INTERACT near a workstation moves the first item
- *      from the player's inventory into the WorkstationBuffer.
- *   2. Dispatch  — each tick, every registered RecipeStepHandler with an
+ *   1. Buffer loading — ACTION_INTERACT near a workstation moves the first
+ *      item from the player's inventory into the WorkstationBuffer.
+ *   2. Recipe selection — SelectRecipe command sets activeRecipeId on the
+ *      nearest workstation (assembly-step prerequisite).
+ *   3. Dispatch  — each tick, every registered RecipeStepHandler with an
  *      `onTick` method runs once per workstation. Step-specific logic
  *      (time recipe auto-start and countdown) lives in the handlers.
+ *
+ * Workstation *placement* (turning an inventory kit into a world workstation)
+ * is handled by PlacementSystem via the generic Place command.
  *
  * Hit-based resolution (attack / assembly) goes through WorkstationHitHandler
  * which dispatches to the same RecipeStepHandler registry via `onHit`.
@@ -27,7 +33,6 @@ import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
-import type { AccountClient } from "../account_client.ts";
 
 const log = createLogger("CraftingSystem");
 
@@ -38,9 +43,6 @@ export class CraftingSystem implements System {
   constructor(
     private readonly content: ContentStore,
     private readonly steps: Registry<RecipeStepHandler>,
-    /** Optional: enables hearth-anchor sync when hearth-carrying prefabs are deployed. */
-    private readonly accountClient: AccountClient | null = null,
-    private readonly tileId: string = "",
   ) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
@@ -49,13 +51,11 @@ export class CraftingSystem implements System {
   }
 
   run(world: World, events: EventEmitter, _dt: number): void {
-    // ── 0. Command: DeployItem / SelectRecipe ────────────────────────────
+    // ── 0. Command: SelectRecipe ─────────────────────────────────────────
     for (const [entityId, commands] of this._commands) {
       if (!world.isAlive(entityId)) continue;
       for (const cmd of commands) {
-        if (cmd.cmd === CommandType.DeployItem) {
-          this._handleDeploy(world, entityId, cmd.inventorySlot);
-        } else if (cmd.cmd === CommandType.SelectRecipe) {
+        if (cmd.cmd === CommandType.SelectRecipe) {
           this._handleSelectRecipe(world, entityId, cmd.recipeId);
         }
       }
@@ -126,59 +126,6 @@ export class CraftingSystem implements System {
         });
       }
     }
-  }
-
-  private _handleDeploy(world: World, entityId: EntityId, slotIndex: number): void {
-    const inventory = world.get(entityId, Inventory);
-    if (!inventory) return;
-    const slot = inventory.slots[slotIndex];
-    if (!slot) return;
-
-    if (slot.kind !== "stack") return;
-    const deployable = this.content.getPrefab(slot.prefabId)?.components["deployable"] as { prefabId?: string } | undefined;
-    const templateId = deployable?.prefabId ?? null;
-    if (!templateId) {
-      log.debug("deploy: player=%s item=%s not deployable", entityId, slot.prefabId);
-      return;
-    }
-
-    if (!this.content.getPrefab(templateId)) {
-      log.warn("deploy: player=%s item=%s has no prefab '%s'", entityId, slot.prefabId, templateId);
-      return;
-    }
-
-    // Place the workstation slightly in front of the player
-    const pos = world.get(entityId, Position);
-    if (!pos) return;
-    const facing = world.get(entityId, InputState)?.facing ?? 0;
-    const deployOffset = this.content.getGameConfig().crafting.deployOffsetWorldUnits;
-    const wx = pos.x + Math.sin(facing) * deployOffset;
-    const wy = pos.y + Math.cos(facing) * deployOffset;
-
-    const deployedId = spawnPrefab(world, this.content, templateId, { x: wx, y: wy, z: pos.z });
-
-    // Hearth placement: tell the account service so the heir spawns here
-    // on next login post-death. Fire-and-forget — a failed write is logged
-    // and the anchor stays at its previous value, not a correctness risk.
-    const prefab = this.content.getPrefab(templateId);
-    if (prefab?.components.hearth && this.accountClient && this.tileId) {
-      this.accountClient.updateHearth(entityId, {
-        tileId: this.tileId,
-        position: { x: wx, y: wy, z: pos.z },
-      }).catch((err) => log.warn("updateHearth failed: entity=%s err=%s", entityId, err));
-      log.info("hearth anchored: player=%s entity=%s at (%.1f, %.1f) on %s",
-        entityId, deployedId, wx, wy, this.tileId);
-    }
-
-    // Consume one from inventory
-    const newSlots = [...inventory.slots];
-    if (slot.quantity <= 1) {
-      newSlots.splice(slotIndex, 1);
-    } else {
-      newSlots[slotIndex] = { kind: "stack", prefabId: slot.prefabId, quantity: slot.quantity - 1 };
-    }
-    world.set(entityId, Inventory, { ...inventory, slots: newSlots });
-    log.info("deploy: player=%s placed %s at (%.1f, %.1f)", entityId, slot.prefabId, wx, wy);
   }
 
   private _handleSelectRecipe(world: World, entityId: EntityId, recipeId: string): void {

@@ -243,6 +243,32 @@ export interface EquippableData { slot: EquipSlot; }
 export interface SwingableData { weaponActionId: string; }
 export interface ToolData { toolType: string; }
 export interface DeployableData { prefabId: string; }
+export interface PlaceableData {
+  /**
+   * How the placed entity's position is derived.
+   *   "forward-facing" — spawn in front of the placer along their facing,
+   *                      offset by GameConfig.crafting.deployOffsetWorldUnits.
+   *                      Used for workstations and freestanding deployables.
+   *   "cell-aligned"   — snap the target worldX/worldY to integer cell center.
+   *                      Used for blueprints that must occupy a grid cell.
+   */
+  alignment: "forward-facing" | "cell-aligned";
+  /**
+   * When set, the placer must have a weapon whose derived toolType matches.
+   * Blueprints require "hammer". Deployables typically require nothing.
+   */
+  requiresToolType?: string;
+  /**
+   * Override the placement reach (world units). Falls back to
+   * GameConfig.building.maxReachWorldUnits when omitted.
+   */
+  reach?: number;
+  /**
+   * When true, reject placement if another Blueprint entity already occupies
+   * the target cell. Only meaningful with alignment="cell-aligned".
+   */
+  cellMustBeEmpty?: boolean;
+}
 export interface EdibleData { food: number; water: number; health: number; stamina: number; }
 export interface IlluminatorData { radius: number; color: number; intensity: number; flicker: number; }
 export interface ArmorData { reduction: number; staminaPenalty: number; }

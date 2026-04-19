@@ -12,9 +12,8 @@ import { createLogger } from "../logger.ts";
 const log = createLogger("BlueprintHitHandler");
 
 /**
- * Handles hits on entities that have a Blueprint component.
- * Replaces BuildingSystem entirely — construction is now driven by swinging a hammer
- * at the blueprint entity rather than standing near it with ACTION_INTERACT.
+ * Handles hits on entities that have a Blueprint component. Construction is
+ * driven by swinging a hammer at the blueprint entity.
  *
  * First hammer swing: deducts material cost from attacker's inventory.
  * Subsequent swings: each reduces ticksRemaining by buildPower.

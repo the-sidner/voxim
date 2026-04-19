@@ -25,6 +25,13 @@ export const TileEvents = {
   DayPhaseChanged: Symbol("DayPhaseChanged"),
   SkillActivated: Symbol("SkillActivated"),
   /**
+   * Published by PlacementSystem after a Place command spawns a world
+   * entity. Subscribers react to prefab-specific side-effects (hearth
+   * anchor update, city-claim tracker, etc.) without PlacementSystem
+   * having to know about any of them. Server-side only.
+   */
+  EntityDeployed: Symbol("EntityDeployed"),
+  /**
    * Published by a hit handler when a melee hit lands and the attacker's
    * SkillInProgress carries a pending "strike:<slot>" verb. Consumed by
    * SkillSystem via a real-bus subscriber registered at construction; the
@@ -128,6 +135,15 @@ export interface StrikeLandedPayload {
   casterId: EntityId;
   slot: number;
   targetId: EntityId;
+}
+
+export interface EntityDeployedPayload {
+  placerId: EntityId;
+  entityId: EntityId;
+  prefabId: string;
+  worldX: number;
+  worldY: number;
+  worldZ: number;
 }
 
 export interface TradeCompletedPayload {

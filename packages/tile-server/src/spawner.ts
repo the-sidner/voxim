@@ -12,7 +12,7 @@
  *     startup, this is the last line of defence.
  *
  * Blueprints are ordinary prefabs (data/prefabs/wood_wall.json etc.);
- * BuildingSystem spawns them via spawnPrefab and patches in the cell
+ * PlacementSystem spawns them via spawnPrefab and patches in the cell
  * coordinates once the placement is validated.
  */
 import type { World, EntityId, ComponentDef } from "@voxim/engine";

@@ -79,7 +79,7 @@ removes the injury component from the target entity.
 Done when: the correct crafting interaction removes an active injury component.
 
 ### T-119 · Replace `ResolveStrikePort` with a deferred `StrikeLanded` event
-Effort: S   Status: done   Commit: (this commit)
+Effort: S   Status: done   Commit: a8e15ff
 
 `HealthHitHandler` calls `this.strikes.resolveStrike(...)` synchronously during
 damage resolution — a cross-system reach through a "port" interface. The docstring
@@ -388,7 +388,7 @@ in the simulation is either a compact stackable slot or an entity with its own
 components, and benchmark confirms the entity budget holds.
 
 ### T-118 · Unify deploy + place into one `PlacementSystem`
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: (this commit)
 
 Two placement paths currently exist — `CraftingSystem._handleDeploy` (workstation
 deploy via `CommandType.DeployItem`) and `BuildingSystem._handlePlace` (blueprint

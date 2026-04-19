@@ -1,6 +1,11 @@
 {
   "id": "stone_wall",
   "components": {
+    "placeable": {
+      "alignment": "cell-aligned",
+      "requiresToolType": "hammer",
+      "cellMustBeEmpty": true
+    },
     "blueprint": {
       "structureType": "stone_wall",
       "heightDelta": 3.0,

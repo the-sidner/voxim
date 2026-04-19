@@ -2,6 +2,9 @@
   "id": "torch_placed",
   "modelId": "model_torch",
   "components": {
+    "placeable": {
+      "alignment": "forward-facing"
+    },
     "lightEmitter": {
       "color": 16755780,
       "intensity": 1.0,
