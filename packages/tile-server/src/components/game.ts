@@ -1,21 +1,31 @@
 /**
- * Game-specific component definitions for the tile server.
+ * Game component definitions for the tile server.
  *
- * Shared geometric components (Position, Velocity, Facing) use the codecs from
- * @voxim/codecs so the same binary format is used server-side and client-side.
- * Game-logic components (Health, Hunger, InputState, etc.) are defined here.
+ * All networked components use the shared codecs from @voxim/codecs so
+ * client and server agree on the binary format by construction. This file
+ * pairs each codec with a ComponentDef (wireId, schema, default); no codec
+ * logic lives inline.
  */
 import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
 import * as v from "valibot";
 import {
-  positionCodec, velocityCodec, facingCodec, buildCodec,
+  positionCodec, velocityCodec, facingCodec,
+  inputStateCodec, healthCodec, hungerCodec, thirstCodec, lifetimeCodec,
   staminaCodec, modelRefCodec, animationStateCodec,
 } from "@voxim/codecs";
-import type { PositionData, VelocityData, FacingData, StaminaData, ModelRefData, AnimationStateData } from "@voxim/codecs";
+import type {
+  PositionData, VelocityData, FacingData,
+  InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
+  StaminaData, ModelRefData, AnimationStateData,
+} from "@voxim/codecs";
 
 // ---- re-exported shared types for convenience ----
-export type { PositionData, VelocityData, FacingData, StaminaData };
+export type {
+  PositionData, VelocityData, FacingData,
+  InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
+  StaminaData,
+};
 
 // Re-export content types that other files import from here
 export type { ModelRefData, AnimationStateData };
@@ -48,30 +58,10 @@ export const Facing = defineComponent({
 // Not deferred — it is the stimulus for the tick, not an output of it.
 // All other systems read this as "what the player (or NPC AI) intends this tick."
 
-export interface InputStateData {
-  facing: number;     // radians — replicated to Facing component at end of tick
-  movementX: number;  // normalised horizontal, -1..1
-  movementY: number;
-  actions: number;    // bitfield (ACTION_* from @voxim/protocol)
-  seq: number;        // last drained input sequence — echoed in StateMessage.ackInputSeq
-  /** Client wall-clock (ms) from the originating MovementDatagram. */
-  timestamp: number;
-  /** Exponential moving average of round-trip time in ms, maintained per session. */
-  rttMs: number;
-}
-
 export const InputState = defineComponent({
   name: "inputState" as const,
   wireId: ComponentType.inputState,
-  codec: buildCodec<InputStateData>({
-    facing: { type: "f32" },
-    movementX: { type: "f32" },
-    movementY: { type: "f32" },
-    actions: { type: "i32" },
-    seq: { type: "i32" },
-    timestamp: { type: "f64" },
-    rttMs: { type: "f32" },
-  }),
+  codec: inputStateCodec,
   default: (): InputStateData => ({
     facing: 0,
     movementX: 0,
@@ -85,11 +75,6 @@ export const InputState = defineComponent({
 
 // ---- Health ----
 
-export interface HealthData {
-  current: number;
-  max: number;
-}
-
 const healthSchema = v.object({
   current: v.number(),
   max: v.number(),
@@ -98,16 +83,12 @@ const healthSchema = v.object({
 export const Health = defineComponent({
   name: "health" as const,
   wireId: ComponentType.health,
-  codec: buildCodec<HealthData>({ current: { type: "f32" }, max: { type: "f32" } }),
+  codec: healthCodec,
   schema: healthSchema,
   default: (): HealthData => ({ current: 100, max: 100 }),
 });
 
 // ---- Hunger ---- 0 (full) → 100 (starving)
-
-export interface HungerData {
-  value: number;
-}
 
 const hungerSchema = v.object({
   value: v.number(),
@@ -116,16 +97,12 @@ const hungerSchema = v.object({
 export const Hunger = defineComponent({
   name: "hunger" as const,
   wireId: ComponentType.hunger,
-  codec: buildCodec<HungerData>({ value: { type: "f32" } }),
+  codec: hungerCodec,
   schema: hungerSchema,
   default: (): HungerData => ({ value: 0 }),
 });
 
 // ---- Thirst ---- 0 (sated) → 100 (parched)
-
-export interface ThirstData {
-  value: number;
-}
 
 const thirstSchema = v.object({
   value: v.number(),
@@ -134,7 +111,7 @@ const thirstSchema = v.object({
 export const Thirst = defineComponent({
   name: "thirst" as const,
   wireId: ComponentType.thirst,
-  codec: buildCodec<ThirstData>({ value: { type: "f32" } }),
+  codec: thirstCodec,
   schema: thirstSchema,
   default: (): ThirstData => ({ value: 0 }),
 });
@@ -158,14 +135,10 @@ export const Stamina = defineComponent({
 
 // ---- Lifetime ---- remaining ticks; entity is destroyed when this reaches 0
 
-export interface LifetimeData {
-  ticks: number;
-}
-
 export const Lifetime = defineComponent({
   name: "lifetime" as const,
   wireId: ComponentType.lifetime,
-  codec: buildCodec<LifetimeData>({ ticks: { type: "i32" } }),
+  codec: lifetimeCodec,
   default: (): LifetimeData => ({ ticks: 0 }),
 });
 

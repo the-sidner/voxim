@@ -276,7 +276,6 @@ export interface MaterialSourceData { materialName: string; }
 export interface ComposedData { slots: ItemSlotDef[]; }
 export type StackableData = Record<never, never>;
 export interface WeightData { baseWeight: number; }
-export interface RenderableData { modelId: string; scale: number; }
 
 // ---- recipes ----
 
@@ -1021,6 +1020,8 @@ export interface GameConfig {
   network: {
     /** Exponential moving average alpha for per-session RTT estimation (0–1). Lower = smoother. */
     rttEmaAlpha: number;
+    /** Radius in world units within which entities are visible to a client. */
+    aoiRadius: number;
   };
   /** Client-side prediction correction smoothing. */
   prediction: {

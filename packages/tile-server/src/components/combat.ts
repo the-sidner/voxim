@@ -46,6 +46,15 @@ export interface SkillInProgressData {
    */
   rewindTick: number;
   pendingSkillVerb: string;
+  /**
+   * Weapon the swing was initiated with. Captured at swing-start so every
+   * downstream phase (hit resolution, projectile spawn) derives stats from
+   * the same weapon — a mid-swing equipment swap doesn't corrupt damage or
+   * blade geometry. Empty string = unarmed.
+   */
+  weaponPrefabId: string;
+  /** Quality (0–1) stamped on the weapon entity at swing start. 1 = unarmed. */
+  weaponQuality: number;
 }
 
 const skillInProgressCodec: Serialiser<SkillInProgressData> = {
@@ -61,6 +70,8 @@ const skillInProgressCodec: Serialiser<SkillInProgressData> = {
     for (const h of v.hitEntities) { w.writeStr(h.entityId); w.writeStr(h.bodyPart); }
     w.writeI32(v.rewindTick);
     w.writeStr(v.pendingSkillVerb);
+    w.writeStr(v.weaponPrefabId);
+    w.writeF32(v.weaponQuality);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): SkillInProgressData {
@@ -73,7 +84,9 @@ const skillInProgressCodec: Serialiser<SkillInProgressData> = {
     for (let i = 0; i < count; i++) hitEntities.push({ entityId: r.readStr(), bodyPart: r.readStr() });
     const rewindTick = r.readI32();
     const pendingSkillVerb = r.readStr();
-    return { weaponActionId, phase, ticksInPhase, hitEntities, rewindTick, pendingSkillVerb };
+    const weaponPrefabId = r.readStr();
+    const weaponQuality = r.readF32();
+    return { weaponActionId, phase, ticksInPhase, hitEntities, rewindTick, pendingSkillVerb, weaponPrefabId, weaponQuality };
   },
 };
 
@@ -88,6 +101,8 @@ export const SkillInProgress = defineComponent({
     hitEntities: [] as HitRecord[],
     rewindTick: -1,
     pendingSkillVerb: "",
+    weaponPrefabId: "",
+    weaponQuality: 1,
   }),
 });
 

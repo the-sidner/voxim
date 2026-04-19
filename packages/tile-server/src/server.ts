@@ -513,6 +513,7 @@ export class TileServer {
       // AoI filtering and spawn/despawn logic run per session in computeSessionUpdate.
       const changedComponents = this.buildDeltaMap(changeset.sets);
       const worldDestroys = new Set(changeset.destroys);
+      const aoiRadius = this.content.getGameConfig().network.aoiRadius;
       for (const [playerId, session] of this.sessions) {
         if (!session.isOpen) { console.warn(`[TileServer] tick ${serverTick}: session ${playerId.slice(-8)} is closed, skipping`); continue; }
         const inputState = this.world.get(playerId, InputState);
@@ -520,6 +521,7 @@ export class TileServer {
         const msg = computeSessionUpdate(
           this.world, session, this.spatial, playerId,
           changedComponents, worldDestroys, events, serverTick, ackInputSeq,
+          aoiRadius,
         );
         const payload = binaryStateMessageCodec.encode(msg);
         const framed = new Uint8Array(4 + payload.byteLength);
@@ -802,6 +804,7 @@ export class TileServer {
       const initialMsg = computeSessionUpdate(
         this.world, clientSession, this.spatial, playerId,
         new Map(), new Set(), [], this.tickLoop.currentTick, 0,
+        this.content.getGameConfig().network.aoiRadius,
       );
       const initialPayload = binaryStateMessageCodec.encode(initialMsg);
       const initialFramed = new Uint8Array(4 + initialPayload.byteLength);

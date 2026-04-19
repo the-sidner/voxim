@@ -202,6 +202,67 @@ export const inventorySlotCodec: Serialiser<InventorySlot> = {
   },
 };
 
+// ---- InputState -------------------------------------------------------------
+// Player/NPC intent for the current tick. Written immediately at tick start
+// from the drained input ring buffer (player sessions) or from NpcAi. Read by
+// every downstream system. Networked so the client can render other players'
+// facing / movement intent between state messages.
+
+export interface InputStateData {
+  facing: number;
+  movementX: number;
+  movementY: number;
+  actions: number;
+  seq: number;
+  timestamp: number;
+  rttMs: number;
+}
+
+export const inputStateCodec: Serialiser<InputStateData> = buildCodec<InputStateData>({
+  facing: { type: "f32" },
+  movementX: { type: "f32" },
+  movementY: { type: "f32" },
+  actions: { type: "i32" },
+  seq: { type: "i32" },
+  timestamp: { type: "f64" },
+  rttMs: { type: "f32" },
+});
+
+// ---- Health -----------------------------------------------------------------
+
+export interface HealthData {
+  current: number;
+  max: number;
+}
+
+export const healthCodec: Serialiser<HealthData> = buildCodec<HealthData>({
+  current: { type: "f32" },
+  max: { type: "f32" },
+});
+
+// ---- Hunger / Thirst --------------------------------------------------------
+// Accumulating survival meters: 0 (full/sated) → 100 (starving/parched).
+
+export interface HungerData { value: number; }
+export interface ThirstData { value: number; }
+
+export const hungerCodec: Serialiser<HungerData> = buildCodec<HungerData>({
+  value: { type: "f32" },
+});
+export const thirstCodec: Serialiser<ThirstData> = buildCodec<ThirstData>({
+  value: { type: "f32" },
+});
+
+// ---- Lifetime ---------------------------------------------------------------
+// Countdown on transient entities (projectiles, effects). Decremented each
+// tick by LifetimeSystem; when ticks reaches 0 the entity is destroyed.
+
+export interface LifetimeData { ticks: number; }
+
+export const lifetimeCodec: Serialiser<LifetimeData> = buildCodec<LifetimeData>({
+  ticks: { type: "i32" },
+});
+
 // ---- Stamina ----------------------------------------------------------------
 // { current: f32, max: f32, regenPerSecond: f32, exhausted: boolean }
 

@@ -126,7 +126,8 @@
     "defaultEntityScale": 0.35
   },
   "network": {
-    "rttEmaAlpha": 0.15
+    "rttEmaAlpha": 0.15,
+    "aoiRadius": 128
   },
   "prediction": {
     "correctionHalfLifeMs": 60,

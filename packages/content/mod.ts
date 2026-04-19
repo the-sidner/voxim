@@ -44,7 +44,6 @@ export type {
   ComposedData,
   StackableData,
   WeightData,
-  RenderableData,
   RecipeInput,
   Recipe,
   NpcTemplate,

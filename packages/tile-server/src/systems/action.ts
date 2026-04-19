@@ -88,6 +88,10 @@ export class ActionSystem implements System {
       const strikeSlot = loreLoadout?.skills.findIndex((s) => s?.verb === "strike") ?? -1;
 
       const weaponActionId = weaponStats.weaponAction ?? unarmedActionId;
+      // Bake in the weapon we swung with. Downstream phases (resolveHits,
+      // spawnProjectile) derive stats from these fields so a mid-swing
+      // equipment swap can't corrupt damage, blade geometry, or projectile
+      // output. A naked swing stores weaponPrefabId="" and weaponQuality=1.
       world.write(entityId, SkillInProgress, {
         weaponActionId,
         phase: "windup",
@@ -95,6 +99,8 @@ export class ActionSystem implements System {
         hitEntities: [],
         rewindTick: -1,
         pendingSkillVerb: strikeSlot >= 0 ? `strike:${strikeSlot}` : "",
+        weaponPrefabId: weaponPrefabId ?? "",
+        weaponQuality,
       });
 
       log.info("swing start: entity=%s weapon=%s action=%s stamina=%f", entityId, weaponPrefabId ?? "unarmed", weaponActionId, stamina?.current ?? 0);
@@ -118,7 +124,7 @@ export class ActionSystem implements System {
         if ((action.actionType ?? "melee") === "ranged") {
           // Ranged: spawn projectile on first active tick; no blade sweep
           if (sip.ticksInPhase === 0) {
-            this.spawnProjectile(world, entityId, action, unarmed);
+            this.spawnProjectile(world, entityId, sip, action, unarmed);
           }
         } else {
           // Melee: lag-compensated blade sweep
@@ -164,11 +170,11 @@ export class ActionSystem implements System {
     // resolveHits is only called for melee actions; swingPath is required for melee
     if (!action.swingPath) return sip.hitEntities;
 
-    const equipment = world.get(entityId, Equipment);
-    const weaponId2 = equipment?.weapon ?? null;
-    const weaponPrefabId2 = weaponId2 ? world.get(weaponId2 as EntityId, ItemData)?.prefabId ?? null : null;
-    const weaponQuality2 = weaponId2 ? world.get(weaponId2 as EntityId, QualityStamped)?.quality ?? 1 : 1;
-    const weaponStats = weaponPrefabId2 ? this.content.deriveItemStats(weaponPrefabId2, [], weaponQuality2) : unarmed;
+    // Read the weapon captured at swing-start. A mid-swing equipment swap
+    // does not affect hit resolution — the swing completes with its origin
+    // weapon's damage, geometry, and tool-type.
+    const weaponPrefabId2 = sip.weaponPrefabId || null;
+    const weaponStats = weaponPrefabId2 ? this.content.deriveItemStats(weaponPrefabId2, [], sip.weaponQuality) : unarmed;
 
     // Derive blade geometry from the equipped weapon's model AABB.
     // Model Z axis = blade axis (voxel Z maps to Three.js Y for weapon rendering).
@@ -319,16 +325,15 @@ export class ActionSystem implements System {
   private spawnProjectile(
     world: World,
     entityId: string,
+    sip: SkillInProgressData,
     action: ReturnType<ContentStore["getWeaponAction"]>,
     unarmed: DerivedItemStats,
   ): void {
     if (!action?.projectile) return;
 
-    const equipment = world.get(entityId, Equipment);
-    const weaponId3 = equipment?.weapon ?? null;
-    const weaponPrefabId3 = weaponId3 ? world.get(weaponId3 as EntityId, ItemData)?.prefabId ?? null : null;
-    const weaponQuality3 = weaponId3 ? world.get(weaponId3 as EntityId, QualityStamped)?.quality ?? 1 : 1;
-    const weaponStats = weaponPrefabId3 ? this.content.deriveItemStats(weaponPrefabId3, [], weaponQuality3) : unarmed;
+    // Read the weapon captured at swing-start — same baking as resolveHits.
+    const weaponPrefabId3 = sip.weaponPrefabId || null;
+    const weaponStats = weaponPrefabId3 ? this.content.deriveItemStats(weaponPrefabId3, [], sip.weaponQuality) : unarmed;
 
     const pos = world.get(entityId, Position);
     const inputState = world.get(entityId, InputState);

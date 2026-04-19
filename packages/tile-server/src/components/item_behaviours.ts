@@ -17,7 +17,7 @@ import type {
   EquipSlot, ItemSlotDef, StatContribution,
   EquippableData, SwingableData, ToolData, DeployableData, PlaceableData,
   EdibleData, IlluminatorData, ArmorData, MaterialSourceData,
-  ComposedData, StackableData, WeightData, RenderableData,
+  ComposedData, StackableData, WeightData,
 } from "@voxim/content";
 
 // ---------------------------------------------------------------------------
@@ -460,33 +460,3 @@ export const Weight = defineComponent({
   default: (): WeightData => ({ baseWeight: 0 }),
 });
 
-// ---------------------------------------------------------------------------
-// Renderable — visual model reference as a per-instance component. Not
-// read by spawnPrefab today (the top-level Prefab.modelId / modelScale
-// fields drive rendering via installVisualShell). Registered so prefabs
-// can opt into per-instance visual overrides when we need them.
-// ---------------------------------------------------------------------------
-
-const renderableSchema = v.object({
-  modelId: v.string(),
-  scale: v.number(),
-});
-
-export const Renderable = defineComponent({
-  name: "renderable" as const,
-  networked: false,
-  schema: renderableSchema,
-  codec: {
-    encode(v: RenderableData): Uint8Array {
-      const w = new WireWriter();
-      w.writeStr(v.modelId);
-      w.writeF32(v.scale);
-      return w.toBytes();
-    },
-    decode(b: Uint8Array): RenderableData {
-      const r = new WireReader(b);
-      return { modelId: r.readStr(), scale: r.readF32() };
-    },
-  },
-  default: (): RenderableData => ({ modelId: "", scale: 1 }),
-});

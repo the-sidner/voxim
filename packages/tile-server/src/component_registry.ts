@@ -87,7 +87,6 @@ import {
   Illuminator,
   MaterialSource,
   Placeable,
-  Renderable,
   Stackable,
   Swingable,
   Tool,
@@ -191,7 +190,6 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   Composed,
   Stackable,
   Weight,
-  Renderable,
 ];
 
 /**

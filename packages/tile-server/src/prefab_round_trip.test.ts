@@ -37,7 +37,6 @@ import {
   Equippable,
   Illuminator,
   MaterialSource,
-  Renderable,
   Stackable,
   Swingable,
   Tool,
@@ -217,14 +216,6 @@ Deno.test("Weight — schema/codec agreement", () => {
     { baseWeight: 1.5 },
     { baseWeight: 42.25 },
   ], "Weight");
-});
-
-Deno.test("Renderable — schema/codec agreement", () => {
-  roundTrip(Renderable, [
-    { modelId: "sword_model", scale: 1 },
-    { modelId: "axe_head", scale: 0.75 },
-    { modelId: "", scale: 1 },
-  ], "Renderable");
 });
 
 Deno.test("component registry — every registered name resolves and every def is unique", async () => {

@@ -7,7 +7,7 @@
  *   3. Return a BinaryStateMessage ready to encode and send
  *
  * Terrain chunks (Heightmap/MaterialGrid entities) are always visible and never despawn.
- * Positioned entities are filtered by AOI_RADIUS (128 world units).
+ * Positioned entities are filtered by GameConfig.network.aoiRadius.
  */
 
 import type { World, EntityId } from "@voxim/engine";
@@ -25,9 +25,6 @@ import { Position } from "./components/game.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { NETWORKED_DEFS } from "./component_registry.ts";
-
-/** Radius in world units within which entities are visible to a client. */
-export const AOI_RADIUS = 128;
 
 /**
  * Max number of NEW terrain chunk spawns per state message.
@@ -109,6 +106,7 @@ export function computeSessionUpdate(
   events: GameEvent[],
   serverTick: number,
   ackInputSeq: number,
+  aoiRadius: number,
 ): BinaryStateMessage {
   // ── 1. Build visible entity set ─────────────────────────────────────────────
   const inAoI = new Set<EntityId>();
@@ -123,7 +121,7 @@ export function computeSessionUpdate(
   // Positioned entities within radius
   const pos = world.get(playerId, Position);
   if (pos) {
-    for (const id of spatial.nearby(pos.x, pos.y, AOI_RADIUS)) {
+    for (const id of spatial.nearby(pos.x, pos.y, aoiRadius)) {
       inAoI.add(id);
     }
   }
