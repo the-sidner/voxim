@@ -76,7 +76,17 @@ the tool. One station, many outputs. Ready today with no engine work.
 - [§11 Lighting](#11-lighting)
 - [§12 Alchemical, chemical, paints](#12-alchemical-chemical-paints)
 - [§13 Ceramics (finished goods)](#13-ceramics-finished-goods)
-- [§14 Byproducts](#14-byproducts)
+- [§14 Furniture](#14-furniture)
+- [§15 Transport & horse tack](#15-transport--horse-tack)
+- [§16 Fishing & trapping](#16-fishing--trapping)
+- [§17 Religious items](#17-religious-items)
+- [§18 Farming & gardening](#18-farming--gardening)
+- [§19 Construction finishing](#19-construction-finishing)
+- [§20 Locks, keys, security](#20-locks-keys-security)
+- [§21 Apothecary & herbal remedies](#21-apothecary--herbal-remedies)
+- [§22 Instruments](#22-instruments)
+- [§23 Struck coinage & administrative](#23-struck-coinage--administrative)
+- [§24 Byproducts](#24-byproducts)
 
 ---
 
@@ -144,6 +154,26 @@ Resource-node drops. No recipes; downstream recipes cite them.
 | `herb_rosemary` | varied | Flavouring; weak medicinal |
 | `herb_sage` | varied | Flavouring; ceremonial |
 | `herb_yarrow` | meadow | Medicinal wound-wash |
+| `herb_comfrey` | meadow / damp | Bone-knit salve; poultice |
+| `herb_mint` | wild / cultivated | Digestive; flavouring |
+| `herb_mullein` | waste ground | Cough remedy; lamp-wick |
+| `herb_chamomile` | meadow | Sleeping draught; eye-wash |
+| `herb_willowbark` | willow tree | Pain-relief tincture |
+| `herb_comfrey_root` | comfrey deep-root | Stronger than leaves |
+| `willow_osier` | young willow (wetland) | Wicker weaving |
+| `reed` | wetland / pond | Thatching, basketry, pen-cut |
+| `straw` | grain harvest byproduct | Thatch, stuffing, bedding |
+| `yew_wood` | yew tree (rare) | Longbow staves |
+| `horsehair` | horse shear / kill | Fiddle bow; rope; sieve |
+| `apple` | apple tree / orchard | Cider, food |
+| `grape` | vineyard | Wine, must |
+| `olive` | olive tree (warm) | Oil press |
+| `rose_petal` | rose bush | Rose water, perfume |
+| `raw_fish` | water node, rod or net | Food; stockfish |
+| `red_earth` | iron-rich soil | Pigment (red ochre) |
+| `cinnabar_ore` | rare mineral | Pigment (vermilion) |
+| `calamine` | zinc ore (rare) | Brass cementation |
+| `dung` | livestock / field gather | Bate liquor; fertiliser; lead-white beds |
 | `honey_comb` | bee node | Wax + honey |
 | `oak_gall` | oak rare drop | Ink |
 | `woad_leaves` | cultivated | Blue dye (woad vat) |
@@ -1350,7 +1380,487 @@ Authored as separate items so the dry/fire chain is explicit:
 
 ---
 
-## 14. Byproducts
+## 14. Furniture
+
+Joiner and carpenter work. Furniture is almost entirely absent from the
+starting set despite being the volume output of two major trades and the
+difference between an inhabited and an empty base.
+
+### Seating
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `wooden_stool` | unique | plank ×2 + wooden_dowel ×3 | `bench` | saw / chisel | assembly | wooden_stool ×1 |
+| `wooden_chair` | unique | plank ×4 + wooden_dowel ×6 + hide_glue ×1 | `bench` | saw / chisel | assembly | wooden_chair ×1 |
+| `armchair` | unique | plank ×6 + wooden_dowel ×8 + leather_panel ×2 + linen_thread ×2 + wool_stuffing ×2 | `bench` | awl | assembly | armchair ×1 |
+| `long_bench` | unique | plank ×4 + wooden_dowel ×4 | `bench` | saw | assembly | long_bench ×1 |
+| `cushioned_bench` | unique | long_bench ×1 + wool_stuffing ×4 + linen_panel ×1 + linen_thread ×2 | `bench` | awl | assembly | cushioned_bench ×1 |
+| `wooden_throne` | unique | plank ×10 + wooden_dowel ×10 + leather_panel ×3 + iron_rivet ×12 | `bench` | hammer | assembly | wooden_throne ×1 |
+
+### Tables
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `trestle_table` | unique | plank ×6 + wooden_dowel ×4 | `bench` | saw | assembly | trestle_table ×1 |
+| `dining_table` | unique | plank ×8 + wooden_dowel ×8 + hide_glue ×1 | `bench` | saw / plane | assembly | dining_table ×1 |
+| `writing_desk_furniture` | unique | plank ×6 + wooden_dowel ×6 + iron_hinge ×1 | `bench` | plane | assembly | writing_desk_furniture ×1 |
+| `work_table` | unique | plank ×5 + wooden_dowel ×4 + iron_nail ×8 | `bench` | hammer | assembly | work_table ×1 |
+
+**Notes.** The craftable `workbench` prefab in the game today is a workstation,
+not furniture — it carries `WorkstationTag`. `work_table` here is a domestic
+table without any crafting role, just for living spaces.
+
+### Beds
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `straw_mattress` | unique | linen_panel ×2 + straw ×6 + linen_thread ×2 | `bench` | awl | assembly | straw_mattress ×1 |
+| `wool_mattress` | unique | linen_panel ×2 + wool_stuffing ×8 + linen_thread ×2 | `bench` | awl | assembly | wool_mattress ×1 |
+| `feather_mattress` | unique | linen_panel ×2 + feather ×30 + linen_thread ×2 | `bench` | awl | assembly | feather_mattress ×1 |
+| `wooden_bed_frame` | unique | plank ×6 + wooden_dowel ×8 + iron_nail ×8 | `bench` | hammer | assembly | wooden_bed_frame ×1 |
+| `simple_bed` | unique | wooden_bed_frame ×1 + straw_mattress ×1 + wool_blanket ×1 | `bench` | — | assembly | simple_bed ×1 |
+| `bed` | unique | wooden_bed_frame ×1 + wool_mattress ×1 + linen_sheet ×2 + wool_blanket ×1 + feather_pillow ×1 | `bench` | — | assembly | bed ×1 |
+| `noble_bed` | unique | wooden_bed_frame ×1 + feather_mattress ×1 + linen_sheet ×2 + wool_blanket ×1 + feather_pillow ×2 + wool_cloth ×2 | `bench` | — | assembly | noble_bed ×1 |
+| `bedroll` | unique | wool_blanket ×2 + leather_strap ×2 | `bench` | awl | assembly | bedroll ×1 |
+| `cradle` | unique | plank ×3 + wooden_dowel ×4 + linen_panel ×1 + wool_stuffing ×2 | `bench` | saw / awl | assembly | cradle ×1 |
+
+**Linens:**
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `linen_sheet` | stack | linen_cloth ×1 | `bench` | shears / needle | attack | linen_sheet ×1 |
+| `wool_blanket` | stack | wool_cloth ×1 | `bench` | shears | attack | wool_blanket ×1 |
+| `feather_pillow` | stack | linen_panel ×1 + feather ×10 + linen_thread ×1 | `bench` | awl | assembly | feather_pillow ×1 |
+
+### Storage furniture
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `wooden_shelf` | unique | plank ×4 + iron_nail ×8 | `bench` | hammer | assembly | wooden_shelf ×1 |
+| `bookshelf` | unique | plank ×6 + iron_nail ×12 | `bench` | hammer | assembly | bookshelf ×1 |
+| `wooden_cupboard` | unique | plank ×8 + iron_nail ×10 + iron_hinge ×2 | `bench` | hammer | assembly | wooden_cupboard ×1 |
+| `wooden_wardrobe` | unique | plank ×10 + iron_nail ×14 + iron_hinge ×2 + iron_latch ×1 | `bench` | hammer | assembly | wooden_wardrobe ×1 |
+| `display_cabinet` | unique | plank ×8 + iron_nail ×10 + iron_hinge ×2 + glass_pane ×2 | `bench` | hammer | assembly | display_cabinet ×1 |
+
+**Notes.** `display_cabinet` needs `glass_pane` — blocked on glass chain
+(GAP-STATE). Defer until glass ships.
+
+### Kitchen / domestic
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `kneading_table` | unique | plank ×4 + wooden_dowel ×4 | `bench` | saw | assembly | kneading_table ×1 |
+| `washing_tub` | unique | barrel_stave ×8 + iron_strip ×2 | `bench` (cooper_workbench) | — | assembly | washing_tub ×1 |
+| `wooden_basin` | unique | wooden_billet ×2 | `loom_device` (pole_lathe) | turning_chisel | time | wooden_basin ×1 |
+| `clothes_chest` | unique | plank ×6 + iron_nail ×10 + iron_hinge ×1 + wool_cloth ×1 | `bench` | hammer | assembly | clothes_chest ×1 |
+
+---
+
+## 15. Transport & horse tack
+
+Wheelwright + cartwright + saddler. Essential for any NPC-caravan
+gameplay and for scaling from homestead to settlement.
+
+### Wheel components
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `wooden_wheel_hub` | unique | wooden_billet ×2 | `loom_device` (pole_lathe) | turning_chisel | time | wooden_wheel_hub ×1 |
+| `wooden_rim_segment` | stack | plank ×1 | `bench` | saw / plane | attack | wooden_rim_segment ×2 |
+| `wooden_wheel` | unique | wooden_wheel_hub ×1 + wooden_spoke ×8 + wooden_rim_segment ×6 + hide_glue ×1 | `bench` (wheelwright) | drill / hammer | assembly | wooden_wheel ×1 |
+| `iron_tyred_wheel` | unique | wooden_wheel ×1 + iron_strip ×4 + charcoal ×1 | anvil | hammer | assembly | iron_tyred_wheel ×1 |
+
+**Notes.** Iron tyre is fitted red-hot and cools to shrink onto the wooden
+rim, locking the wheel. **GAP-PROCESS-PARAM** (temperature at fit). Recipe
+ships today as flat `time` with fair yields.
+
+### Axles & frames
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `wooden_axle` | unique | wooden_billet ×2 + iron_strip ×2 | `bench` (shaving_horse) | draw_knife | assembly | wooden_axle ×1 |
+| `wooden_cart_body` | unique | plank ×8 + iron_nail ×16 + iron_strip ×2 | `bench` | hammer | assembly | wooden_cart_body ×1 |
+| `wooden_wagon_body` | unique | plank ×16 + iron_nail ×24 + iron_strip ×4 + iron_hinge ×2 | `bench` | hammer | assembly | wooden_wagon_body ×1 |
+
+### Vehicles
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `handcart` | unique | wooden_cart_body ×1 + wooden_wheel ×1 + wooden_haft_long ×2 | `bench` | hammer | assembly | handcart ×1 |
+| `wheelbarrow` | unique | plank ×4 + wooden_wheel ×1 + wooden_haft_long ×2 + iron_nail ×8 | `bench` | hammer | assembly | wheelbarrow ×1 |
+| `two_wheel_cart` | unique | wooden_cart_body ×1 + wooden_axle ×1 + iron_tyred_wheel ×2 + wooden_haft_long ×2 + leather_strap ×2 | `bench` | hammer | assembly | two_wheel_cart ×1 |
+| `four_wheel_wagon` | unique | wooden_wagon_body ×1 + wooden_axle ×2 + iron_tyred_wheel ×4 + wooden_dowel ×6 + leather_strap ×4 | `bench` | hammer | assembly | four_wheel_wagon ×1 |
+| `wooden_sled` | unique | plank ×4 + wooden_dowel ×4 + iron_strip ×2 | `bench` | — | assembly | wooden_sled ×1 |
+
+### Horse tack
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `iron_horseshoe` | stack | iron_ingot ×1 | anvil | hammer | attack | iron_horseshoe ×4 |
+| `iron_stirrup` | stack | iron_strip ×1 + leather_strap ×1 | anvil | hammer | assembly | iron_stirrup ×2 |
+| `iron_bit` | unique | iron_ingot ×1 + charcoal ×1 | anvil | hammer | attack | iron_bit ×1 |
+| `iron_spur` | stack | iron_ingot ×1 + charcoal ×1 | anvil | hammer | attack | iron_spur ×2 |
+| `leather_halter` | unique | leather_strap ×3 + iron_buckle ×2 | `bench` | awl | assembly | leather_halter ×1 |
+| `leather_bridle` | unique | leather_strap ×4 + iron_bit ×1 + iron_buckle ×2 | `bench` | awl | assembly | leather_bridle ×1 |
+| `leather_reins` | unique | leather_strap ×2 + iron_buckle ×1 | `bench` | awl | assembly | leather_reins ×1 |
+| `wooden_saddle_tree` | unique | plank ×3 + rawhide_strip ×2 | `bench` | saw / plane | assembly | wooden_saddle_tree ×1 |
+| `riding_saddle` | unique | wooden_saddle_tree ×1 + leather_panel ×3 + wool_stuffing ×2 + iron_buckle ×2 + linen_thread ×3 | `bench` | awl | assembly | riding_saddle ×1 |
+| `pack_saddle` | unique | wooden_saddle_tree ×1 + leather_panel ×2 + leather_strap ×4 + iron_buckle ×4 | `bench` | awl | assembly | pack_saddle ×1 |
+| `war_saddle` | unique | wooden_saddle_tree ×1 + leather_panel ×4 + wool_stuffing ×3 + iron_buckle ×4 + iron_strip ×2 | `bench` | awl | assembly | war_saddle ×1 |
+| `draft_harness` | unique | leather_strap ×6 + leather_panel ×2 + iron_buckle ×4 + iron_ring ×4 | `bench` | awl | assembly | draft_harness ×1 |
+| `ox_yoke` | unique | wooden_billet ×2 + leather_strap ×2 + iron_ring ×2 | `bench` | chisel | assembly | ox_yoke ×1 |
+
+---
+
+## 16. Fishing & trapping
+
+Rural livelihood. None of these exist today. All authorable with no
+engine changes beyond simple world interaction.
+
+### Rod & line
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `iron_fish_hook` | stack | iron_wire ×1 | anvil | hammer | attack | iron_fish_hook ×10 |
+| `bone_fish_hook` | stack | bone ×1 | `bench` | knife | attack | bone_fish_hook ×4 |
+| `fishing_line` | stack | linen_thread ×1 + beeswax ×1 | `bench` | — | attack | fishing_line ×4 |
+| `fishing_rod` | unique | wooden_haft_long ×1 + fishing_line ×1 + iron_fish_hook ×1 | `bench` | — | assembly | fishing_rod ×1 |
+| `feather_lure` | stack | iron_fish_hook ×1 + feather ×1 + linen_thread ×1 | `bench` | — | assembly | feather_lure ×4 |
+
+### Nets & traps
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `fishing_net` | unique | hemp_twine ×10 + wooden_dowel ×4 | `bench` (netting_bench) | — | assembly | fishing_net ×1 |
+| `cast_net` | unique | hemp_twine ×6 + iron_ring ×8 + lead_ingot ×1 | `bench` | — | assembly | cast_net ×1 |
+| `fish_basket_trap` | unique | willow_osier ×6 + hemp_twine ×1 | `bench` (basketry_form) | — | assembly | fish_basket_trap ×1 |
+| `eel_pot` | unique | willow_osier ×8 + hemp_twine ×2 | `bench` (basketry_form) | — | assembly | eel_pot ×1 |
+| `fish_spear` | unique | iron_strip ×2 + wooden_haft_long ×1 + leather_thong ×1 | anvil | hammer | assembly | fish_spear ×1 |
+
+### Land trapping
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `wire_snare` | stack | iron_wire ×1 + linen_thread ×1 | `bench` | — | attack | wire_snare ×4 |
+| `deadfall_trap` | unique | wooden_billet ×2 + wooden_dowel ×2 + rope ×1 | `bench` | — | assembly | deadfall_trap ×1 |
+| `pit_trap_covering` | unique | plank ×3 + linen_cloth ×1 + straw ×2 | `bench` | — | assembly | pit_trap_covering ×1 |
+| `leghold_trap_iron` | unique | iron_strip ×2 + iron_ring ×1 + iron_rivet ×2 | anvil | hammer | assembly | leghold_trap_iron ×1 |
+
+**Notes.** Traps are deployables — placed like workstations. A triggered
+deadfall or snare captures a small-game `raw_meat` / `raw_pelt` yield
+(future integration with NPC spawn system).
+
+### Bait
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `worm` | stack | — (dig from earth, tool: shovel) | — | — | — | gather |
+| `grain_bait` | stack | grain ×1 + water ×1 | `bench` | — | attack | grain_bait ×2 |
+
+---
+
+## 17. Religious items
+
+The altar, prayer mat, and writing desk are already workstations in
+the game's content. These are the accoutrements that sit on them.
+
+### Devotional
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `rosary_beads_wood` | unique | wooden_dowel ×1 + linen_thread ×1 | `bench` | knife | assembly | rosary_beads_wood ×1 |
+| `rosary_beads_amber` | unique | amber ×10 + linen_thread ×1 | `bench` | — | assembly | rosary_beads_amber ×1 |
+| `prayer_bell` | unique | brass_ingot ×2 + wooden_haft_short ×1 | anvil | hammer | assembly | prayer_bell ×1 |
+| `wooden_altar_cross` | unique | plank ×2 + hide_glue ×1 | `bench` | saw / chisel | assembly | wooden_altar_cross ×1 |
+| `iron_altar_cross` | unique | iron_strip ×3 + charcoal ×1 | anvil | hammer | assembly | iron_altar_cross ×1 |
+| `silver_altar_cross` | unique | silver_sheet ×2 + wooden_dowel ×1 | anvil | hammer | assembly | silver_altar_cross ×1 |
+| `painted_icon` | unique | plank ×1 + gesso ×1 + pigment_set ×1 + beeswax ×1 | `bench` (scribe_desk) | brush | assembly | painted_icon ×1 |
+| `illuminated_prayer_tome` | unique | blank_tome ×1 + oak_gall_ink ×1 + gold_leaf ×1 + cinnabar_ink ×1 | `bench` (scribe_desk) | quill | assembly | illuminated_prayer_tome ×1 |
+| `censer_brass` | unique | brass_ingot ×2 + iron_chain_link ×4 + charcoal ×1 | anvil | hammer | assembly | censer_brass ×1 |
+| `incense_cone` | stack | pine_resin ×1 + herb_rosemary ×1 + beeswax ×1 | `bench` | — | attack | incense_cone ×6 |
+| `holy_water_vial` | stack | water ×1 + salt ×1 | `bench` (altar) | — | time / 100 | holy_water_vial ×1 |
+| `reliquary_small` | unique | silver_sheet ×2 + wooden_dowel ×2 + linen_cloth ×1 | `bench` | hammer | assembly | reliquary_small ×1 |
+| `prayer_mat` | unique | wool_cloth ×2 + wool_thread ×1 | `bench` | needle | assembly | prayer_mat ×1 |
+| `pilgrim_badge_tin` | stack | lead_sheet ×1 + tin_ore ×1 | anvil | hammer | attack | pilgrim_badge_tin ×8 |
+| `monastic_habit` | unique | wool_cloth ×4 + rope ×1 + iron_clasp ×1 | `bench` | needle | assembly | monastic_habit ×1 |
+| `holy_symbol` | unique | silver_sheet ×1 + leather_thong ×1 | `bench` | hammer | assembly | holy_symbol ×1 |
+
+**Notes.** `amber` is a gatherable coastal primitive not listed in §1 —
+add when amber-producing biomes are authored. `gesso` and `pigment_set`
+are alchemical pre-mixes — see §12. Gold leaf is authored as a proposed
+alchemical product (hammer gold ingot thin; stack output).
+
+---
+
+## 18. Farming & gardening
+
+Extends the existing tools in §4 with the seed / animal-production
+loop that actually drives cultivation.
+
+### Seeds
+
+| id | Kind | Source | Notes |
+|---|---|---|---|
+| `grain_seed` | stack | Reserved from grain harvest (byproduct of threshing — 1 in 20) | Plant at tilled_cell to grow grain node |
+| `rye_seed` | stack | As above for rye | |
+| `barley_seed` | stack | As above for barley | |
+| `oat_seed` | stack | As above for oats | |
+| `flax_seed` | stack | Reserved from flax harvest | Tilled only |
+| `hemp_seed` | stack | Reserved from hemp harvest | Tilled only |
+| `apple_pip` | stack | Apple eaten / pressed | Plant → sapling → mature tree over seasons |
+| `grape_cutting` | stack | Vineyard prune | Vine propagation |
+| `herb_seed_mix` | stack | Any herb gathering | Propagate herb patches |
+| `vegetable_seeds` | stack | Vegetable gather byproduct | Mixed; drop from turnip/cabbage/onion nodes |
+
+**Notes.** Farming-as-a-cycle is not today a Voxim system — tilled soil,
+growth timers, season gating. Seed items can be authored as inventory-only
+items immediately (used by future farming); growth itself needs engine
+work.
+
+### Farming implements (extending §4)
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `ard_plough` | unique | wooden_billet ×2 + iron_strip ×1 + leather_strap ×2 | `bench` | — | assembly | ard_plough ×1 |
+| `heavy_plough` | unique | wooden_billet ×3 + iron_sheet ×1 + iron_strip ×2 + leather_strap ×2 + iron_nail ×6 | `bench` | hammer | assembly | heavy_plough ×1 |
+| `wooden_harrow` | unique | plank ×3 + wooden_dowel ×8 + leather_strap ×2 | `bench` | — | assembly | wooden_harrow ×1 |
+| `iron_tined_harrow` | unique | wooden_harrow ×1 + iron_spike ×12 | anvil | hammer | assembly | iron_tined_harrow ×1 |
+| `seed_basket` | unique | willow_osier ×4 + leather_strap ×1 | `bench` (basketry_form) | — | assembly | seed_basket ×1 |
+| `grain_cradle_scythe` | unique | scythe ×1 + wooden_dowel ×5 + linen_thread ×1 | `bench` | — | assembly | grain_cradle_scythe ×1 |
+| `threshing_flail` | unique | wooden_haft_long ×1 + wooden_haft_short ×1 + leather_thong ×2 | `bench` | — | assembly | threshing_flail ×1 |
+| `winnowing_basket` | unique | willow_osier ×3 | `bench` (basketry_form) | — | assembly | winnowing_basket ×1 |
+
+### Livestock accessories
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `milk_pail_wood` | unique | barrel_stave ×4 + iron_strip ×1 + leather_strap ×1 | `bench` (cooper) | — | assembly | milk_pail_wood ×1 |
+| `milking_stool` | unique | plank ×1 + wooden_dowel ×3 | `bench` | — | assembly | milking_stool ×1 |
+| `butter_crock` | unique | clay ×2 | `loom_device` (potters_wheel) + `kiln` | — | time | butter_crock ×1 |
+| `feed_trough` | unique | plank ×4 + iron_nail ×6 | `bench` | hammer | assembly | feed_trough ×1 |
+| `chicken_coop_frame` | unique | plank ×6 + iron_nail ×12 + iron_hinge ×1 | `bench` | hammer | assembly | chicken_coop_frame ×1 |
+| `beehive_skep` | unique | willow_osier ×6 + straw ×4 | `bench` (basketry_form) | — | assembly | beehive_skep ×1 |
+
+**Notes.** `beehive_skep` is a domesticated honey-producing deployable —
+replaces the wild `honey_comb` node as a sustainable source. Needs
+entity-type tied to honey production over time (simple timer works).
+
+---
+
+## 19. Construction finishing
+
+Thatch, plaster, whitewash, wattle-and-daub. What turns a
+blueprint-built skeleton into a weatherproof dwelling.
+
+### Roofing
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `thatch_bundle` | stack | straw ×4 + hemp_twine ×1 | `bench` | — | attack | thatch_bundle ×1 |
+| `reed_bundle` | stack | reed ×4 + hemp_twine ×1 | `bench` | — | attack | reed_bundle ×1 |
+| `wooden_shingle` | stack | wooden_billet ×1 | `bench` (riving_brake) | froe | attack | wooden_shingle ×6 |
+| `oak_shake` | stack | oak_wood ×1 | `bench` (riving_brake) | froe | attack | oak_shake ×6 |
+| `slate_tile` | stack | slate_block ×1 | `bench` (mason_bench) | chisel | attack | slate_tile ×4 |
+
+**Notes.** `slate_block` is a new primitive proposal — gatherable in
+mountain regions with splittable stone. Rivable grain is the requirement;
+where present, slate tiles are the weatherproof premium roofing.
+
+### Plasters and washes
+
+| id | Kind | Recipe | Station | Step | Ticks | Output |
+|---|---|---|---|---|---|---|
+| `lime_plaster` | stack | slaked_lime ×2 + sand ×3 + hemp_twine ×1 | `vat` (mortar trough) | time | 200 | lime_plaster ×4 |
+| `clay_plaster` | stack | clay ×2 + straw ×2 + water ×1 | `vat` | time | 300 | clay_plaster ×3 |
+| `whitewash` | stack | slaked_lime ×1 + water ×2 + salt ×1 | `cauldron` | time | 200 | whitewash ×3 |
+| `limewash_paint` | stack | whitewash ×2 + pigment_set ×1 | `cauldron` | time | 100 | limewash_paint ×2 |
+| `gesso` | stack | slaked_lime ×1 + hide_glue ×1 + water ×1 | `cauldron` | time | 300 | gesso ×2 |
+
+### Wattle and daub
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `willow_wattle_panel` | unique | willow_osier ×8 + wooden_dowel ×3 | `bench` (basketry_form) | — | assembly | willow_wattle_panel ×1 |
+| `daub_mix` | stack | clay ×2 + straw ×3 + dung ×1 + water ×1 | `vat` | time | 400 | daub_mix ×4 |
+| `wattle_and_daub_wall` | (blueprint) | willow_wattle_panel ×2 + daub_mix ×4 | `bench` | hammer | assembly | wall_panel_wad ×1 |
+
+### Wooden construction assemblies
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `timber_frame_post` | unique | wooden_billet ×3 + iron_nail ×4 | `bench` | adze | assembly | timber_frame_post ×1 |
+| `roof_beam` | unique | wooden_billet ×4 + iron_nail ×6 | `bench` | adze | assembly | roof_beam ×1 |
+| `wooden_window_frame` | unique | plank ×2 + iron_nail ×6 | `bench` | hammer | assembly | wooden_window_frame ×1 |
+| `wooden_door_panel` | unique | plank ×4 + iron_nail ×8 + iron_hinge ×2 + iron_latch ×1 | `bench` | hammer | assembly | wooden_door_panel ×1 |
+| `studded_wooden_door` | unique | wooden_door_panel ×1 + iron_nail ×20 + iron_strip ×2 | `bench` | hammer | assembly | studded_wooden_door ×1 |
+| `iron_reinforced_door` | unique | wooden_door_panel ×1 + iron_sheet ×2 + iron_rivet ×16 | anvil | hammer | assembly | iron_reinforced_door ×1 |
+
+---
+
+## 20. Locks, keys, security
+
+Locksmith trade. Ties directly into the SPEC's territorial-control
+and dynasty-library-protection gameplay.
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `iron_key_blank` | stack | iron_ingot ×1 | anvil | hammer | attack | iron_key_blank ×4 |
+| `iron_key` | unique | iron_key_blank ×1 + charcoal ×1 | anvil | hammer | assembly | iron_key ×1 |
+| `iron_lock_mechanism` | unique | iron_ingot ×2 + iron_wire ×2 + iron_rivet ×4 | anvil | hammer | assembly | iron_lock_mechanism ×1 |
+| `iron_padlock` | unique | iron_lock_mechanism ×1 + iron_sheet ×1 + iron_shackle ×1 | anvil | hammer | assembly | iron_padlock ×1 |
+| `iron_shackle` | stack | iron_strip ×2 | anvil | hammer | attack | iron_shackle ×2 |
+| `iron_door_lock` | unique | iron_lock_mechanism ×1 + iron_sheet ×2 + iron_key ×1 | anvil | hammer | assembly | iron_door_lock ×1 |
+| `chest_lock_assembly` | unique | iron_lock_mechanism ×1 + iron_hinge ×1 + iron_key ×1 | anvil | hammer | assembly | chest_lock_assembly ×1 |
+| `strongbox` | unique | iron_bound_chest ×1 + chest_lock_assembly ×1 + iron_rivet ×8 | anvil | hammer | assembly | strongbox ×1 |
+| `iron_chains` | stack | iron_chain_link ×10 | anvil | hammer | assembly | iron_chains ×1 |
+| `iron_manacles` | unique | iron_shackle ×2 + iron_chain_link ×6 + iron_key ×1 | anvil | hammer | assembly | iron_manacles ×1 |
+
+**Notes.** Each `iron_key` is unique (entity with Durability / instance
+state). A lock-and-key pair share a key-ID (future: `Inscribed`-like
+component holding a match code). GAP-PAYLOAD-ITEM applies — today the
+match is flattened to "any iron_key opens any iron_door_lock." Flag and
+ship.
+
+---
+
+## 21. Apothecary & herbal remedies
+
+The herbal primitives (§1) are currently dead-ends — no products.
+Completing this section links them to gameplay (injuries per SPEC §Injuries),
+survival, and the supernatural-as-alchemy tradition.
+
+### Preparation tools / intermediates
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `dried_herb_bundle` | stack | any_herb ×3 + linen_thread ×1 | `rack` | — | time / 1200 | dried_herb_bundle ×1 |
+| `herb_powder` | stack | dried_herb_bundle ×1 | `millstone` (mortar_and_pestle) | — | attack | herb_powder ×2 |
+| `distillate_base` | stack | aqua_vitae ×1 + herb_powder ×2 | `vat` | time | 1200 | distillate_base ×1 |
+
+### Internal remedies
+
+| id | Kind | Recipe | Station | Step | Ticks | Output |
+|---|---|---|---|---|---|---|
+| `willowbark_tincture` | stack | herb_willowbark ×3 + aqua_vitae ×1 | `vat` | time | 2400 | willowbark_tincture ×2 |
+| `sage_infusion` | stack | herb_sage ×2 + water ×1 | `cauldron` | time | 150 | sage_infusion ×2 |
+| `chamomile_tea` | stack | herb_chamomile ×2 + water ×1 + honey ×1 | `cauldron` | time | 100 | chamomile_tea ×2 |
+| `mint_infusion` | stack | herb_mint ×2 + water ×1 | `cauldron` | time | 100 | mint_infusion ×2 |
+| `rosemary_tonic` | stack | herb_rosemary ×3 + aqua_vitae ×1 | `vat` | time | 2000 | rosemary_tonic ×2 |
+| `mullein_cough_syrup` | stack | herb_mullein ×3 + honey ×2 + water ×1 | `cauldron` | time | 300 | mullein_cough_syrup ×2 |
+| `sleeping_draught` | stack | herb_chamomile ×2 + aqua_vitae ×1 + honey ×1 | `vat` | time | 1500 | sleeping_draught ×1 |
+| `fever_draught` | stack | herb_willowbark ×2 + herb_yarrow ×1 + water ×1 | `cauldron` | time | 400 | fever_draught ×2 |
+
+### Topical remedies
+
+| id | Kind | Recipe | Station | Step | Ticks | Output |
+|---|---|---|---|---|---|---|
+| `yarrow_poultice` | stack | herb_yarrow ×2 + linen_strip ×1 + water ×1 | `bench` | attack | 0 | yarrow_poultice ×1 |
+| `comfrey_salve` | stack | herb_comfrey_root ×2 + tallow ×1 + beeswax ×1 | `cauldron` | time | 600 | comfrey_salve ×2 |
+| `rosemary_liniment` | stack | herb_rosemary ×2 + oil ×1 | `cauldron` | time | 400 | rosemary_liniment ×2 |
+| `wound_wash` | stack | herb_yarrow ×1 + vinegar ×1 + water ×1 | `cauldron` | time | 200 | wound_wash ×2 |
+| `burn_balm` | stack | tallow ×1 + beeswax ×1 + herb_comfrey ×1 | `cauldron` | time | 300 | burn_balm ×2 |
+| `antiseptic_ointment` | stack | pine_tar ×1 + tallow ×1 + herb_yarrow ×1 | `cauldron` | time | 400 | antiseptic_ointment ×2 |
+
+### Applied bandages
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `medicated_bandage` | stack | linen_bandage ×1 + yarrow_poultice ×1 | `bench` | — | assembly | medicated_bandage ×1 |
+| `burn_dressing` | stack | linen_bandage ×1 + burn_balm ×1 | `bench` | — | assembly | burn_dressing ×1 |
+| `splint_set` | unique | wooden_dowel ×4 + linen_strip ×2 + comfrey_salve ×1 | `bench` | — | assembly | splint_set ×1 |
+
+**Notes.** Applying a medicated_bandage to an entity with an Injury
+component (per SPEC injury stub) removes or mitigates the debuff. The
+effect handler registry (see packages/tile-server/src/effects/) is where
+heal-over-time effects attach — matches existing `health_effect` path.
+
+---
+
+## 22. Instruments
+
+Bardic / social gameplay. All are assemblies of existing components
+(wood + gut/sinew string + metal fittings) — ship today.
+
+### Wind
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `reed_pipe` | unique | reed ×1 | `bench` | knife | assembly | reed_pipe ×1 |
+| `wooden_flute` | unique | wooden_billet ×1 + beeswax ×1 | `bench` (pole_lathe) | drill | assembly | wooden_flute ×1 |
+| `horn_trumpet` | unique | horn ×1 + brass_ingot ×1 | `bench` | — | assembly | horn_trumpet ×1 |
+| `bagpipes` | unique | wooden_flute ×2 + reed_pipe ×1 + leather_panel ×2 + linen_thread ×2 + pine_tar ×1 | `bench` | awl | assembly | bagpipes ×1 |
+
+### String
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `wooden_lute_body` | unique | wooden_billet ×3 + hide_glue ×1 | `bench` | chisel | assembly | wooden_lute_body ×1 |
+| `lute` | unique | wooden_lute_body ×1 + gut_string ×4 + wooden_dowel ×4 + hide_glue ×1 | `bench` | — | assembly | lute ×1 |
+| `wooden_harp_frame` | unique | wooden_billet ×3 + hide_glue ×1 | `bench` | chisel | assembly | wooden_harp_frame ×1 |
+| `harp` | unique | wooden_harp_frame ×1 + gut_string ×6 + iron_nail ×6 | `bench` | — | assembly | harp ×1 |
+| `wooden_fiddle_body` | unique | wooden_billet ×2 + hide_glue ×1 | `bench` | chisel | assembly | wooden_fiddle_body ×1 |
+| `fiddle` | unique | wooden_fiddle_body ×1 + gut_string ×4 + wooden_dowel ×4 | `bench` | — | assembly | fiddle ×1 |
+| `fiddle_bow` | unique | wooden_haft_short ×1 + horsehair ×20 + pine_resin ×1 | `bench` | — | assembly | fiddle_bow ×1 |
+| `psaltery` | unique | plank ×2 + gut_string ×10 + iron_nail ×10 | `bench` | — | assembly | psaltery ×1 |
+
+### Percussion
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `wooden_drum_frame` | unique | plank ×2 + iron_nail ×4 | `bench` | hammer | assembly | wooden_drum_frame ×1 |
+| `frame_drum` | unique | wooden_drum_frame ×1 + tanned_leather ×1 + leather_thong ×4 | `bench` | — | assembly | frame_drum ×1 |
+| `tabor_drum` | unique | wooden_billet ×3 + tanned_leather ×2 + hemp_twine ×4 | `bench` (cooper) | — | assembly | tabor_drum ×1 |
+| `tambourine` | unique | wooden_drum_frame ×1 + tanned_leather ×1 + iron_ring ×6 + leather_thong ×2 | `bench` | — | assembly | tambourine ×1 |
+| `hand_bell` | unique | brass_ingot ×1 + wooden_haft_short ×1 | anvil | hammer | assembly | hand_bell ×1 |
+| `cow_bell` | unique | iron_sheet ×1 + iron_strip ×1 | anvil | hammer | assembly | cow_bell ×1 |
+
+**Notes.** `horn_trumpet` is the battlefield blast horn. `hand_bell` is
+small (no lost-wax needed). Church bells and founder-cast brass bells
+are deferred (GAP-CONSUMED-STATION — lost-wax mould).
+
+---
+
+## 23. Struck coinage & administrative
+
+### Coinage
+
+Currency. Struck from blanks (see §3a metal components) with a die.
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `copper_coin_die` | unique | iron_ingot ×2 + charcoal ×2 | anvil | smithing_hammer | assembly | copper_coin_die ×1 |
+| `silver_coin_die` | unique | iron_ingot ×2 + charcoal ×2 | anvil | smithing_hammer | assembly | silver_coin_die ×1 |
+| `gold_coin_die` | unique | iron_ingot ×2 + charcoal ×2 | anvil | smithing_hammer | assembly | gold_coin_die ×1 |
+| `copper_coin` | stack | copper_coin_blank ×1 + copper_coin_die ×1 (tool) | anvil | smithing_hammer | attack | copper_coin ×1 |
+| `silver_coin` | stack | silver_coin_blank ×1 + silver_coin_die ×1 (tool) | anvil | smithing_hammer | attack | silver_coin ×1 |
+| `gold_coin` | stack | gold_coin_blank ×1 + gold_coin_die ×1 (tool) | anvil | smithing_hammer | attack | gold_coin ×1 |
+| `copper_penny` | stack | copper_coin ×1 | anvil | — | attack | alias |
+| `silver_denier` | stack | silver_coin ×1 | anvil | — | attack | alias |
+
+**Notes.** The coin die is a durable tool (unique item with Durability).
+The blank is an input, the die is a tool, the swing produces the struck
+coin. No engine changes required. `copper_penny` / `silver_denier` are
+**aliases** — the same items with a period-appropriate name when shown
+in UI. Authoring should pick one canonical id per material tier.
+
+### Seals & stationery
+
+| id | Kind | Recipe | Station | Tool | Step | Output |
+|---|---|---|---|---|---|---|
+| `signet_ring` | unique | silver_ingot ×1 + charcoal ×1 | anvil | smithing_hammer | assembly | signet_ring ×1 |
+| `wax_seal` | stack | beeswax ×1 + cinnabar_pigment ×1 + signet_ring ×1 (tool) | `bench` | — | attack | wax_seal ×3 |
+| `sealed_letter_carrier` | unique | parchment ×1 + oak_gall_ink ×1 + wax_seal ×1 | `bench` (scribe_desk) | quill | assembly | sealed_letter_carrier ×1 |
+| `ink_well_ceramic` | unique | clay ×1 | `loom_device` (potters_wheel) + `kiln` | — | time / 1500 | ink_well_ceramic ×1 |
+| `inkwell_horn` | unique | horn ×1 | `bench` | knife | assembly | inkwell_horn ×1 |
+| `scroll_case_leather` | unique | leather_panel ×2 + iron_buckle ×1 + linen_thread ×1 | `bench` | awl | assembly | scroll_case_leather ×1 |
+| `scribe_kit_travelling` | unique | scroll_case_leather ×1 + inkwell_horn ×1 + quill ×3 + parchment ×6 | `bench` | — | assembly | scribe_kit_travelling ×1 |
+| `gold_leaf` | stack | gold_ingot ×1 | anvil | smithing_hammer | attack | gold_leaf ×20 |
+| `pigment_set` | unique | leather_pouch ×1 + red_ochre ×1 + lamp_black ×1 + madder_red ×1 + weld_yellow ×1 | `bench` | — | assembly | pigment_set ×1 |
+| `weld_yellow` | stack | weld_plant ×2 + alum_mordant ×1 | `cauldron` | time / 400 | — | weld_yellow ×2 |
+
+---
+
+## 24. Byproducts
 
 Emerge from other recipes. Listed for cross-chain economic linkage.
 
@@ -1386,28 +1896,77 @@ Emerge from other recipes. Listed for cross-chain economic linkage.
 
 ## Closing notes
 
-**Item count.** ~270 items across 14 sections. Component tier (§3) carries
-~80; assemblies (§4–6) carry ~100. Previous version had ~70 total.
+**Item count.** ~680 distinct item ids across 24 sections, covering every
+volume medieval artisan trade. Component tier (§3) carries ~80; T4
+assemblies (§4–6) carry ~110; trade-specific sections §14–§23 carry
+~190 more; byproducts (§24) another ~25; primitives (§1) ~70; primary
+materials (§2) ~40; food / alchemical / containers / ceramics across
+§7–§13 another ~160. Original catalogue was ~70 items; the
+pre-component-tier revision was ~270.
+
+**Trade coverage.** Every volume medieval trade is represented:
+
+| Trade | Primary section(s) |
+|---|---|
+| Weaver / fuller / dyer | §2 textile first-layer, §9 finished cloth, §12 dyes |
+| Tailor / hosier / glover / cap-maker | §3d textile components, §9 clothing |
+| Blacksmith / cutler / nailor / wire-drawer | §3a metal components |
+| Swordsmith / armourer | §5 weapons, §6 armour |
+| Tanner / tawyer / currier / cobbler / parchmenter | §2 leather first-layer, §3c leather components, §9 boots, §10 parchment |
+| Carpenter / joiner / turner / cooper | §3b wood components, §14 furniture, §7 containers, §19 timber framing |
+| Bowyer / fletcher | §5 bows + arrows |
+| Potter / tilemaker / brickmaker | §13 ceramics, §3f ceramic components |
+| Baker / miller / brewer / butcher / cheesemaker / chandler / soaper / apiarist | §8 food, §11 lighting, §12 soaps |
+| Lime-burner / charcoal-burner / pitch-boiler | §2 primary materials |
+| Wheelwright / cartwright | §15 transport |
+| Saddler | §15 horse tack |
+| Locksmith | §20 locks, keys, security |
+| Apothecary / herbalist | §21 apothecary |
+| Instrument-maker | §22 instruments |
+| Moneyer | §23 coinage |
+| Thatcher / plasterer | §19 construction finishing |
+| Scribe / bookbinder / illuminator | §10 lore physicals, §23 administrative |
+| Fisher / trapper | §16 fishing & trapping |
+| Goldsmith / silversmith | §3a metal components, §23 seals / signet |
+
+**Deferred trades** (engine-gap blocked): bellfounder (lost-wax,
+GAP-CONSUMED-STATION), glass-blower / glazier (GAP-STATE), shipwright
+(scope). Flagged per-item.
 
 **Authoring order (dependency-respecting, first wave):**
 
 1. Primitives — all gathering nodes exist today or are straightforward.
-2. Primary materials — plank, stone_block, iron_ingot, copper_ingot, clay-ware base, quicklime, salt, charcoal, tallow, lye. Most have existing one-step stubs; the bloomery and charcoal chains replace stubs.
-3. Wood components — hafts, shafts, staves, pommels, dowels, shield blanks, barrel staves.
-4. Metal components — blades (all tiers), heads (axe, spear, hammer, etc.), hardware (nails, hinges, rivets, rings, wire, sheet), armour plates.
-5. Leather components — after the leather chain (§Leather in this doc).
+2. Primary materials — plank, stone_block, iron_ingot, copper_ingot,
+   clay-ware base, quicklime, salt, charcoal, tallow, lye.
+3. Wood components — hafts, shafts, staves, pommels, dowels, shield
+   blanks, barrel staves, wheel hubs, spokes.
+4. Metal components — blades (all tiers), heads (axe, spear, hammer,
+   etc.), hardware (nails, hinges, rivets, rings, wire, sheet), armour
+   plates, horseshoes.
+5. Leather components — after the leather chain.
 6. Cord / thread — after linen/wool chains.
 7. Tools — assembly from the above.
 8. Weapons — assembly; bow / crossbow depend on cord.
-9. Armour — assembly, depends on all of the above.
+9. Armour — assembly.
 10. Food and drink.
 11. Containers.
-12. Lore physicals.
-13. Light.
-14. Alchemical / pigments (mostly blocked on GAP-STATE/GAP-ENV).
+12. Furniture — biggest single gap before; unblocks "home" feel.
+13. Transport (wheels → cart → wagon); horse tack.
+14. Construction finishing (thatch, shingles, plaster, wattle-and-daub,
+    doors) — unblocks richer blueprint variety.
+15. Locks, keys, strongboxes — unblocks library/treasury security per
+    SPEC.
+16. Lighting and lore physicals.
+17. Apothecary remedies — closes the loop on herb primitives and
+    SPEC injuries.
+18. Fishing & trapping — rural livelihood.
+19. Religious items.
+20. Instruments — social / bardic.
+21. Coinage — economy layer.
+22. Alchemical pigments (mostly GAP-blocked).
 
 **Multi-recipe principle honoured.** Items with historical alternatives
-have multiple recipes in the table:
+have multiple recipes:
 
 | Item | Paths |
 |---|---|
@@ -1419,20 +1978,51 @@ have multiple recipes in the table:
 | iron_blade_medium | direct hammer / full forge chain with quench + temper |
 | bowstring | linen / sinew / hemp / gut |
 | cured_meat | salt / smoke / air-dry |
-| bread | bread / rye / flatbread / sourdough |
+| bread | wheat / rye / flatbread / sourdough |
 | ale | barley / rye |
 | soap | curd / hard / fine |
 | candle | tallow / beeswax |
 | tanned_leather | bark / alum-taw |
 | dye | blue (woad/indigo) / red (madder) / yellow (weld) / brown (walnut) / purple (blue+red) |
+| wheel | wooden / iron-tyred |
+| saddle | riding / pack / war |
+| altar_cross | wood / iron / silver |
+| plough | ard / heavy |
+| mattress | straw / wool / feather |
+| shingle | wooden / oak / slate |
+| drum | frame / tabor / tambourine |
+| mortar | lime / clay; + lime_plaster / whitewash / gesso |
+| lock | padlock / door / strongbox |
+| poultice | yarrow / comfrey / burn balm |
+| infusion | sage / chamomile / mint / rosemary / willowbark |
 
-**Orthogonality multiplier.** The same `wooden_haft_medium` feeds sword,
-axe, pickaxe, hammer, mace, war-axe, adze, hoe. The same `leather_strap`
-feeds belts, backpacks, shields, helms, boots, armour. Component tier
-authorship is one-time; every assembly above leans on it.
+**Orthogonality multipliers (component → assembly reuse):**
+
+- `wooden_haft_medium` — sword, axe, pickaxe, hammer, mace, war-axe, adze, hoe
+- `wooden_haft_long` — spear, pike, glaive, halberd, scythe, pitchfork, flail, hoe, quarterstaff, cart-shafts
+- `wooden_haft_short` — knife, dagger, chisel, drill, froe, awl, lunellum, fish-spear, lute-neck (abstract), fiddle-bow
+- `leather_strap` — belt, saddle, harness, shield, helm, boot, armour, bridle, pouch
+- `leather_panel` — boots, gauntlets, book binding, satchel, tunic, sheath
+- `iron_ring` — mail, chain, net weight, chain armour, chain_link, cast_net, leghold trap
+- `iron_nail` — crate, chest, furniture, door, frame, barrel
+- `iron_strip` — sword tang, hinge, axle reinforcement, tyre, pickaxe wedge, key shaft
+- `linen_thread` — bowstring, sewing, bookbinding, bandage, net-tying, quillwrap
+- `brass_ingot` — bell, censer, horn_trumpet, hand_bell, cow_bell (iron variant), fittings
+
+Component-tier authorship is one-time; every assembly above leans on it.
 
 **Deferred from first wave** (need engine gaps):
-- Live woad vat, aged cheese, aqua_vitae, solar salt, stockfish, bleached_linen, verdigris, lead_white, saltpeter, mail-making at real scale.
+- Live woad vat, aged cheese, aqua_vitae, solar salt, stockfish, bleached_linen, verdigris, lead_white, saltpeter — GAP-STATE, GAP-ENV, GAP-CHECKPOINT.
+- Mail-making at real scale — GAP-BATCH.
+- Bell-founding (lost-wax) and glass blowing — GAP-CONSUMED-STATION / GAP-STATE.
+- Seasonal / farming cycle — engine lacks tilled-soil, growth timers, seasons.
+- Lock-and-key match codes — GAP-PAYLOAD-ITEM (works flattened today).
 
 These flagged with GAP-* per recipe so the engine work chooses targets
 by frequency.
+
+**Next move.** Author content bottom-up from the authoring order list.
+Each item is a `prefab.json` drop plus one or more `recipe.json` drops.
+The taxonomy in [CONSOLIDATION.md](CONSOLIDATION.md) limits the new
+workstation prefab count to ~12 for first wave; every recipe in this
+document maps to one of them.
