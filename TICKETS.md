@@ -388,7 +388,7 @@ in the simulation is either a compact stackable slot or an entity with its own
 components, and benchmark confirms the entity budget holds.
 
 ### T-118 · Unify deploy + place into one `PlacementSystem`
-Effort: M   Status: done   Commit: (this commit)
+Effort: M   Status: done   Commit: 8e7578f
 
 Two placement paths currently exist — `CraftingSystem._handleDeploy` (workstation
 deploy via `CommandType.DeployItem`) and `BuildingSystem._handlePlace` (blueprint
