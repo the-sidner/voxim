@@ -105,7 +105,7 @@ hit (stamina deducted, cooldown set, effect applied on the tick after impact);
 the system pipeline has one fewer cross-system call.
 
 ### T-120 · Split `CombatState` into presence-as-flag components
-Effort: M   Status: done   Commit: (this commit)
+Effort: M   Status: done   Commit: ac8f398
 
 `CombatState` packs five counters/flags into one always-present component —
 `blockHeldTicks`, `staggerTicksRemaining`, `counterReady`, `iFrameTicksRemaining`,
