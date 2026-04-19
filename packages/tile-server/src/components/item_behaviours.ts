@@ -300,8 +300,8 @@ export const MaterialSource = defineComponent({
 // Composed — item has named material slots; each slot accepts materials of
 // certain categories and contributes to derived stats. The slot *schema*
 // lives on this template component; per-instance parts data (which material
-// fills each slot on a specific item) lives in InventorySlot.parts today and
-// will migrate to an instance component on the item entity in Phase 4.
+// fills each slot on a specific item) will land as an instance component on
+// the item entity when material-axis derivation is turned on.
 // ---------------------------------------------------------------------------
 
 const composedSchema = v.object({
@@ -368,8 +368,8 @@ export const Composed = defineComponent({
 
 // ---------------------------------------------------------------------------
 // Stackable — marker component. Prefabs carrying this produce
-// { prefabId, quantity } inventory slots; prefabs without it (after Phase 3)
-// produce { entityId } slots backed by a real item entity.
+// { prefabId, quantity } inventory slots; prefabs without it produce
+// { entityId } slots backed by a real item entity.
 // ---------------------------------------------------------------------------
 
 const stackableSchema = v.object({});
@@ -417,9 +417,10 @@ export const Weight = defineComponent({
 });
 
 // ---------------------------------------------------------------------------
-// Renderable — visual model reference. Subsumes the current
-// Prefab.modelId / Prefab.modelScale top-level fields; those fields stay
-// functional through Phase 1 and are removed in Phase 2.
+// Renderable — visual model reference as a per-instance component. Not
+// read by spawnPrefab today (the top-level Prefab.modelId / modelScale
+// fields drive rendering via installVisualShell). Registered so prefabs
+// can opt into per-instance visual overrides when we need them.
 // ---------------------------------------------------------------------------
 
 const renderableSchema = v.object({

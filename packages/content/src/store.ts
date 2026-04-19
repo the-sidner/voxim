@@ -63,8 +63,10 @@ export interface ContentStore {
   /**
    * Derive the stat block for a prefab-based item.
    * Reads behaviour components (Weight, Armor, Edible, Illuminator, Tool, Swingable)
-   * from the prefab's components dict. The `parts` parameter is accepted for call-site
-   * compatibility but is not used in Phase 2 — material-axis stat derivation is deferred.
+   * from the prefab's components dict. The `parts` parameter is accepted for
+   * call-site compatibility but is not used today — material-axis stat
+   * derivation is deferred until Composed-based parts data lives on a per-
+   * instance component rather than on the inventory slot.
    *
    * `quality` (0–1, default 1.0) scales stats written by a crafting workstation's quality tier.
    * Pass `world.get(itemEntityId, QualityStamped)?.quality` at call sites that care about it.

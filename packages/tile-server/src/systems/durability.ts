@@ -1,6 +1,6 @@
 /**
  * DurabilitySystem — decrements Durability on equipped weapons each time they
- * are swung (T-117 Phase 4).
+ * are swung.
  *
  * Fires on the first tick of the active swing phase (same gate used by
  * TerrainDigSystem and ActionSystem) so each swing costs exactly one durability

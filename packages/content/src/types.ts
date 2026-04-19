@@ -684,8 +684,10 @@ export interface PrefabPlayerData {
  * `spawnPrefab` interprets them. The rest are component data, written
  * to the entity as-is.
  *
- * Prefab inheritance (`extends`) lands in Phase 2 of the prefab plan;
- * the field is reserved here but not yet honoured.
+ * Prefab inheritance (`extends`) is honoured by the loader — the chain is
+ * resolved root-to-leaf and `components` (plus top-level `modelId` /
+ * `modelScale`) are deep-merged so child prefabs can override specific keys
+ * without re-declaring the whole tree.
  */
 export interface Prefab {
   id: string;

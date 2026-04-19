@@ -78,6 +78,64 @@ Add a `treat_injury` recipe type to the supernatural/alchemy crafting stations. 
 removes the injury component from the target entity.
 Done when: the correct crafting interaction removes an active injury component.
 
+### T-119 · Replace `ResolveStrikePort` with a deferred `StrikeLanded` event
+Effort: S   Status: todo
+
+`HealthHitHandler` calls `this.strikes.resolveStrike(...)` synchronously during
+damage resolution — a cross-system reach through a "port" interface. The docstring
+acknowledges it violates the "deferred events for cross-system reactions"
+invariant. Replace with an event.
+
+Shape:
+  - Add `TileEvents.StrikeLanded { casterId: EntityId; slot: number; targetId: EntityId }`
+    to the tile event surface in `@voxim/protocol` (server-only — does not
+    cross the wire as a GameEvent).
+  - `HealthHitHandler` publishes the event to its `EventEmitter` when a hit
+    connects and `SkillInProgress.pendingSkillVerb` starts with `"strike:"`.
+  - `SkillSystem` subscribes to it in a new `subscribe(bus)` hook called once
+    at construction; the subscriber calls the existing `resolveStrike` method.
+    Writes land in the next tick's changeset — 50ms at 20Hz, below perceptible
+    for stamina/cooldown/effect feedback.
+  - Delete `events/resolve_strike.ts` and the `ResolveStrikePort` interface.
+    `SkillSystem` no longer implements it; `HealthHitHandler`'s constructor
+    drops the `strikes` parameter.
+
+Done when: no file references `ResolveStrikePort`; strike skills still fire on
+hit (stamina deducted, cooldown set, effect applied on the tick after impact);
+the system pipeline has one fewer cross-system call.
+
+### T-120 · Split `CombatState` into presence-as-flag components
+Effort: M   Status: todo
+
+`CombatState` packs five counters/flags into one always-present component —
+`blockHeldTicks`, `staggerTicksRemaining`, `counterReady`, `iFrameTicksRemaining`,
+`dodgeCooldownTicks`. Most entities have zero values for most counters most
+of the time, but the component ticks through the delta stream whenever any
+one changes. Follow `SkillInProgress`'s canonical shape: presence = state.
+
+Split into:
+  - `Staggered { ticksRemaining: u8 }` — present only during stagger.
+  - `CounterReady` — zero-data marker; present after a parry until the next hit.
+  - `IFrameActive { ticksRemaining: u8 }` — present during dodge i-frames.
+  - `BlockHeld { ticks: u16 }` — present while ACTION_BLOCK is held;
+    counts ticks for parry-window detection.
+  - `DodgeCooldown { ticksRemaining: u8 }` — present during cooldown.
+
+DodgeSystem, ActionSystem, HealthHitHandler, and the dodge components already
+read `CombatState` — each read site updates to `world.get/has` on the
+specific component. New components added to `NETWORKED_DEFS` (or server-only
+where clients don't need them — iFrame and dodge cooldown are probably
+server-only; stagger and counterReady likely need to reach the client for
+animation).
+
+Delete `CombatState`, its codec, and the `combatState` entry in `NETWORKED_DEFS`
+in the same commit. Assign fresh `ComponentType` wire IDs for the new
+networked components; mark the old `combatState` slot retired with a comment.
+
+Done when: `grep -r "CombatState\|combatState" packages/` returns zero hits
+outside the retired-slot comment and migration notes; combat still produces
+correct stagger, counter, i-frame, block-timing, and dodge-cooldown behaviour.
+
 ---
 
 ## Networking & Client Prediction
@@ -303,7 +361,7 @@ Phases:
 Done when: research/crafting/ contains the framing doc, one file per category, and a summary
 extracting the verb vocabulary, workstation inventory, and engine-gap list across all chains.
 
-### T-117 · Items-as-entities refactor (`ITEMS_AS_ENTITIES_PLAN.md`)
+### T-117 · Items-as-entities refactor
 Effort: L   Status: done   Commit (Ph1): 26a4546   Commit (Ph2): 46d638b   Commit (Ph3): 2dc9fd6   Commit (Ph4): 690de19
 
 Collapse `ItemTemplate` into `Prefab`. Move every item behaviour onto composable
@@ -313,8 +371,6 @@ Make every unique (non-stackable) item a World entity carried by inventory /
 equipment entity-refs; stackables stay as `{ prefabId, quantity }` compact
 slots. Instance state (parts, durability, quality, inscription, history) lives
 as components on the item entity.
-
-Full plan and per-phase acceptance criteria in `ITEMS_AS_ENTITIES_PLAN.md`.
 
 Phases:
   1. Template component vocabulary (additive, non-breaking) — DONE 26a4546
@@ -330,6 +386,36 @@ Checkpoint sign-off gates each breaking phase.
 Done when: `grep -r "ItemTemplate" packages/` returns zero matches, every item
 in the simulation is either a compact stackable slot or an entity with its own
 components, and benchmark confirms the entity budget holds.
+
+### T-118 · Unify deploy + place into one `PlacementSystem`
+Effort: M   Status: todo
+
+Two placement paths currently exist — `CraftingSystem._handleDeploy` (workstation
+deploy via `CommandType.DeployItem`) and `BuildingSystem._handlePlace` (blueprint
+placement via `CommandType.PlaceBlueprint`). They do the same thing: validate,
+spawn a prefab, patch runtime coordinates, fire side-effects. Collapse them.
+
+Target shape:
+  - One `PlacementSystem` in `systems/placement.ts`.
+  - One `CommandType.Place { prefabId, worldX, worldY, fromInventorySlot? }`.
+  - Placement rules live on the target prefab, not on the command handler.
+    Extend the existing `Deployable` component (or add a sibling `Placeable`)
+    to carry: `alignment: "forward-facing" | "cell-aligned"`, `consumesFromInventory: boolean`,
+    `requiresToolType?: string`, `reach?: number`. Blueprints declare these
+    too — no blueprint-specific branch.
+  - Hearth anchoring becomes an event subscriber. PlacementSystem publishes
+    `TileEvents.EntityDeployed { entityId, placerId, prefabId }`; an
+    `AccountHearthAnchor` subscriber (registered next to EventRouter)
+    reacts when the deployed prefab carries `Hearth`. Removes `accountClient`
+    from `CraftingSystem`'s constructor.
+  - Delete `CommandType.DeployItem` and `CommandType.PlaceBlueprint` in the
+    same commit; rewrite the protocol enum slot comment.
+  - Blueprint construction (hit-driven) stays in `BlueprintHitHandler`; this
+    refactor only unifies the spawn path.
+
+Done when: `CraftingSystem._handleDeploy` and `BuildingSystem._handlePlace`
+are gone, both flows run through `PlacementSystem.handlePlace`, and placing
+a hearth still updates the player's account anchor via the new subscriber.
 
 ---
 
@@ -1120,12 +1206,11 @@ is.register({
 });
 ```
 
-## Registry Refactor (REGISTRY_REFACTOR_PLAN.md)
+## Registry Refactor
 
 Multi-phase scaffolding effort to move string-dispatch in systems onto a unified
 registry pattern. Each phase ships with deletion of replaced code — no
-deprecation shims, feature flags, or legacy fallbacks. See
-`REGISTRY_REFACTOR_PLAN.md` at repo root for full plan.
+deprecation shims, feature flags, or legacy fallbacks.
 
 ### T-101 · Phase 0.2 — generic `Registry<T>` helper in `@voxim/engine`
 Effort: S   Status: done

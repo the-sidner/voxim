@@ -1,9 +1,9 @@
 /**
- * Instance-lifetime components — Phase 4 of T-117.
+ * Instance-lifetime components.
  *
- * These components live on unique item entities (the `{ kind: "unique", entityId }`
- * slot introduced in Phase 3). They give each item its own mutable identity:
- * wear, authorship, quality, and provenance.
+ * These components live on unique item entities (the
+ * `{ kind: "unique", entityId }` inventory slot form). They give each item
+ * its own mutable identity: wear, authorship, quality, and provenance.
  *
  * Durability / Inscribed / QualityStamped are networked — the client needs
  * them to display durability bars, read tome fragments, and apply the

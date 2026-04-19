@@ -123,8 +123,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   WorkstationBuffer,
   LightEmitter,
   DarknessModifier,
-  // ── Instance-lifetime components (T-117 Phase 4) — held unique items stream
-  //    to the holder's session via AoI inclusion in aoi.ts.
+  // ── Instance-lifetime components — held unique items stream to the
+  //    holder's session via AoI inclusion in aoi.ts.
   Durability,
   Inscribed,
   QualityStamped,
@@ -158,10 +158,10 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // ── Instance-lifetime components (server-only) ──────────────────────────
   History,
   Owned,
-  // ── Item-behaviour template defs (T-117 Phase 1) ─────────────────────────
+  // ── Item-behaviour template defs ─────────────────────────────────────────
   // Declared on any prefab that represents a holdable/wearable/usable thing.
   // Server-only: clients reconstruct item behaviour from the prefab id they
-  // already have. No JSON declares these yet — Phase 2 migrates item JSON.
+  // already have.
   Equippable,
   Swingable,
   Tool,

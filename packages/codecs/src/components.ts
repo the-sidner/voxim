@@ -136,7 +136,7 @@ export const materialGridCodec: Serialiser<MaterialGridData> = {
 };
 
 // ============================================================================
-// Phase 2 codecs — game component binary layouts
+// Game component binary layouts.
 // All use WireWriter / WireReader (little-endian, no JSON, no base64).
 // ============================================================================
 
@@ -1182,7 +1182,7 @@ export const darknessModifierCodec: Serialiser<DarknessModifierData> = {
   },
 };
 
-// ---- Durability ---- (T-117 Phase 4 — instance-lifetime component)
+// ---- Durability ---- instance-lifetime component.
 // Remaining / max uses before the item is worn out. Ticked down by DurabilitySystem
 // on each weapon swing; when remaining hits 0 the item is destroyed.
 
@@ -1204,7 +1204,7 @@ export const durabilityCodec: Serialiser<DurabilityData> = {
   },
 };
 
-// ---- Inscribed ---- (T-117 Phase 4)
+// ---- Inscribed ----
 // A lore fragment encoded into a unique item. Written at a scribe workstation;
 // read at the "internalise" interaction to grant the fragment to the reader.
 
@@ -1224,7 +1224,7 @@ export const inscribedCodec: Serialiser<InscribedData> = {
   },
 };
 
-// ---- QualityStamped ---- (T-117 Phase 4)
+// ---- QualityStamped ----
 // Craft-time quality tier in [0, 1]. deriveItemStats() reads this and multiplies
 // the relevant derived stats (armour reduction, food/water value, light intensity).
 

@@ -21,13 +21,6 @@ export class PhysicsSystem implements System {
   /** NpcAi writes NPC InputState via world.write() (immediate); must precede. */
   readonly dependsOn = ["NpcAiSystem"];
 
-  /**
-   * Heightmaps are written once at world-load and never change.
-   * Cache the lookup closure on first use so we never query + rebuild the Map
-   * on every tick (it was the most expensive per-tick allocation in the system).
-   */
-  private cachedTerrainLookup: ((x: number, y: number) => number) | null = null;
-
   constructor(private readonly content: ContentStore) {}
 
   run(world: World, _events: EventEmitter, dt: number): void {
@@ -44,8 +37,11 @@ export class PhysicsSystem implements System {
       stepHeight: cfgRaw.stepHeight,
     };
 
-    if (!this.cachedTerrainLookup) this.cachedTerrainLookup = buildTerrainLookup(world);
-    const getHeight = this.cachedTerrainLookup;
+    // Rebuild the heightmap lookup every tick. TerrainDigSystem replaces
+    // Heightmap components when a cell is lowered, so a stored closure would
+    // keep reading the pre-dig typed array. 256 chunks is cheap; revisit
+    // with profiling data if it ever shows up.
+    const getHeight = buildTerrainLookup(world);
 
     for (const { entityId, position, velocity, inputState } of world.query(
       Position,
