@@ -108,7 +108,9 @@ export class BlueprintHitHandler implements HitHandler {
 /** Returns the items (and shortfall quantities) that are missing from slots. Empty = have all. */
 function missingMaterials(slots: InventorySlot[], cost: BlueprintMaterial[]): BlueprintMaterial[] {
   const available = new Map<string, number>();
-  for (const s of slots) available.set(s.itemType, (available.get(s.itemType) ?? 0) + s.quantity);
+  for (const s of slots) {
+    if (s.kind === "stack") available.set(s.prefabId, (available.get(s.prefabId) ?? 0) + s.quantity);
+  }
   const missing: BlueprintMaterial[] = [];
   for (const c of cost) {
     const have = available.get(c.itemType) ?? 0;
@@ -119,11 +121,14 @@ function missingMaterials(slots: InventorySlot[], cost: BlueprintMaterial[]): Bl
 
 function consumeMaterials(slots: InventorySlot[], cost: BlueprintMaterial[]): InventorySlot[] {
   const m = new Map<string, number>();
-  for (const s of slots) m.set(s.itemType, (m.get(s.itemType) ?? 0) + s.quantity);
+  for (const s of slots) {
+    if (s.kind === "stack") m.set(s.prefabId, (m.get(s.prefabId) ?? 0) + s.quantity);
+  }
   for (const c of cost) m.set(c.itemType, (m.get(c.itemType) ?? 0) - c.quantity);
-  return Array.from(m.entries())
+  const stacks: InventorySlot[] = Array.from(m.entries())
     .filter(([, qty]) => qty > 0)
-    .map(([itemType, quantity]) => ({ itemType, quantity }));
+    .map(([prefabId, quantity]) => ({ kind: "stack" as const, prefabId, quantity }));
+  return [...stacks, ...slots.filter((s) => s.kind === "unique")];
 }
 
 function applyToTerrain(world: World, blueprint: BlueprintData): void {

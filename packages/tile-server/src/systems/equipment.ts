@@ -5,9 +5,8 @@ import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore, EquipSlot } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
-import { Inventory } from "../components/items.ts";
+import { Inventory, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
-import { ItemData } from "../components/items.ts";
 import { Equipment } from "../components/equipment.ts";
 import type { EquipmentData } from "../components/equipment.ts";
 import { LightEmitter } from "../components/light.ts";
@@ -19,15 +18,14 @@ const log = createLogger("EquipmentSystem");
  * EquipmentSystem — processes all inventory and equipment slot commands.
  *
  * Commands handled:
- *   Equip        Move item from a specific inventory slot into its equipment slot
- *                (the target slot is determined by the item template's equipSlot field).
- *   Unequip      Move item from a specific equipment slot back to inventory.
+ *   Equip        Move item from a specific inventory slot into its equipment slot.
+ *                Stack slots spawn a new item entity; unique slots reuse the existing one.
+ *   Unequip      Move item entity from equipment slot back to inventory as a unique slot.
  *   MoveItem     Swap two inventory slots.
- *   DropItem     Remove an item from inventory and spawn it as a world entity.
+ *   DropItem     Remove an item from inventory and place it in the world.
  *   UseItem      Consume an item from a specific inventory slot (delegate to consumable logic).
  *
- * Commands arrive via TickContext.pendingCommands, cached in prepare() and
- * processed in run().  No InputState action bits are used.
+ * Equipment slots store EntityIds; stats are read via world.get(entityId, ItemData).
  */
 export class EquipmentSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
@@ -45,15 +43,6 @@ export class EquipmentSystem implements System {
       const inv = world.get(entityId, Inventory);
       if (!equipment || !inv) continue;
 
-      // NOTE: world.get() does NOT see deferred world.set() writes from earlier
-      // handlers within the same tick — deferred writes are only visible after
-      // applyChangeset(). Handlers therefore operate on the state captured above.
-      // Sending multiple conflicting equipment commands in a single tick (e.g.
-      // equip two items to the same slot) will have the last writer win at
-      // applyChangeset() time. In practice this is benign: commands arrive at
-      // ~60 Hz and the server ticks at 20 Hz, so at most 3 inputs are batched;
-      // conflicting equipment ops in one batch are an edge case and self-correct
-      // on the next reconcile.
       for (const cmd of commands) {
         switch (cmd.cmd) {
           case CommandType.Equip:
@@ -87,25 +76,46 @@ export class EquipmentSystem implements System {
   ): void {
     if (fromInventorySlot < 0 || fromInventorySlot >= inv.slots.length) return;
 
-    const item = inv.slots[fromInventorySlot];
-    const prefab = this.content.getPrefab(item.itemType);
+    const slot = inv.slots[fromInventorySlot];
+    const prefabId = slotPrefabId(slot, world);
+    if (!prefabId) {
+      log.debug("equip rejected: entity=%s slot=%d has no prefabId", entityId, fromInventorySlot);
+      return;
+    }
+
+    const prefab = this.content.getPrefab(prefabId);
     const equippable = prefab?.components["equippable"] as { slot: string } | undefined;
     if (!equippable) {
-      log.debug("equip rejected: entity=%s item=%s has no equippable component", entityId, item.itemType);
+      log.debug("equip rejected: entity=%s item=%s has no equippable component", entityId, prefabId);
       return;
     }
 
-    const slot = equippable.slot as EquipSlot;
-    if (equipment[slot] !== null) {
-      log.debug("equip rejected: entity=%s slot=%s already occupied", entityId, slot);
+    const equipSlot = equippable.slot as EquipSlot;
+    if (equipment[equipSlot] !== null) {
+      log.debug("equip rejected: entity=%s slot=%s already occupied", entityId, equipSlot);
       return;
     }
 
-    const newSlots = inv.slots.filter((_, i) => i !== fromInventorySlot);
-    world.set(entityId, Equipment, { ...equipment, [slot]: item });
+    // Get or create the item entity
+    let itemEntityId: EntityId;
+    let newSlots: InventorySlot[];
+
+    if (slot.kind === "stack") {
+      itemEntityId = spawnItemEntity(world, prefabId, 1);
+      newSlots = slot.quantity <= 1
+        ? inv.slots.filter((_, i) => i !== fromInventorySlot)
+        : inv.slots.map((s, i) => i === fromInventorySlot
+            ? { kind: "stack" as const, prefabId: slot.prefabId, quantity: slot.quantity - 1 }
+            : s);
+    } else {
+      itemEntityId = slot.entityId as EntityId;
+      newSlots = inv.slots.filter((_, i) => i !== fromInventorySlot);
+    }
+
+    world.set(entityId, Equipment, { ...equipment, [equipSlot]: itemEntityId });
     world.set(entityId, Inventory, { ...inv, slots: newSlots });
-    // If the newly equipped item emits light, write LightEmitter on the carrier.
-    const stats = this.content.deriveItemStats(item.itemType, item.parts ?? []);
+
+    const stats = this.content.deriveItemStats(prefabId);
     if (stats.lightRadius !== undefined) {
       world.set(entityId, LightEmitter, {
         color:     stats.lightColor     ?? 0xffaa44,
@@ -114,7 +124,7 @@ export class EquipmentSystem implements System {
         flicker:   stats.lightFlicker   ?? 0.15,
       });
     }
-    log.info("equipped: entity=%s item=%s slot=%s", entityId, item.itemType, slot);
+    log.info("equipped: entity=%s item=%s slot=%s", entityId, prefabId, equipSlot);
   }
 
   private _handleUnequip(
@@ -130,30 +140,43 @@ export class EquipmentSystem implements System {
       return;
     }
 
-    const item = equipment[slot];
-    if (item === null) {
+    const itemEntityId = equipment[slot];
+    if (itemEntityId === null) {
       log.debug("unequip rejected: entity=%s slot=%s already empty", entityId, slot);
       return;
     }
 
-    const totalItems = inv.slots.reduce((s, sl) => s + sl.quantity, 0);
-    if (totalItems + item.quantity > inv.capacity) {
-      dropItem(world, entityId, item);
-      world.set(entityId, Equipment, { ...equipment, [slot]: null });
-      this._updateLightEmitter(world, entityId, { ...equipment, [slot]: null });
-      log.info("unequipped: entity=%s item=%s slot=%s (dropped — inventory full)", entityId, item.itemType, slot);
+    const prefabId = world.get(itemEntityId as EntityId, ItemData)?.prefabId ?? "?";
+    const uniqueSlot: InventorySlot = { kind: "unique", entityId: itemEntityId };
+    const totalItems = inv.slots.reduce((s, sl) => s + (sl.kind === "stack" ? sl.quantity : 1), 0);
+
+    const newEquipment = { ...equipment, [slot]: null };
+
+    if (totalItems + 1 > inv.capacity) {
+      // Drop the item entity into the world instead
+      const pos = world.get(entityId, Position);
+      if (pos) {
+        world.set(itemEntityId as EntityId, Position, {
+          x: pos.x + (Math.random() - 0.5),
+          y: pos.y + (Math.random() - 0.5),
+          z: pos.z,
+        });
+      }
+      world.set(entityId, Equipment, newEquipment);
+      this._updateLightEmitter(world, entityId, newEquipment);
+      log.info("unequipped: entity=%s item=%s slot=%s (dropped — inventory full)", entityId, prefabId, slot);
       return;
     }
 
-    world.set(entityId, Equipment, { ...equipment, [slot]: null });
-    world.set(entityId, Inventory, { ...inv, slots: [...inv.slots, item] });
-    this._updateLightEmitter(world, entityId, { ...equipment, [slot]: null });
-    log.info("unequipped: entity=%s item=%s slot=%s (returned to inventory)", entityId, item.itemType, slot);
+    world.set(entityId, Equipment, newEquipment);
+    world.set(entityId, Inventory, { ...inv, slots: [...inv.slots, uniqueSlot] });
+    this._updateLightEmitter(world, entityId, newEquipment);
+    log.info("unequipped: entity=%s item=%s slot=%s (returned to inventory)", entityId, prefabId, slot);
   }
 
   /**
-   * After any equipment change, recalculate whether the entity should have
-   * LightEmitter based on the best light-emitting item currently equipped.
+   * After any equipment change, recalculate the LightEmitter from the best
+   * light-emitting item currently equipped.
    */
   private _updateLightEmitter(world: World, entityId: EntityId, newEquipment: EquipmentData): void {
     const SLOTS: (keyof EquipmentData)[] = ["weapon", "offHand", "head", "chest", "legs", "feet", "back"];
@@ -163,9 +186,11 @@ export class EquipmentSystem implements System {
     let bestFlicker = 0.15;
 
     for (const s of SLOTS) {
-      const slot = newEquipment[s];
-      if (!slot) continue;
-      const stats = this.content.deriveItemStats(slot.itemType, slot.parts ?? []);
+      const slotId = newEquipment[s];
+      if (!slotId) continue;
+      const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
+      if (!prefabId) continue;
+      const stats = this.content.deriveItemStats(prefabId);
       if (stats.lightRadius !== undefined && stats.lightRadius > bestRadius) {
         bestRadius    = stats.lightRadius;
         bestColor     = stats.lightColor     ?? 0xffaa44;
@@ -177,10 +202,7 @@ export class EquipmentSystem implements System {
     if (bestRadius > 0) {
       world.set(entityId, LightEmitter, { color: bestColor, intensity: bestIntensity, radius: bestRadius, flicker: bestFlicker });
     } else if (world.has(entityId, LightEmitter)) {
-      // No light-emitting item equipped.  Ideally we'd call world.remove() here,
-      // but the wire protocol has no component-removal delta yet (T-097).  A
-      // zero-intensity write serves as the "off" sentinel — the client's
-      // LightManager tears down the PointLight when it sees intensity <= 0.
+      // Zero-intensity write — client tears down PointLight when intensity <= 0 (T-097).
       world.set(entityId, LightEmitter, { color: 0, intensity: 0, radius: 0, flicker: 0 });
     }
   }
@@ -198,8 +220,6 @@ export class EquipmentSystem implements System {
     ) return;
 
     const newSlots = [...inv.slots];
-    // toSlot may be beyond current length (moving into an empty slot).
-    // Grow the array with sparse assignment, then filter undefineds.
     const from = newSlots[fromSlot];
     const to   = newSlots[toSlot] ?? null;
     if (to !== null) {
@@ -210,7 +230,8 @@ export class EquipmentSystem implements System {
       newSlots.splice(toSlot > fromSlot ? toSlot - 1 : toSlot, 0, from);
     }
     world.set(entityId, Inventory, { ...inv, slots: newSlots });
-    log.debug("move_item: entity=%s from=%d to=%d item=%s", entityId, fromSlot, toSlot, from.itemType);
+    const label = from.kind === "stack" ? from.prefabId : from.entityId;
+    log.debug("move_item: entity=%s from=%d to=%d item=%s", entityId, fromSlot, toSlot, label);
   }
 
   private _handleDropItem(
@@ -221,11 +242,25 @@ export class EquipmentSystem implements System {
   ): void {
     if (fromSlot < 0 || fromSlot >= inv.slots.length) return;
 
-    const item = inv.slots[fromSlot];
-    const newSlots = inv.slots.filter((_, i) => i !== fromSlot);
-    world.set(entityId, Inventory, { ...inv, slots: newSlots });
-    dropItem(world, entityId, item);
-    log.info("drop_item: entity=%s item=%s qty=%d slot=%d", entityId, item.itemType, item.quantity, fromSlot);
+    const slot = inv.slots[fromSlot];
+    const pos = world.get(entityId, Position);
+    const dropX = (pos?.x ?? 0) + (Math.random() - 0.5);
+    const dropY = (pos?.y ?? 0) + (Math.random() - 0.5);
+    const dropZ = pos?.z ?? 4.0;
+
+    if (slot.kind === "stack") {
+      const id = newEntityId();
+      world.create(id);
+      world.write(id, Position, { x: dropX, y: dropY, z: dropZ });
+      world.write(id, ItemData, { prefabId: slot.prefabId, quantity: slot.quantity });
+      log.info("drop_item: entity=%s item=%s qty=%d", entityId, slot.prefabId, slot.quantity);
+    } else {
+      // Unique entity — give it a position to place it in the world
+      world.set(slot.entityId as EntityId, Position, { x: dropX, y: dropY, z: dropZ });
+      log.info("drop_item: entity=%s unique=%s", entityId, slot.entityId);
+    }
+
+    world.set(entityId, Inventory, { ...inv, slots: inv.slots.filter((_, i) => i !== fromSlot) });
   }
 
   private _handleUseItem(
@@ -236,49 +271,55 @@ export class EquipmentSystem implements System {
   ): void {
     if (fromSlot < 0 || fromSlot >= inv.slots.length) return;
 
-    const item = inv.slots[fromSlot];
-    const prefab = this.content.getPrefab(item.itemType);
+    const slot = inv.slots[fromSlot];
+    const prefabId = slotPrefabId(slot, world);
+    if (!prefabId) return;
+
+    const prefab = this.content.getPrefab(prefabId);
     if (!prefab?.components["edible"]) {
-      log.debug("use_item rejected: entity=%s item=%s has no edible component", entityId, item.itemType);
+      log.debug("use_item rejected: entity=%s item=%s has no edible component", entityId, prefabId);
       return;
     }
 
-    const newSlots = [...inv.slots];
-    if (item.quantity <= 1) {
-      newSlots.splice(fromSlot, 1);
+    let newSlots: InventorySlot[];
+    if (slot.kind === "stack") {
+      newSlots = slot.quantity <= 1
+        ? inv.slots.filter((_, i) => i !== fromSlot)
+        : inv.slots.map((s, i) => i === fromSlot
+            ? { kind: "stack" as const, prefabId: slot.prefabId, quantity: slot.quantity - 1 }
+            : s);
     } else {
-      newSlots[fromSlot] = { ...item, quantity: item.quantity - 1 };
+      world.destroy(slot.entityId as EntityId);
+      newSlots = inv.slots.filter((_, i) => i !== fromSlot);
     }
     world.set(entityId, Inventory, { ...inv, slots: newSlots });
-    log.info("use_item: entity=%s item=%s slot=%d", entityId, item.itemType, fromSlot);
-    // Actual stat effects (hunger, health, stamina) are applied by ConsumptionSystem
-    // when ACTION_CONSUME fires, or can be emitted here as an event when needed.
+    log.info("use_item: entity=%s item=%s slot=%d", entityId, prefabId, fromSlot);
   }
-
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Resolve the prefabId from any inventory slot variant. */
+export function slotPrefabId(slot: InventorySlot, world: World): string | null {
+  if (slot.kind === "stack") return slot.prefabId;
+  return world.get(slot.entityId as EntityId, ItemData)?.prefabId ?? null;
+}
+
+/** Resolve the prefabId for an equipment slot EntityId. */
+export function equipPrefabId(slotId: string, world: World): string | null {
+  return world.get(slotId as EntityId, ItemData)?.prefabId ?? null;
+}
+
+/** Create an item entity with no Position (lives in an equipment slot, not the world). */
+export function spawnItemEntity(world: World, prefabId: string, quantity: number): EntityId {
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, ItemData, { prefabId, quantity });
+  return id;
+}
 
 /** Map EquipSlotIndex numeric value → EquipmentData key. */
 function indexToSlot(index: number): EquipSlot | null {
   const SLOTS: EquipSlot[] = ["weapon", "offHand", "head", "chest", "legs", "feet", "back"];
   return SLOTS[index] ?? null;
-}
-
-function dropItem(world: World, entityId: EntityId, slot: InventorySlot): void {
-  const pos = world.get(entityId, Position);
-  if (!pos) return;
-  const id = newEntityId();
-  world.create(id);
-  world.write(id, Position, {
-    x: pos.x + (Math.random() - 0.5),
-    y: pos.y + (Math.random() - 0.5),
-    z: pos.z,
-  });
-  world.write(id, ItemData, {
-    itemType: slot.itemType,
-    quantity: slot.quantity,
-    ...(slot.parts    ? { parts: slot.parts }         : {}),
-    ...(slot.condition !== undefined ? { condition: slot.condition } : {}),
-  });
 }

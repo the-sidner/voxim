@@ -2,26 +2,15 @@ import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
 import { equipmentCodec } from "@voxim/codecs";
 import type { EquipmentData } from "@voxim/codecs";
-import type { InventorySlot } from "./items.ts";
 
 export type { EquipmentData };
 
 /**
  * Equipment — items currently held or worn by an entity.
  *
- * weapon: the item in the entity's primary hand — drives attack stats.
- * armor:  the item worn on the torso — drives damage reduction and stamina regen penalty.
- *
- * Each slot stores a full InventorySlot (itemType + parts + condition) so that
- * DerivedItemStats can be recomputed from material composition at any time without
- * a separate lookup.  null means the slot is empty (unarmed / unarmored).
- *
- * Additional slots (off-hand, helmet, legs, boots) follow the same pattern and
- * can be added here without changing any consuming system's interface.
+ * Each slot holds the EntityId (string) of the equipped item entity, or null.
+ * Stat reads go through world.get(slotEntityId, ItemData) → prefabId → deriveItemStats.
  */
-
-// InventorySlot is imported for re-export and consumer convenience only.
-export type { InventorySlot };
 
 export const Equipment = defineComponent({
   name: "equipment" as const,

@@ -161,56 +161,34 @@ export const itemPartCodec: Serialiser<ItemPart> = {
 };
 
 // ---- InventorySlot ----------------------------------------------------------
-// { itemType, quantity, parts?, condition?, fragmentId? }
+// Discriminated union: stack (prefabId + quantity) or unique (entityId).
+//
+// kind == 0 → stack: most items (resources, food, stackable goods)
+// kind == 1 → unique: one-of-a-kind items with their own world entity
 
-export interface InventorySlot {
-  itemType: string;
-  quantity: number;
-  parts?: ItemPart[];
-  condition?: number;
-  fragmentId?: string;
-}
+export type InventorySlot =
+  | { kind: "stack"; prefabId: string; quantity: number }
+  | { kind: "unique"; entityId: string };
 
 // Internal helpers so InventorySlot can be nested inside other codecs.
 function writeInventorySlot(w: WireWriter, v: InventorySlot): void {
-  w.writeStr(v.itemType);
-  w.writeU16(v.quantity);
-  if (v.parts !== undefined && v.parts.length > 0) {
+  if (v.kind === "stack") {
+    w.writeU8(0);
+    w.writeStr(v.prefabId);
+    w.writeU16(v.quantity);
+  } else {
     w.writeU8(1);
-    w.writeU16(v.parts.length);
-    for (const p of v.parts) { w.writeStr(p.slot); w.writeStr(p.materialName); }
-  } else {
-    w.writeU8(0);
-  }
-  if (v.condition !== undefined) {
-    w.writeU8(1); w.writeF32(v.condition);
-  } else {
-    w.writeU8(0);
-  }
-  if (v.fragmentId !== undefined) {
-    w.writeU8(1); w.writeStr(v.fragmentId);
-  } else {
-    w.writeU8(0);
+    w.writeStr(v.entityId);
   }
 }
 
 function readInventorySlot(r: WireReader): InventorySlot {
-  const itemType = r.readStr();
-  const quantity = r.readU16();
-  const hasParts = r.readU8();
-  let parts: ItemPart[] | undefined;
-  if (hasParts) {
-    const count = r.readU16();
-    parts = [];
-    for (let i = 0; i < count; i++) {
-      parts.push({ slot: r.readStr(), materialName: r.readStr() });
-    }
+  const kind = r.readU8();
+  if (kind === 0) {
+    return { kind: "stack", prefabId: r.readStr(), quantity: r.readU16() };
+  } else {
+    return { kind: "unique", entityId: r.readStr() };
   }
-  const hasCondition = r.readU8();
-  const condition = hasCondition ? r.readF32() : undefined;
-  const hasFragmentId = r.readU8();
-  const fragmentId = hasFragmentId ? r.readStr() : undefined;
-  return { itemType, quantity, ...(parts !== undefined && { parts }), ...(condition !== undefined && { condition }), ...(fragmentId !== undefined && { fragmentId }) };
 }
 
 export const inventorySlotCodec: Serialiser<InventorySlot> = {
@@ -368,24 +346,26 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
 
 // ---- Equipment --------------------------------------------------------------
 // All seven equipment slots. Wire order is fixed — never reorder.
-// Present/absent encoded as u8 flag (1 = slot occupied, 0 = empty) before each slot.
+// Each slot holds the EntityId of the equipped item entity, or null if empty.
+// Equipment slots store EntityIds, not inline item data — stat reads go through
+// the item entity's ItemData component.
 
 export interface EquipmentData {
-  weapon:  InventorySlot | null;
-  offHand: InventorySlot | null;
-  head:    InventorySlot | null;
-  chest:   InventorySlot | null;
-  legs:    InventorySlot | null;
-  feet:    InventorySlot | null;
-  back:    InventorySlot | null;
+  weapon:  string | null;
+  offHand: string | null;
+  head:    string | null;
+  chest:   string | null;
+  legs:    string | null;
+  feet:    string | null;
+  back:    string | null;
 }
 
-function writeSlot(w: WireWriter, slot: InventorySlot | null): void {
-  if (slot !== null) { w.writeU8(1); writeInventorySlot(w, slot); } else { w.writeU8(0); }
+function writeSlot(w: WireWriter, slot: string | null): void {
+  if (slot !== null) { w.writeU8(1); w.writeStr(slot); } else { w.writeU8(0); }
 }
 
-function readSlot(r: WireReader): InventorySlot | null {
-  return r.readU8() ? readInventorySlot(r) : null;
+function readSlot(r: WireReader): string | null {
+  return r.readU8() ? r.readStr() : null;
 }
 
 export const equipmentCodec: Serialiser<EquipmentData> = {
@@ -442,48 +422,24 @@ export const inventoryCodec: Serialiser<InventoryData> = {
 };
 
 // ---- ItemData ---------------------------------------------------------------
-// { itemType, quantity, parts?, condition? }
+// { prefabId, quantity } — marks a world-entity as a physical item drop or
+// an in-equipment item entity. prefabId identifies the Prefab definition.
 
 export interface ItemDataData {
-  itemType: string;
+  prefabId: string;
   quantity: number;
-  parts?: ItemPart[];
-  condition?: number;
 }
 
 export const itemDataCodec: Serialiser<ItemDataData> = {
   encode(v: ItemDataData): Uint8Array {
     const w = new WireWriter();
-    w.writeStr(v.itemType);
+    w.writeStr(v.prefabId);
     w.writeU16(v.quantity);
-    if (v.parts !== undefined && v.parts.length > 0) {
-      w.writeU8(1);
-      w.writeU16(v.parts.length);
-      for (const p of v.parts) { w.writeStr(p.slot); w.writeStr(p.materialName); }
-    } else {
-      w.writeU8(0);
-    }
-    if (v.condition !== undefined) {
-      w.writeU8(1); w.writeF32(v.condition);
-    } else {
-      w.writeU8(0);
-    }
     return w.toBytes();
   },
   decode(bytes: Uint8Array): ItemDataData {
     const r = new WireReader(bytes);
-    const itemType = r.readStr();
-    const quantity = r.readU16();
-    const hasParts = r.readU8();
-    let parts: ItemPart[] | undefined;
-    if (hasParts) {
-      const count = r.readU16();
-      parts = [];
-      for (let i = 0; i < count; i++) parts.push({ slot: r.readStr(), materialName: r.readStr() });
-    }
-    const hasCondition = r.readU8();
-    const condition = hasCondition ? r.readF32() : undefined;
-    return { itemType, quantity, ...(parts !== undefined && { parts }), ...(condition !== undefined && { condition }) };
+    return { prefabId: r.readStr(), quantity: r.readU16() };
   },
 };
 

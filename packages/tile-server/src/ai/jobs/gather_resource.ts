@@ -134,6 +134,6 @@ function inventoryHas(world: World, entityId: EntityId, itemType: string): numbe
   const inv = world.get(entityId, Inventory);
   if (!inv) return 0;
   let total = 0;
-  for (const s of inv.slots) if (s.itemType === itemType) total += s.quantity;
+  for (const s of inv.slots) if (s.kind === "stack" && s.prefabId === itemType) total += s.quantity;
   return total;
 }

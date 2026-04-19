@@ -42,7 +42,6 @@ export class ItemPickupSystem implements System {
     const claimed = new Set<EntityId>();
 
     for (const { entityId: collectorId, position, inventory } of world.query(Position, Inventory)) {
-      // NpcAiSystem owns food/water pickup for NPCs — skip to avoid double-destroy
       if (world.has(collectorId, NpcTag)) continue;
 
       const candidates = this.spatial.nearby(position.x, position.y, this.pickupRadius);
@@ -57,20 +56,19 @@ export class ItemPickupSystem implements System {
         const itemData = world.get(candidateId, ItemData);
         if (!itemData) continue;
 
-        // Exact distance check (SpatialGrid.nearby returns cell-aligned candidates)
         const itemPos = world.get(candidateId, Position);
         if (!itemPos) continue;
         const dx = itemPos.x - position.x;
         const dy = itemPos.y - position.y;
         if (dx * dx + dy * dy > this.radiusSq) continue;
 
-        const newSlots = addToInventory(slots, itemData.itemType, itemData.quantity, inventory.capacity);
-        if (newSlots === null) continue; // no room
+        const newSlots = addToInventory(slots, itemData.prefabId, itemData.quantity, inventory.capacity);
+        if (newSlots === null) continue;
 
         slots = newSlots;
         changed = true;
         claimed.add(candidateId);
-        log.info("pickup: collector=%s item=%sx%d", collectorId, itemData.itemType, itemData.quantity);
+        log.info("pickup: collector=%s item=%sx%d", collectorId, itemData.prefabId, itemData.quantity);
       }
 
       if (changed) {
@@ -86,15 +84,17 @@ export class ItemPickupSystem implements System {
 
 function addToInventory(
   slots: InventorySlot[],
-  itemType: string,
+  prefabId: string,
   quantity: number,
   capacity: number,
 ): InventorySlot[] | null {
-  const total = slots.reduce((s, sl) => s + sl.quantity, 0);
+  const total = slots.reduce((s, sl) => s + (sl.kind === "stack" ? sl.quantity : 1), 0);
   if (total + quantity > capacity) return null;
-  const existing = slots.find((s) => s.itemType === itemType && !s.parts);
+  const existing = slots.find((s): s is Extract<InventorySlot, { kind: "stack" }> =>
+    s.kind === "stack" && s.prefabId === prefabId
+  );
   if (existing) {
     return slots.map((s) => s === existing ? { ...s, quantity: s.quantity + quantity } : s);
   }
-  return [...slots, { itemType, quantity }];
+  return [...slots, { kind: "stack", prefabId, quantity }];
 }

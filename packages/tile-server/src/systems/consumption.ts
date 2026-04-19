@@ -1,9 +1,9 @@
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import { ACTION_CONSUME, hasAction } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { InputState, Hunger, Thirst } from "../components/game.ts";
-import { Inventory, InteractCooldown } from "../components/items.ts";
+import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
 import { createLogger } from "../logger.ts";
 
@@ -19,16 +19,18 @@ export class ConsumptionSystem implements System {
       if (interactCooldown.remaining > 0) continue;
       if (!hasAction(inputState.actions, ACTION_CONSUME)) continue;
 
-      const idx = inventory.slots.findIndex(
-        (s) => !!this.content.getPrefab(s.itemType)?.components["edible"],
-      );
+      const idx = inventory.slots.findIndex((s) => {
+        const prefabId = slotPrefabId(s, world);
+        return !!prefabId && !!this.content.getPrefab(prefabId)?.components["edible"];
+      });
       if (idx === -1) {
         log.debug("consume: entity=%s no consumable in inventory", entityId);
         continue;
       }
 
       const slot = inventory.slots[idx];
-      const stats = this.content.deriveItemStats(slot.itemType, slot.parts);
+      const prefabId = slotPrefabId(slot, world)!;
+      const stats = this.content.deriveItemStats(prefabId);
 
       world.set(entityId, InteractCooldown, {
         remaining: this.content.getGameConfig().consumption.cooldownTicks,
@@ -51,19 +53,30 @@ export class ConsumptionSystem implements System {
         }
       }
 
-      const newSlots = consumeOne(inventory.slots, idx);
+      const newSlots = consumeOne(world, inventory.slots, idx);
       world.set(entityId, Inventory, { ...inventory, slots: newSlots });
 
       log.info("consumed: entity=%s item=%s food=%.1f→%.1f water=%.1f→%.1f",
-        entityId, slot.itemType,
+        entityId, prefabId,
         hungerBefore, Math.max(0, hungerBefore - (stats.foodValue ?? 0)),
         thirstBefore, Math.max(0, thirstBefore - (stats.waterValue ?? 0)));
     }
   }
 }
 
-function consumeOne(slots: InventorySlot[], idx: number): InventorySlot[] {
+function slotPrefabId(slot: InventorySlot, world: World): string | null {
+  if (slot.kind === "stack") return slot.prefabId;
+  return world.get(slot.entityId as EntityId, ItemData)?.prefabId ?? null;
+}
+
+function consumeOne(world: World, slots: InventorySlot[], idx: number): InventorySlot[] {
   const slot = slots[idx];
-  if (slot.quantity <= 1) return slots.filter((_, i) => i !== idx);
-  return slots.map((s, i) => i === idx ? { ...s, quantity: s.quantity - 1 } : s);
+  if (slot.kind === "stack") {
+    if (slot.quantity <= 1) return slots.filter((_, i) => i !== idx);
+    return slots.map((s, i) => i === idx
+      ? { kind: "stack" as const, prefabId: slot.prefabId, quantity: slot.quantity - 1 }
+      : s);
+  }
+  world.destroy(slot.entityId as EntityId);
+  return slots.filter((_, i) => i !== idx);
 }

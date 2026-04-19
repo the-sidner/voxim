@@ -91,17 +91,18 @@ export class CraftingSystem implements System {
         continue;
       }
 
-      // Place the first inventory slot into the buffer
+      // Only stack slots can be placed into a workstation buffer
       const slot = inventory.slots[0];
+      if (slot.kind !== "stack") continue;
       const newInvSlots = inventory.slots.slice(1);
       world.set(entityId, Inventory, { ...inventory, slots: newInvSlots });
 
-      const newBufferSlots = [...buffer.slots, { itemType: slot.itemType, quantity: slot.quantity }];
+      const newBufferSlots = [...buffer.slots, { itemType: slot.prefabId, quantity: slot.quantity }];
       world.set(stationId, WorkstationBuffer, { ...buffer, slots: newBufferSlots });
 
       const tag = world.get(stationId, WorkstationTag);
       log.info("placed: player=%s item=%sx%d on station=%s (%s)",
-        entityId, slot.itemType, slot.quantity, stationId, tag?.stationType ?? "?");
+        entityId, slot.prefabId, slot.quantity, stationId, tag?.stationType ?? "?");
     }
 
     // ── 2. Per-tick step dispatch ────────────────────────────────────────
@@ -132,15 +133,16 @@ export class CraftingSystem implements System {
     const slot = inventory.slots[slotIndex];
     if (!slot) return;
 
-    const deployable = this.content.getPrefab(slot.itemType)?.components["deployable"] as { prefabId?: string } | undefined;
+    if (slot.kind !== "stack") return;
+    const deployable = this.content.getPrefab(slot.prefabId)?.components["deployable"] as { prefabId?: string } | undefined;
     const templateId = deployable?.prefabId ?? null;
     if (!templateId) {
-      log.debug("deploy: player=%s item=%s not deployable", entityId, slot.itemType);
+      log.debug("deploy: player=%s item=%s not deployable", entityId, slot.prefabId);
       return;
     }
 
     if (!this.content.getPrefab(templateId)) {
-      log.warn("deploy: player=%s item=%s has no prefab '%s'", entityId, slot.itemType, templateId);
+      log.warn("deploy: player=%s item=%s has no prefab '%s'", entityId, slot.prefabId, templateId);
       return;
     }
 
@@ -172,10 +174,10 @@ export class CraftingSystem implements System {
     if (slot.quantity <= 1) {
       newSlots.splice(slotIndex, 1);
     } else {
-      newSlots[slotIndex] = { ...slot, quantity: slot.quantity - 1 };
+      newSlots[slotIndex] = { kind: "stack", prefabId: slot.prefabId, quantity: slot.quantity - 1 };
     }
     world.set(entityId, Inventory, { ...inventory, slots: newSlots });
-    log.info("deploy: player=%s placed %s at (%.1f, %.1f)", entityId, slot.itemType, wx, wy);
+    log.info("deploy: player=%s placed %s at (%.1f, %.1f)", entityId, slot.prefabId, wx, wy);
   }
 
   private _handleSelectRecipe(world: World, entityId: EntityId, recipeId: string): void {
@@ -296,11 +298,11 @@ function slotsToMap(slots: WorkstationBufferData["slots"]): Map<string, number> 
   return m;
 }
 
-export function spawnOutputNear(world: World, stationId: EntityId, itemType: string, quantity: number): void {
+export function spawnOutputNear(world: World, stationId: EntityId, prefabId: string, quantity: number): void {
   const pos = world.get(stationId, Position);
   const id = newEntityId();
   world.create(id);
   world.write(id, Position, { x: (pos?.x ?? 0) + 0.5, y: (pos?.y ?? 0) + 0.5, z: pos?.z ?? 4.0 });
-  world.write(id, ItemData, { itemType, quantity });
+  world.write(id, ItemData, { prefabId, quantity });
 }
 

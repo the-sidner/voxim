@@ -31,7 +31,7 @@ import {
   AnimationState,
 } from "./components/game.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
-import { Inventory, CraftingQueue, InteractCooldown } from "./components/items.ts";
+import { Inventory, CraftingQueue, InteractCooldown, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
@@ -68,6 +68,17 @@ function emptyEquipment(): EquipmentData {
   };
 }
 
+/**
+ * Create an item entity with no Position (it lives in an equipment slot, not the world).
+ * Returns the new EntityId (string) for storage in EquipmentData slots.
+ */
+function spawnEquipEntity(world: World, prefabId: string): EntityId {
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, ItemData, { prefabId, quantity: 1 });
+  return id;
+}
+
 // ---- compound archetype installers ----
 //
 // These keys in `prefab.components` fan out to several engine components at
@@ -101,14 +112,14 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   const capacity = content.getGameConfig().player.inventoryCapacity;
   const slots: InventoryData["slots"] = data.startingInventory.map((s) => ({
-    itemType: s.itemType, quantity: s.quantity, parts: [],
+    kind: "stack" as const, prefabId: s.itemType, quantity: s.quantity,
   }));
   world.write(id, Inventory, { slots, capacity });
 
   const eq = emptyEquipment();
-  for (const [slot, itemType] of Object.entries(data.startingEquipment ?? {})) {
-    if (!itemType) continue;
-    eq[slot as keyof EquipmentData] = { itemType, quantity: 1, parts: [] };
+  for (const [slot, prefabId] of Object.entries(data.startingEquipment ?? {})) {
+    if (!prefabId) continue;
+    eq[slot as keyof EquipmentData] = spawnEquipEntity(world, prefabId);
   }
   world.write(id, Equipment, eq);
 
@@ -136,7 +147,7 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
 
   const eq = emptyEquipment();
   if (template?.weaponItemType) {
-    eq.weapon = { itemType: template.weaponItemType, quantity: 1, parts: [] };
+    eq.weapon = spawnEquipEntity(world, template.weaponItemType);
   }
   world.write(id, Equipment, eq);
 

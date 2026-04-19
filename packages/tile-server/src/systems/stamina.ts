@@ -1,8 +1,9 @@
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Stamina } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
+import { ItemData } from "../components/items.ts";
 import { CorruptionExposure } from "../components/world.ts";
 import { createLogger } from "../logger.ts";
 
@@ -20,7 +21,11 @@ export class StaminaSystem implements System {
       const equipment = world.get(entityId, Equipment);
       const armorPenalty = equipment
         ? [equipment.head, equipment.chest, equipment.legs, equipment.feet, equipment.back]
-            .reduce((sum, slot) => sum + (slot ? (this.content.deriveItemStats(slot.itemType, slot.parts).staminaRegenPenalty ?? 0) : 0), 0)
+            .reduce((sum, slotId) => {
+              if (!slotId) return sum;
+              const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
+              return sum + (prefabId ? (this.content.deriveItemStats(prefabId).staminaRegenPenalty ?? 0) : 0);
+            }, 0)
         : 0;
 
       const corruption = world.get(entityId, CorruptionExposure);
@@ -32,7 +37,6 @@ export class StaminaSystem implements System {
       const effectiveRegen = stamina.regenPerSecond * (1 - regenPenalty);
       const newCurrent = Math.min(stamina.max, stamina.current + effectiveRegen * dt);
 
-      // Log exhaustion state transitions
       if (stamina.exhausted && newCurrent > 0) {
         log.info("stamina recovered from exhaustion: entity=%s stamina=%.1f", entityId, newCurrent);
       }

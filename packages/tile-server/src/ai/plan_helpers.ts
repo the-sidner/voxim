@@ -141,7 +141,7 @@ export function findNearestConsumable(
   for (const entityId of candidates) {
     const itemData = world.get(entityId, ItemData);
     if (!itemData) continue;
-    const stats = content.deriveItemStats(itemData.itemType);
+    const stats = content.deriveItemStats(itemData.prefabId);
     const value = kind === "food" ? (stats.foodValue ?? 0) : (stats.waterValue ?? 0);
     if (value <= 0) continue;
     const pos = world.get(entityId, Position)!;

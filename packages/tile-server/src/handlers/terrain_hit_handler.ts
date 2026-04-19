@@ -9,7 +9,7 @@
  * T-035: spawns a material drop (dirt, stone, etc.) based on the cell's MaterialGrid value.
  *        Drop always spawns as a world ItemData entity; picked up by ItemPickupSystem.
  */
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { Heightmap, MaterialGrid, CHUNK_SIZE, snapHeight } from "@voxim/world";
 import type { ContentStore } from "@voxim/content";
@@ -41,7 +41,9 @@ export class TerrainDigSystem implements System {
 
       const equip = world.get(entityId, Equipment);
       if (!equip?.weapon) continue;
-      const stats = this.content.deriveItemStats(equip.weapon.itemType, equip.weapon.parts);
+      const weaponPrefabId = world.get(equip.weapon as EntityId, ItemData)?.prefabId;
+      if (!weaponPrefabId) continue;
+      const stats = this.content.deriveItemStats(weaponPrefabId);
       if (stats.toolType !== "shovel") continue;
 
       const digPower = stats.digPower ?? 1;
@@ -87,7 +89,7 @@ export class TerrainDigSystem implements System {
             const dropId = newEntityId();
             world.create(dropId);
             world.write(dropId, Position, { x: cx, y: cy, z: currentHeight });
-            world.write(dropId, ItemData, { itemType: dropType, quantity: 1 });
+            world.write(dropId, ItemData, { prefabId: dropType, quantity: 1 });
           }
         }
 

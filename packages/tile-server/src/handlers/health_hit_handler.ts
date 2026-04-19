@@ -1,4 +1,4 @@
-import type { World, Registry } from "@voxim/engine";
+import type { World, Registry, EntityId } from "@voxim/engine";
 import { ACTION_BLOCK, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
@@ -6,6 +6,7 @@ import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { Health, Stamina, CombatState } from "../components/game.ts";
 import { SkillInProgress } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
+import { ItemData } from "../components/items.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
 import type { ResolveStrikePort } from "../events/resolve_strike.ts";
@@ -107,20 +108,12 @@ export class HealthHitHandler implements HitHandler {
     // ── Armor reduction ───────────────────────────────────────────────────────
     const defenderEquipment = world.get(ctx.targetId, Equipment);
     const armorReduction = defenderEquipment
-      ? [
-          defenderEquipment.head,
-          defenderEquipment.chest,
-          defenderEquipment.legs,
-          defenderEquipment.feet,
-          defenderEquipment.back,
-        ].reduce(
-          (sum, slot) =>
-            sum +
-            (slot
-              ? (this.content.deriveItemStats(slot.itemType, slot.parts).armorReduction ?? 0)
-              : 0),
-          0,
-        )
+      ? [defenderEquipment.head, defenderEquipment.chest, defenderEquipment.legs, defenderEquipment.feet, defenderEquipment.back]
+          .reduce((sum, slotId) => {
+            if (!slotId) return sum;
+            const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
+            return sum + (prefabId ? (this.content.deriveItemStats(prefabId).armorReduction ?? 0) : 0);
+          }, 0)
       : 0;
 
     const blockMult = isBlocking ? combatCfg.blockDamageMultiplier : 1.0;

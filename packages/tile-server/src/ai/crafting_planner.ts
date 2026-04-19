@@ -157,7 +157,7 @@ function tryRecipe(
 function inventoryHas(inventory: InventoryData, itemType: string): number {
   let total = 0;
   for (const slot of inventory.slots) {
-    if (slot.itemType === itemType) total += slot.quantity;
+    if (slot.kind === "stack" && slot.prefabId === itemType) total += slot.quantity;
   }
   return total;
 }

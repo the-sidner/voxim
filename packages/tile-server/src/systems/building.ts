@@ -1,10 +1,11 @@
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import { CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
+import { ItemData } from "../components/items.ts";
 import { Blueprint } from "../components/building.ts";
 import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
@@ -61,7 +62,9 @@ export class BuildingSystem implements System {
     // Placer must have a hammer equipped
     const equipment = world.get(placerId, Equipment);
     if (!equipment?.weapon) return;
-    const stats = this.content.deriveItemStats(equipment.weapon.itemType, equipment.weapon.parts);
+    const weaponPrefabId = world.get(equipment.weapon as EntityId, ItemData)?.prefabId;
+    if (!weaponPrefabId) return;
+    const stats = this.content.deriveItemStats(weaponPrefabId);
     if (stats.toolType !== "hammer") return;
 
     // Placer must be within reach

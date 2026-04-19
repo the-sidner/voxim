@@ -1,9 +1,10 @@
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
+import { newEntityId } from "@voxim/engine";
 import { CommandType, TileEvents } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Inventory, InteractCooldown } from "../components/items.ts";
+import { Inventory, InteractCooldown, ItemData, TomeData } from "../components/items.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { createLogger } from "../logger.ts";
 
@@ -34,38 +35,59 @@ export class DynastySystem implements System {
           if (fragIndex < 0 || fragIndex >= loreLoadout.learnedFragmentIds.length) continue;
           const fragmentId = loreLoadout.learnedFragmentIds[fragIndex];
 
-          const blankSlot = inventory.slots.findIndex((s) => s.itemType === cfg.blankTomeItemType);
+          // Consume one blank tome (stack slot)
+          const blankSlot = inventory.slots.findIndex((s) =>
+            s.kind === "stack" && s.prefabId === cfg.blankTomeItemType
+          );
           if (blankSlot === -1) {
             log.debug("externalise failed: entity=%s no blank tome in inventory", entityId);
             continue;
           }
 
-          const newSlots = [...inventory.slots];
-          const blank = newSlots[blankSlot];
-          if (blank.quantity <= 1) { newSlots.splice(blankSlot, 1); }
-          else { newSlots[blankSlot] = { ...blank, quantity: blank.quantity - 1 }; }
-          newSlots.push({ itemType: cfg.tomeItemType, quantity: 1, fragmentId });
-          world.set(entityId, Inventory, { ...inventory, slots: newSlots });
+          const blank = inventory.slots[blankSlot] as Extract<typeof inventory.slots[0], { kind: "stack" }>;
+          const newSlots = blank.quantity <= 1
+            ? inventory.slots.filter((_, i) => i !== blankSlot)
+            : inventory.slots.map((s, i) => i === blankSlot
+                ? { kind: "stack" as const, prefabId: blank.prefabId, quantity: blank.quantity - 1 }
+                : s);
+
+          // Spawn a unique tome entity carrying the fragment
+          const tomeId = newEntityId();
+          world.create(tomeId);
+          world.write(tomeId, ItemData, { prefabId: cfg.tomeItemType, quantity: 1 });
+          world.write(tomeId, TomeData, { fragmentId });
+
+          world.set(entityId, Inventory, {
+            ...inventory,
+            slots: [...newSlots, { kind: "unique", entityId: tomeId }],
+          });
           world.set(entityId, InteractCooldown, { remaining: cfg.externaliseConsumeTicks });
 
           log.info("externalised: entity=%s fragment=%s", entityId, fragmentId);
           events.publish(TileEvents.LoreExternalised, { entityId, fragmentId });
-          break; // one lore action per tick
+          break;
         }
 
         if (cmd.cmd === CommandType.Internalise) {
           const slotIndex = cmd.inventorySlot;
           if (slotIndex < 0 || slotIndex >= inventory.slots.length) continue;
           const tomeSlot = inventory.slots[slotIndex];
-          if (tomeSlot.itemType !== cfg.tomeItemType || !tomeSlot.fragmentId) continue;
+          if (tomeSlot.kind !== "unique") continue;
 
-          const fragmentId = tomeSlot.fragmentId;
+          const tomeEntityId = tomeSlot.entityId as EntityId;
+          const itemData = world.get(tomeEntityId, ItemData);
+          if (itemData?.prefabId !== cfg.tomeItemType) continue;
+
+          const tomeData = world.get(tomeEntityId, TomeData);
+          if (!tomeData) continue;
+          const fragmentId = tomeData.fragmentId;
           const alreadyKnown = loreLoadout.learnedFragmentIds.includes(fragmentId);
 
-          const newSlots = [...inventory.slots];
-          if (tomeSlot.quantity <= 1) { newSlots.splice(slotIndex, 1); }
-          else { newSlots[slotIndex] = { ...tomeSlot, quantity: tomeSlot.quantity - 1 }; }
-          world.set(entityId, Inventory, { ...inventory, slots: newSlots });
+          world.destroy(tomeEntityId);
+          world.set(entityId, Inventory, {
+            ...inventory,
+            slots: inventory.slots.filter((_, i) => i !== slotIndex),
+          });
           world.set(entityId, InteractCooldown, { remaining: cfg.externaliseConsumeTicks });
 
           if (!alreadyKnown) {
@@ -79,7 +101,7 @@ export class DynastySystem implements System {
           }
 
           events.publish(TileEvents.LoreInternalised, { entityId, fragmentId });
-          break; // one lore action per tick
+          break;
         }
       }
     }

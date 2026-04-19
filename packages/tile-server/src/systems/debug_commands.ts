@@ -77,7 +77,7 @@ export class DebugCommandSystem implements System {
       return;
     }
     const clampedQty = Math.max(1, Math.min(quantity, 255));
-    const newSlot: InventorySlot = { itemType, quantity: clampedQty, parts: [] };
+    const newSlot: InventorySlot = { kind: "stack", prefabId: itemType, quantity: clampedQty };
     world.set(entityId, Inventory, { ...inv, slots: [...inv.slots, newSlot] });
     log.info("debug_give: entity=%s item=%s qty=%d", entityId, itemType, clampedQty);
   }

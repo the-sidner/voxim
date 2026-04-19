@@ -13,7 +13,7 @@
  *
  * Single code path for players and NPCs. No isNpc branches.
  */
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore, DerivedItemStats } from "@voxim/content";
@@ -24,6 +24,7 @@ import { Position, Facing, Velocity, InputState, Stamina, CombatState, Lifetime,
 import { SkillInProgress } from "../components/combat.ts";
 import type { SkillInProgressData, HitRecord } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
+import { ItemData } from "../components/items.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { Hitbox } from "../components/hitbox.ts";
 import { ProjectileData } from "../components/projectile.ts";
@@ -73,8 +74,9 @@ export class ActionSystem implements System {
       if (combatState && combatState.staggerTicksRemaining > 0) continue;
 
       const equipment = world.get(entityId, Equipment);
-      const weapon = equipment?.weapon ?? null;
-      const weaponStats = weapon ? this.content.deriveItemStats(weapon.itemType, weapon.parts) : unarmed;
+      const weaponId = equipment?.weapon ?? null;
+      const weaponPrefabId = weaponId ? world.get(weaponId as EntityId, ItemData)?.prefabId ?? null : null;
+      const weaponStats = weaponPrefabId ? this.content.deriveItemStats(weaponPrefabId) : unarmed;
 
       const staminaCost = weaponStats.staminaCostPerSwing ?? unarmed.staminaCostPerSwing!;
       const stamina = world.get(entityId, Stamina);
@@ -94,7 +96,7 @@ export class ActionSystem implements System {
         pendingSkillVerb: strikeSlot >= 0 ? `strike:${strikeSlot}` : "",
       });
 
-      log.info("swing start: entity=%s weapon=%s action=%s stamina=%f", entityId, weapon?.itemType ?? "unarmed", weaponActionId, stamina?.current ?? 0);
+      log.info("swing start: entity=%s weapon=%s action=%s stamina=%f", entityId, weaponPrefabId ?? "unarmed", weaponActionId, stamina?.current ?? 0);
     }
 
     // ── 2. Advance phase + resolve hits ──────────────────────────────────────
@@ -162,13 +164,14 @@ export class ActionSystem implements System {
     if (!action.swingPath) return sip.hitEntities;
 
     const equipment = world.get(entityId, Equipment);
-    const weapon = equipment?.weapon ?? null;
-    const weaponStats = weapon ? this.content.deriveItemStats(weapon.itemType, weapon.parts) : unarmed;
+    const weaponId2 = equipment?.weapon ?? null;
+    const weaponPrefabId2 = weaponId2 ? world.get(weaponId2 as EntityId, ItemData)?.prefabId ?? null : null;
+    const weaponStats = weaponPrefabId2 ? this.content.deriveItemStats(weaponPrefabId2) : unarmed;
 
     // Derive blade geometry from the equipped weapon's model AABB.
     // Model Z axis = blade axis (voxel Z maps to Three.js Y for weapon rendering).
     // Fall back to swingPath defaults for unarmed (no weapon model).
-    const weaponPrefab = weapon ? this.content.getPrefab(weapon.itemType) : null;
+    const weaponPrefab = weaponPrefabId2 ? this.content.getPrefab(weaponPrefabId2) : null;
     const weaponAabb = weaponPrefab?.modelId
       ? this.content.getModelAabb(weaponPrefab.modelId)
       : null;
@@ -320,8 +323,9 @@ export class ActionSystem implements System {
     if (!action?.projectile) return;
 
     const equipment = world.get(entityId, Equipment);
-    const weapon = equipment?.weapon ?? null;
-    const weaponStats = weapon ? this.content.deriveItemStats(weapon.itemType, weapon.parts) : unarmed;
+    const weaponId3 = equipment?.weapon ?? null;
+    const weaponPrefabId3 = weaponId3 ? world.get(weaponId3 as EntityId, ItemData)?.prefabId ?? null : null;
+    const weaponStats = weaponPrefabId3 ? this.content.deriveItemStats(weaponPrefabId3) : unarmed;
 
     const pos = world.get(entityId, Position);
     const inputState = world.get(entityId, InputState);
@@ -379,7 +383,7 @@ export class ActionSystem implements System {
     }
 
     log.info("projectile spawned: entity=%s owner=%s weapon=%s speed=%.1f facing=%.2f",
-      projId, entityId, weapon?.itemType ?? "unarmed", speed, facing);
+      projId, entityId, weaponPrefabId3 ?? "unarmed", speed, facing);
   }
 
   /**

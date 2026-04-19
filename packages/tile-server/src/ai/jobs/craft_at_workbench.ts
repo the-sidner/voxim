@@ -166,7 +166,7 @@ function transferInputsToBuffer(
   // Verify inventory has each required input across slots.
   for (const inp of inputs) {
     let have = 0;
-    for (const s of inventory.slots) if (s.itemType === inp.itemType) have += s.quantity;
+    for (const s of inventory.slots) if (s.kind === "stack" && s.prefabId === inp.itemType) have += s.quantity;
     if (have < inp.quantity) return false;
   }
 
@@ -174,18 +174,19 @@ function transferInputsToBuffer(
   const nonNull = buffer.slots.filter((s) => s !== null).length;
   if (nonNull + inputs.length > buffer.capacity) return false;
 
-  const newInvSlots: InventorySlot[] = inventory.slots.map((s) => ({ ...s }));
+  // Deduct inputs from inventory (stack slots only; unique items are never crafting material)
+  const newInvSlots: InventorySlot[] = inventory.slots.map((s) => ({ ...s } as InventorySlot));
   for (const inp of inputs) {
     let remaining = inp.quantity;
     for (let i = 0; i < newInvSlots.length && remaining > 0; i++) {
       const slot = newInvSlots[i];
-      if (slot.itemType !== inp.itemType) continue;
+      if (slot.kind !== "stack" || slot.prefabId !== inp.itemType) continue;
       const take = Math.min(slot.quantity, remaining);
-      slot.quantity -= take;
+      newInvSlots[i] = { kind: "stack", prefabId: slot.prefabId, quantity: slot.quantity - take };
       remaining -= take;
     }
   }
-  const filteredInv = newInvSlots.filter((s) => s.quantity > 0);
+  const filteredInv = newInvSlots.filter((s) => s.kind !== "stack" || s.quantity > 0);
 
   const newBufSlots = [...buffer.slots, ...inputs.map((inp) => ({ itemType: inp.itemType, quantity: inp.quantity }))];
 

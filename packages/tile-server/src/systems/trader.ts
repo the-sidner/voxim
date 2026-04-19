@@ -23,7 +23,6 @@ export class TraderSystem implements System {
   run(world: World, events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().trade;
 
-    // Build trader position index once per tick.
     const traders: Array<{ traderId: EntityId; x: number; y: number }> = [];
     for (const { entityId: traderId, position } of world.query(Position, TraderInventory)) {
       traders.push({ traderId, x: position.x, y: position.y });
@@ -69,7 +68,7 @@ export class TraderSystem implements System {
           }
 
           const newSlots = deductItem(inv.slots, cfg.currencyItemType, listing.buyPrice);
-          addItem(newSlots, { itemType: listing.itemType, quantity: 1 });
+          addItem(newSlots, listing.itemType, 1);
           world.set(entityId, Inventory, { ...inv, slots: newSlots });
           world.set(entityId, InteractCooldown, { remaining: cfg.cooldownTicks });
 
@@ -86,7 +85,7 @@ export class TraderSystem implements System {
             buyerId: entityId, traderId, itemType: listing.itemType, quantity: 1,
             coinDelta: -listing.buyPrice,
           });
-          break; // one trade action per tick
+          break;
         }
 
         if (cmd.cmd === CommandType.TradeSell) {
@@ -100,7 +99,7 @@ export class TraderSystem implements System {
           }
 
           const newSlots = deductItem(inv.slots, listing.itemType, 1);
-          addItem(newSlots, { itemType: cfg.currencyItemType, quantity: listing.sellPrice });
+          addItem(newSlots, cfg.currencyItemType, listing.sellPrice);
           world.set(entityId, Inventory, { ...inv, slots: newSlots });
           world.set(entityId, InteractCooldown, { remaining: cfg.cooldownTicks });
 
@@ -109,7 +108,7 @@ export class TraderSystem implements System {
             buyerId: entityId, traderId, itemType: listing.itemType, quantity: 1,
             coinDelta: listing.sellPrice,
           });
-          break; // one trade action per tick
+          break;
         }
       }
     }
@@ -130,23 +129,28 @@ function nearestTrader(
   return nearest;
 }
 
-function countItem(slots: InventorySlot[], itemType: string): number {
-  return slots.filter((s) => s.itemType === itemType).reduce((sum, s) => sum + s.quantity, 0);
+function countItem(slots: InventorySlot[], prefabId: string): number {
+  return slots
+    .filter((s): s is Extract<InventorySlot, { kind: "stack" }> => s.kind === "stack" && s.prefabId === prefabId)
+    .reduce((sum, s) => sum + s.quantity, 0);
 }
 
-function deductItem(slots: InventorySlot[], itemType: string, amount: number): InventorySlot[] {
+function deductItem(slots: InventorySlot[], prefabId: string, amount: number): InventorySlot[] {
   let remaining = amount;
   return slots
     .map((s) => {
-      if (s.itemType !== itemType || remaining <= 0) return s;
+      if (s.kind !== "stack" || s.prefabId !== prefabId || remaining <= 0) return s;
       const take = Math.min(s.quantity, remaining);
       remaining -= take;
       return { ...s, quantity: s.quantity - take };
     })
-    .filter((s) => s.quantity > 0);
+    .filter((s) => s.kind !== "stack" || s.quantity > 0);
 }
 
-function addItem(slots: InventorySlot[], item: InventorySlot): void {
-  const existing = slots.find((s) => s.itemType === item.itemType && !s.fragmentId);
-  if (existing) { existing.quantity += item.quantity; } else { slots.push(item); }
+function addItem(slots: InventorySlot[], prefabId: string, quantity: number): void {
+  const existing = slots.find((s): s is Extract<InventorySlot, { kind: "stack" }> =>
+    s.kind === "stack" && s.prefabId === prefabId
+  );
+  if (existing) { existing.quantity += quantity; }
+  else { slots.push({ kind: "stack", prefabId, quantity }); }
 }

@@ -1,50 +1,27 @@
+import type { Serialiser } from "@voxim/engine";
 import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
-import { itemDataCodec, inventoryCodec, craftingQueueCodec, buildCodec } from "@voxim/codecs";
-import type { ItemPart } from "@voxim/content";
+import { itemDataCodec, inventoryCodec, craftingQueueCodec, buildCodec, WireWriter, WireReader } from "@voxim/codecs";
+import type { ItemDataData, InventorySlot, InventoryData } from "@voxim/codecs";
 
 // ---- ItemData ----
-// Marks an entity as a physical item in the world.
-// Item entities have Position + ItemData; the client renders them as small objects.
+// Marks a world entity as a physical item (drop or equipment slot entity).
+// prefabId identifies the Prefab definition; quantity for stackable drops.
 
-export interface ItemDataData {
-  itemType: string; // e.g. "wood", "stone", "wooden_sword"
-  quantity: number;
-  /** Material parts for composed items. Undefined for simple stackable resources. */
-  parts?: ItemPart[];
-  /** Durability 0–100. Undefined for items that don't wear. */
-  condition?: number;
-}
+export type { ItemDataData };
 
 export const ItemData = defineComponent({
   name: "itemData" as const,
   wireId: ComponentType.itemData,
   codec: itemDataCodec,
-  default: (): ItemDataData => ({ itemType: "unknown", quantity: 1 }),
+  default: (): ItemDataData => ({ prefabId: "unknown", quantity: 1 }),
 });
 
 // ---- Inventory ----
 // Items held by a player or NPC — not in the world, in their possession.
+// Slots are a discriminated union: stack (prefabId + qty) or unique (entityId).
 
-export interface InventorySlot {
-  itemType: string;
-  quantity: number;
-  /** Material parts for composed items. Undefined for simple stackable resources. */
-  parts?: ItemPart[];
-  /** Durability 0–100. Undefined for items that don't wear. */
-  condition?: number;
-  /**
-   * For tome items only — the ID of the LoreFragment encoded in this tome.
-   * Undefined for all other item types.
-   */
-  fragmentId?: string;
-}
-
-export interface InventoryData {
-  slots: InventorySlot[];
-  /** Max total item count. */
-  capacity: number;
-}
+export type { InventorySlot, InventoryData };
 
 export const Inventory = defineComponent({
   name: "inventory" as const,
@@ -74,6 +51,30 @@ export const CraftingQueue = defineComponent({
     progressTicks: 0,
     queued: [],
   }),
+});
+
+// ---- TomeData ----
+// Server-only component on unique tome item entities (kind: "unique" slots).
+// Carries the lore fragment encoded in this tome so DynastySystem can read it.
+
+export interface TomeDataData {
+  fragmentId: string;
+}
+
+const tomeDataCodec: Serialiser<TomeDataData> = {
+  encode(v: TomeDataData): Uint8Array {
+    const w = new WireWriter(); w.writeStr(v.fragmentId); return w.toBytes();
+  },
+  decode(bytes: Uint8Array): TomeDataData {
+    return { fragmentId: new WireReader(bytes).readStr() };
+  },
+};
+
+export const TomeData = defineComponent({
+  name: "tomeData" as const,
+  networked: false as const,
+  codec: tomeDataCodec,
+  default: (): TomeDataData => ({ fragmentId: "" }),
 });
 
 // ---- InteractCooldown ----

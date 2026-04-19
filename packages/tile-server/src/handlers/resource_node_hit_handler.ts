@@ -100,7 +100,7 @@ function spawnYields(
       y: hitY + (Math.random() - 0.5) * 0.6,
       z: hitZ,
     });
-    world.write(id, ItemData, { itemType: yld.itemType, quantity: qty });
+    world.write(id, ItemData, { prefabId: yld.itemType, quantity: qty });
     log.info("yield dropped: item=%sx%d at (%.2f,%.2f)", yld.itemType, qty, hitX, hitY);
   }
 }

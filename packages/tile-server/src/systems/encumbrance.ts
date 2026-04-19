@@ -1,7 +1,7 @@
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
-import { Inventory } from "../components/items.ts";
+import { Inventory, ItemData } from "../components/items.ts";
 import { Equipment } from "../components/equipment.ts";
 import { EncumbrancePenalty } from "../components/world.ts";
 import { createLogger } from "../logger.ts";
@@ -25,13 +25,20 @@ export class EncumbranceSystem implements System {
       let totalWeight = 0;
 
       for (const slot of inventory.slots) {
-        totalWeight += this.content.deriveItemStats(slot.itemType).weight * slot.quantity;
+        if (slot.kind === "stack") {
+          totalWeight += this.content.deriveItemStats(slot.prefabId).weight * slot.quantity;
+        } else {
+          const prefabId = world.get(slot.entityId as EntityId, ItemData)?.prefabId;
+          if (prefabId) totalWeight += this.content.deriveItemStats(prefabId).weight;
+        }
       }
 
       const equipment = world.get(entityId, Equipment);
       if (equipment) {
-        for (const slot of [equipment.weapon, equipment.offHand, equipment.head, equipment.chest, equipment.legs, equipment.feet, equipment.back]) {
-          if (slot) totalWeight += this.content.deriveItemStats(slot.itemType, slot.parts).weight;
+        for (const slotId of [equipment.weapon, equipment.offHand, equipment.head, equipment.chest, equipment.legs, equipment.feet, equipment.back]) {
+          if (!slotId) continue;
+          const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
+          if (prefabId) totalWeight += this.content.deriveItemStats(prefabId).weight;
         }
       }
 
