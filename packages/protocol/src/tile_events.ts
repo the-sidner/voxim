@@ -24,6 +24,16 @@ export const TileEvents = {
   NodeDepleted: Symbol("NodeDepleted"),
   DayPhaseChanged: Symbol("DayPhaseChanged"),
   SkillActivated: Symbol("SkillActivated"),
+  /**
+   * Published by a hit handler when a melee hit lands and the attacker's
+   * SkillInProgress carries a pending "strike:<slot>" verb. Consumed by
+   * SkillSystem via a real-bus subscriber registered at construction; the
+   * subscriber runs during the post-changeset flush, so stamina / cooldown /
+   * effect writes land in the next tick's changeset. Server-side only —
+   * never translated into a client GameEvent (the visible DamageDealt and
+   * SkillActivated events already cover the user-facing side).
+   */
+  StrikeLanded: Symbol("StrikeLanded"),
   TradeCompleted: Symbol("TradeCompleted"),
   LoreExternalised: Symbol("LoreExternalised"),
   LoreInternalised: Symbol("LoreInternalised"),
@@ -112,6 +122,12 @@ export interface SkillActivatedPayload {
   casterId: EntityId;
   slot: number;
   effectType: string;
+}
+
+export interface StrikeLandedPayload {
+  casterId: EntityId;
+  slot: number;
+  targetId: EntityId;
 }
 
 export interface TradeCompletedPayload {

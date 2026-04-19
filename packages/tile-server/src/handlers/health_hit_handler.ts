@@ -10,7 +10,6 @@ import { ItemData } from "../components/items.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
-import type { ResolveStrikePort } from "../events/resolve_strike.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 import type { OutgoingDamageHook, IncomingDamageHook } from "../effects/damage_hook.ts";
 import { createLogger } from "../logger.ts";
@@ -23,16 +22,17 @@ const log = createLogger("HealthHitHandler");
  * Combat resolution flow:
  *   block/parry → outgoing damage hooks (attacker effects modify multiplier)
  *   → armor + block reduction → incoming damage hooks (target effects absorb /
- *   reduce) → apply HP change → skill on hit → death request or knockback.
+ *   reduce) → apply HP change → publish StrikeLanded (if pendingSkillVerb
+ *   starts with "strike:") → death request or knockback.
  *
  * Per-effect damage logic (damage_boost consumption, shield absorption) lives
  * in OutgoingDamageHook / IncomingDamageHook implementations registered in
- * `effects/mod.ts`. This handler holds zero `effectStat ===` checks.
+ * `effects/mod.ts`. This handler holds zero `effectStat ===` checks and no
+ * direct references to SkillSystem — strike resolution is event-driven.
  */
 export class HealthHitHandler implements HitHandler {
   constructor(
     private readonly content: ContentStore,
-    private readonly strikes: ResolveStrikePort,
     private readonly deaths: DeathRequestPort,
     private readonly outgoingHooks: Registry<OutgoingDamageHook>,
     private readonly incomingHooks: Registry<IncomingDamageHook>,
@@ -149,10 +149,17 @@ export class HealthHitHandler implements HitHandler {
     });
 
     // ── Skill on hit ("strike" verb) ──────────────────────────────────────────
+    // Publish-only: SkillSystem subscribes to StrikeLanded on the real bus and
+    // applies stamina / cooldown / effect via world.set during the post-changeset
+    // flush. Writes land in the next tick's changeset.
     const sip = world.get(ctx.attackerId, SkillInProgress);
     if (sip?.pendingSkillVerb.startsWith("strike:")) {
       const slot = parseInt(sip.pendingSkillVerb.slice(7), 10);
-      this.strikes.resolveStrike(world, events, ctx.attackerId, slot, ctx.targetId);
+      events.publish(TileEvents.StrikeLanded, {
+        casterId: ctx.attackerId,
+        slot,
+        targetId: ctx.targetId,
+      });
     }
 
     // ── Death / knockback ─────────────────────────────────────────────────────

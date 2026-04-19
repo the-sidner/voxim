@@ -9,8 +9,9 @@
  *   - All server-side systems in declared order
  *
  * Process model: one TileServer instance per tile process. Spun up on demand,
- * shuts down when idle. Registers with the gateway on startup (gateway integration
- * is a stub — Phase 3, step 7).
+ * shuts down when idle. Registers with the gateway on startup when a
+ * gatewayUrl / tileAddress / adminPort triple is configured; omits
+ * self-registration in dev/demo mode (single tile, no gateway).
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
@@ -270,13 +271,14 @@ export class TileServer {
       }
     }
 
-    // SkillSystem is constructed up front because HealthHitHandler depends on
-    // it via the ResolveStrikePort interface. Both land in the systems array
-    // below; SkillSystem runs before ActionSystem so cooldown decrements are
+    // SkillSystem is constructed up front so we can register its StrikeLanded
+    // subscriber against the real event bus before the tick loop starts. It
+    // runs before ActionSystem in the pipeline so cooldown decrements are
     // visible to swings initiated the same tick.
     const skill = new SkillSystem(content, effects.apply, deathSystem);
+    skill.registerSubscribers(this.eventBus, this.world);
     const hitHandlers = [
-      new HealthHitHandler(content, skill, deathSystem, effects.outgoingDamage, effects.incomingDamage),
+      new HealthHitHandler(content, deathSystem, effects.outgoingDamage, effects.incomingDamage),
       new ResourceNodeHitHandler(content),
       new BlueprintHitHandler(),
       new WorkstationHitHandler(content, recipeSteps),

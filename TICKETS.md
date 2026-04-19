@@ -79,7 +79,7 @@ removes the injury component from the target entity.
 Done when: the correct crafting interaction removes an active injury component.
 
 ### T-119 · Replace `ResolveStrikePort` with a deferred `StrikeLanded` event
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: (this commit)
 
 `HealthHitHandler` calls `this.strikes.resolveStrike(...)` synchronously during
 damage resolution — a cross-system reach through a "port" interface. The docstring

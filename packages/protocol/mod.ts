@@ -55,6 +55,7 @@ export type {
   NodeDepletedPayload,
   DayPhaseChangedPayload,
   SkillActivatedPayload,
+  StrikeLandedPayload,
   TradeCompletedPayload,
   LoreExternalisedPayload,
   LoreInternalisedPayload,

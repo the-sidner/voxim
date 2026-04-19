@@ -1,4 +1,4 @@
-import type { World, EntityId } from "@voxim/engine";
+import type { World, EntityId, EventBus } from "@voxim/engine";
 import {
   ACTION_SKILL_1,
   ACTION_SKILL_2,
@@ -7,6 +7,7 @@ import {
   hasAction,
   TileEvents,
 } from "@voxim/protocol";
+import type { StrikeLandedPayload } from "@voxim/protocol";
 import type { ContentStore, ConceptVerbEntry } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
@@ -16,14 +17,13 @@ import type { LoreLoadoutData } from "../components/lore_loadout.ts";
 import type { Registry } from "@voxim/engine";
 import type { EffectApplyHandler } from "../effects/effect_handler.ts";
 import type { DeathRequestPort } from "../events/death.ts";
-import type { ResolveStrikePort } from "../events/resolve_strike.ts";
 import { decrementCooldown, deductStamina } from "../combat/helpers.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("SkillSystem");
 const SKILL_ACTION_FLAGS = [ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4];
 
-export class SkillSystem implements System, ResolveStrikePort {
+export class SkillSystem implements System {
   /** Reads InputState written by NpcAi via world.write(); must precede. */
   readonly dependsOn = ["NpcAiSystem"];
 
@@ -35,6 +35,21 @@ export class SkillSystem implements System, ResolveStrikePort {
     private readonly applyRegistry: Registry<EffectApplyHandler>,
     private readonly deaths: DeathRequestPort,
   ) {}
+
+  /**
+   * Subscribe to the real tile event bus. Called once from TileServer after
+   * world + bus are constructed. The StrikeLanded handler runs during the
+   * post-changeset flush, so any world.set inside resolveStrike queues into
+   * the next tick's changeset — a 50ms delay from the hit, invisible for
+   * stamina / cooldown / effect feedback at 20 Hz.
+   */
+  registerSubscribers(bus: EventBus, world: World): void {
+    bus.subscribe(TileEvents.StrikeLanded, (p: StrikeLandedPayload) => {
+      // Pass the bus as the EventEmitter — SkillSystem publishes SkillActivated
+      // synchronously during flush; EventRouter picks it up in the same tick.
+      this.resolveStrike(world, bus, p.casterId, p.slot, p.targetId);
+    });
+  }
 
   prepare(serverTick: number, ctx: TickContext): void {
     this.currentTick = serverTick;
@@ -108,9 +123,10 @@ export class SkillSystem implements System, ResolveStrikePort {
 
   /**
    * Resolve a skill from a specific slot on a caster targeting a single entity.
-   * Called by hit handlers via the ResolveStrikePort interface when a melee
-   * hit connects and pendingSkillVerb === "strike:{slot}". Also reused
-   * internally for invoke/ward/step verbs that fire without a swing.
+   * Invoked from the StrikeLanded subscriber during the post-changeset flush —
+   * writes (stamina, cooldown, effect) queue into the next tick's changeset.
+   * Also reusable internally for invoke/ward/step verbs that fire without a
+   * swing.
    *
    * Returns false if the skill fizzled (cooldown, insufficient stamina, no entry).
    */
