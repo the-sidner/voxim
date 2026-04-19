@@ -18,7 +18,8 @@ export const ComponentType = {
   thirst:             8,
   stamina:            9,
   // 10 is retired (was attackCooldown) — do not reuse
-  combatState:        11,
+  // 11 is retired (was combatState) — split into staggered (36) + counterReady (37)
+  //    plus the server-only iFrameActive / blockHeld / dodgeCooldown
   lifetime:           12,
   modelRef:           13,
   animationState:     14,
@@ -43,6 +44,8 @@ export const ComponentType = {
   durability:         33,
   inscribed:          34,
   qualityStamped:     35,
+  staggered:          36,
+  counterReady:       37,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

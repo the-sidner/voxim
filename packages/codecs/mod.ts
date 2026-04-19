@@ -6,7 +6,7 @@ export { buildCodec, encodeF64, decodeF64, encodeF32, decodeF32, encodeI32, deco
 export type {
   PositionData, VelocityData, FacingData, HeightmapData, MaterialGridData,
   ItemPart, ModelRefData, AnimationStateData, SkillVerb,
-  InventorySlot, StaminaData, CombatStateData, EquipmentData, InventoryData,
+  InventorySlot, StaminaData, StaggeredData, CounterReadyData, EquipmentData, InventoryData,
   ItemDataData, CraftingQueueData, TraderListing, TraderInventoryData,
   HeritageTrait, HeritageData, BlueprintMaterial, BlueprintData,
   ResourceNodeData, LoreSkillSlot, LoreLoadoutData, ActiveEffect, ActiveEffectsData,
@@ -19,7 +19,7 @@ export type {
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec,
   itemPartCodec, inventorySlotCodec,
-  staminaCodec, combatStateCodec, modelRefCodec, animationStateCodec,
+  staminaCodec, staggeredCodec, counterReadyCodec, modelRefCodec, animationStateCodec,
   equipmentCodec, inventoryCodec, itemDataCodec, craftingQueueCodec,
   traderListingCodec, traderInventoryCodec,
   heritageTraitCodec, heritageCodec,

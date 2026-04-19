@@ -9,9 +9,11 @@
  * Stamina, Inventory, Equipment, LoreLoadout, ActiveEffects, SpeedModifier,
  * CorruptionExposure.
  *
- * Components NOT persisted: InputState (reset on connect), CombatState (transient),
- * SkillInProgress (transient — mid-swing is cancelled on tile transition),
- * Lifetime (players don't expire), NpcTag (players aren't NPCs).
+ * Components NOT persisted: InputState (reset on connect), presence-as-flag
+ * combat components like Staggered / CounterReady / IFrameActive / BlockHeld
+ * / DodgeCooldown (all transient), SkillInProgress (transient — mid-swing
+ * is cancelled on tile transition), Lifetime (players don't expire),
+ * NpcTag (players aren't NPCs).
  */
 import type { World, EntityId } from "@voxim/engine";
 import { Position, Velocity, Facing, Health, Hunger, Thirst, Stamina } from "./components/game.ts";

@@ -1,13 +1,31 @@
 /**
- * Combat components — state that only exists while an entity is actively fighting.
+ * Combat components — per-entity state that only exists while an entity is
+ * in a specific combat condition.
  *
- * SkillInProgress follows the "component presence as flag" rule: it exists only
- * while a swing is in flight. Absence means the entity is not attacking. Never
- * write it at spawn.
+ * All components in this file follow the "component presence as flag" rule:
+ * the component exists iff the state is active. Absence is the zero state.
+ * Never written at spawn.
+ *
+ *   SkillInProgress  — windup/active/winddown of a swing (server-only).
+ *   Staggered        — interrupted after a successful parry (networked: the
+ *                      client wants to render stagger animation).
+ *   CounterReady     — parried an attack and has a bonus-damage window open
+ *                      (networked: future UI indicator).
+ *   IFrameActive     — invulnerable during a dodge (server-only: hit-reg
+ *                      is server-authoritative).
+ *   BlockHeld        — counts ticks since ACTION_BLOCK became held
+ *                      (server-only: parry-window detection).
+ *   DodgeCooldown    — dodge unavailable for N more ticks (server-only: the
+ *                      client doesn't gate dodge input today).
  */
 import { defineComponent } from "@voxim/engine";
 import type { Serialiser } from "@voxim/engine";
-import { WireWriter, WireReader, WIRE_LIMITS } from "@voxim/codecs";
+import { ComponentType } from "@voxim/protocol";
+import {
+  WireWriter, WireReader, WIRE_LIMITS,
+  staggeredCodec, counterReadyCodec,
+} from "@voxim/codecs";
+import type { StaggeredData, CounterReadyData } from "@voxim/codecs";
 
 /** A single hit record from a sweep — stores which entity and which body part was struck. */
 export interface HitRecord {
@@ -71,4 +89,91 @@ export const SkillInProgress = defineComponent({
     rewindTick: -1,
     pendingSkillVerb: "",
   }),
+});
+
+// ---- Staggered (networked) ------------------------------------------------
+
+export const Staggered = defineComponent({
+  name: "staggered" as const,
+  wireId: ComponentType.staggered,
+  codec: staggeredCodec,
+  default: (): StaggeredData => ({ ticksRemaining: 0 }),
+});
+
+// ---- CounterReady (networked, zero-payload marker) ------------------------
+
+export const CounterReady = defineComponent({
+  name: "counterReady" as const,
+  wireId: ComponentType.counterReady,
+  codec: counterReadyCodec,
+  default: (): CounterReadyData => ({}),
+});
+
+// ---- IFrameActive (server-only) -------------------------------------------
+
+export interface IFrameActiveData { ticksRemaining: number; }
+
+const iFrameActiveCodec: Serialiser<IFrameActiveData> = {
+  encode(v: IFrameActiveData): Uint8Array {
+    const w = new WireWriter();
+    w.writeU8(v.ticksRemaining);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): IFrameActiveData {
+    const r = new WireReader(bytes);
+    return { ticksRemaining: r.readU8() };
+  },
+};
+
+export const IFrameActive = defineComponent({
+  name: "iFrameActive" as const,
+  networked: false,
+  codec: iFrameActiveCodec,
+  default: (): IFrameActiveData => ({ ticksRemaining: 0 }),
+});
+
+// ---- BlockHeld (server-only) ----------------------------------------------
+
+export interface BlockHeldData { ticks: number; }
+
+const blockHeldCodec: Serialiser<BlockHeldData> = {
+  encode(v: BlockHeldData): Uint8Array {
+    const w = new WireWriter();
+    w.writeU16(v.ticks);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): BlockHeldData {
+    const r = new WireReader(bytes);
+    return { ticks: r.readU16() };
+  },
+};
+
+export const BlockHeld = defineComponent({
+  name: "blockHeld" as const,
+  networked: false,
+  codec: blockHeldCodec,
+  default: (): BlockHeldData => ({ ticks: 0 }),
+});
+
+// ---- DodgeCooldown (server-only) ------------------------------------------
+
+export interface DodgeCooldownData { ticksRemaining: number; }
+
+const dodgeCooldownCodec: Serialiser<DodgeCooldownData> = {
+  encode(v: DodgeCooldownData): Uint8Array {
+    const w = new WireWriter();
+    w.writeU8(v.ticksRemaining);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): DodgeCooldownData {
+    const r = new WireReader(bytes);
+    return { ticksRemaining: r.readU8() };
+  },
+};
+
+export const DodgeCooldown = defineComponent({
+  name: "dodgeCooldown" as const,
+  networked: false,
+  codec: dodgeCooldownCodec,
+  default: (): DodgeCooldownData => ({ ticksRemaining: 0 }),
 });

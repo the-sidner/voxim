@@ -20,8 +20,8 @@ import type { ContentStore, DerivedItemStats } from "@voxim/content";
 import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Position, Facing, Velocity, InputState, Stamina, CombatState, Lifetime, ModelRef } from "../components/game.ts";
-import { SkillInProgress } from "../components/combat.ts";
+import { Position, Facing, Velocity, InputState, Stamina, Lifetime, ModelRef } from "../components/game.ts";
+import { SkillInProgress, Staggered } from "../components/combat.ts";
 import type { SkillInProgressData, HitRecord } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
 import { ItemData } from "../components/items.ts";
@@ -71,8 +71,7 @@ export class ActionSystem implements System {
       const existing = world.get(entityId, SkillInProgress);
       if (existing) continue;
 
-      const combatState = world.get(entityId, CombatState);
-      if (combatState && combatState.staggerTicksRemaining > 0) continue;
+      if (world.has(entityId, Staggered)) continue;
 
       const equipment = world.get(entityId, Equipment);
       const weaponId = equipment?.weapon ?? null;

@@ -15,7 +15,6 @@ export {
   Thirst,
   Stamina,
   Lifetime,
-  CombatState,
 } from "./src/components/game.ts";
 export type {
   PositionData,
@@ -27,10 +26,15 @@ export type {
   ThirstData,
   StaminaData,
   LifetimeData,
-  CombatStateData,
 } from "./src/components/game.ts";
-export { SkillInProgress } from "./src/components/combat.ts";
-export type { SkillInProgressData, HitRecord } from "./src/components/combat.ts";
+export {
+  SkillInProgress,
+  Staggered, CounterReady, IFrameActive, BlockHeld, DodgeCooldown,
+} from "./src/components/combat.ts";
+export type {
+  SkillInProgressData, HitRecord,
+  IFrameActiveData, BlockHeldData, DodgeCooldownData,
+} from "./src/components/combat.ts";
 
 // NPC components
 export { NpcTag, NpcJobQueue } from "./src/components/npcs.ts";

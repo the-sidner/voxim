@@ -10,12 +10,12 @@ import { ComponentType } from "@voxim/protocol";
 import * as v from "valibot";
 import {
   positionCodec, velocityCodec, facingCodec, buildCodec,
-  staminaCodec, combatStateCodec, modelRefCodec, animationStateCodec,
+  staminaCodec, modelRefCodec, animationStateCodec,
 } from "@voxim/codecs";
-import type { PositionData, VelocityData, FacingData, StaminaData, CombatStateData, ModelRefData, AnimationStateData } from "@voxim/codecs";
+import type { PositionData, VelocityData, FacingData, StaminaData, ModelRefData, AnimationStateData } from "@voxim/codecs";
 
 // ---- re-exported shared types for convenience ----
-export type { PositionData, VelocityData, FacingData, StaminaData, CombatStateData };
+export type { PositionData, VelocityData, FacingData, StaminaData };
 
 // Re-export content types that other files import from here
 export type { ModelRefData, AnimationStateData };
@@ -154,30 +154,6 @@ export const Stamina = defineComponent({
   codec: staminaCodec,
   schema: staminaSchema,
   default: (): StaminaData => ({ current: 100, max: 100, regenPerSecond: 8, exhausted: false }),
-});
-
-// ---- CombatState ---- per-entity combat lifecycle counters
-
-const combatStateSchema = v.object({
-  blockHeldTicks: v.number(),
-  staggerTicksRemaining: v.number(),
-  counterReady: v.boolean(),
-  iFrameTicksRemaining: v.number(),
-  dodgeCooldownTicks: v.number(),
-});
-
-export const CombatState = defineComponent({
-  name: "combatState" as const,
-  wireId: ComponentType.combatState,
-  codec: combatStateCodec,
-  schema: combatStateSchema,
-  default: (): CombatStateData => ({
-    blockHeldTicks: 0,
-    staggerTicksRemaining: 0,
-    counterReady: false,
-    iFrameTicksRemaining: 0,
-    dodgeCooldownTicks: 0,
-  }),
 });
 
 // ---- Lifetime ---- remaining ticks; entity is destroyed when this reaches 0

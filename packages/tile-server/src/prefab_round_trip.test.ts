@@ -23,7 +23,6 @@ import { assertEquals } from "jsr:@std/assert";
 import * as v from "valibot";
 import type { ComponentDef } from "@voxim/engine";
 import {
-  CombatState,
   Health,
   Hunger,
   Stamina,
@@ -102,32 +101,6 @@ Deno.test("Stamina — schema/codec agreement", () => {
     { current: 0, max: 100, regenPerSecond: 8, exhausted: true },
     { current: 42.25, max: 200, regenPerSecond: 12.5, exhausted: false },
   ], "Stamina");
-});
-
-Deno.test("CombatState — schema/codec agreement", () => {
-  roundTrip(CombatState, [
-    {
-      blockHeldTicks: 0,
-      staggerTicksRemaining: 0,
-      counterReady: false,
-      iFrameTicksRemaining: 0,
-      dodgeCooldownTicks: 0,
-    },
-    {
-      blockHeldTicks: 5,
-      staggerTicksRemaining: 20,
-      counterReady: true,
-      iFrameTicksRemaining: 8,
-      dodgeCooldownTicks: 30,
-    },
-    {
-      blockHeldTicks: 1,
-      staggerTicksRemaining: 0,
-      counterReady: false,
-      iFrameTicksRemaining: 0,
-      dodgeCooldownTicks: 15,
-    },
-  ], "CombatState");
 });
 
 Deno.test("Equippable — schema/codec agreement", () => {

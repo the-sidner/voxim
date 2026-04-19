@@ -23,7 +23,6 @@ import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
 import { Heightmap, MaterialGrid } from "@voxim/world";
 import {
   AnimationState,
-  CombatState,
   Facing,
   Health,
   Hunger,
@@ -35,7 +34,14 @@ import {
   Thirst,
   Velocity,
 } from "./components/game.ts";
-import { SkillInProgress } from "./components/combat.ts";
+import {
+  SkillInProgress,
+  Staggered,
+  CounterReady,
+  IFrameActive,
+  BlockHeld,
+  DodgeCooldown,
+} from "./components/combat.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
@@ -101,7 +107,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Thirst,
   Stamina,
   // 10 (attackCooldown) retired
-  CombatState,
+  // 11 (combatState) retired — split into Staggered + CounterReady (below)
+  //    plus server-only IFrameActive / BlockHeld / DodgeCooldown.
   Lifetime,
   ModelRef,
   AnimationState,
@@ -129,6 +136,11 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Durability,
   Inscribed,
   QualityStamped,
+  // ── Combat presence-as-flag components (split from the retired
+  //    combatState slot). Networked because the client renders stagger
+  //    animation and surfaces the counter-ready UI.
+  Staggered,
+  CounterReady,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
@@ -147,6 +159,10 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // ── Server-only defs (networked: false) ──────────────────────────────────
   Hitbox,
   SkillInProgress,
+  // Combat counters — server-only because the client doesn't act on them.
+  IFrameActive,
+  BlockHeld,
+  DodgeCooldown,
   WorkstationTag,
   Hearth,
   JobBoard,

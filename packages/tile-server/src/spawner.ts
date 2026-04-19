@@ -26,7 +26,6 @@ import {
   Hunger,
   Thirst,
   Stamina,
-  CombatState,
   ModelRef,
   AnimationState,
 } from "./components/game.ts";
@@ -125,7 +124,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   writeDefaults(
     world, id,
-    Hunger, Thirst, CombatState, Stamina, CorruptionExposure,
+    Hunger, Thirst, Stamina, CorruptionExposure,
     LoreLoadout, ActiveEffects, CraftingQueue, InteractCooldown, AnimationState,
   );
 };
@@ -160,7 +159,7 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
 
   writeDefaults(
     world, id,
-    Hunger, Thirst, CombatState, CorruptionExposure,
+    Hunger, Thirst, CorruptionExposure,
     NpcJobQueue, AnimationState, ActiveEffects,
   );
 };

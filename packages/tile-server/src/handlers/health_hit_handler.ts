@@ -3,8 +3,14 @@ import { ACTION_BLOCK, hasAction, TileEvents } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
-import { Health, Stamina, CombatState } from "../components/game.ts";
-import { SkillInProgress } from "../components/combat.ts";
+import { Health, Stamina } from "../components/game.ts";
+import {
+  SkillInProgress,
+  Staggered,
+  CounterReady,
+  IFrameActive,
+  BlockHeld,
+} from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
 import { ItemData } from "../components/items.ts";
 import { QualityStamped } from "../components/instance.ts";
@@ -52,10 +58,8 @@ export class HealthHitHandler implements HitHandler {
     const combatCfg = gameCfg.combat;
     const dodgeCfg = gameCfg.dodge;
 
-    const targetCombatState = world.get(ctx.targetId, CombatState);
-
     // iFrame check — target is momentarily invulnerable
-    if (targetCombatState && targetCombatState.iFrameTicksRemaining > 0) return;
+    if (world.has(ctx.targetId, IFrameActive)) return;
 
     // ── Block / parry ─────────────────────────────────────────────────────────
     const defenderStamina = world.get(ctx.targetId, Stamina);
@@ -65,18 +69,14 @@ export class HealthHitHandler implements HitHandler {
       hasAction(ctx.targetSnapshotActions, ACTION_BLOCK) &&
       angleDiff(incomingAngle, ctx.targetSnapshotFacing) <= combatCfg.blockArcHalfRadians;
 
+    const blockHeldTicks = world.get(ctx.targetId, BlockHeld)?.ticks ?? 0;
     const isParry = ctx.parryAllowed &&
       isBlocking &&
-      targetCombatState !== null &&
-      targetCombatState!.blockHeldTicks < dodgeCfg.parryWindowTicks;
+      blockHeldTicks < dodgeCfg.parryWindowTicks;
 
     if (isParry) {
-      const attackerCombatState = world.get(ctx.attackerId, CombatState);
-      world.set(ctx.attackerId, CombatState, {
-        ...(attackerCombatState ?? defaultCombatState()),
-        staggerTicksRemaining: dodgeCfg.staggerTicks,
-      });
-      world.set(ctx.targetId, CombatState, { ...targetCombatState!, counterReady: true });
+      world.set(ctx.attackerId, Staggered, { ticksRemaining: dodgeCfg.staggerTicks });
+      world.set(ctx.targetId, CounterReady, {});
       events.publish(TileEvents.DamageDealt, {
         targetId: ctx.targetId,
         sourceId: ctx.attackerId,
@@ -88,12 +88,11 @@ export class HealthHitHandler implements HitHandler {
     }
 
     // ── Damage multipliers ────────────────────────────────────────────────────
-    const attackerCombatState = world.get(ctx.attackerId, CombatState);
     let damageMult = 1.0;
 
-    if (attackerCombatState?.counterReady) {
+    if (world.has(ctx.attackerId, CounterReady)) {
       damageMult = combatCfg.counterDamageMultiplier;
-      world.set(ctx.attackerId, CombatState, { ...attackerCombatState, counterReady: false });
+      world.remove(ctx.attackerId, CounterReady);
     }
 
     // Outgoing damage hooks — attacker-side effect modifiers (e.g. damage_boost).
@@ -188,12 +187,3 @@ function angleDiff(a: number, b: number): number {
   return Math.abs(raw);
 }
 
-function defaultCombatState() {
-  return {
-    blockHeldTicks: 0,
-    staggerTicksRemaining: 0,
-    counterReady: false,
-    iFrameTicksRemaining: 0,
-    dodgeCooldownTicks: 0,
-  };
-}

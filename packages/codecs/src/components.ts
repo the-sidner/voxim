@@ -232,36 +232,40 @@ export const staminaCodec: Serialiser<StaminaData> = {
   },
 };
 
-// ---- CombatState ------------------------------------------------------------
-// { blockHeldTicks, staggerTicksRemaining, counterReady, iFrameTicksRemaining, dodgeCooldownTicks }
+// ---- Staggered --------------------------------------------------------------
+// { ticksRemaining: u8 } — present iff an entity is in stagger recovery after
+// a successful parry. The component's absence is the zero state; systems gate
+// swing-initiation on world.has(entityId, Staggered).
 
-export interface CombatStateData {
-  blockHeldTicks: number;
-  staggerTicksRemaining: number;
-  counterReady: boolean;
-  iFrameTicksRemaining: number;
-  dodgeCooldownTicks: number;
+export interface StaggeredData {
+  ticksRemaining: number;
 }
 
-export const combatStateCodec: Serialiser<CombatStateData> = {
-  encode(v: CombatStateData): Uint8Array {
+export const staggeredCodec: Serialiser<StaggeredData> = {
+  encode(v: StaggeredData): Uint8Array {
     const w = new WireWriter();
-    w.writeI32(v.blockHeldTicks);
-    w.writeI32(v.staggerTicksRemaining);
-    w.writeU8(v.counterReady ? 1 : 0);
-    w.writeI32(v.iFrameTicksRemaining);
-    w.writeI32(v.dodgeCooldownTicks);
+    w.writeU8(v.ticksRemaining);
     return w.toBytes();
   },
-  decode(bytes: Uint8Array): CombatStateData {
+  decode(bytes: Uint8Array): StaggeredData {
     const r = new WireReader(bytes);
-    return {
-      blockHeldTicks: r.readI32(),
-      staggerTicksRemaining: r.readI32(),
-      counterReady: r.readU8() !== 0,
-      iFrameTicksRemaining: r.readI32(),
-      dodgeCooldownTicks: r.readI32(),
-    };
+    return { ticksRemaining: r.readU8() };
+  },
+};
+
+// ---- CounterReady -----------------------------------------------------------
+// Marker component — zero payload. Present iff the entity has an open
+// counter-attack window after a successful parry. Cleared by HealthHitHandler
+// when the counter lands (or by a future timer when the window expires).
+
+export type CounterReadyData = Record<never, never>;
+
+export const counterReadyCodec: Serialiser<CounterReadyData> = {
+  encode(_v: CounterReadyData): Uint8Array {
+    return new Uint8Array(0);
+  },
+  decode(_bytes: Uint8Array): CounterReadyData {
+    return {};
   },
 };
 
