@@ -19,7 +19,10 @@ function recipe(
 const emptyInv: InventoryData = { slots: [], capacity: 20 };
 
 function inv(items: Array<{ itemType: string; quantity: number }>): InventoryData {
-  return { slots: items.map((i) => ({ ...i, parts: [] })), capacity: 20 };
+  return {
+    slots: items.map((i) => ({ kind: "stack" as const, prefabId: i.itemType, quantity: i.quantity })),
+    capacity: 20,
+  };
 }
 
 function worldWith(opts: {

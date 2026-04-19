@@ -40,6 +40,9 @@ export const ComponentType = {
   workstationBuffer:  30,
   lightEmitter:       31,
   darknessModifier:   32,
+  durability:         33,
+  inscribed:          34,
+  qualityStamped:     35,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

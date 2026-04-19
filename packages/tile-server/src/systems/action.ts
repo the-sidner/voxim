@@ -25,6 +25,7 @@ import { SkillInProgress } from "../components/combat.ts";
 import type { SkillInProgressData, HitRecord } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
 import { ItemData } from "../components/items.ts";
+import { QualityStamped } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { Hitbox } from "../components/hitbox.ts";
 import { ProjectileData } from "../components/projectile.ts";
@@ -76,7 +77,8 @@ export class ActionSystem implements System {
       const equipment = world.get(entityId, Equipment);
       const weaponId = equipment?.weapon ?? null;
       const weaponPrefabId = weaponId ? world.get(weaponId as EntityId, ItemData)?.prefabId ?? null : null;
-      const weaponStats = weaponPrefabId ? this.content.deriveItemStats(weaponPrefabId) : unarmed;
+      const weaponQuality = weaponId ? world.get(weaponId as EntityId, QualityStamped)?.quality ?? 1 : 1;
+      const weaponStats = weaponPrefabId ? this.content.deriveItemStats(weaponPrefabId, [], weaponQuality) : unarmed;
 
       const staminaCost = weaponStats.staminaCostPerSwing ?? unarmed.staminaCostPerSwing!;
       const stamina = world.get(entityId, Stamina);
@@ -166,7 +168,8 @@ export class ActionSystem implements System {
     const equipment = world.get(entityId, Equipment);
     const weaponId2 = equipment?.weapon ?? null;
     const weaponPrefabId2 = weaponId2 ? world.get(weaponId2 as EntityId, ItemData)?.prefabId ?? null : null;
-    const weaponStats = weaponPrefabId2 ? this.content.deriveItemStats(weaponPrefabId2) : unarmed;
+    const weaponQuality2 = weaponId2 ? world.get(weaponId2 as EntityId, QualityStamped)?.quality ?? 1 : 1;
+    const weaponStats = weaponPrefabId2 ? this.content.deriveItemStats(weaponPrefabId2, [], weaponQuality2) : unarmed;
 
     // Derive blade geometry from the equipped weapon's model AABB.
     // Model Z axis = blade axis (voxel Z maps to Three.js Y for weapon rendering).
@@ -325,7 +328,8 @@ export class ActionSystem implements System {
     const equipment = world.get(entityId, Equipment);
     const weaponId3 = equipment?.weapon ?? null;
     const weaponPrefabId3 = weaponId3 ? world.get(weaponId3 as EntityId, ItemData)?.prefabId ?? null : null;
-    const weaponStats = weaponPrefabId3 ? this.content.deriveItemStats(weaponPrefabId3) : unarmed;
+    const weaponQuality3 = weaponId3 ? world.get(weaponId3 as EntityId, QualityStamped)?.quality ?? 1 : 1;
+    const weaponStats = weaponPrefabId3 ? this.content.deriveItemStats(weaponPrefabId3, [], weaponQuality3) : unarmed;
 
     const pos = world.get(entityId, Position);
     const inputState = world.get(entityId, InputState);

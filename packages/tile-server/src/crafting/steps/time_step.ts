@@ -48,7 +48,7 @@ export const timeStep: RecipeStepHandler = {
       world.set(stationId, WorkstationBuffer, { ...buffer, progressTicks: null, activeRecipeId: null });
       return;
     }
-    resolveRecipe(world, events, stationId, buffer, recipe, null);
+    resolveRecipe(world, content, events, stationId, buffer, recipe, null);
     log.info(
       "time-recipe done: station=%s recipe=%s outputs=[%s]",
       stationId, recipe.id,

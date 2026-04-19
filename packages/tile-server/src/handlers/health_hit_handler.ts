@@ -7,6 +7,7 @@ import { Health, Stamina, CombatState } from "../components/game.ts";
 import { SkillInProgress } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
 import { ItemData } from "../components/items.ts";
+import { QualityStamped } from "../components/instance.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
 import type { ResolveStrikePort } from "../events/resolve_strike.ts";
@@ -112,7 +113,9 @@ export class HealthHitHandler implements HitHandler {
           .reduce((sum, slotId) => {
             if (!slotId) return sum;
             const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
-            return sum + (prefabId ? (this.content.deriveItemStats(prefabId).armorReduction ?? 0) : 0);
+            if (!prefabId) return sum;
+            const quality = world.get(slotId as EntityId, QualityStamped)?.quality ?? 1;
+            return sum + (this.content.deriveItemStats(prefabId, [], quality).armorReduction ?? 0);
           }, 0)
       : 0;
 

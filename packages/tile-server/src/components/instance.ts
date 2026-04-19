@@ -1,100 +1,65 @@
 /**
  * Instance-lifetime components — Phase 4 of T-117.
  *
- * These components live on unique item entities (the `{ kind: "unique", entityId }` slot
- * introduced in Phase 3). They give each item its own mutable identity: wear, authorship,
- * quality, and provenance. All are server-only — clients reconstruct display values from
- * the prefab; instance state is surfaced to the client only via inventory delta payloads
- * (future work, tracked in T-117 Phase 5).
+ * These components live on unique item entities (the `{ kind: "unique", entityId }`
+ * slot introduced in Phase 3). They give each item its own mutable identity:
+ * wear, authorship, quality, and provenance.
  *
- * Components:
- *   Durability      — remaining uses before the item is worn out
- *   Inscribed       — lore fragment written into this item (tomes, relics)
- *   QualityStamped  — crafting-time quality tier (0–1); scales derived stats
- *   History         — capped sequence of notable events in this item's life
- *   Owned           — ordered lineage of owner dynasty IDs
+ * Durability / Inscribed / QualityStamped are networked — the client needs
+ * them to display durability bars, read tome fragments, and apply the
+ * quality-scaled stat badge. AoI brings the unique item entity (and these
+ * components along with it) into the holder's session via aoi.ts.
+ *
+ * History / Owned are server-only: the client never renders these directly
+ * and they can be large. Surface them through a UI command response when the
+ * UI is built, not over the delta stream.
  */
 import { defineComponent } from "@voxim/engine";
-import { WireReader, WireWriter } from "@voxim/codecs";
+import { ComponentType } from "@voxim/protocol";
+import {
+  durabilityCodec,
+  inscribedCodec,
+  qualityStampedCodec,
+  WireReader,
+  WireWriter,
+} from "@voxim/codecs";
+import type {
+  DurabilityData,
+  InscribedData,
+  QualityStampedData,
+} from "@voxim/codecs";
 
-// ---- Durability ----
+export type { DurabilityData, InscribedData, QualityStampedData };
 
-export interface DurabilityData {
-  remaining: number;
-  max: number;
-}
+// ---- Durability (networked) ----
 
 export const Durability = defineComponent({
   name: "durability" as const,
-  networked: false,
-  codec: {
-    encode(v: DurabilityData): Uint8Array {
-      const w = new WireWriter();
-      w.writeF32(v.remaining);
-      w.writeF32(v.max);
-      return w.toBytes();
-    },
-    decode(b: Uint8Array): DurabilityData {
-      const r = new WireReader(b);
-      return { remaining: r.readF32(), max: r.readF32() };
-    },
-  },
+  wireId: ComponentType.durability,
+  codec: durabilityCodec,
   default: (): DurabilityData => ({ remaining: 100, max: 100 }),
 });
 
-// ---- Inscribed ----
-// A lore fragment encoded into this item — written at a scribe desk, read at "read"
-// interaction to grant the fragment to the reader. Replaces the previous TomeData
-// component: any unique item can be inscribed, not only tomes.
-
-export interface InscribedData {
-  fragmentId: string;
-}
+// ---- Inscribed (networked) ----
 
 export const Inscribed = defineComponent({
   name: "inscribed" as const,
-  networked: false,
-  codec: {
-    encode(v: InscribedData): Uint8Array {
-      const w = new WireWriter();
-      w.writeStr(v.fragmentId);
-      return w.toBytes();
-    },
-    decode(b: Uint8Array): InscribedData {
-      const r = new WireReader(b);
-      return { fragmentId: r.readStr() };
-    },
-  },
+  wireId: ComponentType.inscribed,
+  codec: inscribedCodec,
   default: (): InscribedData => ({ fragmentId: "" }),
 });
 
-// ---- QualityStamped ----
-// Craft-time quality tier in the range 0–1 (1 = perfect).
-// `deriveItemStats()` accepts an optional quality parameter to scale relevant stats.
-
-export interface QualityStampedData {
-  quality: number;
-}
+// ---- QualityStamped (networked) ----
 
 export const QualityStamped = defineComponent({
   name: "qualityStamped" as const,
-  networked: false,
-  codec: {
-    encode(v: QualityStampedData): Uint8Array {
-      const w = new WireWriter();
-      w.writeF32(v.quality);
-      return w.toBytes();
-    },
-    decode(b: Uint8Array): QualityStampedData {
-      const r = new WireReader(b);
-      return { quality: r.readF32() };
-    },
-  },
+  wireId: ComponentType.qualityStamped,
+  codec: qualityStampedCodec,
   default: (): QualityStampedData => ({ quality: 1 }),
 });
 
-// ---- History ----
-// An ordered log of notable events (hits, trades, inscriptions) that happened to
+// ---- History (server-only) ----
+// Ordered log of notable events (hits, trades, inscriptions) that happened to
 // this item. Capped at maxLength to bound memory — oldest events are discarded first.
 
 export interface HistoryEvent {
@@ -144,7 +109,7 @@ export const History = defineComponent({
   default: (): HistoryData => ({ events: [], maxLength: MAX_HISTORY_EVENTS }),
 });
 
-// ---- Owned ----
+// ---- Owned (server-only) ----
 // Ordered lineage of owner dynasty IDs — most recent owner last. Optional:
 // not all items track ownership. Added at first trade or inheritance event.
 

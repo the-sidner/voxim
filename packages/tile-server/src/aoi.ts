@@ -22,6 +22,8 @@ import type {
 import type { ClientSession } from "./session.ts";
 import type { SpatialGrid } from "./spatial_grid.ts";
 import { Position } from "./components/game.ts";
+import { Inventory } from "./components/items.ts";
+import { Equipment } from "./components/equipment.ts";
 import { NETWORKED_DEFS } from "./component_registry.ts";
 
 /** Radius in world units within which entities are visible to a client. */
@@ -128,6 +130,26 @@ export function computeSessionUpdate(
 
   // The player's own entity is always visible
   inAoI.add(playerId);
+
+  // Unique item entities the player carries have no Position (they don't sit
+  // in the spatial grid) yet the holder's client must see them — their prefab
+  // id, durability, inscription, and quality drive UI and equipped rendering.
+  // Include them in the holder's AoI so the standard spawn/delta/destroy
+  // lifecycle transports their components. When a unique item is dropped it
+  // gains a Position and becomes visible to everyone via the spatial query;
+  // when picked up again it sheds Position and re-enters this path.
+  const inv = world.get(playerId, Inventory);
+  if (inv) {
+    for (const slot of inv.slots) {
+      if (slot.kind === "unique") inAoI.add(slot.entityId as EntityId);
+    }
+  }
+  const equip = world.get(playerId, Equipment);
+  if (equip) {
+    for (const slot of [equip.weapon, equip.offHand, equip.head, equip.chest, equip.legs, equip.feet, equip.back]) {
+      if (slot) inAoI.add(slot as EntityId);
+    }
+  }
 
   // ── 2. Spawns: entities newly visible this tick ──────────────────────────────
   const spawns: BinaryEntitySpawn[] = [];

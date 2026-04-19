@@ -10,6 +10,7 @@ import type { InventorySlot } from "../components/items.ts";
 import { Equipment } from "../components/equipment.ts";
 import type { EquipmentData } from "../components/equipment.ts";
 import { LightEmitter } from "../components/light.ts";
+import { QualityStamped } from "../components/instance.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("EquipmentSystem");
@@ -115,7 +116,8 @@ export class EquipmentSystem implements System {
     world.set(entityId, Equipment, { ...equipment, [equipSlot]: itemEntityId });
     world.set(entityId, Inventory, { ...inv, slots: newSlots });
 
-    const stats = this.content.deriveItemStats(prefabId);
+    const quality = world.get(itemEntityId, QualityStamped)?.quality ?? 1;
+    const stats = this.content.deriveItemStats(prefabId, [], quality);
     if (stats.lightRadius !== undefined) {
       world.set(entityId, LightEmitter, {
         color:     stats.lightColor     ?? 0xffaa44,
@@ -190,7 +192,8 @@ export class EquipmentSystem implements System {
       if (!slotId) continue;
       const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
       if (!prefabId) continue;
-      const stats = this.content.deriveItemStats(prefabId);
+      const quality = world.get(slotId as EntityId, QualityStamped)?.quality ?? 1;
+      const stats = this.content.deriveItemStats(prefabId, [], quality);
       if (stats.lightRadius !== undefined && stats.lightRadius > bestRadius) {
         bestRadius    = stats.lightRadius;
         bestColor     = stats.lightColor     ?? 0xffaa44;

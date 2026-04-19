@@ -14,6 +14,7 @@ export type {
   HitboxData,
   WorkstationSlot, WorkstationBufferData,
   LightEmitterData, DarknessModifierData,
+  DurabilityData, InscribedData, QualityStampedData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec,
@@ -31,6 +32,7 @@ export {
   hitboxCodec,
   workstationBufferCodec,
   lightEmitterCodec, darknessModifierCodec,
+  durabilityCodec, inscribedCodec, qualityStampedCodec,
   WIRE_LIMITS,
 } from "./src/components.ts";
 

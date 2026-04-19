@@ -1182,6 +1182,68 @@ export const darknessModifierCodec: Serialiser<DarknessModifierData> = {
   },
 };
 
+// ---- Durability ---- (T-117 Phase 4 — instance-lifetime component)
+// Remaining / max uses before the item is worn out. Ticked down by DurabilitySystem
+// on each weapon swing; when remaining hits 0 the item is destroyed.
+
+export interface DurabilityData {
+  remaining: number;
+  max: number;
+}
+
+export const durabilityCodec: Serialiser<DurabilityData> = {
+  encode(v: DurabilityData): Uint8Array {
+    const w = new WireWriter();
+    w.writeF32(v.remaining);
+    w.writeF32(v.max);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): DurabilityData {
+    const r = new WireReader(bytes);
+    return { remaining: r.readF32(), max: r.readF32() };
+  },
+};
+
+// ---- Inscribed ---- (T-117 Phase 4)
+// A lore fragment encoded into a unique item. Written at a scribe workstation;
+// read at the "internalise" interaction to grant the fragment to the reader.
+
+export interface InscribedData {
+  fragmentId: string;
+}
+
+export const inscribedCodec: Serialiser<InscribedData> = {
+  encode(v: InscribedData): Uint8Array {
+    const w = new WireWriter();
+    w.writeStr(v.fragmentId);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): InscribedData {
+    const r = new WireReader(bytes);
+    return { fragmentId: r.readStr() };
+  },
+};
+
+// ---- QualityStamped ---- (T-117 Phase 4)
+// Craft-time quality tier in [0, 1]. deriveItemStats() reads this and multiplies
+// the relevant derived stats (armour reduction, food/water value, light intensity).
+
+export interface QualityStampedData {
+  quality: number;
+}
+
+export const qualityStampedCodec: Serialiser<QualityStampedData> = {
+  encode(v: QualityStampedData): Uint8Array {
+    const w = new WireWriter();
+    w.writeF32(v.quality);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): QualityStampedData {
+    const r = new WireReader(bytes);
+    return { quality: r.readF32() };
+  },
+};
+
 // ---- WorkstationBuffer ----
 // Wire layout:
 //   capacity:       u8

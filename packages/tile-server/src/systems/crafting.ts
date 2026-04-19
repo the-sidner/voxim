@@ -22,6 +22,7 @@ import { Position, InputState } from "../components/game.ts";
 import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
+import { QualityStamped } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 import { spawnPrefab } from "../spawner.ts";
@@ -298,11 +299,57 @@ function slotsToMap(slots: WorkstationBufferData["slots"]): Map<string, number> 
   return m;
 }
 
-export function spawnOutputNear(world: World, stationId: EntityId, prefabId: string, quantity: number): void {
+/**
+ * Spawn a crafting output at a workstation.
+ *
+ * Stack output (prefab declares `stackable`): cheap path — a single world
+ * entity carrying `Position` + `ItemData { prefabId, quantity }`. Quantity is
+ * meaningful; instance state is not.
+ *
+ * Unique output (prefab omits `stackable`): runs through `spawnPrefab` so the
+ * full item-behaviour component set (Equippable, Swingable, Composed, …) and
+ * the visual shell are installed. Stamp instance state from the crafting
+ * context: `QualityStamped` scaled from the workstation's `qualityTier`, and
+ * a fresh `Durability` if the prefab declared one. Quantity is always 1.
+ */
+export function spawnOutputNear(
+  world: World,
+  content: ContentStore,
+  stationId: EntityId,
+  prefabId: string,
+  quantity: number,
+): void {
+  const prefab = content.getPrefab(prefabId);
   const pos = world.get(stationId, Position);
-  const id = newEntityId();
-  world.create(id);
-  world.write(id, Position, { x: (pos?.x ?? 0) + 0.5, y: (pos?.y ?? 0) + 0.5, z: pos?.z ?? 4.0 });
-  world.write(id, ItemData, { prefabId, quantity });
+  const x = (pos?.x ?? 0) + 0.5;
+  const y = (pos?.y ?? 0) + 0.5;
+  const z = pos?.z ?? 4.0;
+
+  const isStackable = prefab?.components["stackable"] !== undefined;
+  if (isStackable || !prefab) {
+    const id = newEntityId();
+    world.create(id);
+    world.write(id, Position, { x, y, z });
+    world.write(id, ItemData, { prefabId, quantity });
+    return;
+  }
+
+  // Unique item: spawn the full prefab — this installs the complete component
+  // set (Equippable, Swingable, Composed, visual shell, and any Durability
+  // declared on the prefab). Then overlay craft-time instance state that
+  // cannot live on the prefab: QualityStamped scaled from the workstation's
+  // qualityTier. Quantity is always 1; uniques do not stack.
+  const n = Math.max(1, quantity);
+  const tag = world.get(stationId, WorkstationTag);
+  const quality = clamp01(tag?.qualityTier ?? 1);
+  for (let i = 0; i < n; i++) {
+    const id = spawnPrefab(world, content, prefabId, { x, y, z });
+    world.write(id, ItemData, { prefabId, quantity: 1 });
+    world.write(id, QualityStamped, { quality });
+  }
+}
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 

@@ -5,6 +5,7 @@ import type { System, EventEmitter } from "../system.ts";
 import { InputState, Hunger, Thirst } from "../components/game.ts";
 import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
+import { QualityStamped } from "../components/instance.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ConsumptionSystem");
@@ -30,7 +31,10 @@ export class ConsumptionSystem implements System {
 
       const slot = inventory.slots[idx];
       const prefabId = slotPrefabId(slot, world)!;
-      const stats = this.content.deriveItemStats(prefabId);
+      const quality = slot.kind === "unique"
+        ? world.get(slot.entityId as EntityId, QualityStamped)?.quality ?? 1
+        : 1;
+      const stats = this.content.deriveItemStats(prefabId, [], quality);
 
       world.set(entityId, InteractCooldown, {
         remaining: this.content.getGameConfig().consumption.cooldownTicks,

@@ -7,7 +7,7 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
-import type { Recipe } from "@voxim/content";
+import type { ContentStore, Recipe } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import { WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
@@ -18,6 +18,7 @@ import {
 
 export function resolveRecipe(
   world: World,
+  content: ContentStore,
   events: EventEmitter,
   stationId: EntityId,
   buffer: WorkstationBufferData,
@@ -35,7 +36,7 @@ export function resolveRecipe(
     progressTicks: null,
   });
   for (const output of recipe.outputs) {
-    spawnOutputNear(world, stationId, output.itemType, output.quantity);
+    spawnOutputNear(world, content, stationId, output.itemType, output.quantity);
   }
   events.publish(TileEvents.CraftingCompleted, {
     crafterId: crafterId ?? stationId,

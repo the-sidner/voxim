@@ -29,7 +29,7 @@ export const assemblyStep: RecipeStepHandler = {
     }
     if (!recipeInputsMatch(recipe.inputs, bufferMap)) return;
 
-    resolveRecipe(ctx.world, ctx.events, ctx.stationId, ctx.buffer, recipe, ctx.hit.attackerId);
+    resolveRecipe(ctx.world, ctx.content, ctx.events, ctx.stationId, ctx.buffer, recipe, ctx.hit.attackerId);
     log.info(
       "assembled: attacker=%s station=%s recipe=%s outputs=[%s]",
       ctx.hit.attackerId, ctx.stationId, recipe.id,

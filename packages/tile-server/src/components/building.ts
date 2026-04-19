@@ -62,9 +62,16 @@ export const Blueprint = defineComponent({
 
 // ---- WorkstationTag (server-only) ----
 // Marks an entity as a workstation of a given type. Not sent over the wire.
+//
+// qualityTier is a [0, 1] multiplier applied by the crafting system to the
+// `QualityStamped` component of unique outputs produced here. 1.0 = perfect
+// (the default when a workstation prefab omits the field); a cruder forge
+// might stamp 0.6, a masterwork anvil 1.0. Read at craft resolution; the
+// stamped value is immutable for the lifetime of the item.
 
 export interface WorkstationTagData {
   stationType: string;
+  qualityTier: number;
 }
 
 export const WorkstationTag = defineComponent({
@@ -73,13 +80,17 @@ export const WorkstationTag = defineComponent({
   requires: ["workstationBuffer"],
   codec: {
     encode(v: WorkstationTagData): Uint8Array {
-      const w = new WireWriter(); w.writeStr(v.stationType); return w.toBytes();
+      const w = new WireWriter();
+      w.writeStr(v.stationType);
+      w.writeF32(v.qualityTier);
+      return w.toBytes();
     },
     decode(b: Uint8Array): WorkstationTagData {
-      const r = new WireReader(b); return { stationType: r.readStr() };
+      const r = new WireReader(b);
+      return { stationType: r.readStr(), qualityTier: r.readF32() };
     },
   },
-  default: (): WorkstationTagData => ({ stationType: "" }),
+  default: (): WorkstationTagData => ({ stationType: "", qualityTier: 1 }),
 });
 
 // ---- WorkstationBuffer (networked) ----

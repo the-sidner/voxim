@@ -123,6 +123,11 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   WorkstationBuffer,
   LightEmitter,
   DarknessModifier,
+  // ── Instance-lifetime components (T-117 Phase 4) — held unique items stream
+  //    to the holder's session via AoI inclusion in aoi.ts.
+  Durability,
+  Inscribed,
+  QualityStamped,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
@@ -150,10 +155,7 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ProjectileData,
   SpeedModifier,
   EncumbrancePenalty,
-  // ── Instance-lifetime components (T-117 Phase 4) ─────────────────────────
-  Durability,
-  Inscribed,
-  QualityStamped,
+  // ── Instance-lifetime components (server-only) ──────────────────────────
   History,
   Owned,
   // ── Item-behaviour template defs (T-117 Phase 1) ─────────────────────────

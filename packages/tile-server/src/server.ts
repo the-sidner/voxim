@@ -71,6 +71,7 @@ import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
 import { DynastySystem } from "./systems/dynasty.ts";
 import { DurabilitySystem } from "./systems/durability.ts";
+import { StaleSlotCleanupSystem } from "./systems/stale_slot_cleanup.ts";
 import { AnimationSystem } from "./systems/animation.ts";
 import { HitboxSystem } from "./systems/hitbox.ts";
 import { DebugCommandSystem } from "./systems/debug_commands.ts";
@@ -292,6 +293,11 @@ export class TileServer {
     // this tick; its position is implicit in the declaration order since no
     // other system depends on it.
     const declared: System[] = [
+      // Runs first so any Inventory/Equipment slot referencing an item entity
+      // destroyed last tick (durability broken, consumed, traded away) is
+      // scrubbed before downstream systems read slots or a stale ref is sent
+      // on the wire.
+      new StaleSlotCleanupSystem(),
       new NpcAiSystem(content, jobs, behaviorTrees),
       new HungerSystem(content, deathSystem),
       new StaminaSystem(content),
