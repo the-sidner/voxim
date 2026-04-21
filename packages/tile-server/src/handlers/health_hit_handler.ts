@@ -12,7 +12,6 @@ import {
   BlockHeld,
 } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
-import { ItemData } from "../components/items.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
@@ -109,12 +108,10 @@ export class HealthHitHandler implements HitHandler {
     const defenderEquipment = world.get(ctx.targetId, Equipment);
     const armorReduction = defenderEquipment
       ? [defenderEquipment.head, defenderEquipment.chest, defenderEquipment.legs, defenderEquipment.feet, defenderEquipment.back]
-          .reduce((sum, slotId) => {
-            if (!slotId) return sum;
-            const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
-            if (!prefabId) return sum;
-            const quality = world.get(slotId as EntityId, QualityStamped)?.quality ?? 1;
-            return sum + (this.content.deriveItemStats(prefabId, [], quality).armorReduction ?? 0);
+          .reduce((sum, slot) => {
+            if (!slot) return sum;
+            const quality = world.get(slot.entityId as EntityId, QualityStamped)?.quality ?? 1;
+            return sum + (this.content.deriveItemStats(slot.prefabId, [], quality).armorReduction ?? 0);
           }, 0)
       : 0;
 

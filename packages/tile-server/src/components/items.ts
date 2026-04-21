@@ -61,7 +61,7 @@ export interface InteractCooldownData {
 
 export const InteractCooldown = defineComponent({
   name: "interactCooldown" as const,
-  wireId: ComponentType.interactCooldown,
+  networked: false,
   codec: buildCodec<InteractCooldownData>({ remaining: { type: "i32" } }),
   default: (): InteractCooldownData => ({ remaining: 0 }),
 });

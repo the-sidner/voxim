@@ -33,7 +33,7 @@ import type { ContentStore, PlaceableData } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
-import { Inventory, ItemData } from "../components/items.ts";
+import { Inventory } from "../components/items.ts";
 import { Blueprint } from "../components/building.ts";
 import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
@@ -117,8 +117,7 @@ export class PlacementSystem implements System {
         log.debug("place rejected: placer=%s needs tool=%s but no weapon equipped", placerId, rules.requiresToolType);
         return;
       }
-      const weaponPrefabId = world.get(equipment.weapon as EntityId, ItemData)?.prefabId;
-      if (!weaponPrefabId) return;
+      const weaponPrefabId = equipment.weapon.prefabId;
       const stats = this.content.deriveItemStats(weaponPrefabId);
       if (stats.toolType !== rules.requiresToolType) {
         log.debug("place rejected: placer=%s tool=%s mismatch (need %s)", placerId, stats.toolType, rules.requiresToolType);

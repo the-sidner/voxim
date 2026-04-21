@@ -24,7 +24,6 @@ import { Position, Facing, Velocity, InputState, Stamina, Lifetime, ModelRef } f
 import { SkillInProgress, Staggered } from "../components/combat.ts";
 import type { SkillInProgressData, HitRecord } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
-import { ItemData } from "../components/items.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { Hitbox } from "../components/hitbox.ts";
@@ -74,8 +73,9 @@ export class ActionSystem implements System {
       if (world.has(entityId, Staggered)) continue;
 
       const equipment = world.get(entityId, Equipment);
-      const weaponId = equipment?.weapon ?? null;
-      const weaponPrefabId = weaponId ? world.get(weaponId as EntityId, ItemData)?.prefabId ?? null : null;
+      const weaponSlot = equipment?.weapon ?? null;
+      const weaponPrefabId = weaponSlot?.prefabId ?? null;
+      const weaponId = weaponSlot?.entityId ?? null;
       const weaponQuality = weaponId ? world.get(weaponId as EntityId, QualityStamped)?.quality ?? 1 : 1;
       const weaponStats = weaponPrefabId ? this.content.deriveItemStats(weaponPrefabId, [], weaponQuality) : unarmed;
 

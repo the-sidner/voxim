@@ -69,13 +69,13 @@ function emptyEquipment(): EquipmentData {
 
 /**
  * Create an item entity with no Position (it lives in an equipment slot, not the world).
- * Returns the new EntityId (string) for storage in EquipmentData slots.
+ * Returns an EquipmentSlot carrying both the new EntityId and the prefabId.
  */
-function spawnEquipEntity(world: World, prefabId: string): EntityId {
-  const id = newEntityId();
-  world.create(id);
-  world.write(id, ItemData, { prefabId, quantity: 1 });
-  return id;
+function spawnEquipEntity(world: World, prefabId: string): import("@voxim/codecs").EquipmentSlot {
+  const entityId = newEntityId();
+  world.create(entityId);
+  world.write(entityId, ItemData, { prefabId, quantity: 1 });
+  return { entityId, prefabId };
 }
 
 // ---- compound archetype installers ----
@@ -118,7 +118,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   const eq = emptyEquipment();
   for (const [slot, prefabId] of Object.entries(data.startingEquipment ?? {})) {
     if (!prefabId) continue;
-    eq[slot as keyof EquipmentData] = spawnEquipEntity(world, prefabId);
+    eq[slot as keyof EquipmentData] = spawnEquipEntity(world, prefabId as string);
   }
   world.write(id, Equipment, eq);
 
@@ -146,7 +146,7 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
 
   const eq = emptyEquipment();
   if (template?.weaponItemType) {
-    eq.weapon = spawnEquipEntity(world, template.weaponItemType);
+    eq.weapon = spawnEquipEntity(world, template.weaponItemType as string);
   }
   world.write(id, Equipment, eq);
 

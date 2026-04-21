@@ -1053,15 +1053,15 @@ export class VoximRenderer {
       : { x: 0.35, y: 0.35, z: 0.35 };
 
     // ── Weapon (main_hand): entity-root anchor, repositioned per-frame ──────
-    this.syncHandSlot(mesh, "main_hand", eq?.weapon?.itemType ?? null, entityScale);
+    this.syncHandSlot(mesh, "main_hand", eq?.weapon?.prefabId ?? null, entityScale);
 
     // ── Off-hand: entity-root anchor, follows hand_l bone per-frame ──────────
-    this.syncHandSlot(mesh, "off_hand", eq?.offHand?.itemType ?? null, entityScale);
+    this.syncHandSlot(mesh, "off_hand", eq?.offHand?.prefabId ?? null, entityScale);
 
     // ── Armor: bone-parented anchors at the sub-object transform ─────────────
     for (const [equipSlot, renderSlots] of Object.entries(VoximRenderer.ARMOR_SLOTS)) {
-      const itemType = (eq as Record<string, { itemType: string } | null> | undefined)?.[equipSlot]?.itemType ?? null;
-      const template = itemType ? this.itemTemplateMap.get(itemType) : null;
+      const prefabId = (eq as Record<string, { prefabId: string } | null> | undefined)?.[equipSlot]?.prefabId ?? null;
+      const template = prefabId ? this.itemTemplateMap.get(prefabId) : null;
       const modelId  = template?.modelTemplateId ?? null;
       for (const { renderSlotId, boneId } of renderSlots) {
         this.syncArmorSlot(mesh, renderSlotId, boneId, modelId, entityScale);

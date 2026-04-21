@@ -113,7 +113,7 @@ export class EquipmentSystem implements System {
       newSlots = inv.slots.filter((_, i) => i !== fromInventorySlot);
     }
 
-    world.set(entityId, Equipment, { ...equipment, [equipSlot]: itemEntityId });
+    world.set(entityId, Equipment, { ...equipment, [equipSlot]: { entityId: itemEntityId, prefabId } });
     world.set(entityId, Inventory, { ...inv, slots: newSlots });
 
     const quality = world.get(itemEntityId, QualityStamped)?.quality ?? 1;
@@ -142,13 +142,14 @@ export class EquipmentSystem implements System {
       return;
     }
 
-    const itemEntityId = equipment[slot];
-    if (itemEntityId === null) {
+    const equippedItem = equipment[slot];
+    if (equippedItem === null) {
       log.debug("unequip rejected: entity=%s slot=%s already empty", entityId, slot);
       return;
     }
 
-    const prefabId = world.get(itemEntityId as EntityId, ItemData)?.prefabId ?? "?";
+    const itemEntityId = equippedItem.entityId as EntityId;
+    const prefabId = equippedItem.prefabId;
     const uniqueSlot: InventorySlot = { kind: "unique", entityId: itemEntityId };
     const totalItems = inv.slots.reduce((s, sl) => s + (sl.kind === "stack" ? sl.quantity : 1), 0);
 
@@ -188,11 +189,10 @@ export class EquipmentSystem implements System {
     let bestFlicker = 0.15;
 
     for (const s of SLOTS) {
-      const slotId = newEquipment[s];
-      if (!slotId) continue;
-      const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
-      if (!prefabId) continue;
-      const quality = world.get(slotId as EntityId, QualityStamped)?.quality ?? 1;
+      const slot = newEquipment[s];
+      if (!slot) continue;
+      const prefabId = slot.prefabId;
+      const quality = world.get(slot.entityId as EntityId, QualityStamped)?.quality ?? 1;
       const stats = this.content.deriveItemStats(prefabId, [], quality);
       if (stats.lightRadius !== undefined && stats.lightRadius > bestRadius) {
         bestRadius    = stats.lightRadius;
@@ -308,9 +308,9 @@ export function slotPrefabId(slot: InventorySlot, world: World): string | null {
   return world.get(slot.entityId as EntityId, ItemData)?.prefabId ?? null;
 }
 
-/** Resolve the prefabId for an equipment slot EntityId. */
-export function equipPrefabId(slotId: string, world: World): string | null {
-  return world.get(slotId as EntityId, ItemData)?.prefabId ?? null;
+/** Resolve the prefabId for an equipment slot. */
+export function equipPrefabId(slot: import("@voxim/codecs").EquipmentSlot | null): string | null {
+  return slot?.prefabId ?? null;
 }
 
 /** Create an item entity with no Position (lives in an equipment slot, not the world). */

@@ -47,11 +47,11 @@ export class StaleSlotCleanupSystem implements System {
     for (const { entityId, equipment } of world.query(Equipment)) {
       let patched: EquipmentData | null = null;
       for (const k of EQUIP_KEYS) {
-        const id = equipment[k];
-        if (id && !world.isAlive(id as EntityId)) {
+        const slot = equipment[k];
+        if (slot && !world.isAlive(slot.entityId as EntityId)) {
           if (!patched) patched = { ...equipment };
           patched[k] = null;
-          log.debug("scrubbed equipment slot: owner=%s slot=%s dead=%s", entityId, k, id);
+          log.debug("scrubbed equipment slot: owner=%s slot=%s dead=%s", entityId, k, slot.entityId);
         }
       }
       if (patched) world.set(entityId, Equipment, patched);

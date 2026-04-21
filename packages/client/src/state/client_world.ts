@@ -11,8 +11,17 @@ import {
   heightmapCodec, materialGridCodec,
   staminaCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
   blueprintCodec, lightEmitterCodec, darknessModifierCodec,
+  staggeredCodec, counterReadyCodec,
+  loreLoadoutCodec, activeEffectsCodec,
+  durabilityCodec, craftingQueueCodec, itemDataCodec,
 } from "@voxim/codecs";
-import type { HeightmapData, MaterialGridData, ModelRefData, AnimationStateData, EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData } from "@voxim/codecs";
+import type {
+  HeightmapData, MaterialGridData, ModelRefData, AnimationStateData,
+  EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
+  StaggeredData, CounterReadyData,
+  LoreLoadoutData, ActiveEffectsData,
+  DurabilityData, CraftingQueueData, ItemDataData,
+} from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
 export interface VelocityState  { x: number; y: number; z: number }
@@ -20,6 +29,10 @@ export interface FacingState    { angle: number }
 export interface HealthState    { current: number; max: number }
 export interface StaminaState   { current: number; max: number; exhausted: boolean }
 export interface HungerState    { value: number }
+export interface ThirstState    { value: number }
+export interface WorldClockState  { ticksElapsed: number; dayLengthTicks: number }
+export interface TileCorruptionState { level: number }
+export interface CorruptionExposureState { level: number }
 
 export interface EntityState {
   position?: PositionState;
@@ -28,6 +41,7 @@ export interface EntityState {
   health?: HealthState;
   stamina?: StaminaState;
   hunger?: HungerState;
+  thirst?: ThirstState;
   heightmap?: HeightmapData;
   materialGrid?: MaterialGridData;
   modelRef?: ModelRefData;
@@ -37,6 +51,16 @@ export interface EntityState {
   blueprint?: BlueprintData;
   lightEmitter?: LightEmitterData;
   darknessModifier?: DarknessModifierData;
+  staggered?: StaggeredData;
+  counterReady?: CounterReadyData;
+  loreLoadout?: LoreLoadoutData;
+  activeEffects?: ActiveEffectsData;
+  durability?: DurabilityData;
+  craftingQueue?: CraftingQueueData;
+  itemData?: ItemDataData;
+  worldClock?: WorldClockState;
+  tileCorruption?: TileCorruptionState;
+  corruptionExposure?: CorruptionExposureState;
   /** Raw bytes for components the client doesn't decode eagerly, keyed by component name. */
   raw: Map<string, Uint8Array>;
   /** Per-component version counters (component type ID → version). Stale deltas are discarded. */
@@ -47,7 +71,7 @@ function makeEntity(): EntityState {
   return { raw: new Map(), versions: new Map() };
 }
 
-const CHUNK_CELLS = 32;
+const CHUNK_SIDE = 32;
 
 export class ClientWorld {
   private readonly entities = new Map<string, EntityState>();
@@ -123,6 +147,47 @@ export class ClientWorld {
       case ComponentType.darknessModifier:
         entity.darknessModifier = darknessModifierCodec.decode(data);
         break;
+      case ComponentType.staggered:
+        entity.staggered = staggeredCodec.decode(data);
+        break;
+      case ComponentType.counterReady:
+        entity.counterReady = counterReadyCodec.decode(data);
+        break;
+      case ComponentType.loreLoadout:
+        entity.loreLoadout = loreLoadoutCodec.decode(data);
+        break;
+      case ComponentType.activeEffects:
+        entity.activeEffects = activeEffectsCodec.decode(data);
+        break;
+      case ComponentType.durability:
+        entity.durability = durabilityCodec.decode(data);
+        break;
+      case ComponentType.craftingQueue:
+        entity.craftingQueue = craftingQueueCodec.decode(data);
+        break;
+      case ComponentType.itemData:
+        entity.itemData = itemDataCodec.decode(data);
+        break;
+      case ComponentType.thirst: {
+        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        entity.thirst = { value: v.getFloat32(0, true) };
+        break;
+      }
+      case ComponentType.worldClock: {
+        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        entity.worldClock = { ticksElapsed: v.getInt32(0, true), dayLengthTicks: v.getInt32(4, true) };
+        break;
+      }
+      case ComponentType.tileCorruption: {
+        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        entity.tileCorruption = { level: v.getFloat32(0, true) };
+        break;
+      }
+      case ComponentType.corruptionExposure: {
+        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        entity.corruptionExposure = { level: v.getFloat32(0, true) };
+        break;
+      }
       default: {
         const name = COMPONENT_TYPE_TO_NAME.get(typeId);
         if (name) entity.raw.set(name, data);
@@ -192,13 +257,13 @@ export class ClientWorld {
    * Returns 0 for unloaded chunks.
    */
   getTerrainHeight(wx: number, wy: number): number {
-    const cx = Math.floor(wx / CHUNK_CELLS);
-    const cy = Math.floor(wy / CHUNK_CELLS);
+    const cx = Math.floor(wx / CHUNK_SIDE);
+    const cy = Math.floor(wy / CHUNK_SIDE);
     const data = this.chunkHeightmaps.get(`${cx},${cy}`);
     if (!data) return 0;
-    const lx = Math.max(0, Math.min(CHUNK_CELLS - 1, Math.floor(wx - cx * CHUNK_CELLS)));
-    const ly = Math.max(0, Math.min(CHUNK_CELLS - 1, Math.floor(wy - cy * CHUNK_CELLS)));
-    return data[lx + ly * CHUNK_CELLS] ?? 0;
+    const lx = Math.max(0, Math.min(CHUNK_SIDE - 1, Math.floor(wx - cx * CHUNK_SIDE)));
+    const ly = Math.max(0, Math.min(CHUNK_SIDE - 1, Math.floor(wy - cy * CHUNK_SIDE)));
+    return data[lx + ly * CHUNK_SIDE] ?? 0;
   }
 
   clear(): void {

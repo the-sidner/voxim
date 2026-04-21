@@ -35,10 +35,9 @@ export class EncumbranceSystem implements System {
 
       const equipment = world.get(entityId, Equipment);
       if (equipment) {
-        for (const slotId of [equipment.weapon, equipment.offHand, equipment.head, equipment.chest, equipment.legs, equipment.feet, equipment.back]) {
-          if (!slotId) continue;
-          const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
-          if (prefabId) totalWeight += this.content.deriveItemStats(prefabId).weight;
+        for (const slot of [equipment.weapon, equipment.offHand, equipment.head, equipment.chest, equipment.legs, equipment.feet, equipment.back]) {
+          if (!slot) continue;
+          totalWeight += this.content.deriveItemStats(slot.prefabId).weight;
         }
       }
 

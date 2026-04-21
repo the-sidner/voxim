@@ -46,7 +46,6 @@ import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
   CraftingQueue,
-  InteractCooldown,
   Inventory,
   ItemData,
 } from "./components/items.ts";
@@ -116,7 +115,7 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   ItemData,
   Inventory,
   CraftingQueue,
-  InteractCooldown,
+  // 20 (interactCooldown) retired — server-only, never needed on client
   Blueprint,
   ResourceNode,
   WorldClock,

@@ -145,7 +145,7 @@ export function computeSessionUpdate(
   const equip = world.get(playerId, Equipment);
   if (equip) {
     for (const slot of [equip.weapon, equip.offHand, equip.head, equip.chest, equip.legs, equip.feet, equip.back]) {
-      if (slot) inAoI.add(slot as EntityId);
+      if (slot) inAoI.add(slot.entityId as EntityId);
     }
   }
 

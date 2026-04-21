@@ -7,7 +7,7 @@ export type {
   PositionData, VelocityData, FacingData, HeightmapData, MaterialGridData,
   ItemPart, ModelRefData, AnimationStateData, SkillVerb,
   InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
-  InventorySlot, StaminaData, StaggeredData, CounterReadyData, EquipmentData, InventoryData,
+  InventorySlot, StaminaData, StaggeredData, CounterReadyData, EquipmentSlot, EquipmentData, InventoryData,
   ItemDataData, CraftingQueueData, TraderListing, TraderInventoryData,
   HeritageTrait, HeritageData, BlueprintMaterial, BlueprintData,
   ResourceNodeData, LoreSkillSlot, LoreLoadoutData, ActiveEffect, ActiveEffectsData,

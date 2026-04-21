@@ -28,7 +28,7 @@ export const ComponentType = {
   itemData:           17,
   inventory:          18,
   craftingQueue:      19,
-  interactCooldown:   20,
+  // 20 (interactCooldown) retired — server-only rate limiter, never needed on client
   blueprint:          21,
   resource_node:      22,
   worldClock:         23,

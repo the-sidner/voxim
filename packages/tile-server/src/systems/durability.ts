@@ -30,7 +30,7 @@ export class DurabilitySystem implements System {
       const equip = world.get(entityId, Equipment);
       if (!equip?.weapon) continue;
 
-      const weaponId = equip.weapon as EntityId;
+      const weaponId = equip.weapon.entityId as EntityId;
       const dur = world.get(weaponId, Durability);
       if (!dur || dur.remaining <= 0) continue;
 

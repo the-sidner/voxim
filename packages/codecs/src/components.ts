@@ -411,26 +411,37 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
 
 // ---- Equipment --------------------------------------------------------------
 // All seven equipment slots. Wire order is fixed — never reorder.
-// Each slot holds the EntityId of the equipped item entity, or null if empty.
-// Equipment slots store EntityIds, not inline item data — stat reads go through
-// the item entity's ItemData component.
+// Each slot carries both the item entity's EntityId and its prefabId so the
+// client can resolve models and display names without a separate entity lookup.
+
+export interface EquipmentSlot {
+  entityId: string;
+  prefabId: string;
+}
 
 export interface EquipmentData {
-  weapon:  string | null;
-  offHand: string | null;
-  head:    string | null;
-  chest:   string | null;
-  legs:    string | null;
-  feet:    string | null;
-  back:    string | null;
+  weapon:  EquipmentSlot | null;
+  offHand: EquipmentSlot | null;
+  head:    EquipmentSlot | null;
+  chest:   EquipmentSlot | null;
+  legs:    EquipmentSlot | null;
+  feet:    EquipmentSlot | null;
+  back:    EquipmentSlot | null;
 }
 
-function writeSlot(w: WireWriter, slot: string | null): void {
-  if (slot !== null) { w.writeU8(1); w.writeStr(slot); } else { w.writeU8(0); }
+function writeSlot(w: WireWriter, slot: EquipmentSlot | null): void {
+  if (slot !== null) {
+    w.writeU8(1);
+    w.writeStr(slot.entityId);
+    w.writeStr(slot.prefabId);
+  } else {
+    w.writeU8(0);
+  }
 }
 
-function readSlot(r: WireReader): string | null {
-  return r.readU8() ? r.readStr() : null;
+function readSlot(r: WireReader): EquipmentSlot | null {
+  if (!r.readU8()) return null;
+  return { entityId: r.readStr(), prefabId: r.readStr() };
 }
 
 export const equipmentCodec: Serialiser<EquipmentData> = {

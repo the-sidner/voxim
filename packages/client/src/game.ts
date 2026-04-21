@@ -25,8 +25,8 @@ import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.t
 import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { EquipmentData, InventoryData } from "@voxim/codecs";
-import type { EquipmentState, InventoryState, ItemStack } from "./ui/ui_store.ts";
+import type { EquipmentData, InventoryData, LoreLoadoutData } from "@voxim/codecs";
+import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { weapon_actions as weaponActionsData, item_templates as itemTemplatesData } from "@voxim/content";
@@ -127,6 +127,9 @@ export class VoximGame {
         } else if (state.position) {
           if (this.loadingComplete) this.renderer?.updateEntity(entityId, state);
         }
+        if (state.worldClock) {
+          this.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
+        }
         if (entityId === this.playerId) {
           if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
           if (state.stamina)   patchUI({ stamina:   { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
@@ -134,15 +137,16 @@ export class VoximGame {
           if (state.equipment) {
             patchUI({ equipment: mapEquipmentToUI(state.equipment) });
             if (this.input) {
-              const toolType = getToolType(state.equipment.weapon?.itemType);
+              const toolType = getToolType(state.equipment.weapon?.prefabId);
               const newBuildMode = toolType === "hammer";
               if (newBuildMode !== this.input.buildMode) {
-                console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.itemType ?? "none"} toolType=${toolType ?? "none"}`);
+                console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.prefabId ?? "none"} toolType=${toolType ?? "none"}`);
                 this.input.buildMode = newBuildMode;
               }
             }
           }
           if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory) });
+          if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
         }
       }
 
@@ -317,12 +321,16 @@ export class VoximGame {
     // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap) this.terrainChunksReceived++;
+      if (state.worldClock) {
+        this.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
+      }
       if (entityId === this.playerId) {
-        if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
-        if (state.stamina)   patchUI({ stamina:   { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
-        if (state.hunger)    patchUI({ hunger:    { value: state.hunger.value } });
-        if (state.equipment) patchUI({ equipment: mapEquipmentToUI(state.equipment) });
-        if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory) });
+        if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
+        if (state.stamina)     patchUI({ stamina:      { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
+        if (state.hunger)      patchUI({ hunger:       { value: state.hunger.value } });
+        if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
+        if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory) });
+        if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
       }
     }
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
@@ -636,16 +644,15 @@ function humanizeItemType(id: string): string {
 
 /**
  * Map a server EquipmentData into the EquipmentState shape the UI expects.
- * Inventory slots with null become null equipment slots.
  */
 function mapEquipmentToUI(eq: EquipmentData): EquipmentState {
   function toStack(slot: EquipmentData["weapon"]): ItemStack | null {
     if (!slot) return null;
     return {
-      itemType: slot.itemType,
-      quantity: slot.quantity,
-      displayName: humanizeItemType(slot.itemType),
-      modelTemplateId: null, // resolved lazily by content cache when needed
+      itemType: slot.prefabId,
+      quantity: 1,
+      displayName: humanizeItemType(slot.prefabId),
+      modelTemplateId: null,
     };
   }
   return {
@@ -657,6 +664,33 @@ function mapEquipmentToUI(eq: EquipmentData): EquipmentState {
     feet:    toStack(eq.feet),
     back:    toStack(eq.back),
   };
+}
+
+/**
+ * Derive a day-phase name from raw WorldClock fields.
+ * Boundaries: midnight 0–0.25, dawn 0.25–0.5, noon 0.5–0.75, dusk 0.75–1.
+ */
+function worldClockPhase(ticksElapsed: number, dayLengthTicks: number): string {
+  const t = (ticksElapsed % dayLengthTicks) / dayLengthTicks;
+  if (t < 0.25) return "midnight";
+  if (t < 0.5)  return "dawn";
+  if (t < 0.75) return "noon";
+  return "dusk";
+}
+
+/**
+ * Map a server LoreLoadoutData into the SkillLoadoutState shape the UI expects.
+ */
+function mapLoreLoadoutToUI(loadout: LoreLoadoutData): SkillLoadoutState {
+  const slots = loadout.skills.map((s, index) => ({
+    index,
+    verb:              s?.verb              ?? "strike",
+    outwardFragmentId: s?.outwardFragmentId ?? null,
+    inwardFragmentId:  s?.inwardFragmentId  ?? null,
+    cooldownTicks:     loadout.skillCooldowns[index] ?? 0,
+    maxCooldownTicks:  0,
+  }));
+  return { slots };
 }
 
 /**
@@ -678,12 +712,24 @@ function getToolType(itemType: string | undefined): string | undefined {
  * the correct number of cells regardless of how many items are present.
  */
 function mapInventoryToUI(inv: InventoryData): InventoryState {
-  const slots: (ItemStack | null)[] = inv.slots.map((s) => ({
-    itemType: s.itemType,
-    quantity: s.quantity,
-    displayName: humanizeItemType(s.itemType),
-    modelTemplateId: null,
-  }));
+  const slots: (ItemStack | null)[] = inv.slots.map((s) => {
+    if (s.kind === "stack") {
+      return {
+        itemType: s.prefabId,
+        quantity: s.quantity,
+        displayName: humanizeItemType(s.prefabId),
+        modelTemplateId: null,
+      };
+    } else {
+      // unique item entity — prefabId resolved server-side via ItemData component
+      return {
+        itemType: s.entityId,
+        quantity: 1,
+        displayName: "(item)",
+        modelTemplateId: null,
+      };
+    }
+  });
   while (slots.length < inv.capacity) slots.push(null);
   return { slots, maxSlots: inv.capacity };
 }

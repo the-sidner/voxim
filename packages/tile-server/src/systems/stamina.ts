@@ -1,9 +1,8 @@
-import type { World, EntityId } from "@voxim/engine";
+import type { World } from "@voxim/engine";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Stamina } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
-import { ItemData } from "../components/items.ts";
 import { CorruptionExposure } from "../components/world.ts";
 import { createLogger } from "../logger.ts";
 
@@ -21,10 +20,9 @@ export class StaminaSystem implements System {
       const equipment = world.get(entityId, Equipment);
       const armorPenalty = equipment
         ? [equipment.head, equipment.chest, equipment.legs, equipment.feet, equipment.back]
-            .reduce((sum, slotId) => {
-              if (!slotId) return sum;
-              const prefabId = world.get(slotId as EntityId, ItemData)?.prefabId;
-              return sum + (prefabId ? (this.content.deriveItemStats(prefabId).staminaRegenPenalty ?? 0) : 0);
+            .reduce((sum, slot) => {
+              if (!slot) return sum;
+              return sum + (this.content.deriveItemStats(slot.prefabId).staminaRegenPenalty ?? 0);
             }, 0)
         : 0;
 
