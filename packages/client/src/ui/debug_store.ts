@@ -37,7 +37,6 @@ export function setDebugLayer(layer: DebugLayer, on: boolean): void {
 
 export interface DebugItemEntry {
   id: string;
-  category: string;
 }
 
 export const debugItemList = signal<DebugItemEntry[]>([]);

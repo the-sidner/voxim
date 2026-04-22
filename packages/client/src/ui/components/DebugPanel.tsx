@@ -197,7 +197,7 @@ function GiveItemSection({ onAction }: { onAction: (a: UIAction) => void }) {
   const items = debugItemList.value;
   const filter = giveFilter.value.toLowerCase();
   const filtered = filter
-    ? items.filter((it) => it.id.includes(filter) || it.category.includes(filter))
+    ? items.filter((it) => it.id.includes(filter))
     : items;
 
   return (
@@ -261,7 +261,6 @@ function GiveItemSection({ onAction }: { onAction: (a: UIAction) => void }) {
             }}
           >
             <span>{item.id}</span>
-            <span style={{ color: "var(--col-text-dim)" }}>{item.category}</span>
           </button>
         ))}
         {filtered.length === 0 && (

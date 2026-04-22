@@ -1,39 +1,45 @@
 /**
  * Generate a self-signed TLS certificate for local development.
  *
- * WebTransport requires HTTPS even on localhost, and Chrome additionally
- * requires the SAN field to contain the IP/hostname being used.
+ * Chromium's WebTransport serverCertificateHashes mechanism (the path we use
+ * for self-signed local dev) requires the cert to be:
+ *   - ECDSA on the P-256 curve
+ *   - valid for at most 14 days
+ * An RSA cert or a longer validity window will be rejected at handshake with
+ * "WebTransport connection rejected" / QUIC crypto error 43.
+ *
+ * Rerun `deno task gen-certs` whenever the cert expires (roughly weekly).
  *
  * Output: ./certs/cert.pem and ./certs/key.pem
- *
- * Run: deno task gen-certs
- *
- * Requires openssl to be available on PATH.
+ * Requires openssl on PATH.
  */
 await Deno.mkdir("certs", { recursive: true });
 
-const cmd = new Deno.Command("openssl", {
-  args: [
-    "req", "-x509",
-    "-newkey", "rsa:2048",
-    "-keyout", "certs/key.pem",
-    "-out", "certs/cert.pem",
-    "-days", "365",
-    "-nodes",
-    "-subj", "/CN=localhost",
-    "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost",
-  ],
-});
+const genKey = await new Deno.Command("openssl", {
+  args: ["ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", "certs/key.pem"],
+}).output();
 
-const { code, stderr } = await cmd.output();
-
-if (code !== 0) {
-  console.error("openssl failed:");
-  console.error(new TextDecoder().decode(stderr));
+if (genKey.code !== 0) {
+  console.error("openssl ecparam failed:");
+  console.error(new TextDecoder().decode(genKey.stderr));
   Deno.exit(1);
 }
 
-console.log("Generated certs/cert.pem and certs/key.pem (valid 365 days)");
-console.log("");
-console.log("Chrome / Edge: launch with --ignore-certificate-errors-spki-list");
-console.log("or trust the cert in your OS keychain for a cleaner dev experience.");
+const genCert = await new Deno.Command("openssl", {
+  args: [
+    "req", "-x509", "-new",
+    "-key", "certs/key.pem",
+    "-out", "certs/cert.pem",
+    "-days", "14",
+    "-subj", "/CN=localhost",
+    "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost",
+  ],
+}).output();
+
+if (genCert.code !== 0) {
+  console.error("openssl req failed:");
+  console.error(new TextDecoder().decode(genCert.stderr));
+  Deno.exit(1);
+}
+
+console.log("Generated certs/cert.pem and certs/key.pem (ECDSA P-256, valid 14 days)");

@@ -17,7 +17,7 @@ import * as THREE from "three";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { MaterialDef, ModelDefinition, WeaponActionDef, ItemTemplate, AnimationStateData } from "@voxim/content";
+import type { MaterialDef, ModelDefinition, WeaponActionDef, Prefab, AnimationStateData } from "@voxim/content";
 import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import {
@@ -279,8 +279,8 @@ export class VoximRenderer {
   };
   /** Weapon action definitions — set by setWeaponActions() from game.ts. */
   private weaponActionsMap = new Map<string, WeaponActionDef>();
-  /** Item template definitions — set by setItemTemplates() from game.ts. Used to resolve weapon modelTemplateId. */
-  private itemTemplateMap = new Map<string, ItemTemplate>();
+  /** Item prefab definitions — set by setItemPrefabs() from game.ts. Used to resolve modelId for equipped items. */
+  private itemPrefabMap = new Map<string, Prefab>();
 
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
@@ -1033,10 +1033,10 @@ export class VoximRenderer {
     for (const a of actions) this.weaponActionsMap.set(a.id, a);
   }
 
-  /** Register item template definitions so the renderer can resolve weapon model IDs from item types. */
-  setItemTemplates(templates: ItemTemplate[]): void {
-    this.itemTemplateMap.clear();
-    for (const t of templates) this.itemTemplateMap.set(t.id, t);
+  /** Register item prefab definitions so the renderer can resolve model IDs for equipped items. */
+  setItemPrefabs(prefabs: readonly Prefab[]): void {
+    this.itemPrefabMap.clear();
+    for (const p of prefabs) this.itemPrefabMap.set(p.id, p);
   }
 
   /**
@@ -1061,8 +1061,8 @@ export class VoximRenderer {
     // ── Armor: bone-parented anchors at the sub-object transform ─────────────
     for (const [equipSlot, renderSlots] of Object.entries(VoximRenderer.ARMOR_SLOTS)) {
       const prefabId = (eq as Record<string, { prefabId: string } | null> | undefined)?.[equipSlot]?.prefabId ?? null;
-      const template = prefabId ? this.itemTemplateMap.get(prefabId) : null;
-      const modelId  = template?.modelTemplateId ?? null;
+      const prefab   = prefabId ? this.itemPrefabMap.get(prefabId) : null;
+      const modelId  = prefab?.modelId ?? null;
       for (const { renderSlotId, boneId } of renderSlots) {
         this.syncArmorSlot(mesh, renderSlotId, boneId, modelId, entityScale);
       }
@@ -1076,11 +1076,11 @@ export class VoximRenderer {
   private syncHandSlot(
     mesh: EntityMeshGroup,
     slotId: string,
-    itemType: string | null,
+    prefabId: string | null,
     entityScale: { x: number; y: number; z: number },
   ): void {
-    const template = itemType ? this.itemTemplateMap.get(itemType) : null;
-    const modelId  = template?.modelTemplateId ?? null;
+    const prefab  = prefabId ? this.itemPrefabMap.get(prefabId) : null;
+    const modelId = prefab?.modelId ?? null;
 
     const existing = mesh.attachments.get(slotId);
     if (modelId === (existing?.modelId ?? null)) return;

@@ -104,7 +104,7 @@ export const Swingable = defineComponent({
 
 // ---------------------------------------------------------------------------
 // Tool — item is recognised as a tool by GatheringSystem and recipes that
-// specify requiredTools. Mirrors the current ItemTemplate.toolType field.
+// specify requiredTools.
 // ---------------------------------------------------------------------------
 
 const toolSchema = v.object({
@@ -314,8 +314,7 @@ export const Armor = defineComponent({
 
 // ---------------------------------------------------------------------------
 // MaterialSource — when this item is used as a recipe input, it contributes
-// this material identity into the recipe's output slots. Replaces
-// ItemTemplate.materialName.
+// this material identity into the recipe's output slots.
 // ---------------------------------------------------------------------------
 
 const materialSourceSchema = v.object({

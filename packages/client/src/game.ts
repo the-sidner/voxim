@@ -29,7 +29,8 @@ import type { EquipmentData, InventoryData, LoreLoadoutData } from "@voxim/codec
 import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
-import { weapon_actions as weaponActionsData, item_templates as itemTemplatesData } from "@voxim/content";
+import { weapon_actions as weaponActionsData, item_prefabs as itemPrefabsData } from "@voxim/content";
+import type { Prefab, ToolData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
 export interface GameConfig {
@@ -303,13 +304,11 @@ export class VoximGame {
     this.renderer = new VoximRenderer(canvas);
     this.renderer.setLocalPlayer(this.playerId!);
     this.renderer.setContentCache(this.content);
-    // deno-lint-ignore no-explicit-any
-    this.renderer.setWeaponActions(weaponActionsData as any);
-    // deno-lint-ignore no-explicit-any
-    this.renderer.setItemTemplates(itemTemplatesData as any);
+    this.renderer.setWeaponActions([...weaponActionsData]);
+    this.renderer.setItemPrefabs(itemPrefabsData);
 
-    // Populate the debug give-item list from the static item template data.
-    setDebugItemList((itemTemplatesData as any[]).map((t: any) => ({ id: t.id, category: t.category })));
+    // Populate the debug give-item list from the static item prefab data.
+    setDebugItemList(itemPrefabsData.map((p) => ({ id: p.id })));
 
     // Mount world overlay (entity health bars, floating damage numbers — frame-driven)
     this.overlay = new WorldOverlay();
@@ -511,10 +510,11 @@ export class VoximGame {
         break;
 
       case "place_blueprint":
-        console.log(`[Build] sending PlaceBlueprint type=${action.structureType} world=(${action.worldX.toFixed(1)},${action.worldY.toFixed(1)})`);
+        console.log(`[Build] sending Place prefab=${action.structureType} world=(${action.worldX.toFixed(1)},${action.worldY.toFixed(1)})`);
         this._sendCommand({
-          cmd: CommandType.PlaceBlueprint,
-          structureType: action.structureType,
+          cmd: CommandType.Place,
+          source: "prefab",
+          prefabId: action.structureType,
           worldX: action.worldX,
           worldY: action.worldY,
         });
@@ -693,17 +693,11 @@ function mapLoreLoadoutToUI(loadout: LoreLoadoutData): SkillLoadoutState {
   return { slots };
 }
 
-/**
- * Look up the toolType field for a given itemType from the local item template data.
- * Returns the toolType string (e.g. "hammer") or undefined if not found.
- */
-function getToolType(itemType: string | undefined): string | undefined {
-  if (!itemType) return undefined;
-  // deno-lint-ignore no-explicit-any
-  const templates = itemTemplatesData as any[];
-  const tpl = templates.find((t) => t.id === itemType);
-  // toolType is a top-level field on the template, not inside baseStats
-  return tpl?.toolType as string | undefined;
+function getToolType(prefabId: string | undefined): string | undefined {
+  if (!prefabId) return undefined;
+  const prefab = itemPrefabsData.find((p: Prefab) => p.id === prefabId);
+  const tool = prefab?.components.tool as ToolData | undefined;
+  return tool?.toolType;
 }
 
 /**

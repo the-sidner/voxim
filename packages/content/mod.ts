@@ -112,3 +112,4 @@ export { loadContentStore } from "./src/loader.ts";
 
 // ---- static aggregations (used by the browser client bundle) ----
 export { weapon_actions } from "./src/weapon_actions_static.ts";
+export { item_prefabs } from "./src/item_prefabs_static.ts";
