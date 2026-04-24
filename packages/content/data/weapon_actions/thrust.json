@@ -1,15 +1,15 @@
 {
   "id": "thrust",
-  "windupTicks": 3,
-  "activeTicks": 4,
-  "winddownTicks": 6,
+  "windupTicks": 2,
+  "activeTicks": 2,
+  "winddownTicks": 3,
   "animationStyle": "thrust",
   "staminaCost": 12,
   "swingPath": {
     "keyframes": [
       {
         "t": 0,
-        "hiltFwd": 0.1,
+        "hiltFwd": 0.25,
         "hiltRight": 0.28,
         "hiltUp": 1,
         "bladeFwd": 0.995,
@@ -18,7 +18,7 @@
       },
       {
         "t": 0.231,
-        "hiltFwd": 0,
+        "hiltFwd": 0.15,
         "hiltRight": 0.28,
         "hiltUp": 1,
         "bladeFwd": 0.995,
@@ -27,7 +27,7 @@
       },
       {
         "t": 0.538,
-        "hiltFwd": 0.35,
+        "hiltFwd": 0.5,
         "hiltRight": 0.22,
         "hiltUp": 1,
         "bladeFwd": 1,
@@ -36,7 +36,7 @@
       },
       {
         "t": 1,
-        "hiltFwd": 0.1,
+        "hiltFwd": 0.25,
         "hiltRight": 0.28,
         "hiltUp": 1,
         "bladeFwd": 0.995,

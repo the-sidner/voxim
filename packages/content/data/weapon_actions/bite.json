@@ -1,15 +1,15 @@
 {
   "id": "bite",
-  "windupTicks": 4,
-  "activeTicks": 3,
-  "winddownTicks": 8,
+  "windupTicks": 2,
+  "activeTicks": 2,
+  "winddownTicks": 4,
   "animationStyle": "bite",
   "staminaCost": 0,
   "swingPath": {
     "keyframes": [
       {
         "t": 0,
-        "hiltFwd": 0.25,
+        "hiltFwd": 0.4,
         "hiltRight": 0,
         "hiltUp": 0.6,
         "bladeFwd": 0.9806,
@@ -18,7 +18,7 @@
       },
       {
         "t": 0.2,
-        "hiltFwd": 0.15,
+        "hiltFwd": 0.3,
         "hiltRight": 0,
         "hiltUp": 0.58,
         "bladeFwd": 0.9662,
@@ -27,7 +27,7 @@
       },
       {
         "t": 0.35,
-        "hiltFwd": 0.5,
+        "hiltFwd": 0.65,
         "hiltRight": 0,
         "hiltUp": 0.55,
         "bladeFwd": 0.9996,
@@ -36,7 +36,7 @@
       },
       {
         "t": 1,
-        "hiltFwd": 0.25,
+        "hiltFwd": 0.4,
         "hiltRight": 0,
         "hiltUp": 0.6,
         "bladeFwd": 0.9806,

@@ -1,15 +1,15 @@
 {
   "id": "overhead",
-  "windupTicks": 6,
-  "activeTicks": 3,
-  "winddownTicks": 9,
+  "windupTicks": 3,
+  "activeTicks": 2,
+  "winddownTicks": 5,
   "animationStyle": "overhead",
   "staminaCost": 14,
   "swingPath": {
     "keyframes": [
       {
         "t": 0,
-        "hiltFwd": 0.1,
+        "hiltFwd": 0.25,
         "hiltRight": 0.2,
         "hiltUp": 0.85,
         "bladeFwd": 0.1952,
@@ -18,7 +18,7 @@
       },
       {
         "t": 0.333,
-        "hiltFwd": 0.1,
+        "hiltFwd": 0.25,
         "hiltRight": 0.2,
         "hiltUp": 1.25,
         "bladeFwd": 0.1516,
@@ -27,7 +27,7 @@
       },
       {
         "t": 0.5,
-        "hiltFwd": 0.35,
+        "hiltFwd": 0.5,
         "hiltRight": 0.1,
         "hiltUp": 0.85,
         "bladeFwd": 0.935,
@@ -36,7 +36,7 @@
       },
       {
         "t": 1,
-        "hiltFwd": 0.2,
+        "hiltFwd": 0.35,
         "hiltRight": 0.1,
         "hiltUp": 0.55,
         "bladeFwd": 0.53,

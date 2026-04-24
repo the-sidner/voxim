@@ -1,15 +1,15 @@
 {
   "id": "unarmed",
-  "windupTicks": 3,
-  "activeTicks": 3,
-  "winddownTicks": 5,
+  "windupTicks": 2,
+  "activeTicks": 2,
+  "winddownTicks": 3,
   "animationStyle": "unarmed",
   "staminaCost": 5,
   "swingPath": {
     "keyframes": [
       {
         "t": 0,
-        "hiltFwd": 0.1,
+        "hiltFwd": 0.25,
         "hiltRight": 0.22,
         "hiltUp": 1,
         "bladeFwd": 0.9874,
@@ -18,7 +18,7 @@
       },
       {
         "t": 0.273,
-        "hiltFwd": 0,
+        "hiltFwd": 0.15,
         "hiltRight": 0.22,
         "hiltUp": 0.95,
         "bladeFwd": 0.9662,
@@ -27,7 +27,7 @@
       },
       {
         "t": 0.545,
-        "hiltFwd": 0.25,
+        "hiltFwd": 0.4,
         "hiltRight": 0.18,
         "hiltUp": 0.95,
         "bladeFwd": 1,
@@ -36,7 +36,7 @@
       },
       {
         "t": 1,
-        "hiltFwd": 0.1,
+        "hiltFwd": 0.25,
         "hiltRight": 0.22,
         "hiltUp": 1,
         "bladeFwd": 0.9874,
