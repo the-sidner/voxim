@@ -1,8 +1,15 @@
 {
   "id": "composite_bow",
+  "modelId": "model_bow_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "bow_shot" },
-    "weight": { "baseWeight": 0.9 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "bow_shot"
+    },
+    "weight": {
+      "baseWeight": 0.9
+    }
   }
 }

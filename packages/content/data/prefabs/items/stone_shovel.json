@@ -1,9 +1,18 @@
 {
   "id": "stone_shovel",
+  "modelId": "model_shovel_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "slash" },
-    "tool": { "toolType": "shovel" },
-    "weight": { "baseWeight": 2.2 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "slash"
+    },
+    "tool": {
+      "toolType": "shovel"
+    },
+    "weight": {
+      "baseWeight": 2.2
+    }
   }
 }

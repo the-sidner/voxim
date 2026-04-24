@@ -1,8 +1,15 @@
 {
   "id": "steel_spear",
+  "modelId": "model_spear",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "thrust" },
-    "weight": { "baseWeight": 2.0 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "thrust"
+    },
+    "weight": {
+      "baseWeight": 2
+    }
   }
 }

@@ -1,1 +1,10 @@
-{ "id": "arrow_iron", "components": { "stackable": {}, "weight": { "baseWeight": 0.06 } } }
+{
+  "id": "arrow_iron",
+  "modelId": "model_arrow",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.06
+    }
+  }
+}

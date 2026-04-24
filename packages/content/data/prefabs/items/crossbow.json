@@ -1,8 +1,15 @@
 {
   "id": "crossbow",
+  "modelId": "model_crossbow_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "crossbow_shot" },
-    "weight": { "baseWeight": 3.0 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "crossbow_shot"
+    },
+    "weight": {
+      "baseWeight": 3
+    }
   }
 }

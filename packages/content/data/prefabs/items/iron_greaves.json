@@ -1,8 +1,16 @@
 {
   "id": "iron_greaves",
+  "modelId": "model_leggings",
   "components": {
-    "equippable": { "slot": "legs" },
-    "armor": { "reduction": 0.25, "staminaPenalty": 6.0 },
-    "weight": { "baseWeight": 7.0 }
+    "equippable": {
+      "slot": "legs"
+    },
+    "armor": {
+      "reduction": 0.25,
+      "staminaPenalty": 6
+    },
+    "weight": {
+      "baseWeight": 7
+    }
   }
 }

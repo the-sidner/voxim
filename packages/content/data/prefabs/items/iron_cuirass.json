@@ -1,8 +1,16 @@
 {
   "id": "iron_cuirass",
+  "modelId": "model_chestplate",
   "components": {
-    "equippable": { "slot": "chest" },
-    "armor": { "reduction": 0.35, "staminaPenalty": 10.0 },
-    "weight": { "baseWeight": 12.0 }
+    "equippable": {
+      "slot": "chest"
+    },
+    "armor": {
+      "reduction": 0.35,
+      "staminaPenalty": 10
+    },
+    "weight": {
+      "baseWeight": 12
+    }
   }
 }

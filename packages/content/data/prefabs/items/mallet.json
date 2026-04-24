@@ -1,9 +1,18 @@
 {
   "id": "mallet",
+  "modelId": "model_hammer_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "overhead" },
-    "tool": { "toolType": "mallet" },
-    "weight": { "baseWeight": 1.0 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "overhead"
+    },
+    "tool": {
+      "toolType": "mallet"
+    },
+    "weight": {
+      "baseWeight": 1
+    }
   }
 }

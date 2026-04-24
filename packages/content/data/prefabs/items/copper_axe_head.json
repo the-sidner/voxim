@@ -1,1 +1,10 @@
-{ "id": "copper_axe_head", "components": { "stackable": {}, "weight": { "baseWeight": 0.5 } } }
+{
+  "id": "copper_axe_head",
+  "modelId": "model_axe_basic",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.5
+    }
+  }
+}

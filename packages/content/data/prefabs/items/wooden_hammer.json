@@ -1,9 +1,18 @@
 {
   "id": "wooden_hammer",
+  "modelId": "model_hammer_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "overhead" },
-    "tool": { "toolType": "hammer" },
-    "weight": { "baseWeight": 1.5 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "overhead"
+    },
+    "tool": {
+      "toolType": "hammer"
+    },
+    "weight": {
+      "baseWeight": 1.5
+    }
   }
 }

@@ -1,9 +1,19 @@
 {
   "id": "torch",
+  "modelId": "model_torch",
   "components": {
     "stackable": {},
-    "illuminator": { "radius": 10.0, "color": 16755780, "intensity": 1.0, "flicker": 0.3 },
-    "deployable": { "prefabId": "torch_placed" },
-    "weight": { "baseWeight": 0.5 }
+    "illuminator": {
+      "radius": 10,
+      "color": 16755780,
+      "intensity": 1,
+      "flicker": 0.3
+    },
+    "deployable": {
+      "prefabId": "torch_placed"
+    },
+    "weight": {
+      "baseWeight": 0.5
+    }
   }
 }

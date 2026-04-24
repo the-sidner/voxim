@@ -1,8 +1,16 @@
 {
   "id": "mail_coif",
+  "modelId": "model_helmet",
   "components": {
-    "equippable": { "slot": "head" },
-    "armor": { "reduction": 0.15, "staminaPenalty": 2.0 },
-    "weight": { "baseWeight": 1.5 }
+    "equippable": {
+      "slot": "head"
+    },
+    "armor": {
+      "reduction": 0.15,
+      "staminaPenalty": 2
+    },
+    "weight": {
+      "baseWeight": 1.5
+    }
   }
 }

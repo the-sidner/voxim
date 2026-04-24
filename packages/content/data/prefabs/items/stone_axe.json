@@ -1,9 +1,18 @@
 {
   "id": "stone_axe",
+  "modelId": "model_axe_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "slash" },
-    "tool": { "toolType": "axe" },
-    "weight": { "baseWeight": 2.5 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "slash"
+    },
+    "tool": {
+      "toolType": "axe"
+    },
+    "weight": {
+      "baseWeight": 2.5
+    }
   }
 }

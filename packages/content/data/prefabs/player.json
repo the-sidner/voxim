@@ -6,7 +6,7 @@
       "startingInventory": [
         { "itemType": "stone_axe",     "quantity": 1 },
         { "itemType": "stone_pickaxe", "quantity": 1 },
-        { "itemType": "hammer",        "quantity": 1 },
+        { "itemType": "wooden_hammer", "quantity": 1 },
         { "itemType": "plank",         "quantity": 16 }
       ],
       "startingEquipment": {

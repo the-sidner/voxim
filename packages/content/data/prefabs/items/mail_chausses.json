@@ -1,8 +1,16 @@
 {
   "id": "mail_chausses",
+  "modelId": "model_leggings",
   "components": {
-    "equippable": { "slot": "legs" },
-    "armor": { "reduction": 0.20, "staminaPenalty": 5.0 },
-    "weight": { "baseWeight": 6.0 }
+    "equippable": {
+      "slot": "legs"
+    },
+    "armor": {
+      "reduction": 0.2,
+      "staminaPenalty": 5
+    },
+    "weight": {
+      "baseWeight": 6
+    }
   }
 }

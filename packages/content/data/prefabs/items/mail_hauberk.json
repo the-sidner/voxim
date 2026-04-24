@@ -1,8 +1,16 @@
 {
   "id": "mail_hauberk",
+  "modelId": "model_chestplate",
   "components": {
-    "equippable": { "slot": "chest" },
-    "armor": { "reduction": 0.30, "staminaPenalty": 8.0 },
-    "weight": { "baseWeight": 10.0 }
+    "equippable": {
+      "slot": "chest"
+    },
+    "armor": {
+      "reduction": 0.3,
+      "staminaPenalty": 8
+    },
+    "weight": {
+      "baseWeight": 10
+    }
   }
 }

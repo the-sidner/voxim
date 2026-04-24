@@ -1,8 +1,15 @@
 {
   "id": "wooden_club",
+  "modelId": "model_hammer_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "overhead" },
-    "weight": { "baseWeight": 2.2 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "overhead"
+    },
+    "weight": {
+      "baseWeight": 2.2
+    }
   }
 }

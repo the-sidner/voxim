@@ -1,8 +1,15 @@
 {
   "id": "iron_sword",
+  "modelId": "model_sword_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "slash" },
-    "weight": { "baseWeight": 2.0 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "slash"
+    },
+    "weight": {
+      "baseWeight": 2
+    }
   }
 }

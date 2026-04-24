@@ -1,8 +1,16 @@
 {
   "id": "padded_gambeson",
+  "modelId": "model_chestplate",
   "components": {
-    "equippable": { "slot": "chest" },
-    "armor": { "reduction": 0.10, "staminaPenalty": 2.0 },
-    "weight": { "baseWeight": 2.5 }
+    "equippable": {
+      "slot": "chest"
+    },
+    "armor": {
+      "reduction": 0.1,
+      "staminaPenalty": 2
+    },
+    "weight": {
+      "baseWeight": 2.5
+    }
   }
 }

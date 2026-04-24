@@ -1,8 +1,15 @@
 {
   "id": "copper_sword",
+  "modelId": "model_sword_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "slash" },
-    "weight": { "baseWeight": 1.8 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "slash"
+    },
+    "weight": {
+      "baseWeight": 1.8
+    }
   }
 }

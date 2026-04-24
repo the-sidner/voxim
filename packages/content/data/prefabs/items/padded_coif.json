@@ -1,8 +1,16 @@
 {
   "id": "padded_coif",
+  "modelId": "model_helmet",
   "components": {
-    "equippable": { "slot": "head" },
-    "armor": { "reduction": 0.04, "staminaPenalty": 0.5 },
-    "weight": { "baseWeight": 0.4 }
+    "equippable": {
+      "slot": "head"
+    },
+    "armor": {
+      "reduction": 0.04,
+      "staminaPenalty": 0.5
+    },
+    "weight": {
+      "baseWeight": 0.4
+    }
   }
 }

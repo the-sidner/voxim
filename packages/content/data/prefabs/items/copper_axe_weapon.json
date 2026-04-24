@@ -1,8 +1,15 @@
 {
   "id": "copper_axe_weapon",
+  "modelId": "model_axe_basic",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "slash" },
-    "weight": { "baseWeight": 2.0 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "slash"
+    },
+    "weight": {
+      "baseWeight": 2
+    }
   }
 }

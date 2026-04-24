@@ -1,8 +1,16 @@
 {
   "id": "padded_chausses",
+  "modelId": "model_leggings",
   "components": {
-    "equippable": { "slot": "legs" },
-    "armor": { "reduction": 0.06, "staminaPenalty": 1.5 },
-    "weight": { "baseWeight": 1.5 }
+    "equippable": {
+      "slot": "legs"
+    },
+    "armor": {
+      "reduction": 0.06,
+      "staminaPenalty": 1.5
+    },
+    "weight": {
+      "baseWeight": 1.5
+    }
   }
 }

@@ -1,8 +1,16 @@
 {
   "id": "leather_coif",
+  "modelId": "model_helmet",
   "components": {
-    "equippable": { "slot": "head" },
-    "armor": { "reduction": 0.08, "staminaPenalty": 1.0 },
-    "weight": { "baseWeight": 0.5 }
+    "equippable": {
+      "slot": "head"
+    },
+    "armor": {
+      "reduction": 0.08,
+      "staminaPenalty": 1
+    },
+    "weight": {
+      "baseWeight": 0.5
+    }
   }
 }

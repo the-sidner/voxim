@@ -1,8 +1,16 @@
 {
   "id": "leather_leggings",
+  "modelId": "model_leggings",
   "components": {
-    "equippable": { "slot": "legs" },
-    "armor": { "reduction": 0.10, "staminaPenalty": 2.0 },
-    "weight": { "baseWeight": 2.0 }
+    "equippable": {
+      "slot": "legs"
+    },
+    "armor": {
+      "reduction": 0.1,
+      "staminaPenalty": 2
+    },
+    "weight": {
+      "baseWeight": 2
+    }
   }
 }

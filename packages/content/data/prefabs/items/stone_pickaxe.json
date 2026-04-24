@@ -1,9 +1,18 @@
 {
   "id": "stone_pickaxe",
+  "modelId": "pickaxe",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "overhead" },
-    "tool": { "toolType": "pickaxe" },
-    "weight": { "baseWeight": 2.8 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "overhead"
+    },
+    "tool": {
+      "toolType": "pickaxe"
+    },
+    "weight": {
+      "baseWeight": 2.8
+    }
   }
 }

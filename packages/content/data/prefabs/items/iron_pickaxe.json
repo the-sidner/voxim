@@ -1,9 +1,18 @@
 {
   "id": "iron_pickaxe",
+  "modelId": "pickaxe",
   "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "overhead" },
-    "tool": { "toolType": "pickaxe" },
-    "weight": { "baseWeight": 2.3 }
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "weaponActionId": "overhead"
+    },
+    "tool": {
+      "toolType": "pickaxe"
+    },
+    "weight": {
+      "baseWeight": 2.3
+    }
   }
 }

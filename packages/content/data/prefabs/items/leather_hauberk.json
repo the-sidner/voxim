@@ -1,8 +1,16 @@
 {
   "id": "leather_hauberk",
+  "modelId": "model_chestplate",
   "components": {
-    "equippable": { "slot": "chest" },
-    "armor": { "reduction": 0.18, "staminaPenalty": 4.0 },
-    "weight": { "baseWeight": 3.5 }
+    "equippable": {
+      "slot": "chest"
+    },
+    "armor": {
+      "reduction": 0.18,
+      "staminaPenalty": 4
+    },
+    "weight": {
+      "baseWeight": 3.5
+    }
   }
 }

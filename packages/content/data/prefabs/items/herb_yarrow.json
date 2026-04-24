@@ -2,6 +2,8 @@
   "id": "herb_yarrow",
   "components": {
     "stackable": {},
-    "weight": { "baseWeight": 0.05 }
+    "weight": {
+      "baseWeight": 0.05
+    }
   }
 }

@@ -1,1 +1,10 @@
-{ "id": "arrow_broadhead", "components": { "stackable": {}, "weight": { "baseWeight": 0.07 } } }
+{
+  "id": "arrow_broadhead",
+  "modelId": "model_arrow",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.07
+    }
+  }
+}
