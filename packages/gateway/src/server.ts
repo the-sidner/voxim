@@ -1,11 +1,10 @@
-/// <reference path="./types/webtransport.d.ts" />
 /**
  * GatewayServer — signaling only, never on the data hot path.
  *
  * What it does:
- *   - Accepts initial WebTransport connections from clients
- *   - Runs the handshake: authenticate → look up tile → return tile server address
- *   - Client then connects directly to the tile server; gateway steps out
+ *   - Hosts the account service (HTTPS) — register, login, /me
+ *   - Resolves a session token to a tile address via POST /gateway/connect
+ *   - Tracks tile-server registrations and forwards player handoffs between tiles
  *
  * What it does NOT do:
  *   - Forward any game data
@@ -23,12 +22,28 @@
  */
 import { EventBus } from "@voxim/engine";
 import { WorldEvents } from "@voxim/protocol";
-import type { GatewayRegisterRequest } from "@voxim/protocol";
+import type { GatewayConnectRequest, GatewayRegisterRequest, GatewayTileResponse } from "@voxim/protocol";
 import { TileDirectory } from "./tile_directory.ts";
-import { handleGatewaySession } from "./session.ts";
 import { AccountStore } from "./account/store.ts";
 import { SessionStore } from "./account/session_store.ts";
 import { AccountEndpoints } from "./account/endpoints.ts";
+
+/**
+ * Permissive CORS for local dev: echo the caller's Origin so credentials work,
+ * advertise the methods/headers the account endpoints actually use. The
+ * gateway is reachable only from a browser anyway — no value in tightening
+ * this further for the vertical slice.
+ */
+function withCors(req: Request, res: Response): Response {
+  const origin = req.headers.get("origin") ?? "*";
+  const headers = new Headers(res.headers);
+  headers.set("access-control-allow-origin", origin);
+  headers.set("access-control-allow-methods", "GET, POST, PATCH, OPTIONS");
+  headers.set("access-control-allow-headers", "content-type, authorization");
+  headers.set("access-control-max-age", "86400");
+  headers.set("vary", "origin");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
 
 export interface GatewayConfig {
   port: number;
@@ -59,8 +74,18 @@ export class GatewayServer {
   accountStore!: AccountStore;
   sessions!: SessionStore;
   private accountEndpoints!: AccountEndpoints;
+  /** SHA-256 of the gateway's TLS cert (hex). Served via /cert-hash so the
+   *  browser client can pin self-signed dev certs through serverCertificateHashes. */
+  private certHashHex = "";
 
   async start(config: GatewayConfig): Promise<void> {
+    const b64 = config.cert.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
+    const der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const hashBuf = await crypto.subtle.digest("SHA-256", der);
+    this.certHashHex = Array.from(new Uint8Array(hashBuf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
     // Pre-register tiles from config (vertical slice convenience)
     for (const tile of config.initialTiles ?? []) {
       this.directory.register({
@@ -92,27 +117,26 @@ export class GatewayServer {
 
     Deno.serve(
       { port: config.port, cert: config.cert, key: config.key },
-      (req) => this.handleRequest(req),
+      async (req) => withCors(req, await this.handleRequest(req)),
     );
 
     console.log(`[Gateway] listening on port ${config.port}`);
   }
 
   private async handleRequest(req: Request): Promise<Response> {
+    // CORS preflight: browsers send OPTIONS before any non-simple cross-origin
+    // request. The page is served by the tile-server admin port (14434) while
+    // the gateway lives on its own port — different origin, so all login /me
+    // fetches require a successful preflight before the real POST.
+    if (req.method === "OPTIONS") return new Response(null, { status: 204 });
+
     const url = new URL(req.url);
 
-    // WebTransport upgrade — client initiating a new session
-    if (req.headers.get("upgrade") === "webtransport") {
-      // deno-lint-ignore no-explicit-any
-      const { session, response } = (Deno as any).upgradeWebTransport(req);
-      handleGatewaySession(session as WebTransportSession, {
-        directory: this.directory,
-        accountStore: this.accountStore,
-        sessions: this.sessions,
-      }).catch(
-        (err: unknown) => console.error("[Gateway] session error", err),
-      );
-      return response as Response;
+    // Client handshake: token in → tile address + assigned playerId out.
+    // Replaces the prior WebTransport-based gateway handshake; the operation
+    // is a single request/response and HTTP/2 is sufficient.
+    if (req.method === "POST" && url.pathname === "/gateway/connect") {
+      return this.handleConnect(req);
     }
 
     // Account service — client /account/* and server-to-server /internal/*.
@@ -132,6 +156,37 @@ export class GatewayServer {
     }
 
     return new Response("Voxim gateway", { status: 200 });
+  }
+
+  private async handleConnect(req: Request): Promise<Response> {
+    let body: GatewayConnectRequest;
+    try { body = await req.json() as GatewayConnectRequest; }
+    catch { return new Response("bad request", { status: 400 }); }
+    if (!body.token) return new Response("token required", { status: 400 });
+
+    const userId = await this.sessions.validate(body.token);
+    if (!userId) return new Response("unauthenticated", { status: 401 });
+
+    const user = await this.accountStore.getUserById(userId);
+    if (!user) return new Response("user not found", { status: 401 });
+
+    const preferred = user.lastTileId ? this.directory.get(user.lastTileId) : null;
+    const tile = preferred ?? this.directory.tileForPlayer(userId);
+    if (!tile) return new Response("no tile available", { status: 503 });
+
+    this.directory.setPlayerTile(userId, tile.tileId);
+
+    // Tile and gateway share the same self-signed dev cert, so its hash also
+    // pins the tile WebTransport. Production tiles ship their own CA cert and
+    // omit this — the client treats absence as "trust the cert normally".
+    const response: GatewayTileResponse = {
+      tileId: tile.tileId,
+      tileAddress: tile.address,
+      playerId: userId,
+      tileCertHashHex: this.certHashHex || undefined,
+    };
+    console.log(`[Gateway] user ${userId.slice(0, 8)} → tile ${tile.tileId} (${tile.address})`);
+    return Response.json(response);
   }
 
   private async handleHandoff(req: Request): Promise<Response> {

@@ -290,9 +290,11 @@ export class VoximGame {
       this.playerId = gatewayResult.playerId;
       tileAddress = gatewayResult.tileAddress;
       tileToken = config.sessionToken;
+      certHashHex = gatewayResult.tileCertHashHex;
     }
 
     // Step 3: connect — handlers are already wired so no messages can be dropped
+    console.log(`[Game] connecting to tile ${tileAddress} as ${this.playerId.slice(0, 8)}`);
     const assignedId = await this.connection.connect(tileAddress, this.playerId, tileToken, certHashHex);
     this.playerId = assignedId;
     console.log(`[Game] tile-assigned player ID: ${this.playerId}`);
@@ -333,6 +335,7 @@ export class VoximGame {
       }
     }
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
+    console.log(`[Game] startup complete; terrain chunks pre-received during connect: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
     if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
       this._finishLoading();
     }

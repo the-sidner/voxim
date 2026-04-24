@@ -1,63 +1,41 @@
 /// <reference lib="dom" />
 /**
- * Gateway handshake — connects to the gateway, performs the WebTransport
- * handshake, and returns the tile server address + assigned player ID.
+ * Gateway handshake — POSTs the session token to the gateway and receives
+ * the tile address + assigned player ID + (optional) tile cert hash.
  *
- * After this returns the caller should close the gateway WebTransport and open
- * a new connection directly to the tile server.
+ * Plain HTTPS — no WebTransport. The gateway is signaling-only and a single
+ * request/response is the entire handshake; using HTTP/2 keeps the gateway
+ * out of the QUIC stack entirely.
  */
-import type { GatewayConnectRequest, GatewayTileResponse, GatewayErrorResponse } from "@voxim/protocol";
-import { encodeFrame, makeFrameReader } from "@voxim/protocol";
-
-// ----- public API -----
+import type { GatewayConnectRequest, GatewayTileResponse } from "@voxim/protocol";
 
 export interface GatewayResult {
   playerId: string;
   tileId: string;
-  /** "hostname:port" — caller prepends https:// for WebTransport. */
+  /** "hostname:port" — caller prepends https:// for the tile WebTransport. */
   tileAddress: string;
+  /** SHA-256 (hex) of the tile cert, when the gateway is configured to share it. */
+  tileCertHashHex?: string;
 }
 
-/**
- * Perform the gateway handshake.
- *
- * @param gatewayUrl  Full WebTransport URL, e.g. "https://localhost:8080"
- * @param token       Session token from POST /account/login. Required — the
- *                    gateway rejects connections without one. Missing or
- *                    expired tokens produce a GatewayError with
- *                    code="unauthenticated"; callers should treat that as a
- *                    signal to clear the locally-stored token and re-show
- *                    the login screen.
- */
-export async function connectViaGateway(
-  gatewayUrl: string,
-  token: string,
-): Promise<GatewayResult> {
-  const transport = new WebTransport(gatewayUrl);
-  await transport.ready;
+export async function connectViaGateway(gatewayUrl: string, token: string): Promise<GatewayResult> {
+  const body: GatewayConnectRequest = { token };
+  console.log(`[Gateway] POST ${gatewayUrl}/gateway/connect`);
+  const res = await fetch(`${gatewayUrl}/gateway/connect`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
-  const stream = await transport.createBidirectionalStream();
-  const writer = stream.writable.getWriter();
-  const reader = stream.readable.getReader();
+  if (res.status === 401) throw new Error("Gateway error: unauthenticated — invalid or expired session");
+  if (!res.ok) throw new Error(`Gateway error: HTTP ${res.status} — ${await res.text().catch(() => "")}`);
 
-  try {
-    const req: GatewayConnectRequest = { type: "connect", token };
-    await writer.write(encodeFrame(req));
-    await writer.close();
-
-    const resp = await makeFrameReader(reader).readJson() as GatewayTileResponse | GatewayErrorResponse | null;
-    if (!resp) throw new Error("Gateway closed without response");
-    if (resp.type === "error") {
-      throw new Error(`Gateway error: ${resp.code} — ${resp.message}`);
-    }
-    return {
-      playerId: resp.playerId,
-      tileId: resp.tileId,
-      tileAddress: resp.tileAddress,
-    };
-  } finally {
-    reader.releaseLock();
-    writer.releaseLock();
-    transport.close();
-  }
+  const resp = await res.json() as GatewayTileResponse;
+  console.log(`[Gateway] tile assigned: ${resp.tileId} @ ${resp.tileAddress} player=${resp.playerId.slice(0, 8)}`);
+  return {
+    playerId: resp.playerId,
+    tileId: resp.tileId,
+    tileAddress: resp.tileAddress,
+    tileCertHashHex: resp.tileCertHashHex,
+  };
 }

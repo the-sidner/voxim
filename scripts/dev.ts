@@ -45,11 +45,17 @@ if (!devtoolsStatus.success) {
 
 console.log("[dev] builds complete — starting servers...");
 
-// --- Step 2: start tile server + devtools server concurrently ---
+// --- Step 2: start tile server + gateway + devtools server concurrently ---
 const tileServer = run([
   "deno", "run",
   "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--unstable-net",
   "packages/tile-server/main.ts",
+]);
+
+const gatewayServer = run([
+  "deno", "run",
+  "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--unstable-net",
+  "packages/gateway/main.ts",
 ]);
 
 const devtoolsServer = run([
@@ -57,10 +63,11 @@ const devtoolsServer = run([
   "scripts/serve_devtools.ts",
 ]);
 
-// Forward Ctrl-C to both child processes.
+// Forward Ctrl-C to all child processes.
 Deno.addSignalListener("SIGINT", () => {
   tileServer.kill("SIGINT");
+  gatewayServer.kill("SIGINT");
   devtoolsServer.kill("SIGINT");
 });
 
-await Promise.all([tileServer.output(), devtoolsServer.output()]);
+await Promise.all([tileServer.output(), gatewayServer.output(), devtoolsServer.output()]);

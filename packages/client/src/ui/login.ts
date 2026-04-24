@@ -89,6 +89,8 @@ const STYLES = `
   font-family: system-ui, sans-serif;
   color: var(--col-text, #d4c9a8);
   z-index: 100;
+  /* Mounted inside #ui which sets pointer-events:none; opt back in here. */
+  pointer-events: auto;
 }
 .login-card {
   background: var(--col-bg-raised, #1f1b14);

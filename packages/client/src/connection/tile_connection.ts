@@ -49,8 +49,10 @@ export class TileConnection {
       );
       options.serverCertificateHashes = [{ algorithm: "sha-256", value: hashBytes.buffer }];
     }
+    console.log(`[TileConn] opening WebTransport → https://${tileAddress} (certHash=${certHashHex ? "yes" : "no"})`);
     this.transport = new WebTransport(`https://${tileAddress}`, options);
     await this.transport.ready;
+    console.log("[TileConn] transport ready, sending join request");
 
     // --- join handshake ---
     // Start accepting the server's incoming unidirectional stream BEFORE reading the
@@ -64,6 +66,7 @@ export class TileConnection {
     const req: TileJoinRequest = { type: "join", playerId, token };
     await jWriter.write(encodeFrame(req));
     jWriter.close().catch(() => {}); // signal FIN without blocking on remote ACK
+    console.log("[TileConn] join sent, awaiting ack");
 
     const ack = await makeFrameReader(jReader).readJson() as TileJoinAck | null;
     jReader.releaseLock();
@@ -71,6 +74,7 @@ export class TileConnection {
     if (!ack || ack.type !== "joined") {
       throw new Error("Tile server join handshake failed");
     }
+    console.log(`[TileConn] joined, server-assigned playerId=${ack.playerId.slice(0, 8)}`);
 
     // --- datagram writer for input (C→S) ---
     this.datagramWriter = this.transport.datagrams.writable.getWriter();

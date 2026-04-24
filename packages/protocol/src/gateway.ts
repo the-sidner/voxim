@@ -2,11 +2,13 @@
  * Gateway ↔ client handshake message types.
  *
  * Flow:
- *   1. Client opens WebTransport to gateway
- *   2. Client opens a bidirectional stream
- *   3. Client sends GatewayConnectRequest (length-prefixed JSON)
- *   4. Gateway responds with GatewayTileResponse (length-prefixed JSON)
- *   5. Client closes the gateway connection and opens direct WebTransport to tileAddress
+ *   1. Client POSTs GatewayConnectRequest to `${gatewayUrl}/gateway/connect`
+ *      with the session token in the JSON body.
+ *   2. Gateway returns 200 + GatewayTileResponse, or 401 (bad token) /
+ *      503 (no tile available). HTTP status is the error channel — there is
+ *      no separate error envelope.
+ *   3. Client opens WebTransport directly to `tileAddress`, pinning
+ *      `tileCertHashHex` if present (self-signed dev certs).
  *
  * Gateway tile server registration (tile server → gateway):
  *   Tile servers call the gateway's register endpoint on startup.
@@ -16,11 +18,10 @@
 // ---- client → gateway ----
 
 export interface GatewayConnectRequest {
-  type: "connect";
   /**
    * Session token issued by the account service (see POST /account/login).
-   * The gateway validates this via SessionStore and refuses the connection
-   * with code: "unauthenticated" when it is missing, unknown, or expired.
+   * The gateway validates this via SessionStore and rejects the request with
+   * HTTP 401 when it is missing, unknown, or expired.
    */
   token: string;
 }
@@ -28,7 +29,6 @@ export interface GatewayConnectRequest {
 // ---- gateway → client ----
 
 export interface GatewayTileResponse {
-  type: "tile";
   tileId: string;
   /**
    * WebTransport address the client should connect to directly.
@@ -37,15 +37,13 @@ export interface GatewayTileResponse {
   tileAddress: string;
   /** Assigned player ID for this session. */
   playerId: string;
+  /**
+   * SHA-256 (hex) of the tile server's TLS cert. Present only for self-signed
+   * dev deployments where the gateway and tile share a cert; absent in
+   * production where tiles use CA-signed certs and the browser handles trust.
+   */
+  tileCertHashHex?: string;
 }
-
-export interface GatewayErrorResponse {
-  type: "error";
-  code: "not_found" | "auth_failed" | "server_full" | "unauthenticated";
-  message: string;
-}
-
-export type GatewayResponse = GatewayTileResponse | GatewayErrorResponse;
 
 // ---- tile server → gateway (registration) ----
 

@@ -101,8 +101,6 @@ export { WorldEvents } from "./src/world_events.ts";
 export type {
   GatewayConnectRequest,
   GatewayTileResponse,
-  GatewayErrorResponse,
-  GatewayResponse,
   GatewayRegisterRequest,
   GatewayRegisterResponse,
   TileJoinRequest,

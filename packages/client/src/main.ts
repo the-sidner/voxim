@@ -72,6 +72,8 @@ addEventListener("resize", () => {
       params.get("gateway") ??
       "https://localhost:8080";
 
+    console.log(`[Voxim] gateway mode → ${gatewayUrl}`);
+
     const injectedToken = g.VOXIM_SESSION_TOKEN as string | undefined;
     const storedToken = injectedToken ?? loadToken();
 
@@ -92,10 +94,9 @@ addEventListener("resize", () => {
     const host = document.getElementById("ui") ?? document.body;
     const startGame = (token: string) => {
       game.start({ canvas, gatewayUrl, sessionToken: token }).catch((err) => {
-        // The gateway rejected us at the WebTransport handshake — most likely
-        // the token expired between the /account/me probe and the connect.
-        // Clear it and fall back to the login screen rather than leaving the
-        // player stuck.
+        // The gateway rejected us — most likely the token expired between the
+        // /account/me probe and the connect. Clear it and fall back to the
+        // login screen rather than leaving the player stuck.
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("unauthenticated")) {
           clearToken();
