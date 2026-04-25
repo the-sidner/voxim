@@ -13,7 +13,7 @@ export type {
   ResourceNodeData, LoreSkillSlot, LoreLoadoutData, ActiveEffect, ActiveEffectsData,
   NpcTagData, Job, PlanStep, NpcPlanData, NpcJobQueueData,
   HitboxData,
-  WorkstationSlot, WorkstationBufferData,
+  WorkstationSlot, WorkstationBufferData, WorkstationTagData,
   LightEmitterData, DarknessModifierData,
   DurabilityData, InscribedData, QualityStampedData,
 } from "./src/components.ts";
@@ -32,7 +32,7 @@ export {
   activeEffectCodec, activeEffectsCodec,
   npcTagCodec, npcJobQueueCodec,
   hitboxCodec,
-  workstationBufferCodec,
+  workstationBufferCodec, workstationTagCodec,
   lightEmitterCodec, darknessModifierCodec,
   durabilityCodec, inscribedCodec, qualityStampedCodec,
   WIRE_LIMITS,

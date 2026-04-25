@@ -51,12 +51,16 @@ export class CraftingSystem implements System {
   }
 
   run(world: World, events: EventEmitter, _dt: number): void {
-    // ── 0. Command: SelectRecipe ─────────────────────────────────────────
+    // ── 0. Per-player commands ───────────────────────────────────────────
     for (const [entityId, commands] of this._commands) {
       if (!world.isAlive(entityId)) continue;
       for (const cmd of commands) {
         if (cmd.cmd === CommandType.SelectRecipe) {
           this._handleSelectRecipe(world, entityId, cmd.recipeId);
+        } else if (cmd.cmd === CommandType.LoadWorkstation) {
+          this._handleLoadWorkstation(world, entityId, cmd.inventorySlot, cmd.bufferSlot);
+        } else if (cmd.cmd === CommandType.TakeWorkstation) {
+          this._handleTakeWorkstation(world, entityId, cmd.bufferSlot);
         }
       }
     }
@@ -153,6 +157,98 @@ export class CraftingSystem implements System {
     if (!buffer) return;
     world.set(stationId, WorkstationBuffer, { ...buffer, activeRecipeId: recipeId });
     log.info("select-recipe: player=%s station=%s recipe=%s", entityId, stationId, recipeId);
+  }
+
+  private _handleLoadWorkstation(
+    world: World,
+    playerId: EntityId,
+    inventorySlot: number,
+    bufferSlot: number,
+  ): void {
+    const inv = world.get(playerId, Inventory);
+    if (!inv) return;
+    if (inventorySlot < 0 || inventorySlot >= inv.slots.length) return;
+    const slot = inv.slots[inventorySlot];
+    // Workstation buffers store stackable items only; refuse unique entities.
+    if (slot.kind !== "stack") {
+      log.debug("load: player=%s slot=%d is not a stack", playerId, inventorySlot);
+      return;
+    }
+
+    const pos = world.get(playerId, Position);
+    if (!pos) return;
+    const stationId = this.findNearestWorkstation(world, pos.x, pos.y);
+    if (!stationId) {
+      log.debug("load: player=%s no station in range", playerId);
+      return;
+    }
+    const buffer = world.get(stationId, WorkstationBuffer);
+    if (!buffer) return;
+
+    // Resolve the destination buffer index. 255 (or any out-of-range value)
+    // means "first free / first matching"; otherwise pin to that slot.
+    const newSlots: (typeof buffer.slots[number])[] = [...buffer.slots];
+    let dst = bufferSlot;
+    if (dst >= buffer.capacity) {
+      // Prefer merging with an existing matching stack first.
+      dst = newSlots.findIndex((s) => s !== null && s.itemType === slot.prefabId);
+      if (dst === -1) dst = newSlots.findIndex((s) => s === null);
+      if (dst === -1 && newSlots.length < buffer.capacity) dst = newSlots.length;
+      if (dst === -1) {
+        log.debug("load: station=%s buffer full", stationId);
+        return;
+      }
+    }
+
+    const existing = newSlots[dst] ?? null;
+    if (existing && existing.itemType !== slot.prefabId) {
+      log.debug("load: station=%s slot=%d type mismatch (%s vs %s)", stationId, dst, existing.itemType, slot.prefabId);
+      return;
+    }
+    newSlots[dst] = {
+      itemType: slot.prefabId,
+      quantity: (existing?.quantity ?? 0) + slot.quantity,
+    };
+    while (newSlots.length <= dst) newSlots.push(null);
+
+    const newInv = inv.slots.filter((_, i) => i !== inventorySlot);
+    world.set(playerId, Inventory, { ...inv, slots: newInv });
+    world.set(stationId, WorkstationBuffer, { ...buffer, slots: newSlots });
+    log.info("load: player=%s item=%sx%d → station=%s slot=%d",
+      playerId, slot.prefabId, slot.quantity, stationId, dst);
+  }
+
+  private _handleTakeWorkstation(
+    world: World,
+    playerId: EntityId,
+    bufferSlot: number,
+  ): void {
+    const pos = world.get(playerId, Position);
+    if (!pos) return;
+    const stationId = this.findNearestWorkstation(world, pos.x, pos.y);
+    if (!stationId) {
+      log.debug("take: player=%s no station in range", playerId);
+      return;
+    }
+    const buffer = world.get(stationId, WorkstationBuffer);
+    if (!buffer) return;
+    if (bufferSlot < 0 || bufferSlot >= buffer.slots.length) return;
+    const slot = buffer.slots[bufferSlot];
+    if (!slot) return;
+
+    const inv = world.get(playerId, Inventory);
+    if (!inv) return;
+    if (inv.slots.length >= inv.capacity) {
+      log.debug("take: player=%s inventory full", playerId);
+      return;
+    }
+    const newBuffer = [...buffer.slots];
+    newBuffer[bufferSlot] = null;
+    const newInv = [...inv.slots, { kind: "stack" as const, prefabId: slot.itemType, quantity: slot.quantity }];
+    world.set(stationId, WorkstationBuffer, { ...buffer, slots: newBuffer });
+    world.set(playerId, Inventory, { ...inv, slots: newInv });
+    log.info("take: player=%s station=%s slot=%d item=%sx%d",
+      playerId, stationId, bufferSlot, slot.itemType, slot.quantity);
   }
 
   private findNearestWorkstation(world: World, x: number, y: number): EntityId | null {

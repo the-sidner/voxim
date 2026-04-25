@@ -3,9 +3,18 @@ import { uiState, patchUI } from "../ui_store.ts";
 import { usePanel } from "../use_panel.ts";
 import { dragSystem } from "../drag_system.ts";
 import type { UIAction } from "../ui_actions.ts";
-import type { ItemStack } from "../ui_store.ts";
+import type { ContextMenuAction, ItemStack } from "../ui_store.ts";
+import { item_prefabs as itemPrefabsData } from "@voxim/content";
 
 const inventory = computed(() => uiState.value.inventory);
+
+// Index built once at module load so context menus don't scan all 450 prefabs
+// per right-click. Maps prefabId → true when the item carries a `deployable`
+// component; the server will reject any Place/source=inventory call for items
+// that aren't in this set, so this is purely a UX gate to hide the option.
+const DEPLOYABLE_PREFABS: ReadonlySet<string> = new Set(
+  itemPrefabsData.filter((p) => "deployable" in p.components).map((p) => p.id),
+);
 
 function ItemSlotCell({ item, index, onAction }: {
   item: ItemStack | null;
@@ -20,15 +29,16 @@ function ItemSlotCell({ item, index, onAction }: {
   const handleContextMenu = (e: MouseEvent) => {
     if (!item) return;
     e.preventDefault();
+    const actions: ContextMenuAction[] = [
+      { label: "Use",   onSelect: () => onAction({ type: "use_item",  fromSlot: index }) },
+      { label: "Equip", onSelect: () => onAction({ type: "equip", itemType: item.itemType, fromSlot: index }) },
+    ];
+    if (DEPLOYABLE_PREFABS.has(item.itemType)) {
+      actions.push({ label: "Place", onSelect: () => onAction({ type: "deploy_item", fromSlot: index }) });
+    }
+    actions.push({ label: "Drop", danger: true, onSelect: () => onAction({ type: "drop_item", fromSlot: index }) });
     patchUI({
-      contextMenu: {
-        screenX: e.clientX, screenY: e.clientY,
-        actions: [
-          { label: "Use",   onSelect: () => onAction({ type: "use_item",  fromSlot: index }) },
-          { label: "Equip", onSelect: () => onAction({ type: "equip", itemType: item.itemType, fromSlot: index }) },
-          { label: "Drop",  danger: true, onSelect: () => onAction({ type: "drop_item", fromSlot: index }) },
-        ],
-      },
+      contextMenu: { screenX: e.clientX, screenY: e.clientY, actions },
     });
   };
 

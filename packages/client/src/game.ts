@@ -16,7 +16,7 @@ import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { workstationHandler, resourceNodeHandler, groundItemHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, resourceNodeHandler, groundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
@@ -149,6 +149,19 @@ export class VoximGame {
           if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory) });
           if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
         }
+        // Mirror buffer/tag updates on the open workstation entity into uiState
+        // so the panel reflects loads/takes/recipe progress without polling.
+        if (uiState.value.workstation?.entityId === entityId) {
+          this._mirrorWorkstationToUi(entityId);
+        }
+      }
+
+      // Workstation panel cleanup: if the entity left AoI / was destroyed,
+      // the world drop happened above and the mirror would no-op — but the
+      // panel still has stale state. Close it so the next click can reopen.
+      const wsId = uiState.value.workstation?.entityId;
+      if (wsId && msg.destroys.includes(wsId)) {
+        closePanel("workstation");
       }
 
       if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
@@ -364,7 +377,7 @@ export class VoximGame {
 
     // Interaction system — entity hover highlight + click dispatch.
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);
-    this.interactionSystem.register(workstationHandler);
+    this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
     this.interactionSystem.register(resourceNodeHandler);
     this.interactionSystem.register(groundItemHandler);
     this.renderer.setInteractionSystem(this.interactionSystem);
@@ -453,6 +466,47 @@ export class VoximGame {
   }
 
   /**
+   * Open the workstation panel for an entity. Refuses when the player is
+   * outside the configured interact range — mirrors the server-side reach
+   * check so the panel can never claim to interact with something the
+   * server would refuse.
+   */
+  private _openWorkstation(entityId: string): void {
+    const ws = this.world.get(entityId);
+    if (!ws?.workstationBuffer || !ws.workstationTag || !ws.position) return;
+    const me = this.playerId ? this.world.get(this.playerId) : null;
+    if (!me?.position) return;
+    const dx = me.position.x - ws.position.x;
+    const dy = me.position.y - ws.position.y;
+    if (dx * dx + dy * dy > 3 * 3) {
+      pushToast("Too far away", "warn");
+      return;
+    }
+    this._mirrorWorkstationToUi(entityId);
+    openPanel("workstation");
+  }
+
+  /**
+   * Snapshot the open workstation's networked state into uiState so the panel
+   * stays purely reactive on the signal. Called both on initial open and on
+   * every state-message that touches the open station.
+   */
+  private _mirrorWorkstationToUi(entityId: string): void {
+    const state = this.world.get(entityId);
+    if (!state?.workstationBuffer || !state.workstationTag) return;
+    patchUI({
+      workstation: {
+        entityId,
+        stationType:    state.workstationTag.stationType,
+        capacity:       state.workstationBuffer.capacity,
+        slots:          state.workstationBuffer.slots.map((s) => s ? { itemType: s.itemType, quantity: s.quantity } : null),
+        activeRecipeId: state.workstationBuffer.activeRecipeId,
+        progressTicks:  state.workstationBuffer.progressTicks,
+      },
+    });
+  }
+
+  /**
    * Translate UI intents into server messages.
    * This is the single bridge between the UI layer and game logic.
    */
@@ -512,6 +566,34 @@ export class VoximGame {
         this._sendCommand({ cmd: CommandType.UseItem, fromSlot: action.fromSlot });
         break;
 
+      case "load_workstation":
+        this._sendCommand({
+          cmd: CommandType.LoadWorkstation,
+          inventorySlot: action.inventorySlot,
+          bufferSlot: action.bufferSlot,
+        });
+        break;
+
+      case "take_workstation":
+        this._sendCommand({
+          cmd: CommandType.TakeWorkstation,
+          bufferSlot: action.bufferSlot,
+        });
+        break;
+
+      case "deploy_item":
+        // Server uses forward-facing placement for kit items, so worldX/worldY
+        // are ignored — we send 0/0 to satisfy the codec without a cursor pick.
+        console.log(`[Deploy] sending Place from inventory slot=${action.fromSlot}`);
+        this._sendCommand({
+          cmd: CommandType.Place,
+          source: "inventory",
+          fromInventorySlot: action.fromSlot,
+          worldX: 0,
+          worldY: 0,
+        });
+        break;
+
       case "place_blueprint":
         console.log(`[Build] sending Place prefab=${action.structureType} world=(${action.worldX.toFixed(1)},${action.worldY.toFixed(1)})`);
         this._sendCommand({
@@ -537,9 +619,6 @@ export class VoximGame {
       case "split_stack":
       case "hotbar_assign":
       case "hotbar_use":
-      case "crafting_add":
-      case "crafting_remove":
-      case "crafting_craft":
       case "trade_buy":
       case "trade_sell":
       case "dialogue_choice":

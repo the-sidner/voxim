@@ -89,18 +89,25 @@ export interface SkillLoadoutState {
   slots: SkillSlot[];
 }
 
-// ── Crafting ───────────────────────────────────────────────────────────────────
+// ── Workstation panel ───────────────────────────────────────────────────────────
+//
+// Open while the player is interacting with a workstation. game.ts writes
+// `entityId` when the panel opens, then mirrors `stationType` + `buffer` from
+// ClientWorld into here on every state-message that touches that entity. The
+// panel stays purely reactive on uiState.
 
-export interface CraftingSlot {
-  index: number;
-  item: ItemStack | null;
+export interface WorkstationBufferSlotView {
+  itemType: string;
+  quantity: number;
 }
 
-export interface CraftingState {
-  inputSlots:  CraftingSlot[];
-  outputSlot:  ItemStack | null;
-  /** Currently matching recipe id, or null if no valid recipe. */
-  matchedRecipeId: string | null;
+export interface WorkstationPanelState {
+  entityId:        string;
+  stationType:     string;
+  capacity:        number;
+  slots:           (WorkstationBufferSlotView | null)[];
+  activeRecipeId:  string | null;
+  progressTicks:   number | null;
 }
 
 // ── Trader ─────────────────────────────────────────────────────────────────────
@@ -139,7 +146,7 @@ export interface DialogueState {
 
 // ── Drag/drop ──────────────────────────────────────────────────────────────────
 
-export type DragSourceKind = "inventory" | "equipment" | "hotbar" | "crafting";
+export type DragSourceKind = "inventory" | "equipment" | "hotbar" | "workstation";
 
 export interface DragState {
   item:        ItemStack;
@@ -187,7 +194,7 @@ export type PanelId =
   | "inventory"
   | "equipment"
   | "stats"
-  | "crafting"
+  | "workstation"
   | "trader"
   | "dialogue"
   | "settings"
@@ -210,7 +217,7 @@ export interface UIState {
   skillLoadout: SkillLoadoutState | null;
 
   // Active interactions (at most one of each at a time)
-  crafting:     CraftingState | null;
+  workstation:  WorkstationPanelState | null;
   trader:       TraderState | null;
   dialogue:     DialogueState | null;
 
@@ -251,7 +258,7 @@ const _initial: UIState = {
   hotbar:      { slots: Array(8).fill(null) as (null)[], activeIndex: 0 },
   stats:       null,
   skillLoadout: null,
-  crafting:    null,
+  workstation: null,
   trader:      null,
   dialogue:    null,
   openPanels:  new Set(),

@@ -120,7 +120,12 @@ export const enum CommandType {
                         //   source=prefab:    + u8 strLen + UTF-8 prefabId
                         //   source=inventory: + u8 fromInventorySlot
                         // Validated against the spawn prefab's `placeable` component.
-  // 19-255 reserved for future commands
+  LoadWorkstation = 19, // payload: u8 inventorySlot + u8 bufferSlot — moves an inventory stack
+                        //   into the named buffer slot of the player's nearest workstation.
+                        //   Server validates proximity; bufferSlot 255 = "first free".
+  TakeWorkstation = 20, // payload: u8 bufferSlot — moves the named buffer slot back to the
+                        //   player's inventory (first free inventory slot).
+  // 21-255 reserved for future commands
 }
 
 /**
@@ -155,6 +160,8 @@ export type CommandPayload =
   | { cmd: CommandType.Place;          source: "prefab";    prefabId: string;        worldX: number; worldY: number }
   | { cmd: CommandType.Place;          source: "inventory"; fromInventorySlot: number; worldX: number; worldY: number }
   | { cmd: CommandType.SelectRecipe;   recipeId: string }
+  | { cmd: CommandType.LoadWorkstation; inventorySlot: number; bufferSlot: number }
+  | { cmd: CommandType.TakeWorkstation; bufferSlot: number }
   | { cmd: CommandType.DebugGiveItem;  itemType: string; quantity: number }
   | { cmd: CommandType.DebugSpawnNpc;  npcTemplate: string; quantity: number }
   | { cmd: CommandType.DebugSetTime;   hour: number }

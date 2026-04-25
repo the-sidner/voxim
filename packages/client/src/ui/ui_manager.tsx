@@ -21,7 +21,7 @@ import { Hotbar }          from "./components/Hotbar.tsx";
 import { EquipmentPanel }  from "./components/EquipmentPanel.tsx";
 import { InventoryPanel }  from "./components/InventoryPanel.tsx";
 import { StatsPanel }      from "./components/StatsPanel.tsx";
-import { CraftingPanel }   from "./components/CraftingPanel.tsx";
+import { WorkstationPanel } from "./components/WorkstationPanel.tsx";
 import { TraderPanel }     from "./components/TraderPanel.tsx";
 import { DialoguePanel }   from "./components/DialoguePanel.tsx";
 import { SettingsPanel }   from "./components/SettingsPanel.tsx";
@@ -84,7 +84,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       {panels.has("inventory")  && <InventoryPanel  onAction={onAction} />}
       {panels.has("equipment")  && <EquipmentPanel  onAction={onAction} />}
       {panels.has("stats")      && <StatsPanel />}
-      {panels.has("crafting")   && <CraftingPanel   onAction={onAction} />}
+      {panels.has("workstation") && <WorkstationPanel onAction={onAction} />}
       {panels.has("trader")     && <TraderPanel      onAction={onAction} />}
       {panels.has("dialogue")   && <DialoguePanel    onAction={onAction} />}
       {panels.has("settings")   && <SettingsPanel    onAction={onAction} />}

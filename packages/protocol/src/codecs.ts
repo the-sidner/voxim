@@ -132,6 +132,12 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       return u8;
     }
 
+    case CommandType.LoadWorkstation:
+      return new Uint8Array([cmd.inventorySlot, cmd.bufferSlot]);
+
+    case CommandType.TakeWorkstation:
+      return new Uint8Array([cmd.bufferSlot]);
+
     case CommandType.DebugGiveItem: {
       const strBytes = new TextEncoder().encode(cmd.itemType);
       const buf = new ArrayBuffer(1 + strBytes.byteLength + 1);
@@ -228,6 +234,12 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const recipeId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
       return { cmd: CommandType.SelectRecipe, recipeId };
     }
+
+    case CommandType.LoadWorkstation:
+      return { cmd: CommandType.LoadWorkstation, inventorySlot: bytes[0], bufferSlot: bytes[1] };
+
+    case CommandType.TakeWorkstation:
+      return { cmd: CommandType.TakeWorkstation, bufferSlot: bytes[0] };
 
     case CommandType.DebugGiveItem: {
       const strLen = bytes[0];

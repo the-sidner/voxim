@@ -577,13 +577,16 @@ export class VoximRenderer {
           this.syncEquipment(capture, state);
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
+          // Re-attach the pick cylinder to the scene at the prop's fixed
+          // position so workstations and other interactable props still receive
+          // hover + click; without this they fall through to terrain.
           const worldPos = capture.group.position.clone();
-          this.interactionSystem?.removeEntity(entityId);
           this.scene.remove(capture.group);
           disposeEntityMesh(capture);
           this.entityMeshes.delete(entityId);
           this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale);
           this.propPositions.set(entityId, worldPos);
+          this.interactionSystem?.addStaticEntity(entityId, worldPos, this.scene);
           // TODO Step 7: re-wire hitbox debug overlay using local computeHitboxDebug()
         }
       }).catch(() => {});

@@ -1,7 +1,7 @@
 import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
-import { blueprintCodec, workstationBufferCodec, WireWriter, WireReader } from "@voxim/codecs";
-import type { WorkstationBufferData } from "@voxim/codecs";
+import { blueprintCodec, workstationBufferCodec, workstationTagCodec } from "@voxim/codecs";
+import type { WorkstationBufferData, WorkstationTagData } from "@voxim/codecs";
 
 export interface BlueprintMaterial {
   itemType: string;
@@ -60,8 +60,9 @@ export const Blueprint = defineComponent({
   }),
 });
 
-// ---- WorkstationTag (server-only) ----
-// Marks an entity as a workstation of a given type. Not sent over the wire.
+// ---- WorkstationTag (networked) ----
+// Marks an entity as a workstation of a given type. Sent to clients so the
+// workstation panel can filter recipes for the correct station kind.
 //
 // qualityTier is a [0, 1] multiplier applied by the crafting system to the
 // `QualityStamped` component of unique outputs produced here. 1.0 = perfect
@@ -69,27 +70,13 @@ export const Blueprint = defineComponent({
 // might stamp 0.6, a masterwork anvil 1.0. Read at craft resolution; the
 // stamped value is immutable for the lifetime of the item.
 
-export interface WorkstationTagData {
-  stationType: string;
-  qualityTier: number;
-}
+export { type WorkstationTagData };
 
 export const WorkstationTag = defineComponent({
   name: "workstationTag" as const,
-  networked: false,
+  wireId: ComponentType.workstationTag,
   requires: ["workstationBuffer"],
-  codec: {
-    encode(v: WorkstationTagData): Uint8Array {
-      const w = new WireWriter();
-      w.writeStr(v.stationType);
-      w.writeF32(v.qualityTier);
-      return w.toBytes();
-    },
-    decode(b: Uint8Array): WorkstationTagData {
-      const r = new WireReader(b);
-      return { stationType: r.readStr(), qualityTier: r.readF32() };
-    },
-  },
+  codec: workstationTagCodec,
   default: (): WorkstationTagData => ({ stationType: "", qualityTier: 1 }),
 });
 

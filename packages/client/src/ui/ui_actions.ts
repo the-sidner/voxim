@@ -13,18 +13,19 @@ export type UIAction =
 
   // Inventory
   | { type: "move_item"; fromSlot: number; toSlot: number }
-  | { type: "drop_item"; fromSlot: number; quantity?: number }
-  | { type: "use_item";  fromSlot: number }
+  | { type: "drop_item";   fromSlot: number; quantity?: number }
+  | { type: "use_item";    fromSlot: number }
+  | { type: "deploy_item"; fromSlot: number }
   | { type: "split_stack"; fromSlot: number; quantity: number }
 
   // Hotbar
   | { type: "hotbar_assign"; inventorySlot: number; hotbarSlot: number }
   | { type: "hotbar_use";    hotbarSlot: number }
 
-  // Crafting
-  | { type: "crafting_add";    inventorySlot: number; craftingSlot: number }
-  | { type: "crafting_remove"; craftingSlot: number }
-  | { type: "crafting_craft" }
+  // Workstation buffer (load / take). Targets the player's nearest
+  // workstation server-side; the client opens the panel on click.
+  | { type: "load_workstation"; inventorySlot: number; bufferSlot: number }
+  | { type: "take_workstation"; bufferSlot: number }
 
   // Trading
   | { type: "trade_buy";  itemType: string; quantity: number }

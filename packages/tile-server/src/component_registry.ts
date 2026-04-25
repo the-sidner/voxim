@@ -125,8 +125,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   LoreLoadout,
   ActiveEffects,
   // hitbox slot reserved — networked: false (server-only, listed in ALL_DEFS below)
-  // workstationTag slot reserved — networked: false (server-only, listed in ALL_DEFS below)
   WorkstationBuffer,
+  WorkstationTag,
   LightEmitter,
   DarknessModifier,
   // ── Instance-lifetime components — held unique items stream to the
@@ -161,7 +161,6 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   IFrameActive,
   BlockHeld,
   DodgeCooldown,
-  WorkstationTag,
   Hearth,
   JobBoard,
   AssignedJobBoard,

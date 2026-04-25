@@ -14,6 +14,7 @@ import {
   staggeredCodec, counterReadyCodec,
   loreLoadoutCodec, activeEffectsCodec,
   durabilityCodec, craftingQueueCodec, itemDataCodec,
+  workstationBufferCodec, workstationTagCodec,
 } from "@voxim/codecs";
 import type {
   HeightmapData, MaterialGridData, ModelRefData, AnimationStateData,
@@ -21,6 +22,7 @@ import type {
   StaggeredData, CounterReadyData,
   LoreLoadoutData, ActiveEffectsData,
   DurabilityData, CraftingQueueData, ItemDataData,
+  WorkstationBufferData, WorkstationTagData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
@@ -58,6 +60,8 @@ export interface EntityState {
   durability?: DurabilityData;
   craftingQueue?: CraftingQueueData;
   itemData?: ItemDataData;
+  workstationBuffer?: WorkstationBufferData;
+  workstationTag?: WorkstationTagData;
   worldClock?: WorldClockState;
   tileCorruption?: TileCorruptionState;
   corruptionExposure?: CorruptionExposureState;
@@ -167,6 +171,12 @@ export class ClientWorld {
         break;
       case ComponentType.itemData:
         entity.itemData = itemDataCodec.decode(data);
+        break;
+      case ComponentType.workstationBuffer:
+        entity.workstationBuffer = workstationBufferCodec.decode(data);
+        break;
+      case ComponentType.workstationTag:
+        entity.workstationTag = workstationTagCodec.decode(data);
         break;
       case ComponentType.thirst: {
         const v = new DataView(data.buffer, data.byteOffset, data.byteLength);

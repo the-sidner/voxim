@@ -28,6 +28,7 @@ interface Target {
 const TARGETS: Target[] = [
   { name: "weapon_actions", typeName: "WeaponActionDef", subdir: "weapon_actions" },
   { name: "item_prefabs",   typeName: "Prefab",          subdir: "prefabs/items"  },
+  { name: "recipes",        typeName: "Recipe",          subdir: "recipes"        },
 ];
 
 for (const { name, typeName, subdir } of TARGETS) {

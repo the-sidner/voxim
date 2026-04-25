@@ -15,17 +15,22 @@ import type { EntityInteractionHandler } from "./types.ts";
 
 /**
  * Crafting stations (workbench, forge, anvil, furnace, campfire, …).
- * Identified by the "workstationBuffer" networked component.
- * TODO: onClick → open workbench UI.
+ * Identified by the `workstationBuffer` networked component. Click opens
+ * the workstation panel for that entity, gated on the player being within
+ * `interactionRange` blocks.
  */
-export const workstationHandler: EntityInteractionHandler = {
-  id: "workstation",
-  priority: 10,
-  interactionRange: 4,
-  showHoverOutline: true,
-  canHandle: (t) => t.entityState.raw.has("workstationBuffer"),
-  onClick: () => false,
-};
+export function makeWorkstationHandler(
+  open: (entityId: string) => void,
+): EntityInteractionHandler {
+  return {
+    id: "workstation",
+    priority: 10,
+    interactionRange: 3,
+    showHoverOutline: true,
+    canHandle: (t) => t.entityState.workstationBuffer !== undefined,
+    onClick: (t) => { open(t.entityId); return true; },
+  };
+}
 
 /**
  * Harvestable resource nodes — trees, rocks, ore veins, bushes, etc.

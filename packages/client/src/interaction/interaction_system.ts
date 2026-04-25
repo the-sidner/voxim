@@ -80,6 +80,30 @@ export class InteractionSystem {
     this.pickMeshes.set(entityId, pm);
   }
 
+  /**
+   * Register a static prop's pick cylinder. Static props (workstations,
+   * placed buildings) are rendered through PropInstancePool and their
+   * EntityMeshGroup is disposed during the upgrade — without this, their
+   * pick cylinder would be discarded along with it and clicks would fall
+   * through.
+   *
+   * The cylinder is parented to the scene at the prop's fixed world
+   * position; props don't move, so no per-frame syncing is needed.
+   */
+  addStaticEntity(entityId: string, worldPos: THREE.Vector3, scene: THREE.Scene): void {
+    // Replace any existing entry — the renderer calls this right after
+    // removeEntity during the prop transition, but defensive cleanup is cheap.
+    this.removeEntity(entityId);
+
+    const pm = new THREE.Mesh(PICK_GEO, PICK_MAT);
+    pm.layers.disableAll();
+    pm.layers.enable(PICK_LAYER);
+    pm.position.set(worldPos.x, worldPos.y + DEFAULT_PICK_H / 2, worldPos.z);
+    pm.userData.entityId = entityId;
+    scene.add(pm);
+    this.pickMeshes.set(entityId, pm);
+  }
+
   removeEntity(entityId: string): void {
     const pm = this.pickMeshes.get(entityId);
     if (!pm) return;

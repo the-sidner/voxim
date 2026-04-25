@@ -1375,3 +1375,27 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
     return { capacity, activeRecipeId, progressTicks, slots };
   },
 };
+
+// ---- WorkstationTag ----
+// Identifies a station entity's type (workbench, anvil, forge, …) so the
+// client can filter recipes for the open workstation panel. qualityTier is a
+// craft-time multiplier; clients display it as a metadata badge but don't
+// otherwise act on it.
+
+export interface WorkstationTagData {
+  stationType: string;
+  qualityTier: number;
+}
+
+export const workstationTagCodec: Serialiser<WorkstationTagData> = {
+  encode(v: WorkstationTagData): Uint8Array {
+    const w = new WireWriter();
+    w.writeStr(v.stationType);
+    w.writeF32(v.qualityTier);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): WorkstationTagData {
+    const r = new WireReader(bytes);
+    return { stationType: r.readStr(), qualityTier: r.readF32() };
+  },
+};
