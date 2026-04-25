@@ -279,28 +279,42 @@ export interface WeightData { baseWeight: number; }
 
 // ---- recipes ----
 
-export interface RecipeInput {
-  /** Primary acceptable item type. */
-  itemType: string;
-  /** Quantity required (sum across primary + alternates per input slot). */
-  quantity: number;
-  /**
-   * Other item types accepted in place of `itemType`. The recipe matches
-   * when the primary OR any alternate has at least `quantity` in the buffer.
-   * Consumption picks the first acceptable type with sufficient quantity.
-   */
-  alternates?: string[];
-  /**
-   * When set, this input's material (from the item prefab's materialSource component)
-   * is bound to the named slot on the output item.
-   * Only relevant when the output prefab has a Composed component with matching slots.
-   */
-  outputSlot?: string;
-}
+/**
+ * One input slot of a recipe. Exactly one of `itemType` (exact prefab id) or
+ * `category` (loose filter, optionally narrowed by `tags`) must be set.
+ *
+ * `role` distinguishes multiple inputs in the recipe so its formula can refer
+ * to one specifically (e.g. `stave.flexibility`, `string.tensile`). Roles are
+ * unique within a recipe.
+ */
+export type RecipeInput =
+  | {
+    itemType: string;
+    category?: never;
+    tags?:    never;
+    role:     string;
+    quantity: number;
+  }
+  | {
+    itemType?: never;
+    category:  string;
+    tags?:     string[];
+    role:      string;
+    quantity:  number;
+  };
 
+/**
+ * One output of a recipe. `stats` declares the per-output stat formulas —
+ * each value is a string parsed by the formula DSL (see `formula.ts`). At
+ * craft completion the formulas are evaluated against a scope built from
+ * input role stats, tool stats, workstation stats, and player skill levels;
+ * the resulting numbers are written onto the output item entity's `Stats`
+ * instance component, making the output non-stackable when present.
+ */
 export interface RecipeOutput {
   itemType: string;
   quantity: number;
+  stats?:   Record<string, string>;
 }
 
 /**

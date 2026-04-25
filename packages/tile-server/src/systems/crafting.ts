@@ -22,13 +22,14 @@ import type { SpatialGrid } from "../spatial_grid.ts";
 import { newEntityId } from "@voxim/engine";
 import { ACTION_INTERACT, hasAction, CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { ContentStore, Recipe } from "@voxim/content";
+import type { ContentStore, Recipe, RecipeOutput } from "@voxim/content";
+import { evalFormula, parseFormula } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
 import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
-import { QualityStamped } from "../components/instance.ts";
+import { QualityStamped, Stats } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 import { spawnPrefab } from "../spawner.ts";
@@ -271,125 +272,216 @@ export class CraftingSystem implements System {
 
 // ---- shared helpers (also used by WorkstationHitHandler) ----
 
+/**
+ * Maps every recipe role to the buffer slot index that satisfies it.
+ * Returned by `findMatchingRecipe` and threaded through consumption + stat
+ * propagation so the same slots are consumed that the matcher chose.
+ */
+export type RoleAssignment = ReadonlyMap<string, number>;
+
+export interface RecipeMatch {
+  recipe: Recipe;
+  assignment: RoleAssignment;
+}
+
 export function findMatchingRecipe(
   content: ContentStore,
   stationType: string,
   stepType: Recipe["stepType"],
   bufferSlots: WorkstationBufferData["slots"],
-): Recipe | null {
-  const bufferMap = slotsToMap(bufferSlots);
+): RecipeMatch | null {
   for (const recipe of content.getAllRecipes()) {
     if (recipe.stationType !== stationType) continue;
     if ((recipe.stepType ?? "time") !== stepType) continue;
-    if (!recipeInputsMatch(recipe.inputs, bufferMap)) continue;
-    return recipe;
+    const assignment = tryAssignRoles(recipe, bufferSlots, content);
+    if (assignment) return { recipe, assignment };
   }
   return null;
 }
 
 /**
- * An input matches when the primary itemType OR any alternate has at least
- * the required quantity available in the buffer.
+ * Try to assign each recipe role to a buffer slot that satisfies it.
+ * More-specific roles (itemType > category-with-tags > category) are claimed
+ * first so a yew-only role doesn't lose its only candidate to a generic
+ * "any wood" role.
  */
-export function recipeInputsMatch(
-  inputs: Recipe["inputs"],
-  bufferMap: Map<string, number>,
-): boolean {
-  return inputs.every((inp) => {
-    if ((bufferMap.get(inp.itemType) ?? 0) >= inp.quantity) return true;
-    if (inp.alternates) {
-      for (const alt of inp.alternates) {
-        if ((bufferMap.get(alt) ?? 0) >= inp.quantity) return true;
-      }
+export function tryAssignRoles(
+  recipe: Recipe,
+  bufferSlots: WorkstationBufferData["slots"],
+  content: ContentStore,
+): RoleAssignment | null {
+  const ordered = [...recipe.inputs].sort((a, b) => inputSpecificity(b) - inputSpecificity(a));
+  const claimed = new Set<number>();
+  const out = new Map<string, number>();
+  for (const input of ordered) {
+    let chosen = -1;
+    for (let i = 0; i < bufferSlots.length; i++) {
+      if (claimed.has(i)) continue;
+      const slot = bufferSlots[i];
+      if (!slot) continue;
+      if (slot.quantity < input.quantity) continue;
+      if (!inputAccepts(input, slot.itemType, content)) continue;
+      chosen = i;
+      break;
     }
-    return false;
-  });
+    if (chosen === -1) return null;
+    claimed.add(chosen);
+    out.set(input.role, chosen);
+  }
+  return out;
+}
+
+function inputSpecificity(input: Recipe["inputs"][number]): number {
+  if ("itemType" in input && input.itemType !== undefined) return 2;
+  if ("tags" in input && (input.tags?.length ?? 0) > 0) return 1;
+  return 0;
+}
+
+function inputAccepts(input: Recipe["inputs"][number], prefabId: string, content: ContentStore): boolean {
+  if ("itemType" in input && input.itemType !== undefined) {
+    return prefabId === input.itemType;
+  }
+  if ("category" in input && input.category !== undefined) {
+    const prefab = content.getPrefab(prefabId);
+    if (!prefab || prefab.category !== input.category) return false;
+    if (input.tags) {
+      const have = prefab.tags ?? [];
+      for (const t of input.tags) if (!have.includes(t)) return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 /**
- * Consume each input from the buffer. For inputs with alternates, the first
- * acceptable type with sufficient quantity is consumed (primary preferred).
- * Assumes `recipeInputsMatch` has already passed.
+ * Consume each input from the buffer at its assigned slot. The matcher's
+ * `assignment` decides which slot fed which role — same slot here means we
+ * burn what we matched, not whatever happens to be in the same item type.
  */
 export function consumeFromBuffer(
   slots: WorkstationBufferData["slots"],
-  inputs: Recipe["inputs"],
+  recipe: Recipe,
+  assignment: RoleAssignment,
 ): WorkstationBufferData["slots"] {
-  const remaining = new Map<string, number>();
-  for (const s of slots) {
-    if (s !== null) remaining.set(s.itemType, (remaining.get(s.itemType) ?? 0) + s.quantity);
+  const next: WorkstationBufferData["slots"] = slots.slice();
+  for (const input of recipe.inputs) {
+    const idx = assignment.get(input.role);
+    if (idx === undefined) continue;
+    const slot = next[idx];
+    if (!slot) continue;
+    const after = slot.quantity - input.quantity;
+    next[idx] = after > 0 ? { itemType: slot.itemType, quantity: after } : null;
   }
-  for (const inp of inputs) {
-    const acceptable = inp.alternates ? [inp.itemType, ...inp.alternates] : [inp.itemType];
-    for (const t of acceptable) {
-      const cur = remaining.get(t) ?? 0;
-      if (cur >= inp.quantity) {
-        const after = cur - inp.quantity;
-        if (after <= 0) remaining.delete(t);
-        else remaining.set(t, after);
-        break;
-      }
-    }
-  }
-  return Array.from(remaining.entries()).map(([itemType, quantity]) => ({ itemType, quantity }));
-}
-
-function slotsToMap(slots: WorkstationBufferData["slots"]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const s of slots) {
-    if (s !== null) m.set(s.itemType, (m.get(s.itemType) ?? 0) + s.quantity);
-  }
-  return m;
+  // Drop trailing nulls so the buffer compacts naturally.
+  while (next.length > 0 && next[next.length - 1] === null) next.pop();
+  return next;
 }
 
 /**
  * Spawn a crafting output at a workstation.
  *
- * Stack output (prefab declares `stackable`): cheap path — a single world
- * entity carrying `Position` + `ItemData { prefabId, quantity }`. Quantity is
- * meaningful; instance state is not.
+ * Stack output (prefab declares `stackable` AND the recipe output declares
+ * no `stats` formulas): cheap path — a single world entity carrying
+ * `Position` + `ItemData { prefabId, quantity }`. Quantity is meaningful;
+ * no per-instance state.
  *
- * Unique output (prefab omits `stackable`): runs through `spawnPrefab` so the
- * full item-behaviour component set (Equippable, Swingable, Composed, …) and
- * the visual shell are installed. Stamp instance state from the crafting
- * context: `QualityStamped` scaled from the workstation's `qualityTier`, and
- * a fresh `Durability` if the prefab declared one. Quantity is always 1.
+ * Unique output (everything else): runs through `spawnPrefab` so the full
+ * item-behaviour component set + visual shell install. If the recipe output
+ * declares `stats`, evaluate each formula against `<role>.<stat>` /
+ * `tool.*` / `workstation.*` / `skill.*` and write a `Stats` component.
+ * Stat-bearing outputs are *always* unique even if the prefab declared
+ * `stackable: {}` — two crafted swords with different stat blobs can't share
+ * an inventory slot.
+ *
+ * Quality stamping (`QualityStamped`) still happens for unique outputs so
+ * downstream `deriveItemStats` callers keep working until the full T-121
+ * stat surface replaces it.
  */
 export function spawnOutputNear(
   world: World,
   content: ContentStore,
   stationId: EntityId,
-  prefabId: string,
-  quantity: number,
+  output: RecipeOutput,
+  match: RecipeMatch,
+  bufferSlotsBeforeConsume: WorkstationBufferData["slots"],
 ): void {
-  const prefab = content.getPrefab(prefabId);
+  const prefab = content.getPrefab(output.itemType);
   const pos = world.get(stationId, Position);
   const x = (pos?.x ?? 0) + 0.5;
   const y = (pos?.y ?? 0) + 0.5;
   const z = pos?.z ?? 4.0;
 
-  const isStackable = prefab?.components["stackable"] !== undefined;
+  const hasStats = output.stats !== undefined && Object.keys(output.stats).length > 0;
+  const isStackable = prefab?.components["stackable"] !== undefined && !hasStats;
   if (isStackable || !prefab) {
     const id = newEntityId();
     world.create(id);
     world.write(id, Position, { x, y, z });
-    world.write(id, ItemData, { prefabId, quantity });
+    world.write(id, ItemData, { prefabId: output.itemType, quantity: output.quantity });
     return;
   }
 
-  // Unique item: spawn the full prefab — this installs the complete component
-  // set (Equippable, Swingable, Composed, visual shell, and any Durability
-  // declared on the prefab). Then overlay craft-time instance state that
-  // cannot live on the prefab: QualityStamped scaled from the workstation's
-  // qualityTier. Quantity is always 1; uniques do not stack.
-  const n = Math.max(1, quantity);
   const tag = world.get(stationId, WorkstationTag);
   const quality = clamp01(tag?.qualityTier ?? 1);
+  const computedStats = hasStats
+    ? evaluateOutputStats(output.stats!, match, bufferSlotsBeforeConsume, content, tag?.qualityTier ?? 1)
+    : null;
+
+  // Stat-bearing outputs always spawn one entity per unit (uniques don't
+  // stack). Outputs without stats may still be uniques (sword, etc.).
+  const n = Math.max(1, output.quantity);
   for (let i = 0; i < n; i++) {
-    const id = spawnPrefab(world, content, prefabId, { x, y, z });
-    world.write(id, ItemData, { prefabId, quantity: 1 });
+    const id = spawnPrefab(world, content, output.itemType, { x, y, z });
+    world.write(id, ItemData, { prefabId: output.itemType, quantity: 1 });
     world.write(id, QualityStamped, { quality });
+    if (computedStats) {
+      world.write(id, Stats, { ...computedStats });
+    }
   }
+}
+
+/**
+ * Build the formula scope from the matched buffer slots and evaluate each
+ * declared output stat. Variables:
+ *   <role>.<stat>      — from the input slot's prefab.stats (raw materials).
+ *   workstation.quality — qualityTier (0..1).
+ *
+ * Tool and skill scopes are reserved for a follow-up that needs the
+ * triggering player's entity context — placeholder zero so formulas that
+ * reference them parse but evaluate predictably.
+ */
+function evaluateOutputStats(
+  formulas: Record<string, string>,
+  match: RecipeMatch,
+  bufferSlots: WorkstationBufferData["slots"],
+  content: ContentStore,
+  qualityTier: number,
+): Record<string, number> {
+  const scope: Record<string, number> = {
+    "workstation.quality": qualityTier,
+  };
+  for (const input of match.recipe.inputs) {
+    const idx = match.assignment.get(input.role);
+    if (idx === undefined) continue;
+    const slot = bufferSlots[idx];
+    if (!slot) continue;
+    const sourcePrefab = content.getPrefab(slot.itemType);
+    const stats = sourcePrefab?.stats ?? {};
+    for (const [k, v] of Object.entries(stats)) {
+      scope[`${input.role}.${k}`] = v;
+    }
+  }
+
+  const out: Record<string, number> = {};
+  for (const [statName, source] of Object.entries(formulas)) {
+    try {
+      const parsed = parseFormula(source);
+      out[statName] = evalFormula(parsed, scope);
+    } catch (err) {
+      log.warn("recipe=%s stat=%s formula failed: %s", match.recipe.id, statName, (err as Error).message);
+    }
+  }
+  return out;
 }
 
 function clamp01(v: number): number {

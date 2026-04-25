@@ -112,7 +112,14 @@ function stepToJob(step: CraftingPlanStep, currentTick: number): Job {
     return {
       type: "craftAtWorkbench",
       workbenchType: step.workbenchType,
-      inputs: step.inputs.map((i) => ({ itemType: i.itemType, quantity: i.quantity })),
+      // Job inputs are advisory hints for the NPC's gather/fetch loop; the
+      // actual craft re-matches against buffer contents at the workbench.
+      // Category inputs collapse to "" here — the executor doesn't act on
+      // the hint when itemType is absent.
+      inputs: step.inputs.map((i) => ({
+        itemType: ("itemType" in i && i.itemType !== undefined) ? i.itemType : "",
+        quantity: i.quantity,
+      })),
       workbenchId: null,
       phase: "approach",
       expiresAt: currentTick + 600,
@@ -148,7 +155,7 @@ export function dispatchProduce(
 
   const view = buildWorldView(world, content, px, py, scanRadius);
   const graph = content.getRecipeGraph();
-  const plan = runPlanner(targetItem, quantity, inventorySnapshot(world, entityId), view, graph);
+  const plan = runPlanner(targetItem, quantity, inventorySnapshot(world, entityId), view, graph, content);
   if (!plan || plan.steps.length === 0) return { kind: "unreachable" };
 
   const step = firstPendingStep(plan.steps, world, entityId);

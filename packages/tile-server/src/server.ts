@@ -26,7 +26,7 @@ import { listenQuic } from "./quic_server.ts";
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 import type { BinaryComponentDelta, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
-import { loadContentStore, type ContentStore } from "@voxim/content";
+import { loadContentStore, validateRecipeGraph, type ContentStore } from "@voxim/content";
 import { ClientSession } from "./session.ts";
 import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
@@ -210,6 +210,10 @@ export class TileServer {
     // Validate every prefab against the component registry + schemas + requires.
     // Fails fast on malformed content so a booted server is known-good.
     validatePrefabs(content);
+    // Walk every recipe's stat formulas and prove every variable reference
+    // resolves to a producer (raw-material default OR an upstream recipe
+    // formula). Surfaces NaN-bow-class bugs at boot, not at first craft.
+    validateRecipeGraph(content);
 
     // Effect handler registries — apply/tick/compose are plug-in points for
     // SkillSystem and BuffSystem. Built-in effects are registered here; every

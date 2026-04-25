@@ -45,6 +45,7 @@ export type {
   StackableData,
   WeightData,
   RecipeInput,
+  RecipeOutput,
   Recipe,
   NpcTemplate,
   ResourceNodeYield,
@@ -110,6 +111,9 @@ export { buildRecipeGraph } from "./src/recipe_graph.ts";
 // ---- recipe stat formula DSL ----
 export type { FormulaNode, ParsedFormula, FormulaScope } from "./src/formula.ts";
 export { parseFormula, evalFormula, checkVars } from "./src/formula.ts";
+
+// ---- recipe-graph validator (server boot) ----
+export { validateRecipeGraph } from "./src/recipe_validator.ts";
 
 // ---- file loader (Deno server-side) ----
 export { loadContentStore } from "./src/loader.ts";

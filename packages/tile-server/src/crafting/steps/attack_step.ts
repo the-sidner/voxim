@@ -14,22 +14,22 @@ const log = createLogger("AttackStep");
 export const attackStep: RecipeStepHandler = {
   id: "attack",
   onHit(ctx: RecipeHitContext): void {
-    const recipe = findMatchingRecipe(ctx.content, ctx.stationType, "attack", ctx.buffer.slots);
-    if (!recipe) return;
-    if (!toolMatches(ctx.hit.weaponStats.toolType, recipe.requiredTools)) {
+    const match = findMatchingRecipe(ctx.content, ctx.stationType, "attack", ctx.buffer.slots);
+    if (!match) return;
+    if (!toolMatches(ctx.hit.weaponStats.toolType, match.recipe.requiredTools)) {
       log.debug(
         "attack: attacker=%s station=%s wrong tool=%s accepts=[%s]",
         ctx.hit.attackerId, ctx.stationId,
         ctx.hit.weaponStats.toolType ?? "none",
-        recipe.requiredTools.join(", ") || "any",
+        match.recipe.requiredTools.join(", ") || "any",
       );
       return;
     }
-    resolveRecipe(ctx.world, ctx.content, ctx.events, ctx.stationId, ctx.buffer, recipe, ctx.hit.attackerId);
+    resolveRecipe(ctx.world, ctx.content, ctx.events, ctx.stationId, ctx.buffer, match, ctx.hit.attackerId);
     log.info(
       "crafted: attacker=%s station=%s recipe=%s outputs=[%s]",
-      ctx.hit.attackerId, ctx.stationId, recipe.id,
-      recipe.outputs.map((o) => `${o.itemType}x${o.quantity}`).join(", "),
+      ctx.hit.attackerId, ctx.stationId, match.recipe.id,
+      match.recipe.outputs.map((o) => `${o.itemType}x${o.quantity}`).join(", "),
     );
   },
 };

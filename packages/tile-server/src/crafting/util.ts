@@ -15,6 +15,7 @@ import {
   consumeFromBuffer,
   spawnOutputNear,
 } from "../systems/crafting.ts";
+import type { RecipeMatch } from "../systems/crafting.ts";
 
 export function resolveRecipe(
   world: World,
@@ -22,25 +23,28 @@ export function resolveRecipe(
   events: EventEmitter,
   stationId: EntityId,
   buffer: WorkstationBufferData,
-  recipe: Recipe,
+  match: RecipeMatch,
   crafterId: EntityId | null,
 ): void {
-  const newSlots = consumeFromBuffer(buffer.slots, recipe.inputs);
+  // Spawn outputs *before* consuming so formulas can read the input slots'
+  // prefab stats (the matcher's assignment maps each role to a slot index;
+  // the same slots survive into spawnOutputNear).
+  for (const output of match.recipe.outputs) {
+    spawnOutputNear(world, content, stationId, output, match, buffer.slots);
+  }
+  const newSlots = consumeFromBuffer(buffer.slots, match.recipe, match.assignment);
   // chainNextRecipeId carries the chain forward: keep the buffer primed with
   // the next recipe id so attack/assembly swings or the time-step auto-start
   // can pick it up. Without a chain, both fields clear.
   world.set(stationId, WorkstationBuffer, {
     ...buffer,
     slots: newSlots,
-    activeRecipeId: recipe.chainNextRecipeId ?? null,
+    activeRecipeId: match.recipe.chainNextRecipeId ?? null,
     progressTicks: null,
   });
-  for (const output of recipe.outputs) {
-    spawnOutputNear(world, content, stationId, output.itemType, output.quantity);
-  }
   events.publish(TileEvents.CraftingCompleted, {
     crafterId: crafterId ?? stationId,
-    recipeId: recipe.id,
+    recipeId: match.recipe.id,
   });
 }
 

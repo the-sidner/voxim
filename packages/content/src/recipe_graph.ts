@@ -56,8 +56,21 @@ export function buildRecipeGraph(
     else byStation.set(station, [recipe]);
 
     for (const input of recipe.inputs) {
-      allInputs.add(input.itemType);
-      if (input.alternates) for (const alt of input.alternates) allInputs.add(alt);
+      // Category inputs expand to "any prefab in that category" — record each
+      // matching prefab id as a possible source so the planner sees all
+      // gather/produce paths.
+      if ("itemType" in input && input.itemType !== undefined) {
+        allInputs.add(input.itemType);
+      } else if ("category" in input && input.category !== undefined) {
+        for (const p of prefabs) {
+          if (p.category !== input.category) continue;
+          if (input.tags) {
+            const have = p.tags ?? [];
+            if (!input.tags.every((t) => have.includes(t))) continue;
+          }
+          allInputs.add(p.id);
+        }
+      }
     }
   }
 

@@ -14,7 +14,7 @@ function node(id: string, yields: Array<{ itemType: string; quantity: number }>)
 /** Minimal recipe helper — only fields the graph actually reads. */
 function recipe(
   id: string,
-  inputs: Array<{ itemType: string; quantity: number; alternates?: string[] }>,
+  inputs: Array<{ itemType?: string; category?: string; tags?: string[]; quantity: number }>,
   outputs: Array<{ itemType: string; quantity: number }>,
   stationType?: string,
 ): Recipe {
@@ -22,7 +22,11 @@ function recipe(
     id,
     stationType,
     requiredTools: [],
-    inputs,
+    inputs: inputs.map((i, idx) =>
+      i.itemType !== undefined
+        ? { itemType: i.itemType, role: `r${idx}`, quantity: i.quantity }
+        : { category: i.category!, tags: i.tags, role: `r${idx}`, quantity: i.quantity }
+    ),
     outputs,
     ticks: 0,
   };
@@ -66,12 +70,24 @@ Deno.test("primitives are inputs that no recipe produces", () => {
   assert(!g.primitives.has("sword"), "sword is produced by forge");
 });
 
-Deno.test("alternates contribute to primitive detection", () => {
-  // recipe accepts oak_plank or pine_plank. Neither is produced; both are primitive.
-  const r = recipe("hut", [{ itemType: "oak_plank", quantity: 4, alternates: ["pine_plank"] }], [{ itemType: "hut", quantity: 1 }]);
-  const g = buildRecipeGraph([r]);
+Deno.test("category inputs expand to every matching prefab as primitives", () => {
+  // Recipe accepts any "wood". Both oak_plank and pine_plank are in that
+  // category and neither is produced — so both should appear as primitives.
+  const r = recipe("hut", [{ category: "wood", quantity: 4 }], [{ itemType: "hut", quantity: 1 }]);
+  const oak: Prefab  = { id: "oak_plank",  category: "wood", components: {} };
+  const pine: Prefab = { id: "pine_plank", category: "wood", components: {} };
+  const g = buildRecipeGraph([r], [oak, pine]);
   assert(g.primitives.has("oak_plank"));
   assert(g.primitives.has("pine_plank"));
+});
+
+Deno.test("category+tags filter narrows the matching prefab set", () => {
+  const r = recipe("rope", [{ category: "cordage", tags: ["organic"], quantity: 3 }], [{ itemType: "rope", quantity: 1 }]);
+  const linen:  Prefab = { id: "linen_yarn", category: "cordage", tags: ["organic"], components: {} };
+  const wire:   Prefab = { id: "wire",       category: "cordage", tags: ["metal"],   components: {} };
+  const g = buildRecipeGraph([r], [linen, wire]);
+  assert(g.primitives.has("linen_yarn"));
+  assert(!g.primitives.has("wire"), "wire fails the organic tag filter");
 });
 
 Deno.test("items that are both input and output are not primitive", () => {

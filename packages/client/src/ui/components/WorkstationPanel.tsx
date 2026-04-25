@@ -18,30 +18,65 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { uiState, closePanel, type ItemStack, type WorkstationBufferSlotView, type WorkstationPanelState } from "../ui_store.ts";
 import { usePanel } from "../use_panel.ts";
 import { dragSystem } from "../drag_system.ts";
-import { recipes as recipesData } from "@voxim/content";
-import type { Recipe } from "@voxim/content";
+import { recipes as recipesData, item_prefabs as itemPrefabsData } from "@voxim/content";
+import type { Prefab, Recipe } from "@voxim/content";
 import type { UIAction } from "../ui_actions.ts";
 
 const workstation = computed(() => uiState.value.workstation);
 
 // ---- recipe matching ------------------------------------------------------
+//
+// Mirrors the server's tryAssignRoles: each role claims a single buffer slot
+// (more-specific roles first), inputs accept either an exact `itemType` or
+// any prefab in `category` whose tags satisfy the filter. Module-load index
+// of prefab id → Prefab keeps the per-render lookup cheap.
 
-function recipeMatches(recipe: Recipe, totals: Map<string, number>): boolean {
-  return recipe.inputs.every((inp) => {
-    if ((totals.get(inp.itemType) ?? 0) >= inp.quantity) return true;
-    if (inp.alternates) {
-      for (const alt of inp.alternates) if ((totals.get(alt) ?? 0) >= inp.quantity) return true;
+const PREFAB_BY_ID: ReadonlyMap<string, Prefab> = new Map(itemPrefabsData.map((p) => [p.id, p]));
+
+type RecipeInput = Recipe["inputs"][number];
+
+function inputAccepts(input: RecipeInput, prefabId: string): boolean {
+  if ("itemType" in input && input.itemType !== undefined) return prefabId === input.itemType;
+  if ("category" in input && input.category !== undefined) {
+    const p = PREFAB_BY_ID.get(prefabId);
+    if (!p || p.category !== input.category) return false;
+    if (input.tags) {
+      const have = p.tags ?? [];
+      for (const t of input.tags) if (!have.includes(t)) return false;
     }
-    return false;
-  });
+    return true;
+  }
+  return false;
+}
+
+function inputSpecificity(input: RecipeInput): number {
+  if ("itemType" in input && input.itemType !== undefined) return 2;
+  if ("tags" in input && (input.tags?.length ?? 0) > 0) return 1;
+  return 0;
+}
+
+function recipeMatches(recipe: Recipe, slots: readonly (WorkstationBufferSlotView | null)[]): boolean {
+  const ordered = [...recipe.inputs].sort((a, b) => inputSpecificity(b) - inputSpecificity(a));
+  const claimed = new Set<number>();
+  for (const input of ordered) {
+    let ok = false;
+    for (let i = 0; i < slots.length; i++) {
+      if (claimed.has(i)) continue;
+      const slot = slots[i];
+      if (!slot) continue;
+      if (slot.quantity < input.quantity) continue;
+      if (!inputAccepts(input, slot.itemType)) continue;
+      claimed.add(i);
+      ok = true;
+      break;
+    }
+    if (!ok) return false;
+  }
+  return true;
 }
 
 function findMatchingRecipes(panel: WorkstationPanelState): Recipe[] {
-  const totals = new Map<string, number>();
-  for (const s of panel.slots) if (s) totals.set(s.itemType, (totals.get(s.itemType) ?? 0) + s.quantity);
-  return recipesData.filter((r) =>
-    r.stationType === panel.stationType && recipeMatches(r, totals),
-  );
+  return recipesData.filter((r) => r.stationType === panel.stationType && recipeMatches(r, panel.slots));
 }
 
 // ---- buffer slot cell -----------------------------------------------------

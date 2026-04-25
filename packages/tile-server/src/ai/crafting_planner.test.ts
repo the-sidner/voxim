@@ -1,6 +1,6 @@
 import { assertEquals, assertExists } from "jsr:@std/assert";
 import { buildRecipeGraph } from "@voxim/content";
-import type { Recipe } from "@voxim/content";
+import type { ContentStore, Recipe, Prefab } from "@voxim/content";
 import type { InventoryData } from "@voxim/codecs";
 import { plan } from "./crafting_planner.ts";
 import type { WorldView } from "./crafting_planner.ts";
@@ -13,8 +13,25 @@ function recipe(
   outputs: Array<{ itemType: string; quantity: number }>,
   stationType?: string,
 ): Recipe {
-  return { id, stationType, requiredTools: [], inputs, outputs, ticks: 0 };
+  return {
+    id,
+    stationType,
+    requiredTools: [],
+    inputs: inputs.map((i, idx) => ({ itemType: i.itemType, role: `r${idx}`, quantity: i.quantity })),
+    outputs,
+    ticks: 0,
+  };
 }
+
+/**
+ * Stub content store — only `getPrefabsByCategory` is invoked by the planner
+ * for category inputs. These tests use itemType inputs exclusively, so the
+ * stub returns an empty list. Replace with a real store when adding a
+ * category-input regression test.
+ */
+const stubContent = {
+  getPrefabsByCategory(_c: string, _t?: readonly string[]): readonly Prefab[] { return []; },
+} as unknown as ContentStore;
 
 const emptyInv: InventoryData = { slots: [], capacity: 20 };
 
@@ -41,7 +58,7 @@ function worldWith(opts: {
 
 Deno.test("target already in inventory → single fetch step", () => {
   const graph = buildRecipeGraph([]);
-  const p = plan("wood", 3, inv([{ itemType: "wood", quantity: 5 }]), worldWith({}), graph);
+  const p = plan("wood", 3, inv([{ itemType: "wood", quantity: 5 }]), worldWith({}), graph, stubContent);
   assertExists(p);
   assertEquals(p.steps.length, 1);
   assertEquals(p.steps[0], { kind: "fetch", itemType: "wood", from: "inventory", quantity: 3 });
@@ -55,6 +72,7 @@ Deno.test("primitive target → gather step, when node nearby", () => {
     "iron_ore", 2, emptyInv,
     worldWith({ gatherers: { iron_ore: ["iron_ore_vein"] }, nearby: new Set(["iron_ore"]) }),
     graph,
+    stubContent,
   );
   assertExists(p);
   assertEquals(p.steps.length, 1);
@@ -71,6 +89,7 @@ Deno.test("primitive target with no nearby node → null", () => {
     "iron_ore", 1, emptyInv,
     worldWith({ gatherers: { iron_ore: ["iron_ore_vein"] }, nearby: new Set() }),
     graph,
+    stubContent,
   );
   assertEquals(p, null);
 });
@@ -91,6 +110,7 @@ Deno.test("simple multi-step plan: gather → craft", () => {
       nearby: new Set(["iron_ore"]),
     }),
     graph,
+    stubContent,
   );
   assertExists(p);
   assertEquals(p.steps.length, 2);
@@ -122,6 +142,7 @@ Deno.test("multi-input recipe: both inputs gathered before craft", () => {
       nearby: new Set(["iron_ore", "wood"]),
     }),
     graph,
+    stubContent,
   );
   assertExists(p);
   // gather ore → craft ingot → gather wood → forge sword (4 steps)
@@ -152,6 +173,7 @@ Deno.test("partial inventory: one input covered → only remaining gather", () =
     inv([{ itemType: "iron_ingot", quantity: 1 }, { itemType: "wood", quantity: 1 }]),
     worldWith({ workbenches: ["anvil"] }),
     graph,
+    stubContent,
   );
   assertExists(p);
   // Both inputs are in inventory → two fetch steps + one craftAt.
@@ -177,6 +199,7 @@ Deno.test("recipe requires a station that isn't placed → null", () => {
       nearby: new Set(["iron_ore"]),
     }),
     graph,
+    stubContent,
   );
   assertEquals(p, null);
 });
@@ -192,6 +215,7 @@ Deno.test("recipe with empty stationType is handcraft (no workbench needed)", ()
       nearby: new Set(["wood"]),
     }),
     graph,
+    stubContent,
   );
   assertExists(p);
   assertEquals(p.steps.length, 2);
@@ -212,6 +236,7 @@ Deno.test("choice between two recipes → shorter plan wins", () => {
       nearby: new Set(["wood", "stone"]),
     }),
     graph,
+    stubContent,
   );
   assertExists(p);
   assertEquals(p.steps.length, 2);
@@ -223,7 +248,7 @@ Deno.test("cycle in recipe graph → null (guarded)", () => {
     recipe("r_ab", [{ itemType: "a", quantity: 1 }], [{ itemType: "b", quantity: 1 }]),
     recipe("r_ba", [{ itemType: "b", quantity: 1 }], [{ itemType: "a", quantity: 1 }]),
   ]);
-  const p = plan("a", 1, emptyInv, worldWith({}), graph);
+  const p = plan("a", 1, emptyInv, worldWith({}), graph, stubContent);
   assertEquals(p, null);
 });
 
@@ -238,6 +263,7 @@ Deno.test("depth guard terminates pathological chains", () => {
     "i_0", 1, emptyInv,
     worldWith({ gatherers: { "i_30": ["src"] }, nearby: new Set(["i_30"]) }),
     graph,
+    stubContent,
     16,  // depth cap below the chain length
   );
   assertEquals(p, null);
@@ -247,6 +273,6 @@ Deno.test("unreachable primitive (no gatherer known) → null", () => {
   const graph = buildRecipeGraph([
     recipe("mix", [{ itemType: "unobtainium", quantity: 1 }], [{ itemType: "alloy", quantity: 1 }]),
   ]);
-  const p = plan("alloy", 1, emptyInv, worldWith({}), graph);
+  const p = plan("alloy", 1, emptyInv, worldWith({}), graph, stubContent);
   assertEquals(p, null);
 });

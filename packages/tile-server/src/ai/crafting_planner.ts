@@ -24,7 +24,7 @@
  * can unblock a previously-null result.
  */
 import type { InventoryData } from "@voxim/codecs";
-import type { RecipeGraph, Recipe, RecipeInput } from "@voxim/content";
+import type { ContentStore, RecipeGraph, Recipe, RecipeInput } from "@voxim/content";
 import type { EntityId } from "@voxim/engine";
 
 export interface GatherStep {
@@ -79,9 +79,10 @@ export function plan(
   inventory: InventoryData,
   world: WorldView,
   graph: RecipeGraph,
+  content: ContentStore,
   maxDepth: number = DEFAULT_MAX_DEPTH,
 ): CraftingPlan | null {
-  const steps = resolve(target, quantity, inventory, world, graph, 0, maxDepth, new Set());
+  const steps = resolve(target, quantity, inventory, world, graph, content, 0, maxDepth, new Set());
   return steps ? { target, steps } : null;
 }
 
@@ -91,6 +92,7 @@ function resolve(
   inventory: InventoryData,
   world: WorldView,
   graph: RecipeGraph,
+  content: ContentStore,
   depth: number,
   maxDepth: number,
   visited: ReadonlySet<string>,
@@ -119,7 +121,7 @@ function resolve(
   const nextVisited = new Set(visited).add(target);
 
   for (const recipe of recipes) {
-    const steps = tryRecipe(recipe, inventory, world, graph, depth, maxDepth, nextVisited);
+    const steps = tryRecipe(recipe, inventory, world, graph, content, depth, maxDepth, nextVisited);
     if (!steps) continue;
     if (!best || steps.length < best.length) best = steps;
   }
@@ -131,6 +133,7 @@ function tryRecipe(
   inventory: InventoryData,
   world: WorldView,
   graph: RecipeGraph,
+  content: ContentStore,
   depth: number,
   maxDepth: number,
   visited: ReadonlySet<string>,
@@ -140,9 +143,17 @@ function tryRecipe(
 
   const out: CraftingPlanStep[] = [];
   for (const input of recipe.inputs) {
-    const subSteps = resolve(input.itemType, input.quantity, inventory, world, graph, depth + 1, maxDepth, visited);
-    if (!subSteps) return null;
-    out.push(...subSteps);
+    // Category inputs expand to "any matching prefab". The planner picks the
+    // first one it can satisfy — keeps depth-first search bounded and avoids
+    // combinatorial blowup. A smarter planner could cost-rank candidates.
+    const candidates = inputCandidates(input, content);
+    let satisfied: CraftingPlanStep[] | null = null;
+    for (const candidate of candidates) {
+      satisfied = resolve(candidate, input.quantity, inventory, world, graph, content, depth + 1, maxDepth, visited);
+      if (satisfied) break;
+    }
+    if (!satisfied) return null;
+    out.push(...satisfied);
   }
   out.push({
     kind: "craftAt",
@@ -151,6 +162,14 @@ function tryRecipe(
     inputs: recipe.inputs,
   });
   return out;
+}
+
+function inputCandidates(input: RecipeInput, content: ContentStore): readonly string[] {
+  if ("itemType" in input && input.itemType !== undefined) return [input.itemType];
+  if ("category" in input && input.category !== undefined) {
+    return content.getPrefabsByCategory(input.category, input.tags ?? []).map((p) => p.id);
+  }
+  return [];
 }
 
 /** Sum the quantity of an item across all inventory slots. */

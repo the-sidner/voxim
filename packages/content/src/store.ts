@@ -76,8 +76,6 @@ export interface ContentStore {
   // ---- recipes ----
   getRecipe(id: string): Recipe | null;
   getAllRecipes(): readonly Recipe[];
-  /** First recipe whose inputs are fully covered by the given inventory map. */
-  findCraftableRecipe(inventory: Map<string, number>): Recipe | null;
   /** Reverse index: producers by item, recipes by workstation, primitive items. */
   getRecipeGraph(): RecipeGraph;
 
@@ -102,6 +100,13 @@ export interface ContentStore {
   // ---- prefabs ----
   getPrefab(id: string): Prefab | null;
   getAllPrefabs(): readonly Prefab[];
+  /**
+   * Every prefab whose `category` matches AND whose `tags` is a superset of
+   * the requested tag list. Used by the crafting matcher and the
+   * recipe-graph validator to enumerate "what items satisfy this category
+   * input slot". Empty `requiredTags` returns all prefabs in the category.
+   */
+  getPrefabsByCategory(category: string, requiredTags?: readonly string[]): readonly Prefab[];
 
   // ---- lore fragments ----
   getLoreFragment(id: string): LoreFragment | null;
@@ -161,6 +166,8 @@ export class StaticContentStore implements ContentStore {
   private recipes = new Map<string, Recipe>();
   /** Cached reverse index. Invalidated by registerRecipe; built on first access. */
   private recipeGraph: RecipeGraph | null = null;
+  /** Cached category → Prefab[] index. Invalidated when prefabs change. */
+  private categoryIndex: Map<string, Prefab[]> | null = null;
   private npcTemplates = new Map<string, NpcTemplate>();
   private behaviorTrees = new Map<string, BehaviorTreeSpec>();
   private biomes = new Map<string, BiomeDef>();
@@ -241,6 +248,7 @@ export class StaticContentStore implements ContentStore {
   registerPrefab(prefab: Prefab): void {
     this.prefabs.set(prefab.id, prefab);
     this.recipeGraph = null;
+    this.categoryIndex = null;
   }
 
   registerLoreFragment(fragment: LoreFragment): void {
@@ -336,22 +344,6 @@ export class StaticContentStore implements ContentStore {
     return Array.from(this.recipes.values());
   }
 
-  findCraftableRecipe(inventory: Map<string, number>): Recipe | null {
-    for (const recipe of this.recipes.values()) {
-      const ok = recipe.inputs.every((inp) => {
-        if ((inventory.get(inp.itemType) ?? 0) >= inp.quantity) return true;
-        if (inp.alternates) {
-          for (const alt of inp.alternates) {
-            if ((inventory.get(alt) ?? 0) >= inp.quantity) return true;
-          }
-        }
-        return false;
-      });
-      if (ok) return recipe;
-    }
-    return null;
-  }
-
   getRecipeGraph(): RecipeGraph {
     // Built lazily on first access; invalidated whenever a recipe or prefab
     // is registered (registerRecipe / registerPrefab clear the cache). In
@@ -414,6 +406,25 @@ export class StaticContentStore implements ContentStore {
 
   getAllPrefabs(): readonly Prefab[] {
     return Array.from(this.prefabs.values());
+  }
+
+  getPrefabsByCategory(category: string, requiredTags: readonly string[] = []): readonly Prefab[] {
+    if (this.categoryIndex === null) {
+      this.categoryIndex = new Map();
+      for (const p of this.prefabs.values()) {
+        if (!p.category) continue;
+        const bucket = this.categoryIndex.get(p.category);
+        if (bucket) bucket.push(p);
+        else this.categoryIndex.set(p.category, [p]);
+      }
+    }
+    const all = this.categoryIndex.get(category) ?? [];
+    if (requiredTags.length === 0) return all;
+    return all.filter((p) => {
+      const have = p.tags ?? [];
+      for (const t of requiredTags) if (!have.includes(t)) return false;
+      return true;
+    });
   }
 
   // ---- lore ----
