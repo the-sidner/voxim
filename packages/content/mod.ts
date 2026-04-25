@@ -107,6 +107,10 @@ export { StaticContentStore, resolveSubObjects, resolveMorphParams } from "./src
 export type { RecipeGraph } from "./src/recipe_graph.ts";
 export { buildRecipeGraph } from "./src/recipe_graph.ts";
 
+// ---- recipe stat formula DSL ----
+export type { FormulaNode, ParsedFormula, FormulaScope } from "./src/formula.ts";
+export { parseFormula, evalFormula, checkVars } from "./src/formula.ts";
+
 // ---- file loader (Deno server-side) ----
 export { loadContentStore } from "./src/loader.ts";
 
