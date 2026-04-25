@@ -8,7 +8,7 @@
     "minZ": 0,
     "maxX": 0.4,
     "maxY": 0.7,
-    "maxZ": 1.0
+    "maxZ": 1
   },
   "nodes": [],
   "subObjects": [
@@ -16,7 +16,7 @@
       "modelId": "wolf_body",
       "boneId": "body",
       "transform": {
-        "x": 0,
+        "x": -0.5,
         "y": 0,
         "z": 0,
         "rotX": 0,
@@ -31,7 +31,7 @@
       "modelId": "wolf_head",
       "boneId": "head",
       "transform": {
-        "x": 0,
+        "x": -0.5,
         "y": 0,
         "z": 0,
         "rotX": 0,

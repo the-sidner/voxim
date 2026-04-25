@@ -16,8 +16,8 @@
       "modelId": "human_torso_lower",
       "boneId": "torso_lower",
       "transform": {
-        "x": 0,
-        "y": 0,
+        "x": -0.5,
+        "y": -0.5,
         "z": 0,
         "rotX": 0,
         "rotY": 0,
@@ -31,8 +31,8 @@
       "modelId": "human_torso_mid",
       "boneId": "torso_mid",
       "transform": {
-        "x": 0,
-        "y": 0,
+        "x": -0.5,
+        "y": -0.5,
         "z": 0,
         "rotX": 0,
         "rotY": 0,
@@ -46,8 +46,8 @@
       "modelId": "human_torso_upper",
       "boneId": "torso_upper",
       "transform": {
-        "x": 0,
-        "y": 0,
+        "x": -0.5,
+        "y": -0.5,
         "z": 0,
         "rotX": 0,
         "rotY": 0,
@@ -61,8 +61,8 @@
       "modelId": "human_head",
       "boneId": "head",
       "transform": {
-        "x": 0,
-        "y": 0,
+        "x": -0.5,
+        "y": -0.5,
         "z": 0,
         "rotX": 0,
         "rotY": 0,

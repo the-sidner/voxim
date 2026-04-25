@@ -1,19 +1,25 @@
 {
   "id": "human_lower_leg",
-  "version": 2,
+  "version": 4,
   "hitbox": {
     "minX": 0,
     "minY": 0,
-    "minZ": -4,
+    "minZ": -3,
     "maxX": 1,
     "maxY": 1,
-    "maxZ": 0
+    "maxZ": 1
   },
   "nodes": [
     {
       "x": 0,
       "y": 0,
-      "z": 0,
+      "z": -3,
+      "materialId": 109
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": -2,
       "materialId": 109
     },
     {
@@ -24,92 +30,13 @@
     },
     {
       "x": 0,
-      "y": 1,
-      "z": 0,
-      "materialId": 109
-    },
-    {
-      "x": 0,
-      "y": 1,
-      "z": -1,
-      "materialId": 109
-    },
-    {
-      "x": 1,
       "y": 0,
       "z": 0,
       "materialId": 109
-    },
-    {
-      "x": 1,
-      "y": 0,
-      "z": -1,
-      "materialId": 109
-    },
-    {
-      "x": 1,
-      "y": 1,
-      "z": 0,
-      "materialId": 109
-    },
-    {
-      "x": 1,
-      "y": 1,
-      "z": -1,
-      "materialId": 109
-    },
-    {
-      "x": 0,
-      "y": 0,
-      "z": -2,
-      "materialId": 110
-    },
-    {
-      "x": 0,
-      "y": 0,
-      "z": -3,
-      "materialId": 110
-    },
-    {
-      "x": 0,
-      "y": 1,
-      "z": -2,
-      "materialId": 110
-    },
-    {
-      "x": 0,
-      "y": 1,
-      "z": -3,
-      "materialId": 110
-    },
-    {
-      "x": 1,
-      "y": 0,
-      "z": -2,
-      "materialId": 110
-    },
-    {
-      "x": 1,
-      "y": 0,
-      "z": -3,
-      "materialId": 110
-    },
-    {
-      "x": 1,
-      "y": 1,
-      "z": -2,
-      "materialId": 110
-    },
-    {
-      "x": 1,
-      "y": 1,
-      "z": -3,
-      "materialId": 110
     }
   ],
   "subObjects": [],
   "materials": [
-    109,
-    110
+    109
   ]
 }
