@@ -22,6 +22,9 @@ logs/
 # Save data
 *.sav
 saves/
+# Account databases (gateway). Anchored to repo root so it doesn't catch
+# packages/content/data/ which is authored game content.
+/data/
 
 # Test artifacts
 test-results/
@@ -40,6 +43,3 @@ Thumbs.db
 # Environment / secrets
 .env
 .env.*
-
-
-data
