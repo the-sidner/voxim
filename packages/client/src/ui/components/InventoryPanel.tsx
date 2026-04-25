@@ -2,6 +2,7 @@ import { computed } from "@preact/signals";
 import { uiState, patchUI } from "../ui_store.ts";
 import { usePanel } from "../use_panel.ts";
 import { dragSystem } from "../drag_system.ts";
+import { clientWorld } from "../client_world_ref.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { ContextMenuAction, ItemStack } from "../ui_store.ts";
 import { item_prefabs as itemPrefabsData } from "@voxim/content";
@@ -48,9 +49,22 @@ function ItemSlotCell({ item, index, onAction }: {
       title={item?.displayName ?? ""}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
-      onMouseEnter={(e) => item && patchUI({
-        tooltip: { item, screenX: (e.target as HTMLElement).getBoundingClientRect().right, screenY: (e.target as HTMLElement).getBoundingClientRect().top },
-      })}
+      onMouseEnter={(e) => {
+        if (!item) return;
+        // Unique items carry per-instance Stats / Provenance on their entity;
+        // pull both at hover time so the tooltip reflects current state.
+        const entity = item.entityId ? clientWorld.value?.get(item.entityId) : null;
+        const rect = (e.target as HTMLElement).getBoundingClientRect();
+        patchUI({
+          tooltip: {
+            item,
+            screenX: rect.right,
+            screenY: rect.top,
+            stats: entity?.stats,
+            provenance: entity?.provenance,
+          },
+        });
+      }}
       onMouseLeave={() => patchUI({ tooltip: null })}
     >
       {/* TODO: render item icon */}

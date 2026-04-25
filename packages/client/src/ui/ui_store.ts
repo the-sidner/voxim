@@ -23,6 +23,12 @@ export interface ItemStack {
   displayName: string;
   /** Model template id for icon rendering (may be null while content loads). */
   modelTemplateId: string | null;
+  /**
+   * Set for unique-entity items. Lets tooltips look up per-instance Stats
+   * and Provenance from ClientWorld; absent for stackable items whose
+   * stats live on the prefab.
+   */
+  entityId?: string;
 }
 
 export interface EquipmentState {
@@ -156,9 +162,13 @@ export interface DragState {
 // ── Tooltip ────────────────────────────────────────────────────────────────────
 
 export interface TooltipData {
-  item:      ItemStack;
-  screenX:   number;
-  screenY:   number;
+  item:        ItemStack;
+  screenX:     number;
+  screenY:     number;
+  /** Per-instance stats from the entity's Stats component, if present. */
+  stats?:      Record<string, number>;
+  /** Per-role variant ids the recipe used, if present. Drives the "made of …" line. */
+  provenance?: ReadonlyArray<{ role: string; prefabId: string }>;
 }
 
 // ── Context menu ───────────────────────────────────────────────────────────────

@@ -54,6 +54,7 @@ import {
   History,
   Inscribed,
   Owned,
+  Provenance,
   QualityStamped,
   Stats,
 } from "./components/instance.ts";
@@ -136,6 +137,7 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Inscribed,
   QualityStamped,
   Stats,
+  Provenance,
   // ── Combat presence-as-flag components (split from the retired
   //    combatState slot). Networked because the client renders stagger
   //    animation and surfaces the counter-ready UI.

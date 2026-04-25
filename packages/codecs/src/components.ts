@@ -1397,6 +1397,38 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
   },
 };
 
+// ---- Provenance (item instance) ----
+// Records which prefab variant filled each role of the recipe that produced
+// this item. Drives tooltip "made of yew_wood, with linen_yarn string" lines
+// and the procedural display name. One entry per recipe role; empty for
+// items that came from a stack-only recipe with no per-role identity.
+//
+// Wire layout: [u8 count][for each: writeStr(role) + writeStr(prefabId)].
+
+export type ProvenanceData = ReadonlyArray<{ role: string; prefabId: string }>;
+
+export const provenanceCodec: Serialiser<ProvenanceData> = {
+  encode(v: ProvenanceData): Uint8Array {
+    const w = new WireWriter();
+    if (v.length > 255) throw new Error(`ProvenanceData has ${v.length} entries; max is 255`);
+    w.writeU8(v.length);
+    for (const e of v) {
+      w.writeStr(e.role);
+      w.writeStr(e.prefabId);
+    }
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): ProvenanceData {
+    const r = new WireReader(bytes);
+    const count = r.readU8();
+    const out: { role: string; prefabId: string }[] = [];
+    for (let i = 0; i < count; i++) {
+      out.push({ role: r.readStr(), prefabId: r.readStr() });
+    }
+    return out;
+  },
+};
+
 // ---- Stats (item instance) ----
 // Open key→f32 map carried by item entities. On raw-material prefabs (a wood
 // log, an iron ingot before craft, etc.) the values are authored on the

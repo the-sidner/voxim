@@ -30,7 +30,8 @@ import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "@voxim/codecs";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
-import { QualityStamped, Stats } from "../components/instance.ts";
+import { Provenance, QualityStamped, Stats } from "../components/instance.ts";
+import type { ProvenanceData } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 import { spawnPrefab } from "../spawner.ts";
@@ -473,6 +474,7 @@ export function spawnOutputNear(
   const computedStats = hasStats
     ? evaluateOutputStats(world, output.stats!, match, bufferSlotsBeforeConsume, content, tag?.qualityTier ?? 1)
     : null;
+  const provenance = buildProvenance(world, match, bufferSlotsBeforeConsume);
 
   // Stat-bearing outputs always spawn one entity per unit (uniques don't
   // stack). Outputs without stats may still be uniques (sword, etc.).
@@ -484,7 +486,32 @@ export function spawnOutputNear(
     if (computedStats) {
       world.write(id, Stats, { ...computedStats });
     }
+    if (provenance.length > 0) {
+      world.write(id, Provenance, provenance);
+    }
   }
+}
+
+/**
+ * Snapshot which prefab id (variant) filled each role at craft time. Read by
+ * tooltips and the procedural display-name builder. Walks the assigned
+ * buffer slots and resolves each slot's prefab id (stack: itemType, unique:
+ * carried prefabId).
+ */
+function buildProvenance(
+  _world: World,
+  match: RecipeMatch,
+  bufferSlots: WorkstationBufferData["slots"],
+): ProvenanceData {
+  const out: { role: string; prefabId: string }[] = [];
+  for (const input of match.recipe.inputs) {
+    const idx = match.assignment.get(input.role);
+    if (idx === undefined) continue;
+    const slot = bufferSlots[idx];
+    if (!slot) continue;
+    out.push({ role: input.role, prefabId: slot.kind === "stack" ? slot.itemType : slot.prefabId });
+  }
+  return out;
 }
 
 /**

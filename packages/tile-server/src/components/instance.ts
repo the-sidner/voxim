@@ -21,6 +21,7 @@ import {
   inscribedCodec,
   qualityStampedCodec,
   statsCodec,
+  provenanceCodec,
   WireReader,
   WireWriter,
 } from "@voxim/codecs";
@@ -29,9 +30,10 @@ import type {
   InscribedData,
   QualityStampedData,
   StatsData,
+  ProvenanceData,
 } from "@voxim/codecs";
 
-export type { DurabilityData, InscribedData, QualityStampedData, StatsData };
+export type { DurabilityData, InscribedData, QualityStampedData, StatsData, ProvenanceData };
 
 // ---- Durability (networked) ----
 
@@ -71,6 +73,18 @@ export const Stats = defineComponent({
   wireId: ComponentType.stats,
   codec: statsCodec,
   default: (): StatsData => ({}),
+});
+
+// ---- Provenance (networked) ----
+// Records which prefab variant filled each role of the recipe that produced
+// this item. Drives tooltip "made of yew_wood, with linen_yarn string" lines
+// and the procedural display name.
+
+export const Provenance = defineComponent({
+  name: "provenance" as const,
+  wireId: ComponentType.provenance,
+  codec: provenanceCodec,
+  default: (): ProvenanceData => ([]),
 });
 
 // ---- History (server-only) ----

@@ -563,7 +563,7 @@ deliberately-broken recipe (drop a referenced stat from a wood prefab)
 fails with a clear error message naming both files.
 
 ### T-125 · Wood + bow chain — first vertical
-Effort: L   Status: todo   Phase 4 of T-121
+Effort: L   Status: done   Commit: 4287e5c   Phase 4 of T-121
 
 Authoring pass that exercises every piece of T-122..T-124 end-to-end. No
 new code unless something breaks.
@@ -617,7 +617,7 @@ no recipe still expresses material variance via duplicated recipes or
 `alternates`; the prefab item count is materially smaller than it is today.
 
 ### T-127 · Tooltip + procedural naming UI
-Effort: M   Status: todo   Phase 6 of T-121
+Effort: M   Status: done   Phase 6 of T-121
 
 Without UI, the system's depth is invisible — players just see numbers
 fluctuate. Add:

@@ -20,6 +20,7 @@ import { makeWorkstationHandler, resourceNodeHandler, groundItemHandler } from "
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
+import { setClientWorld } from "./ui/client_world_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
 import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
@@ -146,7 +147,7 @@ export class VoximGame {
               }
             }
           }
-          if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory) });
+          if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
           if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
         }
         // Mirror buffer/tag updates on the open workstation entity into uiState
@@ -330,6 +331,10 @@ export class VoximGame {
 
     // Mount Preact UI into <div id="ui"> — must exist in the HTML host page
     mountUI((a) => this._handleUIAction(a));
+    // Expose the live world to UI components that need to read entity state
+    // (tooltips reading per-instance Stats, provenance, etc.) without prop
+    // threading.
+    setClientWorld(this.world);
 
     // Count any terrain chunks that arrived during connect() (before renderer existed).
     // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
@@ -343,7 +348,7 @@ export class VoximGame {
         if (state.stamina)     patchUI({ stamina:      { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
         if (state.hunger)      patchUI({ hunger:       { value: state.hunger.value } });
         if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
-        if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory) });
+        if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory, this.world) });
         if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
       }
     }
@@ -792,7 +797,7 @@ function getToolType(prefabId: string | undefined): string | undefined {
  * The slots array is padded to capacity with nulls so the grid always renders
  * the correct number of cells regardless of how many items are present.
  */
-function mapInventoryToUI(inv: InventoryData): InventoryState {
+function mapInventoryToUI(inv: InventoryData, world: ClientWorld): InventoryState {
   const slots: (ItemStack | null)[] = inv.slots.map((s) => {
     if (s.kind === "stack") {
       return {
@@ -802,12 +807,17 @@ function mapInventoryToUI(inv: InventoryData): InventoryState {
         modelTemplateId: null,
       };
     } else {
-      // unique item entity — prefabId resolved server-side via ItemData component
+      // Unique item entity — pull its prefab id from the entity's ItemData
+      // component so the UI shows a proper name and the tooltip can locate
+      // the entity for stat/provenance lookup.
+      const entity = world.get(s.entityId);
+      const prefabId = entity?.itemData?.prefabId ?? "";
       return {
-        itemType: s.entityId,
+        itemType: prefabId,
         quantity: 1,
-        displayName: "(item)",
+        displayName: prefabId ? humanizeItemType(prefabId) : "(item)",
         modelTemplateId: null,
+        entityId: s.entityId,
       };
     }
   });
