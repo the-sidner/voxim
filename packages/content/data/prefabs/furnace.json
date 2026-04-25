@@ -1,6 +1,7 @@
 {
   "id": "furnace",
   "extends": "_workbench_base",
+  "modelId": "model_furnace",
   "components": {
     "workstationTag": {
       "stationType": "furnace"

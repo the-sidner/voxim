@@ -1,0 +1,12 @@
+{
+  "id": "anvil_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "anvil"
+    },
+    "weight": {
+      "baseWeight": 15
+    }
+  }
+}

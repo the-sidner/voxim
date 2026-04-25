@@ -1,0 +1,12 @@
+{
+  "id": "writing_desk_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "writing_desk"
+    },
+    "weight": {
+      "baseWeight": 6
+    }
+  }
+}

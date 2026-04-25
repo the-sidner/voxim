@@ -3,10 +3,13 @@
 import type { Prefab } from "./types.ts";
 
 import adze from "../data/prefabs/items/adze.json" with { type: "json" };
+import alchemist_bench_kit from "../data/prefabs/items/alchemist_bench_kit.json" with { type: "json" };
 import ale from "../data/prefabs/items/ale.json" with { type: "json" };
+import altar_kit from "../data/prefabs/items/altar_kit.json" with { type: "json" };
 import alum from "../data/prefabs/items/alum.json" with { type: "json" };
 import alum_crystal from "../data/prefabs/items/alum_crystal.json" with { type: "json" };
 import animal_fat from "../data/prefabs/items/animal_fat.json" with { type: "json" };
+import anvil_kit from "../data/prefabs/items/anvil_kit.json" with { type: "json" };
 import apple from "../data/prefabs/items/apple.json" with { type: "json" };
 import arrow_broadhead from "../data/prefabs/items/arrow_broadhead.json" with { type: "json" };
 import arrow_iron from "../data/prefabs/items/arrow_iron.json" with { type: "json" };
@@ -43,6 +46,7 @@ import bronze_blade_short from "../data/prefabs/items/bronze_blade_short.json" w
 import bronze_ingot from "../data/prefabs/items/bronze_ingot.json" with { type: "json" };
 import butter from "../data/prefabs/items/butter.json" with { type: "json" };
 import calamine from "../data/prefabs/items/calamine.json" with { type: "json" };
+import campfire_kit from "../data/prefabs/items/campfire_kit.json" with { type: "json" };
 import candle from "../data/prefabs/items/candle.json" with { type: "json" };
 import candle_tallow from "../data/prefabs/items/candle_tallow.json" with { type: "json" };
 import cart_wheel from "../data/prefabs/items/cart_wheel.json" with { type: "json" };
@@ -53,6 +57,7 @@ import chain_link from "../data/prefabs/items/chain_link.json" with { type: "jso
 import chamomile_tea from "../data/prefabs/items/chamomile_tea.json" with { type: "json" };
 import charcoal from "../data/prefabs/items/charcoal.json" with { type: "json" };
 import cheese from "../data/prefabs/items/cheese.json" with { type: "json" };
+import chopping_block_kit from "../data/prefabs/items/chopping_block_kit.json" with { type: "json" };
 import cider from "../data/prefabs/items/cider.json" with { type: "json" };
 import cinnabar_ore from "../data/prefabs/items/cinnabar_ore.json" with { type: "json" };
 import clay from "../data/prefabs/items/clay.json" with { type: "json" };
@@ -132,7 +137,9 @@ import flint_knife from "../data/prefabs/items/flint_knife.json" with { type: "j
 import flint_nodule from "../data/prefabs/items/flint_nodule.json" with { type: "json" };
 import floor_tile from "../data/prefabs/items/floor_tile.json" with { type: "json" };
 import flue_dust from "../data/prefabs/items/flue_dust.json" with { type: "json" };
+import forge_kit from "../data/prefabs/items/forge_kit.json" with { type: "json" };
 import froe from "../data/prefabs/items/froe.json" with { type: "json" };
+import furnace_kit from "../data/prefabs/items/furnace_kit.json" with { type: "json" };
 import glass_bottle from "../data/prefabs/items/glass_bottle.json" with { type: "json" };
 import glass_pane from "../data/prefabs/items/glass_pane.json" with { type: "json" };
 import glue_bone from "../data/prefabs/items/glue_bone.json" with { type: "json" };
@@ -151,6 +158,7 @@ import haft_short from "../data/prefabs/items/haft_short.json" with { type: "jso
 import hammer_scale from "../data/prefabs/items/hammer_scale.json" with { type: "json" };
 import hardtack from "../data/prefabs/items/hardtack.json" with { type: "json" };
 import harness from "../data/prefabs/items/harness.json" with { type: "json" };
+import hearth_kit from "../data/prefabs/items/hearth_kit.json" with { type: "json" };
 import hemp_cloth from "../data/prefabs/items/hemp_cloth.json" with { type: "json" };
 import hemp_cord from "../data/prefabs/items/hemp_cord.json" with { type: "json" };
 import hemp_seed from "../data/prefabs/items/hemp_seed.json" with { type: "json" };
@@ -236,6 +244,7 @@ import iron_strongbox from "../data/prefabs/items/iron_strongbox.json" with { ty
 import iron_sword from "../data/prefabs/items/iron_sword.json" with { type: "json" };
 import iron_tongs from "../data/prefabs/items/iron_tongs.json" with { type: "json" };
 import iron_vambrace from "../data/prefabs/items/iron_vambrace.json" with { type: "json" };
+import job_board_kit from "../data/prefabs/items/job_board_kit.json" with { type: "json" };
 import kindling from "../data/prefabs/items/kindling.json" with { type: "json" };
 import lantern_oil from "../data/prefabs/items/lantern_oil.json" with { type: "json" };
 import last_wood from "../data/prefabs/items/last_wood.json" with { type: "json" };
@@ -439,15 +448,20 @@ import wooden_sword from "../data/prefabs/items/wooden_sword.json" with { type: 
 import wool_cloth from "../data/prefabs/items/wool_cloth.json" with { type: "json" };
 import wool_yarn from "../data/prefabs/items/wool_yarn.json" with { type: "json" };
 import wootz_ingot from "../data/prefabs/items/wootz_ingot.json" with { type: "json" };
+import workbench_kit from "../data/prefabs/items/workbench_kit.json" with { type: "json" };
+import writing_desk_kit from "../data/prefabs/items/writing_desk_kit.json" with { type: "json" };
 import yarrow_poultice from "../data/prefabs/items/yarrow_poultice.json" with { type: "json" };
 import yew_wood from "../data/prefabs/items/yew_wood.json" with { type: "json" };
 
 export const item_prefabs: readonly Prefab[] = [
   adze as unknown as Prefab,
+  alchemist_bench_kit as unknown as Prefab,
   ale as unknown as Prefab,
+  altar_kit as unknown as Prefab,
   alum as unknown as Prefab,
   alum_crystal as unknown as Prefab,
   animal_fat as unknown as Prefab,
+  anvil_kit as unknown as Prefab,
   apple as unknown as Prefab,
   arrow_broadhead as unknown as Prefab,
   arrow_iron as unknown as Prefab,
@@ -484,6 +498,7 @@ export const item_prefabs: readonly Prefab[] = [
   bronze_ingot as unknown as Prefab,
   butter as unknown as Prefab,
   calamine as unknown as Prefab,
+  campfire_kit as unknown as Prefab,
   candle as unknown as Prefab,
   candle_tallow as unknown as Prefab,
   cart_wheel as unknown as Prefab,
@@ -494,6 +509,7 @@ export const item_prefabs: readonly Prefab[] = [
   chamomile_tea as unknown as Prefab,
   charcoal as unknown as Prefab,
   cheese as unknown as Prefab,
+  chopping_block_kit as unknown as Prefab,
   cider as unknown as Prefab,
   cinnabar_ore as unknown as Prefab,
   clay as unknown as Prefab,
@@ -573,7 +589,9 @@ export const item_prefabs: readonly Prefab[] = [
   flint_nodule as unknown as Prefab,
   floor_tile as unknown as Prefab,
   flue_dust as unknown as Prefab,
+  forge_kit as unknown as Prefab,
   froe as unknown as Prefab,
+  furnace_kit as unknown as Prefab,
   glass_bottle as unknown as Prefab,
   glass_pane as unknown as Prefab,
   glue_bone as unknown as Prefab,
@@ -592,6 +610,7 @@ export const item_prefabs: readonly Prefab[] = [
   hammer_scale as unknown as Prefab,
   hardtack as unknown as Prefab,
   harness as unknown as Prefab,
+  hearth_kit as unknown as Prefab,
   hemp_cloth as unknown as Prefab,
   hemp_cord as unknown as Prefab,
   hemp_seed as unknown as Prefab,
@@ -677,6 +696,7 @@ export const item_prefabs: readonly Prefab[] = [
   iron_sword as unknown as Prefab,
   iron_tongs as unknown as Prefab,
   iron_vambrace as unknown as Prefab,
+  job_board_kit as unknown as Prefab,
   kindling as unknown as Prefab,
   lantern_oil as unknown as Prefab,
   last_wood as unknown as Prefab,
@@ -880,6 +900,8 @@ export const item_prefabs: readonly Prefab[] = [
   wool_cloth as unknown as Prefab,
   wool_yarn as unknown as Prefab,
   wootz_ingot as unknown as Prefab,
+  workbench_kit as unknown as Prefab,
+  writing_desk_kit as unknown as Prefab,
   yarrow_poultice as unknown as Prefab,
   yew_wood as unknown as Prefab,
 ];

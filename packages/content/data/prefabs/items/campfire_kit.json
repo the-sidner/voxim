@@ -1,0 +1,12 @@
+{
+  "id": "campfire_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "campfire"
+    },
+    "weight": {
+      "baseWeight": 4
+    }
+  }
+}

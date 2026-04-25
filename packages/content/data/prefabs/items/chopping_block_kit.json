@@ -1,0 +1,12 @@
+{
+  "id": "chopping_block_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "chopping_block"
+    },
+    "weight": {
+      "baseWeight": 6
+    }
+  }
+}

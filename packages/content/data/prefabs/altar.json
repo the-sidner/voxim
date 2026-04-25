@@ -1,6 +1,7 @@
 {
   "id": "altar",
   "extends": "_workbench_base",
+  "modelId": "model_altar",
   "components": {
     "workstationTag": {
       "stationType": "altar"

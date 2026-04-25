@@ -1,0 +1,12 @@
+{
+  "id": "furnace_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "furnace"
+    },
+    "weight": {
+      "baseWeight": 14
+    }
+  }
+}

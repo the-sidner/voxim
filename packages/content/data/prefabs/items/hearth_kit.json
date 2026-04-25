@@ -1,0 +1,12 @@
+{
+  "id": "hearth_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "hearth"
+    },
+    "weight": {
+      "baseWeight": 12
+    }
+  }
+}

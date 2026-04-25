@@ -1,0 +1,12 @@
+{
+  "id": "workbench_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "workbench"
+    },
+    "weight": {
+      "baseWeight": 8
+    }
+  }
+}

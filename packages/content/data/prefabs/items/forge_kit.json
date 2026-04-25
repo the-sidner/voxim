@@ -1,0 +1,12 @@
+{
+  "id": "forge_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "forge"
+    },
+    "weight": {
+      "baseWeight": 14
+    }
+  }
+}

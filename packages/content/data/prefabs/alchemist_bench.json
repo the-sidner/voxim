@@ -1,6 +1,7 @@
 {
   "id": "alchemist_bench",
   "extends": "_workbench_base",
+  "modelId": "model_alchemist_bench",
   "components": {
     "workstationTag": {
       "stationType": "alchemist_bench"

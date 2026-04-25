@@ -1,6 +1,7 @@
 {
   "id": "forge",
   "extends": "_workbench_base",
+  "modelId": "model_forge",
   "components": {
     "workstationTag": {
       "stationType": "forge"

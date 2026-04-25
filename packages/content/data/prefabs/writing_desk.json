@@ -1,6 +1,7 @@
 {
   "id": "writing_desk",
   "extends": "_workbench_base",
+  "modelId": "model_writing_desk",
   "components": {
     "workstationTag": {
       "stationType": "writing_desk"

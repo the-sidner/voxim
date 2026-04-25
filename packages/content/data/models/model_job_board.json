@@ -1,0 +1,121 @@
+{
+  "id": "model_job_board",
+  "version": 1,
+  "hitbox": {
+    "minX": -1,
+    "minY": 0,
+    "minZ": 0,
+    "maxX": 2,
+    "maxY": 2,
+    "maxZ": 5
+  },
+  "nodes": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "materialId": 100
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 1,
+      "materialId": 100
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 2,
+      "materialId": 100
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 3,
+      "materialId": 100
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 4,
+      "materialId": 100
+    },
+    {
+      "x": -1,
+      "y": 1,
+      "z": 3,
+      "materialId": 100
+    },
+    {
+      "x": -1,
+      "y": 1,
+      "z": 4,
+      "materialId": 100
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 3,
+      "materialId": 100
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 4,
+      "materialId": 100
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 3,
+      "materialId": 100
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 4,
+      "materialId": 100
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 3,
+      "materialId": 100
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 4,
+      "materialId": 100
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 3,
+      "materialId": 100
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "z": 4,
+      "materialId": 100
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "z": 4,
+      "materialId": 105
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "z": 3,
+      "materialId": 105
+    }
+  ],
+  "subObjects": [],
+  "materials": [
+    100,
+    105
+  ]
+}

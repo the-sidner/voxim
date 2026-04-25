@@ -1,0 +1,12 @@
+{
+  "id": "alchemist_bench_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "alchemist_bench"
+    },
+    "weight": {
+      "baseWeight": 7
+    }
+  }
+}

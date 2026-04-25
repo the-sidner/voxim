@@ -1,6 +1,7 @@
 {
   "id": "anvil",
   "extends": "_workbench_base",
+  "modelId": "model_anvil",
   "components": {
     "workstationTag": {
       "stationType": "anvil"

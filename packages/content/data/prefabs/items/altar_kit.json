@@ -1,0 +1,12 @@
+{
+  "id": "altar_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "altar"
+    },
+    "weight": {
+      "baseWeight": 10
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "job_board_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "job_board"
+    },
+    "weight": {
+      "baseWeight": 5
+    }
+  }
+}
