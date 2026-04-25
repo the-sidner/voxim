@@ -733,6 +733,26 @@ export interface Prefab {
   /** Multiplier applied on top of the base entity scale at spawn. Defaults to 1. */
   modelScale?: number;
   /**
+   * Generic category. Recipes match inputs by category (e.g. "wood",
+   * "cordage", "ingot"). Loose filter — no central schema, just convention.
+   */
+  category?: string;
+  /**
+   * Set-of-strings refinement on top of `category`. Recipes can require
+   * tags within a category ("organic", "elastic", "fire-resistant"). Order
+   * is irrelevant; duplicates are ignored at load.
+   */
+  tags?: string[];
+  /**
+   * Per-instance numeric stats. For raw-material prefabs (logs, ingots,
+   * fibres) these values are copied onto the entity at spawn as the
+   * authoritative defaults. Crafted intermediates leave this absent —
+   * their stats are computed by the originating recipe's formula. The
+   * recipe-graph validator (T-124) catches references to stats that no
+   * upstream producer (prefab default OR recipe formula output) emits.
+   */
+  stats?: Record<string, number>;
+  /**
    * Open-set component dictionary. Each key is either a `ComponentDef.name`
    * registered in the tile-server component registry (written directly at
    * spawn) or a known compound-archetype key consumed by `spawnPrefab`'s

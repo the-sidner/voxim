@@ -47,6 +47,7 @@ export const ComponentType = {
   staggered:          36,
   counterReady:       37,
   workstationTag:     38,
+  stats:              39,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

@@ -55,6 +55,7 @@ import {
   Inscribed,
   Owned,
   QualityStamped,
+  Stats,
 } from "./components/instance.ts";
 import {
   Blueprint,
@@ -134,6 +135,7 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Durability,
   Inscribed,
   QualityStamped,
+  Stats,
   // ── Combat presence-as-flag components (split from the retired
   //    combatState slot). Networked because the client renders stagger
   //    animation and surfaces the counter-ready UI.

@@ -1376,6 +1376,43 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
   },
 };
 
+// ---- Stats (item instance) ----
+// Open key→f32 map carried by item entities. On raw-material prefabs (a wood
+// log, an iron ingot before craft, etc.) the values are authored on the
+// prefab; spawnPrefab copies them onto the entity at creation. On crafted
+// intermediates the values are computed by the originating recipe's formula
+// at craft time.
+//
+// Wire layout: [u8 count][for each: writeStr(key) + writeF32(value)].
+// Capped at 255 stats per item (fits the u8 count); a single item realistically
+// carries < 10 stats.
+
+export type StatsData = Record<string, number>;
+
+export const statsCodec: Serialiser<StatsData> = {
+  encode(v: StatsData): Uint8Array {
+    const w = new WireWriter();
+    const keys = Object.keys(v);
+    if (keys.length > 255) throw new Error(`StatsData has ${keys.length} entries; max is 255`);
+    w.writeU8(keys.length);
+    for (const k of keys) {
+      w.writeStr(k);
+      w.writeF32(v[k]);
+    }
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): StatsData {
+    const r = new WireReader(bytes);
+    const count = r.readU8();
+    const out: StatsData = {};
+    for (let i = 0; i < count; i++) {
+      const key = r.readStr();
+      out[key] = r.readF32();
+    }
+    return out;
+  },
+};
+
 // ---- WorkstationTag ----
 // Identifies a station entity's type (workbench, anvil, forge, …) so the
 // client can filter recipes for the open workstation panel. qualityTier is a

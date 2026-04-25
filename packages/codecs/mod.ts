@@ -14,6 +14,7 @@ export type {
   NpcTagData, Job, PlanStep, NpcPlanData, NpcJobQueueData,
   HitboxData,
   WorkstationSlot, WorkstationBufferData, WorkstationTagData,
+  StatsData,
   LightEmitterData, DarknessModifierData,
   DurabilityData, InscribedData, QualityStampedData,
 } from "./src/components.ts";
@@ -33,6 +34,7 @@ export {
   npcTagCodec, npcJobQueueCodec,
   hitboxCodec,
   workstationBufferCodec, workstationTagCodec,
+  statsCodec,
   lightEmitterCodec, darknessModifierCodec,
   durabilityCodec, inscribedCodec, qualityStampedCodec,
   WIRE_LIMITS,

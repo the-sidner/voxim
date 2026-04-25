@@ -64,6 +64,7 @@ export async function loadContentStore(
   }
 
   for (const effective of resolvePrefabInheritance(prefabsRaw as Prefab[])) {
+    validatePrefabFields(effective);
     store.registerPrefab(effective);
   }
 
@@ -215,11 +216,22 @@ export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
     let effective: Prefab;
     if (self.extends) {
       const parent = resolve(self.extends, [...stack, id]);
+      // category/tags/stats: child overrides parent value-by-key. Stats merge
+      // by key (child's value wins per stat); tags concatenate then dedupe.
+      const mergedTags = self.tags === undefined && parent.tags === undefined
+        ? undefined
+        : Array.from(new Set([...(parent.tags ?? []), ...(self.tags ?? [])]));
+      const mergedStats = self.stats === undefined && parent.stats === undefined
+        ? undefined
+        : { ...(parent.stats ?? {}), ...(self.stats ?? {}) };
       effective = {
         id: self.id,
         ...(self.extends !== undefined && { extends: self.extends }),
         modelId:    self.modelId    ?? parent.modelId,
         modelScale: self.modelScale ?? parent.modelScale,
+        category:   self.category   ?? parent.category,
+        ...(mergedTags  !== undefined && { tags:  mergedTags  }),
+        ...(mergedStats !== undefined && { stats: mergedStats }),
         components: mergeComponents(parent.components, self.components),
       };
     } else {
@@ -231,6 +243,50 @@ export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
 
   for (const p of raw) resolve(p.id, []);
   return Array.from(resolved.values());
+}
+
+/**
+ * Validate the open-set fields a prefab can carry: `category`, `tags`, `stats`.
+ * Component-data validation lives in `registerPrefab` (schema-checked against
+ * each component's valibot schema). This pass only enforces shape on the
+ * generic-item layer added in T-122.
+ *
+ * Abstract prefabs (`_`-prefixed) are skipped — they exist only as inheritance
+ * roots and may legitimately carry partial/unfinished fields.
+ */
+function validatePrefabFields(p: Prefab): void {
+  if (p.id.startsWith("_")) return;
+
+  if (p.category !== undefined) {
+    if (typeof p.category !== "string" || p.category.length === 0) {
+      throw new Error(`Prefab '${p.id}': category must be a non-empty string`);
+    }
+  }
+
+  if (p.tags !== undefined) {
+    if (!Array.isArray(p.tags)) {
+      throw new Error(`Prefab '${p.id}': tags must be an array of strings`);
+    }
+    for (const t of p.tags) {
+      if (typeof t !== "string" || t.length === 0) {
+        throw new Error(`Prefab '${p.id}': every tag must be a non-empty string`);
+      }
+    }
+  }
+
+  if (p.stats !== undefined) {
+    if (typeof p.stats !== "object" || Array.isArray(p.stats)) {
+      throw new Error(`Prefab '${p.id}': stats must be an object`);
+    }
+    for (const [k, v] of Object.entries(p.stats)) {
+      if (typeof k !== "string" || k.length === 0) {
+        throw new Error(`Prefab '${p.id}': stat key must be a non-empty string`);
+      }
+      if (typeof v !== "number" || !Number.isFinite(v)) {
+        throw new Error(`Prefab '${p.id}': stat '${k}' must be a finite number, got ${v}`);
+      }
+    }
+  }
 }
 
 /** Deep-merge two component dicts. Arrays are replaced, not concatenated. */

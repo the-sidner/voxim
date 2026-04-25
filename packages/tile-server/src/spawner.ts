@@ -39,6 +39,7 @@ import { ResourceNode } from "./components/resource_node.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
+import { Stats } from "./components/instance.ts";
 import type {
   ContentStore,
   Prefab,
@@ -278,6 +279,15 @@ export function spawnPrefab(
   world.create(id);
   world.write(id, Position, { x, y, z });
   installVisualShell(world, content, id, prefab, seed);
+
+  // Raw-material stats live on the prefab and are copied onto the entity at
+  // spawn so subsequent recipes (and the future Stats UI) read them uniformly
+  // — same component shape regardless of whether the item was gathered or
+  // crafted. Crafted items get their stats written by the crafting system at
+  // recipe completion (T-124).
+  if (prefab.stats !== undefined) {
+    world.write(id, Stats, { ...prefab.stats });
+  }
 
   for (const [name, data] of Object.entries(prefab.components)) {
     const compound = COMPOUND_INSTALLERS.get(name);

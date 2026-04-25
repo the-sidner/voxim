@@ -20,6 +20,7 @@ import {
   durabilityCodec,
   inscribedCodec,
   qualityStampedCodec,
+  statsCodec,
   WireReader,
   WireWriter,
 } from "@voxim/codecs";
@@ -27,9 +28,10 @@ import type {
   DurabilityData,
   InscribedData,
   QualityStampedData,
+  StatsData,
 } from "@voxim/codecs";
 
-export type { DurabilityData, InscribedData, QualityStampedData };
+export type { DurabilityData, InscribedData, QualityStampedData, StatsData };
 
 // ---- Durability (networked) ----
 
@@ -56,6 +58,19 @@ export const QualityStamped = defineComponent({
   wireId: ComponentType.qualityStamped,
   codec: qualityStampedCodec,
   default: (): QualityStampedData => ({ quality: 1 }),
+});
+
+// ---- Stats (networked) ----
+// Per-instance numeric stats. Raw materials inherit values from their prefab
+// declaration; crafted intermediates have values computed by the originating
+// recipe's formula at craft completion. Stat keys are open strings — the
+// recipe-graph validator (T-124) ensures every reference is producible.
+
+export const Stats = defineComponent({
+  name: "stats" as const,
+  wireId: ComponentType.stats,
+  codec: statsCodec,
+  default: (): StatsData => ({}),
 });
 
 // ---- History (server-only) ----
