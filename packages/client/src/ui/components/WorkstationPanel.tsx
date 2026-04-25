@@ -55,6 +55,13 @@ function inputSpecificity(input: RecipeInput): number {
   return 0;
 }
 
+function slotPrefab(slot: WorkstationBufferSlotView): string {
+  return slot.kind === "stack" ? slot.itemType : slot.prefabId;
+}
+function slotQty(slot: WorkstationBufferSlotView): number {
+  return slot.kind === "stack" ? slot.quantity : 1;
+}
+
 function recipeMatches(recipe: Recipe, slots: readonly (WorkstationBufferSlotView | null)[]): boolean {
   const ordered = [...recipe.inputs].sort((a, b) => inputSpecificity(b) - inputSpecificity(a));
   const claimed = new Set<number>();
@@ -64,8 +71,8 @@ function recipeMatches(recipe: Recipe, slots: readonly (WorkstationBufferSlotVie
       if (claimed.has(i)) continue;
       const slot = slots[i];
       if (!slot) continue;
-      if (slot.quantity < input.quantity) continue;
-      if (!inputAccepts(input, slot.itemType)) continue;
+      if (slotQty(slot) < input.quantity) continue;
+      if (!inputAccepts(input, slotPrefab(slot))) continue;
       claimed.add(i);
       ok = true;
       break;
@@ -110,9 +117,11 @@ function BufferSlotCell({
   // Source: drag from the buffer back into inventory. Drop-outside fires take.
   const handleMouseDown = (e: MouseEvent) => {
     if (!slot) return;
+    const id = slotPrefab(slot);
+    const qty = slotQty(slot);
     const stack: ItemStack = {
-      itemType: slot.itemType, quantity: slot.quantity,
-      displayName: slot.itemType, modelTemplateId: null,
+      itemType: id, quantity: qty,
+      displayName: id, modelTemplateId: null,
     };
     dragSystem.startDrag(stack, "workstation", index, e.currentTarget as HTMLElement, () => {
       onAction({ type: "take_workstation", bufferSlot: index });
@@ -121,18 +130,20 @@ function BufferSlotCell({
 
   const highlight = drop && uiState.value.drag?.sourceKind === "inventory";
 
+  const id = slot ? slotPrefab(slot) : "";
+  const qty = slot ? slotQty(slot) : 0;
   return (
     <div
       ref={elRef}
       class={`slot interactive ${slot ? "" : "slot--empty"}`}
       style={highlight ? { outline: "2px solid var(--col-accent)", outlineOffset: "2px" } : undefined}
-      title={slot?.itemType ?? ""}
+      title={id}
       onMouseDown={handleMouseDown}
     >
       {slot && (
         <span style={{ fontSize: "var(--text-xs)", textAlign: "center" }}>
-          {slot.itemType.slice(0, 4)}
-          <sup style={{ color: "var(--col-accent)", fontSize: "8px" }}>{slot.quantity}</sup>
+          {id.slice(0, 4)}
+          <sup style={{ color: "var(--col-accent)", fontSize: "8px" }}>{qty}</sup>
         </span>
       )}
     </div>

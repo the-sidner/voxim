@@ -27,6 +27,7 @@ import { evalFormula, parseFormula } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
 import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
+import type { InventorySlot } from "@voxim/codecs";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
 import { QualityStamped, Stats } from "../components/instance.ts";
@@ -97,18 +98,23 @@ export class CraftingSystem implements System {
         continue;
       }
 
-      // Only stack slots can be placed into a workstation buffer
+      // INTERACT-load is the quick "shove the top of inventory onto the
+      // bench" path. Stacks become stack slots (with quantity carried over);
+      // unique entities become unique slots (the entity stays alive in the
+      // world; the buffer just refers to it).
       const slot = inventory.slots[0];
-      if (slot.kind !== "stack") continue;
       const newInvSlots = inventory.slots.slice(1);
       world.set(entityId, Inventory, { ...inventory, slots: newInvSlots });
 
-      const newBufferSlots = [...buffer.slots, { itemType: slot.prefabId, quantity: slot.quantity }];
+      const newSlot: typeof buffer.slots[number] = slot.kind === "stack"
+        ? { kind: "stack",  itemType: slot.prefabId, quantity: slot.quantity }
+        : { kind: "unique", entityId: slot.entityId, prefabId: this.resolveUniquePrefab(world, slot.entityId) };
+      const newBufferSlots = [...buffer.slots, newSlot];
       world.set(stationId, WorkstationBuffer, { ...buffer, slots: newBufferSlots });
 
       const tag = world.get(stationId, WorkstationTag);
-      log.info("placed: player=%s item=%sx%d on station=%s (%s)",
-        entityId, slot.prefabId, slot.quantity, stationId, tag?.stationType ?? "?");
+      log.info("placed: player=%s item=%s on station=%s (%s)",
+        entityId, describeSlot(newSlot), stationId, tag?.stationType ?? "?");
     }
 
     // ── 2. Per-tick step dispatch ────────────────────────────────────────
@@ -170,11 +176,6 @@ export class CraftingSystem implements System {
     if (!inv) return;
     if (inventorySlot < 0 || inventorySlot >= inv.slots.length) return;
     const slot = inv.slots[inventorySlot];
-    // Workstation buffers store stackable items only; refuse unique entities.
-    if (slot.kind !== "stack") {
-      log.debug("load: player=%s slot=%d is not a stack", playerId, inventorySlot);
-      return;
-    }
 
     const pos = world.get(playerId, Position);
     if (!pos) return;
@@ -186,13 +187,16 @@ export class CraftingSystem implements System {
     const buffer = world.get(stationId, WorkstationBuffer);
     if (!buffer) return;
 
-    // Resolve the destination buffer index. 255 (or any out-of-range value)
-    // means "first free / first matching"; otherwise pin to that slot.
+    const slotPrefab = slot.kind === "stack" ? slot.prefabId : this.resolveUniquePrefab(world, slot.entityId);
     const newSlots: (typeof buffer.slots[number])[] = [...buffer.slots];
     let dst = bufferSlot;
     if (dst >= buffer.capacity) {
-      // Prefer merging with an existing matching stack first.
-      dst = newSlots.findIndex((s) => s !== null && s.itemType === slot.prefabId);
+      // Prefer merging with an existing matching stack first (stack→stack only).
+      if (slot.kind === "stack") {
+        dst = newSlots.findIndex((s) => s !== null && s.kind === "stack" && s.itemType === slot.prefabId);
+      } else {
+        dst = -1;
+      }
       if (dst === -1) dst = newSlots.findIndex((s) => s === null);
       if (dst === -1 && newSlots.length < buffer.capacity) dst = newSlots.length;
       if (dst === -1) {
@@ -202,21 +206,31 @@ export class CraftingSystem implements System {
     }
 
     const existing = newSlots[dst] ?? null;
-    if (existing && existing.itemType !== slot.prefabId) {
-      log.debug("load: station=%s slot=%d type mismatch (%s vs %s)", stationId, dst, existing.itemType, slot.prefabId);
-      return;
+    if (slot.kind === "stack") {
+      if (existing && (existing.kind !== "stack" || existing.itemType !== slot.prefabId)) {
+        log.debug("load: station=%s slot=%d incompatible with existing", stationId, dst);
+        return;
+      }
+      newSlots[dst] = {
+        kind: "stack",
+        itemType: slot.prefabId,
+        quantity: (existing && existing.kind === "stack" ? existing.quantity : 0) + slot.quantity,
+      };
+    } else {
+      // Unique entities never merge — refuse if the target slot is occupied.
+      if (existing) {
+        log.debug("load: station=%s slot=%d already occupied (unique)", stationId, dst);
+        return;
+      }
+      newSlots[dst] = { kind: "unique", entityId: slot.entityId, prefabId: slotPrefab };
     }
-    newSlots[dst] = {
-      itemType: slot.prefabId,
-      quantity: (existing?.quantity ?? 0) + slot.quantity,
-    };
     while (newSlots.length <= dst) newSlots.push(null);
 
     const newInv = inv.slots.filter((_, i) => i !== inventorySlot);
     world.set(playerId, Inventory, { ...inv, slots: newInv });
     world.set(stationId, WorkstationBuffer, { ...buffer, slots: newSlots });
-    log.info("load: player=%s item=%sx%d → station=%s slot=%d",
-      playerId, slot.prefabId, slot.quantity, stationId, dst);
+    log.info("load: player=%s item=%s → station=%s slot=%d",
+      playerId, describeSlot(newSlots[dst]!), stationId, dst);
   }
 
   private _handleTakeWorkstation(
@@ -245,11 +259,20 @@ export class CraftingSystem implements System {
     }
     const newBuffer = [...buffer.slots];
     newBuffer[bufferSlot] = null;
-    const newInv = [...inv.slots, { kind: "stack" as const, prefabId: slot.itemType, quantity: slot.quantity }];
+    const newInvSlot: InventorySlot = slot.kind === "stack"
+      ? { kind: "stack", prefabId: slot.itemType, quantity: slot.quantity }
+      : { kind: "unique", entityId: slot.entityId };
+    const newInv = [...inv.slots, newInvSlot];
     world.set(stationId, WorkstationBuffer, { ...buffer, slots: newBuffer });
     world.set(playerId, Inventory, { ...inv, slots: newInv });
-    log.info("take: player=%s station=%s slot=%d item=%sx%d",
-      playerId, stationId, bufferSlot, slot.itemType, slot.quantity);
+    log.info("take: player=%s station=%s slot=%d item=%s",
+      playerId, stationId, bufferSlot, describeSlot(slot));
+  }
+
+  /** Read an item-entity's prefab id from its ItemData component. */
+  private resolveUniquePrefab(world: World, entityId: string): string {
+    const data = world.get(entityId as EntityId, ItemData);
+    return data?.prefabId ?? "";
   }
 
   private findNearestWorkstation(world: World, x: number, y: number): EntityId | null {
@@ -319,8 +342,8 @@ export function tryAssignRoles(
       if (claimed.has(i)) continue;
       const slot = bufferSlots[i];
       if (!slot) continue;
-      if (slot.quantity < input.quantity) continue;
-      if (!inputAccepts(input, slot.itemType, content)) continue;
+      if (slotQuantity(slot) < input.quantity) continue;
+      if (!inputAccepts(input, slotPrefabId(slot), content)) continue;
       chosen = i;
       break;
     }
@@ -329,6 +352,21 @@ export function tryAssignRoles(
     out.set(input.role, chosen);
   }
   return out;
+}
+
+function slotQuantity(slot: WorkstationBufferData["slots"][number] & {}): number {
+  return slot.kind === "stack" ? slot.quantity : 1;
+}
+
+function slotPrefabId(slot: WorkstationBufferData["slots"][number] & {}): string {
+  return slot.kind === "stack" ? slot.itemType : slot.prefabId;
+}
+
+/** Compact debug log line. */
+function describeSlot(slot: WorkstationBufferData["slots"][number] & {}): string {
+  return slot.kind === "stack"
+    ? `${slot.itemType}x${slot.quantity}`
+    : `${slot.prefabId}#${slot.entityId.slice(0, 6)}`;
 }
 
 function inputSpecificity(input: Recipe["inputs"][number]): number {
@@ -359,6 +397,7 @@ function inputAccepts(input: Recipe["inputs"][number], prefabId: string, content
  * burn what we matched, not whatever happens to be in the same item type.
  */
 export function consumeFromBuffer(
+  world: World,
   slots: WorkstationBufferData["slots"],
   recipe: Recipe,
   assignment: RoleAssignment,
@@ -369,8 +408,16 @@ export function consumeFromBuffer(
     if (idx === undefined) continue;
     const slot = next[idx];
     if (!slot) continue;
-    const after = slot.quantity - input.quantity;
-    next[idx] = after > 0 ? { itemType: slot.itemType, quantity: after } : null;
+    if (slot.kind === "stack") {
+      const after = slot.quantity - input.quantity;
+      next[idx] = after > 0 ? { kind: "stack", itemType: slot.itemType, quantity: after } : null;
+    } else {
+      // Unique consumption destroys the item entity — its identity ends in
+      // the craft. Stat propagation already happened in spawnOutputNear,
+      // which ran *before* this against the same slot index.
+      world.destroy(slot.entityId as EntityId);
+      next[idx] = null;
+    }
   }
   // Drop trailing nulls so the buffer compacts naturally.
   while (next.length > 0 && next[next.length - 1] === null) next.pop();
@@ -424,7 +471,7 @@ export function spawnOutputNear(
   const tag = world.get(stationId, WorkstationTag);
   const quality = clamp01(tag?.qualityTier ?? 1);
   const computedStats = hasStats
-    ? evaluateOutputStats(output.stats!, match, bufferSlotsBeforeConsume, content, tag?.qualityTier ?? 1)
+    ? evaluateOutputStats(world, output.stats!, match, bufferSlotsBeforeConsume, content, tag?.qualityTier ?? 1)
     : null;
 
   // Stat-bearing outputs always spawn one entity per unit (uniques don't
@@ -451,6 +498,7 @@ export function spawnOutputNear(
  * reference them parse but evaluate predictably.
  */
 function evaluateOutputStats(
+  world: World,
   formulas: Record<string, string>,
   match: RecipeMatch,
   bufferSlots: WorkstationBufferData["slots"],
@@ -465,8 +513,15 @@ function evaluateOutputStats(
     if (idx === undefined) continue;
     const slot = bufferSlots[idx];
     if (!slot) continue;
-    const sourcePrefab = content.getPrefab(slot.itemType);
-    const stats = sourcePrefab?.stats ?? {};
+    // Stack slots: stats live on the prefab (raw materials all share them).
+    // Unique slots: stats live on the entity's Stats component (computed by
+    // whatever upstream recipe created it).
+    let stats: Record<string, number> = {};
+    if (slot.kind === "stack") {
+      stats = content.getPrefab(slot.itemType)?.stats ?? {};
+    } else {
+      stats = world.get(slot.entityId as EntityId, Stats) ?? {};
+    }
     for (const [k, v] of Object.entries(stats)) {
       scope[`${input.role}.${k}`] = v;
     }

@@ -1,0 +1,31 @@
+{
+  "id": "wooden_bow_assemble",
+  "stationType": "workbench",
+  "stepType": "assembly",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "itemType": "bow_stave",
+      "role": "stave",
+      "quantity": 1
+    },
+    {
+      "itemType": "bowstring",
+      "role": "string",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wooden_bow",
+      "quantity": 1,
+      "stats": {
+        "draw_weight": "stave.spring * 25",
+        "range": "stave.spring * string.tensile * 30",
+        "durability": "min(stave.weight * 50, string.tensile * 100)",
+        "shot_speed": "string.elasticity * 8"
+      }
+    }
+  ],
+  "ticks": 0
+}

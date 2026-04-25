@@ -2,6 +2,18 @@
   "id": "oak_wood",
   "components": {
     "stackable": {},
-    "weight": { "baseWeight": 5.0 }
+    "weight": {
+      "baseWeight": 5
+    }
+  },
+  "category": "wood",
+  "tags": [
+    "organic"
+  ],
+  "stats": {
+    "flexibility": 0.45,
+    "density": 0.85,
+    "grain": 0.7,
+    "flammability": 0.45
   }
 }

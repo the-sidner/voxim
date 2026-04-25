@@ -499,7 +499,12 @@ export class VoximGame {
         entityId,
         stationType:    state.workstationTag.stationType,
         capacity:       state.workstationBuffer.capacity,
-        slots:          state.workstationBuffer.slots.map((s) => s ? { itemType: s.itemType, quantity: s.quantity } : null),
+        slots:          state.workstationBuffer.slots.map((s) => {
+          if (!s) return null;
+          return s.kind === "stack"
+            ? { kind: "stack" as const, itemType: s.itemType, quantity: s.quantity }
+            : { kind: "unique" as const, entityId: s.entityId, prefabId: s.prefabId };
+        }),
         activeRecipeId: state.workstationBuffer.activeRecipeId,
         progressTicks:  state.workstationBuffer.progressTicks,
       },

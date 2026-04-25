@@ -2,6 +2,18 @@
   "id": "sinew",
   "components": {
     "stackable": {},
-    "weight": { "baseWeight": 0.1 }
+    "weight": {
+      "baseWeight": 0.1
+    }
+  },
+  "category": "cordage",
+  "tags": [
+    "organic",
+    "animal"
+  ],
+  "stats": {
+    "tensile": 0.85,
+    "creep": 0.1,
+    "elasticity": 0.65
   }
 }

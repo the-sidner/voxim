@@ -1321,19 +1321,20 @@ export const qualityStampedCodec: Serialiser<QualityStampedData> = {
 };
 
 // ---- WorkstationBuffer ----
-// Wire layout:
-//   capacity:       u8
-//   activeRecipeId: u8 present + [u16 len][UTF-8 bytes] if present
-//   progressTicks:  i32 (-1 = null)
-//   slots:          [u16 count] per slot: u8 present + [u16 str][u16 qty] if present
+//
+// Discriminated-slot buffer. Each populated slot is either:
+//   stack  — { itemType, quantity }: raw materials with prefab-defined stats.
+//   unique — { entityId, prefabId }: crafted intermediates carrying their own
+//            Stats instance component. The entity continues to exist while
+//            sitting in the buffer; the crafting system destroys it on
+//            consumption.
 //
 // stationType is intentionally NOT stored here — it lives on WorkstationTag
 // on the same entity. Consumers read the tag when they need the type.
 
-export interface WorkstationSlot {
-  itemType: string;
-  quantity: number;
-}
+export type WorkstationSlot =
+  | { kind: "stack";  itemType: string; quantity: number }
+  | { kind: "unique"; entityId: string; prefabId: string };
 
 export interface WorkstationBufferData {
   slots: Array<WorkstationSlot | null>;
@@ -1342,6 +1343,26 @@ export interface WorkstationBufferData {
   activeRecipeId: string | null;
   /** Countdown for "time" step recipes. null when idle. */
   progressTicks: number | null;
+}
+
+function writeWorkstationSlot(w: WireWriter, s: WorkstationSlot): void {
+  if (s.kind === "stack") {
+    w.writeU8(0);
+    w.writeStr(s.itemType);
+    w.writeU16(s.quantity);
+  } else {
+    w.writeU8(1);
+    w.writeStr(s.entityId);
+    w.writeStr(s.prefabId);
+  }
+}
+
+function readWorkstationSlot(r: WireReader): WorkstationSlot {
+  const kind = r.readU8();
+  if (kind === 0) {
+    return { kind: "stack", itemType: r.readStr(), quantity: r.readU16() };
+  }
+  return { kind: "unique", entityId: r.readStr(), prefabId: r.readStr() };
 }
 
 export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
@@ -1353,7 +1374,7 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
     w.writeI32(v.progressTicks ?? -1);
     w.writeU16(v.slots.length);
     for (const s of v.slots) {
-      if (s !== null) { w.writeU8(1); w.writeStr(s.itemType); w.writeU16(s.quantity); }
+      if (s !== null) { w.writeU8(1); writeWorkstationSlot(w, s); }
       else            { w.writeU8(0); }
     }
     return w.toBytes();
@@ -1369,8 +1390,8 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
     const slots: Array<WorkstationSlot | null> = [];
     for (let i = 0; i < count; i++) {
       const present = r.readU8() === 1;
-      if (present) { const itemType = r.readStr(); const quantity = r.readU16(); slots.push({ itemType, quantity }); }
-      else         { slots.push(null); }
+      if (present) slots.push(readWorkstationSlot(r));
+      else         slots.push(null);
     }
     return { capacity, activeRecipeId, progressTicks, slots };
   },

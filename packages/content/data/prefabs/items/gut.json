@@ -2,6 +2,18 @@
   "id": "gut",
   "components": {
     "stackable": {},
-    "weight": { "baseWeight": 0.1 }
+    "weight": {
+      "baseWeight": 0.1
+    }
+  },
+  "category": "cordage",
+  "tags": [
+    "organic",
+    "animal"
+  ],
+  "stats": {
+    "tensile": 0.7,
+    "creep": 0.15,
+    "elasticity": 0.55
   }
 }

@@ -188,7 +188,10 @@ function transferInputsToBuffer(
   }
   const filteredInv = newInvSlots.filter((s) => s.kind !== "stack" || s.quantity > 0);
 
-  const newBufSlots = [...buffer.slots, ...inputs.map((inp) => ({ itemType: inp.itemType, quantity: inp.quantity }))];
+  const newBufSlots = [
+    ...buffer.slots,
+    ...inputs.map((inp) => ({ kind: "stack" as const, itemType: inp.itemType, quantity: inp.quantity })),
+  ];
 
   world.set(npcId, Inventory, { ...inventory, slots: filteredInv });
   world.set(wbId, WorkstationBuffer, { ...buffer, slots: newBufSlots });

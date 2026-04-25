@@ -1,1 +1,19 @@
-{ "id": "hemp_cord", "components": { "stackable": {}, "weight": { "baseWeight": 0.1 } } }
+{
+  "id": "hemp_cord",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.1
+    }
+  },
+  "category": "cordage",
+  "tags": [
+    "organic",
+    "plant"
+  ],
+  "stats": {
+    "tensile": 0.65,
+    "creep": 0.25,
+    "elasticity": 0.35
+  }
+}

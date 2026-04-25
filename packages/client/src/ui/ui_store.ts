@@ -96,10 +96,9 @@ export interface SkillLoadoutState {
 // ClientWorld into here on every state-message that touches that entity. The
 // panel stays purely reactive on uiState.
 
-export interface WorkstationBufferSlotView {
-  itemType: string;
-  quantity: number;
-}
+export type WorkstationBufferSlotView =
+  | { kind: "stack";  itemType: string; quantity: number }
+  | { kind: "unique"; entityId: string; prefabId: string };
 
 export interface WorkstationPanelState {
   entityId:        string;

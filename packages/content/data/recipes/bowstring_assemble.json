@@ -1,0 +1,28 @@
+{
+  "id": "bowstring_assemble",
+  "stationType": "workbench",
+  "stepType": "attack",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "category": "cordage",
+      "tags": [
+        "organic"
+      ],
+      "role": "string",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bowstring",
+      "quantity": 1,
+      "stats": {
+        "tensile": "string.tensile",
+        "creep": "string.creep",
+        "elasticity": "string.elasticity"
+      }
+    }
+  ],
+  "ticks": 0
+}

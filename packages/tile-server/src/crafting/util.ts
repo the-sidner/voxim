@@ -32,7 +32,7 @@ export function resolveRecipe(
   for (const output of match.recipe.outputs) {
     spawnOutputNear(world, content, stationId, output, match, buffer.slots);
   }
-  const newSlots = consumeFromBuffer(buffer.slots, match.recipe, match.assignment);
+  const newSlots = consumeFromBuffer(world, buffer.slots, match.recipe, match.assignment);
   // chainNextRecipeId carries the chain forward: keep the buffer primed with
   // the next recipe id so attack/assembly swings or the time-step auto-start
   // can pick it up. Without a chain, both fields clear.

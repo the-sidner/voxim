@@ -330,13 +330,11 @@ Same mechanic for tool needs (NPC without hammer seeks a trader selling hammers)
 Done when: hungry NPCs with coins autonomously locate and buy food from trader NPCs.
 
 ### T-033 · Material property propagation through crafting chain
-Effort: M   Status: todo
+Effort: M   Status: superseded by T-121
 
-Add a material properties table to `materials.json` (flexibility, density, flammability, etc.).
-Propagate relevant properties to crafted output items based on input materials.
-Crafter Lore (via `craft` verb in skill system) scales quality at each action step.
-Done when: a sword crafted from high-flexibility steel has a different `flexStrength` property
-than one crafted from standard steel.
+Original sketch: a flat material-property table propagated to outputs. Replaced by
+T-121's category + per-recipe-formula model, which is per-instance, atomic, and
+extends across multi-step chains.
 
 ### T-116 · Research pass — pre-industrial artisan crafting chains
 Effort: L   Status: in-progress
@@ -417,9 +415,227 @@ Done when: `CraftingSystem._handleDeploy` and `BuildingSystem._handlePlace`
 are gone, both flows run through `PlacementSystem.handlePlace`, and placing
 a hearth still updates the player's account anchor via the new subscriber.
 
----
+### T-121 · Per-instance stats + per-recipe formulas — items become real things
+Effort: L   Status: todo
 
-## Building
+Replace the current "every variant is its own prefab, recipes lock or list
+alternates" model with a generic-item system where variants share a category,
+carry per-instance stats, and recipes atomically map input stats → output
+stats via expression formulas. The bow chain motivates the design (see
+SPEC.md §"Crafting" and §"Quality is Cumulative"); birch/pine/oak/yew are all
+`category: "wood"` with their own `flexibility`/`density`/`grain` stats; one
+recipe `bow_stave_split` takes any wood and outputs a `bow_stave` with stats
+computed from the input; `wooden_bow_assemble` takes a stave + a string and
+outputs a bow whose `draw_weight`/`range`/`durability` are computed from
+both. Adding spider silk = one new file. Adding a new wood = one new file.
+Adding a new stat = touch the recipe(s) that should produce it.
+
+This is a **destructive replacement**, per CLAUDE.md's refactor rules:
+- The current variant-explosion item set is scratched. Every recipe that
+  duplicated logic per material (`bowstring_linen`, `bowstring_sinew`,
+  `bowstring_gut` → one `bowstring_assemble`) collapses. The 450-prefab item
+  catalogue and 238-recipe set both shrink and re-shape; expect a substantial
+  net deletion in content. Models stay — the visual primitives are reusable.
+- No alternates field, no "either itemType or category" co-existence, no
+  legacy recipe shape. Recipes pre-migration won't load post-migration. The
+  loader rejects unknown shapes loudly.
+- No save-data compatibility. Existing inventories regenerate from seed
+  per CLAUDE.md.
+
+The system is organised so each phase is one atomic diff. Phases T-122..T-126
+break out the work; T-127 lands the UI. T-033 is superseded.
+
+**Architectural shape (terminology used by all subsequent tickets):**
+- **Category** — string tag on a prefab (`"wood"`, `"cordage"`, `"ingot"`).
+  Loose filter, not a schema. Recipes match inputs by category.
+- **Tags** — additional set-of-strings on a prefab (`"organic"`, `"elastic"`,
+  `"fire-resistant"`). Recipes can require tags within a category. Authoring
+  tags well is the biggest content-design risk; introducing them upfront
+  means we don't paint into a corner.
+- **Stats** — open key→f32 map on item entities. On raw-material prefabs
+  the values are authored directly; on crafted intermediates they're
+  computed by the recipe at craft time and stored on the new entity.
+- **Roles** — name strings inside a recipe (`"stave"`, `"string"`,
+  `"lamination"`) that disambiguate multiple inputs of the same category.
+  The matcher assigns loaded buffer items to roles.
+- **Formula** — expression string evaluated at craft completion. Variables:
+  `<role>.<stat>`, `tool.<stat>`, `workstation.<stat>`, `skill.<verb>`.
+  Operators: `+ - * / min max clamp`. Numbers only. No randomness, no IO.
+- **Stack vs unique discriminator carries over from T-117**: prefabs with
+  `stackable: {}` and no recipe-computed stats stay as compact stack slots;
+  any item that has *computed* stats becomes a unique entity carrying a new
+  `Stats` instance component. Two stacks of the same prefab merge only if
+  their stat blobs are byte-identical (which is automatic for raw materials
+  whose stats come from the prefab — they're always identical).
+
+Done when: every phase below is `done`; the bow chain works end-to-end with
+stats propagating from a yew log to a finished bow with a procedurally
+generated name; a recipe-graph validator passes at content-load over the
+full data set; no recipe still uses the old `itemType` + `alternates` shape.
+
+### T-122 · Stats infrastructure + Stats instance component
+Effort: M   Status: done   Commit: c776134   Phase 1 of T-121
+
+Add a `Stats` instance component (`Map<string, number>` or fixed-arity
+key-value list — pick whichever serialises cheapest in `@voxim/codecs`).
+Networked because the client needs it for tooltips; one wireId slot.
+Server-side: write at item-entity creation by `spawnPrefab` when the
+prefab declares `stats: { ... }`; written at craft completion by the
+crafting system.
+
+`Prefab` type gains optional `category: string`, `tags?: string[]`, and
+`stats?: Record<string, number>` for raw-material variants whose stats are
+hand-authored on the prefab. Loader validates that any stat key is finite
+and any tag is a non-empty string.
+
+Done when: `Stats` exists in the codecs + tile-server registry; spawning a
+prefab that declares `stats: { ... }` writes the component on the entity;
+client decodes it onto `EntityState`; nothing yet consumes the data.
+
+### T-123 · Formula DSL — parser, evaluator, validator
+Effort: M   Status: done   Commit: 1defbb7   Phase 2 of T-121
+
+A small expression language inside `@voxim/content` (~200 lines, no deps).
+Parses the BNF below at load time into an AST; evaluator takes a scope
+`{ [varName]: number }` → number. Variables are dotted strings resolved
+against the supplied scope; no implicit fallbacks (referencing an unknown
+var fails the eval and is logged once with the recipe id).
+
+```
+expr     := term (('+' | '-') term)*
+term     := factor (('*' | '/') factor)*
+factor   := number | identifier | '(' expr ')' | call
+call     := ('min' | 'max' | 'clamp') '(' args ')'
+args     := expr (',' expr)*
+identifier := [a-zA-Z_][a-zA-Z0-9_.]*
+```
+
+Companion `validateFormula(expr, knownVars: Set<string>)` returns the set
+of variables the expression actually reads, used by T-124's recipe-graph
+validator.
+
+Done when: `parseFormula` + `evalFormula` are exported; unit tests cover
+arithmetic, function calls, var resolution, undefined-var errors, syntax
+errors; `deno test` passes.
+
+### T-124 · Recipe schema rewrite + content-graph validator
+Effort: M   Status: done   Commit: b54bfe6   Phase 3 of T-121
+
+`Recipe` type changes shape — destructive replacement of the input/output
+fields; loader fails loud on the old shape (no migration path):
+
+```
+inputs: Array<{
+  itemType?: string,         // exact prefab id (rare — keys, lore, etc.)
+  category?: string,         // category filter (the common case)
+  tags?: string[],           // all required (intersection)
+  role: string,              // disambiguates multiple inputs
+  quantity: number
+}>
+
+outputs: Array<{
+  itemType: string,
+  quantity: number,
+  stats?: Record<string, string>  // statName → formula expression
+}>
+```
+
+Exactly one of `itemType` / `category` per input, never both. Roles are
+unique within a recipe. The crafting matcher iterates buffer slots,
+assigns each to the first role whose category/tags filter accepts it, and
+fails if any role goes unfilled.
+
+Validator (runs once at server start, after content load):
+- For every recipe, parse every output stat formula. Collect referenced
+  variable names.
+- For each `<role>.<stat>` reference: confirm at least one prefab matching
+  that role's category/tags constraint produces `<stat>` (either via
+  hand-authored prefab stats or via *some* upstream recipe whose output
+  declares that stat under the matching itemType).
+- For each `tool.<x>`, `workstation.<x>`, `skill.<x>` reference: confirm the
+  variable belongs to the documented scope set.
+- Any unsatisfied reference fails server boot with the recipe id and
+  variable name. No silent NaN bows.
+
+Done when: `Recipe` type carries the new shape; validator runs and passes
+on the migrated content from T-125; spinning up the server with a
+deliberately-broken recipe (drop a referenced stat from a wood prefab)
+fails with a clear error message naming both files.
+
+### T-125 · Wood + bow chain — first vertical
+Effort: L   Status: todo   Phase 4 of T-121
+
+Authoring pass that exercises every piece of T-122..T-124 end-to-end. No
+new code unless something breaks.
+
+- Add stats to the wood variants currently in `prefabs/items/`
+  (`birch_wood`, `pine_wood`, `oak_wood`, `yew_wood`, `cedar_wood`,
+  whichever exist). Tag `wood`. Stats: `flexibility`, `density`, `grain`,
+  `flammability`, `color` (colour stays a hex int, but lives on the prefab
+  not in stats — drop if it doesn't fit the f32 stat format).
+- Add stats to the cordage variants (`linen_yarn`, `sinew`, `gut`).
+  Tag `cordage`. Stats: `tensile`, `creep`, `elasticity`.
+- Author replacements for the bow-chain recipes, deleting the originals
+  in the same commit:
+  - `bow_stave_split` (was: split). Takes `{ category: "wood", role: "stave" }`.
+    Output `bow_stave` with stats `spring`/`weight`/`straightness` computed
+    from `stave.flexibility`/`density`/`grain`.
+  - `bowstring_assemble` (collapses `bowstring_linen` + `_sinew` + `_gut`).
+    Takes `{ category: "cordage", role: "string", quantity: 3 }`.
+    Output `bowstring` with stats `tensile`/`creep` from the cordage stats.
+  - `wooden_bow_assemble`. Takes `bow_stave` + `bowstring`. Output
+    `wooden_bow` with stats `draw_weight`/`range`/`durability`.
+  - Same for `hunting_bow_assemble` and `composite_bow_assemble`.
+- Delete the now-orphaned recipes: `bowstring_linen`, `bowstring_sinew`,
+  `bowstring_gut`, `bow_stave_from_wood` (the broken `wood` reference one).
+- Confirm T-124's validator passes against the result.
+
+Done when: gathering yew, splitting a stave, twisting linen into a string,
+and assembling all three on a bench produces a `wooden_bow` whose `Stats`
+component reflects the chain (verifiable in network capture).
+
+### T-126 · Migrate remaining categories (content sweep)
+Effort: L   Status: todo   Phase 5 of T-121
+
+Pure content authoring — the system is in place from T-122..T-125. Each
+sub-bullet is its own commit:
+- `ingot` (copper, iron, steel, bronze, wootz). Stats: `hardness`,
+  `toughness`, `density`, `melt_point`. Migrate the 50+ smith recipes.
+- `cloth` (linen, wool, hemp). Stats: `weave_density`, `breathability`.
+- `leather` (cow, deer, wolf). Stats: `thickness`, `suppleness`.
+- `hide` and `fur`. Stats per real-world properties.
+- `stone` (granite, sandstone, flint, marble). Stats: `hardness`,
+  `friability`, `weight`.
+- `bone`/`horn`/`shell`. Stats: `density`, `flexibility`.
+- Whatever else the catalogue exposes once the pattern is set.
+
+Each sub-pass deletes the per-variant recipe duplicates it replaces. Net
+content count drops; the validator stays green throughout.
+
+Done when: every domain in the existing recipe catalogue has been visited;
+no recipe still expresses material variance via duplicated recipes or
+`alternates`; the prefab item count is materially smaller than it is today.
+
+### T-127 · Tooltip + procedural naming UI
+Effort: M   Status: todo   Phase 6 of T-121
+
+Without UI, the system's depth is invisible — players just see numbers
+fluctuate. Add:
+- Inventory + workstation panel tooltips that show an item's stats with
+  short labels (`Spring 0.96`, `Tensile 0.78`).
+- A "provenance" affordance (right-click → Inspect, or hover-hold) that
+  walks the entity-ref chain for crafted items and shows the chain:
+  `Pine Bow ← Pine Stave ← pine_wood`. Bounded depth (3–4 levels max in
+  the panel; deeper is collapsible).
+- Procedural naming: the `displayName` for a crafted unique is built from
+  the most-impactful role variant + the base prefab name. Convention:
+  `{stave-variant-adjective} {base-name} with {string-variant} string`,
+  e.g. `Pine Longbow with Linen String`. Rules live in a tiny formatter
+  per recipe, declared next to the recipe (one line, optional — fall back
+  to the base prefab name).
+
+Done when: hovering a crafted bow in inventory shows its stats and a
+provenance trail; the bow's display name reflects its source materials.
 
 ### T-034 · Terrain tool (shovel) — reduce heightmap cell via combat interaction
 Effort: M   Status: done   Commit: 47a2a3d

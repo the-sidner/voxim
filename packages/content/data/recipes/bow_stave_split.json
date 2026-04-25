@@ -1,0 +1,30 @@
+{
+  "id": "bow_stave_split",
+  "stationType": "chopping_block",
+  "stepType": "attack",
+  "requiredTools": [
+    "axe"
+  ],
+  "inputs": [
+    {
+      "category": "wood",
+      "tags": [
+        "organic"
+      ],
+      "role": "stave",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "bow_stave",
+      "quantity": 1,
+      "stats": {
+        "spring": "stave.flexibility * stave.grain",
+        "weight": "stave.density",
+        "straightness": "stave.grain"
+      }
+    }
+  ],
+  "ticks": 0
+}
