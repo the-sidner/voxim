@@ -1,1 +1,10 @@
-{ "id": "bow_stave", "components": { "stackable": {}, "weight": { "baseWeight": 0.8 } } }
+{
+  "id": "bow_stave",
+  "modelId": "model_stave",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.4
+    }
+  }
+}

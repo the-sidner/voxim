@@ -2,17 +2,31 @@
   "id": "forest",
   "priority": 90,
   "classifyRules": [
-    { "biomes": ["forest"] }
+    {
+      "biomes": [
+        "forest"
+      ]
+    }
   ],
   "dangerLevel": 3,
   "corruptionBaseline": 10,
   "npcSpawnDensity": 0.08,
   "nodeSpawnDensity": 0.5,
   "propSpawnDensity": 1.5,
-  "npcWeights": { "wolf": 3, "archer": 3, "villager": 3 },
-  "entityWeights": {
-    "tree": 10, "stone_deposit": 1, "iron_ore_vein": 1, "bush": 4,
-    "pine_tree": 6, "rock_small": 1, "mushroom_patch": 4, "berry_bush": 2
+  "npcWeights": {
+    "wolf": 3,
+    "archer": 3,
+    "villager": 3
   },
-  "propWeights": { "model_dead_tree": 2 }
+  "entityWeights": {
+    "tree": 10,
+    "iron_ore_vein": 1,
+    "fiber_bush": 4,
+    "birch_tree": 6,
+    "berry_bush": 2,
+    "yew_tree": 2
+  },
+  "propWeights": {
+    "model_dead_tree": 2
+  }
 }

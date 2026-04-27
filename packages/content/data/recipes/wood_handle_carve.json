@@ -1,0 +1,29 @@
+{
+  "id": "wood_handle_carve",
+  "stationType": "chopping_block",
+  "stepType": "attack",
+  "requiredTools": [
+    "axe"
+  ],
+  "inputs": [
+    {
+      "category": "wood",
+      "tags": [
+        "hardwood"
+      ],
+      "role": "stock",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "wood_handle",
+      "quantity": 1,
+      "stats": {
+        "comfort": "1 - stock.density",
+        "weight": "stock.density * 0.5"
+      }
+    }
+  ],
+  "ticks": 0
+}

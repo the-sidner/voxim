@@ -1,1 +1,10 @@
-{ "id": "bowstring", "components": { "stackable": {}, "weight": { "baseWeight": 0.05 } } }
+{
+  "id": "bowstring",
+  "modelId": "model_string",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.05
+    }
+  }
+}

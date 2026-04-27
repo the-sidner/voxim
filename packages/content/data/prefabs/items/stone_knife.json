@@ -1,8 +1,0 @@
-{
-  "id": "stone_knife",
-  "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "slash" },
-    "weight": { "baseWeight": 0.5 }
-  }
-}

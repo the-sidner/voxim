@@ -1,0 +1,10 @@
+{
+  "id": "wood_handle",
+  "modelId": "model_handle",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.3
+    }
+  }
+}

@@ -2,7 +2,11 @@
   "id": "water",
   "priority": 10,
   "classifyRules": [
-    { "biomes": ["water"] }
+    {
+      "biomes": [
+        "water"
+      ]
+    }
   ],
   "dangerLevel": 2,
   "corruptionBaseline": 0,

@@ -1,7 +1,17 @@
 {
   "id": "iron_ore",
+  "modelId": "model_iron_ore",
+  "category": "ore",
+  "tags": [
+    "metal"
+  ],
+  "stats": {
+    "purity": 0.65
+  },
   "components": {
     "stackable": {},
-    "weight": { "baseWeight": 3.0 }
+    "weight": {
+      "baseWeight": 2
+    }
   }
 }

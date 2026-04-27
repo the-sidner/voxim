@@ -1,19 +1,20 @@
 {
   "id": "birch_wood",
-  "components": {
-    "stackable": {},
-    "weight": {
-      "baseWeight": 5
-    }
-  },
+  "modelId": "model_log",
   "category": "wood",
   "tags": [
     "organic"
   ],
   "stats": {
     "flexibility": 0.55,
-    "density": 0.65,
-    "grain": 0.7,
-    "flammability": 0.55
+    "density": 0.55,
+    "grain": 0.65,
+    "flammability": 0.65
+  },
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 5
+    }
   }
 }

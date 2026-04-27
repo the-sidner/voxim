@@ -1,0 +1,10 @@
+{
+  "id": "plant_fiber",
+  "modelId": "model_plant_fiber",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.05
+    }
+  }
+}

@@ -1,1 +1,10 @@
-{ "id": "iron_ingot", "components": { "stackable": {}, "weight": { "baseWeight": 2.0 } } }
+{
+  "id": "iron_ingot",
+  "modelId": "model_ingot",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 1
+    }
+  }
+}

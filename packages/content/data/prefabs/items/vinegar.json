@@ -1,8 +1,0 @@
-{
-  "id": "vinegar",
-  "components": {
-    "stackable": {},
-    "edible": { "food": 0, "water": 20, "health": 2, "stamina": 0 },
-    "weight": { "baseWeight": 0.5 }
-  }
-}

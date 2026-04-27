@@ -10,10 +10,6 @@
           "itemType": "stone",
           "quantity": 5,
           "quantityPerHarvestPower": 1
-        },
-        {
-          "itemType": "iron_ore",
-          "quantity": 1
         }
       ],
       "respawnTicks": 28800

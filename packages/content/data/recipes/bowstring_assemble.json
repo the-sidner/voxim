@@ -5,12 +5,9 @@
   "requiredTools": [],
   "inputs": [
     {
-      "category": "cordage",
-      "tags": [
-        "organic"
-      ],
-      "role": "string",
-      "quantity": 3
+      "itemType": "string",
+      "role": "yarn",
+      "quantity": 1
     }
   ],
   "outputs": [
@@ -18,9 +15,8 @@
       "itemType": "bowstring",
       "quantity": 1,
       "stats": {
-        "tensile": "string.tensile",
-        "creep": "string.creep",
-        "elasticity": "string.elasticity"
+        "tensile": "yarn.tensile * 1.1",
+        "elasticity": "yarn.elasticity"
       }
     }
   ],

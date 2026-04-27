@@ -1,0 +1,24 @@
+{
+  "id": "cloth_weave",
+  "stationType": "workbench",
+  "stepType": "attack",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "itemType": "string",
+      "role": "yarn",
+      "quantity": 4
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "cloth",
+      "quantity": 1,
+      "stats": {
+        "warmth": "yarn.tensile * 1.2",
+        "weave": "yarn.tensile * 0.9 + 0.1"
+      }
+    }
+  ],
+  "ticks": 0
+}

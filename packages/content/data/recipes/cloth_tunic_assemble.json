@@ -1,0 +1,24 @@
+{
+  "id": "cloth_tunic_assemble",
+  "stationType": "workbench",
+  "stepType": "assembly",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "itemType": "cloth",
+      "role": "fabric",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "cloth_tunic",
+      "quantity": 1,
+      "stats": {
+        "warmth": "fabric.warmth * 1.5",
+        "armor": "fabric.weave * 5"
+      }
+    }
+  ],
+  "ticks": 0
+}

@@ -1,9 +1,0 @@
-{
-  "id": "shears",
-  "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "slash" },
-    "tool": { "toolType": "shears" },
-    "weight": { "baseWeight": 0.5 }
-  }
-}

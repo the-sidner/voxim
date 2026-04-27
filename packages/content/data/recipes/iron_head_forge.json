@@ -1,0 +1,26 @@
+{
+  "id": "iron_head_forge",
+  "stationType": "anvil",
+  "stepType": "attack",
+  "requiredTools": [
+    "hammer"
+  ],
+  "inputs": [
+    {
+      "itemType": "iron_ingot",
+      "role": "ingot",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_head",
+      "quantity": 1,
+      "stats": {
+        "sharpness": "ingot.hardness * 1.1",
+        "durability": "ingot.hardness * ingot.purity * 100"
+      }
+    }
+  ],
+  "ticks": 0
+}

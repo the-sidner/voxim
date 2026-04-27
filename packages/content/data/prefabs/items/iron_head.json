@@ -1,0 +1,10 @@
+{
+  "id": "iron_head",
+  "modelId": "model_iron_head",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.8
+    }
+  }
+}

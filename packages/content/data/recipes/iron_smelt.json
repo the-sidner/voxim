@@ -1,0 +1,29 @@
+{
+  "id": "iron_smelt",
+  "stationType": "furnace",
+  "stepType": "time",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "itemType": "iron_ore",
+      "role": "ore",
+      "quantity": 1
+    },
+    {
+      "itemType": "coal",
+      "role": "fuel",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_ingot",
+      "quantity": 1,
+      "stats": {
+        "purity": "ore.purity",
+        "hardness": "ore.purity * 0.8 + 0.2 + workstation.quality * 0.05"
+      }
+    }
+  ],
+  "ticks": 400
+}

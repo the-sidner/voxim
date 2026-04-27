@@ -4,13 +4,41 @@
   "components": {
     "player": {
       "startingInventory": [
-        { "itemType": "stone_axe",     "quantity": 1 },
-        { "itemType": "stone_pickaxe", "quantity": 1 },
-        { "itemType": "wooden_hammer", "quantity": 1 },
-        { "itemType": "plank",         "quantity": 16 }
+        {
+          "itemType": "stone_axe",
+          "quantity": 1
+        },
+        {
+          "itemType": "stone_pickaxe",
+          "quantity": 1
+        },
+        {
+          "itemType": "berries",
+          "quantity": 5
+        },
+        {
+          "itemType": "workbench_kit",
+          "quantity": 1
+        },
+        {
+          "itemType": "chopping_block_kit",
+          "quantity": 1
+        },
+        {
+          "itemType": "furnace_kit",
+          "quantity": 1
+        },
+        {
+          "itemType": "anvil_kit",
+          "quantity": 1
+        },
+        {
+          "itemType": "campfire_kit",
+          "quantity": 1
+        }
       ],
       "startingEquipment": {
-        "weapon": "wooden_sword"
+        "weapon": "stone_axe"
       }
     }
   }

@@ -416,7 +416,7 @@ are gone, both flows run through `PlacementSystem.handlePlace`, and placing
 a hearth still updates the player's account anchor via the new subscriber.
 
 ### T-121 · Per-instance stats + per-recipe formulas — items become real things
-Effort: L   Status: todo
+Effort: L   Status: done   (umbrella; phases T-122..T-127 cover the work)
 
 Replace the current "every variant is its own prefab, recipes lock or list
 alternates" model with a generic-item system where variants share a category,
@@ -595,7 +595,28 @@ and assembling all three on a bench produces a `wooden_bow` whose `Stats`
 component reflects the chain (verifiable in network capture).
 
 ### T-126 · Migrate remaining categories (content sweep)
-Effort: L   Status: todo   Phase 5 of T-121
+Effort: L   Status: done   Phase 5 of T-121
+
+Replaced by a *catalogue wipe and minimal re-author* rather than a per-
+category migration. Item count dropped 450 → 27, recipe count 238 → 13.
+The new set is a single coherent pipeline (gather → smelt → forge → assemble)
+that exercises every system in T-121..T-127 end-to-end with tractable
+balance surface.
+
+Categories: `wood` (birch / yew / oak — variants by stat), `ore` (iron_ore
+with `purity`). Tags: `hardwood` (yew + oak only) gates `wood_handle_carve`,
+proving tag-filter recipes work. Other materials (stone, fiber, coal) are
+single-prefab and stat-less.
+
+Resource nodes (7): tree, birch_tree, yew_tree, iron_ore_vein, rock_large,
+fiber_bush, berry_bush. Zones updated; deprecated nodes (rock_small,
+stone_deposit, coal_seam, copper_ore_vein, clay_deposit, flint_deposit,
+mushroom_patch, flower_patch) removed.
+
+Out of scope (deferred): cordage variance (sinew/gut), additional metals
+(copper/steel/bronze), leather chain, stat aggregations (avg/sum across
+multiple inputs of the same role). All purely additive over the current
+shape — copy a recipe / variant file.
 
 Pure content authoring — the system is in place from T-122..T-125. Each
 sub-bullet is its own commit:

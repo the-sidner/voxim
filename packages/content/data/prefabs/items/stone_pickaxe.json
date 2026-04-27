@@ -2,6 +2,7 @@
   "id": "stone_pickaxe",
   "modelId": "pickaxe",
   "components": {
+    "stackable": {},
     "equippable": {
       "slot": "weapon"
     },

@@ -1,8 +1,0 @@
-{
-  "id": "steel_dagger",
-  "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "thrust" },
-    "weight": { "baseWeight": 0.6 }
-  }
-}

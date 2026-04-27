@@ -1,0 +1,24 @@
+{
+  "id": "string_twist",
+  "stationType": "workbench",
+  "stepType": "attack",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "itemType": "plant_fiber",
+      "role": "fibre",
+      "quantity": 3
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "string",
+      "quantity": 1,
+      "stats": {
+        "tensile": "0.5",
+        "elasticity": "0.4"
+      }
+    }
+  ],
+  "ticks": 0
+}

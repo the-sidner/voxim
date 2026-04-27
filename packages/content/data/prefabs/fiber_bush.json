@@ -1,0 +1,17 @@
+{
+  "id": "fiber_bush",
+  "modelId": "model_bush",
+  "components": {
+    "resourceNode": {
+      "hitPoints": 2,
+      "requiredToolType": null,
+      "yields": [
+        {
+          "itemType": "plant_fiber",
+          "quantity": 2
+        }
+      ],
+      "respawnTicks": 6000
+    }
+  }
+}

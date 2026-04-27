@@ -9,7 +9,7 @@
       "weaponActionId": "slash"
     },
     "weight": {
-      "baseWeight": 2
+      "baseWeight": 1.5
     }
   }
 }

@@ -1,8 +1,0 @@
-{
-  "id": "iron_gauntlets",
-  "components": {
-    "equippable": { "slot": "offHand" },
-    "armor": { "reduction": 0.12, "staminaPenalty": 1.5 },
-    "weight": { "baseWeight": 2.0 }
-  }
-}

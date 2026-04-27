@@ -1,0 +1,30 @@
+{
+  "id": "iron_axe_assemble",
+  "stationType": "workbench",
+  "stepType": "assembly",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "itemType": "iron_head",
+      "role": "head",
+      "quantity": 1
+    },
+    {
+      "itemType": "wood_handle",
+      "role": "handle",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_axe",
+      "quantity": 1,
+      "stats": {
+        "damage": "head.sharpness * 25",
+        "harvest_power": "head.sharpness * 2 + handle.comfort",
+        "durability": "head.durability"
+      }
+    }
+  ],
+  "ticks": 0
+}

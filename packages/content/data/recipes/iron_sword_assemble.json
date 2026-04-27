@@ -1,0 +1,30 @@
+{
+  "id": "iron_sword_assemble",
+  "stationType": "workbench",
+  "stepType": "assembly",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "itemType": "iron_head",
+      "role": "head",
+      "quantity": 1
+    },
+    {
+      "itemType": "wood_handle",
+      "role": "handle",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "iron_sword",
+      "quantity": 1,
+      "stats": {
+        "damage": "head.sharpness * 30 + workstation.quality * 5",
+        "durability": "head.durability + handle.weight * 50",
+        "swing_speed": "1 / (handle.weight + 0.5)"
+      }
+    }
+  ],
+  "ticks": 0
+}

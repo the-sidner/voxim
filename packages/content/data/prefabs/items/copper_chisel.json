@@ -1,9 +1,0 @@
-{
-  "id": "copper_chisel",
-  "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "thrust" },
-    "tool": { "toolType": "chisel" },
-    "weight": { "baseWeight": 0.5 }
-  }
-}

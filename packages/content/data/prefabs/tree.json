@@ -8,7 +8,7 @@
       "requiredToolType": "axe",
       "yields": [
         {
-          "itemType": "wood",
+          "itemType": "oak_wood",
           "quantity": 3,
           "quantityPerHarvestPower": 1
         }

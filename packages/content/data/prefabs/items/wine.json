@@ -1,8 +1,0 @@
-{
-  "id": "wine",
-  "components": {
-    "stackable": {},
-    "edible": { "food": 5, "water": 40, "health": 0, "stamina": 15 },
-    "weight": { "baseWeight": 0.8 }
-  }
-}

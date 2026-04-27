@@ -1,9 +1,0 @@
-{
-  "id": "iron_tongs",
-  "components": {
-    "equippable": { "slot": "weapon" },
-    "swingable": { "weaponActionId": "thrust" },
-    "tool": { "toolType": "tongs" },
-    "weight": { "baseWeight": 0.8 }
-  }
-}

@@ -1,0 +1,15 @@
+{
+  "id": "cloth_tunic",
+  "modelId": "model_chestplate",
+  "components": {
+    "equippable": {
+      "slot": "chest"
+    },
+    "armor": {
+      "defense": 1
+    },
+    "weight": {
+      "baseWeight": 0.8
+    }
+  }
+}

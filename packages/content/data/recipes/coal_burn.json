@@ -1,0 +1,20 @@
+{
+  "id": "coal_burn",
+  "stationType": "campfire",
+  "stepType": "time",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "category": "wood",
+      "role": "fuel",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "coal",
+      "quantity": 1
+    }
+  ],
+  "ticks": 200
+}

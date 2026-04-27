@@ -1,7 +1,0 @@
-{
-  "id": "weld_plant",
-  "components": {
-    "stackable": {},
-    "weight": { "baseWeight": 0.2 }
-  }
-}

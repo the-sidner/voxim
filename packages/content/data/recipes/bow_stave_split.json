@@ -8,9 +8,6 @@
   "inputs": [
     {
       "category": "wood",
-      "tags": [
-        "organic"
-      ],
       "role": "stave",
       "quantity": 1
     }

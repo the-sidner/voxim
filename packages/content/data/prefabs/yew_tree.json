@@ -1,0 +1,19 @@
+{
+  "id": "yew_tree",
+  "modelId": "tree_oak",
+  "modelScale": 1.5,
+  "components": {
+    "resourceNode": {
+      "hitPoints": 6,
+      "requiredToolType": "axe",
+      "yields": [
+        {
+          "itemType": "yew_wood",
+          "quantity": 2,
+          "quantityPerHarvestPower": 1
+        }
+      ],
+      "respawnTicks": 18000
+    }
+  }
+}

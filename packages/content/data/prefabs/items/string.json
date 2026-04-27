@@ -1,0 +1,10 @@
+{
+  "id": "string",
+  "modelId": "model_string",
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.05
+    }
+  }
+}

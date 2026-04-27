@@ -2,6 +2,7 @@
   "id": "stone_axe",
   "modelId": "model_axe_basic",
   "components": {
+    "stackable": {},
     "equippable": {
       "slot": "weapon"
     },
