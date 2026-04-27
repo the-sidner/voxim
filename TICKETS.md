@@ -1191,7 +1191,279 @@ a closed tube: 4 verts per slice (hiltL, hiltR, tipR, tipL), 4 quad faces per sl
 side, right side, near face, far face). Shows the physical space the blade swept through rather
 than a tip-only ribbon. Trail width driven by the widest AABB cross-section dimension.
 
----
+### T-128 · Input system rewrite — Intent router + charged attacks + build polyline
+Effort: L   Status: todo
+
+Replace the current ad-hoc click/key surface with a single Intent-based
+pipeline. Add charged attacks (server-decided, charge_ms on the wire), a
+proper Mode state machine for building, polyline-tool blueprints (walls
+placed as connected segments), explicit hover-driven interact (E key), and
+the matching server cleanup (drop the INTERACT bit, drop InteractCooldown,
+add a PickUp command).
+
+Today's surface — three independent pipelines (canvas mouse via
+InputController; UI clicks via Preact onClick; drag via dragSystem global
+listeners) — collapses into one router. Mode-switching (buildMode /
+radial-open / drag-active) lives in a translator, not embedded in the
+input listener. UI handlers and world handlers register against the same
+router with priority + claim semantics; an open panel doesn't block
+canvas clicks unless it actually sits under the cursor.
+
+Architecture (terminology used across T-129..T-131):
+
+  RawEvent              — kbd/mouse/touch event, no game knowledge
+  InputCapture          — owns the global event listeners, emits RawEvent
+  Context               — live state read by the translator:
+                            HoverState (entity + terrain cell at cursor),
+                            HoldState  (LMB held since when, charge),
+                            Mode       (normal | radial-open | build),
+                            ModalStack (currently open panels)
+  IntentTranslator      — (RawEvent + Context) → typed Intent[]
+                          all mode logic lives here
+  Intent                — typed union: world-main-action, interact,
+                          block-start/end, mode-enter-build,
+                          build-cursor-move, build-place-anchor,
+                          mode-exit-build, ui-* actions (existing UIAction
+                          shapes get folded in)
+  IntentRouter          — handlers register with priority + claim();
+                          first claim wins; unclaimed intents fall through.
+                          UI handlers and world handlers share the chain.
+
+Wire-format change (T-129):
+- InputDatagram extends from 36 → 38 bytes (`u16 chargeMs`).
+- ACTION_INTERACT bit slot retired; comment-reserved.
+- New `CommandType.PickUp { entityId }`.
+- `Swingable` schema: `{ actions: Array<{ actionId, chargeMin, chargeMax }> }`
+  replaces the single `weaponActionId`. Server picks the first action
+  whose `[chargeMin, chargeMax]` interval contains chargeMs. Same shape
+  for melee (two-tier light/heavy) and ranged (one action that reads
+  chargeMs internally for projectile speed scaling). `chargeMin` defaults
+  to 0 and `chargeMax` to 65535 (clipped at the wire).
+
+What to delete (per CLAUDE.md "refactors replace"):
+- `InputController` class entirely. Its responsibilities split into
+  InputCapture (low-level events) + IntentTranslator (mode + charge logic).
+- `ACTION_INTERACT` flag + every reference. Slot number stays a comment.
+- `InteractCooldown` server-only component (was the throttle for the
+  retired INTERACT bit). Drop from registry, components/items.ts, handoff.ts.
+- `CraftingSystem.run()`'s INTERACT-load branch (the "shove inventory[0]
+  into nearest workstation buffer" code). The drag-into-WorkstationPanel
+  flow has replaced it since T-124.
+- `UIAction` type's overlap with Intent — they merge; UIAction either
+  becomes Intent or is fully absorbed (TBD during T-130).
+- `buildMode` boolean on InputController, `onBuildPlace`/`onBuildOpenMenu`
+  callback hooks — Mode state machine in the translator replaces them.
+
+Phases T-129..T-131 break the work out so each commit ships standalone.
+
+### T-129 · Server: chargeMs wire field, server-decided actions, drop INTERACT
+Effort: M   Status: todo   Phase 1 of T-128
+
+Wire + server-side groundwork. Lands without the client input rewrite —
+charged attacks are mechanically possible the moment this lands; the
+client just sends `chargeMs = 0` until T-130 wires up the timing.
+
+- `packages/protocol/src/messages.ts` — `InputDatagram` gains `chargeMs:
+  u16`. Total size 36 → 38 bytes. ACTION_INTERACT (`1 << 3`) retired —
+  bit slot stays a comment. New `CommandType.PickUp = 21` with payload
+  `string entityId`.
+- `packages/protocol/src/codecs.ts` — InputDatagram codec extended;
+  encode/decode for the PickUp command.
+- `packages/codecs/src/components.ts` — `inputStateCodec` extended to
+  carry `chargeMs`.
+- `packages/tile-server/src/components/items.ts` — delete `InteractCooldown`.
+- `packages/tile-server/src/component_registry.ts` — drop InteractCooldown.
+- `packages/tile-server/src/handoff.ts` — drop interactCooldown serialisation.
+- `packages/tile-server/src/components/item_behaviours.ts` — `Swingable`
+  schema becomes `{ actions: { actionId, chargeMin?, chargeMax? }[] }`.
+  The matcher walks `actions` in order and picks the first whose
+  [chargeMin, chargeMax] contains the player's chargeMs. Implicit defaults:
+  chargeMin=0, chargeMax=65535.
+- `packages/tile-server/src/systems/action.ts` — when starting a swing,
+  read `InputState.chargeMs` and the equipped weapon's `swingable.actions`
+  to pick the action variant; rest unchanged.
+- `packages/tile-server/src/systems/crafting.ts` — delete the
+  ACTION_INTERACT-driven buffer-load branch in `run()` (the for-loop
+  block that walks players, checks the bit, finds nearest workstation,
+  appends inventory[0] into the buffer). LoadWorkstation command
+  remains the only path.
+- New `CommandType.PickUp` handler — picks up the targeted ground item
+  (ItemData entity) into the player's Inventory if the entity is within
+  configured pickup range. Handler lives next to LoadWorkstation/
+  TakeWorkstation in CraftingSystem (it's the same locality of inventory
+  manipulation), or factor a new `InventoryCommandSystem` if cleaner.
+- Content authoring: every weapon prefab with
+  `swingable: { weaponActionId: X }` becomes
+  `swingable: { actions: [{ actionId: X }] }` (no charge ranges →
+  always-pick first). One demonstration weapon — iron_sword — gets the
+  light/heavy split:
+  ```
+  swingable: { actions: [
+    { actionId: "slash",    chargeMax: 200 },
+    { actionId: "overhead", chargeMin: 200 }
+  ] }
+  ```
+  All other weapons stay single-action.
+- Client-side: only the InputController + InputDatagram encoder
+  changes — send `chargeMs = 0` for now. The actual hold-and-release
+  timing comes in T-130.
+
+Done when: server boots clean against the new wire format; swinging a
+sword produces "slash" today (chargeMs=0); no ACTION_INTERACT references
+remain (`grep ACTION_INTERACT packages/` is empty); no InteractCooldown
+references remain; crafting system's run() no longer mentions INTERACT.
+
+### T-130 · Client: input system rewrite — InputCapture / IntentRouter / Mode / charge bar
+Effort: L   Status: todo   Phase 2 of T-128
+
+The big landing. Replaces InputController + the scattered Preact click
+plumbing with the Intent pipeline.
+
+New modules under `packages/client/src/input/`:
+- `input_capture.ts` — owns `document` mouse/keyboard listeners. Emits
+  `RawEvent { kind, button, key, canvasPos, target, t }`. The `target`
+  field carries the original DOM EventTarget so the translator can
+  distinguish UI clicks from canvas clicks. No game knowledge.
+- `context.ts` — exports a `Context` object aggregating four reactive
+  slices: `HoverState` (entity + terrain cell), `HoldState` (LMB held
+  since), `Mode` (normal | radial | build), `ModalStack` (which panels
+  are open). Slices are independent signals so consumers can subscribe
+  fine-grained.
+- `intent_translator.ts` — pure function `(RawEvent, Context) →
+  Intent[]`. All mode-dependent logic concentrates here.
+- `intent_router.ts` — registry of `IntentHandler { id, priority,
+  claim(intent): boolean }`. First claim wins; consumed intents stop
+  propagating.
+- `intents.ts` — typed union of every intent shape.
+
+Existing flows migrated (no parallel-system phase):
+- `InputController` deleted. Game.ts no longer wires `onLmbClick` /
+  `onBuildPlace` / `onBuildOpenMenu`; instead it registers handlers with
+  the router for `world-main-action`, `block-start/end`, `interact`,
+  `mode-enter-build`, etc.
+- `InventoryPanel`, `EquipmentPanel`, `WorkstationPanel`, `RadialMenu`,
+  `ContextMenu` — their onClick / onMouseDown handlers become
+  `intentRouter.dispatch({ kind: "ui-...", ... })`. The shared `dragSystem`
+  becomes a router handler too (claims `drag-start`, manages the document
+  mousemove/mouseup loop internally).
+- `UIAction` either folds into `Intent` (single union) or stays as a
+  nested type — pick whichever produces less ceremony at registration
+  sites. Lean toward single union with a `kind: "ui-..."` prefix
+  convention to keep room for non-UI intents.
+
+Charge attacks (client side):
+- `HoldState.lmb = { downAtMs, weaponPrefabId }` set on LMB-down outside
+  build mode, cleared on release.
+- LMB-up emits `world-main-action { chargeMs }`.
+- Default handler reads the player's equipped weapon, mirrors the server's
+  `swingable.actions` lookup to pick the predicted action client-side
+  (so the predictor stays in sync once predictor learns about swings),
+  and sends an `InputDatagram` with ACTION_USE_SKILL set + chargeMs.
+- New `ChargeBar` UI component — small fill bar above/under the player
+  cursor showing chargeMs progress against the weapon's first
+  `chargeMax` threshold. Reads `HoldState.lmb` reactively. Hidden when
+  no charge active.
+
+E-key flow:
+- E-down → translator emits `interact { hoverTarget }`.
+- Default `InteractHandler` switches on hoverTarget kind:
+  - `entity = ground-item` → send `CommandType.PickUp { entityId }`
+  - `entity = workstation`  → `openPanel("workstation")` + mirror entity
+  - `entity = anything else` → no-op
+  - no hover                → no-op.
+- Removes the legacy server-side INTERACT path (already gone in T-129);
+  the auto-pickup ItemPickupSystem stays in place for ambient
+  collection within radius.
+
+Modal precedence (per the agreed rule):
+- The router does NOT special-case open panels. UI handlers register at
+  high priority and naturally claim events that land on UI DOM nodes.
+- World handlers register at lower priority and run for events that
+  bubble through.
+- Translator skips world intents when `event.target` is inside `#ui` AND
+  some UI handler claimed the corresponding ui-* intent.
+
+Done when: `grep InputController packages/client` is empty; LMB on
+canvas attacks; LMB-hold then release sends a chargeMs; E over a hovered
+ground item picks it up via PickUp command; E over a workstation opens
+the panel; clicking a panel button doesn't attack the world; the charge
+bar fills while LMB is held.
+
+### T-131 · Build mode polyline + ghost preview
+Effort: M   Status: todo   Phase 3 of T-128
+
+Build mode becomes a stateful tool with proper preview rendering and a
+chain-placement workflow for line blueprints (walls).
+
+Mode definition:
+```
+Mode = "normal" | "radial-open" | "build"
+Mode.build = {
+  blueprintId: string,
+  tool: "single" | "polyline",
+  polyline?: { lastAnchor: WorldCell }   // null until first click
+}
+```
+
+Blueprint declaration:
+- `Placeable` component gains `tool: "single" | "polyline"`. Default
+  "single" when omitted. wall blueprints set `"polyline"`.
+
+Mode entry/exit:
+- RMB-down with hammer equipped → emits `mode-open-radial`.
+- Radial commit → `mode-enter-build { blueprintId }` → Mode = build.
+- Hammer unequipped → `mode-exit-build` (auto). Polyline anchors
+  discarded silently.
+- ESC while in build → `mode-exit-build`. Polyline anchors discarded.
+- Re-opening the radial discards polyline implicitly (same as ESC).
+
+In build mode, intents:
+- `build-cursor-move { worldCell }` — fires per frame while in build
+  mode; ghost renderer subscribes.
+- `build-place { worldCell }` — emitted on LMB.
+  - tool="single": send Place command, do not change mode.
+  - tool="polyline": if no anchor yet, set lastAnchor = worldCell (no
+    placement). If anchor exists, send Place commands for each cell on
+    the segment from lastAnchor → worldCell (Bresenham line over grid),
+    then update lastAnchor = worldCell. Each segment commits as it's
+    drawn — no staging, no confirm.
+- `build-undo` — emitted on RMB tap.
+  - if polyline anchors active: pop the lastAnchor (no server side-effect;
+    next click re-anchors fresh).
+  - else: `mode-exit-build`.
+- `build-cancel` — emitted on ESC. Same as exit.
+
+Ghost rendering (renderer-side):
+- New module `client/src/render/build_ghost.ts`. Subscribes to Mode +
+  cursor cell. Renders:
+  - tool="single": a wireframe outline of the blueprint's footprint at
+    cursor cell.
+  - tool="polyline" without anchor: same outline as single.
+  - tool="polyline" with anchor: a ribbon/line of outlines from
+    lastAnchor cell → cursor cell, one outline per cell along the
+    Bresenham path. Highlight cursor cell brighter so the player sees
+    the next-anchor target.
+- Material: thin emissive line shader, accent colour from the theme
+  palette.
+
+Content updates:
+- `wood_wall`, `stone_wall` blueprint prefabs add
+  `placeable: { ..., tool: "polyline" }`. Existing `placeable.alignment`
+  remains "cell-aligned".
+- All other placeable prefabs (kits, doors, floors) implicitly default
+  to `"single"`.
+
+Future work (out of scope for T-131):
+- Blueprint deletion via "right-click on a placed blueprint" intent.
+- Rectangle / fill tools (would add new tool values + intent emitters).
+- Build-mode HUD chip showing the active blueprint id.
+
+Done when: equipping a hammer + RMB opens the radial; selecting "wood
+wall" enters build mode with a polyline ghost; LMB places the first
+anchor (no segment yet); LMB again places a wall segment from anchor to
+cursor and re-anchors at the new cell; RMB tap pops the anchor and
+returns to free-cursor preview; ESC exits build mode; unequipping the
+hammer also exits.
 
 ## Housing
 
