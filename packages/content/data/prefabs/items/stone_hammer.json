@@ -1,0 +1,23 @@
+{
+  "id": "stone_hammer",
+  "modelId": "model_hammer_basic",
+  "components": {
+    "stackable": {},
+    "equippable": {
+      "slot": "weapon"
+    },
+    "swingable": {
+      "actions": [
+        {
+          "actionId": "overhead"
+        }
+      ]
+    },
+    "tool": {
+      "toolType": "hammer"
+    },
+    "weight": {
+      "baseWeight": 2.0
+    }
+  }
+}

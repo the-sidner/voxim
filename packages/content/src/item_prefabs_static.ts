@@ -23,6 +23,7 @@ import oak_wood from "../data/prefabs/items/oak_wood.json" with { type: "json" }
 import plant_fiber from "../data/prefabs/items/plant_fiber.json" with { type: "json" };
 import stone from "../data/prefabs/items/stone.json" with { type: "json" };
 import stone_axe from "../data/prefabs/items/stone_axe.json" with { type: "json" };
+import stone_hammer from "../data/prefabs/items/stone_hammer.json" with { type: "json" };
 import stone_pickaxe from "../data/prefabs/items/stone_pickaxe.json" with { type: "json" };
 import string from "../data/prefabs/items/string.json" with { type: "json" };
 import wood_handle from "../data/prefabs/items/wood_handle.json" with { type: "json" };
@@ -52,6 +53,7 @@ export const item_prefabs: readonly Prefab[] = [
   plant_fiber as unknown as Prefab,
   stone as unknown as Prefab,
   stone_axe as unknown as Prefab,
+  stone_hammer as unknown as Prefab,
   stone_pickaxe as unknown as Prefab,
   string as unknown as Prefab,
   wood_handle as unknown as Prefab,

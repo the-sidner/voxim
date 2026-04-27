@@ -13,6 +13,10 @@
           "quantity": 1
         },
         {
+          "itemType": "stone_hammer",
+          "quantity": 1
+        },
+        {
           "itemType": "berries",
           "quantity": 5
         },
