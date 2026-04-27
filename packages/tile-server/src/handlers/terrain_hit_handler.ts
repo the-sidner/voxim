@@ -10,14 +10,13 @@
  *        Drop always spawns as a world ItemData entity; picked up by ItemPickupSystem.
  */
 import type { World } from "@voxim/engine";
-import { newEntityId } from "@voxim/engine";
 import { Heightmap, MaterialGrid, CHUNK_SIZE, snapHeight } from "@voxim/world";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
 import { SkillInProgress } from "../components/combat.ts";
 import { Equipment } from "../components/equipment.ts";
-import { ItemData } from "../components/items.ts";
+import { spawnGroundStack } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("TerrainDigSystem");
@@ -85,10 +84,7 @@ export class TerrainDigSystem implements System {
           const matId = matGrid.data[idx];
           const dropType = cfg.materialDrops[String(matId)];
           if (dropType) {
-            const dropId = newEntityId();
-            world.create(dropId);
-            world.write(dropId, Position, { x: cx, y: cy, z: currentHeight });
-            world.write(dropId, ItemData, { prefabId: dropType, quantity: 1 });
+            spawnGroundStack(world, this.content, dropType, 1, { x: cx, y: cy, z: currentHeight });
           }
         }
 

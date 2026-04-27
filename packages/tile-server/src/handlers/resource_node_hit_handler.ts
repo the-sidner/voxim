@@ -1,12 +1,11 @@
 import type { World } from "@voxim/engine";
-import { newEntityId } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
 import type { ContentStore, PrefabResourceNodeData } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { ResourceNode } from "../components/resource_node.ts";
-import { ItemData } from "../components/items.ts";
 import { Position } from "../components/game.ts";
+import { spawnGroundStack } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ResourceNodeHitHandler");
@@ -56,7 +55,7 @@ export class ResourceNodeHitHandler implements HitHandler {
     }
 
     // ── Node depleted ─────────────────────────────────────────────────────────
-    if (rnData) spawnYields(world, rnData.yields, harvestPower, ctx.hitX, ctx.hitY, ctx.hitZ);
+    if (rnData) spawnYields(world, this.content, rnData.yields, harvestPower, ctx.hitX, ctx.hitY, ctx.hitZ);
 
     log.info("node depleted: entity=%s type=%s by=%s", ctx.targetId, rn.nodeTypeId, ctx.attackerId);
     events.publish(TileEvents.NodeDepleted, {
@@ -80,6 +79,7 @@ export class ResourceNodeHitHandler implements HitHandler {
 
 function spawnYields(
   world: World,
+  content: ContentStore,
   yields: Array<{ itemType: string; quantity: number; quantityPerHarvestPower?: number }>,
   harvestPower: number,
   hitX: number,
@@ -93,14 +93,11 @@ function spawnYields(
     const qty = yld.quantity + Math.floor((harvestPower - 1) * (yld.quantityPerHarvestPower ?? 0));
     if (qty <= 0) continue;
 
-    const id = newEntityId();
-    world.create(id);
-    world.write(id, Position, {
+    spawnGroundStack(world, content, yld.itemType, qty, {
       x: hitX + (Math.random() - 0.5) * 0.6,
       y: hitY + (Math.random() - 0.5) * 0.6,
       z: hitZ,
     });
-    world.write(id, ItemData, { prefabId: yld.itemType, quantity: qty });
     log.info("yield dropped: item=%sx%d at (%.2f,%.2f)", yld.itemType, qty, hitX, hitY);
   }
 }

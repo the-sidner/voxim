@@ -306,3 +306,36 @@ export function spawnPrefab(
   return id;
 }
 
+// ---- ground-stack drops --------------------------------------------------
+
+/**
+ * Spawn a stackable item entity at a world position — used by every "drop
+ * something to the ground" path (manual drop_item, gather yields, terrain
+ * dig drops, stackable crafting outputs).
+ *
+ * Equivalent to a stripped-down spawnPrefab that installs ONLY:
+ *   - Position
+ *   - ItemData { prefabId, quantity }   — the stack identity
+ *   - ModelRef + Hitbox (via installVisualShell)  — so the client renders
+ *     the actual prefab model instead of falling back to the placeholder
+ *     cylinder.
+ *
+ * Notably skipped: equippable / swingable / tool / etc. The dropped stack
+ * is just a pickable thing in the world, not a wieldable one.
+ */
+export function spawnGroundStack(
+  world: World,
+  content: ContentStore,
+  prefabId: string,
+  quantity: number,
+  pos: { x: number; y: number; z: number },
+): EntityId {
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, Position, pos);
+  world.write(id, ItemData, { prefabId, quantity });
+  const prefab = content.getPrefab(prefabId);
+  if (prefab) installVisualShell(world, content, id, prefab, 0);
+  return id;
+}
+

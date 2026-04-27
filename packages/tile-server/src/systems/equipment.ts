@@ -1,5 +1,6 @@
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
+import { spawnGroundStack } from "../spawner.ts";
 import { CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore, EquipSlot } from "@voxim/content";
@@ -252,10 +253,7 @@ export class EquipmentSystem implements System {
     const dropZ = pos?.z ?? 4.0;
 
     if (slot.kind === "stack") {
-      const id = newEntityId();
-      world.create(id);
-      world.write(id, Position, { x: dropX, y: dropY, z: dropZ });
-      world.write(id, ItemData, { prefabId: slot.prefabId, quantity: slot.quantity });
+      spawnGroundStack(world, this.content, slot.prefabId, slot.quantity, { x: dropX, y: dropY, z: dropZ });
       log.info("drop_item: entity=%s item=%s qty=%d", entityId, slot.prefabId, slot.quantity);
     } else {
       // Unique entity — give it a position to place it in the world
