@@ -1257,7 +1257,7 @@ What to delete (per CLAUDE.md "refactors replace"):
 Phases T-129..T-131 break the work out so each commit ships standalone.
 
 ### T-129 · Server: chargeMs wire field, server-decided actions, drop INTERACT
-Effort: M   Status: todo   Phase 1 of T-128
+Effort: M   Status: done   Commit: 3c80954   Phase 1 of T-128
 
 Wire + server-side groundwork. Lands without the client input rewrite —
 charged attacks are mechanically possible the moment this lands; the

@@ -28,6 +28,7 @@ import { SettingsPanel }   from "./components/SettingsPanel.tsx";
 import { DeathScreen }     from "./components/DeathScreen.tsx";
 import { LoadingScreen }   from "./components/LoadingScreen.tsx";
 import { TooltipPortal }   from "./components/TooltipPortal.tsx";
+import { ChargeBar }       from "./components/ChargeBar.tsx";
 import { ContextMenu }     from "./components/ContextMenu.tsx";
 import { ToastQueue }      from "./components/ToastQueue.tsx";
 import { RadialMenu }      from "./components/RadialMenu.tsx";
@@ -97,6 +98,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       {panels.has("network")    && <NetworkPanel />}
 
       {/* Portals — always on top */}
+      <ChargeBar />
       <TooltipPortal />
       <ContextMenu onAction={onAction} />
       <RadialMenu onAction={onAction} />

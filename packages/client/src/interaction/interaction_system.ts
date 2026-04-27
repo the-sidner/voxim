@@ -23,6 +23,7 @@ import * as THREE from "three";
 import type { VoximRenderer } from "../render/renderer.ts";
 import type { ClientWorld } from "../state/client_world.ts";
 import type { EntityInteractionHandler, InteractionTarget } from "./types.ts";
+import { hoverState } from "../input/context.ts";
 
 /** Three.js layer reserved for invisible pick cylinders. */
 export const PICK_LAYER = 3;
@@ -127,6 +128,13 @@ export class InteractionSystem {
     const entityId = this._pickEntity(mouseCanvasX, mouseCanvasY);
 
     if (entityId === this.hoveredEntityId) return;
+
+    // Mirror the hover into the global signal so the IntentTranslator's
+    // E-key handler reads the current target without polling. T-131 will
+    // also publish terrain-cell hover here for build-mode preview.
+    hoverState.value = entityId !== null
+      ? { kind: "entity", entityId }
+      : { kind: "none" };
 
     // Un-hover previous
     if (this.hoveredEntityId !== null) {

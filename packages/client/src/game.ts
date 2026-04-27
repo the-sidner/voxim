@@ -11,7 +11,10 @@
  */
 import { connectViaGateway } from "./connection/gateway_client.ts";
 import { TileConnection } from "./connection/tile_connection.ts";
-import { InputController } from "./input/input_controller.ts";
+import { InputCapture } from "./input/input_capture.ts";
+import { IntentRouter } from "./input/intent_router.ts";
+import { IntentTranslator } from "./input/intent_translator.ts";
+import type { Intent } from "./input/intents.ts";
 import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
@@ -61,7 +64,9 @@ export class VoximGame {
   private content: ContentCache | null = null;
   private renderer: VoximRenderer | null = null;
   private overlay: WorldOverlay | null = null;
-  private input: InputController | null = null;
+  private input: IntentTranslator | null = null;
+  private inputCapture: InputCapture | null = null;
+  private intentRouter: IntentRouter | null = null;
   private animFrameId = 0;
   private playerId: string | null = null;
   private inputSeq = 0;
@@ -357,28 +362,11 @@ export class VoximGame {
     if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
       this._finishLoading();
     }
-    this.input = new InputController(canvas, () => this.renderer!.getPlayerScreenPos());
-
-    // Short RMB while hammer equipped → place the selected blueprint at cursor world pos
-    this.input.onBuildPlace = (cx, cy) => {
-      const playerState = this.playerId ? this.world.get(this.playerId) : null;
-      const groundZ = playerState?.position?.z ?? 4.0;
-      const worldPos = this.renderer?.getCursorWorldPos(cx, cy, groundZ);
-      console.log(`[Build] onBuildPlace canvas=(${cx.toFixed(0)},${cy.toFixed(0)}) groundZ=${groundZ.toFixed(2)} worldPos=${worldPos ? `(${worldPos.x.toFixed(1)},${worldPos.y.toFixed(1)})` : "null"} type=${uiState.value.selectedBlueprint}`);
-      if (!worldPos) return;
-      this._handleUIAction({
-        type: "place_blueprint",
-        structureType: uiState.value.selectedBlueprint,
-        worldX: worldPos.x,
-        worldY: worldPos.y,
-      });
-    };
-
-    // Long RMB while hammer equipped → open radial blueprint menu at cursor
-    this.input.onBuildOpenMenu = (cx, cy) => {
-      console.log(`[Build] onBuildOpenMenu canvas=(${cx.toFixed(0)},${cy.toFixed(0)})`);
-      this._handleUIAction({ type: "open_build_menu", canvasX: cx, canvasY: cy });
-    };
+    // Input system — Capture (DOM listeners) → Translator (state + intents)
+    // → Router (handlers). Replaces the old InputController callback surface.
+    this.intentRouter = new IntentRouter();
+    this.input = new IntentTranslator(this.intentRouter, () => this.renderer!.getPlayerScreenPos());
+    this.inputCapture = new InputCapture(canvas, this.input.handle);
 
     // Interaction system — entity hover highlight + click dispatch.
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);
@@ -386,12 +374,8 @@ export class VoximGame {
     this.interactionSystem.register(resourceNodeHandler);
     this.interactionSystem.register(groundItemHandler);
     this.renderer.setInteractionSystem(this.interactionSystem);
-    this.input.onLmbClick = (cx, cy) => {
-      const playerState = this.playerId ? this.world.get(this.playerId) : null;
-      const px = playerState?.position?.x ?? 0;
-      const py = playerState?.position?.y ?? 0;
-      return this.interactionSystem?.handleClick(cx, cy, px, py) ?? false;
-    };
+
+    this._registerIntentHandlers();
 
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
@@ -444,7 +428,7 @@ export class VoximGame {
     }
     // Update hover highlight — must happen after input so mouse coords are current
     if (this.input && this.interactionSystem) {
-      this.interactionSystem.update(this.input.mouseCanvasX, this.input.mouseCanvasY);
+      this.interactionSystem.update(this.input.mouseX, this.input.mouseY);
     }
     this.renderer?.render(this.serverTick, predictedPos);
 
@@ -512,6 +496,93 @@ export class VoximGame {
         }),
         activeRecipeId: state.workstationBuffer.activeRecipeId,
         progressTicks:  state.workstationBuffer.progressTicks,
+      },
+    });
+  }
+
+  /**
+   * Register the world-side intent handlers. UI panels and the radial menu
+   * keep their Preact onClick paths and dispatch via _handleUIAction (which
+   * the router will eventually subsume entirely once T-131 lands its build
+   * mode handlers).
+   */
+  private _registerIntentHandlers(): void {
+    const router = this.intentRouter!;
+
+    // World hover-aware interact (E key). Switches on hover target kind:
+    // ground items → server PickUp; workstations → open panel; else no-op.
+    router.register({
+      id: "world-interact",
+      priority: 50,
+      claim: (intent: Intent) => {
+        if (intent.kind !== "interact") return false;
+        if (intent.hover.kind !== "entity") return true; // claim+no-op on empty
+        const entity = this.world.get(intent.hover.entityId);
+        if (entity?.workstationBuffer) {
+          this._openWorkstation(intent.hover.entityId);
+          return true;
+        }
+        if (entity?.itemData) {
+          this._sendCommand({ cmd: CommandType.PickUp, entityId: intent.hover.entityId });
+          return true;
+        }
+        return true; // hovered something else; consume so it doesn't propagate
+      },
+    });
+
+    // World main action (LMB release). Today the server picks the swing
+    // variant from chargeMs (T-129); the client just forwards the bit on
+    // the next datagram. The translator already sets ACTION_USE_SKILL +
+    // chargeMs, so this handler exists mainly to claim the intent so other
+    // handlers don't double-fire on the same release.
+    router.register({
+      id: "world-attack",
+      priority: 40,
+      claim: (intent: Intent) => {
+        if (intent.kind !== "world-main-action") return false;
+        // Pre-route entity click to the interaction system (workstation
+        // open, etc.). LMB-pickup-anything legacy goes through here too:
+        // a click on a workstation opens its panel even via LMB, matching
+        // the previous onLmbClick behavior.
+        if (intent.hover.kind === "entity") {
+          const me = this.playerId ? this.world.get(this.playerId) : null;
+          const px = me?.position?.x ?? 0;
+          const py = me?.position?.y ?? 0;
+          this.interactionSystem?.handleClick(this.input!.mouseX, this.input!.mouseY, px, py);
+        }
+        // The actual swing is sent through the next datagram via
+        // pendingActions/chargeMs in the translator. Nothing to do here.
+        return true;
+      },
+    });
+
+    // Build-mode wires (legacy single-shot for T-130; T-131 reworks).
+    router.register({
+      id: "build-place",
+      priority: 30,
+      claim: (intent: Intent) => {
+        if (intent.kind !== "place-blueprint") return false;
+        const me = this.playerId ? this.world.get(this.playerId) : null;
+        const groundZ = me?.position?.z ?? 4.0;
+        const worldPos = this.renderer?.getCursorWorldPos(intent.canvasX, intent.canvasY, groundZ);
+        if (!worldPos) return true;
+        this._handleUIAction({
+          type: "place_blueprint",
+          structureType: uiState.value.selectedBlueprint,
+          worldX: worldPos.x,
+          worldY: worldPos.y,
+        });
+        return true;
+      },
+    });
+
+    router.register({
+      id: "build-radial",
+      priority: 30,
+      claim: (intent: Intent) => {
+        if (intent.kind !== "open-build-radial") return false;
+        this._handleUIAction({ type: "open_build_menu", canvasX: intent.canvasX, canvasY: intent.canvasY });
+        return true;
       },
     });
   }
@@ -713,7 +784,10 @@ export class VoximGame {
     cancelAnimationFrame(this.animFrameId);
     this.interactionSystem?.dispose();
     this.interactionSystem = null;
-    this.input?.dispose();
+    this.inputCapture?.dispose();
+    this.inputCapture = null;
+    this.input = null;
+    this.intentRouter = null;
     this.connection.close();
     this.renderer?.dispose();
     this.overlay?.dispose();
