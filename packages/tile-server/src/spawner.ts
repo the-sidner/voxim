@@ -30,7 +30,7 @@ import {
   AnimationState,
 } from "./components/game.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
-import { Inventory, CraftingQueue, InteractCooldown, ItemData } from "./components/items.ts";
+import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
@@ -126,7 +126,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   writeDefaults(
     world, id,
     Hunger, Thirst, Stamina, CorruptionExposure,
-    LoreLoadout, ActiveEffects, CraftingQueue, InteractCooldown, AnimationState,
+    LoreLoadout, ActiveEffects, CraftingQueue, AnimationState,
   );
 };
 

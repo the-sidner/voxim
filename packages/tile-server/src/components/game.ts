@@ -67,6 +67,7 @@ export const InputState = defineComponent({
     movementX: 0,
     movementY: 0,
     actions: 0,
+    chargeMs: 0,
     seq: 0,
     timestamp: 0,
     rttMs: 0,

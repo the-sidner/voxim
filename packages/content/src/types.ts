@@ -208,8 +208,6 @@ export interface DerivedItemStats {
   buildPower?: number;
   /** Height units removed per shovel swing. Multiplied by terrain.digStep in config. */
   digPower?: number;
-  /** ID of the WeaponActionDef that drives this weapon's swing phases and blade path. */
-  weaponAction?: string;
   // armor
   armorReduction?: number;       // 0–1 fraction of incoming damage blocked
   staminaRegenPenalty?: number;  // 0–1 fraction of stamina regen suppressed while worn
@@ -240,7 +238,23 @@ export type EquipSlot = "weapon" | "offHand" | "head" | "chest" | "legs" | "feet
 // can share the types without creating a circular dependency.
 
 export interface EquippableData { slot: EquipSlot; }
-export interface SwingableData { weaponActionId: string; }
+/**
+ * One swing variant the weapon can fire. The server walks the array in order
+ * and picks the first whose [chargeMin, chargeMax] window contains the
+ * player's `chargeMs` at release. Implicit defaults: chargeMin=0,
+ * chargeMax=65535. A weapon with one entry always picks it (charge ignored
+ * for action selection — but the action handler may still read chargeMs to
+ * scale its own effects, e.g. bow projectile speed).
+ */
+export interface SwingableActionEntry {
+  actionId: string;
+  chargeMin?: number;
+  chargeMax?: number;
+}
+
+export interface SwingableData {
+  actions: SwingableActionEntry[];
+}
 export interface ToolData { toolType: string; }
 export interface DeployableData { prefabId: string; }
 export interface PlaceableData {

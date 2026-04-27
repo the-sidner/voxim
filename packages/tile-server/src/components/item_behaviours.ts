@@ -15,7 +15,7 @@ import { WireReader, WireWriter } from "@voxim/codecs";
 import * as v from "valibot";
 import type {
   EquipSlot, ItemSlotDef, StatContribution,
-  EquippableData, SwingableData, ToolData, DeployableData, PlaceableData,
+  EquippableData, SwingableData, SwingableActionEntry, ToolData, DeployableData, PlaceableData,
   EdibleData, IlluminatorData, ArmorData, MaterialSourceData,
   ComposedData, StackableData, WeightData,
 } from "@voxim/content";
@@ -81,7 +81,11 @@ export const Equippable = defineComponent({
 // ---------------------------------------------------------------------------
 
 const swingableSchema = v.object({
-  weaponActionId: v.string(),
+  actions: v.array(v.object({
+    actionId:  v.string(),
+    chargeMin: v.optional(v.number()),
+    chargeMax: v.optional(v.number()),
+  })),
 });
 
 export const Swingable = defineComponent({
@@ -91,16 +95,44 @@ export const Swingable = defineComponent({
   codec: {
     encode(v: SwingableData): Uint8Array {
       const w = new WireWriter();
-      w.writeStr(v.weaponActionId);
+      w.writeU8(v.actions.length);
+      for (const a of v.actions) {
+        w.writeStr(a.actionId);
+        w.writeI32(a.chargeMin ?? 0);
+        w.writeI32(a.chargeMax ?? 0xFFFF);
+      }
       return w.toBytes();
     },
     decode(b: Uint8Array): SwingableData {
       const r = new WireReader(b);
-      return { weaponActionId: r.readStr() };
+      const count = r.readU8();
+      const actions: SwingableActionEntry[] = [];
+      for (let i = 0; i < count; i++) {
+        actions.push({
+          actionId:  r.readStr(),
+          chargeMin: r.readI32(),
+          chargeMax: r.readI32(),
+        });
+      }
+      return { actions };
     },
   },
-  default: (): SwingableData => ({ weaponActionId: "" }),
+  default: (): SwingableData => ({ actions: [] }),
 });
+
+/**
+ * Resolve which action a weapon fires for a given chargeMs. Walks the array
+ * in declaration order and returns the first entry whose [chargeMin, chargeMax]
+ * contains `chargeMs`. Defaults: chargeMin=0, chargeMax=65535.
+ */
+export function pickWeaponAction(swingable: SwingableData, chargeMs: number): SwingableActionEntry | null {
+  for (const a of swingable.actions) {
+    const lo = a.chargeMin ?? 0;
+    const hi = a.chargeMax ?? 0xFFFF;
+    if (chargeMs >= lo && chargeMs <= hi) return a;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Tool — item is recognised as a tool by GatheringSystem and recipes that

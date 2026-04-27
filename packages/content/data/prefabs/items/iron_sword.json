@@ -6,7 +6,16 @@
       "slot": "weapon"
     },
     "swingable": {
-      "weaponActionId": "slash"
+      "actions": [
+        {
+          "actionId": "slash",
+          "chargeMax": 200
+        },
+        {
+          "actionId": "overhead",
+          "chargeMin": 200
+        }
+      ]
     },
     "weight": {
       "baseWeight": 1.5

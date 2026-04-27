@@ -473,6 +473,7 @@ export class TileServer {
           movementX: latest.movementX,
           movementY: latest.movementY,
           actions: mergedActions,
+          chargeMs: latest.chargeMs,
           seq: latest.seq,
           timestamp: latest.timestamp,
           rttMs: session.rttMs,

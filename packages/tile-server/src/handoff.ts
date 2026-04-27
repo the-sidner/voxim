@@ -17,7 +17,7 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { Position, Velocity, Facing, Health, Hunger, Thirst, Stamina } from "./components/game.ts";
-import { Inventory, InteractCooldown } from "./components/items.ts";
+import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { SpeedModifier, CorruptionExposure } from "./components/world.ts";
@@ -50,7 +50,6 @@ interface SerializedComponents {
   activeEffects?: ReturnType<typeof ActiveEffects.codec.decode> | null;
   speedModifier?: ReturnType<typeof SpeedModifier.codec.decode> | null;
   corruptionExposure?: ReturnType<typeof CorruptionExposure.codec.decode> | null;
-  interactCooldown?: ReturnType<typeof InteractCooldown.codec.decode> | null;
 }
 
 /**
@@ -84,7 +83,6 @@ export function serializePlayer(
       activeEffects: world.get(playerId, ActiveEffects) ?? null,
       speedModifier: world.get(playerId, SpeedModifier) ?? null,
       corruptionExposure: world.get(playerId, CorruptionExposure) ?? null,
-      interactCooldown: world.get(playerId, InteractCooldown) ?? null,
     },
   };
 }
@@ -115,6 +113,5 @@ export function restorePlayer(world: World, payload: HandoffPayload): EntityId {
   if (c.activeEffects) world.write(id, ActiveEffects, c.activeEffects);
   if (c.speedModifier) world.write(id, SpeedModifier, c.speedModifier);
   if (c.corruptionExposure) world.write(id, CorruptionExposure, c.corruptionExposure);
-  if (c.interactCooldown) world.write(id, InteractCooldown, c.interactCooldown);
   return id;
 }

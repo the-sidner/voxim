@@ -6,7 +6,11 @@
       "slot": "weapon"
     },
     "swingable": {
-      "weaponActionId": "overhead"
+      "actions": [
+        {
+          "actionId": "overhead"
+        }
+      ]
     },
     "tool": {
       "toolType": "pickaxe"

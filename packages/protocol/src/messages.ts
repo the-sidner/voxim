@@ -44,10 +44,11 @@ export interface MovementDatagram {
 
   /**
    * Action bitfield. Bit assignments:
-   *   0  attack (LMB)
+   *   0  use_skill (LMB-released — fires the equipped weapon's main action)
    *   1  block (RMB / F)
    *   2  jump (Space)
-   *   3  interact (E)
+   *   3  retired (was interact; player intent is now hover-driven, sent as
+   *              CommandType.PickUp / panel opens client-side)
    *   4  dodge (Shift+dir)
    *   5  crouch (Ctrl)
    *   6  consume (C)
@@ -61,13 +62,25 @@ export interface MovementDatagram {
    * carried here — they are sent as CommandDatagram.
    */
   actions: number; // u32
+
+  /**
+   * Duration the use-skill button was held before release, in milliseconds,
+   * clipped to u16 (~65 s). Zero for taps. Server reads this when ACTION_USE_SKILL
+   * is set on this tick and picks the matching weapon action variant from the
+   * equipped weapon's `swingable.actions[]` (first whose [chargeMin, chargeMax]
+   * window contains chargeMs wins).
+   *
+   * For ranged weapons the action handler also reads chargeMs directly to scale
+   * projectile speed / damage — same field, two consumers.
+   */
+  chargeMs: number; // u16
 }
 
 /** Extract a named action bit from a MovementDatagram.actions bitfield. */
 export const ACTION_USE_SKILL  = 1 << 0;
 export const ACTION_BLOCK      = 1 << 1;
 export const ACTION_JUMP       = 1 << 2;
-export const ACTION_INTERACT   = 1 << 3;
+// 1 << 3 retired (was ACTION_INTERACT) — never reuse.
 export const ACTION_DODGE      = 1 << 4;
 export const ACTION_CROUCH     = 1 << 5;
 export const ACTION_CONSUME    = 1 << 6;
@@ -125,7 +138,9 @@ export const enum CommandType {
                         //   Server validates proximity; bufferSlot 255 = "first free".
   TakeWorkstation = 20, // payload: u8 bufferSlot — moves the named buffer slot back to the
                         //   player's inventory (first free inventory slot).
-  // 21-255 reserved for future commands
+  PickUp          = 21, // payload: u8 strLen + UTF-8 entityId — picks the named ground-item
+                        //   entity into the player's inventory if within reach.
+  // 22-255 reserved for future commands
 }
 
 /**
@@ -162,6 +177,7 @@ export type CommandPayload =
   | { cmd: CommandType.SelectRecipe;   recipeId: string }
   | { cmd: CommandType.LoadWorkstation; inventorySlot: number; bufferSlot: number }
   | { cmd: CommandType.TakeWorkstation; bufferSlot: number }
+  | { cmd: CommandType.PickUp;          entityId: string }
   | { cmd: CommandType.DebugGiveItem;  itemType: string; quantity: number }
   | { cmd: CommandType.DebugSpawnNpc;  npcTemplate: string; quantity: number }
   | { cmd: CommandType.DebugSetTime;   hour: number }

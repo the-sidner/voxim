@@ -3,8 +3,8 @@
  * step dispatch.
  *
  * Responsibilities:
- *   1. Buffer loading — ACTION_INTERACT near a workstation moves the first
- *      item from the player's inventory into the WorkstationBuffer.
+ *   1. Buffer loading — LoadWorkstation / TakeWorkstation commands move
+ *      items between the player's inventory and the WorkstationBuffer.
  *   2. Recipe selection — SelectRecipe command sets activeRecipeId on the
  *      nearest workstation (assembly-step prerequisite).
  *   3. Dispatch  — each tick, every registered RecipeStepHandler with an
@@ -20,13 +20,13 @@
 import type { World, EntityId, Registry } from "@voxim/engine";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import { newEntityId } from "@voxim/engine";
-import { ACTION_INTERACT, hasAction, CommandType } from "@voxim/protocol";
+import { CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore, Recipe, RecipeOutput } from "@voxim/content";
 import { evalFormula, parseFormula } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
-import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
+import { Inventory, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "@voxim/codecs";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
@@ -64,61 +64,13 @@ export class CraftingSystem implements System {
           this._handleLoadWorkstation(world, entityId, cmd.inventorySlot, cmd.bufferSlot);
         } else if (cmd.cmd === CommandType.TakeWorkstation) {
           this._handleTakeWorkstation(world, entityId, cmd.bufferSlot);
+        } else if (cmd.cmd === CommandType.PickUp) {
+          this._handlePickUp(world, entityId, cmd.entityId);
         }
       }
     }
 
-    // ── 1. Placement via ACTION_INTERACT ─────────────────────────────────
-    for (const { entityId, inputState, inventory, interactCooldown } of world.query(
-      InputState, Inventory, InteractCooldown,
-    )) {
-      if (interactCooldown.remaining > 0) {
-        world.set(entityId, InteractCooldown, { remaining: interactCooldown.remaining - 1 });
-        continue;
-      }
-      if (!hasAction(inputState.actions, ACTION_INTERACT)) continue;
-
-      world.set(entityId, InteractCooldown, {
-        remaining: this.content.getGameConfig().crafting.interactCooldownTicks,
-      });
-
-      if (inventory.slots.length === 0) continue;
-
-      const pos = world.get(entityId, Position);
-      if (!pos) continue;
-
-      const stationId = this.findNearestWorkstation(world, pos.x, pos.y);
-      if (!stationId) continue;
-
-      const buffer = world.get(stationId, WorkstationBuffer);
-      if (!buffer) continue;
-
-      const occupied = buffer.slots.filter((s) => s !== null).length;
-      if (occupied >= buffer.capacity) {
-        log.debug("interact: station=%s buffer full (%d/%d)", stationId, occupied, buffer.capacity);
-        continue;
-      }
-
-      // INTERACT-load is the quick "shove the top of inventory onto the
-      // bench" path. Stacks become stack slots (with quantity carried over);
-      // unique entities become unique slots (the entity stays alive in the
-      // world; the buffer just refers to it).
-      const slot = inventory.slots[0];
-      const newInvSlots = inventory.slots.slice(1);
-      world.set(entityId, Inventory, { ...inventory, slots: newInvSlots });
-
-      const newSlot: typeof buffer.slots[number] = slot.kind === "stack"
-        ? { kind: "stack",  itemType: slot.prefabId, quantity: slot.quantity }
-        : { kind: "unique", entityId: slot.entityId, prefabId: this.resolveUniquePrefab(world, slot.entityId) };
-      const newBufferSlots = [...buffer.slots, newSlot];
-      world.set(stationId, WorkstationBuffer, { ...buffer, slots: newBufferSlots });
-
-      const tag = world.get(stationId, WorkstationTag);
-      log.info("placed: player=%s item=%s on station=%s (%s)",
-        entityId, describeSlot(newSlot), stationId, tag?.stationType ?? "?");
-    }
-
-    // ── 2. Per-tick step dispatch ────────────────────────────────────────
+    // ── 1. Per-tick step dispatch ────────────────────────────────────────
     // Every registered step handler's onTick runs once per workstation. The
     // handlers decide whether to act based on their own stepType filter.
     for (const stepId of this.steps.ids()) {
@@ -274,6 +226,64 @@ export class CraftingSystem implements System {
   private resolveUniquePrefab(world: World, entityId: string): string {
     const data = world.get(entityId as EntityId, ItemData);
     return data?.prefabId ?? "";
+  }
+
+  /**
+   * Pick up the named ground-item entity into the player's inventory.
+   * Validates: (a) entity exists with ItemData + Position, (b) player is
+   * within the configured pickup range, (c) inventory has free space.
+   *
+   * Stack items merge with an existing matching stack; otherwise occupy a
+   * new slot. Unique items always take their own slot. The world entity is
+   * destroyed once consumed (stack) or moved into inventory (unique).
+   */
+  private _handlePickUp(world: World, playerId: EntityId, entityId: string): void {
+    const item = world.get(entityId as EntityId, ItemData);
+    const itemPos = world.get(entityId as EntityId, Position);
+    if (!item || !itemPos) {
+      log.debug("pickup: entity=%s missing ItemData/Position", entityId);
+      return;
+    }
+    const playerPos = world.get(playerId, Position);
+    if (!playerPos) return;
+
+    const pickupRadius = this.content.getGameConfig().items.pickupRadius;
+    const dx = playerPos.x - itemPos.x;
+    const dy = playerPos.y - itemPos.y;
+    if (dx * dx + dy * dy > pickupRadius * pickupRadius) {
+      log.debug("pickup: player=%s entity=%s out of range", playerId, entityId);
+      return;
+    }
+
+    const inv = world.get(playerId, Inventory);
+    if (!inv) return;
+
+    // Stack items: merge into an existing matching stack if any, otherwise
+    // append a new stack slot. Unique items always take a fresh unique slot.
+    // The prefab decides via the `stackable: {}` component declaration.
+    const prefab = this.content.getPrefab(item.prefabId);
+    const isStackable = prefab?.components["stackable"] !== undefined;
+
+    let newSlots = inv.slots.slice();
+    if (isStackable) {
+      const merged = newSlots.findIndex((s) => s.kind === "stack" && s.prefabId === item.prefabId);
+      if (merged !== -1) {
+        const existing = newSlots[merged] as { kind: "stack"; prefabId: string; quantity: number };
+        newSlots[merged] = { kind: "stack", prefabId: item.prefabId, quantity: existing.quantity + item.quantity };
+      } else {
+        if (newSlots.length >= inv.capacity) { log.debug("pickup: inventory full"); return; }
+        newSlots = [...newSlots, { kind: "stack", prefabId: item.prefabId, quantity: item.quantity }];
+      }
+      world.destroy(entityId as EntityId);
+    } else {
+      if (newSlots.length >= inv.capacity) { log.debug("pickup: inventory full"); return; }
+      newSlots = [...newSlots, { kind: "unique", entityId }];
+      // Strip Position so the unique entity stops being a world thing —
+      // it'll re-spawn at a new position only if dropped again.
+      world.remove(entityId as EntityId, Position);
+    }
+    world.set(playerId, Inventory, { ...inv, slots: newSlots });
+    log.info("pickup: player=%s item=%s qty=%d", playerId, item.prefabId, item.quantity);
   }
 
   private findNearestWorkstation(world: World, x: number, y: number): EntityId | null {

@@ -23,7 +23,6 @@ import {
   ACTION_USE_SKILL,
   ACTION_BLOCK,
   ACTION_JUMP,
-  ACTION_INTERACT,
   ACTION_DODGE,
   ACTION_CROUCH,
   ACTION_CONSUME,
@@ -175,7 +174,9 @@ export class InputController {
     switch (e.code) {
       case "Space":  this.pendingActions |= ACTION_JUMP;      break;
       case "KeyZ":   this.pendingActions |= ACTION_USE_SKILL; break;
-      case "KeyE":   this.pendingActions |= ACTION_INTERACT;  break;
+      // KeyE produces an Intent client-side (hover-driven interact),
+      // not a server-action bit. T-130 wires this through the IntentRouter;
+      // for now E does nothing on the input layer.
       case "KeyC":   this.pendingActions |= ACTION_CONSUME;   break;
       case "Digit1": this.pendingActions |= ACTION_SKILL_1;   break;
       case "Digit2": this.pendingActions |= ACTION_SKILL_2;   break;
@@ -224,6 +225,9 @@ export class InputController {
       movementX: movX,
       movementY: movY,
       actions,
+      // chargeMs is always 0 in this commit — T-130 will track LMB hold
+      // duration and emit it on release. Server already reads the field.
+      chargeMs: 0,
     };
   }
 

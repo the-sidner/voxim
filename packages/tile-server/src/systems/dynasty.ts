@@ -4,7 +4,7 @@ import { CommandType, TileEvents } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
+import { Inventory, ItemData } from "../components/items.ts";
 import { Inscribed } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { createLogger } from "../logger.ts";
@@ -23,10 +23,8 @@ export class DynastySystem implements System {
   run(world: World, events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().lore;
 
-    for (const { entityId, interactCooldown, inventory, loreLoadout } of
-        world.query(InteractCooldown, Inventory, LoreLoadout)) {
-      if (interactCooldown.remaining > 0) continue;
-
+    for (const { entityId, inventory, loreLoadout } of
+        world.query(Inventory, LoreLoadout)) {
       const commands = this._commands.get(entityId);
       if (!commands) continue;
 
@@ -62,7 +60,6 @@ export class DynastySystem implements System {
             ...inventory,
             slots: [...newSlots, { kind: "unique", entityId: tomeId }],
           });
-          world.set(entityId, InteractCooldown, { remaining: cfg.externaliseConsumeTicks });
 
           log.info("externalised: entity=%s fragment=%s", entityId, fragmentId);
           events.publish(TileEvents.LoreExternalised, { entityId, fragmentId });
@@ -89,7 +86,6 @@ export class DynastySystem implements System {
             ...inventory,
             slots: inventory.slots.filter((_, i) => i !== slotIndex),
           });
-          world.set(entityId, InteractCooldown, { remaining: cfg.externaliseConsumeTicks });
 
           if (!alreadyKnown) {
             world.set(entityId, LoreLoadout, {

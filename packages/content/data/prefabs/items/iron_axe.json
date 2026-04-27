@@ -6,7 +6,11 @@
       "slot": "weapon"
     },
     "swingable": {
-      "weaponActionId": "slash"
+      "actions": [
+        {
+          "actionId": "slash"
+        }
+      ]
     },
     "tool": {
       "toolType": "axe"

@@ -1,6 +1,6 @@
 import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
-import { itemDataCodec, inventoryCodec, craftingQueueCodec, buildCodec } from "@voxim/codecs";
+import { itemDataCodec, inventoryCodec, craftingQueueCodec } from "@voxim/codecs";
 import type { ItemDataData, InventorySlot, InventoryData } from "@voxim/codecs";
 
 // ---- ItemData ----
@@ -52,16 +52,3 @@ export const CraftingQueue = defineComponent({
   }),
 });
 
-// ---- InteractCooldown ----
-// Prevents re-triggering interact every tick while the button is held.
-
-export interface InteractCooldownData {
-  remaining: number;
-}
-
-export const InteractCooldown = defineComponent({
-  name: "interactCooldown" as const,
-  networked: false,
-  codec: buildCodec<InteractCooldownData>({ remaining: { type: "i32" } }),
-  default: (): InteractCooldownData => ({ remaining: 0 }),
-});

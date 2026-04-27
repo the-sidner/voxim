@@ -112,10 +112,16 @@ Deno.test("Equippable — schema/codec agreement", () => {
 });
 
 Deno.test("Swingable — schema/codec agreement", () => {
+  // The codec always writes both chargeMin/chargeMax; on decode they come
+  // back as concrete numbers. Author canonical (already-defaulted) shapes
+  // here so the round-trip equality holds.
   roundTrip(Swingable, [
-    { weaponActionId: "slash" },
-    { weaponActionId: "spear_thrust" },
-    { weaponActionId: "" },
+    { actions: [{ actionId: "slash",        chargeMin: 0,   chargeMax: 65535 }] },
+    { actions: [{ actionId: "spear_thrust", chargeMin: 0,   chargeMax: 65535 }] },
+    { actions: [
+      { actionId: "slash",    chargeMin: 0,   chargeMax: 200 },
+      { actionId: "overhead", chargeMin: 200, chargeMax: 65535 },
+    ] },
   ], "Swingable");
 });
 

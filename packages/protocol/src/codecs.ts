@@ -5,8 +5,8 @@
  * and the client import from the same source.  A format change is a compile
  * error on both ends simultaneously.
  *
- * MovementDatagram — fixed 33-byte little-endian binary (type byte included):
- *   u8  type=1 | u32 seq | u32 tick | f64 timestamp | f32 facing | f32 movX | f32 movY | u32 actions
+ * MovementDatagram — fixed 35-byte little-endian binary (type byte included):
+ *   u8  type=1 | u32 seq | u32 tick | f64 timestamp | f32 facing | f32 movX | f32 movY | u32 actions | u16 chargeMs
  *
  * CommandDatagram — variable-length TLV binary:
  *   u8  type=2 | u32 seq | u8 cmdType | u16 payloadLen | [payloadLen bytes]
@@ -26,7 +26,7 @@ export const DATAGRAM_TYPE_COMMAND  = 2;
 // ---- MovementDatagram codec ----
 
 /** Wire size in bytes, including the leading type byte. */
-const MOVEMENT_SIZE = 33;
+const MOVEMENT_SIZE = 35;
 
 export const movementDatagramCodec: Serialiser<MovementDatagram> = {
   encode(data: MovementDatagram): Uint8Array {
@@ -40,6 +40,7 @@ export const movementDatagramCodec: Serialiser<MovementDatagram> = {
     v.setFloat32(21, data.movementX,       true);
     v.setFloat32(25, data.movementY,       true);
     v.setUint32(29, data.actions   >>> 0, true);
+    v.setUint16(33, Math.min(0xFFFF, Math.max(0, data.chargeMs | 0)), true);
     return new Uint8Array(buf);
   },
 
@@ -57,6 +58,7 @@ export const movementDatagramCodec: Serialiser<MovementDatagram> = {
       movementX: v.getFloat32(21, true),
       movementY: v.getFloat32(25, true),
       actions:   v.getUint32(29, true),
+      chargeMs:  v.getUint16(33, true),
     };
   },
 };
@@ -137,6 +139,15 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
 
     case CommandType.TakeWorkstation:
       return new Uint8Array([cmd.bufferSlot]);
+
+    case CommandType.PickUp: {
+      const strBytes = new TextEncoder().encode(cmd.entityId);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      return u8;
+    }
 
     case CommandType.DebugGiveItem: {
       const strBytes = new TextEncoder().encode(cmd.itemType);
@@ -240,6 +251,12 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
 
     case CommandType.TakeWorkstation:
       return { cmd: CommandType.TakeWorkstation, bufferSlot: bytes[0] };
+
+    case CommandType.PickUp: {
+      const strLen = bytes[0];
+      const entityId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      return { cmd: CommandType.PickUp, entityId };
+    }
 
     case CommandType.DebugGiveItem: {
       const strLen = bytes[0];

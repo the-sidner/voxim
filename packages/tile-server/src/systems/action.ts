@@ -16,7 +16,8 @@
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
-import type { ContentStore, DerivedItemStats } from "@voxim/content";
+import type { ContentStore, DerivedItemStats, SwingableData } from "@voxim/content";
+import { pickWeaponAction } from "../components/item_behaviours.ts";
 import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
@@ -87,7 +88,16 @@ export class ActionSystem implements System {
       const loreLoadout = world.get(entityId, LoreLoadout);
       const strikeSlot = loreLoadout?.skills.findIndex((s) => s?.verb === "strike") ?? -1;
 
-      const weaponActionId = weaponStats.weaponAction ?? unarmedActionId;
+      // Pick the weapon's swing variant from chargeMs. Walks the equipped
+      // weapon prefab's swingable.actions[] (declared light/heavy/etc.) and
+      // returns the first whose [chargeMin, chargeMax] window contains the
+      // player's chargeMs. Naked swing or weapons without a swingable
+      // declaration fall back to unarmed.
+      const swingable = weaponPrefabId
+        ? this.content.getPrefab(weaponPrefabId)?.components["swingable"] as SwingableData | undefined
+        : undefined;
+      const picked = swingable ? pickWeaponAction(swingable, inputState.chargeMs ?? 0) : null;
+      const weaponActionId = picked?.actionId ?? unarmedActionId;
       // Bake in the weapon we swung with. Downstream phases (resolveHits,
       // spawnProjectile) derive stats from these fields so a mid-swing
       // equipment swap can't corrupt damage, blade geometry, or projectile
@@ -103,7 +113,8 @@ export class ActionSystem implements System {
         weaponQuality,
       });
 
-      log.info("swing start: entity=%s weapon=%s action=%s stamina=%f", entityId, weaponPrefabId ?? "unarmed", weaponActionId, stamina?.current ?? 0);
+      log.info("swing start: entity=%s weapon=%s action=%s charge=%dms stamina=%f",
+        entityId, weaponPrefabId ?? "unarmed", weaponActionId, inputState.chargeMs ?? 0, stamina?.current ?? 0);
     }
 
     // ── 2. Advance phase + resolve hits ──────────────────────────────────────

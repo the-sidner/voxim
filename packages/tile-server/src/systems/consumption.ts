@@ -3,7 +3,7 @@ import { ACTION_CONSUME, hasAction } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { InputState, Hunger, Thirst } from "../components/game.ts";
-import { Inventory, InteractCooldown, ItemData } from "../components/items.ts";
+import { Inventory, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { createLogger } from "../logger.ts";
@@ -14,10 +14,9 @@ export class ConsumptionSystem implements System {
   constructor(private readonly content: ContentStore) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {
-    for (const { entityId, inputState, interactCooldown, inventory } of world.query(
-      InputState, InteractCooldown, Inventory,
+    for (const { entityId, inputState, inventory } of world.query(
+      InputState, Inventory,
     )) {
-      if (interactCooldown.remaining > 0) continue;
       if (!hasAction(inputState.actions, ACTION_CONSUME)) continue;
 
       const idx = inventory.slots.findIndex((s) => {
@@ -35,10 +34,6 @@ export class ConsumptionSystem implements System {
         ? world.get(slot.entityId as EntityId, QualityStamped)?.quality ?? 1
         : 1;
       const stats = this.content.deriveItemStats(prefabId, [], quality);
-
-      world.set(entityId, InteractCooldown, {
-        remaining: this.content.getGameConfig().consumption.cooldownTicks,
-      });
 
       let hungerBefore = 0, thirstBefore = 0;
 

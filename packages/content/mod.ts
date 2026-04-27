@@ -46,6 +46,7 @@ export type {
   WeightData,
   RecipeInput,
   RecipeOutput,
+  SwingableActionEntry,
   Recipe,
   NpcTemplate,
   ResourceNodeYield,

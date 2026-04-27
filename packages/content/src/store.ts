@@ -315,7 +315,6 @@ export class StaticContentStore implements ContentStore {
     const edible = c["edible"] as { food?: number; water?: number } | undefined;
     const illuminator = c["illuminator"] as { radius?: number; color?: number; intensity?: number; flicker?: number } | undefined;
     const tool = c["tool"] as { toolType?: string } | undefined;
-    const swingable = c["swingable"] as { weaponActionId?: string } | undefined;
 
     const stats: DerivedItemStats = { weight: weight?.baseWeight ?? 1 };
     if (armor?.reduction !== undefined) stats.armorReduction = armor.reduction * quality;
@@ -329,7 +328,6 @@ export class StaticContentStore implements ContentStore {
       stats.lightFlicker = illuminator.flicker;
     }
     if (tool?.toolType) stats.toolType = tool.toolType;
-    if (swingable?.weaponActionId) stats.weaponAction = swingable.weaponActionId;
 
     return stats;
   }

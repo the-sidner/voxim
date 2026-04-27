@@ -213,6 +213,13 @@ export interface InputStateData {
   movementX: number;
   movementY: number;
   actions: number;
+  /**
+   * Duration the use-skill button was held before release, in milliseconds.
+   * Written when ACTION_USE_SKILL is set on this tick; otherwise 0. ActionSystem
+   * reads it to pick the matching weapon action variant from the equipped
+   * weapon's `swingable.actions[]`.
+   */
+  chargeMs: number;
   seq: number;
   timestamp: number;
   rttMs: number;
@@ -223,6 +230,7 @@ export const inputStateCodec: Serialiser<InputStateData> = buildCodec<InputState
   movementX: { type: "f32" },
   movementY: { type: "f32" },
   actions: { type: "i32" },
+  chargeMs: { type: "i32" },
   seq: { type: "i32" },
   timestamp: { type: "f64" },
   rttMs: { type: "f32" },

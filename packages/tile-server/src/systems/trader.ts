@@ -4,7 +4,7 @@ import type { CommandPayload } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
-import { Inventory, InteractCooldown } from "../components/items.ts";
+import { Inventory } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
 import { TraderInventory } from "../components/trader.ts";
 import { createLogger } from "../logger.ts";
@@ -33,9 +33,6 @@ export class TraderSystem implements System {
 
     for (const [entityId, commands] of this._commands) {
       if (!world.isAlive(entityId)) continue;
-
-      const interactCooldown = world.get(entityId, InteractCooldown);
-      if (!interactCooldown || interactCooldown.remaining > 0) continue;
 
       const pos = world.get(entityId, Position);
       if (!pos) continue;
@@ -70,7 +67,6 @@ export class TraderSystem implements System {
           const newSlots = deductItem(inv.slots, cfg.currencyItemType, listing.buyPrice);
           addItem(newSlots, listing.itemType, 1);
           world.set(entityId, Inventory, { ...inv, slots: newSlots });
-          world.set(entityId, InteractCooldown, { remaining: cfg.cooldownTicks });
 
           if (listing.stock > 0) {
             const newListings = traderInv.listings.map((l, i) =>
@@ -101,7 +97,6 @@ export class TraderSystem implements System {
           const newSlots = deductItem(inv.slots, listing.itemType, 1);
           addItem(newSlots, cfg.currencyItemType, listing.sellPrice);
           world.set(entityId, Inventory, { ...inv, slots: newSlots });
-          world.set(entityId, InteractCooldown, { remaining: cfg.cooldownTicks });
 
           log.info("sell: seller=%s item=%s price=%d", entityId, listing.itemType, listing.sellPrice);
           events.publish(TileEvents.TradeCompleted, {

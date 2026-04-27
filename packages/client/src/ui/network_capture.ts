@@ -11,7 +11,7 @@
 import { signal } from "@preact/signals";
 import type { MovementDatagram, BinaryStateMessage, WorldSnapshot } from "@voxim/protocol";
 import {
-  ACTION_USE_SKILL, ACTION_BLOCK, ACTION_JUMP, ACTION_INTERACT,
+  ACTION_USE_SKILL, ACTION_BLOCK, ACTION_JUMP,
   ACTION_DODGE, ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4,
 } from "@voxim/protocol";
 
@@ -79,7 +79,6 @@ function decodeActions(bits: number): Record<string, boolean> {
     USE_SKILL: !!(bits & ACTION_USE_SKILL),
     BLOCK:     !!(bits & ACTION_BLOCK),
     JUMP:      !!(bits & ACTION_JUMP),
-    INTERACT:  !!(bits & ACTION_INTERACT),
     DODGE:     !!(bits & ACTION_DODGE),
     SKILL_1:   !!(bits & ACTION_SKILL_1),
     SKILL_2:   !!(bits & ACTION_SKILL_2),

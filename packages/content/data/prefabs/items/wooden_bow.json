@@ -6,7 +6,11 @@
       "slot": "weapon"
     },
     "swingable": {
-      "weaponActionId": "bow_shot"
+      "actions": [
+        {
+          "actionId": "bow_shot"
+        }
+      ]
     },
     "weight": {
       "baseWeight": 1
