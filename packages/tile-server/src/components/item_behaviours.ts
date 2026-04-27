@@ -201,6 +201,7 @@ const placeableSchema = v.object({
   requiresToolType: v.optional(v.string()),
   reach: v.optional(v.number()),
   cellMustBeEmpty: v.optional(v.boolean()),
+  tool: v.optional(v.picklist(["single", "polyline"])),
 });
 
 export const Placeable = defineComponent({
@@ -214,18 +215,21 @@ export const Placeable = defineComponent({
       w.writeStr(v.requiresToolType ?? "");
       w.writeF32(v.reach ?? -1);
       w.writeU8(v.cellMustBeEmpty ? 1 : 0);
+      w.writeStr(v.tool ?? "single");
       return w.toBytes();
     },
     decode(b: Uint8Array): PlaceableData {
       const r = new WireReader(b);
       const alignment = r.readStr() as PlaceableData["alignment"];
-      const tool = r.readStr();
+      const requiresToolType = r.readStr();
       const reach = r.readF32();
       const cellMustBeEmpty = r.readU8() === 1;
+      const tool = r.readStr() as PlaceableData["tool"];
       const out: PlaceableData = { alignment };
-      if (tool !== "") out.requiresToolType = tool;
+      if (requiresToolType !== "") out.requiresToolType = requiresToolType;
       if (reach >= 0) out.reach = reach;
       if (cellMustBeEmpty) out.cellMustBeEmpty = true;
+      if (tool && tool !== "single") out.tool = tool;
       return out;
     },
   },

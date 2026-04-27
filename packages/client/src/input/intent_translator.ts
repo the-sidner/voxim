@@ -3,7 +3,7 @@
  * IntentTranslator — turns RawEvents into typed Intents.
  *
  * Owns transient input state that doesn't belong on the wire: held keys,
- * facing angle, RMB long-press timer, accumulated one-shot action bits.
+ * facing angle, RMB-down flag, accumulated one-shot action bits.
  * Charging gestures (LMB hold) are mirrored into the global HoldState
  * signal so UI components (charge bar, build ghost) can subscribe.
  *
@@ -13,13 +13,14 @@
  *
  * Mode rules:
  *   normal + LMB-down → start charge
- *   normal + LMB-up   → emit world-main-action { chargeMs }
- *   normal + RMB-down + hammer equipped → start RMB long-press timer
- *   normal + RMB-up + hammer equipped, held < 300ms → place-blueprint
- *   normal + RMB-up + hammer equipped, held ≥ 300ms → already opened radial
- *   normal + RMB-down + no hammer → block-start
- *   normal + RMB-up   + no hammer → block-end
- *   any   + KeyE-down → interact (with current hover)
+ *   normal + LMB-up   → world-main-action { chargeMs }
+ *   normal + RMB-down + hammer equipped → open-build-radial
+ *   normal + RMB-down + no hammer       → block-start
+ *   normal + RMB-up   + no hammer       → block-end
+ *   build  + LMB-up   → build-action  (place / anchor)
+ *   build  + RMB-up   → build-undo    (pop anchor or exit)
+ *   build  + ESC      → build-cancel
+ *   any    + KeyE-down → interact (with current hover)
  *
  * UI events: when the click target is an interactive UI element, world
  * intents are suppressed — the UI's own onClick handlers run.
@@ -37,7 +38,7 @@ import {
   ACTION_SKILL_3,
   ACTION_SKILL_4,
 } from "@voxim/protocol";
-import { holdState, hoverState } from "./context.ts";
+import { holdState, hoverState, modeState } from "./context.ts";
 import type { IntentRouter } from "./intent_router.ts";
 import type { RawEvent } from "./input_capture.ts";
 import { targetIsInteractiveUI } from "./input_capture.ts";
@@ -52,8 +53,6 @@ const GAME_KEYS = new Set([
   "Escape",
 ]);
 
-const RMB_LONGPRESS_MS = 300;
-
 export class IntentTranslator {
   private readonly keys = new Set<string>();
   private facing = 0;
@@ -65,10 +64,6 @@ export class IntentTranslator {
   private mouseCanvasX = 0;
   private mouseCanvasY = 0;
 
-  /** RMB tracking for short-vs-long detection (build-mode only). */
-  private rmbDownAtMs  = 0;
-  private rmbLongTimer = 0;
-  private rmbDidLong   = false;
   /** True while RMB is physically held — drives the held block bit when not in build mode. */
   private rmbDown = false;
 
@@ -120,6 +115,13 @@ export class IntentTranslator {
         // dispatches to whatever handler matches the current hover target.
         this.router.dispatch({ kind: "interact", hover: hoverState.value });
         break;
+      case "Escape":
+        // ESC exits build mode; in normal mode it falls through to the
+        // global modal-stack popper handled by ui_manager.
+        if (modeState.value.kind === "build") {
+          this.router.dispatch({ kind: "build-cancel" });
+        }
+        break;
     }
   }
 
@@ -138,63 +140,67 @@ export class IntentTranslator {
   }
 
   private onMouseDown(e: Extract<RawEvent, { kind: "mouse-down" }>): void {
-    if (targetIsInteractiveUI(e.target)) return;       // UI consumed it
+    if (targetIsInteractiveUI(e.target)) return;
+    const mode = modeState.value;
 
     if (e.button === 0) {
-      // Start LMB charge timer. The charge bar reads HoldState.lmb
-      // reactively; world-main-action fires on release.
-      holdState.value = { lmb: { downAtMs: e.t, canvasX: e.canvasX, canvasY: e.canvasY } };
+      // LMB charge timer only outside build mode — in build mode the click
+      // is an immediate place/anchor with no charge meaning.
+      if (mode.kind === "normal") {
+        holdState.value = { lmb: { downAtMs: e.t, canvasX: e.canvasX, canvasY: e.canvasY } };
+      }
     }
 
     if (e.button === 2) {
       this.rmbDown = true;
-      if (this.buildMode) {
-        // Hammer equipped: schedule the radial pop after RMB_LONGPRESS_MS.
-        this.rmbDownAtMs = e.t;
-        this.rmbDidLong  = false;
-        const cx = e.canvasX, cy = e.canvasY;
-        this.rmbLongTimer = globalThis.setTimeout(() => {
-          this.rmbLongTimer = 0;
-          this.rmbDidLong   = true;
-          this.router.dispatch({ kind: "open-build-radial", canvasX: cx, canvasY: cy });
-        }, RMB_LONGPRESS_MS) as unknown as number;
-      } else {
-        // No build mode: ACTION_BLOCK is held while RMB is down (the
-        // per-frame datagram OR's it in via rmbDown). Emit the start
-        // intent for handlers that want to react to entering block state.
+      if (mode.kind === "normal" && this.buildMode) {
+        // Hammer equipped, normal mode → opening the radial selects the
+        // blueprint and enters build mode. Dispatched on press for fast
+        // response; the existing RadialMenu listens for RMB-up itself to
+        // commit the hovered sector.
+        this.router.dispatch({ kind: "open-build-radial", canvasX: e.canvasX, canvasY: e.canvasY });
+      } else if (mode.kind === "normal") {
+        // No hammer: held block. ACTION_BLOCK rides on the per-frame held
+        // bit while rmbDown remains true.
         this.router.dispatch({ kind: "block-start" });
       }
+      // mode.kind === "build" → wait for RMB-up to fire build-undo.
     }
   }
 
   private onMouseUp(e: Extract<RawEvent, { kind: "mouse-up" }>): void {
+    const mode = modeState.value;
+
     if (e.button === 0) {
-      const held = holdState.value.lmb;
-      holdState.value = { lmb: null };
-      // If the down was on a UI element we never set holdState — skip.
-      // Otherwise emit a world-main-action with the held duration.
-      if (held && !targetIsInteractiveUI(e.target)) {
-        const chargeMs = Math.max(0, Math.round(e.t - held.downAtMs));
-        this.pendingChargeMs = chargeMs;
-        this.pendingActions |= ACTION_USE_SKILL;
-        this.router.dispatch({ kind: "world-main-action", chargeMs, hover: hoverState.value });
+      if (mode.kind === "build") {
+        // Build mode: every LMB-up commits a placement/anchor.
+        if (!targetIsInteractiveUI(e.target)) {
+          this.router.dispatch({ kind: "build-action", canvasX: e.canvasX, canvasY: e.canvasY });
+        }
+      } else {
+        // Normal mode: emit world-main-action with charged duration.
+        const held = holdState.value.lmb;
+        holdState.value = { lmb: null };
+        if (held && !targetIsInteractiveUI(e.target)) {
+          const chargeMs = Math.max(0, Math.round(e.t - held.downAtMs));
+          this.pendingChargeMs = chargeMs;
+          this.pendingActions |= ACTION_USE_SKILL;
+          this.router.dispatch({ kind: "world-main-action", chargeMs, hover: hoverState.value });
+        }
       }
     }
 
     if (e.button === 2) {
       this.rmbDown = false;
-      if (this.buildMode) {
-        if (this.rmbLongTimer) {
-          globalThis.clearTimeout(this.rmbLongTimer);
-          this.rmbLongTimer = 0;
-        }
-        if (!this.rmbDidLong) {
-          // Short tap → place blueprint at cursor.
-          this.router.dispatch({ kind: "place-blueprint", canvasX: e.canvasX, canvasY: e.canvasY });
-        }
-      } else {
+      if (mode.kind === "build") {
+        // Build mode: pop the last anchor (or exit if no anchor staged).
+        this.router.dispatch({ kind: "build-undo" });
+      } else if (!this.buildMode) {
+        // No-hammer normal mode: end the held block.
         this.router.dispatch({ kind: "block-end" });
       }
+      // Hammer + normal mode: RMB-up is the radial commit, owned by
+      // RadialMenu's own listener — nothing to dispatch from here.
     }
   }
 
@@ -223,13 +229,9 @@ export class IntentTranslator {
     let held = 0;
     if (this.keys.has("ControlLeft") || this.keys.has("ControlRight")) held |= ACTION_CROUCH;
     if (this.keys.has("KeyF")) held |= ACTION_BLOCK;
-    // RMB-held block (no hammer) — mirrors the legacy ACTION_BLOCK while RMB is down.
-    // Translator tracks via the held key set for symmetry, but RMB isn't a key,
-    // so we read the long-press timer state instead: block stays held while
-    // we're outside build mode and RMB is down (rmbDownAtMs != 0 unset).
-    // For T-130 we rely on the block-start / block-end intents to set/clear
-    // a server-side "blocking" flag in the future; for now ACTION_BLOCK
-    // remains the wire mechanism. Re-emit while the bit is needed:
+    // No-hammer normal mode: RMB held re-emits ACTION_BLOCK every frame so the
+    // server-side block stays active. block-start / block-end intents are
+    // dispatched alongside but for now ACTION_BLOCK remains the wire mechanism.
     if (!this.buildMode && this.rmbDown) held |= ACTION_BLOCK;
 
     const actions = this.pendingActions | held;

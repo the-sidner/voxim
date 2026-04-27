@@ -15,9 +15,11 @@ import { InputCapture } from "./input/input_capture.ts";
 import { IntentRouter } from "./input/intent_router.ts";
 import { IntentTranslator } from "./input/intent_translator.ts";
 import type { Intent } from "./input/intents.ts";
+import { modeState, cursorCellState, type WorldCell } from "./input/context.ts";
 import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
+import { BuildGhostRenderer } from "./render/build_ghost.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
 import { makeWorkstationHandler, resourceNodeHandler, groundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
@@ -76,6 +78,7 @@ export class VoximGame {
   private predictor: Predictor | null = null;
   private lastFrameTime = 0;
   private interactionSystem: InteractionSystem | null = null;
+  private buildGhost: BuildGhostRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
@@ -149,6 +152,12 @@ export class VoximGame {
               if (newBuildMode !== this.input.buildMode) {
                 console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.prefabId ?? "none"} toolType=${toolType ?? "none"}`);
                 this.input.buildMode = newBuildMode;
+                // Hammer unequipped while in build mode → cancel any staged
+                // blueprint selection. Routed through the intent so handlers
+                // stay the single source of mode-clear logic.
+                if (!newBuildMode && modeState.value.kind === "build") {
+                  this.intentRouter?.dispatch({ kind: "build-cancel" });
+                }
               }
             }
           }
@@ -377,6 +386,12 @@ export class VoximGame {
 
     this._registerIntentHandlers();
 
+    // Build-mode ghost renderer — subscribes to modeState + cursorCellState.
+    this.buildGhost = new BuildGhostRenderer(
+      this.renderer.scene,
+      (x, y) => this.world.getTerrainHeight(x, y),
+    );
+
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
       // deno-lint-ignore no-explicit-any
@@ -429,6 +444,18 @@ export class VoximGame {
     // Update hover highlight — must happen after input so mouse coords are current
     if (this.input && this.interactionSystem) {
       this.interactionSystem.update(this.input.mouseX, this.input.mouseY);
+    }
+    // Publish the cursor's world cell so build-mode subscribers (ghost
+    // renderer) can read it reactively. Done every frame so the ghost
+    // tracks cursor movement without a per-frame poll on each subscriber.
+    if (this.input) {
+      const cell = this._cellFromCanvas(this.input.mouseX, this.input.mouseY);
+      const prev = cursorCellState.value;
+      if (!cell) {
+        if (prev !== null) cursorCellState.value = null;
+      } else if (!prev || prev.cellX !== cell.cellX || prev.cellY !== cell.cellY) {
+        cursorCellState.value = cell;
+      }
     }
     this.renderer?.render(this.serverTick, predictedPos);
 
@@ -556,22 +583,64 @@ export class VoximGame {
       },
     });
 
-    // Build-mode wires (legacy single-shot for T-130; T-131 reworks).
+    // Build-mode actions (T-131). Single-tool blueprints place one cell per
+    // LMB. Polyline-tool blueprints anchor the chain on the first LMB and
+    // commit a Bresenham-stamped wall on each subsequent LMB, leaving the
+    // cursor cell as the new anchor for the next segment.
     router.register({
-      id: "build-place",
+      id: "build-action",
       priority: 30,
       claim: (intent: Intent) => {
-        if (intent.kind !== "place-blueprint") return false;
-        const me = this.playerId ? this.world.get(this.playerId) : null;
-        const groundZ = me?.position?.z ?? 4.0;
-        const worldPos = this.renderer?.getCursorWorldPos(intent.canvasX, intent.canvasY, groundZ);
-        if (!worldPos) return true;
-        this._handleUIAction({
-          type: "place_blueprint",
-          structureType: uiState.value.selectedBlueprint,
-          worldX: worldPos.x,
-          worldY: worldPos.y,
-        });
+        if (intent.kind !== "build-action") return false;
+        const mode = modeState.value;
+        if (mode.kind !== "build") return true;
+        const cell = this._cellFromCanvas(intent.canvasX, intent.canvasY);
+        if (!cell) return true;
+        if (mode.tool === "single") {
+          this._sendPlace(mode.blueprintId, cell);
+        } else {
+          // Polyline: first click places the corner and anchors. Subsequent
+          // clicks stamp every cell from the previous anchor up to the new
+          // one (start exclusive — already placed) and re-anchor at the new.
+          if (!mode.polyline) {
+            this._sendPlace(mode.blueprintId, cell);
+          } else {
+            for (const c of bresenhamCells(mode.polyline.lastAnchor, cell)) {
+              this._sendPlace(mode.blueprintId, c);
+            }
+          }
+          modeState.value = { ...mode, polyline: { lastAnchor: cell } };
+        }
+        return true;
+      },
+    });
+
+    // Build-undo: pop the polyline anchor; if there's nothing staged, exit
+    // build mode entirely (same effect as build-cancel).
+    router.register({
+      id: "build-undo",
+      priority: 30,
+      claim: (intent: Intent) => {
+        if (intent.kind !== "build-undo") return false;
+        const mode = modeState.value;
+        if (mode.kind !== "build") return true;
+        if (mode.tool === "polyline" && mode.polyline) {
+          modeState.value = { ...mode, polyline: undefined };
+        } else {
+          modeState.value = { kind: "normal" };
+          patchUI({ selectedBlueprint: "" });
+        }
+        return true;
+      },
+    });
+
+    router.register({
+      id: "build-cancel",
+      priority: 30,
+      claim: (intent: Intent) => {
+        if (intent.kind !== "build-cancel") return false;
+        modeState.value = { kind: "normal" };
+        patchUI({ selectedBlueprint: "", radialMenu: null });
         return true;
       },
     });
@@ -584,6 +653,25 @@ export class VoximGame {
         this._handleUIAction({ type: "open_build_menu", canvasX: intent.canvasX, canvasY: intent.canvasY });
         return true;
       },
+    });
+  }
+
+  /** Map the canvas-space cursor to the integer world cell beneath it. */
+  private _cellFromCanvas(canvasX: number, canvasY: number): WorldCell | null {
+    const me = this.playerId ? this.world.get(this.playerId) : null;
+    const groundZ = me?.position?.z ?? 4.0;
+    const worldPos = this.renderer?.getCursorWorldPos(canvasX, canvasY, groundZ);
+    if (!worldPos) return null;
+    return { cellX: Math.floor(worldPos.x), cellY: Math.floor(worldPos.y) };
+  }
+
+  private _sendPlace(blueprintId: string, cell: WorldCell): void {
+    this._sendCommand({
+      cmd: CommandType.Place,
+      source: "prefab",
+      prefabId: blueprintId,
+      worldX: cell.cellX + 0.5,
+      worldY: cell.cellY + 0.5,
     });
   }
 
@@ -691,10 +779,15 @@ export class VoximGame {
         patchUI({ radialMenu: { x: action.canvasX, y: action.canvasY } });
         break;
 
-      case "select_blueprint":
+      case "select_blueprint": {
         console.log(`[Build] selected blueprint type=${action.structureType}`);
         patchUI({ selectedBlueprint: action.structureType, radialMenu: null });
+        const prefab = itemPrefabsData.find((p: Prefab) => p.id === action.structureType);
+        const placeable = prefab?.components.placeable as { tool?: "single" | "polyline" } | undefined;
+        const tool = placeable?.tool ?? "single";
+        modeState.value = { kind: "build", blueprintId: action.structureType, tool };
         break;
+      }
 
       // Not yet implemented — log for discoverability during development.
       case "split_stack":
@@ -784,6 +877,8 @@ export class VoximGame {
     cancelAnimationFrame(this.animFrameId);
     this.interactionSystem?.dispose();
     this.interactionSystem = null;
+    this.buildGhost?.dispose();
+    this.buildGhost = null;
     this.inputCapture?.dispose();
     this.inputCapture = null;
     this.input = null;
@@ -796,6 +891,33 @@ export class VoximGame {
 }
 
 // ---- helpers ----
+
+/**
+ * Bresenham line in cell space, inclusive of both endpoints. Used by polyline
+ * blueprints to stamp a wall across every cell between two corners with one
+ * Place command per cell.
+ */
+function bresenhamCells(a: WorldCell, b: WorldCell): WorldCell[] {
+  const cells: WorldCell[] = [];
+  let x0 = a.cellX, y0 = a.cellY;
+  const x1 = b.cellX, y1 = b.cellY;
+  const dx = Math.abs(x1 - x0);
+  const dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  // Skip the starting cell — it's the previous anchor and already placed.
+  let first = true;
+  while (true) {
+    if (!first) cells.push({ cellX: x0, cellY: y0 });
+    first = false;
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+  return cells;
+}
 
 /**
  * Convert an itemType id (e.g. "wooden_sword") to a display label ("Wooden Sword").

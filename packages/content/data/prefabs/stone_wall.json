@@ -4,7 +4,8 @@
     "placeable": {
       "alignment": "cell-aligned",
       "requiresToolType": "hammer",
-      "cellMustBeEmpty": true
+      "cellMustBeEmpty": true,
+      "tool": "polyline"
     },
     "blueprint": {
       "structureType": "stone_wall",

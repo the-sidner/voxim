@@ -34,14 +34,35 @@ export const holdState = signal<{ lmb: LmbHold | null }>({ lmb: null });
 /**
  * Persistent mode the player is in. "normal" is the default — combat,
  * harvesting, etc. "build" is entered via the radial menu when a hammer
- * is equipped (T-131 makes this stateful with polyline tracking; T-130
- * carries the legacy single-shot place flow as `selectedBlueprint`).
+ * is equipped, exited on ESC / hammer unequip / explicit cancel.
  *
- * Mode transitions are fired as Intents; this signal just snapshots the
+ * Build mode carries the chosen blueprint id, the placement tool inferred
+ * from the blueprint's `placeable.tool` field, and (for polyline tools)
+ * the running anchor position. The build ghost renderer subscribes to
+ * this signal + the cursor cell to draw the preview.
+ *
+ * Mode transitions are fired as Intents; this signal snapshots the
  * current state for translator + renderer reads.
  */
+export interface WorldCell {
+  cellX: number;
+  cellY: number;
+}
+
 export type Mode =
   | { kind: "normal" }
-  | { kind: "build"; blueprintId: string };
+  | {
+      kind: "build";
+      blueprintId: string;
+      tool: "single" | "polyline";
+      polyline?: { lastAnchor: WorldCell };
+    };
 
 export const modeState = signal<Mode>({ kind: "normal" });
+
+/**
+ * Cursor's world cell, mirrored every frame from the renderer's
+ * cursor-projection so the build ghost reads it reactively. Null when
+ * the cursor isn't over the playable terrain.
+ */
+export const cursorCellState = signal<WorldCell | null>(null);

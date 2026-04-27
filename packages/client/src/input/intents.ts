@@ -35,8 +35,18 @@ export type Intent =
   // ── Build mode ────────────────────────────────────────────────────────
   | { kind: "open-build-radial"; canvasX: number; canvasY: number }
   | { kind: "select-blueprint";  blueprintId: string }
-  | { kind: "place-blueprint";   canvasX: number; canvasY: number }
+  /**
+   * LMB while in build mode. Single-tool blueprints place at the cursor cell;
+   * polyline-tool blueprints either set the first anchor or commit a wall
+   * line of segments from the previous anchor and re-anchor at the new cell.
+   */
+  | { kind: "build-action";      canvasX: number; canvasY: number }
+  /**
+   * RMB tap in build mode. Polyline tools pop the last anchor; if no anchor
+   * is staged, exits build mode (same effect as build-cancel).
+   */
   | { kind: "build-undo" }
+  /** ESC / hammer unequip: clear chain and exit build mode. */
   | { kind: "build-cancel" }
 
   // ── UI passthrough — every existing UIAction shape becomes an intent. ─

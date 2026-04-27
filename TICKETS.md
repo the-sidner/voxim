@@ -1192,7 +1192,7 @@ side, right side, near face, far face). Shows the physical space the blade swept
 than a tip-only ribbon. Trail width driven by the widest AABB cross-section dimension.
 
 ### T-128 · Input system rewrite — Intent router + charged attacks + build polyline
-Effort: L   Status: todo
+Effort: L   Status: done   (delivered as T-129 + T-130 + T-131)
 
 Replace the current ad-hoc click/key surface with a single Intent-based
 pipeline. Add charged attacks (server-decided, charge_ms on the wire), a
@@ -1314,7 +1314,7 @@ remain (`grep ACTION_INTERACT packages/` is empty); no InteractCooldown
 references remain; crafting system's run() no longer mentions INTERACT.
 
 ### T-130 · Client: input system rewrite — InputCapture / IntentRouter / Mode / charge bar
-Effort: L   Status: todo   Phase 2 of T-128
+Effort: L   Status: done   Commit: 84adcd0   Phase 2 of T-128
 
 The big landing. Replaces InputController + the scattered Preact click
 plumbing with the Intent pipeline.
@@ -1390,7 +1390,7 @@ the panel; clicking a panel button doesn't attack the world; the charge
 bar fills while LMB is held.
 
 ### T-131 · Build mode polyline + ghost preview
-Effort: M   Status: todo   Phase 3 of T-128
+Effort: M   Status: done   Phase 3 of T-128
 
 Build mode becomes a stateful tool with proper preview rendering and a
 chain-placement workflow for line blueprints (walls).

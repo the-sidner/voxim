@@ -282,6 +282,17 @@ export interface PlaceableData {
    * the target cell. Only meaningful with alignment="cell-aligned".
    */
   cellMustBeEmpty?: boolean;
+  /**
+   * Client-side build-mode tool used for this blueprint:
+   *   "single"   — LMB places one instance at the cursor cell. Default.
+   *   "polyline" — LMB sets corner anchors; segments commit immediately
+   *                 along the line between the previous anchor and the new
+   *                 one. RMB pops the last anchor, ESC clears the chain.
+   *
+   * The server doesn't read this field — placement is one Place command per
+   * cell either way. The client renders ghost previews accordingly.
+   */
+  tool?: "single" | "polyline";
 }
 export interface EdibleData { food: number; water: number; health: number; stamina: number; }
 export interface IlluminatorData { radius: number; color: number; intensity: number; flicker: number; }
