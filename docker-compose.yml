@@ -102,6 +102,9 @@ services:
       TLS_CERT: /app/certs/cert.pem
       TICK_RATE: ${COORDINATOR_TICK_RATE:-1}
       WORLD_SEED: ${WORLD_SEED:-1}
+      WORLD_TILES: ${WORLD_TILES:-tile_0,tile_1,tile_2,tile_3}
+      WORLD_WIDTH: ${WORLD_WIDTH:-2}
+      WORLD_HEIGHT: ${WORLD_HEIGHT:-2}
     volumes:
       - voxim-certs:/app/certs:ro
     restart: unless-stopped

@@ -22,7 +22,7 @@
  *   deno task tile
  */
 import { TileServer } from "./mod.ts";
-import { createPool, PgTileSaveRepo } from "@voxim/db";
+import { createPool, PgTileSaveRepo, PgWorldMapRepo } from "@voxim/db";
 
 // Prevent WebTransport session timeouts and other async edge-cases from
 // crashing the process. These are expected during normal client disconnects.
@@ -50,10 +50,10 @@ const key  = await Deno.readTextFile(keyPath);
 
 // Persistence is opt-in by DATABASE_URL — no DB means no save/load. Useful
 // for ephemeral test runs and the early bootstrap path before the DB stack
-// is up.
-const tileSaves = databaseUrl
-  ? new PgTileSaveRepo(createPool({ databaseUrl }))
-  : undefined;
+// is up. Both repos share one pool.
+const pool = databaseUrl ? createPool({ databaseUrl }) : null;
+const tileSaves = pool ? new PgTileSaveRepo(pool) : undefined;
+const worldMap  = pool ? new PgWorldMapRepo(pool) : undefined;
 
 const server = new TileServer();
 await server.start({
@@ -68,6 +68,7 @@ await server.start({
   ...(gatewayWtUrl   ? { gatewayWtUrl }   : {}),
   ...(serviceSecret  ? { serviceSecret }  : {}),
   ...(tileSaves      ? { tileSaves }      : {}),
+  ...(worldMap       ? { worldMap }       : {}),
   ...(dataDir        ? { dataDir }        : {}),
   devMode,
 });

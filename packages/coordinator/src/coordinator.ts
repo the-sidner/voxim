@@ -12,8 +12,15 @@
  * T-138 (world map), T-142 (city sim) put real behaviour on top.
  */
 import { World } from "@voxim/engine";
-import type { WorldEventEnvelope, TileCommandEnvelope } from "@voxim/protocol";
+import type {
+  WorldEventEnvelope,
+  TileCommandEnvelope,
+  WorldMapPayload,
+} from "@voxim/protocol";
+import { encodeWorldMap, decodeWorldMap } from "@voxim/protocol";
+import type { WorldMapRepo } from "@voxim/db";
 import { GatewayLink } from "./gateway_link.ts";
+import { generateWorldMap } from "./world_map_gen.ts";
 
 export interface CoordinatorConfig {
   /** Gateway WebTransport URL, e.g. "https://gateway:8080". */
@@ -27,6 +34,18 @@ export interface CoordinatorConfig {
   gatewayCertHashHex?: string;
   /** Tick rate in Hz. Default 1 (macro sim is slow). */
   tickRateHz?: number;
+  /** World-map repo. Required for T-138; omit only for unit tests. */
+  worldMapRepo?: WorldMapRepo;
+  /** Seed used when generating the world map for the first time. */
+  worldSeed?: number;
+  /**
+   * Tile ids the world map should cover. Order = row-major grid traversal,
+   * length must equal worldWidth × worldHeight.
+   */
+  worldTileIds?: string[];
+  /** Grid width / height. Default 2×2 for the dev slice. */
+  worldWidth?: number;
+  worldHeight?: number;
 }
 
 export class Coordinator {
@@ -36,8 +55,22 @@ export class Coordinator {
   private tick = 0;
   /** Tracks tiles that have published at least one event recently. */
   private liveTiles = new Set<string>();
+  /** Decoded world map, available after start(). */
+  private worldMap: WorldMapPayload | null = null;
 
   async start(config: CoordinatorConfig): Promise<void> {
+    // Generate / load the world map first — every other macro decision
+    // depends on knowing what the world looks like.
+    if (config.worldMapRepo) {
+      this.worldMap = await ensureWorldMap(config);
+      console.log(
+        `[Coordinator] world map ready: ${this.worldMap.width}×${this.worldMap.height} cells, ` +
+        `seed=${this.worldMap.seed}`,
+      );
+    } else {
+      console.warn("[Coordinator] no world map repo — running without macro world");
+    }
+
     const tickRate = config.tickRateHz ?? 1;
     const intervalMs = Math.max(1, Math.round(1000 / tickRate));
 
@@ -103,4 +136,33 @@ export class Coordinator {
       }
     }
   }
+}
+
+/**
+ * Load the world map from `world_map` if a row exists, otherwise generate
+ * one from config and write it. Idempotent — once a row is in the table
+ * it's authoritative; only `compose-reset` can wipe it.
+ */
+async function ensureWorldMap(config: CoordinatorConfig): Promise<WorldMapPayload> {
+  const repo = config.worldMapRepo!;
+  const existing = await repo.get();
+  if (existing) {
+    try {
+      return decodeWorldMap(existing.payload);
+    } catch (err) {
+      // Schema bumped or row corrupt. Regenerating clobbers the row,
+      // which is fine because the world is regenerable from seed.
+      console.warn(`[Coordinator] world_map row unreadable (${(err as Error).message}); regenerating`);
+    }
+  }
+
+  const seed = config.worldSeed ?? 1;
+  const tileIds = config.worldTileIds ?? ["tile_0", "tile_1", "tile_2", "tile_3"];
+  const width = config.worldWidth ?? 2;
+  const height = config.worldHeight ?? 2;
+
+  const payload = generateWorldMap({ seed, tileIds, width, height });
+  await repo.put({ seed: BigInt(seed), payload: encodeWorldMap(payload) });
+  console.log(`[Coordinator] generated + persisted world map (seed=${seed})`);
+  return payload;
 }

@@ -15,7 +15,8 @@
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
-import type { TileSaveRepo } from "@voxim/db";
+import type { TileSaveRepo, WorldMapRepo } from "@voxim/db";
+import { decodeWorldMap, type WorldMapCell } from "@voxim/protocol";
 import { buildTerrainBuffers, chunksFromBuffers, loadTerrainCache, saveTerrainCache, seedFromTileId } from "@voxim/world";
 import type { WorldGenContent, ZoneGridData } from "@voxim/world";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
@@ -108,6 +109,12 @@ export interface TileServerConfig {
    * (no persistence — fine for short-lived dev sessions).
    */
   tileSaves?: TileSaveRepo;
+  /**
+   * World-map repo (T-138). When set, the tile fetches its macro-cell at
+   * boot. The cell drives biome / elevation / gate placement. Omit to
+   * run with seed-derived defaults only.
+   */
+  worldMap?: WorldMapRepo;
   /**
    * Plain HTTP port for gateway → tile internal communication (handoff, health-check).
    * When set, starts a plain HTTP admin server on this port.
@@ -375,6 +382,24 @@ export class TileServer {
     // Set up persistence (optional — only if tileSaves repo is provided)
     if (config.tileSaves) {
       this.saveManager = new SaveManager(config.tileSaves, config.tileId);
+    }
+
+    // Fetch this tile's macro-cell if the world map is available. The cell
+    // drives biome / elevation tier / gate placement; T-140 spawns gate
+    // entities from cell.gatePositions. If the coordinator hasn't written
+    // the world_map row yet (race on first boot), retry briefly — the
+    // coordinator typically takes a couple seconds at most.
+    let worldCell: WorldMapCell | null = null;
+    if (config.worldMap) {
+      worldCell = await fetchWorldCell(config.worldMap, config.tileId);
+      if (worldCell) {
+        console.log(
+          `[TileServer] world cell: biome=${worldCell.biome} elev=${worldCell.elevationTier} ` +
+          `river=${worldCell.riverFlag} road=${worldCell.roadFlag} gates=${worldCell.gatePositions.length}`,
+        );
+      } else {
+        console.warn(`[TileServer] no world cell for tile_id="${config.tileId}" after retries — using seed defaults`);
+      }
     }
 
     // Populate the world — load from save if one exists, otherwise generate fresh terrain
@@ -937,5 +962,33 @@ export class TileServer {
     }
     console.log(`[TileServer] player ${playerId.slice(0, 8)} disconnected`);
   }
+}
+
+/**
+ * Read this tile's WorldMapCell, retrying for up to ~10s if the row is
+ * absent (covers the cold-start race where tile boots before coordinator
+ * has finished generating the map). DB read errors abort immediately —
+ * we don't loop on misconfiguration.
+ */
+async function fetchWorldCell(repo: WorldMapRepo, tileId: string): Promise<WorldMapCell | null> {
+  const maxAttempts = 10;
+  const delayMs = 1000;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const row = await repo.get();
+      if (row) {
+        const map = decodeWorldMap(row.payload);
+        return map.cells[tileId] ?? null;
+      }
+    } catch (err) {
+      console.warn(`[TileServer] world map read failed (${(err as Error).message})`);
+      return null;
+    }
+    if (i < maxAttempts - 1) {
+      console.log(`[TileServer] world map not ready yet, retrying (${i + 1}/${maxAttempts})`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return null;
 }
 
