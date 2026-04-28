@@ -36,6 +36,7 @@ import type { UserRepo, HeritageRepo, SessionRepo, TileRepo } from "@voxim/db";
 import { SessionService } from "./account/session_service.ts";
 import { AccountEndpoints } from "./account/endpoints.ts";
 import { NoopSpawner, TileOrchestrator, type TileSpawner } from "./edge/tile_orchestrator.ts";
+import { WtServer } from "./edge/wt_server.ts";
 
 function withCors(req: Request, res: Response): Response {
   const origin = req.headers.get("origin") ?? "*";
@@ -52,12 +53,19 @@ export interface GatewayConfig {
   /** Plain-HTTP port for /account/*, /gateway/connect, /register, /heartbeat, /handoff, /internal/*. */
   port: number;
   /**
-   * PEM cert string. Used only to compute the SHA-256 hash returned to
+   * UDP port for the WebTransport service listener (tile + coordinator
+   * privileged streams). Defaults to 8080 if omitted.
+   */
+  wtPort?: number;
+  /**
+   * PEM cert string. Used (a) to compute the SHA-256 hash returned to
    * clients in /gateway/connect responses (so the browser can pin the tile's
-   * matching cert via WebTransport serverCertificateHashes). The gateway
-   * does NOT terminate TLS itself.
+   * matching cert via WebTransport serverCertificateHashes), and (b) as the
+   * server cert for the WT service listener.
    */
   cert: string;
+  /** PEM key string — required for the WT service listener. */
+  key: string;
   repos: {
     users: UserRepo;
     heritage: HeritageRepo;
@@ -82,6 +90,7 @@ export class GatewayServer {
   readonly worldEvents = new EventBus();
   sessions!: SessionService;
   tiles!: TileOrchestrator;
+  wt!: WtServer;
   private users!: UserRepo;
   private accountEndpoints!: AccountEndpoints;
   /** SHA-256 of the gateway's TLS cert (hex). Same cert as tile in dev. */
@@ -119,6 +128,14 @@ export class GatewayServer {
     });
 
     this.tiles.startSweepLoop();
+
+    this.wt = new WtServer({
+      port: config.wtPort ?? 8080,
+      cert: config.cert,
+      key: config.key,
+      serviceSecret: config.serviceSecret,
+    });
+    this.wt.start();
 
     Deno.serve(
       { port: config.port },

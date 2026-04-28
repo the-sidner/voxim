@@ -7,7 +7,7 @@ COPY packages ./packages
 COPY scripts ./scripts
 
 # Pre-cache dependencies so cold start is fast.
-RUN deno cache packages/gateway/main.ts
+RUN deno cache --unstable-net packages/gateway/main.ts
 
 EXPOSE 8080/udp 8081
 

@@ -25,10 +25,12 @@ services:
     command: >-
       deno run --watch
       --allow-net --allow-read --allow-env
+      --unstable-net
       packages/coordinator/main.ts
     volumes:
       - ./packages:/app/packages
       - ./scripts:/app/scripts
+      - voxim-certs:/app/certs:ro
 
   tile-1:
     command: >-

@@ -69,15 +69,16 @@ services:
         condition: service_completed_successfully
     environment:
       ADMIN_PORT: 8081
+      WT_PORT: 8080
       DATABASE_URL: ${DATABASE_URL}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
       TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
     ports:
       # 8081 — plain HTTP for account/handshake/register/handoff/internal
       - "8081:8081"
-      # 8080/udp — reserved for future WebTransport tile<->gateway streams
-      # (T-137). Mapped now so it's free when that lands; the gateway does
-      # not currently listen here.
+      # 8080/udp — WebTransport service streams: tile + coordinator
+      # privileged links (T-137).
       - "8080:8080/udp"
     volumes:
       - voxim-certs:/app/certs:ro
@@ -87,19 +88,22 @@ services:
     build:
       context: .
       dockerfile: docker/coordinator.Dockerfile
-    profiles: ["coordinator"]
-    # Behind a profile until T-137 lands packages/coordinator/main.ts.
-    # Bring up explicitly with: docker compose --profile coordinator up
     depends_on:
       postgres:
         condition: service_healthy
       gateway:
         condition: service_started
+      certs-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TLS_CERT: /app/certs/cert.pem
+      TICK_RATE: ${COORDINATOR_TICK_RATE:-1}
       WORLD_SEED: ${WORLD_SEED:-1}
+    volumes:
+      - voxim-certs:/app/certs:ro
     restart: unless-stopped
 
   tile-1:

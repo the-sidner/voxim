@@ -124,3 +124,26 @@ export interface TileHandoffAck {
   type: "handoff_ack";
   playerId: string;
 }
+
+// ---- service ↔ gateway WT stream handshake (T-137) ----
+// First JSON frame on a privileged WebTransport stream from a tile-server
+// or world-coordinator. Authenticates the peer with the shared service
+// secret and identifies which kind of service it is. The gateway routes
+// future frames on this stream based on `kind`.
+
+export interface ServiceHandshake {
+  type: "service_handshake";
+  /** "tile" — one of the tile-servers; "coordinator" — the world coordinator. */
+  kind: "tile" | "coordinator";
+  /** Service secret matching gateway's VOXIM_SERVICE_SECRET. */
+  secret: string;
+  /** tileId — required when kind === "tile", omitted for coordinator. */
+  id?: string;
+}
+
+export interface ServiceHandshakeAck {
+  type: "service_handshake_ack";
+  ok: boolean;
+  /** Populated when ok === false. */
+  reason?: string;
+}

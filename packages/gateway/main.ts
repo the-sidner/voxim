@@ -36,15 +36,18 @@ import {
 } from "@voxim/db";
 
 const port      = parseInt(Deno.env.get("ADMIN_PORT") ?? "8081");
+const wtPort    = parseInt(Deno.env.get("WT_PORT")    ?? "8080");
 const certPath  = Deno.env.get("TLS_CERT")            ?? "./certs/cert.pem";
+const keyPath   = Deno.env.get("TLS_KEY")             ?? "./certs/key.pem";
 
 const serviceSecret = Deno.env.get("VOXIM_SERVICE_SECRET")
   ?? "dev-local-only-do-not-use-in-prod-0000";
 
-// Cert read for hash only (passed to clients so they can pin the tile's
-// matching cert via WebTransport serverCertificateHashes). The gateway
-// itself does not terminate TLS.
+// Cert hash is returned to clients so they can pin the tile's matching cert
+// via WebTransport serverCertificateHashes. The gateway also uses the same
+// cert + key to terminate TLS for its own service WT listener (T-137).
 const cert = await Deno.readTextFile(certPath);
+const key  = await Deno.readTextFile(keyPath);
 
 const pool = createPool();
 const repos = {
@@ -57,7 +60,9 @@ const repos = {
 const server = new GatewayServer();
 await server.start({
   port,
+  wtPort,
   cert,
+  key,
   repos,
   serviceSecret,
 });
