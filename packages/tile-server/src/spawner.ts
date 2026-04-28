@@ -36,6 +36,7 @@ import { Heritage } from "./components/heritage.ts";
 import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
+import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -330,12 +331,104 @@ export function spawnGroundStack(
   quantity: number,
   pos: { x: number; y: number; z: number },
 ): EntityId {
+  const free = findFreeDropCell(world, pos.x, pos.y, pos.z);
   const id = newEntityId();
   world.create(id);
-  world.write(id, Position, pos);
+  world.write(id, Position, free);
   world.write(id, ItemData, { prefabId, quantity });
   const prefab = content.getPrefab(prefabId);
   if (prefab) installVisualShell(world, content, id, prefab, 0);
   return id;
+}
+
+/**
+ * Pick a cell whose centre is free of resource nodes, blueprints,
+ * workstations, and other ground items so a freshly spawned drop is
+ * actually clickable.  Walks an expanding ring around floor(x, y);
+ * returns the first cell whose centre has no occupant within the cell
+ * bounds.  Falls back to the original position when nothing is free
+ * inside the search radius (rare; only happens in extreme clutter).
+ *
+ * Z is preserved — drops sit at the supplied terrain height.
+ */
+export function findFreeDropCell(
+  world: World,
+  x: number,
+  y: number,
+  z: number,
+): { x: number; y: number; z: number } {
+  const startCx = Math.floor(x);
+  const startCy = Math.floor(y);
+  const occupied = collectOccupiedCells(world, startCx, startCy, DROP_SEARCH_RADIUS);
+
+  // Walk the candidate cells in expanding-ring order so drops favour the
+  // closest free spot to the source.
+  for (const [cx, cy] of cellsByDistance(startCx, startCy, DROP_SEARCH_RADIUS)) {
+    const key = cellKey(cx, cy);
+    if (occupied.has(key)) continue;
+    return { x: cx + 0.5, y: cy + 0.5, z };
+  }
+  return { x, y, z };
+}
+
+const DROP_SEARCH_RADIUS = 3;  // cells; an 8-direction spiral up to 3 cells out (~49 cells).
+
+function cellKey(cx: number, cy: number): string {
+  return `${cx},${cy}`;
+}
+
+function collectOccupiedCells(
+  world: World,
+  centerCx: number,
+  centerCy: number,
+  radius: number,
+): Set<string> {
+  const out = new Set<string>();
+  const minCx = centerCx - radius, maxCx = centerCx + radius;
+  const minCy = centerCy - radius, maxCy = centerCy + radius;
+
+  // One Position query covers everything we care about; we filter in TS.
+  // Smallest-component-set scan in @voxim/engine keeps this O(matches),
+  // not O(all entities).
+  const tag = (id: EntityId): boolean =>
+    world.has(id, ItemData) ||
+    world.has(id, ResourceNode) ||
+    world.has(id, Blueprint) ||
+    world.has(id, WorkstationTag);
+
+  for (const { entityId, position } of world.query(Position)) {
+    const cx = Math.floor(position.x);
+    const cy = Math.floor(position.y);
+    if (cx < minCx || cx > maxCx || cy < minCy || cy > maxCy) continue;
+    if (!tag(entityId)) continue;
+    out.add(cellKey(cx, cy));
+  }
+  return out;
+}
+
+/**
+ * Yield (cx, cy) coordinates in expanding-ring order around (centerCx, centerCy):
+ * the centre cell first, then the 8 neighbours, then the 16 cells in ring 2,
+ * etc., up to `radius`.  Within a ring the order is deterministic but
+ * arbitrary (clockwise from the +x axis is fine).
+ */
+function* cellsByDistance(
+  centerCx: number,
+  centerCy: number,
+  radius: number,
+): Generator<[number, number]> {
+  yield [centerCx, centerCy];
+  for (let r = 1; r <= radius; r++) {
+    // Top + bottom edges (full width including corners)
+    for (let dx = -r; dx <= r; dx++) {
+      yield [centerCx + dx, centerCy - r];
+      yield [centerCx + dx, centerCy + r];
+    }
+    // Left + right edges (excluding corners — already covered above)
+    for (let dy = -r + 1; dy <= r - 1; dy++) {
+      yield [centerCx - r, centerCy + dy];
+      yield [centerCx + r, centerCy + dy];
+    }
+  }
 }
 

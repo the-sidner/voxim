@@ -86,20 +86,16 @@ function spawnYields(
   hitY: number,
   hitZ: number,
 ): void {
-  // Items always drop at the hit contact point as world ItemData entities;
-  // the player picks them up explicitly via the PickUp command (E key or
-  // click on the dropped item). Each yield unit spawns as a separate world
-  // entity with a small random scatter so stacked drops don't pile on a
-  // single pixel.
+  // Drops are world ItemData entities; player picks them up explicitly via
+  // the PickUp command (E key or click).  spawnGroundStack snaps each drop
+  // to the nearest free cell so it doesn't stack on the depleted node or
+  // on a previously dropped yield — an item buried under another entity
+  // is un-hoverable.
   for (const yld of yields) {
     const qty = yld.quantity + Math.floor((harvestPower - 1) * (yld.quantityPerHarvestPower ?? 0));
     if (qty <= 0) continue;
 
-    spawnGroundStack(world, content, yld.itemType, qty, {
-      x: hitX + (Math.random() - 0.5) * 0.6,
-      y: hitY + (Math.random() - 0.5) * 0.6,
-      z: hitZ,
-    });
-    log.info("yield dropped: item=%sx%d at (%.2f,%.2f)", yld.itemType, qty, hitX, hitY);
+    spawnGroundStack(world, content, yld.itemType, qty, { x: hitX, y: hitY, z: hitZ });
+    log.info("yield dropped: item=%sx%d near (%.2f,%.2f)", yld.itemType, qty, hitX, hitY);
   }
 }
