@@ -2,9 +2,10 @@
  * GatewayServer — signaling only, never on the data hot path.
  *
  * What it does:
- *   - Hosts the account service (HTTPS) — register, login, /me
+ *   - Hosts the account service — register, login, /me
  *   - Resolves a session token to a tile address via POST /gateway/connect
- *   - Tracks tile-server registrations and forwards player handoffs between tiles
+ *   - Tracks tile-server registrations + heartbeats; evicts stale ones
+ *   - Forwards player handoffs between tiles
  *
  * What it does NOT do:
  *   - Forward any game data
@@ -15,17 +16,26 @@
  *   - Postgres-backed via `@voxim/db` repositories. The pool is owned by the
  *     caller (main.ts) — server doesn't open or close it.
  *
- * Tile server registration (current — superseded by T-135 heartbeat flow):
- *   Tile servers call POST /register on startup with { tileId, address }.
- *   Stored in TileDirectory (still in-memory until T-135).
+ * Tile lifecycle:
+ *   - Tile-server boots → POST /register
+ *   - Every ~10s: POST /heartbeat (fire-and-forget). If gateway responds
+ *     `known: false`, the tile re-registers.
+ *   - Gateway sweeps every 10s, evicting tiles whose last_heartbeat_at
+ *     is older than 30s.
  */
 import { EventBus } from "@voxim/engine";
 import { WorldEvents } from "@voxim/protocol";
-import type { GatewayConnectRequest, GatewayRegisterRequest, GatewayTileResponse } from "@voxim/protocol";
-import type { UserRepo, HeritageRepo, SessionRepo } from "@voxim/db";
-import { TileDirectory } from "./tile_directory.ts";
+import type {
+  GatewayConnectRequest,
+  GatewayRegisterRequest,
+  GatewayHeartbeatRequest,
+  GatewayHeartbeatResponse,
+  GatewayTileResponse,
+} from "@voxim/protocol";
+import type { UserRepo, HeritageRepo, SessionRepo, TileRepo } from "@voxim/db";
 import { SessionService } from "./account/session_service.ts";
 import { AccountEndpoints } from "./account/endpoints.ts";
+import { NoopSpawner, TileOrchestrator, type TileSpawner } from "./edge/tile_orchestrator.ts";
 
 function withCors(req: Request, res: Response): Response {
   const origin = req.headers.get("origin") ?? "*";
@@ -39,7 +49,7 @@ function withCors(req: Request, res: Response): Response {
 }
 
 export interface GatewayConfig {
-  /** Plain-HTTP port for /account/*, /gateway/connect, /register, /handoff, /internal/*. */
+  /** Plain-HTTP port for /account/*, /gateway/connect, /register, /heartbeat, /handoff, /internal/*. */
   port: number;
   /**
    * PEM cert string. Used only to compute the SHA-256 hash returned to
@@ -48,12 +58,17 @@ export interface GatewayConfig {
    * does NOT terminate TLS itself.
    */
   cert: string;
-  /** Repository for users, heritage, and sessions. Owns the DB pool externally. */
   repos: {
     users: UserRepo;
     heritage: HeritageRepo;
     sessions: SessionRepo;
+    tiles: TileRepo;
   };
+  /**
+   * How to bring up a tile-server when the gateway needs one that isn't
+   * registered. Today: `NoopSpawner` (throws). Future: docker / k8s.
+   */
+  spawner?: TileSpawner;
   /**
    * Shared secret gating the `/internal/*` server-to-server endpoints.
    * Must be non-empty (>=16 chars). Tile servers present this in the
@@ -63,14 +78,13 @@ export interface GatewayConfig {
 }
 
 export class GatewayServer {
-  readonly directory = new TileDirectory();
   /** World event bus — tile servers publish cross-tile events here. Stub: no subscribers yet. */
   readonly worldEvents = new EventBus();
   sessions!: SessionService;
+  tiles!: TileOrchestrator;
   private users!: UserRepo;
   private accountEndpoints!: AccountEndpoints;
-  /** SHA-256 of the gateway's TLS cert (hex). Served via /cert-hash so the
-   *  browser client can pin self-signed dev certs through serverCertificateHashes. */
+  /** SHA-256 of the gateway's TLS cert (hex). Same cert as tile in dev. */
   private certHashHex = "";
 
   async start(config: GatewayConfig): Promise<void> {
@@ -83,6 +97,10 @@ export class GatewayServer {
 
     this.users = config.repos.users;
     this.sessions = new SessionService(config.repos.sessions);
+    this.tiles = new TileOrchestrator({
+      repo: config.repos.tiles,
+      spawner: config.spawner ?? new NoopSpawner(),
+    });
     this.accountEndpoints = new AccountEndpoints({
       users: config.repos.users,
       heritage: config.repos.heritage,
@@ -91,14 +109,16 @@ export class GatewayServer {
     });
 
     this.worldEvents.subscribe(WorldEvents.PlayerCrossedGate, (_payload) => {
-      // TODO: update directory.setPlayerTile, coordinate tile handoff
+      // TODO (T-140): coordinate handoff
     });
     this.worldEvents.subscribe(WorldEvents.TileServerStarted, (_payload) => {
-      // TODO: register the new tile in the directory
+      // TODO (T-139): real event-bus wiring
     });
     this.worldEvents.subscribe(WorldEvents.TileServerStopped, (_payload) => {
-      // TODO: deregister the tile, migrate players
+      // TODO (T-139): deregister + migrate players
     });
+
+    this.tiles.startSweepLoop();
 
     Deno.serve(
       { port: config.port },
@@ -106,10 +126,6 @@ export class GatewayServer {
         try {
           return withCors(req, await this.handleRequest(req));
         } catch (err) {
-          // Errors thrown from handlers MUST go through withCors too — otherwise
-          // the browser sees a 500 with no Access-Control-Allow-* headers and
-          // reports a misleading "CORS Missing Allow Header" instead of the
-          // real failure. Log the cause server-side so we can debug.
           console.error("[Gateway] unhandled error:", err);
           const body = err instanceof Error ? err.message : "internal error";
           return withCors(req, new Response(body, { status: 500 }));
@@ -132,13 +148,9 @@ export class GatewayServer {
     const accountResponse = await this.accountEndpoints.handle(req, url);
     if (accountResponse) return accountResponse;
 
-    if (req.method === "POST" && url.pathname === "/register") {
-      return this.handleRegister(req);
-    }
-
-    if (req.method === "POST" && url.pathname === "/handoff") {
-      return this.handleHandoff(req);
-    }
+    if (req.method === "POST" && url.pathname === "/register")  return this.handleRegister(req);
+    if (req.method === "POST" && url.pathname === "/heartbeat") return this.handleHeartbeat(req);
+    if (req.method === "POST" && url.pathname === "/handoff")   return this.handleHandoff(req);
 
     return new Response("Voxim gateway", { status: 200 });
   }
@@ -152,29 +164,20 @@ export class GatewayServer {
     const userId = await this.sessions.validate(body.token);
     if (!userId) return new Response("unauthenticated", { status: 401 });
 
-    const preferred = await this.directoryForUser(userId);
-    if (!preferred) return new Response("no tile available", { status: 503 });
+    const user = await this.users.getById(userId);
+    if (!user) return new Response("user not found", { status: 401 });
 
-    this.directory.setPlayerTile(userId, preferred.tileId);
+    const tile = await this.tiles.tileFor(userId, user.lastTileId);
+    if (!tile) return new Response("no tile available", { status: 503 });
 
     const response: GatewayTileResponse = {
-      tileId: preferred.tileId,
-      tileAddress: preferred.address,
+      tileId: tile.tileId,
+      tileAddress: tile.address,
       playerId: userId,
       tileCertHashHex: this.certHashHex || undefined,
     };
-    console.log(`[Gateway] user ${userId.slice(0, 8)} → tile ${preferred.tileId} (${preferred.address})`);
+    console.log(`[Gateway] user ${userId.slice(0, 8)} → tile ${tile.tileId} (${tile.address})`);
     return Response.json(response);
-  }
-
-  /**
-   * Choose a tile for a user: prefer their last tile (sticky), fall back to
-   * any registered tile.
-   */
-  private async directoryForUser(userId: string) {
-    const user = await this.users.getById(userId);
-    const preferred = user?.lastTileId ? this.directory.get(user.lastTileId) : null;
-    return preferred ?? this.directory.tileForPlayer(userId);
   }
 
   private async handleHandoff(req: Request): Promise<Response> {
@@ -183,7 +186,7 @@ export class GatewayServer {
       if (!body.destinationTileId || !body.playerId) {
         return new Response("bad request", { status: 400 });
       }
-      const tile = this.directory.get(body.destinationTileId);
+      const tile = await this.tiles.get(body.destinationTileId);
       if (!tile) {
         return new Response(JSON.stringify({ error: "tile not found" }), { status: 404 });
       }
@@ -205,8 +208,30 @@ export class GatewayServer {
       if (body.type !== "register" || !body.tileId || !body.address) {
         return new Response("bad request", { status: 400 });
       }
-      this.directory.register({ tileId: body.tileId, address: body.address, adminUrl: body.adminUrl ?? "" });
+      await this.tiles.register({
+        tileId: body.tileId,
+        address: body.address,
+        adminUrl: body.adminUrl ?? "",
+      });
       return Response.json({ type: "registered", tileId: body.tileId });
+    } catch {
+      return new Response("bad request", { status: 400 });
+    }
+  }
+
+  private async handleHeartbeat(req: Request): Promise<Response> {
+    try {
+      const body = await req.json() as GatewayHeartbeatRequest;
+      if (body.type !== "heartbeat" || !body.tileId) {
+        return new Response("bad request", { status: 400 });
+      }
+      const known = await this.tiles.heartbeat(body.tileId);
+      const response: GatewayHeartbeatResponse = {
+        type: "heartbeat_ack",
+        tileId: body.tileId,
+        known,
+      };
+      return Response.json(response);
     } catch {
       return new Response("bad request", { status: 400 });
     }

@@ -64,6 +64,24 @@ export interface GatewayRegisterResponse {
   tileId: string;
 }
 
+// ---- tile server → gateway (heartbeat) ----
+// Sent every ~10s after registration. The gateway evicts tiles whose last
+// heartbeat is older than its TTL (~30s). If the gateway has no record of
+// the tileId (e.g. the tile was previously evicted while offline), it
+// responds with `known: false` and the tile re-registers.
+
+export interface GatewayHeartbeatRequest {
+  type: "heartbeat";
+  tileId: string;
+}
+
+export interface GatewayHeartbeatResponse {
+  type: "heartbeat_ack";
+  tileId: string;
+  /** false → caller is not registered, must re-register before resuming. */
+  known: boolean;
+}
+
 // ---- client → tile server (join handshake) ----
 // Sent on a bidirectional stream immediately after the WebTransport connection opens.
 // Allows the tile server to reuse a pre-created entity (from a tile handoff) instead

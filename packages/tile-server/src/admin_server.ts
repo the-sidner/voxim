@@ -138,20 +138,84 @@ async function handleAdminRequest(
   });
 }
 
+/**
+ * Default cadence: heartbeat every 10s; gateway evicts after 30s without one.
+ */
+const HEARTBEAT_INTERVAL_MS = 10_000;
+
+interface RegisterParams {
+  gatewayUrl: string;
+  tileId: string;
+  tileAddress: string;
+  adminUrl: string;
+}
+
+async function sendRegister(params: RegisterParams): Promise<boolean> {
+  try {
+    const r = await fetch(`${params.gatewayUrl}/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "register",
+        tileId: params.tileId,
+        address: params.tileAddress,
+        adminUrl: params.adminUrl,
+      }),
+    });
+    if (!r.ok) {
+      console.error(`[TileServer] gateway registration failed: ${r.status}`);
+      return false;
+    }
+    console.log(`[TileServer] registered with gateway as ${params.tileId} → ${params.tileAddress}`);
+    return true;
+  } catch (err) {
+    console.error("[TileServer] could not reach gateway:", err);
+    return false;
+  }
+}
+
+async function sendHeartbeat(gatewayUrl: string, tileId: string): Promise<{ known: boolean } | null> {
+  try {
+    const r = await fetch(`${gatewayUrl}/heartbeat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "heartbeat", tileId }),
+    });
+    if (!r.ok) return null;
+    const ack = await r.json() as { known?: boolean };
+    return { known: ack.known === true };
+  } catch {
+    // Gateway temporarily unreachable — try again next tick. Don't log every
+    // failed beat; the gateway log will show the silence.
+    return null;
+  }
+}
+
+/**
+ * Register with the gateway, then keep the registration alive with periodic
+ * heartbeats. If the gateway evicts us (responds `known: false` — typically
+ * because we were stale and got swept) we re-register.
+ *
+ * Fire-and-forget: kicks off the loop in the background and returns. The
+ * tile-server's tick loop is unaffected by gateway availability.
+ */
 export function registerWithGateway(
   gatewayUrl: string,
   tileId: string,
   tileAddress: string,
   adminUrl: string,
 ): void {
-  fetch(`${gatewayUrl}/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ type: "register", tileId, address: tileAddress, adminUrl }),
-  }).then((r) => {
-    if (!r.ok) console.error(`[TileServer] gateway registration failed: ${r.status}`);
-    else console.log(`[TileServer] registered with gateway as ${tileId} → ${tileAddress}`);
-  }).catch((err: unknown) => {
-    console.error("[TileServer] could not reach gateway:", err);
-  });
+  const params: RegisterParams = { gatewayUrl, tileId, tileAddress, adminUrl };
+
+  void (async () => {
+    await sendRegister(params);
+    while (true) {
+      await new Promise((r) => setTimeout(r, HEARTBEAT_INTERVAL_MS));
+      const ack = await sendHeartbeat(gatewayUrl, tileId);
+      if (ack && !ack.known) {
+        console.warn(`[TileServer] gateway evicted us; re-registering`);
+        await sendRegister(params);
+      }
+    }
+  })();
 }

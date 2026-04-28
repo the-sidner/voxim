@@ -102,6 +102,8 @@ export type {
   GatewayTileResponse,
   GatewayRegisterRequest,
   GatewayRegisterResponse,
+  GatewayHeartbeatRequest,
+  GatewayHeartbeatResponse,
   TileJoinRequest,
   TileJoinAck,
   TileHandoffRequest,

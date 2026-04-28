@@ -2187,7 +2187,7 @@ T-053, T-054, T-055 by giving them concrete substrates; the originals stay
 as the gameplay-level acceptance criteria.
 
 ### T-132 · Postgres + docker-compose dev stack
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 7dc0764
 
 Stand up the multi-process dev environment. No behaviour change yet — gateway
 and tile-server still run with their existing in-memory / file-based state;
@@ -2212,7 +2212,7 @@ Done when: `deno task compose-up` brings up postgres + the existing services
 unchanged, and `psql` to localhost:5432 succeeds.
 
 ### T-133 · `packages/db` — repositories + migrator
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 7dc0764
 
 New workspace package. No consumers yet — that's T-134.
 
@@ -2236,7 +2236,7 @@ cleanly; running it twice is a no-op; each repo has a smoke test that does
 insert → read → update → delete against a real local Postgres.
 
 ### T-134 · Migrate gateway accounts/sessions/heritage to Postgres
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: deac9cc
 
 Replace the file-based `AccountStore` and in-memory `SessionStore` with the
 DB repositories from T-133.
