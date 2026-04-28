@@ -17,27 +17,25 @@
  * ensures ActionSystem sees clean state before we process new projectiles).
  */
 import type { World, EntityId } from "@voxim/engine";
-import { Heightmap, CHUNK_SIZE } from "@voxim/world";
 import type { ContentStore } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import { TileEvents } from "@voxim/protocol";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, Velocity, Facing, InputState } from "../components/game.ts";
-import type { PositionData, VelocityData } from "../components/game.ts";
 import { Hitbox } from "../components/hitbox.ts";
 import { ProjectileData } from "../components/projectile.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import type { DerivedItemStats } from "@voxim/content";
 import { testHitboxIntersection } from "../combat/hit_resolver.ts";
+import { buildTerrainLookup, type TerrainHeightFn } from "../physics/terrain_lookup.ts";
+import { ballisticStep } from "../physics/ballistic.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ProjectileSystem");
 
 export class ProjectileSystem implements System {
   private spatial: SpatialGrid | null = null;
-  /** Heightmap chunk map — built once on first tick; chunks never change. */
-  private heightmapCache: Map<string, Uint16Array | Float32Array> | null = null;
 
   constructor(
     private readonly content: ContentStore,
@@ -52,6 +50,7 @@ export class ProjectileSystem implements System {
     if (!this.spatial) return;
 
     const gravity = this.content.getGameConfig().physics.gravity;
+    const getTerrainHeight: TerrainHeightFn = buildTerrainLookup(world);
 
     // Collect projectiles to destroy after the entity loop (no world.destroy inside inner loop)
     const toDestroy = new Set<EntityId>();
@@ -62,16 +61,17 @@ export class ProjectileSystem implements System {
       const prevPos: Vec3 = { x: position.x, y: position.y, z: position.z };
 
       // ── Physics step ────────────────────────────────────────────────────────
-      const newVelZ = velocity.z - gravity * projectileData.gravityScale * dt;
-      const newPos: PositionData = {
-        x: position.x + velocity.x * dt,
-        y: position.y + velocity.y * dt,
-        z: position.z + velocity.z * dt,
-      };
-      const newVel: VelocityData = { x: velocity.x, y: velocity.y, z: newVelZ };
+      const stepped = ballisticStep(
+        { pos: prevPos, vel: { x: velocity.x, y: velocity.y, z: velocity.z } },
+        gravity,
+        projectileData.gravityScale,
+        dt,
+      );
+      const newPos = stepped.pos;
+      const newVel = stepped.vel;
 
       // ── Terrain collision ────────────────────────────────────────────────────
-      const terrainZ = this.getTerrainHeight(world, newPos.x, newPos.y);
+      const terrainZ = getTerrainHeight(newPos.x, newPos.y);
       if (newPos.z <= terrainZ) {
         log.info("projectile terrain hit: entity=%s pos=(%.1f,%.1f,%.1f) terrain=%.2f",
           entityId, newPos.x, newPos.y, newPos.z, terrainZ);
@@ -184,23 +184,5 @@ export class ProjectileSystem implements System {
     for (const id of toDestroy) {
       world.destroy(id);
     }
-  }
-
-  /** Returns the terrain heightmap value at (x, y), or 0 if no heightmap covers that cell. */
-  private getTerrainHeight(world: World, x: number, y: number): number {
-    if (!this.heightmapCache) {
-      this.heightmapCache = new Map();
-      for (const { heightmap } of world.query(Heightmap)) {
-        this.heightmapCache.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap.data);
-      }
-    }
-    const cellX = Math.floor(x);
-    const cellY = Math.floor(y);
-    const chunkX = Math.floor(cellX / CHUNK_SIZE);
-    const chunkY = Math.floor(cellY / CHUNK_SIZE);
-    const localX = ((cellX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    const localY = ((cellY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    const data = this.heightmapCache.get(`${chunkX},${chunkY}`);
-    return data ? data[localX + localY * CHUNK_SIZE] : 0;
   }
 }

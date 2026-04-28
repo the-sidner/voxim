@@ -1,16 +1,15 @@
 import type { World } from "@voxim/engine";
 import { stepPhysics, vec2Normalize } from "@voxim/engine";
 import type { PhysicsConfig } from "@voxim/engine";
-import { Heightmap, getHeight, worldToChunk, worldToLocal } from "@voxim/world";
-import type { HeightmapData } from "@voxim/world";
 import { ACTION_JUMP, ACTION_CROUCH, hasAction } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { createLogger } from "../logger.ts";
-
-const log = createLogger("PhysicsSystem");
 import { Position, Velocity, Facing, InputState } from "../components/game.ts";
 import { SpeedModifier } from "../components/world.ts";
+import { buildTerrainLookup } from "../physics/terrain_lookup.ts";
+
+const log = createLogger("PhysicsSystem");
 
 /**
  * Physics system — runs every tick for all entities with Position + Velocity + InputState.
@@ -37,10 +36,6 @@ export class PhysicsSystem implements System {
       stepHeight: cfgRaw.stepHeight,
     };
 
-    // Rebuild the heightmap lookup every tick. TerrainDigSystem replaces
-    // Heightmap components when a cell is lowered, so a stored closure would
-    // keep reading the pre-dig typed array. 256 chunks is cheap; revisit
-    // with profiling data if it ever shows up.
     const getHeight = buildTerrainLookup(world);
 
     for (const { entityId, position, velocity, inputState } of world.query(
@@ -81,27 +76,3 @@ export class PhysicsSystem implements System {
   }
 }
 
-function buildTerrainLookup(world: World): (x: number, y: number) => number {
-  const chunks = world.query(Heightmap);
-  const chunkMap = new Map<string, HeightmapData>();
-  for (const { heightmap } of chunks) {
-    chunkMap.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap);
-  }
-
-  // heightmap[cx, cy] is the height of the FLAT-TOPPED CELL that covers world
-  // square [offX+cx, offX+cx+1] × [offZ+cy, offZ+cy+1].  Physics must use the
-  // same semantics: snap to the integer cell that contains (x,y) and return its
-  // height directly — no bilinear interpolation (which was written for the old
-  // vertex-height convention and produces wrong heights near step edges and zero
-  // near chunk boundaries where getHeight returns 0 for out-of-range coords).
-  return (x: number, y: number): number => {
-    const { chunkX, chunkY } = worldToChunk(x, y);
-    const { localX, localY } = worldToLocal(x, y);
-    const hm = chunkMap.get(`${chunkX},${chunkY}`);
-    if (!hm) {
-      log.warn("no heightmap for chunk (%d,%d) — entity at (%.1f,%.1f) in void", chunkX, chunkY, x, y);
-      return 0;
-    }
-    return getHeight(hm, Math.floor(localX), Math.floor(localY));
-  };
-}
