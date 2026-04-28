@@ -8,12 +8,10 @@
  *
  * Hover outline: HoverOutlineRenderer paints the hovered entity onto a separate
  * mask texture (hoverMaskTarget), depth-test off so the silhouette is visible
- * through walls.  This pass:
- *   - dilates the mask with a separable box kernel of radius uHoverRadius
- *     (continuous ring at any radius — much smoother than the old +× sample);
- *   - composites the dilated ring as uHoverColor (rim);
- *   - tints the silhouette interior toward uHoverColor at uHoverFill alpha so
- *     the whole shape reads as "selected", not just the rim.
+ * through walls.  This pass dilates the mask with a square box kernel of
+ * radius uHoverRadius (continuous ring at any radius — much smoother than
+ * the +× sample it replaced) and composites the dilated ring as uHoverColor.
+ * The model itself is left untouched: outline only, no interior wash.
  *
  * Depth texture is reserved for a future packed-depth pass; direct DEPTH_COMPONENT
  * sampling via sampler2D produces undefined results on several WebGL2 drivers due
@@ -43,7 +41,6 @@ const FRAG = /* glsl */`
   uniform float     uHoverActive;
   uniform vec3      uHoverColor;
   uniform float     uHoverRadius;
-  uniform float     uHoverFill;
 
   float luma(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -112,12 +109,8 @@ const FRAG = /* glsl */`
         hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(float(i), float(j))).r);
       }
     }
-    // Rim = dilated minus original; interior wash = mask × uHoverFill.  The
-    // entity reads as "selected" both at the edge and across its body, but
-    // the rim still pops above the wash so the silhouette stays legible.
-    float hRim    = hDil * (1.0 - hMask) * uHoverActive;
-    float hFillA  = hMask * uHoverFill   * uHoverActive;
-    color.rgb = mix(color.rgb, uHoverColor, hFillA);
+    // Rim = dilated minus original.  The model itself stays untouched.
+    float hRim = hDil * (1.0 - hMask) * uHoverActive;
     color.rgb = mix(color.rgb, uHoverColor, hRim);
 
     // Linear → sRGB for canvas output.
@@ -148,8 +141,7 @@ export class EdgePass {
         lumThreshold:  { value: 0.4 },
         uHoverActive:  { value: 0.0 },
         uHoverColor:   { value: new THREE.Color().setRGB(1.0, 0.96, 0.78) },
-        uHoverRadius:  { value: 4.0 },
-        uHoverFill:    { value: 0.18 },
+        uHoverRadius:  { value: 2.0 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
