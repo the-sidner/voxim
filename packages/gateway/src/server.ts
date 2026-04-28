@@ -11,29 +11,22 @@
  *   - Participate in the tick loop
  *   - Know anything about game state
  *
- * Tile server registration:
- *   Tile servers call POST /register on startup with { tileId, address }.
- *   The gateway stores this in TileDirectory. Tile servers are expected to
- *   re-register after a crash; the directory is in-memory (no persistence yet).
+ * Persistence:
+ *   - Postgres-backed via `@voxim/db` repositories. The pool is owned by the
+ *     caller (main.ts) — server doesn't open or close it.
  *
- * Tile transition handoff (stub):
- *   Interface defined in @voxim/protocol (TileHandoffRequest / TileHandoffAck).
- *   Not needed for the single-tile vertical slice — the player always stays on tile_0.
+ * Tile server registration (current — superseded by T-135 heartbeat flow):
+ *   Tile servers call POST /register on startup with { tileId, address }.
+ *   Stored in TileDirectory (still in-memory until T-135).
  */
 import { EventBus } from "@voxim/engine";
 import { WorldEvents } from "@voxim/protocol";
 import type { GatewayConnectRequest, GatewayRegisterRequest, GatewayTileResponse } from "@voxim/protocol";
+import type { UserRepo, HeritageRepo, SessionRepo } from "@voxim/db";
 import { TileDirectory } from "./tile_directory.ts";
-import { AccountStore } from "./account/store.ts";
-import { SessionStore } from "./account/session_store.ts";
+import { SessionService } from "./account/session_service.ts";
 import { AccountEndpoints } from "./account/endpoints.ts";
 
-/**
- * Permissive CORS for local dev: echo the caller's Origin so credentials work,
- * advertise the methods/headers the account endpoints actually use. The
- * gateway is reachable only from a browser anyway — no value in tightening
- * this further for the vertical slice.
- */
 function withCors(req: Request, res: Response): Response {
   const origin = req.headers.get("origin") ?? "*";
   const headers = new Headers(res.headers);
@@ -46,19 +39,21 @@ function withCors(req: Request, res: Response): Response {
 }
 
 export interface GatewayConfig {
+  /** Plain-HTTP port for /account/*, /gateway/connect, /register, /handoff, /internal/*. */
   port: number;
-  /** PEM TLS certificate (WebTransport requires TLS). */
-  cert: string;
-  /** PEM TLS key. */
-  key: string;
   /**
-   * Tile servers to register at startup (vertical slice shortcut).
-   * In production: tile servers register themselves via POST /register.
-   * adminUrl defaults to "http://localhost:14434" when omitted.
+   * PEM cert string. Used only to compute the SHA-256 hash returned to
+   * clients in /gateway/connect responses (so the browser can pin the tile's
+   * matching cert via WebTransport serverCertificateHashes). The gateway
+   * does NOT terminate TLS itself.
    */
-  initialTiles?: Array<{ tileId: string; address: string; adminUrl?: string }>;
-  /** Directory for the account service's user files. Required for auth. */
-  accountsDir: string;
+  cert: string;
+  /** Repository for users, heritage, and sessions. Owns the DB pool externally. */
+  repos: {
+    users: UserRepo;
+    heritage: HeritageRepo;
+    sessions: SessionRepo;
+  };
   /**
    * Shared secret gating the `/internal/*` server-to-server endpoints.
    * Must be non-empty (>=16 chars). Tile servers present this in the
@@ -71,8 +66,8 @@ export class GatewayServer {
   readonly directory = new TileDirectory();
   /** World event bus — tile servers publish cross-tile events here. Stub: no subscribers yet. */
   readonly worldEvents = new EventBus();
-  accountStore!: AccountStore;
-  sessions!: SessionStore;
+  sessions!: SessionService;
+  private users!: UserRepo;
   private accountEndpoints!: AccountEndpoints;
   /** SHA-256 of the gateway's TLS cert (hex). Served via /cert-hash so the
    *  browser client can pin self-signed dev certs through serverCertificateHashes. */
@@ -86,25 +81,15 @@ export class GatewayServer {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    // Pre-register tiles from config (vertical slice convenience)
-    for (const tile of config.initialTiles ?? []) {
-      this.directory.register({
-        tileId: tile.tileId,
-        address: tile.address,
-        adminUrl: tile.adminUrl ?? "http://localhost:14434",
-      });
-    }
-
-    this.accountStore = new AccountStore(config.accountsDir);
-    await this.accountStore.init();
-    this.sessions = new SessionStore();
+    this.users = config.repos.users;
+    this.sessions = new SessionService(config.repos.sessions);
     this.accountEndpoints = new AccountEndpoints({
-      store: this.accountStore,
+      users: config.repos.users,
+      heritage: config.repos.heritage,
       sessions: this.sessions,
       serviceSecret: config.serviceSecret,
     });
 
-    // Stub: subscribe to world events for future macro simulation
     this.worldEvents.subscribe(WorldEvents.PlayerCrossedGate, (_payload) => {
       // TODO: update directory.setPlayerTile, coordinate tile handoff
     });
@@ -116,41 +101,41 @@ export class GatewayServer {
     });
 
     Deno.serve(
-      { port: config.port, cert: config.cert, key: config.key },
-      async (req) => withCors(req, await this.handleRequest(req)),
+      { port: config.port },
+      async (req) => {
+        try {
+          return withCors(req, await this.handleRequest(req));
+        } catch (err) {
+          // Errors thrown from handlers MUST go through withCors too — otherwise
+          // the browser sees a 500 with no Access-Control-Allow-* headers and
+          // reports a misleading "CORS Missing Allow Header" instead of the
+          // real failure. Log the cause server-side so we can debug.
+          console.error("[Gateway] unhandled error:", err);
+          const body = err instanceof Error ? err.message : "internal error";
+          return withCors(req, new Response(body, { status: 500 }));
+        }
+      },
     );
 
-    console.log(`[Gateway] listening on port ${config.port}`);
+    console.log(`[Gateway] listening on port ${config.port} (plain HTTP)`);
   }
 
   private async handleRequest(req: Request): Promise<Response> {
-    // CORS preflight: browsers send OPTIONS before any non-simple cross-origin
-    // request. The page is served by the tile-server admin port (14434) while
-    // the gateway lives on its own port — different origin, so all login /me
-    // fetches require a successful preflight before the real POST.
     if (req.method === "OPTIONS") return new Response(null, { status: 204 });
 
     const url = new URL(req.url);
 
-    // Client handshake: token in → tile address + assigned playerId out.
-    // Replaces the prior WebTransport-based gateway handshake; the operation
-    // is a single request/response and HTTP/2 is sufficient.
     if (req.method === "POST" && url.pathname === "/gateway/connect") {
       return this.handleConnect(req);
     }
 
-    // Account service — client /account/* and server-to-server /internal/*.
-    // Returns null when the path doesn't match, so we fall through to the
-    // tile-registration / handoff handlers below.
     const accountResponse = await this.accountEndpoints.handle(req, url);
     if (accountResponse) return accountResponse;
 
-    // Tile server self-registration
     if (req.method === "POST" && url.pathname === "/register") {
       return this.handleRegister(req);
     }
 
-    // Player tile handoff (initiated by source tile server)
     if (req.method === "POST" && url.pathname === "/handoff") {
       return this.handleHandoff(req);
     }
@@ -167,26 +152,29 @@ export class GatewayServer {
     const userId = await this.sessions.validate(body.token);
     if (!userId) return new Response("unauthenticated", { status: 401 });
 
-    const user = await this.accountStore.getUserById(userId);
-    if (!user) return new Response("user not found", { status: 401 });
+    const preferred = await this.directoryForUser(userId);
+    if (!preferred) return new Response("no tile available", { status: 503 });
 
-    const preferred = user.lastTileId ? this.directory.get(user.lastTileId) : null;
-    const tile = preferred ?? this.directory.tileForPlayer(userId);
-    if (!tile) return new Response("no tile available", { status: 503 });
+    this.directory.setPlayerTile(userId, preferred.tileId);
 
-    this.directory.setPlayerTile(userId, tile.tileId);
-
-    // Tile and gateway share the same self-signed dev cert, so its hash also
-    // pins the tile WebTransport. Production tiles ship their own CA cert and
-    // omit this — the client treats absence as "trust the cert normally".
     const response: GatewayTileResponse = {
-      tileId: tile.tileId,
-      tileAddress: tile.address,
+      tileId: preferred.tileId,
+      tileAddress: preferred.address,
       playerId: userId,
       tileCertHashHex: this.certHashHex || undefined,
     };
-    console.log(`[Gateway] user ${userId.slice(0, 8)} → tile ${tile.tileId} (${tile.address})`);
+    console.log(`[Gateway] user ${userId.slice(0, 8)} → tile ${preferred.tileId} (${preferred.address})`);
     return Response.json(response);
+  }
+
+  /**
+   * Choose a tile for a user: prefer their last tile (sticky), fall back to
+   * any registered tile.
+   */
+  private async directoryForUser(userId: string) {
+    const user = await this.users.getById(userId);
+    const preferred = user?.lastTileId ? this.directory.get(user.lastTileId) : null;
+    return preferred ?? this.directory.tileForPlayer(userId);
   }
 
   private async handleHandoff(req: Request): Promise<Response> {
@@ -199,7 +187,6 @@ export class GatewayServer {
       if (!tile) {
         return new Response(JSON.stringify({ error: "tile not found" }), { status: 404 });
       }
-      // Forward handoff payload to destination tile's admin endpoint
       const resp = await fetch(`${tile.adminUrl}/handoff`, {
         method: "POST",
         headers: { "content-type": "application/json" },

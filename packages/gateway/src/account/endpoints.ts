@@ -4,32 +4,31 @@
  *
  * Authentication split:
  *   - Client endpoints: `Authorization: Bearer <token>` where token is the
- *     raw value returned by login. Validated against SessionStore.
+ *     raw value returned by login. Validated via SessionService.
  *   - Server-to-server endpoints: `X-Voxim-Service-Secret: <shared secret>`
  *     compared constant-time to the configured secret. Used by tile servers
  *     that talk to the account service on behalf of their players.
  *
- * The service secret is required at construction — the gateway refuses to
- * start without it (see server.ts). This prevents shipping a default
- * "insecure" that could leak out of a local-dev config into production.
+ * Persistence: Postgres via repository interfaces from `@voxim/db`. The
+ * endpoints never see SQL.
  */
 
-import type { AccountStore } from "./store.ts";
-import type { SessionStore } from "./session_store.ts";
+import type { UserRepo, HeritageRepo, UserRow, HearthAnchor } from "@voxim/db";
+import type { SessionService } from "./session_service.ts";
 import { hashPassword, verifyPassword } from "./auth.ts";
 import { heritageCodec, type HeritageData, type HeritageTrait } from "@voxim/codecs";
-import type { UserRecord, SessionInfo } from "./types.ts";
+import type { SessionInfo } from "./types.ts";
 
 export interface AccountEndpointsDeps {
-  store: AccountStore;
-  sessions: SessionStore;
+  users: UserRepo;
+  heritage: HeritageRepo;
+  sessions: SessionService;
   /** Shared secret gating the `/internal/*` endpoints. Must be non-empty. */
   serviceSecret: string;
 }
 
-// ---- heritage mutation rules (was in HeritageStore) ----
+// ---- heritage mutation rules ----
 
-/** Max accumulated health bonus across traits — prevents late-dynasty characters becoming unkillable. */
 const MAX_HEALTH_BONUS = 50;
 const HEALTH_BONUS_PER_GEN = 5;
 
@@ -39,12 +38,6 @@ function heritageHealthBonus(h: HeritageData): number {
     .reduce((sum, t) => sum + t.value, 0);
 }
 
-/**
- * Apply a death to a heritage record. Returns the new record — caller
- * persists it. Same rule as the former tile-server HeritageStore:
- * generation advances by one, a health_bonus trait is appended up to the
- * accumulation cap.
- */
 function advanceHeritageForDeath(current: HeritageData): HeritageData {
   const existing = heritageHealthBonus(current);
   const newTrait: HeritageTrait | null = existing < MAX_HEALTH_BONUS
@@ -70,7 +63,6 @@ function textError(message: string, status: number): Response {
   return new Response(message, { status });
 }
 
-/** Constant-time string comparison. Throws on surprising input shapes. */
 function constantTimeEqualStrings(a: string, b: string): boolean {
   const aBytes = new TextEncoder().encode(a);
   const bBytes = new TextEncoder().encode(b);
@@ -86,13 +78,12 @@ function extractBearerToken(req: Request): string | null {
   return header.slice(7).trim() || null;
 }
 
-function userPublicProjection(u: UserRecord) {
-  // Password hash must never leave the server.
+function userPublicProjection(u: UserRow) {
   return {
     userId: u.userId,
     loginName: u.loginName,
-    createdAt: u.createdAt,
-    lastLoginAt: u.lastLoginAt,
+    createdAt: u.createdAt.getTime(),
+    lastLoginAt: u.lastLoginAt?.getTime() ?? null,
     activeDynastyId: u.activeDynastyId,
     lastTileId: u.lastTileId,
     settings: u.settings,
@@ -108,18 +99,14 @@ export class AccountEndpoints {
     }
   }
 
-  /**
-   * Dispatch an HTTP request. Returns null if the path doesn't match any
-   * account endpoint — caller should fall through to other handlers.
-   */
   async handle(req: Request, url: URL): Promise<Response | null> {
     const p = url.pathname;
 
     // ---- client-facing ----
-    if (req.method === "POST" && p === "/account/register")   return this.register(req);
-    if (req.method === "POST" && p === "/account/login")      return this.login(req);
-    if (req.method === "POST" && p === "/account/logout")     return this.logout(req);
-    if (req.method === "GET"  && p === "/account/me")         return this.me(req);
+    if (req.method === "POST" && p === "/account/register")     return this.register(req);
+    if (req.method === "POST" && p === "/account/login")        return this.login(req);
+    if (req.method === "POST" && p === "/account/logout")       return this.logout(req);
+    if (req.method === "GET"  && p === "/account/me")           return this.me(req);
     if (req.method === "PATCH" && p === "/account/me/settings") return this.patchSettings(req);
 
     // ---- server-to-server ----
@@ -135,8 +122,8 @@ export class AccountEndpoints {
       if (userMatch) {
         const userId = userMatch[1];
         const sub = userMatch[2] ?? "";
-        if (req.method === "GET"  && sub === "/heritage") return this.internalGetHeritage(userId);
-        if (req.method === "POST" && sub === "/death")    return this.internalDeath(userId, req);
+        if (req.method === "GET"   && sub === "/heritage") return this.internalGetHeritage(userId);
+        if (req.method === "POST"  && sub === "/death")    return this.internalDeath(userId, req);
         if (req.method === "PATCH" && sub === "/location") return this.internalLocation(userId, req);
         if (req.method === "PATCH" && sub === "/hearth")   return this.internalSetHearth(userId, req);
       }
@@ -152,7 +139,6 @@ export class AccountEndpoints {
     return constantTimeEqualStrings(header, this.deps.serviceSecret);
   }
 
-  /** Returns the authenticated userId, or null on invalid/missing auth. */
   private async authUser(req: Request): Promise<string | null> {
     const token = extractBearerToken(req);
     if (!token) return null;
@@ -169,14 +155,28 @@ export class AccountEndpoints {
     if (!loginName || !password) return textError("loginName and password required", 400);
     if (password.length < 6) return textError("password must be at least 6 characters", 400);
 
-    const existing = await this.deps.store.getUserByLogin(loginName);
+    const existing = await this.deps.users.getByLogin(loginName);
     if (existing) return json({ error: "loginName taken" }, 409);
 
     const passwordHash = await hashPassword(password);
-    const user = await this.deps.store.createUser(loginName, passwordHash);
-    const session = await this.deps.sessions.issue(user.userId);
+    const userId = crypto.randomUUID();
+    const dynastyId = crypto.randomUUID();
+    const user = await this.deps.users.create({
+      userId,
+      loginName,
+      passwordHash,
+      activeDynastyId: dynastyId,
+    });
+    // Initial heritage: empty dynasty, generation 0.
+    const initial: HeritageData = { dynastyId, generation: 0, traits: [] };
+    await this.deps.heritage.put(userId, heritageCodec.encode(initial));
 
-    return json({ userId: user.userId, token: session.token, activeDynastyId: user.activeDynastyId }, 201);
+    const session = await this.deps.sessions.issue(user.userId);
+    return json({
+      userId: user.userId,
+      token: session.token,
+      activeDynastyId: user.activeDynastyId,
+    }, 201);
   }
 
   private async login(req: Request): Promise<Response> {
@@ -185,12 +185,12 @@ export class AccountEndpoints {
     const { loginName, password } = body;
     if (!loginName || !password) return textError("loginName and password required", 400);
 
-    const user = await this.deps.store.getUserByLogin(loginName);
+    const user = await this.deps.users.getByLogin(loginName);
     if (!user) return json({ error: "invalid credentials" }, 401);
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) return json({ error: "invalid credentials" }, 401);
 
-    await this.deps.store.updateUser(user.userId, { lastLoginAt: Date.now() });
+    await this.deps.users.updateLastLogin(user.userId, new Date());
     const session = await this.deps.sessions.issue(user.userId);
 
     return json({
@@ -204,15 +204,13 @@ export class AccountEndpoints {
   private async logout(req: Request): Promise<Response> {
     const token = extractBearerToken(req);
     if (token) await this.deps.sessions.revoke(token);
-    // Idempotent — even a bogus token gets a 204, so logout never leaks
-    // whether a token was valid.
     return new Response(null, { status: 204 });
   }
 
   private async me(req: Request): Promise<Response> {
     const userId = await this.authUser(req);
     if (!userId) return textError("unauthorized", 401);
-    const user = await this.deps.store.getUserById(userId);
+    const user = await this.deps.users.getById(userId);
     if (!user) return textError("user not found", 404);
     return json(userPublicProjection(user));
   }
@@ -220,13 +218,16 @@ export class AccountEndpoints {
   private async patchSettings(req: Request): Promise<Response> {
     const userId = await this.authUser(req);
     if (!userId) return textError("unauthorized", 401);
-    let settings: Record<string, unknown>;
-    try { settings = await req.json(); } catch { return textError("bad request", 400); }
-    if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    let patch: Record<string, unknown>;
+    try { patch = await req.json(); } catch { return textError("bad request", 400); }
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
       return textError("settings must be an object", 400);
     }
-    const updated = await this.deps.store.updateUser(userId, { settings });
-    if (!updated) return textError("user not found", 404);
+    const current = await this.deps.users.getById(userId);
+    if (!current) return textError("user not found", 404);
+    // Deep-merge so a PATCH with a single nested key doesn't wipe the rest.
+    const merged = { ...current.settings, ...patch };
+    await this.deps.users.updateSettings(userId, merged);
     return new Response(null, { status: 204 });
   }
 
@@ -235,7 +236,7 @@ export class AccountEndpoints {
   private async internalSession(token: string): Promise<Response> {
     const userId = await this.deps.sessions.validate(token);
     if (!userId) return textError("unauthenticated", 401);
-    const user = await this.deps.store.getUserById(userId);
+    const user = await this.deps.users.getById(userId);
     if (!user) return textError("user not found", 404);
     const info: SessionInfo = {
       userId: user.userId,
@@ -247,15 +248,11 @@ export class AccountEndpoints {
   }
 
   private async internalGetHeritage(userId: string): Promise<Response> {
-    const heritage = await this.deps.store.getHeritage(userId);
-    if (!heritage) return textError("heritage not found", 404);
-    // Binary payload using the shared heritageCodec — consumer (tile server)
-    // decodes with the same codec. No JSON intermediary.
-    const bytes = heritageCodec.encode(heritage);
-    // Copy into a plain ArrayBuffer so the Response body is unambiguously
-    // typed regardless of the underlying Uint8Array backing.
-    const body = new Uint8Array(bytes.length);
-    body.set(bytes);
+    const row = await this.deps.heritage.get(userId);
+    if (!row) return textError("heritage not found", 404);
+    // Stored payload is already heritageCodec.encode() — return as-is.
+    const body = new Uint8Array(row.payload.length);
+    body.set(row.payload);
     return new Response(body, {
       status: 200,
       headers: { "content-type": "application/octet-stream" },
@@ -263,13 +260,11 @@ export class AccountEndpoints {
   }
 
   private async internalDeath(userId: string, _req: Request): Promise<Response> {
-    // Body fields (killerId, cause) are accepted but currently informational —
-    // reserved for future lore generation. We read the current heritage,
-    // advance it, and write it back atomically.
-    const current = await this.deps.store.getHeritage(userId);
-    if (!current) return textError("heritage not found", 404);
+    const row = await this.deps.heritage.get(userId);
+    if (!row) return textError("heritage not found", 404);
+    const current = heritageCodec.decode(row.payload);
     const next = advanceHeritageForDeath(current);
-    await this.deps.store.putHeritage(userId, next);
+    await this.deps.heritage.put(userId, heritageCodec.encode(next));
     console.log(`[Account] recorded death for user ${userId} → gen ${next.generation}`);
     return new Response(null, { status: 204 });
   }
@@ -278,18 +273,22 @@ export class AccountEndpoints {
     let body: { lastTileId?: string };
     try { body = await req.json(); } catch { return textError("bad request", 400); }
     if (typeof body.lastTileId !== "string") return textError("lastTileId required", 400);
-    const updated = await this.deps.store.updateUser(userId, { lastTileId: body.lastTileId });
-    if (!updated) return textError("user not found", 404);
+    const user = await this.deps.users.getById(userId);
+    if (!user) return textError("user not found", 404);
+    await this.deps.users.updateLocation(userId, body.lastTileId);
     return new Response(null, { status: 204 });
   }
 
   private async internalSetHearth(userId: string, req: Request): Promise<Response> {
-    let body: { tileId?: string; position?: { x?: number; y?: number; z?: number } | null };
+    let body: { tileId?: string | null; position?: { x?: number; y?: number; z?: number } | null };
     try { body = await req.json(); } catch { return textError("bad request", 400); }
+
+    const user = await this.deps.users.getById(userId);
+    if (!user) return textError("user not found", 404);
+
     // Null body clears the anchor (e.g. on hearth destruction).
     if (body.tileId === null || body.position === null) {
-      const updated = await this.deps.store.updateUser(userId, { hearthAnchor: null });
-      if (!updated) return textError("user not found", 404);
+      await this.deps.users.updateHearth(userId, null);
       return new Response(null, { status: 204 });
     }
     if (typeof body.tileId !== "string" || !body.position
@@ -298,11 +297,12 @@ export class AccountEndpoints {
       || typeof body.position.z !== "number") {
       return textError("tileId and position {x,y,z} required", 400);
     }
-    const updated = await this.deps.store.updateUser(userId, {
-      hearthAnchor: { tileId: body.tileId, position: { x: body.position.x, y: body.position.y, z: body.position.z } },
-    });
-    if (!updated) return textError("user not found", 404);
-    console.log(`[Account] hearth anchor set for user ${userId} on tile ${body.tileId}`);
+    const anchor: HearthAnchor = {
+      tileId: body.tileId,
+      position: { x: body.position.x, y: body.position.y, z: body.position.z },
+    };
+    await this.deps.users.updateHearth(userId, anchor);
+    console.log(`[Account] hearth anchor set for user ${userId} on tile ${anchor.tileId}`);
     return new Response(null, { status: 204 });
   }
 }

@@ -16,7 +16,7 @@
 export const TOKEN_STORAGE_KEY = "voxim.session_token";
 
 export interface LoginScreenConfig {
-  /** Gateway base URL, e.g. "https://localhost:8080". */
+  /** Gateway base URL, e.g. "http://localhost:8081". */
   gatewayUrl: string;
   /** Mount point; contents are replaced. */
   container: HTMLElement;

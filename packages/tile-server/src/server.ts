@@ -15,8 +15,8 @@
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
-import { chunksFromBuffers, loadTerrainCache, seedFromTileId } from "@voxim/world";
-import type { ZoneGridData } from "@voxim/world";
+import { buildTerrainBuffers, chunksFromBuffers, loadTerrainCache, saveTerrainCache, seedFromTileId } from "@voxim/world";
+import type { WorldGenContent, ZoneGridData } from "@voxim/world";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
 import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
@@ -372,15 +372,41 @@ export class TileServer {
     if (!loaded) {
       tileSeed = seedFromTileId(config.tileId);
       const cachePath = config.terrainCacheFile ?? `./terrain_${config.tileId}.bin`;
-      const loadedBuffers = await loadTerrainCache(cachePath);
-      if (!loadedBuffers) {
-        throw new Error(
-          `No terrain cache found at "${cachePath}". Run: deno task gen-terrain`,
-        );
+      let buffers = await loadTerrainCache(cachePath);
+      if (!buffers) {
+        // No pre-baked cache — generate from seed. Once T-138 lands, the seed
+        // will come from the coordinator's world-map cell instead of a
+        // tileId hash. The cache file is a cold-start optimisation only.
+        console.log(`[TileServer] no terrain cache at ${cachePath}, generating from seed=${tileSeed}`);
+        const worldGenContent: WorldGenContent = {
+          biomes: content.getAllBiomes(),
+          zones: content.getAllZones(),
+          resolveMaterialId(name) {
+            const m = content.getMaterialByName(name);
+            if (!m) throw new Error(`unknown material "${name}" referenced from biome data`);
+            return m.id;
+          },
+        };
+        const generated = await buildTerrainBuffers(tileSeed, worldGenContent);
+        buffers = {
+          heightBuffer: generated.heightBuffer,
+          materialBuffer: generated.materialBuffer,
+          zoneGrid: generated.zoneGrid,
+        };
+        // Persist the cache so subsequent boots are fast. Best-effort — a
+        // read-only filesystem (e.g. when tiles save to DB instead of disk
+        // post-T-136) is not a fatal error.
+        try {
+          await saveTerrainCache(cachePath, buffers.heightBuffer, buffers.materialBuffer, buffers.zoneGrid);
+          console.log(`[TileServer] cached generated terrain to ${cachePath}`);
+        } catch (err) {
+          console.warn(`[TileServer] could not persist terrain cache (continuing): ${err}`);
+        }
+      } else {
+        console.log(`[TileServer] loaded terrain from cache: ${cachePath}`);
       }
-      console.log(`[TileServer] loaded terrain from cache: ${cachePath}`);
-      chunksFromBuffers(this.world, loadedBuffers.heightBuffer, loadedBuffers.materialBuffer);
-      zoneGrid = loadedBuffers.zoneGrid;
+      chunksFromBuffers(this.world, buffers.heightBuffer, buffers.materialBuffer);
+      zoneGrid = buffers.zoneGrid;
       this.spawnWorldState(content);
     }
 

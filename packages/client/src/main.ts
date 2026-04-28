@@ -9,7 +9,7 @@
  *   Gateway (production):
  *     3. globalThis.VOXIM_GATEWAY_URL  — set by parent application before loading
  *     4. ?gateway=<url>                — URL query param
- *     5. https://localhost:8080        — fallback for local dev
+ *     5. http://localhost:8081         — fallback for local dev
  *
  * In direct tile mode the cert hash is resolved as:
  *     1. globalThis.VOXIM_CERT_HASH    — hex string, set by embedding page
@@ -70,7 +70,7 @@ addEventListener("resize", () => {
     const gatewayUrl: string =
       (g.VOXIM_GATEWAY_URL as string | undefined) ??
       params.get("gateway") ??
-      "https://localhost:8080";
+      "http://localhost:8081";
 
     console.log(`[Voxim] gateway mode → ${gatewayUrl}`);
 

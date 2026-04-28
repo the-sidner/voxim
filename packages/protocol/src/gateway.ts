@@ -20,8 +20,8 @@
 export interface GatewayConnectRequest {
   /**
    * Session token issued by the account service (see POST /account/login).
-   * The gateway validates this via SessionStore and rejects the request with
-   * HTTP 401 when it is missing, unknown, or expired.
+   * The gateway validates this against the sessions repo and rejects the
+   * request with HTTP 401 when it is missing, unknown, or expired.
    */
   token: string;
 }

@@ -43,7 +43,7 @@ import gameConfigData from "../../content/data/game_config.json" with { type: "j
 export interface GameConfig {
   canvas: HTMLCanvasElement;
   /**
-   * Full WebTransport URL of the gateway, e.g. "https://localhost:8080".
+   * Base HTTP URL of the gateway, e.g. "http://localhost:8081".
    * Used in production. Mutually exclusive with directTile.
    * When set, `sessionToken` is required — the gateway refuses connections
    * without a valid session token.
