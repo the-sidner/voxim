@@ -1,5 +1,6 @@
 /**
- * World persistence — binary format v2.
+ * World persistence — binary payload stored in `tile_saves` (one row per
+ * tile_id) via `@voxim/db`'s `TileSaveRepo`.
  *
  * What is saved:
  *   WorldClock + TileCorruption  — so day/night and corruption survive restarts
@@ -26,12 +27,13 @@
  *
  * Adding a new persisted component:
  *   1. Ensure it has an entry in COMPONENT_REGISTRY (component_registry.ts).
- *   2. Add it to the relevant query in save() below.
+ *   2. Add it to the relevant query in serialize() below.
  *   3. No changes needed to load() — it reads any typeId it recognises.
  */
 import type { World, EntityId } from "@voxim/engine";
 import { WireWriter, WireReader } from "@voxim/codecs";
 import { Heightmap, MaterialGrid } from "@voxim/world";
+import type { TileSaveRepo } from "@voxim/db";
 import { WorldClock, TileCorruption } from "./components/world.ts";
 import { Position } from "./components/game.ts";
 import { ResourceNode } from "./components/resource_node.ts";
@@ -39,8 +41,6 @@ import { DEF_BY_TYPE_ID } from "./component_registry.ts";
 
 const SAVE_MAGIC   = 0x56584D32; // "VXM2"
 const SAVE_VERSION = 2;
-
-// ---- internal helpers ----
 
 interface SavedComponent {
   typeId: number;
@@ -69,11 +69,20 @@ function encodeEntity(
 // ---- SaveManager ----
 
 export class SaveManager {
-  constructor(private readonly savePath: string) {}
+  constructor(
+    private readonly repo: TileSaveRepo,
+    private readonly tileId: string,
+  ) {}
 
   // ---- save ----
 
   async save(world: World): Promise<void> {
+    const payload = this.serialize(world);
+    await this.repo.put(this.tileId, payload);
+  }
+
+  /** Public for tests / future export tools — produces the VXM2 byte payload. */
+  serialize(world: World): Uint8Array {
     const entities: SavedEntity[] = [];
 
     // World-state entity (WorldClock + TileCorruption)
@@ -114,7 +123,6 @@ export class SaveManager {
       });
     }
 
-    // Encode
     const w = new WireWriter();
     w.writeU32(SAVE_MAGIC);
     w.writeU32(SAVE_VERSION);
@@ -123,34 +131,29 @@ export class SaveManager {
     for (const entity of entities) {
       encodeEntity(entity.entityId, entity.components, w);
     }
-
-    // Atomic write: serialize to a sibling temp file then rename.
-    // A crash (or ENOSPC) between the writeFile and the rename leaves the
-    // original save intact; a successful rename is atomic on POSIX filesystems.
-    const tmpPath = `${this.savePath}.tmp`;
-    await Deno.writeFile(tmpPath, w.toBytes());
-    await Deno.rename(tmpPath, this.savePath);
+    return w.toBytes();
   }
 
   // ---- load ----
 
   /**
-   * Attempt to load a binary save file into `world`.
-   * Returns true on success; false if the file is absent, has wrong magic, or wrong version.
+   * Attempt to load a saved snapshot into `world`.
+   * Returns true on success; false if no row exists, the magic / version
+   * doesn't match, or the payload is corrupt.
    */
   async load(world: World): Promise<boolean> {
-    let bytes: Uint8Array;
-    try {
-      bytes = await Deno.readFile(this.savePath);
-    } catch {
-      return false; // file does not exist
-    }
+    const row = await this.repo.get(this.tileId);
+    if (!row) return false;
+    return this.deserialize(world, row.payload);
+  }
 
+  /** Public for tests / future import tools. */
+  deserialize(world: World, bytes: Uint8Array): boolean {
     const r = new WireReader(bytes);
 
     const magic = r.readU32();
     if (magic !== SAVE_MAGIC) {
-      console.warn("[SaveManager] not a VXM2 save file — starting fresh");
+      console.warn("[SaveManager] not a VXM2 save payload — starting fresh");
       return false;
     }
 
@@ -167,10 +170,9 @@ export class SaveManager {
     let   loaded      = 0;
 
     for (let i = 0; i < numEntities; i++) {
-      const entityId   = r.readUuid() as EntityId;
-      const numComps   = r.readU16();
+      const entityId = r.readUuid() as EntityId;
+      const numComps = r.readU16();
 
-      // Read all component bytes first (unknown typeIds must still advance the cursor)
       const comps: SavedComponent[] = [];
       for (let j = 0; j < numComps; j++) {
         const typeId  = r.readU8();
@@ -179,7 +181,6 @@ export class SaveManager {
         comps.push({ typeId, data });
       }
 
-      // Create entity and write recognised components
       world.create(entityId);
       for (const { typeId, data } of comps) {
         const def = DEF_BY_TYPE_ID.get(typeId);
@@ -196,17 +197,14 @@ export class SaveManager {
       loaded++;
     }
 
-    // EOF validation: a complete save is fully consumed. Trailing bytes are
-    // a sign of truncation or a format mismatch — refuse rather than silently
-    // dropping state.
     if (!r.done) {
       console.warn(
-        `[SaveManager] save file has ${bytes.byteLength - r.offset} trailing bytes after the declared ${numEntities} entities — refusing to use`,
+        `[SaveManager] payload has ${bytes.byteLength - r.offset} trailing bytes after the declared ${numEntities} entities — refusing to use`,
       );
       return false;
     }
     if (loaded !== numEntities) {
-      console.warn(`[SaveManager] save declared ${numEntities} entities but only ${loaded} were recovered — refusing to use`);
+      console.warn(`[SaveManager] payload declared ${numEntities} entities but only ${loaded} were recovered — refusing to use`);
       return false;
     }
 
@@ -217,14 +215,9 @@ export class SaveManager {
     return true;
   }
 
-  /** True if a save file exists at this path (fast check, no parse). */
+  /** True if a saved snapshot exists for this tile. */
   async exists(): Promise<boolean> {
-    try {
-      await Deno.stat(this.savePath);
-      return true;
-    } catch {
-      return false;
-    }
+    const row = await this.repo.get(this.tileId);
+    return row !== null;
   }
 }
-

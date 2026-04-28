@@ -15,6 +15,7 @@
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
+import type { TileSaveRepo } from "@voxim/db";
 import { buildTerrainBuffers, chunksFromBuffers, loadTerrainCache, saveTerrainCache, seedFromTileId } from "@voxim/world";
 import type { WorldGenContent, ZoneGridData } from "@voxim/world";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
@@ -100,11 +101,12 @@ export interface TileServerConfig {
    */
   dataDir?: string;
   /**
-   * Directory for world save files.  When set, the server loads an existing
-   * save on startup (skipping terrain generation) and auto-saves every 5 minutes.
-   * Omit to run in ephemeral mode (no persistence).
+   * Postgres-backed tile save repo. When set, the server loads an existing
+   * snapshot on startup (skipping terrain generation) and auto-saves every
+   * `persistence.saveIntervalTicks` ticks. Omit to run in ephemeral mode
+   * (no persistence — fine for short-lived dev sessions).
    */
-  saveDir?: string;
+  tileSaves?: TileSaveRepo;
   /**
    * Plain HTTP port for gateway → tile internal communication (handoff, health-check).
    * When set, starts a plain HTTP admin server on this port.
@@ -360,9 +362,9 @@ export class TileServer {
     ];
     this.systems = sortSystemsByDependencies(declared);
 
-    // Set up persistence (optional — only if saveDir is configured)
-    if (config.saveDir) {
-      this.saveManager = new SaveManager(`${config.saveDir}/${config.tileId}.json`);
+    // Set up persistence (optional — only if tileSaves repo is provided)
+    if (config.tileSaves) {
+      this.saveManager = new SaveManager(config.tileSaves, config.tileId);
     }
 
     // Populate the world — load from save if one exists, otherwise generate fresh terrain
