@@ -2335,7 +2335,7 @@ container restarts; cells differ correctly per tile_id; rivers/roads/gates
 align with the macro grid.
 
 ### T-139 · World event bus over WT (tile→coordinator + coordinator→tile)
-Effort: M   Status: todo   (supersedes T-045)
+Effort: M   Status: done   Commit: 2871ade   (supersedes T-045)
 
 Real publish/subscribe over the WT streams established in T-135 and T-137.
 
