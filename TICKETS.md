@@ -2293,7 +2293,7 @@ TILE_ID), and the world is intact (terrain mutations, dropped items, NPC
 positions).
 
 ### T-137 · `packages/coordinator` skeleton + privileged WT handshake
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: cf60647
 
 New service. Reuses `@voxim/engine` for ECS + tickloop. Connects to gateway
 on startup as a privileged peer.
