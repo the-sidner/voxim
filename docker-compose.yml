@@ -111,6 +111,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
       TILE_ID: tile_0
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4433
@@ -128,6 +129,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
       TILE_ID: tile_1
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4434
@@ -145,6 +147,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
       TILE_ID: tile_2
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4435
@@ -162,6 +165,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
       TILE_ID: tile_3
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4436

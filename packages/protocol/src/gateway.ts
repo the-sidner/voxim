@@ -147,3 +147,30 @@ export interface ServiceHandshakeAck {
   /** Populated when ok === false. */
   reason?: string;
 }
+
+// ---- world event / tile command envelopes (T-139) ----
+// JSON envelopes routed over the privileged WT bidi streams established by
+// ServiceHandshake. Tile streams send WorldEventEnvelope up; gateway forwards
+// to the connected coordinator. Coordinator stream sends TileCommandEnvelope
+// down; gateway routes to the target tile-server's stream.
+//
+// Concrete event/command shapes are deliberately open-typed for now — each
+// downstream ticket (T-140 gates, T-142 city sim, T-148 caravans) layers its
+// own kind discriminant on top. Keeping the envelope generic means new
+// event types don't require protocol-package changes.
+
+export interface WorldEventEnvelope {
+  type: "world_event";
+  sourceTileId: string;
+  /**
+   * Discriminated by `kind`. Concrete shapes live in domain modules
+   * (gates, caravans, etc.) to keep this package thin.
+   */
+  event: { kind: string; [k: string]: unknown };
+}
+
+export interface TileCommandEnvelope {
+  type: "tile_command";
+  targetTileId: string;
+  command: { kind: string; [k: string]: unknown };
+}

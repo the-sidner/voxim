@@ -1,13 +1,17 @@
+/// <reference path="./types/webtransport.d.ts" />
 /**
- * Coordinator → Gateway WebTransport link.
+ * Tile-server → Gateway privileged WebTransport link (T-139).
  *
- * Opens a WT session to the gateway, performs the service handshake, and
- * keeps a single bidirectional stream open for future event/command
- * routing (T-139).
+ * Sits alongside the HTTP register/heartbeat lifecycle. The HTTP path
+ * keeps the registry warm and is the source of truth for "is this tile
+ * alive"; the WT link is the bidirectional event/command channel:
  *
- * Resilience: if the connection is refused or drops we wait `retryMs` and
- * try again. The coordinator's tick loop runs regardless — gateway being
- * down is a logged condition, not a fatal error.
+ *   tile  → gateway  : WorldEventEnvelope (gateway forwards to coordinator)
+ *   gateway → tile   : TileCommandEnvelope (originating from coordinator)
+ *
+ * Resilience: on any failure (handshake rejected, stream error, gateway
+ * unreachable) we wait `retryMs` and reconnect. The tick loop runs
+ * regardless of link state.
  */
 import { encodeFrame, makeFrameReader } from "@voxim/protocol";
 import type {
@@ -20,25 +24,51 @@ import type {
 export interface GatewayLinkConfig {
   /** WebTransport URL of the gateway, e.g. "https://gateway:8080". */
   url: string;
+  tileId: string;
   serviceSecret: string;
   /** Hex SHA-256 of the gateway's cert — required for self-signed dev. */
   gatewayCertHashHex?: string;
   /** Reconnect delay in ms. Default 5000. */
   retryMs?: number;
-  /** Called for each WorldEvent forwarded by the gateway from a tile. */
-  onEvent?: (event: WorldEventEnvelope) => void;
+  /** Called when a TileCommand frame arrives. */
+  onCommand?: (cmd: TileCommandEnvelope) => void;
 }
 
 export class GatewayLink {
-  private transport: WebTransport | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  private transport: WebTransport | null = null;
   private closed = false;
   /** True between a successful handshake and the session closing. */
   connected = false;
 
   constructor(private readonly config: GatewayLinkConfig) {}
 
-  async connect(): Promise<void> {
+  /** Kick off the connect/reconnect loop in the background. */
+  start(): void {
+    void this.runForever();
+  }
+
+  async stop(): Promise<void> {
+    this.closed = true;
+    try { this.writer?.close().catch(() => {}); } catch { /* ignore */ }
+    try { this.transport?.close(); } catch { /* ignore */ }
+    this.connected = false;
+  }
+
+  /**
+   * Publish a WorldEvent to the gateway. Drops silently if the link
+   * isn't currently connected — events are best-effort by design.
+   */
+  async publish(event: WorldEventEnvelope): Promise<void> {
+    if (!this.writer) return;
+    try {
+      await this.writer.write(encodeFrame(event));
+    } catch (err) {
+      console.warn(`[GatewayLink] publish failed: ${(err as Error).message}`);
+    }
+  }
+
+  private async runForever(): Promise<void> {
     while (!this.closed) {
       try {
         await this.connectOnce();
@@ -46,16 +76,8 @@ export class GatewayLink {
         console.warn(`[GatewayLink] connect failed: ${(err as Error).message}`);
       }
       if (this.closed) return;
-      const wait = this.config.retryMs ?? 5000;
-      await new Promise((r) => setTimeout(r, wait));
+      await new Promise((r) => setTimeout(r, this.config.retryMs ?? 5000));
     }
-  }
-
-  async close(): Promise<void> {
-    this.closed = true;
-    try { this.writer?.close().catch(() => {}); } catch { /* ignore */ }
-    try { this.transport?.close(); } catch { /* ignore */ }
-    this.connected = false;
   }
 
   private async connectOnce(): Promise<void> {
@@ -79,7 +101,8 @@ export class GatewayLink {
 
     const handshake: ServiceHandshake = {
       type: "service_handshake",
-      kind: "coordinator",
+      kind: "tile",
+      id: this.config.tileId,
       secret: this.config.serviceSecret,
     };
     await writer.write(encodeFrame(handshake));
@@ -91,18 +114,17 @@ export class GatewayLink {
     }
 
     this.connected = true;
-    console.log("[GatewayLink] handshake ok");
+    console.log(`[GatewayLink] handshake ok (tileId=${this.config.tileId})`);
 
-    // Read WorldEvents forwarded from tiles; the gateway is the switchboard.
     try {
       while (!this.closed) {
-        const frame = await frames.readJson();
-        if (frame === null) break; // remote closed
-        const env = frame as WorldEventEnvelope;
-        if (env?.type === "world_event" && env.event) {
-          this.config.onEvent?.(env);
+        const msg = await frames.readJson();
+        if (msg === null) break;
+        const cmd = msg as TileCommandEnvelope;
+        if (cmd?.type === "tile_command" && cmd.command) {
+          this.config.onCommand?.(cmd);
         } else {
-          console.warn("[GatewayLink] dropped unknown frame:", frame);
+          console.warn("[GatewayLink] dropped unknown frame:", msg);
         }
       }
     } catch (err) {
@@ -114,11 +136,5 @@ export class GatewayLink {
       this.writer = null;
       this.transport = null;
     }
-  }
-
-  /** Send a TileCommand down to the targeted tile via the gateway. */
-  async sendCommand(cmd: TileCommandEnvelope): Promise<void> {
-    if (!this.writer) throw new Error("gateway link not connected");
-    await this.writer.write(encodeFrame(cmd));
   }
 }

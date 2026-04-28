@@ -5,51 +5,53 @@
  * Tiles and the world coordinator open a WebTransport session to the
  * gateway. The first frame on a bidirectional stream is a JSON
  * `ServiceHandshake` carrying the shared secret and a `kind`. After the
- * handshake the stream stays open as the multiplexed event/command channel
- * (T-139 wires the actual routing).
+ * handshake the stream stays open as the multiplexed event/command channel.
  *
- * This module owns:
- *   - the QuicEndpoint listener (port 8080/UDP by default)
- *   - per-session handshake validation
- *   - the single coordinator-link slot (rejects a second concurrent
- *     coordinator)
+ * Routing (T-139):
+ *   tile  → gateway  : WorldEventEnvelope  → forwarded to coordinator
+ *   coord → gateway  : TileCommandEnvelope → forwarded to target tile
  *
- * It does NOT own:
- *   - per-tile WT registration (tiles still use POST /register today; a
- *     future ticket can fold tile registration into the same WT
- *     handshake)
- *   - event/command routing — T-139 builds that on top.
+ * If the coordinator isn't connected, tile events are dropped (logged
+ * once, no buffering). Tile commands targeting an unknown / disconnected
+ * tile are dropped likewise. Both decisions are deliberate: we picked
+ * in-memory, no-replay routing in ARCHITECTURE.md ("Out of scope:
+ * Durable event log replay") to keep this layer simple.
  */
 
 import { encodeFrame, makeFrameReader } from "@voxim/protocol";
-import type { ServiceHandshake, ServiceHandshakeAck } from "@voxim/protocol";
+import type {
+  ServiceHandshake,
+  ServiceHandshakeAck,
+  WorldEventEnvelope,
+  TileCommandEnvelope,
+} from "@voxim/protocol";
 
 export interface WtServerConfig {
   port: number;
   cert: string;
   key: string;
   serviceSecret: string;
-  onCoordinatorConnected?: (link: CoordinatorLink) => void;
-  onCoordinatorDisconnected?: () => void;
 }
 
-export interface CoordinatorLink {
-  /** Send one length-prefixed JSON frame to the coordinator. */
+interface TileLink {
+  tileId: string;
   send(value: unknown): Promise<void>;
-  /** Read the next length-prefixed JSON frame from the coordinator. */
-  recv(): Promise<unknown | null>;
-  /** Close the underlying stream. */
+  close(): void;
+}
+
+interface CoordinatorLink {
+  send(value: unknown): Promise<void>;
   close(): void;
 }
 
 export class WtServer {
-  private coordinatorLink: CoordinatorLink | null = null;
+  private coordinator: CoordinatorLink | null = null;
+  private tileLinks = new Map<string, TileLink>();
 
   constructor(private readonly config: WtServerConfig) {}
 
-  /** True if a coordinator is currently linked. */
   get hasCoordinator(): boolean {
-    return this.coordinatorLink !== null;
+    return this.coordinator !== null;
   }
 
   start(): void {
@@ -98,7 +100,6 @@ export class WtServer {
   private async handleSession(session: WebTransportSession): Promise<void> {
     await session.ready;
 
-    // Read the first bidirectional stream — that's the handshake.
     const streamReader = session.incomingBidirectionalStreams.getReader();
     const { value: stream, done } = await streamReader.read();
     if (done || !stream) {
@@ -109,8 +110,8 @@ export class WtServer {
 
     const bidi = stream as WebTransportBidirectionalStream;
     const writer = bidi.writable.getWriter();
-    const readerInner = bidi.readable.getReader();
-    const frames = makeFrameReader(readerInner);
+    const innerReader = bidi.readable.getReader();
+    const frames = makeFrameReader(innerReader);
 
     let handshake: ServiceHandshake | null = null;
     try {
@@ -133,55 +134,155 @@ export class WtServer {
     }
 
     if (handshake.kind === "coordinator") {
-      if (this.coordinatorLink) {
-        await this.sendAck(writer, { type: "service_handshake_ack", ok: false, reason: "coordinator already connected" });
-        session.close({ closeCode: 3, reason: "duplicate coordinator" });
-        return;
-      }
-      const link: CoordinatorLink = {
-        send: async (value) => {
-          await writer.write(encodeFrame(value));
-        },
-        recv: async () => await frames.readJson(),
-        close: () => session.close(),
-      };
-      this.coordinatorLink = link;
-      await this.sendAck(writer, { type: "service_handshake_ack", ok: true });
-      console.log("[Gateway] coordinator connected");
-      this.config.onCoordinatorConnected?.(link);
-
-      // Wire teardown: when the WT session closes, drop the slot.
-      session.closed
-        .catch(() => {/* normal close throws on some Deno versions */})
-        .finally(() => {
-          if (this.coordinatorLink === link) {
-            this.coordinatorLink = null;
-            this.config.onCoordinatorDisconnected?.();
-            console.log("[Gateway] coordinator disconnected");
-          }
-        });
+      await this.acceptCoordinator(session, writer, frames);
       return;
     }
 
     if (handshake.kind === "tile") {
-      // T-139 will route tile event frames here. For now we only accept
-      // the handshake so a future tile WT migration can begin without
-      // gateway changes; the stream is left open but no frames are
-      // consumed.
-      await this.sendAck(writer, { type: "service_handshake_ack", ok: true });
-      console.log(`[Gateway] tile WT stream connected: ${handshake.id ?? "(no id)"}`);
+      const id = handshake.id?.trim();
+      if (!id) {
+        await this.sendAck(writer, { type: "service_handshake_ack", ok: false, reason: "tile handshake missing id" });
+        session.close({ closeCode: 4, reason: "no tile id" });
+        return;
+      }
+      await this.acceptTile(id, session, writer, frames);
       return;
     }
 
     await this.sendAck(writer, { type: "service_handshake_ack", ok: false, reason: `unknown kind: ${(handshake as { kind?: string }).kind}` });
-    session.close({ closeCode: 4, reason: "bad kind" });
+    session.close({ closeCode: 5, reason: "bad kind" });
   }
 
-  private async sendAck(writer: WritableStreamDefaultWriter<Uint8Array>, ack: ServiceHandshakeAck): Promise<void> {
+  // ---- coordinator ----
+
+  private async acceptCoordinator(
+    session: WebTransportSession,
+    writer: WritableStreamDefaultWriter<Uint8Array>,
+    frames: ReturnType<typeof makeFrameReader>,
+  ): Promise<void> {
+    if (this.coordinator) {
+      await this.sendAck(writer, { type: "service_handshake_ack", ok: false, reason: "coordinator already connected" });
+      session.close({ closeCode: 3, reason: "duplicate coordinator" });
+      return;
+    }
+
+    const link: CoordinatorLink = {
+      send: async (value) => { await writer.write(encodeFrame(value)); },
+      close: () => session.close(),
+    };
+    this.coordinator = link;
+    await this.sendAck(writer, { type: "service_handshake_ack", ok: true });
+    console.log("[Gateway] coordinator connected");
+
+    session.closed
+      .catch(() => {/* normal close throws on some Deno versions */})
+      .finally(() => {
+        if (this.coordinator === link) {
+          this.coordinator = null;
+          console.log("[Gateway] coordinator disconnected");
+        }
+      });
+
+    // Read commands from the coordinator and route to target tiles.
+    try {
+      while (true) {
+        const msg = await frames.readJson();
+        if (msg === null) break;
+        await this.routeFromCoordinator(msg);
+      }
+    } catch (err) {
+      console.warn(`[Gateway] coordinator stream error: ${(err as Error).message}`);
+    }
+  }
+
+  private async routeFromCoordinator(msg: unknown): Promise<void> {
+    const env = msg as TileCommandEnvelope;
+    if (!env || env.type !== "tile_command" || typeof env.targetTileId !== "string" || !env.command) {
+      console.warn("[Gateway] dropped malformed coordinator frame:", msg);
+      return;
+    }
+    const tile = this.tileLinks.get(env.targetTileId);
+    if (!tile) {
+      console.warn(`[Gateway] dropped tile_command for unknown/offline tile ${env.targetTileId}`);
+      return;
+    }
+    await tile.send(env);
+  }
+
+  // ---- tile ----
+
+  private async acceptTile(
+    tileId: string,
+    session: WebTransportSession,
+    writer: WritableStreamDefaultWriter<Uint8Array>,
+    frames: ReturnType<typeof makeFrameReader>,
+  ): Promise<void> {
+    // If a stream for this tile already exists, replace it. Tiles don't
+    // open multiple WT links by design; a duplicate means the previous
+    // session died and the tile is reconnecting.
+    const existing = this.tileLinks.get(tileId);
+    if (existing) existing.close();
+
+    const link: TileLink = {
+      tileId,
+      send: async (value) => { await writer.write(encodeFrame(value)); },
+      close: () => session.close(),
+    };
+    this.tileLinks.set(tileId, link);
+
+    await this.sendAck(writer, { type: "service_handshake_ack", ok: true });
+    console.log(`[Gateway] tile WT stream connected: ${tileId}`);
+
+    session.closed
+      .catch(() => {/* normal close */})
+      .finally(() => {
+        if (this.tileLinks.get(tileId) === link) {
+          this.tileLinks.delete(tileId);
+          console.log(`[Gateway] tile WT stream disconnected: ${tileId}`);
+        }
+      });
+
+    // Read events from the tile and forward to coordinator if connected.
+    try {
+      while (true) {
+        const msg = await frames.readJson();
+        if (msg === null) break;
+        await this.routeFromTile(tileId, msg);
+      }
+    } catch (err) {
+      console.warn(`[Gateway] tile ${tileId} stream error: ${(err as Error).message}`);
+    }
+  }
+
+  private async routeFromTile(tileId: string, msg: unknown): Promise<void> {
+    const env = msg as WorldEventEnvelope;
+    if (!env || env.type !== "world_event" || !env.event) {
+      console.warn(`[Gateway] dropped malformed tile frame from ${tileId}:`, msg);
+      return;
+    }
+    if (!this.coordinator) {
+      // Drop silently most of the time — events are best-effort. Log
+      // first occurrence so a misconfigured cluster is observable.
+      if (!this.warnedNoCoordinator) {
+        console.warn("[Gateway] world_event arrived but no coordinator connected (further drops suppressed)");
+        this.warnedNoCoordinator = true;
+      }
+      return;
+    }
+    // Pass through unchanged — gateway is just a switchboard.
+    await this.coordinator.send(env);
+  }
+
+  private warnedNoCoordinator = false;
+
+  private async sendAck(
+    writer: WritableStreamDefaultWriter<Uint8Array>,
+    ack: ServiceHandshakeAck,
+  ): Promise<void> {
     try {
       await writer.write(encodeFrame(ack));
     } catch {
-      // Peer may have closed already — ignore.
+      /* peer closed — ignore */
     }
   }
 }

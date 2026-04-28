@@ -110,6 +110,8 @@ export type {
   TileHandoffAck,
   ServiceHandshake,
   ServiceHandshakeAck,
+  WorldEventEnvelope,
+  TileCommandEnvelope,
 } from "./src/gateway.ts";
 export type {
   PlayerCrossedGatePayload,

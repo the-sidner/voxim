@@ -22,6 +22,7 @@ import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, make
 import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
+import { GatewayLink } from "./gateway_link.ts";
 
 // Bits that represent held keys — use latest-wins rather than OR across the tick.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
@@ -139,6 +140,13 @@ export interface TileServerConfig {
    */
   serviceSecret?: string;
   /**
+   * Gateway WebTransport URL, e.g. "https://gateway:8080". Used for the
+   * privileged event/command stream (T-139). When omitted, the tile runs
+   * without an event channel — it still serves players, but cross-tile
+   * coordination is disabled.
+   */
+  gatewayWtUrl?: string;
+  /**
    * Enable dev/cheat commands (e.g. DebugGiveItem).
    * Should never be true in production deployments.
    * Defaults to false.
@@ -176,6 +184,8 @@ export class TileServer {
   private saveManager: SaveManager | null = null;
   private saveTickCounter = 0;
   private gatewayUrl: string | null = null;
+  /** Privileged WT link to the gateway for world events / tile commands. */
+  private gatewayLink: GatewayLink | null = null;
   /**
    * Players for whom a handoff fetch is in flight. Prevents a second
    * GateApproached event (or rapidly-repeated collisions) from initiating a
@@ -441,6 +451,37 @@ export class TileServer {
       registerWithGateway(config.gatewayUrl, config.tileId, config.tileAddress, adminUrl);
     }
 
+    // Privileged WT event/command link to gateway (T-139). Independent of
+    // the HTTP register/heartbeat path above — registry is the source of
+    // truth for liveness; this stream is the message channel.
+    if (config.gatewayWtUrl && config.serviceSecret) {
+      const link = new GatewayLink({
+        url: config.gatewayWtUrl,
+        tileId: config.tileId,
+        serviceSecret: config.serviceSecret,
+        gatewayCertHashHex: this.certHashHex,
+        onCommand: (cmd) => {
+          // Real handlers land in T-140 (gate handoff orchestration) and
+          // T-148 (caravan dispatch). For now we log so the dev loop is
+          // observable when coordinator emits commands.
+          console.log(`[TileServer] received tile_command kind=${cmd.command.kind}`, cmd.command);
+        },
+      });
+      link.start();
+      this.gatewayLink = link;
+
+      // Until concrete events land (T-140+), publish a periodic "tile_alive"
+      // ping every 30s so the coordinator's log shows the channel is wired.
+      // Removed in T-140 once real GateApproached events take over.
+      setInterval(() => {
+        link.publish({
+          type: "world_event",
+          sourceTileId: config.tileId,
+          event: { kind: "tile_alive", at: Date.now() },
+        }).catch(() => {/* publish is best-effort */});
+      }, 30_000);
+    }
+
     this.tickLoop.start((dt, tick) => this.runTick(dt, tick), { tickRateHz });
 
     console.log(
@@ -457,6 +498,9 @@ export class TileServer {
     this.tickLoop.stop();
     for (const session of this.sessions.values()) {
       session.close();
+    }
+    if (this.gatewayLink) {
+      await this.gatewayLink.stop();
     }
     if (this.saveManager) {
       await this.saveManager.save(this.world);

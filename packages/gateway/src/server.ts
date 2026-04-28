@@ -23,8 +23,6 @@
  *   - Gateway sweeps every 10s, evicting tiles whose last_heartbeat_at
  *     is older than 30s.
  */
-import { EventBus } from "@voxim/engine";
-import { WorldEvents } from "@voxim/protocol";
 import type {
   GatewayConnectRequest,
   GatewayRegisterRequest,
@@ -86,8 +84,6 @@ export interface GatewayConfig {
 }
 
 export class GatewayServer {
-  /** World event bus — tile servers publish cross-tile events here. Stub: no subscribers yet. */
-  readonly worldEvents = new EventBus();
   sessions!: SessionService;
   tiles!: TileOrchestrator;
   wt!: WtServer;
@@ -115,16 +111,6 @@ export class GatewayServer {
       heritage: config.repos.heritage,
       sessions: this.sessions,
       serviceSecret: config.serviceSecret,
-    });
-
-    this.worldEvents.subscribe(WorldEvents.PlayerCrossedGate, (_payload) => {
-      // TODO (T-140): coordinate handoff
-    });
-    this.worldEvents.subscribe(WorldEvents.TileServerStarted, (_payload) => {
-      // TODO (T-139): real event-bus wiring
-    });
-    this.worldEvents.subscribe(WorldEvents.TileServerStopped, (_payload) => {
-      // TODO (T-139): deregister + migrate players
     });
 
     this.tiles.startSweepLoop();

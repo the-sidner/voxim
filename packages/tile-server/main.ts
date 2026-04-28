@@ -31,17 +31,19 @@ globalThis.addEventListener("unhandledrejection", (event) => {
   event.preventDefault();
 });
 
-const tileId      = Deno.env.get("TILE_ID")      ?? "tile_0";
-const port        = parseInt(Deno.env.get("PORT")       ?? "4434");
-const adminPort   = parseInt(Deno.env.get("ADMIN_PORT") ?? "14434");
-const certPath    = Deno.env.get("TLS_CERT")     ?? "./certs/cert.pem";
-const keyPath     = Deno.env.get("TLS_KEY")      ?? "./certs/key.pem";
-const tickRateHz  = parseInt(Deno.env.get("TICK_RATE")  ?? "20");
-const tileAddress = Deno.env.get("TILE_ADDRESS") ?? `127.0.0.1:${port}`;
-const gatewayUrl  = Deno.env.get("GATEWAY_URL");   // undefined → no self-registration
-const databaseUrl = Deno.env.get("DATABASE_URL");  // undefined → ephemeral
-const dataDir     = Deno.env.get("DATA_DIR");      // undefined → default loader path
-const devMode     = !["0", "false"].includes(Deno.env.get("DEV_MODE") ?? "");
+const tileId         = Deno.env.get("TILE_ID")      ?? "tile_0";
+const port           = parseInt(Deno.env.get("PORT")       ?? "4434");
+const adminPort      = parseInt(Deno.env.get("ADMIN_PORT") ?? "14434");
+const certPath       = Deno.env.get("TLS_CERT")     ?? "./certs/cert.pem";
+const keyPath        = Deno.env.get("TLS_KEY")      ?? "./certs/key.pem";
+const tickRateHz     = parseInt(Deno.env.get("TICK_RATE")  ?? "20");
+const tileAddress    = Deno.env.get("TILE_ADDRESS") ?? `127.0.0.1:${port}`;
+const gatewayUrl     = Deno.env.get("GATEWAY_URL");      // undefined → no self-registration
+const gatewayWtUrl   = Deno.env.get("GATEWAY_WT_URL");   // undefined → no event channel
+const serviceSecret  = Deno.env.get("VOXIM_SERVICE_SECRET");
+const databaseUrl    = Deno.env.get("DATABASE_URL");     // undefined → ephemeral
+const dataDir        = Deno.env.get("DATA_DIR");         // undefined → default loader path
+const devMode        = !["0", "false"].includes(Deno.env.get("DEV_MODE") ?? "");
 
 const cert = await Deno.readTextFile(certPath);
 const key  = await Deno.readTextFile(keyPath);
@@ -62,8 +64,10 @@ await server.start({
   tickRateHz,
   adminPort,
   tileAddress,
-  ...(gatewayUrl ? { gatewayUrl } : {}),
-  ...(tileSaves  ? { tileSaves }  : {}),
-  ...(dataDir    ? { dataDir }    : {}),
+  ...(gatewayUrl     ? { gatewayUrl }     : {}),
+  ...(gatewayWtUrl   ? { gatewayWtUrl }   : {}),
+  ...(serviceSecret  ? { serviceSecret }  : {}),
+  ...(tileSaves      ? { tileSaves }      : {}),
+  ...(dataDir        ? { dataDir }        : {}),
   devMode,
 });
