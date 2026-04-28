@@ -170,12 +170,23 @@ function lerpAngle(a: number, b: number, t: number): number {
 const SUN_DIR = new THREE.Vector3(20, 100, -15).normalize();
 
 /**
+ * Minimal contract VoximRenderer needs from HoverOutlineRenderer — declared
+ * here so renderer.ts does not import the outline module (which would
+ * cycle).  HoverOutlineRenderer implements this directly.
+ */
+export interface HoverOutlineSink {
+  notifyEntityRebuilt(entityId: string): void;
+}
+
+/**
  * Three.js layer used for the hover silhouette mask pass.
  * The main camera never renders this layer (it sees layer 0 only).
- * setHoveredEntity() enables it on the hovered entity's meshes so the mask
- * pass can render them flat-white into hoverMaskTarget.
+ * HoverOutlineRenderer enables it on the hovered entity's meshes (or on
+ * proxy shells for prop-pool entities) so the mask pass renders them into
+ * hoverMaskTarget.  Exported because the renderer doesn't own hover state
+ * any more — the outline renderer does, and reads this as a constant.
  */
-const HOVER_LAYER = 4;
+export const HOVER_LAYER = 4;
 
 /** Scratch objects — reused by updateAttachmentPositions to avoid per-frame allocation. */
 const _attachTmp   = new THREE.Vector3();
@@ -208,9 +219,7 @@ export class VoximRenderer {
   private localPlayerId: string | null = null;
   private content: ContentCache | null = null;
   private interactionSystem: InteractionSystem | null = null;
-
-  /** entityId currently hovered by the cursor, or null. */
-  private hoveredEntityId: string | null = null;
+  private hoverOutline: HoverOutlineSink | null = null;
 
   /** Smooth animation tick — advances at server tick rate (20 Hz) based on real time. */
   private smoothTick = 0;
@@ -382,7 +391,14 @@ export class VoximRenderer {
       stencilBuffer: false,
       depthBuffer: false,
     });
-    this.hoverMaskMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    // depthTest off → silhouette captures the full shape even when occluded
+    // by walls or terrain (the outline reads as an x-ray hint of the entity
+    // when something blocks it).
+    this.hoverMaskMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      depthTest: false,
+      depthWrite: false,
+    });
 
     // ---- edge pass + fullscreen blit scene ----
     this.edgePass = new EdgePass(
@@ -554,8 +570,9 @@ export class VoximRenderer {
         if (skeleton) {
           const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
           upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams);
-          // Re-enable hover layer on newly built meshes if this entity is still hovered.
-          if (entityId === this.hoveredEntityId) this._setMeshHoverLayer(capture, true);
+          // Re-attach hover outline to the freshly built meshes if this entity
+          // is still hovered (meshes get the HOVER_LAYER on every rebuild).
+          this.hoverOutline?.notifyEntityRebuilt(entityId);
           capture.modelSeed  = modelRef.seed  ?? 0;
           capture.modelScale = modelRef.scaleX ?? 0;
           this._skeletonOverlay.trackEntity(entityId, capture, skeleton);
@@ -631,7 +648,6 @@ export class VoximRenderer {
     }
     const mesh = this.entityMeshes.get(entityId);
     if (mesh) {
-      if (entityId === this.hoveredEntityId) this.setHoveredEntity(null);
       this.interactionSystem?.removeEntity(entityId);
       this.lightManager.remove(entityId, mesh.group);
       this.debugOverlayManager.removeEntity(entityId);
@@ -647,38 +663,34 @@ export class VoximRenderer {
     this.interactionSystem = is;
   }
 
-  /** Public read access to an entity's mesh group — used by InteractionSystem. */
+  /**
+   * Register the hover outline renderer.  The renderer notifies it when an
+   * entity's meshes are rebuilt mid-hover (placeholder → skeleton upgrade)
+   * so the outline can re-attach to the new geometry without waiting for the
+   * cursor to move.  Pass null to detach.
+   */
+  setHoverOutline(o: HoverOutlineSink | null): void {
+    this.hoverOutline = o;
+  }
+
+  /** Public read access to an entity's mesh group — used by InteractionSystem and HoverOutlineRenderer. */
   getEntityMesh(entityId: string): EntityMeshGroup | null {
     return this.entityMeshes.get(entityId) ?? null;
   }
 
-  /**
-   * Set the entity currently under the cursor.  Enables HOVER_LAYER on its
-   * meshes so the hover mask pass renders them; disables it on the previous
-   * hovered entity.  Pass null to clear hover state.
-   */
-  setHoveredEntity(entityId: string | null): void {
-    if (entityId === this.hoveredEntityId) return;
-    if (this.hoveredEntityId !== null) {
-      const prev = this.entityMeshes.get(this.hoveredEntityId);
-      if (prev) this._setMeshHoverLayer(prev, false);
-    }
-    this.hoveredEntityId = entityId;
-    if (entityId !== null) {
-      const mesh = this.entityMeshes.get(entityId);
-      if (mesh) this._setMeshHoverLayer(mesh, true);
-    }
-    this.edgePass.setHoverActive(entityId !== null);
+  /** World position of a static prop entity, or null if it isn't in the prop pool. */
+  getPropPosition(entityId: string): THREE.Vector3 | null {
+    return this.propPositions.get(entityId) ?? null;
   }
 
-  private _setMeshHoverLayer(mesh: EntityMeshGroup, on: boolean): void {
-    mesh.group.traverse((obj: THREE.Object3D) => {
-      if (!(obj instanceof THREE.Mesh)) return;
-      // Skip pick cylinders (added by InteractionSystem — they have entityId in userData).
-      if (obj.userData.entityId !== undefined) return;
-      if (on) obj.layers.enable(HOVER_LAYER);
-      else    obj.layers.disable(HOVER_LAYER);
-    });
+  /** PropInstancePool — exposed so HoverOutlineRenderer can build proxy shells. */
+  getPropPool(): PropInstancePool {
+    return this.propPool;
+  }
+
+  /** EdgePass — exposed so HoverOutlineRenderer can drive uHoverActive / uHoverColor. */
+  getEdgePass(): EdgePass {
+    return this.edgePass;
   }
 
   // ---- camera ----
@@ -977,10 +989,12 @@ export class VoximRenderer {
     this.renderer.setRenderTarget(this.pixelTarget);
     this.renderer.render(this.scene, this.camera);
 
-    // Hover mask: render hovered entity flat-white → hoverMaskTarget.
-    // Camera temporarily set to HOVER_LAYER only; overrideMaterial paints everything white.
-    // The mask is consumed by EdgePass to produce a dilated silhouette outline.
-    if (this.hoveredEntityId !== null) {
+    // Hover mask: render whatever's currently on HOVER_LAYER flat-white →
+    // hoverMaskTarget.  HoverOutlineRenderer puts the hovered entity's meshes
+    // (or proxy shells for prop-pool entities) onto the layer and toggles the
+    // EdgePass uniform; the renderer just reads the uniform here to skip the
+    // pass entirely when there's nothing to outline.
+    if (this.edgePass.material.uniforms.uHoverActive.value > 0.0) {
       const savedMask       = this.camera.layers.mask;
       const savedBackground = this.scene.background;
       this.camera.layers.set(HOVER_LAYER);

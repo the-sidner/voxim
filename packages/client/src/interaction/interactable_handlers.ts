@@ -1,10 +1,10 @@
 /**
  * Built-in interaction handlers for the common interactable entity categories.
  *
- * Each handler opts into the hover silhouette outline (showHoverOutline: true)
- * and declares which component presence identifies the entity type.  onClick
- * returns false so the click falls through to normal input handling; replace
- * with real behaviour once UI exists for that category.
+ * Each handler declares which component presence identifies the entity type
+ * and what to do on click.  Hover outlining is no longer a handler concern —
+ * it's driven entirely by `outlineCategoryFor` in render/hover_outline.ts,
+ * which keeps the rule "what is highlighted" co-located with the visual.
  *
  * Register all three in game.ts after constructing InteractionSystem:
  *   interactionSystem.register(workstationHandler);
@@ -26,7 +26,6 @@ export function makeWorkstationHandler(
     id: "workstation",
     priority: 10,
     interactionRange: 3,
-    showHoverOutline: true,
     canHandle: (t) => t.entityState.workstationBuffer !== undefined,
     onClick: (t) => { open(t.entityId); return true; },
   };
@@ -41,7 +40,6 @@ export const resourceNodeHandler: EntityInteractionHandler = {
   id: "resource_node",
   priority: 5,
   interactionRange: 3,
-  showHoverOutline: true,
   canHandle: (t) => t.entityState.raw.has("resource_node"),
   onClick: () => false,
 };
@@ -55,7 +53,6 @@ export const groundItemHandler: EntityInteractionHandler = {
   id: "ground_item",
   priority: 8,
   interactionRange: 2,
-  showHoverOutline: true,
   canHandle: (t) => t.entityState.raw.has("itemData"),
   onClick: () => false,
 };

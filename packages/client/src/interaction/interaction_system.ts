@@ -6,7 +6,10 @@
  * The camera only renders layer 0 (default), so pick cylinders are never visible.
  * A raycaster targeting PICK_LAYER finds the entity under the cursor each frame.
  *
- * Hover state: tracked per-frame; handlers receive onHoverStart/onHoverEnd callbacks.
+ * Hover state lives in the input system's `hoverState` signal — this system
+ * publishes to it and fires handler onHoverStart/onHoverEnd callbacks. The
+ * outline renderer subscribes to the same signal independently; the system
+ * never touches outline state directly.
  *
  * Click dispatch: registered EntityInteractionHandlers are sorted by priority.
  * The highest-priority handler whose canHandle() returns true fires onClick().
@@ -114,7 +117,11 @@ export class InteractionSystem {
 
     if (this.hoveredEntityId === entityId) {
       this.hoveredEntityId = null;
-      // No need to reset outline mat — entity is gone
+      // Push the cleared hover to the signal so the outline renderer drops
+      // its silhouette before the entity's geometry vanishes.  Without this,
+      // hoverState would still point at the dead id until the next mouse
+      // move, leaving an orphan shell on screen for one frame.
+      hoverState.value = { kind: "none" };
     }
   }
 
@@ -136,38 +143,31 @@ export class InteractionSystem {
       ? { kind: "entity", entityId }
       : { kind: "none" };
 
-    // Un-hover previous
+    // Un-hover previous: fire onHoverEnd on the matching handler.
     if (this.hoveredEntityId !== null) {
-      if (this.renderer.getEntityMesh(this.hoveredEntityId)) {
-        const prevTarget = this._buildTarget(this.hoveredEntityId);
-        if (prevTarget) {
-          for (const h of this.handlers) {
-            if (h.onHoverEnd && h.canHandle(prevTarget)) {
-              h.onHoverEnd(prevTarget);
-              break;
-            }
+      const prevTarget = this._buildTarget(this.hoveredEntityId);
+      if (prevTarget) {
+        for (const h of this.handlers) {
+          if (h.onHoverEnd && h.canHandle(prevTarget)) {
+            h.onHoverEnd(prevTarget);
+            break;
           }
         }
       }
       this.hoveredEntityId = null;
-      this.renderer.setHoveredEntity(null);
     }
 
-    // Hover new
+    // Hover new: fire onHoverStart on the matching handler.  Prop-pool
+    // entities have no EntityMeshGroup but are still hoverable via their
+    // pick cylinder, so we don't gate on getEntityMesh any more.
     if (entityId !== null) {
-      if (this.renderer.getEntityMesh(entityId)) {
-        this.hoveredEntityId = entityId;
-        const target = this._buildTarget(entityId);
-        // Only show the silhouette outline when at least one matching handler opts in.
-        const wantsOutline = target !== null &&
-          this.handlers.some((h) => h.showHoverOutline && h.canHandle(target));
-        this.renderer.setHoveredEntity(wantsOutline ? entityId : null);
-        if (target) {
-          for (const h of this.handlers) {
-            if (h.onHoverStart && h.canHandle(target)) {
-              h.onHoverStart(target);
-              break;
-            }
+      this.hoveredEntityId = entityId;
+      const target = this._buildTarget(entityId);
+      if (target) {
+        for (const h of this.handlers) {
+          if (h.onHoverStart && h.canHandle(target)) {
+            h.onHoverStart(target);
+            break;
           }
         }
       }

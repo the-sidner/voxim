@@ -239,6 +239,32 @@ export class PropInstancePool {
     return this.propSlots.has(entityId);
   }
 
+  /**
+   * Build per-slot proxy meshes for one prop entity, sharing the pool's
+   * geometry but with the slot's world matrix baked in.  Used by the hover
+   * outline renderer: the shells are added to the scene on a hover-only
+   * Three.js layer so the silhouette mask pass picks them up.  The caller
+   * owns layer assignment and disposal of the Mesh wrappers (geometry and
+   * material are pool-owned and must NOT be disposed).
+   */
+  buildHoverShells(entityId: string): THREE.Mesh[] {
+    const slots = this.propSlots.get(entityId);
+    if (!slots) return [];
+    const out: THREE.Mesh[] = [];
+    const m = new THREE.Matrix4();
+    for (const { key, slot } of slots) {
+      const entry = this.pools.get(key);
+      if (!entry) continue;
+      entry.mesh.getMatrixAt(slot, m);
+      const shell = new THREE.Mesh(entry.mesh.geometry, entry.mesh.material);
+      shell.matrixAutoUpdate = false;
+      shell.matrix.copy(m);
+      shell.frustumCulled = false;
+      out.push(shell);
+    }
+    return out;
+  }
+
   dispose(): void {
     for (const entry of this.pools.values()) {
       this.scene.remove(entry.mesh);

@@ -20,6 +20,7 @@ import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
 import { BuildGhostRenderer } from "./render/build_ghost.ts";
+import { HoverOutlineRenderer } from "./render/hover_outline.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
 import { makeWorkstationHandler, resourceNodeHandler, groundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
@@ -79,6 +80,7 @@ export class VoximGame {
   private lastFrameTime = 0;
   private interactionSystem: InteractionSystem | null = null;
   private buildGhost: BuildGhostRenderer | null = null;
+  private hoverOutline: HoverOutlineRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
@@ -391,6 +393,10 @@ export class VoximGame {
       this.renderer.scene,
       (x, y) => this.world.getTerrainHeight(x, y),
     );
+
+    // Hover outline — subscribes to hoverState; decides outline tint per
+    // entity category and feeds the silhouette into the EdgePass mask.
+    this.hoverOutline = new HoverOutlineRenderer(this.renderer, this.world);
 
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
@@ -879,6 +885,8 @@ export class VoximGame {
     this.interactionSystem = null;
     this.buildGhost?.dispose();
     this.buildGhost = null;
+    this.hoverOutline?.dispose();
+    this.hoverOutline = null;
     this.inputCapture?.dispose();
     this.inputCapture = null;
     this.input = null;

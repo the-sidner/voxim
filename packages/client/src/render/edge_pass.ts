@@ -6,11 +6,14 @@
  * brightness, so edges fire at consistent strength across day/night cycles and
  * on dark surfaces (terrain faces, midnight shadows, etc.).
  *
- * Hover outline: the renderer renders the hovered entity flat-white to a separate
- * mask texture (hoverMaskTarget).  This pass dilates that mask by uHoverRadius
- * texels; pixels in the dilated ring (dilated − original) become the outline.
- * The outline is composited in linear space before the final sRGB conversion so
- * blending is perceptually correct.
+ * Hover outline: HoverOutlineRenderer paints the hovered entity onto a separate
+ * mask texture (hoverMaskTarget), depth-test off so the silhouette is visible
+ * through walls.  This pass:
+ *   - dilates the mask with a separable box kernel of radius uHoverRadius
+ *     (continuous ring at any radius — much smoother than the old +× sample);
+ *   - composites the dilated ring as uHoverColor (rim);
+ *   - tints the silhouette interior toward uHoverColor at uHoverFill alpha so
+ *     the whole shape reads as "selected", not just the rim.
  *
  * Depth texture is reserved for a future packed-depth pass; direct DEPTH_COMPONENT
  * sampling via sampler2D produces undefined results on several WebGL2 drivers due
@@ -40,6 +43,7 @@ const FRAG = /* glsl */`
   uniform float     uHoverActive;
   uniform vec3      uHoverColor;
   uniform float     uHoverRadius;
+  uniform float     uHoverFill;
 
   float luma(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -94,22 +98,27 @@ const FRAG = /* glsl */`
     color.rgb = mix(color.rgb, edgeLinear, edge);
 
     // ---- Hover silhouette outline (linear space) ------------------------
-    // Dilate the entity mask by uHoverRadius texels.  The ring between the
-    // dilated and the original mask is the outline; it wraps the whole model
-    // silhouette rather than individual voxels.
+    // Dilate the mask via a square box kernel: max over every texel in the
+    // (2R+1)×(2R+1) window.  Cost is small at our pixel-art resolutions (R≈4
+    // → 81 samples) and the ring is fully continuous regardless of radius —
+    // the previous +× sample produced a star-pattern that read as dots.
     float hMask = texture2D(tHoverMask, vUv).r;
     float hDil  = hMask;
-    float hr    = uHoverRadius;
-    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( hr,  0.0)).r);
-    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(-hr,  0.0)).r);
-    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( 0.0,  hr)).r);
-    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( 0.0, -hr)).r);
-    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( hr,  hr)).r);
-    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(-hr,  hr)).r);
-    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2( hr, -hr)).r);
-    hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(-hr, -hr)).r);
-    float hOutline = hDil * (1.0 - hMask) * uHoverActive;
-    color.rgb = mix(color.rgb, uHoverColor, hOutline);
+    int   r     = int(uHoverRadius);
+    for (int j = -8; j <= 8; j++) {
+      if (j < -r || j > r) continue;
+      for (int i = -8; i <= 8; i++) {
+        if (i < -r || i > r) continue;
+        hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(float(i), float(j))).r);
+      }
+    }
+    // Rim = dilated minus original; interior wash = mask × uHoverFill.  The
+    // entity reads as "selected" both at the edge and across its body, but
+    // the rim still pops above the wash so the silhouette stays legible.
+    float hRim    = hDil * (1.0 - hMask) * uHoverActive;
+    float hFillA  = hMask * uHoverFill   * uHoverActive;
+    color.rgb = mix(color.rgb, uHoverColor, hFillA);
+    color.rgb = mix(color.rgb, uHoverColor, hRim);
 
     // Linear → sRGB for canvas output.
     color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
@@ -139,7 +148,8 @@ export class EdgePass {
         lumThreshold:  { value: 0.4 },
         uHoverActive:  { value: 0.0 },
         uHoverColor:   { value: new THREE.Color().setRGB(1.0, 0.96, 0.78) },
-        uHoverRadius:  { value: 2.5 },
+        uHoverRadius:  { value: 4.0 },
+        uHoverFill:    { value: 0.18 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -168,6 +178,11 @@ export class EdgePass {
   /** Enable or disable the hover silhouette outline composite. */
   setHoverActive(active: boolean): void {
     this.material.uniforms.uHoverActive.value = active ? 1.0 : 0.0;
+  }
+
+  /** Tint color for the rim and the interior wash (sRGB; converted in shader). */
+  setHoverColor(color: THREE.ColorRepresentation): void {
+    (this.material.uniforms.uHoverColor.value as THREE.Color).set(color);
   }
 
   dispose(): void {
