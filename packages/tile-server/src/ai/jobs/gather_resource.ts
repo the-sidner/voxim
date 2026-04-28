@@ -3,10 +3,11 @@
  * prefab id is in the job's acceptable set, then hits it until the NPC's
  * inventory has the target quantity of the desired item.
  *
- * Yields drop as ItemData entities near the node when it depletes; the
- * NPC's own ItemPickupSystem collects them automatically. That symmetry
- * with the player flow is why we don't need a separate "pick up the drop"
- * state here — the pickup radius handles it.
+ * Yields drop as ItemData entities near the node when it depletes. NPCs
+ * have no automatic pickup pathway today (the player-facing auto-pickup
+ * was deleted and never covered NPCs to begin with), so this job
+ * currently never deposits drops into NPC inventories — a follow-up will
+ * add an explicit "walk to and consume drop" step.
  *
  * Self-terminates in three cases:
  *   - inventory already has ≥ targetQuantity of itemType → clearJob

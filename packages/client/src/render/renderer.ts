@@ -17,8 +17,9 @@ import * as THREE from "three";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { MaterialDef, ModelDefinition, WeaponActionDef, Prefab, AnimationStateData } from "@voxim/content";
+import type { MaterialDef, ModelDefinition, ResolvedSubObject, WeaponActionDef, Prefab, AnimationStateData } from "@voxim/content";
 import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
+import type { AabbHalfExtents } from "../interaction/interaction_system.ts";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import {
   createEntityMesh,
@@ -570,9 +571,11 @@ export class VoximRenderer {
         if (skeleton) {
           const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
           upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams);
-          // Re-attach hover outline to the freshly built meshes if this entity
-          // is still hovered (meshes get the HOVER_LAYER on every rebuild).
+          // Re-attach hover outline + resize the pick box to fit the freshly
+          // built meshes — both attach via the entity's group, which now
+          // holds real geometry instead of the placeholder.
           this.hoverOutline?.notifyEntityRebuilt(entityId);
+          this.interactionSystem?.refreshEntityShape(entityId);
           capture.modelSeed  = modelRef.seed  ?? 0;
           capture.modelScale = modelRef.scaleX ?? 0;
           this._skeletonOverlay.trackEntity(entityId, capture, skeleton);
@@ -594,16 +597,19 @@ export class VoximRenderer {
           this.syncEquipment(capture, state);
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
-          // Re-attach the pick cylinder to the scene at the prop's fixed
-          // position so workstations and other interactable props still receive
-          // hover + click; without this they fall through to terrain.
+          // Re-attach the pick box to the scene at the prop's fixed position
+          // and size it to the model's voxel AABB (in three.js space) so the
+          // raycaster picks workstations / nodes / dropped items at their real
+          // footprints — uniform cylinders made small drops occlude bigger
+          // entities behind them.
           const worldPos = capture.group.position.clone();
           this.scene.remove(capture.group);
           disposeEntityMesh(capture);
           this.entityMeshes.delete(entityId);
           this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale);
           this.propPositions.set(entityId, worldPos);
-          this.interactionSystem?.addStaticEntity(entityId, worldPos, this.scene);
+          const halfExtents = computePropHalfExtents(def, resolvedSubs, subModelDefs, scale);
+          this.interactionSystem?.addStaticEntity(entityId, worldPos, this.scene, halfExtents);
           // TODO Step 7: re-wire hitbox debug overlay using local computeHitboxDebug()
         }
       }).catch(() => {});
@@ -1495,6 +1501,76 @@ export class VoximRenderer {
       (mesh.material as THREE.Material).dispose();
     }
   }
+}
+
+/**
+ * Walk every voxel of a static prop's main model + sub-objects in three.js
+ * coordinates and return its AABB as half-extents + centre for the
+ * InteractionSystem pick box.  Sub-objects are honoured so trees with
+ * branches and props with offset attachments get the correct footprint
+ * (the cached getModelAabb only covers main-model nodes).
+ *
+ * model(x, y, z) → three(x*sx, z*sz, y*sy) — same convention as
+ * PropInstancePool.buildLocalDispGeo().
+ */
+function computePropHalfExtents(
+  def: ModelDefinition,
+  resolvedSubs: ResolvedSubObject[],
+  subModelDefs: Map<string, ModelDefinition>,
+  scale: { x: number; y: number; z: number },
+): AabbHalfExtents {
+  let minX =  Infinity, minY =  Infinity, minZ =  Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+  // Voxel n occupies [n, n+1) on each axis.  Three.js corners after scale.
+  const accumulate = (
+    nodes: ModelDefinition["nodes"],
+    sx: number, sy: number, sz: number,
+    ox = 0, oy = 0, oz = 0,
+  ): void => {
+    for (const n of nodes) {
+      // model(x,y,z) → three(x*sx, z*sz, y*sy)
+      const aX =  n.x      * sx + ox;
+      const bX = (n.x + 1) * sx + ox;
+      const aY =  n.z      * sz + oy;
+      const bY = (n.z + 1) * sz + oy;
+      const aZ =  n.y      * sy + oz;
+      const bZ = (n.y + 1) * sy + oz;
+      if (aX < minX) minX = aX; if (bX > maxX) maxX = bX;
+      if (aY < minY) minY = aY; if (bY > maxY) maxY = bY;
+      if (aZ < minZ) minZ = aZ; if (bZ > maxZ) maxZ = bZ;
+    }
+  };
+
+  accumulate(def.nodes, scale.x, scale.y, scale.z);
+  for (const sub of resolvedSubs) {
+    const subDef = subModelDefs.get(sub.modelId);
+    if (!subDef) continue;
+    const t = sub.transform;
+    const sx = scale.x * t.scaleX;
+    const sy = scale.y * t.scaleY;
+    const sz = scale.z * t.scaleZ;
+    // Sub-object position uses the same model→three mapping; rotations are
+    // ignored here (small rotated parts barely shift the AABB and fixing
+    // it correctly would mean transforming each voxel through a 4×4 — not
+    // worth the cost for a click target).
+    const ox = t.x * scale.x;
+    const oy = t.z * scale.z;
+    const oz = t.y * scale.y;
+    accumulate(subDef.nodes, sx, sy, sz, ox, oy, oz);
+  }
+
+  if (!isFinite(minX)) {
+    return { hx: 0.4, hy: 0.9, hz: 0.4, cx: 0, cy: 0.9, cz: 0 };
+  }
+  return {
+    hx: (maxX - minX) / 2,
+    hy: (maxY - minY) / 2,
+    hz: (maxZ - minZ) / 2,
+    cx: (maxX + minX) / 2,
+    cy: (maxY + minY) / 2,
+    cz: (maxZ + minZ) / 2,
+  };
 }
 
 // ---- helpers ----

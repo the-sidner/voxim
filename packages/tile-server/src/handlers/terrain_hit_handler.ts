@@ -7,7 +7,7 @@
  *
  * T-034: reduces Heightmap cell by digStep * digPower (snapped to HEIGHT_STEP).
  * T-035: spawns a material drop (dirt, stone, etc.) based on the cell's MaterialGrid value.
- *        Drop always spawns as a world ItemData entity; picked up by ItemPickupSystem.
+ *        Drop always spawns as a world ItemData entity; picked up by the explicit PickUp command.
  */
 import type { World } from "@voxim/engine";
 import { Heightmap, MaterialGrid, CHUNK_SIZE, snapHeight } from "@voxim/world";
@@ -78,7 +78,7 @@ export class TerrainDigSystem implements System {
         newData[idx] = newHeight;
         world.set(chunkId, Heightmap, { ...heightmap, data: newData });
 
-        // T-035: material drop — always spawn as world entity, picked up by ItemPickupSystem
+        // T-035: material drop — always spawn as world entity, picked up by the explicit PickUp command
         const matGrid = world.get(chunkId, MaterialGrid);
         if (matGrid) {
           const matId = matGrid.data[idx];

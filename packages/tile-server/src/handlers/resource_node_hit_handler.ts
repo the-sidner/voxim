@@ -86,9 +86,11 @@ function spawnYields(
   hitY: number,
   hitZ: number,
 ): void {
-  // Items always drop at the hit contact point — players pick them up via ItemPickupSystem.
-  // Each yield unit spawns as a separate world entity with a small random scatter so
-  // stacked drops don't all land on the same pixel.
+  // Items always drop at the hit contact point as world ItemData entities;
+  // the player picks them up explicitly via the PickUp command (E key or
+  // click on the dropped item). Each yield unit spawns as a separate world
+  // entity with a small random scatter so stacked drops don't pile on a
+  // single pixel.
   for (const yld of yields) {
     const qty = yld.quantity + Math.floor((harvestPower - 1) * (yld.quantityPerHarvestPower ?? 0));
     if (qty <= 0) continue;
