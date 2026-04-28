@@ -2314,7 +2314,7 @@ Done when: `docker compose up coordinator` brings it up, gateway logs
 "coordinator connected", coordinator logs ticks.
 
 ### T-138 · World map: gen + persist + tile lookup
-Effort: M   Status: todo   (replaces stub for T-056/T-060)
+Effort: M   Status: done   Commit: 0324930   (replaces stub for T-056/T-060)
 
 Coordinator generates the world map on first startup and persists it.
 Tile-servers fetch their cell during terrain generation.
