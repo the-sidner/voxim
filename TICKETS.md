@@ -2176,3 +2176,271 @@ heritage is visible (generation + bonus max-health applied).
 - Admin tools (ban, reset, promote) — separate ticket line.
 - `deno task inspect-user` CLI — nice to have, T-116 candidate.
 
+---
+
+## Multi-process architecture (Postgres + coordinator)
+
+These tickets implement the cross-process architecture described in
+`ARCHITECTURE.md`. They land in order — each phase produces something
+runnable. They supersede / replace the older Gateway tickets T-051, T-052,
+T-053, T-054, T-055 by giving them concrete substrates; the originals stay
+as the gameplay-level acceptance criteria.
+
+### T-132 · Postgres + docker-compose dev stack
+Effort: M   Status: todo
+
+Stand up the multi-process dev environment. No behaviour change yet — gateway
+and tile-server still run with their existing in-memory / file-based state;
+this ticket only puts the substrate in place so subsequent tickets can move
+state into Postgres.
+
+- Add `docker-compose.yml` with services: `postgres` (postgres:16, named
+  volume `voxim-pg-data`, port 5432:5432), `certs-init` (one-shot, populates
+  named volume `voxim-certs` by running `scripts/gen_certs.ts`).
+- Add `docker-compose.dev.yml` overriding gateway/tile/coordinator services
+  to bind-mount `packages/` and run with `deno run --watch`.
+- Add `Dockerfile` per service (`gateway`, `tile-server`, `coordinator`,
+  `client-dev`) — minimal, `denoland/deno:alpine` base, copy workspace,
+  preload imports.
+- Add `.env.example` with `POSTGRES_PASSWORD`, `VOXIM_SERVICE_SECRET`,
+  `GATEWAY_URL`, `DATABASE_URL`. Real `.env` gitignored.
+- Add `deno task compose-up` / `compose-down` helpers wrapping
+  `docker compose -f docker-compose.yml -f docker-compose.dev.yml`.
+- Document the workflow in `ARCHITECTURE.md` (already present).
+
+Done when: `deno task compose-up` brings up postgres + the existing services
+unchanged, and `psql` to localhost:5432 succeeds.
+
+### T-133 · `packages/db` — repositories + migrator
+Effort: M   Status: todo
+
+New workspace package. No consumers yet — that's T-134.
+
+- `packages/db/deno.json` exporting `mod.ts`.
+- `client.ts` — Postgres connection pool from `DATABASE_URL`, using
+  `https://deno.land/x/postgres`.
+- `migrate.ts` — forward-only migrator. Reads `migrations/*.sql` in numeric
+  order, tracks applied versions in a `_migrations` table, applies pending
+  ones inside a transaction. Runnable as `deno task migrate`.
+- `migrations/0001_users.sql`, `0002_heritage.sql`, `0003_sessions.sql`,
+  `0004_tile_registry.sql`, `0005_tile_saves.sql`, `0006_world_map.sql`,
+  `0007_cities.sql` — schema per `ARCHITECTURE.md`.
+- `repos/user_repo.ts`, `heritage_repo.ts`, `session_repo.ts`, `tile_repo.ts`,
+  `tile_save_repo.ts`, `world_map_repo.ts`, `city_repo.ts` — typed CRUD
+  interfaces. No business logic, just SQL.
+- Repos export interfaces + a default Postgres-backed implementation. Tests
+  can substitute fakes.
+
+Done when: `deno task migrate` against a fresh Postgres applies all migrations
+cleanly; running it twice is a no-op; each repo has a smoke test that does
+insert → read → update → delete against a real local Postgres.
+
+### T-134 · Migrate gateway accounts/sessions/heritage to Postgres
+Effort: M   Status: todo
+
+Replace the file-based `AccountStore` and in-memory `SessionStore` with the
+DB repositories from T-133.
+
+- Gateway depends on `@voxim/db`.
+- `AccountStore` deleted. `AccountEndpoints` consumes `UserRepo` +
+  `HeritageRepo` + `SessionRepo` directly.
+- Login index file (`_index_by_login.json`) and `users/` directory removed.
+- Token hashing / heritage encoding / atomic-write semantics preserved by
+  moving them into `SessionRepo` / `HeritageRepo`.
+- Session expiry sweep: a daily job (no-op for now via simple interval) that
+  deletes expired sessions. Sessions still validate lazily on read.
+
+Done when: register → login → reconnect → die → reconnect cycle works
+end-to-end against Postgres. Old `data/accounts/` directory has no readers
+left and can be deleted.
+
+### T-135 · Tile registry to DB + heartbeat + TTL eviction
+Effort: M   Status: todo   (supersedes T-052)
+
+Replace in-memory `TileDirectory` with `TileRepo`. Add the heartbeat lifecycle.
+
+- Tile-server hits `POST /register` on startup (already does), then
+  `POST /heartbeat` every 10s (new).
+- Gateway sweeps `tile_registry` for rows with `last_heartbeat_at < now() - 30s`
+  and removes them. Sweep runs on a 10s interval.
+- `TileSpawner` interface defined in
+  `packages/gateway/src/edge/tile_orchestrator.ts`. Only impl: `NoopSpawner`
+  that throws "not implemented" — used when gateway receives a connect for an
+  unregistered tile.
+- Player→tile lookup goes through `TileRepo.findByPlayer()` (joins on
+  `users.last_tile_id` for now; will become a separate table when handoffs
+  are real).
+
+Done when: tile registers, heartbeats, gets evicted on Ctrl-C; `psql` shows
+the row coming and going.
+
+### T-136 · Tile saves to Postgres
+Effort: M   Status: todo
+
+Move tile snapshots from disk to `tile_saves` table.
+
+- `SaveManager` writes `payload` blob (existing VXM2 binary format) +
+  `size_bytes` to `tile_saves` via `TileSaveRepo` on auto-save.
+- Tile-server boot: `SELECT payload FROM tile_saves WHERE tile_id = ?` →
+  if hit, restore; else generate from world map (T-138) or seed.
+- Old file-based save path deleted. Local save files in `data/saves/`
+  removed.
+- Tile-server is now stateless on disk: kill the container, bring up a
+  replacement with the same TILE_ID, picks up where it left off.
+
+Done when: a tile-server with state runs, is killed, comes back up (same
+TILE_ID), and the world is intact (terrain mutations, dropped items, NPC
+positions).
+
+### T-137 · `packages/coordinator` skeleton + privileged WT handshake
+Effort: M   Status: todo
+
+New service. Reuses `@voxim/engine` for ECS + tickloop. Connects to gateway
+on startup as a privileged peer.
+
+- `packages/coordinator/main.ts` — entry point, reads `GATEWAY_URL`,
+  `VOXIM_SERVICE_SECRET`, `DATABASE_URL`.
+- `coordinator/src/world.ts` — boots a `World` from `@voxim/engine`,
+  ticks at 1 Hz.
+- `coordinator/src/gateway_link.ts` — opens WT session to gateway, sends
+  `{ kind: "coordinator", secret }` handshake on first frame, multiplexes
+  events (down) and commands (up) on the reliable stream.
+- Gateway recognises `kind: "coordinator"` and stores a single coordinator
+  link slot. Rejects a second simultaneous coordinator. Disconnect → null.
+- No real macro sim yet — just a tickloop logging "tick N" and an empty ECS
+  world.
+
+Done when: `docker compose up coordinator` brings it up, gateway logs
+"coordinator connected", coordinator logs ticks.
+
+### T-138 · World map: gen + persist + tile lookup
+Effort: M   Status: todo   (replaces stub for T-056/T-060)
+
+Coordinator generates the world map on first startup and persists it.
+Tile-servers fetch their cell during terrain generation.
+
+- Coordinator on startup: if `world_map` table empty, generate from a seed
+  (env `WORLD_SEED`), pack to a binary blob, write one row.
+- World map cell shape: `biome`, `elevation_tier`, `river_flag`, `road_flag`,
+  `gate_positions[]`, `city_seed_flag`, `corruption_level`. One cell per
+  tile (e.g., 64×64 grid → 4096 tiles).
+- Gateway exposes `GET /internal/world/tile/{tileId}` (service-secret auth)
+  that proxies to coordinator's WT command channel and returns the cell for
+  that tile.
+- Tile-server's terrain generator reads its world-map cell as input. Existing
+  terrain-gen code adapts to consume biome/elevation/river/road as inputs.
+
+Done when: the same TILE_ID always generates the same terrain across
+container restarts; cells differ correctly per tile_id; rivers/roads/gates
+align with the macro grid.
+
+### T-139 · World event bus over WT (tile→coordinator + coordinator→tile)
+Effort: M   Status: todo   (supersedes T-045)
+
+Real publish/subscribe over the WT streams established in T-135 and T-137.
+
+- Define `WorldEvent` and `TileCommand` codecs in `@voxim/protocol`.
+- Tile-server publishes `WorldEvent` (e.g., `PlayerCrossedGate`,
+  `CaravanArrived`, `NpcKilled`) on its WT stream to gateway.
+- Gateway routes events to the connected coordinator (if any).
+- Coordinator emits `TileCommand` (e.g., `SpawnCaravan`, `DispatchNpc`,
+  `ApplyCityState`) targeting a specific tile-id; gateway routes to that
+  tile-server's WT stream.
+- In-memory only; no durable replay table (deferred per `ARCHITECTURE.md`).
+- Gateway's `worldEvents` `// TODO` stubs in `server.ts` deleted.
+
+Done when: tile publishes a test event, coordinator's tickloop receives it
+and logs; coordinator emits a test command, the targeted tile receives and
+logs it.
+
+### T-140 · Gate entities + handoff over the new substrate
+Effort: L   Status: todo   (supersedes / completes T-053, T-054)
+
+Now that registry, world map, and event bus exist, build the actual
+multi-tile gate flow.
+
+- Gate entities placed at world-map cell edges where adjacent cells share a
+  road or natural border. Tile-server reads gate positions from its world-map
+  cell during terrain gen.
+- Player proximity → `GateApproached` event published to coordinator (for
+  logging) and a server-side handoff trigger.
+- Source tile: serialise full player entity (all components), `POST /handoff`
+  to gateway with `destinationTileId`.
+- Gateway: validate destination tile is registered, forward to destination
+  tile's admin URL, on ack tombstone player's entry on source.
+- Destination tile: `restorePlayer()` deserialises and inserts the entity;
+  acks gateway.
+- Gateway updates `users.last_tile_id`.
+- Idempotency: source tile retries on ack timeout with a stable handoff key;
+  gateway dedupes via in-memory in-flight map keyed by handoff key.
+
+Done when: a player walks through a gate and continues play on the
+destination tile; entity state survives (HP, inventory, dynasty); same
+player can't be present on both tiles simultaneously (no double-spawn).
+
+### T-141 · Client tile transition
+Effort: M   Status: todo   (supersedes T-055)
+
+Client side of T-140. Receives `GateCrossing` from the state stream, opens
+a new WT to the destination tile, replaces local world state.
+
+- Server-side: just before tombstoning on source, send a final state-stream
+  message `{ type: "gate_crossing", destinationTileAddress, destinationTileCertHashHex }`.
+- Client: tear down WT, drop interpolation buffers + entity caches, open new
+  WT to destination, run `TileJoinRequest` flow, re-initialise from first
+  state message.
+- Loading screen during transition (~1s typical).
+
+Done when: client transitions between tiles seamlessly in dev compose.
+
+### T-142 · CityState + utility-AI fallback
+Effort: M   Status: todo   (folds in T-044, T-047)
+
+Coordinator gets actual macro behaviour, even without an LLM.
+
+- `CityState` row created on first startup at each city seed location from
+  the world map. Fields: personality (random init), goals (default mix),
+  relationships ({}), inventory (small starting stock), event_log ([]),
+  population_count.
+- Utility-AI tickloop (slow, every 10 server ticks): maintain food
+  production, keep guard posts staffed, dispatch caravan when surplus
+  threshold crossed. Mutates `cities.state` and emits `TileCommand`s.
+- Event log trimmed to last 200 entries on each write.
+
+Done when: coordinator boots, cities exist in DB, utility AI moves them
+forward in observable ways (event log accumulates, caravan commands fire to
+tiles).
+
+### T-143 · `packages/ai-manager` skeleton + LLM call shape
+Effort: M   Status: todo   (lays groundwork for T-046, T-050)
+
+Separate process. Stub LLM responses initially (echo a deterministic
+response) so the coordinator integration is testable without API costs.
+
+- `packages/ai-manager/main.ts` — Deno HTTP server.
+- `POST /agent/city` — accepts a `CityContextPacket`, returns
+  `{ tool_calls: [...] }`. Initially: deterministic mock response keyed on
+  the most recent event.
+- Coordinator gains an `AIManagerClient` that POSTs to it on significant
+  events (rate-limited to one call per city per significant event).
+- `AI_MANAGER_URL` env var; absent → coordinator skips and uses utility AI
+  only (T-142).
+- Real Anthropic call deferred to a future ticket — this one only proves
+  the wiring.
+
+Done when: significant in-game event in a city → coordinator POSTs to AI
+manager → manager returns mock tool calls → coordinator validates and
+applies them via `TileCommand`s.
+
+---
+
+**Out of scope for T-132–T-143 (explicitly deferred):**
+- Multi-gateway replication.
+- Multi-coordinator sharding of macro sim.
+- `DockerSocketSpawner` / dynamic tile-spawning by gateway. Slot-based
+  scaling sufficient for solo dev.
+- Per-tile world-map override layer.
+- Durable `world_events` log with replay.
+- Live tile migration between hosts.
+- Real LLM API integration (separate ticket once T-143 wiring proves out).
+
