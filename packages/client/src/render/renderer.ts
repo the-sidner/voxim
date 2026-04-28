@@ -542,6 +542,11 @@ export class VoximRenderer {
       const capture = mesh;
       const scale = { x: modelRef.scaleX, y: modelRef.scaleY, z: modelRef.scaleZ };
       this.content.prefetchModel(modelRef.modelId).then(() => {
+        // Stale .then guard — when an entity's prop transition is deferred
+        // (Velocity present), prefetchModel is kicked again next tick.
+        // The earlier promise may resolve after a later one already finished
+        // the transition; bail before re-entering addProp / disposeMesh.
+        if (this.propPool.hasProp(entityId)) return;
         const def = this.content!.getModelSync(modelRef.modelId);
         if (!def) return;
 
@@ -597,11 +602,19 @@ export class VoximRenderer {
           this.syncEquipment(capture, state);
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
-          // Re-attach the pick box to the scene at the prop's fixed position
-          // and size it to the model's voxel AABB (in three.js space) so the
-          // raycaster picks workstations / nodes / dropped items at their real
-          // footprints — uniform cylinders made small drops occlude bigger
-          // entities behind them.
+          // PropInstancePool bakes the entity's position into an instance matrix
+          // once and never updates it; the pick box is sized once at this point
+          // too.  So we MUST defer the transition until the entity has actually
+          // settled — ejected ground items still have a Velocity component while
+          // they're flying through the air, and freezing them mid-arc was leaving
+          // both the visual and the pick box stuck at whatever air position the
+          // item happened to be in when the model finished loading.
+          if (state.velocity) {
+            // Try again next tick. The placeholder mesh keeps tracking the
+            // entity's Position each tick via updateEntityMesh, so motion stays
+            // smooth until the item lands and the server drops Velocity.
+            return;
+          }
           const worldPos = capture.group.position.clone();
           this.scene.remove(capture.group);
           disposeEntityMesh(capture);
