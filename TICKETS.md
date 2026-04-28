@@ -2255,7 +2255,7 @@ end-to-end against Postgres. Old `data/accounts/` directory has no readers
 left and can be deleted.
 
 ### T-135 · Tile registry to DB + heartbeat + TTL eviction
-Effort: M   Status: todo   (supersedes T-052)
+Effort: M   Status: done   Commit: 97566c2   (supersedes T-052)
 
 Replace in-memory `TileDirectory` with `TileRepo`. Add the heartbeat lifecycle.
 
