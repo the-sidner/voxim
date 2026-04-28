@@ -2354,7 +2354,7 @@ and logs; coordinator emits a test command, the targeted tile receives and
 logs it.
 
 ### T-140 · Gate entities + handoff over the new substrate
-Effort: L   Status: todo   (supersedes / completes T-053, T-054)
+Effort: L   Status: done   Commit: db38b68   (supersedes / completes T-053, T-054)
 
 Now that registry, world map, and event bus exist, build the actual
 multi-tile gate flow.
