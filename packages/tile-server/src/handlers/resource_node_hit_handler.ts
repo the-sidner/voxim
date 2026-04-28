@@ -55,7 +55,13 @@ export class ResourceNodeHitHandler implements HitHandler {
     }
 
     // ── Node depleted ─────────────────────────────────────────────────────────
-    if (rnData) spawnYields(world, this.content, rnData.yields, harvestPower, ctx.hitX, ctx.hitY, ctx.hitZ);
+    if (rnData) {
+      spawnYields(
+        world, this.content, rnData.yields, harvestPower,
+        ctx.hitX, ctx.hitY, ctx.hitZ,
+        ctx.targetX, ctx.targetY,
+      );
+    }
 
     log.info("node depleted: entity=%s type=%s by=%s", ctx.targetId, rn.nodeTypeId, ctx.attackerId);
     events.publish(TileEvents.NodeDepleted, {
@@ -85,17 +91,22 @@ function spawnYields(
   hitX: number,
   hitY: number,
   hitZ: number,
+  sourceX: number,
+  sourceY: number,
 ): void {
-  // Drops are world ItemData entities; player picks them up explicitly via
-  // the PickUp command (E key or click).  spawnGroundStack snaps each drop
-  // to the nearest free cell so it doesn't stack on the depleted node or
-  // on a previously dropped yield — an item buried under another entity
-  // is un-hoverable.
+  // Drops spawn at the hit point and are ejected away from the source
+  // centre by ItemPhysicsSystem — they fly out, arc, and land on a free
+  // cell next to the depleted node.  spreadRad fans multiple yield types
+  // so they don't all land in the same direction.
   for (const yld of yields) {
     const qty = yld.quantity + Math.floor((harvestPower - 1) * (yld.quantityPerHarvestPower ?? 0));
     if (qty <= 0) continue;
 
-    spawnGroundStack(world, content, yld.itemType, qty, { x: hitX, y: hitY, z: hitZ });
-    log.info("yield dropped: item=%sx%d near (%.2f,%.2f)", yld.itemType, qty, hitX, hitY);
+    spawnGroundStack(
+      world, content, yld.itemType, qty,
+      { x: hitX, y: hitY, z: hitZ },
+      { from: { x: sourceX, y: sourceY }, spreadRad: Math.PI / 3 },
+    );
+    log.info("yield dropped: item=%sx%d ejected from (%.2f,%.2f)", yld.itemType, qty, sourceX, sourceY);
   }
 }

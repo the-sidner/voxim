@@ -41,6 +41,7 @@ import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
 import { PhysicsSystem } from "./systems/physics.ts";
+import { ItemPhysicsSystem } from "./systems/item_physics.ts";
 import { DodgeSystem } from "./systems/dodge.ts";
 import { HungerSystem } from "./systems/hunger.ts";
 import { StaminaSystem } from "./systems/stamina.ts";
@@ -347,6 +348,7 @@ export class TileServer {
       skill,
       new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers),
       new ProjectileSystem(content, hitHandlers),
+      new ItemPhysicsSystem(content),
       new TerrainDigSystem(content),
       new TraderSystem(content),
       new DynastySystem(content),

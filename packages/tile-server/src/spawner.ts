@@ -324,21 +324,84 @@ export function spawnPrefab(
  * Notably skipped: equippable / swingable / tool / etc. The dropped stack
  * is just a pickable thing in the world, not a wieldable one.
  */
+/**
+ * Optional ejection parameters for spawnGroundStack.
+ *
+ * `from`: world position to push the drop AWAY from (typically the source
+ * entity's centre). The horizontal launch direction is normalized
+ * (pos − from); when degenerate (drop spawned at the source centre) a
+ * random direction is picked so the drop still flies somewhere visible.
+ *
+ * `speed` defaults: 4 m/s horizontal, 4 m/s upward — combined with the
+ * default world gravity (~20 m/s²) that lands the drop ~1.5 cells away
+ * after a ~0.4 s arc.  ItemPhysicsSystem then snaps the landing cell
+ * via findFreeDropCell so the final resting spot is always clickable.
+ */
+export interface DropEjection {
+  from: { x: number; y: number };
+  horizontalSpeed?: number;
+  verticalSpeed?: number;
+  /** Random angular jitter (radians) added to the launch direction. */
+  spreadRad?: number;
+}
+
 export function spawnGroundStack(
   world: World,
   content: ContentStore,
   prefabId: string,
   quantity: number,
   pos: { x: number; y: number; z: number },
+  eject?: DropEjection,
 ): EntityId {
-  const free = findFreeDropCell(world, pos.x, pos.y, pos.z);
   const id = newEntityId();
   world.create(id);
-  world.write(id, Position, free);
+
+  if (eject) {
+    // In-flight: spawn at the source point and add Velocity.  ItemPhysicsSystem
+    // will integrate, settle on terrain contact, and snap to a free cell.
+    world.write(id, Position, pos);
+    world.write(id, Velocity, computeEjectionVelocity(pos, eject));
+  } else {
+    // No physics: snap directly to a free cell at spawn time.
+    const free = findFreeDropCell(world, pos.x, pos.y, pos.z);
+    world.write(id, Position, free);
+  }
+
   world.write(id, ItemData, { prefabId, quantity });
   const prefab = content.getPrefab(prefabId);
   if (prefab) installVisualShell(world, content, id, prefab, 0);
   return id;
+}
+
+function computeEjectionVelocity(
+  pos: { x: number; y: number; z: number },
+  eject: DropEjection,
+): { x: number; y: number; z: number } {
+  const dx = pos.x - eject.from.x;
+  const dy = pos.y - eject.from.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  let nx: number, ny: number;
+  if (len < 0.01) {
+    // Degenerate — pick a random horizontal direction.
+    const a = Math.random() * Math.PI * 2;
+    nx = Math.cos(a);
+    ny = Math.sin(a);
+  } else {
+    nx = dx / len;
+    ny = dy / len;
+  }
+  // Apply optional angular jitter so multiple yields from one node fan out.
+  const spread = eject.spreadRad ?? 0;
+  if (spread > 0) {
+    const a = (Math.random() - 0.5) * spread;
+    const cos = Math.cos(a), sin = Math.sin(a);
+    const rx = nx * cos - ny * sin;
+    const ry = nx * sin + ny * cos;
+    nx = rx; ny = ry;
+  }
+  const hSpeed = eject.horizontalSpeed ?? 4.0;
+  const vSpeed = eject.verticalSpeed   ?? 4.0;
+  return { x: nx * hSpeed, y: ny * hSpeed, z: vSpeed };
 }
 
 /**
