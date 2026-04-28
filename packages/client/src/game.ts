@@ -22,7 +22,7 @@ import { VoximRenderer } from "./render/renderer.ts";
 import { BuildGhostRenderer } from "./render/build_ghost.ts";
 import { HoverOutlineRenderer } from "./render/hover_outline.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { makeWorkstationHandler, resourceNodeHandler, groundItemHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
@@ -60,6 +60,14 @@ export interface GameConfig {
    */
   directTile?: { address: string; certHashHex?: string };
 }
+
+/**
+ * Range (world units) for the E-key "grab nearest item" fallback.  Slightly
+ * larger than the server's pickupRadius so the client request always reaches
+ * the server when the player perceives the item as close — the server makes
+ * the final call and rejects out-of-range requests silently.
+ */
+const E_PICKUP_FALLBACK_RANGE = 3.0;
 
 export class VoximGame {
   private connection = new TileConnection();
@@ -383,7 +391,9 @@ export class VoximGame {
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);
     this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
     this.interactionSystem.register(resourceNodeHandler);
-    this.interactionSystem.register(groundItemHandler);
+    this.interactionSystem.register(makeGroundItemHandler((entityId) =>
+      this._sendCommand({ cmd: CommandType.PickUp, entityId }),
+    ));
     this.renderer.setInteractionSystem(this.interactionSystem);
 
     this._registerIntentHandlers();
@@ -493,6 +503,31 @@ export class VoximGame {
    * check so the panel can never claim to interact with something the
    * server would refuse.
    */
+  /**
+   * Find the closest ground-item entity to the local player within `range`.
+   * Used as the E-key fallback when the cursor isn't on a specific entity —
+   * scanning the loaded world is cheap (a few hundred entities at most) and
+   * keeps pickup forgiving without requiring precise cursor aim.
+   */
+  private _nearestGroundItem(range: number): string | null {
+    const me = this.playerId ? this.world.get(this.playerId) : null;
+    if (!me?.position) return null;
+    const px = me.position.x, py = me.position.y;
+    const r2 = range * range;
+    let bestId: string | null = null;
+    let bestDist = Infinity;
+    for (const [entityId, state] of this.world.entries()) {
+      if (!state.itemData || !state.position) continue;
+      const dx = state.position.x - px;
+      const dy = state.position.y - py;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r2 || d2 >= bestDist) continue;
+      bestDist = d2;
+      bestId = entityId;
+    }
+    return bestId;
+  }
+
   private _openWorkstation(entityId: string): void {
     const ws = this.world.get(entityId);
     if (!ws?.workstationBuffer || !ws.workstationTag || !ws.position) return;
@@ -542,24 +577,32 @@ export class VoximGame {
   private _registerIntentHandlers(): void {
     const router = this.intentRouter!;
 
-    // World hover-aware interact (E key). Switches on hover target kind:
-    // ground items → server PickUp; workstations → open panel; else no-op.
+    // World hover-aware interact (E key).  Cursor-driven first:
+    //   ground item under cursor → PickUp
+    //   workstation under cursor → open panel
+    // When nothing's under the cursor, fall back to the nearest ground item
+    // within E_PICKUP_FALLBACK_RANGE — drops landing two cells from the
+    // depleted node should be grabbable without aiming the cursor at them.
+    // The server validates range again via game_config.items.pickupRadius.
     router.register({
       id: "world-interact",
       priority: 50,
       claim: (intent: Intent) => {
         if (intent.kind !== "interact") return false;
-        if (intent.hover.kind !== "entity") return true; // claim+no-op on empty
-        const entity = this.world.get(intent.hover.entityId);
-        if (entity?.workstationBuffer) {
-          this._openWorkstation(intent.hover.entityId);
-          return true;
+        if (intent.hover.kind === "entity") {
+          const entity = this.world.get(intent.hover.entityId);
+          if (entity?.workstationBuffer) {
+            this._openWorkstation(intent.hover.entityId);
+            return true;
+          }
+          if (entity?.itemData) {
+            this._sendCommand({ cmd: CommandType.PickUp, entityId: intent.hover.entityId });
+            return true;
+          }
         }
-        if (entity?.itemData) {
-          this._sendCommand({ cmd: CommandType.PickUp, entityId: intent.hover.entityId });
-          return true;
-        }
-        return true; // hovered something else; consume so it doesn't propagate
+        const nearest = this._nearestGroundItem(E_PICKUP_FALLBACK_RANGE);
+        if (nearest) this._sendCommand({ cmd: CommandType.PickUp, entityId: nearest });
+        return true;
       },
     });
 

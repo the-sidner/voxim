@@ -109,7 +109,7 @@
     "maxReachWorldUnits": 4.0
   },
   "items": {
-    "pickupRadius": 1.5
+    "pickupRadius": 2.5
   },
   "player": {
     "defaultSpawnX": 256,

@@ -46,13 +46,19 @@ export const resourceNodeHandler: EntityInteractionHandler = {
 
 /**
  * Items lying on the ground.
- * Identified by the "itemData" networked component.
- * TODO: onClick → send pick-up command.
+ * Identified by the "itemData" networked component.  Click sends a PickUp
+ * command via the supplied callback; the server enforces the same range
+ * configured in game_config.items.pickupRadius regardless of the
+ * client-side `interactionRange` here.
  */
-export const groundItemHandler: EntityInteractionHandler = {
-  id: "ground_item",
-  priority: 8,
-  interactionRange: 2,
-  canHandle: (t) => t.entityState.raw.has("itemData"),
-  onClick: () => false,
-};
+export function makeGroundItemHandler(
+  pickup: (entityId: string) => void,
+): EntityInteractionHandler {
+  return {
+    id: "ground_item",
+    priority: 8,
+    interactionRange: 2.5,
+    canHandle: (t) => t.entityState.raw.has("itemData"),
+    onClick: (t) => { pickup(t.entityId); return true; },
+  };
+}

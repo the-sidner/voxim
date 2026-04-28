@@ -61,8 +61,9 @@ export function UIManager({ onAction }: UIManagerProps) {
         e.preventDefault();
         uiState.value.openPanels.has(id) ? closePanel(id) : openPanel(id);
       };
+      // E is reserved for the interact intent (IntentTranslator). Equipment
+      // is reachable from the inventory panel; no dedicated shortcut here.
       if (e.key === "i" || e.key === "I") toggle("inventory");
-      if (e.key === "e" || e.key === "E") toggle("equipment");
       if (e.key === "c" || e.key === "C") toggle("stats");
       if (e.key === "`")                  toggle("debug");
     };
