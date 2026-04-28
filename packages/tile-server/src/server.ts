@@ -17,6 +17,8 @@ import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
 import type { TileSaveRepo, WorldMapRepo } from "@voxim/db";
 import { decodeWorldMap, type WorldMapCell } from "@voxim/protocol";
+import { GateLink } from "./components/gate.ts";
+import { spawnGates, mirrorPosition } from "./gate.ts";
 import { buildTerrainBuffers, chunksFromBuffers, loadTerrainCache, saveTerrainCache, seedFromTileId } from "@voxim/world";
 import type { WorldGenContent, ZoneGridData } from "@voxim/world";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
@@ -453,6 +455,16 @@ export class TileServer {
     procedural.spawnInitialNpcs();
     procedural.spawnProceduralProps();
 
+    // Gate entities (T-140) — always re-spawned from the world-map cell,
+    // never persisted. Cheap to recreate and the world-map cell is the
+    // source of truth for where gates belong.
+    if (worldCell) {
+      const gateIds = spawnGates(this.world, worldCell.gatePositions);
+      if (gateIds.length > 0) {
+        console.log(`[TileServer] spawned ${gateIds.length} gates`);
+      }
+    }
+
     // Subscribe to tile events that need to reach clients as GameEvents.
     // The router is responsible for translation; handoff side-effects stay here.
     this.events = new EventRouter(this.eventBus, (p) => this.initiateHandoff(p));
@@ -603,6 +615,11 @@ export class TileServer {
     // Subscribers see the already-committed world state.
     deferredEvents.flush(this.eventBus);
 
+    // Gate proximity check (T-140) — runs after systems so positions are
+    // committed. Publishes GateApproached for any player within a gate's
+    // trigger radius; the EventRouter routes it to initiateHandoff.
+    this.checkGateProximity();
+
     // ── 5. BUILD DELTA ──────────────────────────────────────────────────────
     const events = this.events.drain();
     const hasSessions = this.sessions.size > 0;
@@ -736,36 +753,92 @@ export class TileServer {
   // ---- handoff side-effect ----
 
   /**
+   * Per-tick proximity check: any player whose Position is within a
+   * GateLink's radius gets a GateApproached event published. The
+   * EventRouter forwards to initiateHandoff. The handingOff guard +
+   * destination tile's handoffId dedup prevent re-firing while a
+   * handoff is in flight.
+   */
+  private checkGateProximity(): void {
+    if (!this.gatewayUrl || this.sessions.size === 0) return;
+    const gates = this.world.query(Position, GateLink);
+    if (gates.length === 0) return;
+
+    for (const playerId of this.sessions.keys()) {
+      if (this.handingOff.has(playerId)) continue;
+      const pos = this.world.get(playerId, Position);
+      if (!pos) continue;
+      for (const { entityId: gateId, position: gp, gateLink } of gates) {
+        const dx = pos.x - gp.x;
+        const dz = pos.z - gp.z;
+        const r = gateLink.radius;
+        if (dx * dx + dz * dz <= r * r) {
+          this.eventBus.publish(TileEvents.GateApproached, {
+            entityId: playerId,
+            gateId,
+            destinationTileId: gateLink.destinationTileId,
+          });
+          break; // one gate per player per tick is plenty
+        }
+      }
+    }
+  }
+
+  /**
    * Fire-and-forget handoff to the destination tile via the gateway. The
    * re-entry guard prevents a second GateApproached event from starting a
    * parallel handoff while the first is still pending its round-trip; the
    * destination tile deduplicates retries on handoffId.
+   *
+   * Position is mirrored to the destination's matching edge so the player
+   * lands just inside the new tile's gate (away from its own trigger
+   * radius — otherwise we'd bounce straight back).
    */
   private initiateHandoff(payload: { entityId: EntityId; gateId: string; destinationTileId: string }): void {
     if (!this.gatewayUrl || this.handingOff.has(payload.entityId)) return;
     this.handingOff.add(payload.entityId);
+
+    const gateLink = this.world.get(payload.gateId as EntityId, GateLink);
     const dynastyId = this.world.get(payload.entityId, Heritage)?.dynastyId ?? payload.entityId;
     const handoffId = crypto.randomUUID();
     const body = serializePlayer(this.world, payload.entityId, dynastyId, payload.destinationTileId, handoffId);
+
+    if (gateLink && body.components.position) {
+      body.components.position = mirrorPosition(body.components.position.y, gateLink.edge);
+    }
+
+    // Inform the coordinator (T-139 channel). Best-effort — gateway may
+    // be down or the link may not be open yet.
+    this.gatewayLink?.publish({
+      type: "world_event",
+      sourceTileId: this.tileId,
+      event: {
+        kind: "gate_approached",
+        playerId: payload.entityId,
+        destinationTileId: payload.destinationTileId,
+        edge: gateLink?.edge ?? "north",
+      },
+    }).catch(() => {/* best-effort */});
+
     fetch(`${this.gatewayUrl}/handoff`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => {
       if (r.ok) {
-        // Destroy the entity here — it will be restored on the destination tile
         if (this.world.isAlive(payload.entityId)) this.world.destroy(payload.entityId);
         const session = this.sessions.get(payload.entityId);
         session?.close();
         this.sessions.delete(payload.entityId);
+        console.log(
+          `[TileServer] handoff complete: ${payload.entityId.slice(0, 8)} → ${payload.destinationTileId}`,
+        );
       } else {
         console.error(`[TileServer] handoff failed for ${payload.entityId}: ${r.status}`);
       }
     }).catch((err: unknown) => {
       console.error("[TileServer] handoff fetch error:", err);
     }).finally(() => {
-      // On success the entity is gone so no subsequent handoff can even fire;
-      // on failure the player is still here and should be allowed to retry.
       this.handingOff.delete(payload.entityId);
     });
   }

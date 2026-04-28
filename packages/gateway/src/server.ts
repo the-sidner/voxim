@@ -199,6 +199,17 @@ export class GatewayServer {
         body: JSON.stringify(body),
       });
       const ack = await resp.json();
+      // On a successful handoff (destination acked), update the user's
+      // last_tile_id so future logins route to the correct tile. Best-effort:
+      // if the user row doesn't exist (NPC handoff in the future, or test
+      // data), the update silently no-ops.
+      if (resp.ok) {
+        try {
+          await this.users.updateLocation(body.playerId, body.destinationTileId);
+        } catch (err) {
+          console.warn(`[Gateway] failed to update last_tile_id for ${body.playerId}:`, err);
+        }
+      }
       return Response.json(ack);
     } catch {
       return new Response("bad request", { status: 400 });

@@ -108,14 +108,19 @@ export class Coordinator {
   private handleEvent(env: WorldEventEnvelope): void {
     const wasNew = !this.liveTiles.has(env.sourceTileId);
     this.liveTiles.add(env.sourceTileId);
+
+    // Always log discrete events; throttle the steady-state heartbeat.
+    if (env.event.kind === "gate_approached") {
+      console.log(
+        `[Coordinator] gate_approached: player=${(env.event.playerId as string)?.slice(0, 8)} ` +
+        `${env.sourceTileId} → ${env.event.destinationTileId} (edge=${env.event.edge})`,
+      );
+      return;
+    }
     if (wasNew) {
       console.log(`[Coordinator] first event from ${env.sourceTileId} — kind=${env.event.kind}`);
-    } else {
-      // Quieter steady-state log so the dev loop is observable without
-      // being noisy. Real handlers will replace this in T-140 / T-142.
-      if (this.tick % 10 === 0) {
-        console.log(`[Coordinator] event from ${env.sourceTileId} kind=${env.event.kind}`);
-      }
+    } else if (this.tick % 10 === 0) {
+      console.log(`[Coordinator] event from ${env.sourceTileId} kind=${env.event.kind}`);
     }
   }
 
