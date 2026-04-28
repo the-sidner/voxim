@@ -2275,7 +2275,7 @@ Done when: tile registers, heartbeats, gets evicted on Ctrl-C; `psql` shows
 the row coming and going.
 
 ### T-136 · Tile saves to Postgres
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: e29aaa7
 
 Move tile snapshots from disk to `tile_saves` table.
 
