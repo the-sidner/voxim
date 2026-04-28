@@ -1,0 +1,182 @@
+# Voxim2 — base docker-compose stack.
+# Architecture: see ARCHITECTURE.md.
+
+x-tile-base: &tile-base
+  build:
+    context: .
+    dockerfile: docker/tile-server.Dockerfile
+  depends_on:
+    postgres:
+      condition: service_healthy
+    certs-init:
+      condition: service_completed_successfully
+  environment:
+    DATABASE_URL: ${DATABASE_URL}
+    GATEWAY_URL: ${GATEWAY_URL}
+    VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+  volumes:
+    - voxim-certs:/app/certs:ro
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: voxim
+      POSTGRES_USER: voxim
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - voxim-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voxim -d voxim"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  certs-init:
+    build:
+      context: .
+      dockerfile: docker/certs-init.Dockerfile
+    volumes:
+      - voxim-certs:/out
+    # One-shot: generates certs into /out only if /out/cert.pem is absent.
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    command: ["deno", "run", "--allow-net", "--allow-read", "--allow-env",
+              "packages/db/migrate.ts"]
+    # Run with: docker compose --profile tools run --rm migrate
+    # Or via:   deno task migrate
+
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      certs-init:
+        condition: service_completed_successfully
+    environment:
+      ADMIN_PORT: 8081
+      DATABASE_URL: ${DATABASE_URL}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TLS_CERT: /app/certs/cert.pem
+    ports:
+      # 8081 — plain HTTP for account/handshake/register/handoff/internal
+      - "8081:8081"
+      # 8080/udp — reserved for future WebTransport tile<->gateway streams
+      # (T-137). Mapped now so it's free when that lands; the gateway does
+      # not currently listen here.
+      - "8080:8080/udp"
+    volumes:
+      - voxim-certs:/app/certs:ro
+    restart: unless-stopped
+
+  coordinator:
+    build:
+      context: .
+      dockerfile: docker/coordinator.Dockerfile
+    profiles: ["coordinator"]
+    # Behind a profile until T-137 lands packages/coordinator/main.ts.
+    # Bring up explicitly with: docker compose --profile coordinator up
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      WORLD_SEED: ${WORLD_SEED:-1}
+    restart: unless-stopped
+
+  tile-1:
+    <<: *tile-base
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TILE_ID: tile_0
+      TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4433
+      ADMIN_PORT: 14433
+      PORT: 4433
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "4433:4433/udp"
+      - "14433:14433"
+
+  tile-2:
+    <<: *tile-base
+    profiles: ["scale"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TILE_ID: tile_1
+      TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4434
+      ADMIN_PORT: 14434
+      PORT: 4433
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "4434:4433/udp"
+      - "14434:14434"
+
+  tile-3:
+    <<: *tile-base
+    profiles: ["scale"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TILE_ID: tile_2
+      TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4435
+      ADMIN_PORT: 14435
+      PORT: 4433
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "4435:4433/udp"
+      - "14435:14435"
+
+  tile-4:
+    <<: *tile-base
+    profiles: ["scale"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TILE_ID: tile_3
+      TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4436
+      ADMIN_PORT: 14436
+      PORT: 4433
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "4436:4433/udp"
+      - "14436:14436"
+
+  client-dev:
+    build:
+      context: .
+      dockerfile: docker/client-dev.Dockerfile
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  voxim-pg-data:
+  voxim-certs:

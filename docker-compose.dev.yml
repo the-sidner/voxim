@@ -1,0 +1,80 @@
+# Voxim2 — dev override.
+#
+# - Bind-mounts source so file edits show up in containers without rebuild.
+# - Runs Deno services with --watch so changes auto-restart.
+#
+# We deliberately do NOT bind-mount deno.json or deno.lock:
+# Linux single-file bind mounts trip "Device or resource busy" (EBUSY) when
+# Deno tries to update the lock at runtime. The COPYed copies from the build
+# image are fine; if you change root deps, rebuild the image
+# (`docker compose build`).
+
+services:
+  gateway:
+    command: >-
+      deno run --watch
+      --allow-net --allow-read --allow-env
+      --unstable-net
+      packages/gateway/main.ts
+    volumes:
+      - ./packages:/app/packages
+      - ./scripts:/app/scripts
+      - voxim-certs:/app/certs:ro
+
+  coordinator:
+    command: >-
+      deno run --watch
+      --allow-net --allow-read --allow-env
+      packages/coordinator/main.ts
+    volumes:
+      - ./packages:/app/packages
+      - ./scripts:/app/scripts
+
+  tile-1:
+    command: >-
+      deno run --watch
+      --allow-net --allow-read --allow-write --allow-env
+      --unstable-net
+      packages/tile-server/main.ts
+    volumes:
+      - ./packages:/app/packages
+      - ./scripts:/app/scripts
+      - voxim-certs:/app/certs:ro
+
+  tile-2:
+    command: >-
+      deno run --watch
+      --allow-net --allow-read --allow-write --allow-env
+      --unstable-net
+      packages/tile-server/main.ts
+    volumes:
+      - ./packages:/app/packages
+      - ./scripts:/app/scripts
+      - voxim-certs:/app/certs:ro
+
+  tile-3:
+    command: >-
+      deno run --watch
+      --allow-net --allow-read --allow-write --allow-env
+      --unstable-net
+      packages/tile-server/main.ts
+    volumes:
+      - ./packages:/app/packages
+      - ./scripts:/app/scripts
+      - voxim-certs:/app/certs:ro
+
+  tile-4:
+    command: >-
+      deno run --watch
+      --allow-net --allow-read --allow-write --allow-env
+      --unstable-net
+      packages/tile-server/main.ts
+    volumes:
+      - ./packages:/app/packages
+      - ./scripts:/app/scripts
+      - voxim-certs:/app/certs:ro
+
+  client-dev:
+    volumes:
+      - ./packages:/app/packages
+      - ./scripts:/app/scripts

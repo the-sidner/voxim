@@ -43,3 +43,4 @@ Thumbs.db
 # Environment / secrets
 .env
 .env.*
+!.env.example

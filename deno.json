@@ -8,15 +8,18 @@
     "packages/client",
     "packages/tile-server",
     "packages/gateway",
+    "packages/db",
     "packages/devtools"
   ],
   "imports": {
-    "valibot": "jsr:@valibot/valibot@^1.0.0"
+    "valibot": "jsr:@valibot/valibot@^1.0.0",
+    "postgres": "https://deno.land/x/postgres@v0.19.3/mod.ts"
   },
   "tasks": {
     "gateway":      "deno run --allow-net --allow-read --allow-env --unstable-net packages/gateway/main.ts",
     "tile":         "deno run --allow-net --allow-read --allow-write --allow-env --unstable-net packages/tile-server/main.ts",
     "bundle":       "deno run -A --node-modules-dir=auto scripts/build_client.ts",
+    "client-dev":   "deno run -A --node-modules-dir=auto scripts/serve_client.ts",
     "demo":         "deno task bundle && deno task tile",
     "demo-server":  "deno task tile",
     "demo-client":  "deno task bundle",
@@ -25,6 +28,12 @@
     "gen-certs":    "deno run --allow-run --allow-write scripts/gen_certs.ts",
     "build-voxel-editor": "deno run -A --node-modules-dir=auto scripts/build_voxel_editor.ts",
     "devtools":     "deno task build-voxel-editor && deno run --allow-net --allow-read scripts/serve_devtools.ts",
-    "dev":          "deno run -A scripts/dev.ts"
+    "dev":          "deno run -A scripts/dev.ts",
+    "migrate":       "docker compose --profile tools run --rm migrate",
+    "compose-up":    "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --remove-orphans",
+    "compose-build": "docker compose -f docker-compose.yml -f docker-compose.dev.yml build",
+    "compose-fresh": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --remove-orphans",
+    "compose-down":  "docker compose -f docker-compose.yml -f docker-compose.dev.yml down",
+    "compose-reset": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v"
   }
 }
