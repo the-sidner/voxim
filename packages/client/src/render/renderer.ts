@@ -189,6 +189,14 @@ export interface HoverOutlineSink {
  */
 export const HOVER_LAYER = 4;
 
+/**
+ * Squared-velocity threshold below which an entity is treated as "at rest"
+ * for the purpose of deferring the prop-pool transition.  Snapshots write
+ * a velocity vector for every entity (incl. static props) so we can't gate
+ * on presence — only ejected items in mid-flight cross this threshold.
+ */
+const VELOCITY_EPSILON_SQ = 0.01;
+
 /** Scratch objects — reused by updateAttachmentPositions to avoid per-frame allocation. */
 const _attachTmp   = new THREE.Vector3();
 const _bladeTip    = new THREE.Vector3();
@@ -605,14 +613,19 @@ export class VoximRenderer {
           // PropInstancePool bakes the entity's position into an instance matrix
           // once and never updates it; the pick box is sized once at this point
           // too.  So we MUST defer the transition until the entity has actually
-          // settled — ejected ground items still have a Velocity component while
-          // they're flying through the air, and freezing them mid-arc was leaving
-          // both the visual and the pick box stuck at whatever air position the
-          // item happened to be in when the model finished loading.
-          if (state.velocity) {
+          // settled — ejected ground items have non-zero velocity while flying,
+          // and freezing them mid-arc strands the visual + pick box at random
+          // air positions.
+          //
+          // Test on velocity MAGNITUDE rather than presence: applySnapshot
+          // writes velocity = {0,0,0} for every entity in every snapshot
+          // regardless of whether the server treats it as a "real" Velocity
+          // component, so a presence check defers all static props forever.
+          const v = state.velocity;
+          if (v && (v.x * v.x + v.y * v.y + v.z * v.z) > VELOCITY_EPSILON_SQ) {
             // Try again next tick. The placeholder mesh keeps tracking the
             // entity's Position each tick via updateEntityMesh, so motion stays
-            // smooth until the item lands and the server drops Velocity.
+            // smooth until the item lands and velocity falls to zero.
             return;
           }
           const worldPos = capture.group.position.clone();
