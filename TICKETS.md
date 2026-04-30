@@ -737,6 +737,37 @@ occasionally emits a `SocialIdle` event. Nearby NPCs react by moving closer brie
 low-cost — flavour over simulation.
 Done when: idle NPCs appear to socialise with nearby NPCs rather than standing frozen.
 
+### T-144 · NPC ground-drop pickup pathway
+Effort: S   Status: todo
+
+NPCs that gather resources (and any future job that produces a world ItemData entity instead of
+writing directly to the harvester's inventory) currently never collect their own drops. Background:
+the player-facing `ItemPickupSystem` was deleted in favour of explicit PickUp commands; that system
+already excluded NPCs (`if (world.has(collectorId, NpcTag)) continue`), so removing it changed
+nothing for the NPC path — but the original `gather_resource` job docstring was aspirational and
+assumed pickup happened automatically. It doesn't. Today a forester chops a tree, the logs spawn
+on the ground next to it, and the NPC walks away empty-handed.
+
+The fix lives inside the existing `JobHandler` pattern. Two reasonable shapes:
+  - Extend `gather_resource` so after depleting the node it transitions into a "collect spawned
+    drops" sub-state: scan ItemData entities within a small radius of the node whose `prefabId`
+    matches the job's `itemType`, walk to each in turn, fold into Inventory, destroy the world
+    entity. Job completes when the inventory threshold is met OR no more matching drops in range.
+  - Or: a small dedicated `pickup_drops` job that `gather_resource` enqueues on depletion, with
+    args `{ near: {x,y}, itemType, radius }`. Reusable by future producers (mining, butchering).
+The implementer picks; the second is cleaner for reuse but heavier today.
+
+Two interactions worth handling:
+  - With T-129's drop-ejection physics, drops have non-zero Velocity for ~0.4s after spawn.
+    Either wait for Velocity to be removed (settled) before collecting, or accept that the first
+    pickup attempt may chase a moving target — collecting on settled-only is simpler.
+  - Inventory-full case: the NPC just leaves the drops on the ground (matches the player flow);
+    don't silently void overflow.
+
+Done when: a forester NPC depletes a tree, walks to each dropped log, and the logs appear in its
+inventory before it transitions to its next job. Verified via the NPC inventory tooltip and the
+ground entity count returning to baseline near the node.
+
 ---
 
 ## World & Macro Simulation
