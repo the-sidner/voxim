@@ -2425,7 +2425,7 @@ a new WT to the destination tile, replaces local world state.
 Done when: client transitions between tiles seamlessly in dev compose.
 
 ### T-142 · CityState + utility-AI fallback
-Effort: M   Status: todo   (folds in T-044, T-047)
+Effort: M   Status: done   (folds in T-044, T-047)
 
 Coordinator gets actual macro behaviour, even without an LLM.
 

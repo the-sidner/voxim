@@ -19,7 +19,7 @@
  *   WORLD_HEIGHT            Macro grid height               default: 2
  */
 import { Coordinator } from "./mod.ts";
-import { createPool, PgWorldMapRepo } from "@voxim/db";
+import { createPool, PgWorldMapRepo, PgCityRepo } from "@voxim/db";
 
 const gatewayWtUrl = Deno.env.get("GATEWAY_WT_URL") ?? "https://gateway:8080";
 const certPath     = Deno.env.get("TLS_CERT")       ?? "./certs/cert.pem";
@@ -49,9 +49,9 @@ try {
   console.warn(`[Coordinator] no cert at ${certPath} (${(err as Error).message}); proceeding without cert pinning`);
 }
 
-const worldMapRepo = databaseUrl
-  ? new PgWorldMapRepo(createPool({ databaseUrl }))
-  : undefined;
+const dbPool = databaseUrl ? createPool({ databaseUrl }) : null;
+const worldMapRepo = dbPool ? new PgWorldMapRepo(dbPool) : undefined;
+const cityRepo = dbPool ? new PgCityRepo(dbPool) : undefined;
 
 const coordinator = new Coordinator();
 await coordinator.start({
@@ -60,6 +60,7 @@ await coordinator.start({
   gatewayCertHashHex,
   tickRateHz,
   ...(worldMapRepo ? { worldMapRepo } : {}),
+  ...(cityRepo ? { cityRepo } : {}),
   worldSeed,
   worldTileIds,
   worldWidth,

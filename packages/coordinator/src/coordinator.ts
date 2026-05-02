@@ -18,9 +18,17 @@ import type {
   WorldMapPayload,
 } from "@voxim/protocol";
 import { encodeWorldMap, decodeWorldMap } from "@voxim/protocol";
-import type { WorldMapRepo } from "@voxim/db";
+import type { WorldMapRepo, CityRepo, CityRow } from "@voxim/db";
 import { GatewayLink } from "./gateway_link.ts";
 import { generateWorldMap } from "./world_map_gen.ts";
+import {
+  CITY_EVENT_LOG_LIMIT,
+  defaultCityState,
+  pickCityName,
+  runUtilityAI,
+  type CityState,
+  type UtilityCommand,
+} from "./city_sim.ts";
 
 export interface CoordinatorConfig {
   /** Gateway WebTransport URL, e.g. "https://gateway:8080". */
@@ -46,7 +54,16 @@ export interface CoordinatorConfig {
   /** Grid width / height. Default 2×2 for the dev slice. */
   worldWidth?: number;
   worldHeight?: number;
+  /**
+   * Cities repo (T-142). Required to seed CityState rows for citySeedFlag
+   * tiles and run the macro utility-AI tickloop. Omit for the legacy world-
+   * map-only mode (unit tests).
+   */
+  cityRepo?: CityRepo;
 }
+
+/** Macro utility-AI runs every N coordinator ticks. */
+const CITY_AI_INTERVAL_TICKS = 10;
 
 export class Coordinator {
   readonly world = new World();
@@ -57,6 +74,9 @@ export class Coordinator {
   private liveTiles = new Set<string>();
   /** Decoded world map, available after start(). */
   private worldMap: WorldMapPayload | null = null;
+  private cityRepo: CityRepo | null = null;
+  /** In-memory mirror of `cities` rows; refreshed on seed and after each AI pass. */
+  private cities: CityRow[] = [];
 
   async start(config: CoordinatorConfig): Promise<void> {
     // Generate / load the world map first — every other macro decision
@@ -69,6 +89,15 @@ export class Coordinator {
       );
     } else {
       console.warn("[Coordinator] no world map repo — running without macro world");
+    }
+
+    // Seed cities (T-142). Idempotent: ensureCities() only inserts rows that
+    // don't already exist for citySeedFlag tiles.
+    if (config.cityRepo && this.worldMap) {
+      this.cityRepo = config.cityRepo;
+      await this.ensureCities(config.worldSeed ?? 1);
+      this.cities = await this.cityRepo.list();
+      console.log(`[Coordinator] cities ready: ${this.cities.length} on the world map`);
     }
 
     const tickRate = config.tickRateHz ?? 1;
@@ -128,18 +157,97 @@ export class Coordinator {
     this.tick++;
     if (this.tick % 10 === 0) {
       console.log(
-        `[Coordinator] tick ${this.tick} (link=${this.link?.connected ? "up" : "down"}, tiles=${this.liveTiles.size})`,
+        `[Coordinator] tick ${this.tick} (link=${this.link?.connected ? "up" : "down"}, tiles=${this.liveTiles.size}, cities=${this.cities.length})`,
       );
     }
 
-    // T-139 sanity check: every 60 ticks (~60s at 1 Hz) ping each known
-    // tile with a noop tile_command so we can observe the down-channel
-    // works end-to-end. T-140 / T-148 replace this with real commands.
-    if (this.tick % 60 === 0 && this.link?.connected) {
-      for (const tileId of this.liveTiles) {
-        void this.tellTile(tileId, { kind: "noop_ping", at: Date.now() });
+    // T-142: macro utility-AI runs on a slow cadence so DB writes stay cheap.
+    // Each pass walks every city, advances production / consumption / dispatch
+    // heuristics, persists state + event log, and emits one TileCommand per
+    // decision. NPC instantiation happens on the tile that owns the city.
+    if (this.tick % CITY_AI_INTERVAL_TICKS === 0 && this.cityRepo) {
+      void this.runCityAi();
+    }
+  }
+
+  /**
+   * Insert one CityRow per tile flagged citySeedFlag in the world map. A
+   * city seed has a deterministic id and name derived from the world seed
+   * + tileId so re-runs are stable.
+   */
+  private async ensureCities(worldSeed: number): Promise<void> {
+    if (!this.cityRepo || !this.worldMap) return;
+    const existing = await this.cityRepo.list();
+    const existingByTile = new Set(existing.map((c) => c.tileId));
+    let created = 0;
+    for (const cell of Object.values(this.worldMap.cells)) {
+      if (!cell.citySeedFlag || existingByTile.has(cell.tileId)) continue;
+      const cityId = cityIdFor(worldSeed, cell.tileId);
+      const name = pickCityName(worldSeed, cell.tileId);
+      const state = defaultCityState(worldSeed, cell.tileId);
+      await this.cityRepo.create({
+        cityId,
+        name,
+        tileId: cell.tileId,
+        state: state as unknown as Record<string, unknown>,
+      });
+      created++;
+    }
+    if (created > 0) console.log(`[Coordinator] seeded ${created} new cities`);
+  }
+
+  /**
+   * Refresh in-memory cities, advance utility AI for each, persist new state
+   * + event log, and dispatch TileCommands. Errors per city are isolated so
+   * one bad row doesn't abort the whole pass.
+   */
+  private async runCityAi(): Promise<void> {
+    if (!this.cityRepo) return;
+    try {
+      this.cities = await this.cityRepo.list();
+    } catch (err) {
+      console.warn(`[Coordinator] city list failed: ${(err as Error).message}`);
+      return;
+    }
+    for (const city of this.cities) {
+      const prev = city.state as unknown as CityState;
+      const result = runUtilityAI(prev, this.tick);
+      try {
+        await this.cityRepo.updateState(city.cityId, result.next as unknown as Record<string, unknown>);
+        for (const ev of result.events) {
+          await this.cityRepo.appendEvent(city.cityId, ev, CITY_EVENT_LOG_LIMIT);
+        }
+      } catch (err) {
+        console.warn(`[Coordinator] city ${city.cityId} persist failed: ${(err as Error).message}`);
+        continue;
+      }
+      // Emit one TileCommand per utility decision. Tile-side dispatch lives
+      // outside this ticket — for now the tile-server logs the kind.
+      if (this.link?.connected) {
+        for (const cmd of result.commands) {
+          void this.tellTile(city.tileId, toTileCommand(city.cityId, cmd));
+        }
       }
     }
+  }
+}
+
+function cityIdFor(worldSeed: number, tileId: string): string {
+  // Deterministic per (seed, tile) so re-running ensureCities is a no-op.
+  return `city-${worldSeed}-${tileId}`;
+}
+
+function toTileCommand(cityId: string, cmd: UtilityCommand): { kind: string; [k: string]: unknown } {
+  switch (cmd.kind) {
+    case "spawn_role":
+      return { kind: "city_spawn_role", cityId, role: cmd.role, count: cmd.count };
+    case "dispatch_caravan":
+      return {
+        kind: "city_dispatch_caravan",
+        cityId,
+        toTileId: cmd.toTileId,
+        cargo: cmd.cargo,
+      };
   }
 }
 
