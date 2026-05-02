@@ -17,6 +17,11 @@
  *                           equal WORLD_WIDTH × WORLD_HEIGHT
  *   WORLD_WIDTH             Macro grid width                default: 2
  *   WORLD_HEIGHT            Macro grid height               default: 2
+ *   AI_MANAGER_URL          Base URL for the ai-manager     optional. When
+ *                           service (T-143). When unset     unset the
+ *                           the coordinator runs the        coordinator runs
+ *                           utility-AI fallback (T-142)     utility-AI only.
+ *                           only.
  */
 import { Coordinator } from "./mod.ts";
 import { createPool, PgWorldMapRepo, PgCityRepo } from "@voxim/db";
@@ -30,6 +35,7 @@ const worldWidth   = parseInt(Deno.env.get("WORLD_WIDTH")  ?? "2");
 const worldHeight  = parseInt(Deno.env.get("WORLD_HEIGHT") ?? "2");
 const worldTileIds = (Deno.env.get("WORLD_TILES") ?? "tile_0,tile_1,tile_2,tile_3")
   .split(",").map((s) => s.trim()).filter(Boolean);
+const aiManagerUrl = Deno.env.get("AI_MANAGER_URL");
 
 const serviceSecret = Deno.env.get("VOXIM_SERVICE_SECRET")
   ?? "dev-local-only-do-not-use-in-prod-0000";
@@ -61,6 +67,7 @@ await coordinator.start({
   tickRateHz,
   ...(worldMapRepo ? { worldMapRepo } : {}),
   ...(cityRepo ? { cityRepo } : {}),
+  ...(aiManagerUrl ? { aiManagerUrl } : {}),
   worldSeed,
   worldTileIds,
   worldWidth,

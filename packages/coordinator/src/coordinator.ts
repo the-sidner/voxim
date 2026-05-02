@@ -29,6 +29,8 @@ import {
   type CityState,
   type UtilityCommand,
 } from "./city_sim.ts";
+import { AIManagerClient } from "./ai_manager_client.ts";
+import type { AgentToolCall, CityContextPacket } from "@voxim/ai-manager";
 
 export interface CoordinatorConfig {
   /** Gateway WebTransport URL, e.g. "https://gateway:8080". */
@@ -60,6 +62,11 @@ export interface CoordinatorConfig {
    * map-only mode (unit tests).
    */
   cityRepo?: CityRepo;
+  /**
+   * Base URL for the ai-manager service (T-143), e.g. "http://ai-manager:8090".
+   * When omitted the coordinator runs utility-AI only.
+   */
+  aiManagerUrl?: string;
 }
 
 /** Macro utility-AI runs every N coordinator ticks. */
@@ -77,6 +84,13 @@ export class Coordinator {
   private cityRepo: CityRepo | null = null;
   /** In-memory mirror of `cities` rows; refreshed on seed and after each AI pass. */
   private cities: CityRow[] = [];
+  private ai: AIManagerClient | null = null;
+  /**
+   * Cities currently waiting on an ai-manager response. Each entry pins a
+   * city until its dispatchCity() promise settles, so concurrent significant
+   * events for the same city collapse into one call. Cleared on settle.
+   */
+  private aiInFlight = new Set<string>();
 
   async start(config: CoordinatorConfig): Promise<void> {
     // Generate / load the world map first — every other macro decision
@@ -98,6 +112,13 @@ export class Coordinator {
       await this.ensureCities(config.worldSeed ?? 1);
       this.cities = await this.cityRepo.list();
       console.log(`[Coordinator] cities ready: ${this.cities.length} on the world map`);
+    }
+
+    // AI manager (T-143). Optional: when AI_MANAGER_URL is unset the
+    // coordinator runs utility-AI only.
+    if (config.aiManagerUrl) {
+      this.ai = new AIManagerClient(config.aiManagerUrl);
+      console.log(`[Coordinator] ai-manager wired @ ${config.aiManagerUrl}`);
     }
 
     const tickRate = config.tickRateHz ?? 1;
@@ -144,6 +165,14 @@ export class Coordinator {
         `[Coordinator] gate_approached: player=${(env.event.playerId as string)?.slice(0, 8)} ` +
         `${env.sourceTileId} → ${env.event.destinationTileId} (edge=${env.event.edge})`,
       );
+      // T-143: gate_approached is a "significant event" — forward to the
+      // ai-manager for the city sitting on the source tile, if one exists.
+      // Significance widens in later tickets (death, large damage, market
+      // imbalance) once the LLM dispatcher proves out.
+      void this.notifyAi("gate_approached", env.sourceTileId, {
+        playerId: env.event.playerId,
+        destinationTileId: env.event.destinationTileId,
+      });
       return;
     }
     if (wasNew) {
@@ -230,6 +259,115 @@ export class Coordinator {
       }
     }
   }
+
+  /**
+   * Forward a significant event to the ai-manager for the city on `tileId`.
+   * No-ops when AI is not wired or no city sits on this tile. One in-flight
+   * call per city — concurrent events for the same city collapse so we
+   * never spend two LLM calls on the same situation.
+   */
+  private async notifyAi(
+    kind: string,
+    tileId: string,
+    detail: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.ai || !this.cityRepo) return;
+    const city = this.cities.find((c) => c.tileId === tileId);
+    if (!city) return;
+    if (this.aiInFlight.has(city.cityId)) return;
+    this.aiInFlight.add(city.cityId);
+    try {
+      const cityState = city.state as unknown as CityState;
+      const trigger = { tick: this.tick, kind, detail };
+      const recent = (city.eventLog as Array<{ tick: number; kind: string; detail?: Record<string, unknown> }>)
+        .slice(-20);
+      const packet: CityContextPacket = {
+        cityId: city.cityId,
+        tileId: city.tileId,
+        name: city.name,
+        personality: cityState.personality ?? "stern",
+        state: city.state,
+        recentEvents: [...recent, trigger],
+        trigger,
+      };
+      const resp = await this.ai.dispatchCity(packet);
+      if (!resp || resp.tool_calls.length === 0) return;
+      console.log(
+        `[Coordinator] ai-manager → ${city.name}: ${resp.tool_calls.length} tool_calls (trigger=${kind})`,
+      );
+      await this.applyAgentToolCalls(city, resp.tool_calls, resp.rationale);
+    } finally {
+      this.aiInFlight.delete(city.cityId);
+    }
+  }
+
+  /**
+   * Validate + dispatch tool calls returned by the ai-manager. Each call
+   * shape is checked against the allow-list, dropped on mismatch, and
+   * appended to the city's event log alongside any rationale.
+   */
+  private async applyAgentToolCalls(
+    city: CityRow,
+    calls: AgentToolCall[],
+    rationale: string | undefined,
+  ): Promise<void> {
+    if (!this.cityRepo) return;
+    if (rationale) {
+      try {
+        await this.cityRepo.appendEvent(
+          city.cityId,
+          { tick: this.tick, kind: "ai_rationale", detail: { rationale } },
+          CITY_EVENT_LOG_LIMIT,
+        );
+      } catch {
+        // best-effort
+      }
+    }
+    for (const call of calls) {
+      if (!isValidAgentToolCall(call)) {
+        console.warn(`[Coordinator] dropping invalid agent tool_call:`, call);
+        continue;
+      }
+      try {
+        await this.cityRepo.appendEvent(
+          city.cityId,
+          { tick: this.tick, kind: `ai_${call.kind}`, detail: { ...call } },
+          CITY_EVENT_LOG_LIMIT,
+        );
+      } catch {
+        // best-effort
+      }
+      if (call.kind === "log_note") continue; // log-only, no tile dispatch
+      if (this.link?.connected) {
+        const tileCmd = call.kind === "spawn_role"
+          ? { kind: "city_spawn_role", cityId: city.cityId, role: call.role, count: call.count }
+          : {
+              kind: "city_dispatch_caravan",
+              cityId: city.cityId,
+              toTileId: call.toTileId,
+              cargo: call.cargo,
+            };
+        void this.tellTile(city.tileId, tileCmd);
+      }
+    }
+  }
+}
+
+function isValidAgentToolCall(call: unknown): call is AgentToolCall {
+  if (typeof call !== "object" || call === null) return false;
+  const c = call as { kind?: unknown };
+  if (c.kind === "spawn_role") {
+    const k = call as { role?: unknown; count?: unknown };
+    return (k.role === "farmer" || k.role === "guard") && typeof k.count === "number";
+  }
+  if (c.kind === "dispatch_caravan") {
+    const k = call as { toTileId?: unknown; cargo?: unknown };
+    return typeof k.toTileId === "string" && Array.isArray(k.cargo);
+  }
+  if (c.kind === "log_note") {
+    return typeof (call as { note?: unknown }).note === "string";
+  }
+  return false;
 }
 
 function cityIdFor(worldSeed: number, tileId: string): string {

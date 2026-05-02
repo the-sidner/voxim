@@ -2443,7 +2443,7 @@ forward in observable ways (event log accumulates, caravan commands fire to
 tiles).
 
 ### T-143 · `packages/ai-manager` skeleton + LLM call shape
-Effort: M   Status: todo   (lays groundwork for T-046, T-050)
+Effort: M   Status: done   (lays groundwork for T-046, T-050)
 
 Separate process. Stub LLM responses initially (echo a deterministic
 response) so the coordinator integration is testable without API costs.
