@@ -202,6 +202,7 @@ export type GameEvent =
   | BuildingMissingMaterialsEvent
   | HungerCriticalEvent
   | GateApproachedEvent
+  | GateCrossingEvent
   | NodeDepletedEvent
   | DayPhaseChangedEvent
   | SkillActivatedEvent
@@ -276,6 +277,21 @@ export interface GateApproachedEvent {
   entityId: EntityId;
   gateId: string;
   destinationTileId: string;
+}
+
+/**
+ * Final state-stream message sent to a player just before their entity is
+ * tombstoned on the source tile (handoff acked by gateway). The client uses
+ * destinationTileAddress + destinationTileCertHashHex to open a fresh
+ * WebTransport session to the destination tile without a gateway round-trip.
+ */
+export interface GateCrossingEvent {
+  type: "GateCrossing";
+  entityId: EntityId;
+  /** "hostname:port" — the destination tile's WebTransport address. */
+  destinationTileAddress: string;
+  /** SHA-256 cert fingerprint hex; empty string when the cert is CA-signed. */
+  destinationTileCertHashHex: string;
 }
 
 export interface NodeDepletedEvent {

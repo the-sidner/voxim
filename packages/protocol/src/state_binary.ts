@@ -21,6 +21,7 @@
  *   BuildingCompleted uuid builderId, uuid blueprintId, str structureType
  *   HungerCritical    uuid entityId
  *   GateApproached    uuid entityId, str gateId, str destinationTileId
+ *   GateCrossing      uuid entityId, str destinationTileAddress, str destinationTileCertHashHex
  *   NodeDepleted      uuid nodeId, str nodeTypeId, uuid harvesterId
  *   DayPhaseChanged   str phase, f32 timeOfDay
  *   SkillActivated    uuid casterId, u8 slot, str effectType
@@ -106,6 +107,12 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeUuid(ev.entityId);
       w.writeStr(ev.gateId);
       w.writeStr(ev.destinationTileId);
+      break;
+    case "GateCrossing":
+      w.writeU8(EventType.GateCrossing);
+      w.writeUuid(ev.entityId);
+      w.writeStr(ev.destinationTileAddress);
+      w.writeStr(ev.destinationTileCertHashHex);
       break;
     case "NodeDepleted":
       w.writeU8(EventType.NodeDepleted);
@@ -201,6 +208,13 @@ function decodeEvent(r: WireReader): GameEvent {
         entityId: r.readUuid(),
         gateId: r.readStr(),
         destinationTileId: r.readStr(),
+      };
+    case EventType.GateCrossing:
+      return {
+        type: "GateCrossing",
+        entityId: r.readUuid(),
+        destinationTileAddress: r.readStr(),
+        destinationTileCertHashHex: r.readStr(),
       };
     case EventType.NodeDepleted:
       return {

@@ -24,7 +24,20 @@ export class ContentCache {
   private readonly materialPending = new Map<number, Promise<MaterialDef | null>>();
   private readonly skeletonPending = new Map<string, Promise<SkeletonDef | null>>();
 
-  constructor(private readonly connection: TileConnection) {}
+  constructor(private connection: TileConnection) {}
+
+  /**
+   * Swap the underlying connection — used by tile transitions (T-141). Cached
+   * model/material/skeleton definitions are kept (most assets recur across
+   * tiles), but in-flight pending fetches are dropped since they were bound
+   * to the now-closed stream.
+   */
+  attachConnection(conn: TileConnection): void {
+    this.connection = conn;
+    this.modelPending.clear();
+    this.materialPending.clear();
+    this.skeletonPending.clear();
+  }
 
   /** Returns the model definition, fetching it if not yet cached. */
   getModel(modelId: string): Promise<ModelDefinition | null> {

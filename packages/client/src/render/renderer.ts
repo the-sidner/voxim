@@ -689,6 +689,22 @@ export class VoximRenderer {
     }
   }
 
+  /**
+   * Drop every entity and terrain chunk currently rendered. Used by tile
+   * transitions (T-141) to wipe the source tile's world before the destination
+   * tile's state messages start arriving on a fresh connection. Preserves
+   * renderer infrastructure (post-process targets, content cache, debug
+   * overlays' configuration) — only the per-tile scene contents go.
+   */
+  clearWorld(): void {
+    for (const id of [...this.entityMeshes.keys()]) this.removeEntity(id);
+    for (const id of [...this.propPositions.keys()]) this.removeEntity(id);
+    for (const key of [...this.terrainMeshes.keys()]) {
+      const [cx, cy] = key.split(",").map(Number);
+      this.removeTerrain(cx, cy);
+    }
+  }
+
   // ---- interaction system ----
 
   setInteractionSystem(is: InteractionSystem | null): void {

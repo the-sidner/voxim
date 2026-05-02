@@ -70,7 +70,7 @@ export interface GameConfig {
 const E_PICKUP_FALLBACK_RANGE = 3.0;
 
 export class VoximGame {
-  private connection = new TileConnection();
+  private connection: TileConnection = new TileConnection();
   private world = new ClientWorld();
   private content: ContentCache | null = null;
   private renderer: VoximRenderer | null = null;
@@ -98,12 +98,140 @@ export class VoximGame {
   private terrainChunksReceived = 0;
   /** True once all terrain AND all entity models are preloaded. */
   private loadingComplete = false;
+  /** Session token kept around so tile transitions can re-join without re-auth. */
+  private tileToken: string | null = null;
+  /** True while a tile transition is in flight; suppresses onClose→stop(). */
+  private transitioning = false;
 
   async start(config: GameConfig): Promise<void> {
     // Step 1: wire message handlers BEFORE connecting — eliminates the race where
     // the server's full snapshot arrives during connect() while handlers are still null.
     // All renderer/hud references use optional chaining — safe before they are created.
-    this.connection.onSnapshot = (snap) => {
+    this._wireConnectionHandlers(this.connection);
+
+    // Step 2: resolve tile address (via gateway, or direct for demo/dev)
+    const { canvas } = config;
+    let tileAddress: string;
+    let certHashHex: string | undefined;
+
+    // Tile join needs a playerId and a token. In gateway mode both come from
+    // the handshake. In direct-tile dev mode we fabricate a stand-in pair
+    // (random playerId, literal "dev-token") since the tile runs without an
+    // account client and trusts the claim.
+    let tileToken: string;
+    if (config.directTile) {
+      tileAddress = config.directTile.address;
+      certHashHex = config.directTile.certHashHex;
+      this.playerId = this.playerId ?? crypto.randomUUID();
+      tileToken = "dev-token";
+    } else {
+      if (!config.sessionToken) {
+        throw new Error("gatewayUrl mode requires sessionToken — log in first and pass the returned token");
+      }
+      const gatewayResult = await connectViaGateway(config.gatewayUrl!, config.sessionToken);
+      this.playerId = gatewayResult.playerId;
+      tileAddress = gatewayResult.tileAddress;
+      tileToken = config.sessionToken;
+      certHashHex = gatewayResult.tileCertHashHex;
+    }
+    this.tileToken = tileToken;
+
+    // Step 3: connect — handlers are already wired so no messages can be dropped
+    console.log(`[Game] connecting to tile ${tileAddress} as ${this.playerId.slice(0, 8)}`);
+    const assignedId = await this.connection.connect(tileAddress, this.playerId, tileToken, certHashHex);
+    this.playerId = assignedId;
+    console.log(`[Game] tile-assigned player ID: ${this.playerId}`);
+    (globalThis as unknown as Record<string, unknown>)._voxim_connected = true;
+
+    // Step 4: renderer, content cache, HUD, input — push any world state that
+    // arrived during connect() into the renderer now that it exists.
+    this.content = new ContentCache(this.connection);
+    this.renderer = new VoximRenderer(canvas);
+    this.renderer.setLocalPlayer(this.playerId!);
+    this.renderer.setContentCache(this.content);
+    this.renderer.setWeaponActions([...weaponActionsData]);
+    this.renderer.setItemPrefabs(itemPrefabsData);
+
+    // Populate the debug give-item list from the static item prefab data.
+    setDebugItemList(itemPrefabsData.map((p) => ({ id: p.id })));
+
+    // Mount world overlay (entity health bars, floating damage numbers — frame-driven)
+    this.overlay = new WorldOverlay();
+
+    // Mount Preact UI into <div id="ui"> — must exist in the HTML host page
+    mountUI((a) => this._handleUIAction(a));
+    // Expose the live world to UI components that need to read entity state
+    // (tooltips reading per-instance Stats, provenance, etc.) without prop
+    // threading.
+    setClientWorld(this.world);
+
+    // Count any terrain chunks that arrived during connect() (before renderer existed).
+    // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
+    for (const [entityId, state] of this.world.entries()) {
+      if (state.heightmap) this.terrainChunksReceived++;
+      if (state.worldClock) {
+        this.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
+      }
+      if (entityId === this.playerId) {
+        if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
+        if (state.stamina)     patchUI({ stamina:      { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
+        if (state.hunger)      patchUI({ hunger:       { value: state.hunger.value } });
+        if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
+        if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory, this.world) });
+        if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
+      }
+    }
+    patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
+    console.log(`[Game] startup complete; terrain chunks pre-received during connect: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
+    if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
+      this._finishLoading();
+    }
+    // Input system — Capture (DOM listeners) → Translator (state + intents)
+    // → Router (handlers). Replaces the old InputController callback surface.
+    this.intentRouter = new IntentRouter();
+    this.input = new IntentTranslator(this.intentRouter, () => this.renderer!.getPlayerScreenPos());
+    this.inputCapture = new InputCapture(canvas, this.input.handle);
+
+    // Interaction system — entity hover highlight + click dispatch.
+    this.interactionSystem = new InteractionSystem(this.renderer, this.world);
+    this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
+    this.interactionSystem.register(resourceNodeHandler);
+    this.interactionSystem.register(makeGroundItemHandler((entityId) =>
+      this._sendCommand({ cmd: CommandType.PickUp, entityId }),
+    ));
+    this.renderer.setInteractionSystem(this.interactionSystem);
+
+    this._registerIntentHandlers();
+
+    // Build-mode ghost renderer — subscribes to modeState + cursorCellState.
+    this.buildGhost = new BuildGhostRenderer(
+      this.renderer.scene,
+      (x, y) => this.world.getTerrainHeight(x, y),
+    );
+
+    // Hover outline — subscribes to hoverState; decides outline tint per
+    // entity category and feeds the silhouette into the EdgePass mask.
+    this.hoverOutline = new HoverOutlineRenderer(this.renderer, this.world);
+
+    // Step 5: predictor + render loop
+    this.predictor = new Predictor(DEFAULT_PHYSICS, {
+      // deno-lint-ignore no-explicit-any
+      correctionHalfLifeMs: (gameConfigData as any).prediction?.correctionHalfLifeMs ?? 60,
+      // deno-lint-ignore no-explicit-any
+      hardSnapThresholdUnits: (gameConfigData as any).prediction?.hardSnapThresholdUnits ?? 2.0,
+    });
+    this.lastFrameTime = performance.now();
+    this.running = true;
+    this.scheduleFrame();
+  }
+
+  /**
+   * Wire the per-message callbacks on a TileConnection. Called once during
+   * `start()` and again per tile transition (T-141), since each transition
+   * builds a fresh connection.
+   */
+  private _wireConnectionHandlers(conn: TileConnection): void {
+    conn.onSnapshot = (snap) => {
       this.serverTick = snap.serverTick;
       this.world.applySnapshot(snap);
       recordSnapshot(snap);
@@ -113,7 +241,7 @@ export class VoximGame {
       }
     };
 
-    this.connection.onStateMessage = (msg) => {
+    conn.onStateMessage = (msg) => {
       this.serverTick = msg.serverTick;
       recordState(msg);
 
@@ -278,6 +406,12 @@ export class VoximGame {
             console.log(`[Event] GateApproached entity=${ev.entityId.slice(-6)} gate=${ev.gateId} dest=${ev.destinationTileId}`);
             if (ev.entityId === this.playerId) pushToast(`Entering ${ev.destinationTileId}`, "info");
             break;
+          case "GateCrossing":
+            console.log(`[Event] GateCrossing entity=${ev.entityId.slice(-6)} → ${ev.destinationTileAddress}`);
+            if (ev.entityId === this.playerId) {
+              this._transitionToTile(ev.destinationTileAddress, ev.destinationTileCertHashHex);
+            }
+            break;
           case "TradeCompleted":
             console.log(`[Event] TradeCompleted buyer=${ev.buyerId.slice(-6)} item=${ev.itemType} qty=${ev.quantity} coins=${ev.coinDelta}`);
             if (ev.buyerId === this.playerId) {
@@ -300,124 +434,66 @@ export class VoximGame {
       }
     };
 
-    this.connection.onClose = () => {
+    conn.onClose = () => {
+      // During tile transitions we deliberately close the source connection;
+      // the new connection is what runs after _transitionToTile() returns.
+      // Don't tear the game down in that case.
+      if (this.transitioning) return;
       console.log("[Game] disconnected");
       this.stop();
     };
+  }
 
-    // Step 2: resolve tile address (via gateway, or direct for demo/dev)
-    const { canvas } = config;
-    let tileAddress: string;
-    let certHashHex: string | undefined;
-
-    // Tile join needs a playerId and a token. In gateway mode both come from
-    // the handshake. In direct-tile dev mode we fabricate a stand-in pair
-    // (random playerId, literal "dev-token") since the tile runs without an
-    // account client and trusts the claim.
-    let tileToken: string;
-    if (config.directTile) {
-      tileAddress = config.directTile.address;
-      certHashHex = config.directTile.certHashHex;
-      this.playerId = this.playerId ?? crypto.randomUUID();
-      tileToken = "dev-token";
-    } else {
-      if (!config.sessionToken) {
-        throw new Error("gatewayUrl mode requires sessionToken — log in first and pass the returned token");
-      }
-      const gatewayResult = await connectViaGateway(config.gatewayUrl!, config.sessionToken);
-      this.playerId = gatewayResult.playerId;
-      tileAddress = gatewayResult.tileAddress;
-      tileToken = config.sessionToken;
-      certHashHex = gatewayResult.tileCertHashHex;
+  /**
+   * Tile transition (T-141). The source tile sends a final GateCrossing event
+   * carrying the destination's WT address + cert fingerprint, then tombstones
+   * the player. We close the old connection, wipe per-tile world state, open
+   * a fresh WT to the destination, and let the join handshake plus its first
+   * state message rehydrate the world. The renderer, content cache, UI, input,
+   * and predictor are all preserved across the swap — only the connection +
+   * world entities + terrain churn.
+   */
+  private async _transitionToTile(address: string, certHashHex: string): Promise<void> {
+    if (this.transitioning) return;
+    if (!this.playerId || !this.tileToken) {
+      console.error("[Game] tile transition without playerId/token — aborting");
+      return;
     }
+    this.transitioning = true;
+    console.log(`[Game] tile transition → ${address}`);
+    pushToast("Crossing tile boundary…", "info");
+    patchUI({ loading: true, loadingProgress: 0 });
 
-    // Step 3: connect — handlers are already wired so no messages can be dropped
-    console.log(`[Game] connecting to tile ${tileAddress} as ${this.playerId.slice(0, 8)}`);
-    const assignedId = await this.connection.connect(tileAddress, this.playerId, tileToken, certHashHex);
-    this.playerId = assignedId;
-    console.log(`[Game] tile-assigned player ID: ${this.playerId}`);
-    (globalThis as unknown as Record<string, unknown>)._voxim_connected = true;
+    // Tear down old connection. onClose is a no-op while transitioning is set.
+    this.connection.close();
 
-    // Step 4: renderer, content cache, HUD, input — push any world state that
-    // arrived during connect() into the renderer now that it exists.
-    this.content = new ContentCache(this.connection);
-    this.renderer = new VoximRenderer(canvas);
-    this.renderer.setLocalPlayer(this.playerId!);
-    this.renderer.setContentCache(this.content);
-    this.renderer.setWeaponActions([...weaponActionsData]);
-    this.renderer.setItemPrefabs(itemPrefabsData);
+    // Wipe per-tile state. The renderer instance is kept; only its scene
+    // contents go.
+    this.world.clear();
+    this.renderer?.clearWorld();
+    this.terrainChunksReceived = 0;
+    this.loadingComplete = false;
+    this.predictor?.reset();
 
-    // Populate the debug give-item list from the static item prefab data.
-    setDebugItemList(itemPrefabsData.map((p) => ({ id: p.id })));
+    // Fresh connection — handlers reference `this` so they keep working.
+    const conn = new TileConnection();
+    this._wireConnectionHandlers(conn);
+    this.connection = conn;
+    if (this.content) this.content.attachConnection(conn);
 
-    // Mount world overlay (entity health bars, floating damage numbers — frame-driven)
-    this.overlay = new WorldOverlay();
-
-    // Mount Preact UI into <div id="ui"> — must exist in the HTML host page
-    mountUI((a) => this._handleUIAction(a));
-    // Expose the live world to UI components that need to read entity state
-    // (tooltips reading per-instance Stats, provenance, etc.) without prop
-    // threading.
-    setClientWorld(this.world);
-
-    // Count any terrain chunks that arrived during connect() (before renderer existed).
-    // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
-    for (const [entityId, state] of this.world.entries()) {
-      if (state.heightmap) this.terrainChunksReceived++;
-      if (state.worldClock) {
-        this.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
-      }
-      if (entityId === this.playerId) {
-        if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
-        if (state.stamina)     patchUI({ stamina:      { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
-        if (state.hunger)      patchUI({ hunger:       { value: state.hunger.value } });
-        if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
-        if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory, this.world) });
-        if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
-      }
+    try {
+      const assignedId = await conn.connect(address, this.playerId, this.tileToken, certHashHex || undefined);
+      this.playerId = assignedId;
+      this.renderer?.setLocalPlayer(this.playerId);
+      console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);
+    } catch (err) {
+      console.error("[Game] tile transition failed:", err);
+      pushToast("Failed to enter the next tile", "danger");
+      this.transitioning = false;
+      this.stop();
+      return;
     }
-    patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
-    console.log(`[Game] startup complete; terrain chunks pre-received during connect: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
-    if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
-      this._finishLoading();
-    }
-    // Input system — Capture (DOM listeners) → Translator (state + intents)
-    // → Router (handlers). Replaces the old InputController callback surface.
-    this.intentRouter = new IntentRouter();
-    this.input = new IntentTranslator(this.intentRouter, () => this.renderer!.getPlayerScreenPos());
-    this.inputCapture = new InputCapture(canvas, this.input.handle);
-
-    // Interaction system — entity hover highlight + click dispatch.
-    this.interactionSystem = new InteractionSystem(this.renderer, this.world);
-    this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
-    this.interactionSystem.register(resourceNodeHandler);
-    this.interactionSystem.register(makeGroundItemHandler((entityId) =>
-      this._sendCommand({ cmd: CommandType.PickUp, entityId }),
-    ));
-    this.renderer.setInteractionSystem(this.interactionSystem);
-
-    this._registerIntentHandlers();
-
-    // Build-mode ghost renderer — subscribes to modeState + cursorCellState.
-    this.buildGhost = new BuildGhostRenderer(
-      this.renderer.scene,
-      (x, y) => this.world.getTerrainHeight(x, y),
-    );
-
-    // Hover outline — subscribes to hoverState; decides outline tint per
-    // entity category and feeds the silhouette into the EdgePass mask.
-    this.hoverOutline = new HoverOutlineRenderer(this.renderer, this.world);
-
-    // Step 5: predictor + render loop
-    this.predictor = new Predictor(DEFAULT_PHYSICS, {
-      // deno-lint-ignore no-explicit-any
-      correctionHalfLifeMs: (gameConfigData as any).prediction?.correctionHalfLifeMs ?? 60,
-      // deno-lint-ignore no-explicit-any
-      hardSnapThresholdUnits: (gameConfigData as any).prediction?.hardSnapThresholdUnits ?? 2.0,
-    });
-    this.lastFrameTime = performance.now();
-    this.running = true;
-    this.scheduleFrame();
+    this.transitioning = false;
   }
 
   private scheduleFrame(): void {

@@ -824,10 +824,26 @@ export class TileServer {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
-    }).then((r) => {
+    }).then(async (r) => {
       if (r.ok) {
-        if (this.world.isAlive(payload.entityId)) this.world.destroy(payload.entityId);
+        const ack = await r.json().catch(() => null) as
+          | { destinationTileAddress?: string; destinationTileCertHashHex?: string }
+          | null;
         const session = this.sessions.get(payload.entityId);
+        // Send a final GateCrossing event on the reliable stream so the client
+        // can open a direct WT to the destination tile without a gateway
+        // round-trip. Must happen BEFORE the entity is destroyed and the
+        // session closed — sendStateRaw serialises through the session's write
+        // queue, so by the time close() runs the bytes are already in flight.
+        if (session && ack?.destinationTileAddress) {
+          this.sendGateCrossing(
+            session,
+            payload.entityId,
+            ack.destinationTileAddress,
+            ack.destinationTileCertHashHex ?? "",
+          );
+        }
+        if (this.world.isAlive(payload.entityId)) this.world.destroy(payload.entityId);
         session?.close();
         this.sessions.delete(payload.entityId);
         console.log(
@@ -841,6 +857,37 @@ export class TileServer {
     }).finally(() => {
       this.handingOff.delete(payload.entityId);
     });
+  }
+
+  /**
+   * Encode a one-off BinaryStateMessage carrying a single GateCrossing event
+   * and push it to the player's reliable stream. Sequenced through the
+   * session's write queue so it is delivered before the subsequent close().
+   */
+  private sendGateCrossing(
+    session: ClientSession,
+    entityId: EntityId,
+    destinationTileAddress: string,
+    destinationTileCertHashHex: string,
+  ): void {
+    const msg = {
+      serverTick: this.tickLoop.currentTick,
+      ackInputSeq: this.world.get(entityId, InputState)?.seq ?? 0,
+      spawns: [],
+      deltas: [],
+      destroys: [],
+      events: [{
+        type: "GateCrossing" as const,
+        entityId,
+        destinationTileAddress,
+        destinationTileCertHashHex,
+      }],
+    };
+    const payload = binaryStateMessageCodec.encode(msg);
+    const framed = new Uint8Array(4 + payload.byteLength);
+    new DataView(framed.buffer).setUint32(0, payload.byteLength, true);
+    framed.set(payload, 4);
+    session.sendStateRaw(framed);
   }
 
   private spawnWorldState(content: ContentStore): void {

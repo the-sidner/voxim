@@ -210,7 +210,15 @@ export class GatewayServer {
           console.warn(`[Gateway] failed to update last_tile_id for ${body.playerId}:`, err);
         }
       }
-      return Response.json(ack);
+      // Echo destination tile's WT address + cert fingerprint back to the
+      // source tile so it can hand the client a direct redirect (T-141).
+      // All tiles share the gateway's self-signed cert in dev; in prod with
+      // CA-signed certs certHashHex stays empty.
+      return Response.json({
+        ...ack,
+        destinationTileAddress: tile.address,
+        destinationTileCertHashHex: this.certHashHex,
+      });
     } catch {
       return new Response("bad request", { status: 400 });
     }

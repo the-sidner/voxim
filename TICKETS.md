@@ -2410,7 +2410,7 @@ destination tile; entity state survives (HP, inventory, dynasty); same
 player can't be present on both tiles simultaneously (no double-spawn).
 
 ### T-141 · Client tile transition
-Effort: M   Status: todo   (supersedes T-055)
+Effort: M   Status: done   (supersedes T-055)
 
 Client side of T-140. Receives `GateCrossing` from the state stream, opens
 a new WT to the destination tile, replaces local world state.

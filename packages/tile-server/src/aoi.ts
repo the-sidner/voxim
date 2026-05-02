@@ -65,6 +65,8 @@ function isEventRelevant(
       return ev.entityId === playerId;
     case "GateApproached":
       return ev.entityId === playerId;
+    case "GateCrossing":
+      return ev.entityId === playerId;
     case "NodeDepleted":
       return knownEntities.has(ev.nodeId) || knownEntities.has(ev.harvesterId);
     case "DayPhaseChanged":

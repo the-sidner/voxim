@@ -65,6 +65,13 @@ export class Predictor {
     this._initialised = true;
   }
 
+  /** Drop pending inputs and uninitialise — used by tile transitions (T-141). */
+  reset(): void {
+    this.pending = [];
+    this.renderOffset = { x: 0, y: 0, z: 0 };
+    this._initialised = false;
+  }
+
   /**
    * Advance the predicted body by one frame.
    * Decays the render offset and steps physics.
