@@ -123,6 +123,13 @@ export interface TileServerConfig {
    */
   adminPort?: number;
   /**
+   * Hostname the gateway should reach this tile's admin port at. In docker
+   * compose this is the service name (matches the container hostname); in
+   * single-process dev it's "localhost". The tile self-registers
+   * `http://<adminHost>:<adminPort>` with the gateway.
+   */
+  adminHost?: string;
+  /**
    * Path to a pre-generated terrain cache file (.bin).
    * If the file exists it is loaded directly (fast, ~ms).
    * If the file is absent the terrain is generated and saved here for next time.
@@ -484,7 +491,9 @@ export class TileServer {
     // Self-register with gateway so clients can be routed here
     if (config.gatewayUrl && config.tileAddress && config.adminPort) {
       this.gatewayUrl = config.gatewayUrl;
-      const adminUrl = `http://localhost:${config.adminPort}`;
+      const adminHost = config.adminHost ?? "localhost";
+      const adminUrl = `http://${adminHost}:${config.adminPort}`;
+      console.log(`[TileServer] self-registering with gateway: adminUrl=${adminUrl}`);
       registerWithGateway(config.gatewayUrl, config.tileId, config.tileAddress, adminUrl);
     }
 

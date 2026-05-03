@@ -5,6 +5,13 @@
  *   TILE_ID         Tile identifier                   default: tile_0
  *   PORT            WebTransport HTTPS port           default: 4434
  *   ADMIN_PORT      Plain HTTP admin port             default: 14434
+ *   ADMIN_HOST      Hostname the gateway uses to        default: Deno.hostname()
+ *                   reach this tile's admin port.       (docker service name)
+ *                   In docker compose the container's
+ *                   hostname matches the service name
+ *                   (tile-1 → "tile-1"), which the
+ *                   gateway can resolve. Override only
+ *                   when running outside compose.
  *   TLS_CERT        Path to PEM TLS certificate       default: ./certs/cert.pem
  *   TLS_KEY         Path to PEM TLS private key       default: ./certs/key.pem
  *   TICK_RATE       Tick rate in Hz                   default: 20
@@ -34,6 +41,7 @@ globalThis.addEventListener("unhandledrejection", (event) => {
 const tileId         = Deno.env.get("TILE_ID")      ?? "tile_0";
 const port           = parseInt(Deno.env.get("PORT")       ?? "4434");
 const adminPort      = parseInt(Deno.env.get("ADMIN_PORT") ?? "14434");
+const adminHost      = Deno.env.get("ADMIN_HOST") ?? Deno.hostname();
 const certPath       = Deno.env.get("TLS_CERT")     ?? "./certs/cert.pem";
 const keyPath        = Deno.env.get("TLS_KEY")      ?? "./certs/key.pem";
 const tickRateHz     = parseInt(Deno.env.get("TICK_RATE")  ?? "20");
@@ -63,6 +71,7 @@ await server.start({
   key,
   tickRateHz,
   adminPort,
+  adminHost,
   tileAddress,
   ...(gatewayUrl     ? { gatewayUrl }     : {}),
   ...(gatewayWtUrl   ? { gatewayWtUrl }   : {}),
