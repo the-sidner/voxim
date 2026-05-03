@@ -184,20 +184,35 @@ export class GatewayServer {
   }
 
   private async handleHandoff(req: Request): Promise<Response> {
+    let body: Record<string, unknown> | null = null;
     try {
-      const body = await req.json();
+      body = await req.json() as Record<string, unknown>;
       if (!body.destinationTileId || !body.playerId) {
+        console.warn(`[Gateway] handoff bad request — missing fields:`, Object.keys(body));
         return new Response("bad request", { status: 400 });
       }
-      const tile = await this.tiles.get(body.destinationTileId);
+      const tile = await this.tiles.get(body.destinationTileId as string);
       if (!tile) {
+        console.warn(`[Gateway] handoff: destination tile ${body.destinationTileId} not registered`);
         return new Response(JSON.stringify({ error: "tile not found" }), { status: 404 });
       }
-      const resp = await fetch(`${tile.adminUrl}/handoff`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      console.log(`[Gateway] handoff → ${tile.adminUrl}/handoff (player=${(body.playerId as string).slice(0, 8)}, dest=${body.destinationTileId})`);
+      let resp: Response;
+      try {
+        resp = await fetch(`${tile.adminUrl}/handoff`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        console.error(`[Gateway] handoff fetch to ${tile.adminUrl} failed:`, (err as Error).message);
+        return new Response(`upstream fetch failed: ${(err as Error).message}`, { status: 502 });
+      }
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "<no body>");
+        console.error(`[Gateway] destination tile responded ${resp.status}: ${text}`);
+        return new Response(text, { status: resp.status });
+      }
       const ack = await resp.json();
       // On a successful handoff (destination acked), update the user's
       // last_tile_id so future logins route to the correct tile. Best-effort:
@@ -219,8 +234,9 @@ export class GatewayServer {
         destinationTileAddress: tile.address,
         destinationTileCertHashHex: this.certHashHex,
       });
-    } catch {
-      return new Response("bad request", { status: 400 });
+    } catch (err) {
+      console.error(`[Gateway] handoff threw:`, (err as Error).message);
+      return new Response(`gateway error: ${(err as Error).message}`, { status: 400 });
     }
   }
 
