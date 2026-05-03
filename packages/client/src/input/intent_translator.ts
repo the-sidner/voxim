@@ -55,6 +55,7 @@ const GAME_KEYS = new Set([
 
 export class IntentTranslator {
   private readonly keys = new Set<string>();
+  /** Player facing — updated each mouse-move from cursor-on-ground raycast. */
   private facing = 0;
   /** Accumulated one-shot bits cleared each buildDatagram(). */
   private pendingActions = 0;
@@ -79,6 +80,7 @@ export class IntentTranslator {
   constructor(
     private readonly router: IntentRouter,
     private readonly getPlayerScreen: () => { x: number; y: number },
+    private readonly getCursorFacing: (canvasX: number, canvasY: number) => number | null,
   ) {}
 
   /** Wire this as the InputCapture sink. */
@@ -101,15 +103,22 @@ export class IntentTranslator {
     // if any browser shortcut becomes annoying.
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
+    // Edge-trigger Shift only on transition from up→down so a held Shift
+    // doesn't auto-redodge every frame.
+    const wasDown = this.keys.has(e.code);
     this.keys.add(e.code);
     switch (e.code) {
-      case "Space":  this.pendingActions |= ACTION_JUMP;      break;
-      case "KeyZ":   this.pendingActions |= ACTION_USE_SKILL; break;
-      case "KeyC":   this.pendingActions |= ACTION_CONSUME;   break;
-      case "Digit1": this.pendingActions |= ACTION_SKILL_1;   break;
-      case "Digit2": this.pendingActions |= ACTION_SKILL_2;   break;
-      case "Digit3": this.pendingActions |= ACTION_SKILL_3;   break;
-      case "Digit4": this.pendingActions |= ACTION_SKILL_4;   break;
+      case "Space":      this.pendingActions |= ACTION_JUMP;      break;
+      case "KeyZ":       this.pendingActions |= ACTION_USE_SKILL; break;
+      case "KeyC":       this.pendingActions |= ACTION_CONSUME;   break;
+      case "Digit1":     this.pendingActions |= ACTION_SKILL_1;   break;
+      case "Digit2":     this.pendingActions |= ACTION_SKILL_2;   break;
+      case "Digit3":     this.pendingActions |= ACTION_SKILL_3;   break;
+      case "Digit4":     this.pendingActions |= ACTION_SKILL_4;   break;
+      case "ShiftLeft":
+      case "ShiftRight":
+        if (!wasDown) this.pendingActions |= ACTION_DODGE;
+        break;
       case "KeyE":
         // Hover-driven interact. Translator emits the intent; the router
         // dispatches to whatever handler matches the current hover target.
@@ -133,10 +142,10 @@ export class IntentTranslator {
   private onMouseMove(e: Extract<RawEvent, { kind: "mouse-move" }>): void {
     this.mouseCanvasX = e.canvasX;
     this.mouseCanvasY = e.canvasY;
-    const { x: px, y: py } = this.getPlayerScreen();
-    // Subtract π/4 to convert from screen-space to world-space angle (45°
-    // isometric camera; screen-right = world-northeast).
-    this.facing = Math.atan2(this.mouseCanvasY - py, this.mouseCanvasX - px) - Math.PI / 4;
+    // Cursor → player facing: raycast onto the ground plane at player Y.
+    // The renderer owns the camera + player position so it does the projection.
+    const f = this.getCursorFacing(e.canvasX, e.canvasY);
+    if (f !== null) this.facing = f;
   }
 
   private onMouseDown(e: Extract<RawEvent, { kind: "mouse-down" }>): void {
@@ -155,16 +164,13 @@ export class IntentTranslator {
       this.rmbDown = true;
       if (mode.kind === "normal" && this.buildMode) {
         // Hammer equipped, normal mode → opening the radial selects the
-        // blueprint and enters build mode. Dispatched on press for fast
-        // response; the existing RadialMenu listens for RMB-up itself to
-        // commit the hovered sector.
+        // blueprint and enters build mode.
         this.router.dispatch({ kind: "open-build-radial", canvasX: e.canvasX, canvasY: e.canvasY });
       } else if (mode.kind === "normal") {
         // No hammer: held block. ACTION_BLOCK rides on the per-frame held
         // bit while rmbDown remains true.
         this.router.dispatch({ kind: "block-start" });
       }
-      // mode.kind === "build" → wait for RMB-up to fire build-undo.
     }
   }
 
@@ -200,7 +206,7 @@ export class IntentTranslator {
         this.router.dispatch({ kind: "block-end" });
       }
       // Hammer + normal mode: RMB-up is the radial commit, owned by
-      // RadialMenu's own listener — nothing to dispatch from here.
+      // RadialMenu's own listener.
     }
   }
 
@@ -208,30 +214,30 @@ export class IntentTranslator {
 
   /** Called once per frame by the game loop. */
   buildDatagram(seq: number, tick: number): MovementDatagram {
+    // Movement is FACING-relative: W = forward in the direction the
+    // character is facing (cursor-driven). The camera angle is fixed.
+    // So if the cursor points south, the character faces south, and W
+    // moves south — character rotates, camera doesn't.
     const fwdX =  Math.cos(this.facing);
     const fwdY =  Math.sin(this.facing);
+    // Player-right vector: 90° clockwise from facing in game (X, Y).
     const rgtX =  Math.sin(this.facing);
     const rgtY = -Math.cos(this.facing);
 
     let movX = 0, movY = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    { movX += fwdX; movY += fwdY; }
     if (this.keys.has("KeyS") || this.keys.has("ArrowDown"))  { movX -= fwdX; movY -= fwdY; }
-    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft"))  { movX += rgtX; movY += rgtY; }
-    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) { movX -= rgtX; movY -= rgtY; }
+    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft"))  { movX -= rgtX; movY -= rgtY; }
+    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) { movX += rgtX; movY += rgtY; }
 
     const len = Math.sqrt(movX * movX + movY * movY);
     if (len > 0) { movX /= len; movY /= len; }
 
-    if (len > 0 && (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"))) {
-      this.pendingActions |= ACTION_DODGE;
-    }
-
     let held = 0;
     if (this.keys.has("ControlLeft") || this.keys.has("ControlRight")) held |= ACTION_CROUCH;
     if (this.keys.has("KeyF")) held |= ACTION_BLOCK;
-    // No-hammer normal mode: RMB held re-emits ACTION_BLOCK every frame so the
-    // server-side block stays active. block-start / block-end intents are
-    // dispatched alongside but for now ACTION_BLOCK remains the wire mechanism.
+    // No-hammer normal mode: RMB held re-emits ACTION_BLOCK every frame so
+    // the server-side block stays active.
     if (!this.buildMode && this.rmbDown) held |= ACTION_BLOCK;
 
     const actions = this.pendingActions | held;

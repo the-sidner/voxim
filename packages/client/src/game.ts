@@ -189,7 +189,11 @@ export class VoximGame {
     // Input system — Capture (DOM listeners) → Translator (state + intents)
     // → Router (handlers). Replaces the old InputController callback surface.
     this.intentRouter = new IntentRouter();
-    this.input = new IntentTranslator(this.intentRouter, () => this.renderer!.getPlayerScreenPos());
+    this.input = new IntentTranslator(
+      this.intentRouter,
+      () => this.renderer!.getPlayerScreenPos(),
+      (cx, cy) => this.renderer!.getCursorFacing(cx, cy),
+    );
     this.inputCapture = new InputCapture(canvas, this.input.handle);
 
     // Interaction system — entity hover highlight + click dispatch.

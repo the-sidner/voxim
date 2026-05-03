@@ -46,12 +46,7 @@ import type { DebugUpdateContext } from "./debug_overlay_manager.ts";
 import { HitSparkRenderer } from "./hit_spark_renderer.ts";
 import { LightManager } from "./light_manager.ts";
 import { EdgePass } from "./edge_pass.ts";
-
-/**
- * Isometric view direction: camera sits at this offset from the camera target.
- * (16, 24, 16) in Three.js space = 45° azimuth, ~47° elevation — classic game iso.
- */
-const ISO_OFFSET = new THREE.Vector3(16, 24, 16);
+import { CameraRig } from "./camera_rig.ts";
 
 /**
  * One recorded frame of the weapon blade during an attack's active phase.
@@ -117,21 +112,19 @@ const DEPTH_BLIT_FRAG = /* glsl */`
   }
 `;
 
-/**
- * Half-height of the orthographic frustum in world units.
- * The visible vertical range is 2×ORTHO_HALF = 40 world units.
- */
-const ORTHO_HALF = 20;
-
 /** Terrain chunk size in world units. Must match CHUNK_SIZE in @voxim/world. */
 const CHUNK_SIZE = 32;
 
 /**
- * Entities further than this squared distance (in world-x/y plane) from the
- * local player have their Three.js group hidden each frame.
- * 68² ≈ diagonal of the 3×3 chunk window (96 units) with a small margin.
+ * Entities further than this squared distance from the local player have
+ * their Three.js group hidden each frame. Sized for the pulled-back camera
+ * (~35m slant distance) — visible ground footprint can reach ~50m forward.
  */
-const CULL_RADIUS_SQ = 68 * 68;
+const CULL_RADIUS_SQ = 160 * 160;
+
+/** 3rd-person camera vertical sample range above/below player Y for height shading. */
+const HEIGHT_SHADE_BELOW = 8.0;
+const HEIGHT_SHADE_ABOVE = 24.0;
 
 
 /**
@@ -208,7 +201,8 @@ const _attachMat   = new THREE.Matrix4();
 export class VoximRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera: THREE.OrthographicCamera;
+  readonly cameraRig: CameraRig;
+  readonly camera: THREE.PerspectiveCamera;
 
   private readonly terrainMeshes  = new Map<string, THREE.Mesh>();
   /** Gate marker pillars (T-145), keyed by entityId. World-space group containing pillar mesh. */
@@ -351,13 +345,9 @@ export class VoximRenderer {
     this.renderer.shadowMap.type = THREE.BasicShadowMap; // hard 1-pixel shadow edges → thin outline
 
     const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
-    // near=-200 prevents the near plane from clipping terrain and objects that sit
-    // "behind" the camera along the isometric view direction (most visible near map edges).
-    this.camera = new THREE.OrthographicCamera(
-      -ORTHO_HALF * aspect, ORTHO_HALF * aspect, ORTHO_HALF, -ORTHO_HALF, -200, 1000,
-    );
-    this.camera.position.copy(this.cameraTarget).add(ISO_OFFSET);
-    this.camera.lookAt(this.cameraTarget);
+    this.cameraRig = new CameraRig(aspect);
+    this.camera = this.cameraRig.camera;
+    this.cameraRig.update(this.cameraTarget);
 
     // ---- render target (with depth texture for the depth-blit pass) ----
     const pw = Math.max(1, canvas.clientWidth  || canvas.width  || 320);
@@ -835,6 +825,28 @@ export class VoximRenderer {
     return { x: hit.x, y: hit.z };
   }
 
+  /**
+   * Cursor-to-facing for the local player: raycast the cursor onto the ground
+   * plane at the player's current Y, then return atan2(dy, dx) from player to
+   * cursor in game-space (X, Y) — directly usable as `facing` on the wire.
+   * Returns null if the local player has no mesh yet or the ray misses.
+   */
+  getCursorFacing(canvasX: number, canvasY: number): number | null {
+    if (!this.localPlayerId) return null;
+    const mesh = this.entityMeshes.get(this.localPlayerId);
+    if (!mesh) return null;
+    // Ground plane = local player's current Y (Three.js y = game z = height).
+    const hit = this.getCursorWorldPos(canvasX, canvasY, mesh.group.position.y);
+    if (!hit) return null;
+    // Player position in game coords: three.x = game.x, three.z = game.y.
+    const px = mesh.group.position.x;
+    const py = mesh.group.position.z;
+    const dx = hit.x - px;
+    const dy = hit.y - py;
+    if (dx === 0 && dy === 0) return null;
+    return Math.atan2(dy, dx);
+  }
+
   /** Project an entity's world position to canvas pixel coordinates, or null if not found. */
   getEntityScreenPos(entityId: string): { x: number; y: number } | null {
     const mesh = this.entityMeshes.get(entityId);
@@ -1019,18 +1031,15 @@ export class VoximRenderer {
       : undefined;
     if (localMesh) {
       this.cameraTarget.copy(localMesh.group.position);
-      // Bias the look-at point upward (Three.js Y = game Z) so the upper half
-      // of the frustum covers tall terrain, trees, and buildings above the player.
-      this.cameraTarget.y += 5;
     }
 
-    // Chunk culling — only render 3×3 chunks around the player
+    // Chunk culling — 9×9 window around player (camera ~35m slant; ground footprint can reach far).
     const playerPos = localMesh?.group.position ?? this.cameraTarget;
     const pChunkX = Math.floor(playerPos.x / CHUNK_SIZE);
     const pChunkY = Math.floor(playerPos.z / CHUNK_SIZE);
     for (const [key, tmesh] of this.terrainMeshes) {
       const [cx, cy] = key.split(",").map(Number);
-      tmesh.visible = Math.abs(cx - pChunkX) <= 2 && Math.abs(cy - pChunkY) <= 2;
+      tmesh.visible = Math.abs(cx - pChunkX) <= 4 && Math.abs(cy - pChunkY) <= 4;
     }
     // Entity culling — hide entities beyond CULL_RADIUS_SQ
     for (const [id, emesh] of this.entityMeshes) {
@@ -1040,9 +1049,7 @@ export class VoximRenderer {
       emesh.group.visible = dx * dx + dz * dz <= CULL_RADIUS_SQ;
     }
 
-    const targetCamPos = this.cameraTarget.clone().add(ISO_OFFSET);
-    this.camera.position.copy(targetCamPos);
-    this.camera.lookAt(this.cameraTarget);
+    this.cameraRig.update(this.cameraTarget);
 
     // Keep sun shadow frustum centered on the player area.
     // Both position and target must move together — only the direction between
@@ -1123,6 +1130,10 @@ export class VoximRenderer {
     // so they match the frame that produced the depth buffer.
     this.depthBlitMat.uniforms.uProjInv.value.copy(this.camera.projectionMatrixInverse);
     this.depthBlitMat.uniforms.uViewInv.value.copy(this.camera.matrixWorld);
+    // Recenter the height-shading band on the player so the perspective view's
+    // broader Y range (sky, distant hills) doesn't compress contrast near the player.
+    this.depthBlitMat.uniforms.uHeightMin.value = playerPos.y - HEIGHT_SHADE_BELOW;
+    this.depthBlitMat.uniforms.uHeightMax.value = playerPos.y + HEIGHT_SHADE_ABOVE;
     this.renderer.setRenderTarget(this.heightTarget);
     this.renderer.render(this.depthBlitScene, this.blitCamera);
 
@@ -1571,11 +1582,7 @@ export class VoximRenderer {
     const h = canvas.clientHeight;
     this.renderer.setSize(w, h, false);
     const aspect = w / h;
-    this.camera.left   = -ORTHO_HALF * aspect;
-    this.camera.right  =  ORTHO_HALF * aspect;
-    this.camera.top    =  ORTHO_HALF;
-    this.camera.bottom = -ORTHO_HALF;
-    this.camera.updateProjectionMatrix();
+    this.cameraRig.resize(aspect);
     const npw = Math.max(1, w);
     const nph = Math.max(1, h);
     this.pixelTarget.setSize(npw, nph);
