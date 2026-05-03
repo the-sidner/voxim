@@ -257,7 +257,9 @@ export class VoximGame {
       for (const entityId of msg.destroys) {
         this.world.applyDestroy(entityId);
         this.renderer?.removeEntity(entityId);
+        this.renderer?.removeGateMarker(entityId);
         this.overlay?.removeEntityBar(entityId);
+        this.overlay?.removeGateLabel(entityId);
       }
 
       for (const entityId of updated) {
@@ -272,6 +274,14 @@ export class VoximGame {
           // During loading: don't push to renderer yet — keeps JS thread free so
           // QUIC flow control isn't starved.  _finishLoading() flushes everything.
           if (this.loadingComplete) this.renderer?.updateTerrain(state.heightmap, state.materialGrid);
+        } else if (state.gateLink && state.position) {
+          // Gate entities are rendered as standalone navigational markers,
+          // not via the regular entity mesh path (no modelRef, no skeleton).
+          if (this.loadingComplete) {
+            this.renderer?.updateGateMarker(
+              entityId, state.position.x, state.position.y, state.position.z, state.gateLink.edge,
+            );
+          }
         } else if (state.position) {
           if (this.loadingComplete) this.renderer?.updateEntity(entityId, state);
         }
@@ -551,10 +561,15 @@ export class VoximGame {
     }
     this.renderer?.render(this.serverTick, predictedPos);
 
-    // Update world-space entity health bars (frame-driven, not reactive)
+    // Update world-space entity health bars + gate labels (frame-driven, not reactive)
     if (this.overlay) {
       this.overlay.clearEntityBars();
+      this.overlay.clearGateLabels();
       for (const [entityId, state] of this.world.entries()) {
+        if (state.gateLink && state.position) {
+          const sp = this.renderer?.getGateScreenPos(entityId);
+          if (sp) this.overlay.setGateLabel(entityId, `→ ${state.gateLink.destinationTileId}`, sp.x, sp.y);
+        }
         if (entityId === this.playerId) continue;
         if (!state.health || !state.position) continue;
         const pos = this.renderer?.getEntityScreenPos(entityId);

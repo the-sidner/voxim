@@ -211,6 +211,8 @@ export class VoximRenderer {
   readonly camera: THREE.OrthographicCamera;
 
   private readonly terrainMeshes  = new Map<string, THREE.Mesh>();
+  /** Gate marker pillars (T-145), keyed by entityId. World-space group containing pillar mesh. */
+  private readonly gateMeshes     = new Map<string, THREE.Group>();
   private readonly terrainHmaps   = new Map<string, HeightmapData>();
   private readonly terrainMats    = new Map<string, MaterialGridData>();
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
@@ -699,10 +701,68 @@ export class VoximRenderer {
   clearWorld(): void {
     for (const id of [...this.entityMeshes.keys()]) this.removeEntity(id);
     for (const id of [...this.propPositions.keys()]) this.removeEntity(id);
+    for (const id of [...this.gateMeshes.keys()]) this.removeGateMarker(id);
     for (const key of [...this.terrainMeshes.keys()]) {
       const [cx, cy] = key.split(",").map(Number);
       this.removeTerrain(cx, cy);
     }
+  }
+
+  // ---- gate markers (T-145) ----
+
+  /**
+   * Show or move a navigational marker for a gate entity. The mesh is a tall
+   * coloured pillar topped with a faintly glowing capstone — visible from
+   * across the tile so the player can navigate toward it. A floating text
+   * label ("→ tile_1") is rendered separately by WorldOverlay using the
+   * pillar's screen position.
+   */
+  updateGateMarker(entityId: string, x: number, y: number, z: number, edge: string): void {
+    let group = this.gateMeshes.get(entityId);
+    if (!group) {
+      group = buildGateMarker(edge);
+      this.scene.add(group);
+      this.gateMeshes.set(entityId, group);
+    }
+    // Server uses x/z as horizontal plane and y as elevation; renderer treats
+    // x/y as horizontal and z as elevation (see entity_mesh.ts comment). Map
+    // accordingly so the pillar sits on the gate's footprint at ground level.
+    group.position.set(x, z, y);
+  }
+
+  /** Tear down a gate marker (gate left AoI / world cleared). */
+  removeGateMarker(entityId: string): void {
+    const group = this.gateMeshes.get(entityId);
+    if (!group) return;
+    this.scene.remove(group);
+    group.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose();
+        const m = obj.material;
+        if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
+        else (m as THREE.Material).dispose();
+      }
+    });
+    this.gateMeshes.delete(entityId);
+  }
+
+  /**
+   * Project a gate's world position to screen space. WorldOverlay calls this
+   * each frame to anchor the destination label above the pillar.
+   */
+  getGateScreenPos(entityId: string): { x: number; y: number } | null {
+    const group = this.gateMeshes.get(entityId);
+    if (!group) return null;
+    const top = group.position.clone();
+    top.y += 8; // top of the pillar in renderer coords
+    top.project(this.camera);
+    if (top.z > 1) return null; // behind camera
+    const w = this.renderer.domElement.clientWidth;
+    const h = this.renderer.domElement.clientHeight;
+    return {
+      x: (top.x * 0.5 + 0.5) * w,
+      y: (-top.y * 0.5 + 0.5) * h,
+    };
   }
 
   // ---- interaction system ----
@@ -1542,7 +1602,50 @@ export class VoximRenderer {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     }
+    for (const id of [...this.gateMeshes.keys()]) this.removeGateMarker(id);
   }
+}
+
+/** Edge → marker accent colour. Helps the player tell which compass direction a gate faces. */
+const EDGE_COLOR: Record<string, number> = {
+  north: 0x66ccff,
+  south: 0xffaa66,
+  east:  0x99ff99,
+  west:  0xff99cc,
+};
+
+/**
+ * Build the gate marker geometry: a stone-grey pillar with a coloured
+ * capstone. Sized large enough to read from across the tile (≥250 units)
+ * without dominating close-up framing.
+ */
+function buildGateMarker(edge: string): THREE.Group {
+  const group = new THREE.Group();
+  const accent = EDGE_COLOR[edge] ?? 0xffffff;
+
+  const pillarHeight = 8;
+  const pillarRadius = 0.6;
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 8),
+    new THREE.MeshStandardMaterial({ color: 0x6a6a72, roughness: 0.85 }),
+  );
+  pillar.position.y = pillarHeight / 2;
+  group.add(pillar);
+
+  const capHeight = 1.2;
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(pillarRadius * 1.4, pillarRadius * 1.4, capHeight, 8),
+    new THREE.MeshStandardMaterial({
+      color: accent,
+      emissive: accent,
+      emissiveIntensity: 0.6,
+      roughness: 0.4,
+    }),
+  );
+  cap.position.y = pillarHeight + capHeight / 2;
+  group.add(cap);
+
+  return group;
 }
 
 /**

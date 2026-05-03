@@ -2463,6 +2463,24 @@ Done when: significant in-game event in a city → coordinator POSTs to AI
 manager → manager returns mock tool calls → coordinator validates and
 applies them via `TileCommand`s.
 
+### T-145 · Gate visual marker + label
+Effort: S   Status: todo
+
+Without a visible cue, the player has no way to find a gate — gates were
+server-only entities at fixed edge positions, and the proximity trigger
+fired once they happened to walk within 4 units. T-141's reconnect path
+proves out only with a way to actually reach a gate.
+
+- Promote `GateLink` to networked: add `wireId`, move codec to `@voxim/codecs`.
+- Always include gate entities in every player's AoI (≤4 per tile, trivial
+  cost) so the player sees them from spawn.
+- Client decodes `gateLink` into ClientWorld and the renderer draws a
+  pillar with an edge-coloured capstone at each gate's position.
+- WorldOverlay shows a "→ {destinationTileId}" label anchored above the pillar.
+
+Done when: a fresh client sees pillars on its tile's connecting edges,
+walks to one, and the existing T-140/141 handoff carries them across.
+
 ---
 
 **Out of scope for T-132–T-143 (explicitly deferred):**

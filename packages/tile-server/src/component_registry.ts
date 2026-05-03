@@ -75,6 +75,7 @@ import { TraderInventory } from "./components/trader.ts";
 import { ActiveEffects, LoreLoadout } from "./components/lore_loadout.ts";
 import { DarknessModifier, LightEmitter } from "./components/light.ts";
 import { Hitbox } from "./components/hitbox.ts";
+import { GateLink } from "./components/gate.ts";
 import { Hearth } from "./components/hearth.ts";
 import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
 import { NpcJobQueue, NpcTag } from "./components/npcs.ts";
@@ -143,6 +144,7 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   //    animation and surfaces the counter-ready UI.
   Staggered,
   CounterReady,
+  GateLink,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */

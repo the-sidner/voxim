@@ -16,6 +16,7 @@ import {
   durabilityCodec, craftingQueueCodec, itemDataCodec,
   workstationBufferCodec, workstationTagCodec,
   statsCodec, provenanceCodec,
+  gateLinkCodec,
 } from "@voxim/codecs";
 import type {
   HeightmapData, MaterialGridData, ModelRefData, AnimationStateData,
@@ -25,6 +26,7 @@ import type {
   DurabilityData, CraftingQueueData, ItemDataData,
   WorkstationBufferData, WorkstationTagData,
   StatsData, ProvenanceData,
+  GateLinkData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
@@ -69,6 +71,7 @@ export interface EntityState {
   worldClock?: WorldClockState;
   tileCorruption?: TileCorruptionState;
   corruptionExposure?: CorruptionExposureState;
+  gateLink?: GateLinkData;
   /** Raw bytes for components the client doesn't decode eagerly, keyed by component name. */
   raw: Map<string, Uint8Array>;
   /** Per-component version counters (component type ID → version). Stale deltas are discarded. */
@@ -208,6 +211,9 @@ export class ClientWorld {
         entity.corruptionExposure = { level: v.getFloat32(0, true) };
         break;
       }
+      case ComponentType.gateLink:
+        entity.gateLink = gateLinkCodec.decode(data);
+        break;
       default: {
         const name = COMPONENT_TYPE_TO_NAME.get(typeId);
         if (name) entity.raw.set(name, data);

@@ -24,6 +24,7 @@ import type { SpatialGrid } from "./spatial_grid.ts";
 import { Position } from "./components/game.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
+import { GateLink } from "./components/gate.ts";
 import { NETWORKED_DEFS } from "./component_registry.ts";
 
 /**
@@ -130,6 +131,14 @@ export function computeSessionUpdate(
 
   // The player's own entity is always visible
   inAoI.add(playerId);
+
+  // Gates are always visible — there's at most one per edge (≤4 per tile),
+  // and they're navigational landmarks. Streaming them only on proximity
+  // (T-145 visual rendered them invisible until ~128 units away) hid the
+  // tile-edge structure from the player.
+  for (const { entityId } of world.query(GateLink)) {
+    inAoI.add(entityId);
+  }
 
   // Unique item entities the player carries have no Position (they don't sit
   // in the spatial grid) yet the holder's client must see them — their prefab

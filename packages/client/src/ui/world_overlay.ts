@@ -35,6 +35,7 @@ interface EntityBar {
 export class WorldOverlay {
   private readonly container: HTMLDivElement;
   private readonly entityBars = new Map<string, EntityBar>();
+  private readonly gateLabels = new Map<string, HTMLDivElement>();
 
   constructor() {
     this.container = document.createElement("div");
@@ -100,6 +101,44 @@ export class WorldOverlay {
   removeEntityBar(id: string): void {
     const bar = this.entityBars.get(id);
     if (bar) { bar.wrap.remove(); this.entityBars.delete(id); }
+  }
+
+  // ── Gate labels (T-145) ────────────────────────────────────────────────────
+
+  /** Hide every gate label at the start of a frame; re-shown by setGateLabel(). */
+  clearGateLabels(): void {
+    for (const el of this.gateLabels.values()) el.style.display = "none";
+  }
+
+  /** Create or update a destination label anchored above a gate's pillar. */
+  setGateLabel(id: string, text: string, sx: number, sy: number): void {
+    let el = this.gateLabels.get(id);
+    if (!el) {
+      el = document.createElement("div");
+      Object.assign(el.style, {
+        position: "absolute",
+        padding: "2px 6px",
+        background: "rgba(0,0,0,0.55)",
+        color: "var(--col-text)",
+        font: "12px var(--font-ui, sans-serif)",
+        borderRadius: "var(--radius-sm)",
+        whiteSpace: "nowrap",
+        transform: "translate(-50%, -100%)",
+        pointerEvents: "none",
+        textShadow: "0 1px 2px #000",
+      });
+      this.container.appendChild(el);
+      this.gateLabels.set(id, el);
+    }
+    el.textContent = text;
+    el.style.left = `${sx}px`;
+    el.style.top = `${sy - 8}px`;
+    el.style.display = "block";
+  }
+
+  removeGateLabel(id: string): void {
+    const el = this.gateLabels.get(id);
+    if (el) { el.remove(); this.gateLabels.delete(id); }
   }
 
   // ── Floating numbers ───────────────────────────────────────────────────────

@@ -1497,3 +1497,40 @@ export const workstationTagCodec: Serialiser<WorkstationTagData> = {
     return { stationType: r.readStr(), qualityTier: r.readF32() };
   },
 };
+
+// ---- GateLink ---- variable size (string + u8 + f32)
+//
+// Networked so the client can render gate markers + the destination label
+// (T-145). Edge name is encoded as a u8 ordinal — order is wire format and
+// must never change.
+
+export type GateEdge = "north" | "south" | "east" | "west";
+
+export interface GateLinkData {
+  destinationTileId: string;
+  edge: GateEdge;
+  /** World units; visualisation matches the proximity trigger. */
+  radius: number;
+}
+
+const GATE_EDGE_TO_INT: Record<GateEdge, number> = {
+  north: 0, south: 1, east: 2, west: 3,
+};
+const INT_TO_GATE_EDGE: GateEdge[] = ["north", "south", "east", "west"];
+
+export const gateLinkCodec: Serialiser<GateLinkData> = {
+  encode(v: GateLinkData): Uint8Array {
+    const w = new WireWriter();
+    w.writeStr(v.destinationTileId);
+    w.writeU8(GATE_EDGE_TO_INT[v.edge]);
+    w.writeF32(v.radius);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): GateLinkData {
+    const r = new WireReader(bytes);
+    const destinationTileId = r.readStr();
+    const edge = INT_TO_GATE_EDGE[r.readU8()] ?? "north";
+    const radius = r.readF32();
+    return { destinationTileId, edge, radius };
+  },
+};

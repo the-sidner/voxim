@@ -49,6 +49,7 @@ export const ComponentType = {
   workstationTag:     38,
   stats:              39,
   provenance:         40,
+  gateLink:           41,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

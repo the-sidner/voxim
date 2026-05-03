@@ -17,6 +17,7 @@ export type {
   StatsData, ProvenanceData,
   LightEmitterData, DarknessModifierData,
   DurabilityData, InscribedData, QualityStampedData,
+  GateEdge, GateLinkData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec,
@@ -37,6 +38,7 @@ export {
   statsCodec, provenanceCodec,
   lightEmitterCodec, darknessModifierCodec,
   durabilityCodec, inscribedCodec, qualityStampedCodec,
+  gateLinkCodec,
   WIRE_LIMITS,
 } from "./src/components.ts";
 
