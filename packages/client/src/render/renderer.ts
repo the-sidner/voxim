@@ -724,9 +724,9 @@ export class VoximRenderer {
       this.scene.add(group);
       this.gateMeshes.set(entityId, group);
     }
-    // Server uses x/z as horizontal plane and y as elevation; renderer treats
-    // x/y as horizontal and z as elevation (see entity_mesh.ts comment). Map
-    // accordingly so the pillar sits on the gate's footprint at ground level.
+    // Server convention: x/y horizontal, z vertical. Three convention:
+    // x/z horizontal, y vertical. Map server (x, y, z) → three (x, z, y).
+    // Caller passes z = local terrain height so the pillar sits on the ground.
     group.position.set(x, z, y);
   }
 

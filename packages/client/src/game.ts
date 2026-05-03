@@ -277,9 +277,11 @@ export class VoximGame {
         } else if (state.gateLink && state.position) {
           // Gate entities are rendered as standalone navigational markers,
           // not via the regular entity mesh path (no modelRef, no skeleton).
+          // Pin the pillar to local terrain height so it stands on the ground.
           if (this.loadingComplete) {
+            const groundZ = this.world.getTerrainHeight(state.position.x, state.position.y);
             this.renderer?.updateGateMarker(
-              entityId, state.position.x, state.position.y, state.position.z, state.gateLink.edge,
+              entityId, state.position.x, state.position.y, groundZ, state.gateLink.edge,
             );
           }
         } else if (state.position) {
@@ -982,15 +984,21 @@ export class VoximGame {
 
     console.log(`[Game] all terrain received — flushing world to renderer`);
     // Step 1: push all buffered world state into the renderer
-    let terrainCount = 0, entityCount = 0;
+    let terrainCount = 0, entityCount = 0, gateCount = 0;
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap && state.materialGrid) {
         this.renderer?.updateTerrain(state.heightmap, state.materialGrid); terrainCount++;
+      } else if (state.gateLink && state.position) {
+        const groundZ = this.world.getTerrainHeight(state.position.x, state.position.y);
+        this.renderer?.updateGateMarker(
+          entityId, state.position.x, state.position.y, groundZ, state.gateLink.edge,
+        );
+        gateCount++;
       } else if (state.position) {
         this.renderer?.updateEntity(entityId, state); entityCount++;
       }
     }
-    console.log(`[Game] flushed ${terrainCount} terrain chunks + ${entityCount} entities to renderer`);
+    console.log(`[Game] flushed ${terrainCount} terrain chunks + ${entityCount} entities + ${gateCount} gates to renderer`);
 
     // Step 2: prefetch models (async — loading screen stays up)
     const content = this.content;

@@ -770,9 +770,9 @@ export class TileServer {
       if (!pos) continue;
       for (const { entityId: gateId, position: gp, gateLink } of gates) {
         const dx = pos.x - gp.x;
-        const dz = pos.z - gp.z;
+        const dy = pos.y - gp.y;
         const r = gateLink.radius;
-        if (dx * dx + dz * dz <= r * r) {
+        if (dx * dx + dy * dy <= r * r) {
           this.eventBus.publish(TileEvents.GateApproached, {
             entityId: playerId,
             gateId,
@@ -804,7 +804,7 @@ export class TileServer {
     const body = serializePlayer(this.world, payload.entityId, dynastyId, payload.destinationTileId, handoffId);
 
     if (gateLink && body.components.position) {
-      body.components.position = mirrorPosition(body.components.position.y, gateLink.edge);
+      body.components.position = mirrorPosition(body.components.position.z, gateLink.edge);
     }
 
     // Inform the coordinator (T-139 channel). Best-effort — gateway may
