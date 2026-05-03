@@ -211,6 +211,16 @@ export class ClientSession {
     });
   }
 
+  /**
+   * Wait for every byte previously handed to sendStateRaw to be written to the
+   * underlying stream. Callers that need a final message to land on the wire
+   * before tearing down (e.g. tile handoff sending GateCrossing then closing
+   * the session) await this before close().
+   */
+  async flush(): Promise<void> {
+    try { await this._writeQueue; } catch { /* writes can fail mid-disconnect */ }
+  }
+
   close(): void {
     this._closed = true;
     if (this.outWriter) {

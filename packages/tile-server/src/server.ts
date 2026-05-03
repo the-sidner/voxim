@@ -208,6 +208,12 @@ export class TileServer {
    * duplicate handoff while the first is still pending its gateway round-trip.
    */
   private handingOff = new Set<EntityId>();
+  /**
+   * Players whose entity was destroyed by a handoff (not by death). The
+   * disconnect-cleanup path checks this set so it skips recordDeath when the
+   * session unwinds for a moved-away player. Cleared on disconnect cleanup.
+   */
+  private handedOff = new Set<EntityId>();
 
   async start(config: TileServerConfig): Promise<void> {
     const tickRateHz = config.tickRateHz ?? 20;
@@ -839,11 +845,11 @@ export class TileServer {
           | { destinationTileAddress?: string; destinationTileCertHashHex?: string }
           | null;
         const session = this.sessions.get(payload.entityId);
-        // Send a final GateCrossing event on the reliable stream so the client
-        // can open a direct WT to the destination tile without a gateway
-        // round-trip. Must happen BEFORE the entity is destroyed and the
-        // session closed — sendStateRaw serialises through the session's write
-        // queue, so by the time close() runs the bytes are already in flight.
+        // Send a final GateCrossing event on the reliable stream and AWAIT
+        // the flush — sendStateRaw queues writes via a Promise chain, and
+        // session.close() trips the queue's _closed guard if it runs before
+        // the queued microtask. Without the await the GateCrossing bytes
+        // never hit the wire and the client just sees the disconnect.
         if (session && ack?.destinationTileAddress) {
           this.sendGateCrossing(
             session,
@@ -851,7 +857,13 @@ export class TileServer {
             ack.destinationTileAddress,
             ack.destinationTileCertHashHex ?? "",
           );
+          await session.flush();
         }
+        // Mark the player as handed-off BEFORE destroy/close so the
+        // disconnect-cleanup path in handleSession knows to skip the
+        // recordDeath branch — the entity is destroyed because we moved
+        // them, not because they died.
+        this.handedOff.add(payload.entityId);
         if (this.world.isAlive(payload.entityId)) this.world.destroy(payload.entityId);
         session?.close();
         this.sessions.delete(payload.entityId);
@@ -1077,6 +1089,14 @@ export class TileServer {
     //     account service so heritage advances a generation.
     clientSession.close();
     this.sessions.delete(playerId);
+    // Handoff already destroyed the entity + closed the session intentionally
+    // (player moved to another tile). Don't treat that as a death or rewrite
+    // the last_tile_id back to ours; the destination tile owns both now.
+    const wasHandedOff = this.handedOff.delete(playerId);
+    if (wasHandedOff) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
+      return;
+    }
     if (this.world.isAlive(playerId)) {
       this.world.destroy(playerId);
       if (this.accountClient) {
