@@ -4,7 +4,7 @@ import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { InputState, Velocity, Stamina } from "../components/game.ts";
 import {
-  Staggered, IFrameActive, BlockHeld, DodgeCooldown,
+  Staggered, IFrameActive, BlockHeld, DodgeCooldown, Rolling,
 } from "../components/combat.ts";
 import { deductStamina } from "../combat/helpers.ts";
 import { createLogger } from "../logger.ts";
@@ -46,6 +46,14 @@ export class DodgeSystem implements System {
       const dcd = world.get(entityId, DodgeCooldown);
       const willStillBeOnCooldown = decrementOrRemove(world, entityId, DodgeCooldown, dcd?.ticksRemaining);
 
+      // ── Decrement Rolling ──────────────────────────────────────────────
+      const rolling = world.get(entityId, Rolling);
+      if (rolling) {
+        const next = rolling.ticksRemaining - 1;
+        if (next <= 0) world.remove(entityId, Rolling);
+        else world.set(entityId, Rolling, { vx: rolling.vx, vy: rolling.vy, ticksRemaining: next });
+      }
+
       // ── Maintain BlockHeld counter ─────────────────────────────────────
       const blocking = hasAction(inputState.actions, ACTION_BLOCK);
       const cur = world.get(entityId, BlockHeld);
@@ -79,22 +87,32 @@ export class DodgeSystem implements System {
       const my = inputState.movementY;
       const moveLen = Math.sqrt(mx * mx + my * my);
       if (moveLen > 0.1) {
+        // Directional roll — direction comes from current movement input
+        // (W/S/A/D + diagonals → forward / back / side / corner rolls).
         dx = mx / moveLen;
         dy = my / moveLen;
       } else {
-        dx = Math.cos(inputState.facing);
-        dy = Math.sin(inputState.facing);
+        // No movement input → Dark-Souls-style backstep: short hop opposite
+        // the facing direction.
+        dx = -Math.cos(inputState.facing);
+        dy = -Math.sin(inputState.facing);
       }
 
+      const vx = dx * cfg.speed;
+      const vy = dy * cfg.speed;
       world.set(entityId, Velocity, {
-        x: dx * cfg.speed,
-        y: dy * cfg.speed,
+        x: vx,
+        y: vy,
         z: world.get(entityId, Velocity)?.z ?? 0,
       });
 
       // These overwrite any decrement-writes made above — last write wins.
       world.set(entityId, IFrameActive, { ticksRemaining: cfg.iFrameTicks });
       world.set(entityId, DodgeCooldown, { ticksRemaining: cfg.cooldownTicks });
+      // Rolling locks horizontal velocity over the full roll duration so the
+      // dodge actually moves the player visibly (otherwise PhysicsSystem
+      // overrides Velocity with input-driven motion next tick).
+      world.set(entityId, Rolling, { vx, vy, ticksRemaining: cfg.rollTicks });
 
       log.info("dodge roll: entity=%s dir=(%.2f,%.2f) stamina=%.1f",
         entityId, dx, dy, (stamina?.current ?? 0) - cfg.staminaCost);

@@ -192,3 +192,36 @@ export const DodgeCooldown = defineComponent({
   codec: dodgeCooldownCodec,
   default: (): DodgeCooldownData => ({ ticksRemaining: 0 }),
 });
+
+// ---- Rolling (server-only) ------------------------------------------------
+//
+// Present for the duration of a dodge roll. Locks horizontal velocity to
+// (vx, vy), bypasses input-driven physics, and signals AnimationSystem to
+// emit a roll-style locomotion layer.
+
+export interface RollingData {
+  vx: number;
+  vy: number;
+  ticksRemaining: number;
+}
+
+const rollingCodec: Serialiser<RollingData> = {
+  encode(v: RollingData): Uint8Array {
+    const w = new WireWriter();
+    w.writeF32(v.vx);
+    w.writeF32(v.vy);
+    w.writeU8(v.ticksRemaining);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): RollingData {
+    const r = new WireReader(bytes);
+    return { vx: r.readF32(), vy: r.readF32(), ticksRemaining: r.readU8() };
+  },
+};
+
+export const Rolling = defineComponent({
+  name: "rolling" as const,
+  networked: false,
+  codec: rollingCodec,
+  default: (): RollingData => ({ vx: 0, vy: 0, ticksRemaining: 0 }),
+});

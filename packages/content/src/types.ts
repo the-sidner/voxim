@@ -969,6 +969,7 @@ export interface GameConfig {
   dodge: {
     staminaCost: number;
     iFrameTicks: number;
+    rollTicks: number;
     cooldownTicks: number;
     speed: number;
     parryWindowTicks: number;

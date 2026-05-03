@@ -21,7 +21,7 @@ import type { System } from "../system.ts";
 import type { ContentStore, AnimationStateData, AnimationLayer } from "@voxim/content";
 import { ACTION_CROUCH, hasAction } from "@voxim/protocol";
 import { Velocity, Health, AnimationState, InputState } from "../components/game.ts";
-import { SkillInProgress } from "../components/combat.ts";
+import { SkillInProgress, Rolling } from "../components/combat.ts";
 
 // ---- constants ----
 
@@ -60,6 +60,7 @@ export class AnimationSystem implements System {
       const isDead = health !== null && health.current <= 0;
       const sip    = isDead ? null : world.get(entityId, SkillInProgress);
       const input  = isDead ? null : world.get(entityId, InputState);
+      const rolling = isDead ? null : world.get(entityId, Rolling);
 
       const speed  = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
       const crouching = input !== null && hasAction(input.actions, ACTION_CROUCH);
@@ -86,7 +87,9 @@ export class AnimationSystem implements System {
 
       const layers = isDead
         ? buildDeathLayers(prevByClip, animCfg.deathSpeedScale)
-        : buildLocomotionLayers(prevByClip, crouching, moving, speed, walkSpeedRef, animCfg.idleSpeedScale, animCfg.crouchSpeedScale);
+        : rolling
+          ? buildRollLayers(prevByClip)
+          : buildLocomotionLayers(prevByClip, crouching, moving, speed, walkSpeedRef, animCfg.idleSpeedScale, animCfg.crouchSpeedScale);
 
       const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
 
@@ -110,6 +113,26 @@ function buildDeathLayers(prevByClip: Map<string, number>, deathSpeedScale: numb
     weight: 1,
     blend: "override",
     speedScale: deathSpeedScale,
+  }];
+}
+
+// Roll layer — plays the authored "roll" clip across the dodge duration.
+// rollTicks=14 in game_config and TICK_DT=1/20 → 14 ticks × (1/20 s/tick) =
+// 0.7 s of real time. Speed-scale = 1 / 0.7 ≈ 1.43 makes the clip's normalised
+// time span 0→1 over exactly that window. Clamps at 1.0 (non-looping) so the
+// last tick holds the recovery pose instead of snapping back to t=0.
+const ROLL_SPEED_SCALE = 20 / 14;
+
+function buildRollLayers(prevByClip: Map<string, number>): AnimationLayer[] {
+  const prev = prevByClip.get("roll") ?? 0;
+  const time = Math.min(prev + ROLL_SPEED_SCALE * TICK_DT, 1.0);
+  return [{
+    clipId: "roll",
+    maskId: "",
+    time,
+    weight: 1,
+    blend: "override",
+    speedScale: ROLL_SPEED_SCALE,
   }];
 }
 

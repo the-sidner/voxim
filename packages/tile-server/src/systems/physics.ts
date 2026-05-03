@@ -6,6 +6,7 @@ import type { ContentStore } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { createLogger } from "../logger.ts";
 import { Position, Velocity, Facing, InputState } from "../components/game.ts";
+import { Rolling } from "../components/combat.ts";
 import { SpeedModifier } from "../components/world.ts";
 import { buildTerrainLookup } from "../physics/terrain_lookup.ts";
 
@@ -46,20 +47,37 @@ export class PhysicsSystem implements System {
       const groundZ = getHeight(position.x, position.y);
       const onGround = position.z <= groundZ + 0.01;
 
-      const movement = vec2Normalize({ x: inputState.movementX, y: inputState.movementY });
-      const jump = hasAction(inputState.actions, ACTION_JUMP);
+      // Rolling locks horizontal velocity to the dodge vector. We synthesise
+      // an input matching the roll direction and override maxGroundSpeed so
+      // stepPhysics's "snap velocity to input × speed" branch produces exactly
+      // (vx, vy). Passing movement=(0,0) instead would trigger the on-ground
+      // "instant stop" drag and zero the dodge before integration.
+      const rolling = world.get(entityId, Rolling);
+      const jump = !rolling && hasAction(inputState.actions, ACTION_JUMP);
 
       if (jump && onGround) {
         log.debug("jump: entity=%s pos=(%.1f,%.1f,%.1f)", entityId, position.x, position.y, position.z);
       }
 
       const speedMod = world.get(entityId, SpeedModifier);
-      const crouching = hasAction(inputState.actions, ACTION_CROUCH);
+      const crouching = !rolling && hasAction(inputState.actions, ACTION_CROUCH);
       let speedMultiplier = speedMod?.multiplier ?? 1.0;
       if (crouching) speedMultiplier *= crouchSpeedMultiplier;
-      const physicsConfig = speedMultiplier !== 1.0
-        ? { ...baseConfig, maxGroundSpeed: baseConfig.maxGroundSpeed * speedMultiplier }
-        : baseConfig;
+
+      let movement: { x: number; y: number };
+      let physicsConfig = baseConfig;
+      if (rolling) {
+        const rollSpeed = Math.sqrt(rolling.vx * rolling.vx + rolling.vy * rolling.vy);
+        movement = rollSpeed > 0
+          ? { x: rolling.vx / rollSpeed, y: rolling.vy / rollSpeed }
+          : { x: 0, y: 0 };
+        physicsConfig = { ...baseConfig, maxGroundSpeed: rollSpeed };
+      } else {
+        movement = vec2Normalize({ x: inputState.movementX, y: inputState.movementY });
+        if (speedMultiplier !== 1.0) {
+          physicsConfig = { ...baseConfig, maxGroundSpeed: baseConfig.maxGroundSpeed * speedMultiplier };
+        }
+      }
 
       const next = stepPhysics(
         { position, velocity, onGround },
