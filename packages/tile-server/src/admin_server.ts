@@ -25,10 +25,10 @@ export function startAdminServer(port: number, deps: AdminServerDeps): void {
   const HANDOFF_CACHE_MAX = 1024;
 
   Deno.serve(
-    { port, hostname: "127.0.0.1" },
+    { port, hostname: "0.0.0.0" },
     (req) => handleAdminRequest(req, deps, seenHandoffs, HANDOFF_CACHE_MAX),
   );
-  console.log(`[TileServer] admin HTTP listening on 127.0.0.1:${port}`);
+  console.log(`[TileServer] admin HTTP listening on 0.0.0.0:${port}`);
 }
 
 async function handleAdminRequest(
