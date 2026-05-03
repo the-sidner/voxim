@@ -211,7 +211,7 @@ export class Coordinator {
     let created = 0;
     for (const cell of Object.values(this.worldMap.cells)) {
       if (!cell.citySeedFlag || existingByTile.has(cell.tileId)) continue;
-      const cityId = cityIdFor(worldSeed, cell.tileId);
+      const cityId = await cityIdFor(worldSeed, cell.tileId);
       const name = pickCityName(worldSeed, cell.tileId);
       const state = defaultCityState(worldSeed, cell.tileId);
       await this.cityRepo.create({
@@ -370,9 +370,18 @@ function isValidAgentToolCall(call: unknown): call is AgentToolCall {
   return false;
 }
 
-function cityIdFor(worldSeed: number, tileId: string): string {
+async function cityIdFor(worldSeed: number, tileId: string): Promise<string> {
   // Deterministic per (seed, tile) so re-running ensureCities is a no-op.
-  return `city-${worldSeed}-${tileId}`;
+  // The cities.city_id column is uuid, so we derive a UUIDv5-style value
+  // from a SHA-1 hash of the input rather than emitting a free-form string.
+  const input = new TextEncoder().encode(`voxim:city:${worldSeed}:${tileId}`);
+  const buf = await crypto.subtle.digest("SHA-1", input);
+  const b = new Uint8Array(buf, 0, 16);
+  // Set version (5) and IETF variant bits per RFC 4122.
+  b[6] = (b[6] & 0x0f) | 0x50;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const hex = Array.from(b, (n) => n.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function toTileCommand(cityId: string, cmd: UtilityCommand): { kind: string; [k: string]: unknown } {
