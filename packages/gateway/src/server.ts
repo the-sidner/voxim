@@ -220,7 +220,7 @@ export class GatewayServer {
       // data), the update silently no-ops.
       if (resp.ok) {
         try {
-          await this.users.updateLocation(body.playerId, body.destinationTileId);
+          await this.users.updateLocation(body.playerId as string, body.destinationTileId as string);
         } catch (err) {
           console.warn(`[Gateway] failed to update last_tile_id for ${body.playerId}:`, err);
         }
