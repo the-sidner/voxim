@@ -1,8 +1,7 @@
 {
-  "id": "human_lower_arm",
-  "version": 6,
+  "id": "human_hand",
+  "version": 2,
   "nodes": [
-    { "x": 0, "y": 0, "z": -2, "materialId": 106 },
     { "x": 0, "y": 0, "z": -1, "materialId": 106 }
   ],
   "subObjects": [],

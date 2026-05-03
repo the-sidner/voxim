@@ -1,42 +1,10 @@
 {
   "id": "human_upper_arm",
-  "version": 4,
-  "hitbox": {
-    "minX": 0,
-    "minY": 0,
-    "minZ": -3,
-    "maxX": 1,
-    "maxY": 1,
-    "maxZ": 1
-  },
+  "version": 6,
   "nodes": [
-    {
-      "x": 0,
-      "y": 0,
-      "z": -3,
-      "materialId": 110
-    },
-    {
-      "x": 0,
-      "y": 0,
-      "z": -2,
-      "materialId": 110
-    },
-    {
-      "x": 0,
-      "y": 0,
-      "z": -1,
-      "materialId": 110
-    },
-    {
-      "x": 0,
-      "y": 0,
-      "z": 0,
-      "materialId": 110
-    }
+    { "x": 0, "y": 0, "z": -2, "materialId": 110 },
+    { "x": 0, "y": 0, "z": -1, "materialId": 110 }
   ],
   "subObjects": [],
-  "materials": [
-    110
-  ]
+  "materials": [110]
 }
