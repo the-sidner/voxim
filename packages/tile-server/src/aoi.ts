@@ -36,14 +36,19 @@ const MAX_CHUNK_SPAWNS_PER_TICK = 20;
 
 function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponentEntry[] {
   const components: BinaryComponentEntry[] = [];
+  const skipped: string[] = [];
   for (const def of NETWORKED_DEFS) {
     const data = world.get(entityId, def);
     if (data === null) continue;
     try {
       components.push({ componentType: def.wireId, data: def.codec.encode(data) });
-    } catch {
-      // Encoding failure — skip this component
+    } catch (err) {
+      // T-145 DIAG: surface silent encode failures so we can spot codec bugs.
+      skipped.push(`${def.name}(${(err as Error).message})`);
     }
+  }
+  if (skipped.length > 0) {
+    console.warn(`[AoI DIAG] entity ${entityId.slice(-8)} skipped components: ${skipped.join(", ")}`);
   }
   return components;
 }

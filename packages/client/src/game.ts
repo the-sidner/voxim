@@ -1000,6 +1000,17 @@ export class VoximGame {
     }
     console.log(`[Game] flushed ${terrainCount} terrain chunks + ${entityCount} entities + ${gateCount} gates to renderer`);
 
+    // T-145 diagnostic: count entities with vs without modelRef + a sample of names
+    let withModel = 0, noModel = 0;
+    const sampleNoModel: string[] = [];
+    for (const [id, st] of this.world.entries()) {
+      if (st.heightmap || !st.position) continue;
+      if (st.gateLink) continue;
+      if (st.modelRef) withModel++;
+      else { noModel++; if (sampleNoModel.length < 5) sampleNoModel.push(id.slice(-8)); }
+    }
+    console.log(`[Game DIAG] positioned-entity modelRef coverage: ${withModel} with, ${noModel} missing. sample missing: ${sampleNoModel.join(", ")}`);
+
     // Step 2: prefetch models (async — loading screen stays up)
     const content = this.content;
     if (!content) { patchUI({ loading: false }); return; }
@@ -1008,7 +1019,7 @@ export class VoximGame {
     for (const [, state] of this.world.entries()) {
       if (state.modelRef?.modelId) modelIds.add(state.modelRef.modelId);
     }
-    console.log(`[Game] prefetching ${modelIds.size} models`);
+    console.log(`[Game] prefetching ${modelIds.size} models: ${[...modelIds].join(", ")}`);
     Promise.all([...modelIds].map((id) => content.prefetchModel(id))).then(() => {
       console.log(`[Game] models ready — dismissing loading screen`);
       patchUI({ loading: false });
