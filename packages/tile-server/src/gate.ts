@@ -18,10 +18,18 @@ import { GateLink } from "./components/gate.ts";
 
 /** World units. Tile width is 512 in the dev build. */
 const TILE_SIZE = 512;
-/** Distance from the edge where the gate sits — pad lets handed-off players land on the destination side without re-triggering. */
+/** Distance from the edge where the gate sits. */
 const GATE_INSET = 8;
-/** Trigger radius in world units — must be < GATE_INSET so a re-spawn at the mirrored position doesn't immediately bounce. */
+/** Trigger radius in world units. */
 const GATE_RADIUS = 6;
+/**
+ * Distance from the edge where a handed-off player lands on the destination
+ * tile. Must be strictly greater than `GATE_INSET + GATE_RADIUS` so the
+ * landing point sits outside the matching destination gate's trigger circle —
+ * otherwise the player would re-trigger a handoff back the other way and
+ * ping-pong between tiles every tick.
+ */
+const MIRROR_INSET = GATE_INSET + GATE_RADIUS * 2 + 4; // 24 units in
 
 interface XY { x: number; y: number; }
 
@@ -43,10 +51,10 @@ export function gatePositionForEdge(edge: GatePosition["edge"]): XY {
  */
 export function mirrorPosition(currentZ: number, edge: GatePosition["edge"]): { x: number; y: number; z: number } {
   switch (edge) {
-    case "north": return { x: TILE_SIZE / 2, y: TILE_SIZE - GATE_INSET, z: currentZ };
-    case "south": return { x: TILE_SIZE / 2, y: GATE_INSET,             z: currentZ };
-    case "west":  return { x: TILE_SIZE - GATE_INSET, y: TILE_SIZE / 2, z: currentZ };
-    case "east":  return { x: GATE_INSET,             y: TILE_SIZE / 2, z: currentZ };
+    case "north": return { x: TILE_SIZE / 2, y: TILE_SIZE - MIRROR_INSET, z: currentZ };
+    case "south": return { x: TILE_SIZE / 2, y: MIRROR_INSET,             z: currentZ };
+    case "west":  return { x: TILE_SIZE - MIRROR_INSET, y: TILE_SIZE / 2, z: currentZ };
+    case "east":  return { x: MIRROR_INSET,             y: TILE_SIZE / 2, z: currentZ };
   }
 }
 
