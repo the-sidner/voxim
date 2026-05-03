@@ -2464,7 +2464,7 @@ manager → manager returns mock tool calls → coordinator validates and
 applies them via `TileCommand`s.
 
 ### T-145 · Gate visual marker + label
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 45f1043
 
 Without a visible cue, the player has no way to find a gate — gates were
 server-only entities at fixed edge positions, and the proximity trigger
