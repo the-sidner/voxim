@@ -187,6 +187,12 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 function base64ToBytes(b64: string): Uint8Array {
+  if (typeof b64 !== "string") {
+    throw new Error(
+      `tile-init wire decode: expected base64 string, got ${b64 === undefined ? "undefined" : typeof b64}; ` +
+      `payload likely missing a field (atlas/tile-server image mismatch?)`,
+    );
+  }
   const s = atob(b64);
   const out = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);

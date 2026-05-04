@@ -37,8 +37,19 @@ import { createPool, PgAtlasTileInitRepo, PgTileSaveRepo, PgWorldMapRepo } from 
 
 // Prevent WebTransport session timeouts and other async edge-cases from
 // crashing the process. These are expected during normal client disconnects.
+//
+// We log the FULL error including stack so unexpected rejections (anything
+// that isn't a known WT-disconnect shape) are at least diagnosable rather
+// than silently disappearing.
 globalThis.addEventListener("unhandledrejection", (event) => {
-  console.warn("[TileServer] unhandled rejection (suppressed):", (event.reason as Error)?.message ?? event.reason);
+  const reason = event.reason;
+  const msg = (reason as Error)?.message ?? String(reason);
+  const stack = (reason as Error)?.stack;
+  if (stack) {
+    console.warn("[TileServer] unhandled rejection (suppressed):", msg, "\n", stack);
+  } else {
+    console.warn("[TileServer] unhandled rejection (suppressed):", msg);
+  }
   event.preventDefault();
 });
 
