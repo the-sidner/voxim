@@ -945,7 +945,7 @@ no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
 ### T-150 · Atlas tilemap — interwoven room network from noise blobs
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 64d2bc1
 
 Today's tilemap pipeline leaves connectivity to luck: noise threshold produces one rambling
 open snake, room detection labels whatever blobs fall out, and `portal_placement` carves a
