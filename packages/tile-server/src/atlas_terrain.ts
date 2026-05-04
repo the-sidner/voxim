@@ -26,6 +26,13 @@ import { TILE_SIZE } from "@voxim/world";
 export interface AtlasTerrainResult {
   heightBuffer: Float32Array;
   materialBuffer: Uint16Array;
+  /**
+   * Per-cell openness at TILE_SIZE² resolution. 1 = open, 0 = closed.
+   * Drives openMask-based collision in tile-server's physics; closed
+   * pixels block movement regardless of how the boundary chooses to
+   * render (cliff step, tree entity, water, …).
+   */
+  openBuffer: Uint8Array;
   /** Atlas's per-tile seed. Used as the seed for downstream procedural systems. */
   tileSeed: number;
   cellX: number;
@@ -124,7 +131,7 @@ export async function loadTerrainFromAtlas(
 
   const tile = tileInitFromWire(row.payload as unknown as TileInitWire);
   const { materialMap, defaultMaterialId } = buildMaterialMap(content);
-  const { heightBuffer, materialBuffer } = upsampleTile(tile, {
+  const { heightBuffer, materialBuffer, openBuffer } = upsampleTile(tile, {
     targetSize: TILE_SIZE,
     materialMap,
     defaultMaterialId,
@@ -133,6 +140,7 @@ export async function loadTerrainFromAtlas(
   return {
     heightBuffer,
     materialBuffer,
+    openBuffer,
     tileSeed: Number(row.seed),
     cellX,
     cellY,

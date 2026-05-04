@@ -89,6 +89,17 @@ export function stepPhysics(
   getTerrainHeight: (x: number, y: number) => number,
   dt: number,
   config: PhysicsConfig = DEFAULT_PHYSICS,
+  /**
+   * Optional impassability query. When supplied AND the integrated XY
+   * position lands on a closed pixel, horizontal movement is reverted
+   * and XY velocity zeroed — the same response as a wall step. Lets a
+   * boundary block the player without raising the heightmap (e.g. a
+   * tree on flat ground).
+   *
+   * Omit when collision should follow heightmap-only (legacy callers,
+   * client predictor before networked openMask lands).
+   */
+  isOpen?: (x: number, y: number) => boolean,
 ): PhysicsBody {
   let { position, velocity, onGround } = body;
 
@@ -140,6 +151,16 @@ export function stepPhysics(
     y: position.y + velocity.y * dt,
     z: position.z + velocity.z * dt,
   };
+
+  // 5a. OpenMask collision — if the new XY position lands on a closed
+  // pixel, revert horizontal movement (slide is left for a future
+  // refinement; for now any closed pixel just stops you cold). Mirrors
+  // the wall-step branch's response so behaviour is consistent across
+  // the two reasons a pixel can block you.
+  if (isOpen && !isOpen(pos.x, pos.y)) {
+    pos = { ...pos, x: position.x, y: position.y };
+    velocity = { ...velocity, x: 0, y: 0 };
+  }
 
   // 6. Terrain collision — snap to surface, reset vertical velocity, set onGround
   const groundZ = getTerrainHeight(pos.x, pos.y);

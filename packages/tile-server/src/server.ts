@@ -441,7 +441,7 @@ export class TileServer {
       console.log(
         `[TileServer] atlas terrain loaded: cell (${atlas.cellX},${atlas.cellY}) seed=${atlas.tileSeed}`,
       );
-      chunksFromBuffers(this.world, atlas.heightBuffer, atlas.materialBuffer);
+      chunksFromBuffers(this.world, atlas.heightBuffer, atlas.materialBuffer, atlas.openBuffer);
       tileSeed = atlas.tileSeed;
       this.spawnWorldState(content);
     }

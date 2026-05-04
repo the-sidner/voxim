@@ -1,8 +1,8 @@
 // @voxim/world — terrain model, chunk management, world generation
 // Depends on: @voxim/engine, @voxim/codecs, @voxim/content (biome + zone defs)
 
-export { Heightmap, MaterialGrid } from "./src/components.ts";
-export type { HeightmapData, MaterialGridData } from "./src/components.ts";
+export { Heightmap, MaterialGrid, OpenMask } from "./src/components.ts";
+export type { HeightmapData, MaterialGridData, OpenMaskData } from "./src/components.ts";
 
 export {
   TILE_SIZE,
@@ -19,7 +19,7 @@ export {
   snapHeight,
 } from "./src/terrain.ts";
 
-export { createChunk, setChunkHeights, setChunkMaterials } from "./src/chunk.ts";
+export { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness } from "./src/chunk.ts";
 
 export { buildTerrainBuffers, chunksFromBuffers, seedFromTileId } from "./src/generator.ts";
 export type { GeneratedTile, WorldGenContent } from "./src/generator.ts";

@@ -8,7 +8,7 @@ import { createLogger } from "../logger.ts";
 import { Position, Velocity, Facing, InputState } from "../components/game.ts";
 import { Rolling } from "../components/combat.ts";
 import { SpeedModifier } from "../components/world.ts";
-import { buildTerrainLookup } from "../physics/terrain_lookup.ts";
+import { buildTerrainLookup, buildOpennessLookup } from "../physics/terrain_lookup.ts";
 
 const log = createLogger("PhysicsSystem");
 
@@ -38,6 +38,7 @@ export class PhysicsSystem implements System {
     };
 
     const getHeight = buildTerrainLookup(world);
+    const isOpen    = buildOpennessLookup(world);
 
     for (const { entityId, position, velocity, inputState } of world.query(
       Position,
@@ -85,6 +86,7 @@ export class PhysicsSystem implements System {
         getHeight,
         dt,
         physicsConfig,
+        isOpen,
       );
 
       world.set(entityId, Position, next.position);

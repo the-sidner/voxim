@@ -42,3 +42,44 @@ export const MaterialGrid = defineComponent({
     data: new Uint16Array(CHUNK_CELLS),
   }),
 });
+
+/**
+ * OpenMask component — per-cell impassability for the chunk.
+ *
+ * data: 1024 uint8, same row-major layout as Heightmap.data. 1 = open
+ * (player can walk here), 0 = closed (boundary; player is blocked).
+ *
+ * The truth for collision is THIS, not the heightmap step. With this
+ * component populated, a tree boundary on flat ground blocks the player
+ * the same way a +3u cliff does — the visual rendering of the boundary
+ * (raised height vs. tree entity) is independent of the blocking.
+ *
+ * Server-only for now; client predictor falls back to heightmap-step
+ * collision (so closed pixels that happen to also raise the heightmap —
+ * cliff kinds — still work end-to-end for prediction). When boundary
+ * kinds that DON'T raise the heightmap land (vegetation in phase 4C),
+ * client-side will need this networked too to avoid rubber-banding.
+ */
+export interface OpenMaskData {
+  data: Uint8Array;
+}
+
+const openMaskCodec = {
+  encode(d: OpenMaskData): Uint8Array {
+    return new Uint8Array(d.data); // copy for safety
+  },
+  decode(bytes: Uint8Array): OpenMaskData {
+    return { data: new Uint8Array(bytes) };
+  },
+};
+
+export const OpenMask = defineComponent({
+  name: "openMask" as const,
+  networked: false,
+  codec: openMaskCodec,
+  default: (): OpenMaskData => ({
+    // Default: every cell open — a default chunk doesn't block anything
+    // until terrain authoring (atlas) writes a real mask.
+    data: new Uint8Array(CHUNK_CELLS).fill(1),
+  }),
+});

@@ -20,7 +20,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
-import { Heightmap, MaterialGrid } from "@voxim/world";
+import { Heightmap, MaterialGrid, OpenMask } from "@voxim/world";
 import {
   AnimationState,
   Facing,
@@ -161,6 +161,9 @@ export const DEF_BY_TYPE_ID: ReadonlyMap<number, NetworkedComponentDef<any>> =
 export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ...NETWORKED_DEFS,
   // ── Server-only defs (networked: false) ──────────────────────────────────
+  // Per-chunk impassability mask. Source of truth for collision; runs
+  // alongside Heightmap/MaterialGrid on every chunk entity.
+  OpenMask,
   Hitbox,
   SkillInProgress,
   // Combat counters — server-only because the client doesn't act on them.

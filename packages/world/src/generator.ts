@@ -24,7 +24,7 @@
 
 import type { World, EntityId } from "@voxim/engine";
 import type { BiomeDef, ZoneDef } from "@voxim/content";
-import { createChunk, setChunkHeights, setChunkMaterials } from "./chunk.ts";
+import { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness } from "./chunk.ts";
 import { CHUNK_SIZE, CHUNKS_PER_TILE_SIDE, TILE_SIZE, snapHeight } from "./terrain.ts";
 import {
   fbm,
@@ -379,6 +379,7 @@ export function chunksFromBuffers(
   world: World,
   heightBuffer: Float32Array,
   materialBuffer: Uint16Array,
+  openBuffer?: Uint8Array,
 ): EntityId[] {
   const chunkIds: EntityId[] = [];
 
@@ -387,6 +388,7 @@ export function chunksFromBuffers(
       const id = createChunk(world, cx, cy);
       const heights = new Float32Array(CHUNK_CELLS);
       const materials = new Uint16Array(CHUNK_CELLS);
+      const open = openBuffer ? new Uint8Array(CHUNK_CELLS) : null;
 
       for (let ly = 0; ly < CHUNK_SIZE; ly++) {
         for (let lx = 0; lx < CHUNK_SIZE; lx++) {
@@ -397,11 +399,13 @@ export function chunksFromBuffers(
 
           heights[chunkIdx] = heightBuffer[flatIdx];
           materials[chunkIdx] = materialBuffer[flatIdx];
+          if (open && openBuffer) open[chunkIdx] = openBuffer[flatIdx];
         }
       }
 
       setChunkHeights(world, id, heights);
       setChunkMaterials(world, id, materials);
+      if (open) setChunkOpenness(world, id, open);
 
       chunkIds[cx + cy * CHUNKS_PER_TILE_SIDE] = id;
     }
