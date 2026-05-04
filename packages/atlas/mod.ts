@@ -18,3 +18,7 @@ export type {
   WorldMap,
 } from "./src/worldmap/types.ts";
 export { EDGES } from "./src/worldmap/types.ts";
+
+export { generateTile, tileInitToWire, tileInitFromWire } from "./src/tilemap/generate.ts";
+export type { GenerateTileOptions } from "./src/tilemap/generate.ts";
+export type { Room, Portal, TileInit, TileInitWire } from "./src/tilemap/types.ts";
