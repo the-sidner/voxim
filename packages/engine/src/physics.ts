@@ -175,10 +175,22 @@ export function stepPhysics(
       velocity = { ...velocity, z: 0 };
       onGround = true;
     } else if (stepDiff > config.stepHeight) {
-      // Wall: terrain rose too high to step — revert horizontal movement, stop XY velocity
-      pos = { ...pos, x: position.x, y: position.y, z: Math.max(pos.z, groundZ) };
+      // Wall: terrain rose too high to step. Revert horizontal movement
+      // and zero XY velocity. Z is then resolved against the REVERTED
+      // pos's ground (NOT the in-wall ground we just measured) — using
+      // groundZ here would teleport the player up to cliff height. Use
+      // the previous frame's groundZ instead, which is consistent with
+      // the position we just reverted to.
+      pos = { ...pos, x: position.x, y: position.y };
       velocity = { ...velocity, x: 0, y: 0 };
-      onGround = pos.z <= groundZ + 0.01;
+      const prevGround = getTerrainHeight(position.x, position.y);
+      if (pos.z <= prevGround) {
+        pos = { ...pos, z: prevGround };
+        velocity = { ...velocity, z: 0 };
+        onGround = true;
+      } else {
+        onGround = false;
+      }
     } else {
       // Normal landing (falling onto ground, or ground dropped below)
       pos = { ...pos, z: groundZ };
