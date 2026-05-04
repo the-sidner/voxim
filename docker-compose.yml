@@ -109,6 +109,21 @@ services:
       - voxim-certs:/app/certs:ro
     restart: unless-stopped
 
+  atlas:
+    build:
+      context: .
+      dockerfile: docker/atlas.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ATLAS_PORT: 8082
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      # 8082 — HTTP for /health, future /world/*, /tile/*, inspector UI.
+      - "8082:8082"
+    restart: unless-stopped
+
   tile-1:
     <<: *tile-base
     hostname: tile-1

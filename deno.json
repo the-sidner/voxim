@@ -10,6 +10,7 @@
     "packages/gateway",
     "packages/coordinator",
     "packages/ai-manager",
+    "packages/atlas",
     "packages/db",
     "packages/devtools"
   ],
@@ -22,6 +23,7 @@
     "tile":         "deno run --allow-net --allow-read --allow-write --allow-env --unstable-net packages/tile-server/main.ts",
     "coordinator":  "deno run --allow-net --allow-read --allow-env --unstable-net packages/coordinator/main.ts",
     "ai-manager":   "deno run --allow-net --allow-env packages/ai-manager/main.ts",
+    "atlas":        "deno run --allow-net --allow-read --allow-env packages/atlas/main.ts",
     "bundle":       "deno run -A --node-modules-dir=auto scripts/build_client.ts",
     "client-dev":   "deno run -A --node-modules-dir=auto scripts/serve_client.ts",
     "demo":         "deno task bundle && deno task tile",
