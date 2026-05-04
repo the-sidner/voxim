@@ -18,13 +18,16 @@
  *   TICK_RATE       Tick rate in Hz                   default: 20
  *   TILE_ADDRESS    Address advertised to clients     default: 127.0.0.1:4434
  *   GATEWAY_URL     Gateway base URL for registration default: (none — skips self-registration)
- *   DATABASE_URL    Postgres connection string        default: (none — ephemeral, no persistence)
+ *   DATABASE_URL    Postgres connection string        REQUIRED — atlas terrain comes from DB
+ *   WORLD_WIDTH     Macro-grid width in cells         default: 2 (must match atlas)
  *   DATA_DIR        Content data directory            default: (resolved by loader)
  *   DEV_MODE        Disable cheat commands (0/false)  default: true
  *
- * Persistence: when DATABASE_URL is set, world snapshots are stored in the
- * `tile_saves` table (one row per TILE_ID). Restart the container with the
- * same TILE_ID and it picks up where it left off.
+ * Persistence: world snapshots are stored in the `tile_saves` table (one row
+ * per TILE_ID). Restart the container with the same TILE_ID and it picks up
+ * where it left off. Initial terrain (when no save exists) comes from atlas's
+ * `atlas_tile_init` table — atlas must be up and have generated this world's
+ * tiles before this server can boot.
  *
  * Run:
  *   deno task tile

@@ -10,12 +10,17 @@ x-tile-base: &tile-base
       condition: service_healthy
     migrate:
       condition: service_completed_successfully
+    atlas:
+      condition: service_started
     certs-init:
       condition: service_completed_successfully
   environment:
     DATABASE_URL: ${DATABASE_URL}
     GATEWAY_URL: ${GATEWAY_URL}
     VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+    # Macro-grid width — must match what atlas was started with so
+    # tile-server can map TILE_ID → (cellX, cellY) for atlas lookup.
+    WORLD_WIDTH: ${WORLD_WIDTH:-2}
   volumes:
     - voxim-certs:/app/certs:ro
   restart: unless-stopped
