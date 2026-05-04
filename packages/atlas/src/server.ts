@@ -181,10 +181,15 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
   }
 
   if (req.method === "GET") {
-    return serveDir(req, {
+    const res = await serveDir(req, {
       fsRoot: new URL("./inspector/ui", import.meta.url).pathname,
       quiet: true,
     });
+    // Inspector assets change every iteration of the design loop. No-cache
+    // makes "save file → hard-reload not needed" work cleanly; the dev cycle
+    // matters more than caching here.
+    res.headers.set("cache-control", "no-cache, no-store, must-revalidate");
+    return res;
   }
 
   return notFound("not found");
