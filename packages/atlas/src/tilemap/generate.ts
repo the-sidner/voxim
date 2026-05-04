@@ -18,6 +18,7 @@ import { runNoiseField } from "./pipeline/noise_field.ts";
 import { runPortalPlacement } from "./pipeline/portal_placement.ts";
 import { runTerrain } from "./pipeline/terrain.ts";
 import { runMaterials } from "./pipeline/materials.ts";
+import { runBoundaryKinds } from "./pipeline/boundary_kinds.ts";
 import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
@@ -68,6 +69,13 @@ export function generateTile(
     gridSize,
   });
 
+  const kinds = runBoundaryKinds({
+    openMask: placed.openMask,
+    biome:    worldCell.biome,
+    tileSeed,
+    gridSize,
+  });
+
   return {
     cellX:    worldCell.cellX,
     cellY:    worldCell.cellY,
@@ -80,6 +88,7 @@ export function generateTile(
     gateSummary: deriveGateSummary(placed.portals),
     heightMap: terrain.heightMap,
     materials: mats.materials,
+    kindOf:    kinds.kindOf,
     boundaries: [],
     features:   [],
   };
@@ -97,6 +106,7 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     roomOfB64:   bytesToBase64(new Uint8Array(t.roomOf.buffer, t.roomOf.byteOffset, t.roomOf.byteLength)),
     heightMapB64: bytesToBase64(new Uint8Array(t.heightMap.buffer, t.heightMap.byteOffset, t.heightMap.byteLength)),
     materialsB64: bytesToBase64(new Uint8Array(t.materials.buffer, t.materials.byteOffset, t.materials.byteLength)),
+    kindOfB64:    bytesToBase64(new Uint8Array(t.kindOf.buffer,    t.kindOf.byteOffset,    t.kindOf.byteLength)),
     rooms:    t.rooms,
     portals:  t.portals,
     gateSummary: t.gateSummary,
@@ -125,6 +135,12 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     matBytes.byteOffset,
     matBytes.byteLength / 2,
   );
+  const kindBytes = base64ToBytes(w.kindOfB64);
+  const kindOf = new Uint16Array(
+    kindBytes.buffer,
+    kindBytes.byteOffset,
+    kindBytes.byteLength / 2,
+  );
   return {
     cellX:    w.cellX,
     cellY:    w.cellY,
@@ -134,6 +150,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     roomOf,
     heightMap,
     materials,
+    kindOf,
     rooms:    w.rooms,
     portals:  w.portals,
     gateSummary: w.gateSummary,

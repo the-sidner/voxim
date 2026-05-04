@@ -96,6 +96,14 @@ export interface TileInit {
    */
   materials: Uint16Array;
 
+  /**
+   * Per-pixel boundary-kind ids (BOUNDARY_KIND_* in
+   * pipeline/boundary_kinds.ts). Length gridSize², row-major. Open
+   * pixels are tagged BOUNDARY_KIND_OPEN (= 0); closed pixels carry
+   * the kind that decides their visual + transform verbs.
+   */
+  kindOf: Uint16Array;
+
   // ---- placeholders for later phases ------------------------------
   /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
   boundaries: unknown[];
@@ -118,6 +126,8 @@ export interface TileInitWire {
   heightMapB64: string;
   /** Uint16 material ids, base64-encoded raw bytes (gridSize² × 2 bytes). */
   materialsB64: string;
+  /** Uint16 boundary-kind ids, base64-encoded raw bytes (gridSize² × 2 bytes). */
+  kindOfB64: string;
   rooms: Room[];
   portals: Portal[];
   gateSummary: number;

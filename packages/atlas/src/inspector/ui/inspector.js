@@ -231,10 +231,11 @@ function renderTileAside(cellX, cellY) {
     </section>
     <section>
       <h2>Layer</h2>
-      <div class="row" style="gap:6px">
-        <button id="layer-rooms"     style="flex:1">rooms</button>
-        <button id="layer-height"    style="flex:1">height</button>
-        <button id="layer-materials" style="flex:1">materials</button>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button id="layer-rooms"     style="flex:1 1 45%">rooms</button>
+        <button id="layer-height"    style="flex:1 1 45%">height</button>
+        <button id="layer-materials" style="flex:1 1 45%">materials</button>
+        <button id="layer-kinds"     style="flex:1 1 45%">kinds</button>
       </div>
     </section>
     <section>
@@ -259,7 +260,7 @@ function renderTileAside(cellX, cellY) {
     await fetch(`/tile/${cellX}/${cellY}/regen`, { method: "POST" });
     await loadTile(cellX, cellY);
   });
-  for (const layer of ["rooms", "height", "materials"]) {
+  for (const layer of ["rooms", "height", "materials", "kinds"]) {
     const btn = document.getElementById(`layer-${layer}`);
     btn.style.borderColor = tileLayer === layer ? "var(--accent)" : "var(--border)";
     btn.style.color       = tileLayer === layer ? "var(--accent)" : "var(--text)";
@@ -330,6 +331,7 @@ function drawTile() {
   if (tileLayer === "rooms") drawTileRooms(layout);
   else if (tileLayer === "height") drawTileHeight(layout);
   else if (tileLayer === "materials") drawTileMaterials(layout);
+  else if (tileLayer === "kinds") drawTileKinds(layout);
 
   // portal dots on top, regardless of layer
   ctx.fillStyle = "#fff";
@@ -397,6 +399,25 @@ function darken(hex, amount) {
   const g = Math.round(((n >> 8)  & 0xff) * amount);
   const b = Math.round(( n        & 0xff) * amount);
   return `rgb(${r},${g},${b})`;
+}
+
+// Atlas's BOUNDARY_KIND_* ids → display colours.
+const KIND_COLOURS = {
+  0: "#dadada",   // OPEN — light, so it stays "background"
+  1: "#7a7a7a",   // CLIFF — slate
+  2: "#3f7a3a",   // VEGETATION — leafy
+  3: "#3070b8",   // WATER — same blue as the materials layer
+};
+
+function drawTileKinds({ px, originX, originY, g }) {
+  const kindOf = u16FromB64(tile.payload.kindOfB64);
+  for (let py = 0; py < g; py++) {
+    for (let pxi = 0; pxi < g; pxi++) {
+      const idx = py * g + pxi;
+      ctx.fillStyle = KIND_COLOURS[kindOf[idx]] ?? "#444";
+      ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
+    }
+  }
 }
 
 function drawTileHeight({ px, originX, originY, g }) {

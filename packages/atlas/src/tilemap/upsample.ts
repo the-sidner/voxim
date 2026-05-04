@@ -48,6 +48,18 @@ export interface UpsampleOutput {
   heightBuffer: Float32Array;
   /** Translated material ids, length targetSize². */
   materialBuffer: Uint16Array;
+  /**
+   * Nearest-sampled openMask at target resolution, length targetSize².
+   * 1 = open, 0 = closed. Used by phase 4B to drive openMask-based
+   * collision in tile-server's physics.
+   */
+  openBuffer: Uint8Array;
+  /**
+   * Nearest-sampled boundary-kind ids at target resolution, length
+   * targetSize². 0 (OPEN) on open pixels; per-kind id on closed pixels.
+   * Used by phase 4C for per-kind rendering.
+   */
+  kindBuffer: Uint16Array;
 }
 
 export function upsampleTile(tile: TileInit, options: UpsampleOptions): UpsampleOutput {
@@ -57,6 +69,8 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
 
   const heightBuffer   = new Float32Array(N);
   const materialBuffer = new Uint16Array(N);
+  const openBuffer     = new Uint8Array(N);
+  const kindBuffer     = new Uint16Array(N);
 
   // Source-of-truth floor heights — atlas's heightMap minus the wall step
   // wherever the pixel is closed. Lets us bilinear the floor without
@@ -109,8 +123,12 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
       const atlasMatId = tile.materials[nIdx];
       const translated = materialMap.get(atlasMatId);
       materialBuffer[tIdx] = translated ?? defaultMaterialId;
+
+      // Openness + boundary kind: nearest only (hard edges).
+      openBuffer[tIdx] = tile.openMask[nIdx];
+      kindBuffer[tIdx] = tile.kindOf[nIdx];
     }
   }
 
-  return { heightBuffer, materialBuffer };
+  return { heightBuffer, materialBuffer, openBuffer, kindBuffer };
 }

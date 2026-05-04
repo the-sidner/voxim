@@ -224,8 +224,25 @@ Atlas derives the `u16` per tile and stores it. Inspector tile view shows the fo
 
 (The runtime "edit → reflood → push" loop is kind-agnostic and universal — no per-kind callback to wire. Once tile-server reads `tile_init` from atlas in phase 6, it picks up the loop with a single function.)
 
-**Phase 4 — boundary kind metadata + per-pixel instances.**
-First boundary kinds (vegetation, rock, water) as JSON with visual + transformVerbs. Atlas tags closed pixels with their kind during generation; persisted in `tile_init`. No new code paths — the universal loop already handles them.
+**Phase 4 — boundary kinds.** Split into three sub-phases:
+
+  *4A* — atlas tags every closed pixel with a kind id (CLIFF, VEGETATION,
+  WATER, …). Persisted in `tile_init.kindOf`. Inspector adds a "kinds"
+  layer. Tile-server still treats every closed pixel uniformly (raised
+  cliff) so collision keeps working via the existing heightmap step.
+
+  *4B* — openMask flows through to physics. New per-chunk `OpenMask`
+  component; tile-server's terrain lookup gains an `isOpen(x,y)` query;
+  `stepPhysics` consults it so movement is blocked on closed pixels
+  regardless of the heightmap. Decouples collision from rendering.
+
+  *4C* — per-kind rendering. Vegetation pixels stop raising the
+  heightmap and spawn tree entities at those positions; cliffs keep
+  the +3u step. With 4B in place, the player still can't walk through
+  trees because openMask collides them.
+
+  Boundary kinds remain pure metadata throughout — no per-kind
+  callbacks, just visual hints + transform verbs.
 
 **Phase 5 — linear features land in tile gen.**
 Rivers + roads stamped into openMask via per-tile specs from worldmap layer.
