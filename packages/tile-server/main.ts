@@ -30,7 +30,7 @@
  *   deno task tile
  */
 import { TileServer } from "./mod.ts";
-import { createPool, PgTileSaveRepo, PgWorldMapRepo } from "@voxim/db";
+import { createPool, PgAtlasTileInitRepo, PgTileSaveRepo, PgWorldMapRepo } from "@voxim/db";
 
 // Prevent WebTransport session timeouts and other async edge-cases from
 // crashing the process. These are expected during normal client disconnects.
@@ -55,17 +55,21 @@ const gatewayWtUrl   = Deno.env.get("GATEWAY_WT_URL");   // undefined → no eve
 const serviceSecret  = Deno.env.get("VOXIM_SERVICE_SECRET");
 const databaseUrl    = Deno.env.get("DATABASE_URL");     // undefined → ephemeral
 const dataDir        = Deno.env.get("DATA_DIR");         // undefined → default loader path
+const worldWidth     = parseInt(Deno.env.get("WORLD_WIDTH") ?? "2");
 const devMode        = !["0", "false"].includes(Deno.env.get("DEV_MODE") ?? "");
 
 const cert = await Deno.readTextFile(certPath);
 const key  = await Deno.readTextFile(keyPath);
 
-// Persistence is opt-in by DATABASE_URL — no DB means no save/load. Useful
-// for ephemeral test runs and the early bootstrap path before the DB stack
-// is up. Both repos share one pool.
-const pool = databaseUrl ? createPool({ databaseUrl }) : null;
-const tileSaves = pool ? new PgTileSaveRepo(pool) : undefined;
-const worldMap  = pool ? new PgWorldMapRepo(pool) : undefined;
+// Atlas is the source of truth for terrain — DATABASE_URL is now required
+// (tile-server can no longer generate its own terrain). All repos share one pool.
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is required: tile-server reads its tile_init from the atlas service via Postgres.");
+}
+const pool       = createPool({ databaseUrl });
+const tileSaves  = new PgTileSaveRepo(pool);
+const worldMap   = new PgWorldMapRepo(pool);
+const atlasTiles = new PgAtlasTileInitRepo(pool);
 
 const server = new TileServer();
 await server.start({
@@ -80,8 +84,10 @@ await server.start({
   ...(gatewayUrl     ? { gatewayUrl }     : {}),
   ...(gatewayWtUrl   ? { gatewayWtUrl }   : {}),
   ...(serviceSecret  ? { serviceSecret }  : {}),
-  ...(tileSaves      ? { tileSaves }      : {}),
-  ...(worldMap       ? { worldMap }       : {}),
+  tileSaves,
+  worldMap,
+  atlasTiles,
+  worldWidth,
   ...(dataDir        ? { dataDir }        : {}),
   devMode,
 });

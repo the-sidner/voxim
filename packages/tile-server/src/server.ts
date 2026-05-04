@@ -15,12 +15,13 @@
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
-import type { TileSaveRepo, WorldMapRepo } from "@voxim/db";
+import type { AtlasTileInitRepo, TileSaveRepo, WorldMapRepo } from "@voxim/db";
 import { decodeWorldMap, type WorldMapCell } from "@voxim/protocol";
 import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
-import { buildTerrainBuffers, chunksFromBuffers, loadTerrainCache, saveTerrainCache, seedFromTileId } from "@voxim/world";
-import type { WorldGenContent, ZoneGridData } from "@voxim/world";
+import { chunksFromBuffers } from "@voxim/world";
+import type { ZoneGridData } from "@voxim/world";
+import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
 import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
@@ -118,6 +119,17 @@ export interface TileServerConfig {
    */
   worldMap?: WorldMapRepo;
   /**
+   * Atlas tile_init repo. Required: tile-server reads its terrain from
+   * atlas's pre-computed TileInit row at boot. No internal terrain
+   * generation path remains.
+   */
+  atlasTiles: AtlasTileInitRepo;
+  /**
+   * Macro-grid width in cells. Used to map TILE_ID ("tile_N") into atlas's
+   * (cellX, cellY) key. Must match the value atlas was started with.
+   */
+  worldWidth: number;
+  /**
    * Plain HTTP port for gateway → tile internal communication (handoff, health-check).
    * When set, starts a plain HTTP admin server on this port.
    */
@@ -129,13 +141,7 @@ export interface TileServerConfig {
    * `http://<adminHost>:<adminPort>` with the gateway.
    */
   adminHost?: string;
-  /**
-   * Path to a pre-generated terrain cache file (.bin).
-   * If the file exists it is loaded directly (fast, ~ms).
-   * If the file is absent the terrain is generated and saved here for next time.
-   * Defaults to `./terrain_${tileId}.bin` when omitted.
-   */
-  terrainCacheFile?: string;
+  // (terrainCacheFile retired — atlas owns generation now; tile-server fetches.)
   /**
    * Gateway HTTP base URL — used for self-registration AND for account
    * service calls (session validation, heritage read/write, location
@@ -417,48 +423,26 @@ export class TileServer {
       }
     }
 
-    // Populate the world — load from save if one exists, otherwise generate fresh terrain
+    // Populate the world — load from save if one exists, otherwise pull
+    // pre-computed terrain from atlas. Atlas is now the sole source of
+    // initial terrain; the local generator + on-disk cache are gone.
     const loaded = this.saveManager ? await this.saveManager.load(this.world) : false;
-    let zoneGrid: ZoneGridData | null = null;
+    // zoneGrid is null for now — atlas doesn't produce zones; ProceduralSpawner
+    // already no-ops every zone-driven method when this is null.
+    const zoneGrid: ZoneGridData | null = null;
     let tileSeed = 0;
     if (!loaded) {
-      tileSeed = seedFromTileId(config.tileId);
-      const cachePath = config.terrainCacheFile ?? `./terrain_${config.tileId}.bin`;
-      let buffers = await loadTerrainCache(cachePath);
-      if (!buffers) {
-        // No pre-baked cache — generate from seed. Once T-138 lands, the seed
-        // will come from the coordinator's world-map cell instead of a
-        // tileId hash. The cache file is a cold-start optimisation only.
-        console.log(`[TileServer] no terrain cache at ${cachePath}, generating from seed=${tileSeed}`);
-        const worldGenContent: WorldGenContent = {
-          biomes: content.getAllBiomes(),
-          zones: content.getAllZones(),
-          resolveMaterialId(name) {
-            const m = content.getMaterialByName(name);
-            if (!m) throw new Error(`unknown material "${name}" referenced from biome data`);
-            return m.id;
-          },
-        };
-        const generated = await buildTerrainBuffers(tileSeed, worldGenContent);
-        buffers = {
-          heightBuffer: generated.heightBuffer,
-          materialBuffer: generated.materialBuffer,
-          zoneGrid: generated.zoneGrid,
-        };
-        // Persist the cache so subsequent boots are fast. Best-effort — a
-        // read-only filesystem (e.g. when tiles save to DB instead of disk
-        // post-T-136) is not a fatal error.
-        try {
-          await saveTerrainCache(cachePath, buffers.heightBuffer, buffers.materialBuffer, buffers.zoneGrid);
-          console.log(`[TileServer] cached generated terrain to ${cachePath}`);
-        } catch (err) {
-          console.warn(`[TileServer] could not persist terrain cache (continuing): ${err}`);
-        }
-      } else {
-        console.log(`[TileServer] loaded terrain from cache: ${cachePath}`);
-      }
-      chunksFromBuffers(this.world, buffers.heightBuffer, buffers.materialBuffer);
-      zoneGrid = buffers.zoneGrid;
+      const atlas = await loadTerrainFromAtlas(
+        config.atlasTiles,
+        config.tileId,
+        config.worldWidth,
+        content,
+      );
+      console.log(
+        `[TileServer] atlas terrain loaded: cell (${atlas.cellX},${atlas.cellY}) seed=${atlas.tileSeed}`,
+      );
+      chunksFromBuffers(this.world, atlas.heightBuffer, atlas.materialBuffer);
+      tileSeed = atlas.tileSeed;
       this.spawnWorldState(content);
     }
 
