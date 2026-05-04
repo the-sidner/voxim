@@ -29,3 +29,5 @@ export {
   MATERIAL_NONE, MATERIAL_GRASS, MATERIAL_DIRT,
   MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
 } from "./src/tilemap/pipeline/materials.ts";
+export { upsampleTile } from "./src/tilemap/upsample.ts";
+export type { UpsampleOptions, UpsampleOutput } from "./src/tilemap/upsample.ts";
