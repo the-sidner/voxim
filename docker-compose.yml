@@ -119,8 +119,13 @@ services:
     environment:
       ATLAS_PORT: 8082
       DATABASE_URL: ${DATABASE_URL}
+      # Aligned with the coordinator's defaults so atlas generates a worldmap
+      # of the same dimensions the rest of the stack expects.
+      WORLD_SEED:   ${WORLD_SEED:-1}
+      WORLD_WIDTH:  ${WORLD_WIDTH:-2}
+      WORLD_HEIGHT: ${WORLD_HEIGHT:-2}
     ports:
-      # 8082 — HTTP for /health, future /world/*, /tile/*, inspector UI.
+      # 8082 — HTTP for /health, /world, /world/cell/*, /world/regen, inspector UI.
       - "8082:8082"
     restart: unless-stopped
 

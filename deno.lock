@@ -429,6 +429,11 @@
       ]
     },
     "members": {
+      "packages/atlas": {
+        "dependencies": [
+          "jsr:@std/http@1"
+        ]
+      },
       "packages/client": {
         "dependencies": [
           "npm:@preact/signals@1.3.0",
