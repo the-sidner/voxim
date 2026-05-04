@@ -77,6 +77,16 @@ const KNOB_CONFIG = {
     floorModAmplitude: { step: 0.1, min: 0 },
     floorModFrequency: { step: 0.005, min: 0 },
   },
+  room: {
+    minPixelArea:  { step: 1, min: 0, max: 1024, integer: true },
+    dilatePasses:  { step: 1, min: 0, max: 4, integer: true },
+  },
+  network: {
+    maxEdgeLength:   { step: 4, min: 4, max: 256, integer: true },
+    loopRate:        { step: 0.05, min: 0, max: 1 },
+    corridorWidth:   { step: 1, min: 0, max: 4, integer: true },
+    noiseCostScale:  { step: 1, min: 0, max: 64 },
+  },
   // materials/kinds: every knob is a 0..1 threshold; uniform config.
 };
 
@@ -97,17 +107,27 @@ const KNOB_HINT = {
     widthPixels:    "River brush radius. Larger → wider rivers.",
   },
   noise: {
-    baseFrequency:               "Higher → smaller features (tighter maze).",
+    baseFrequency:               "Higher → smaller blobs (more rooms per tile).",
     extraFrequencyPerRuggedness: "How much frequency rises with ruggedness.",
-    baseThreshold:               "Lower → less open (thinner paths).",
+    baseThreshold:               "Higher → MORE FRAGMENTED (more, smaller rooms).",
     extraThresholdPerRuggedness: "How threshold rises with ruggedness.",
-    octaves:                     "More → wigglier path edges.",
+    octaves:                     "More → wigglier room edges.",
   },
   terrain: {
     wallHeight:        "Vertical step at cliff walls. Must exceed 0.75.",
     floorBaseline:     "Baseline ground height in open regions.",
     floorModAmplitude: "How bumpy the floor is.",
     floorModFrequency: "Bump frequency.",
+  },
+  room: {
+    minPixelArea: "Drop blobs smaller than this. Filters speckle into walls.",
+    dilatePasses: "Grow kept rooms by N pixels. Use 1 if rooms feel cramped.",
+  },
+  network: {
+    maxEdgeLength:  "Cap on Delaunay edge length (px). Longer edges dropped.",
+    loopRate:       "Extra-corridor rate. 0 = tree (one path). 1 = full net.",
+    corridorWidth:  "Carved corridor half-width. 0 = single pixel, 1 = 3 wide.",
+    noiseCostScale: "How strongly carves prefer thin walls. Higher → more meander.",
   },
   materials: {
     detailFrequency:           "Per-pixel material noise scale.",
@@ -136,7 +156,9 @@ const KNOB_HINT = {
 const SLICE_LABELS = {
   biome:     "Biome",
   river:     "River",
-  noise:     "Noise (rooms emerge here)",
+  noise:     "Noise (room blobs emerge here)",
+  room:      "Rooms (cleanup of noise blobs)",
+  network:   "Network (corridor planning + carve)",
   terrain:   "Terrain (heightmap)",
   materials: "Materials",
   kinds:     "Boundary kinds",

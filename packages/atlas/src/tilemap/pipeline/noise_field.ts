@@ -29,6 +29,13 @@ export interface NoiseFieldOutput {
   noiseField: Float32Array;
   /** 1 = open, 0 = closed, length gridSize². */
   openMask: Uint8Array;
+  /**
+   * The biome-resolved threshold used to derive openMask: a pixel is
+   * open iff its noise value is < threshold. Downstream stages use this
+   * to express carve cost relative to "how deep into the wall" a closed
+   * pixel sits.
+   */
+  threshold: number;
 }
 
 const NOISE_SUB_SEED = 0x30003001;
@@ -55,5 +62,5 @@ export function runNoiseField(input: NoiseFieldInput): NoiseFieldOutput {
     }
   }
 
-  return { noiseField, openMask };
+  return { noiseField, openMask, threshold };
 }

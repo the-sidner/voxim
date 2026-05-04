@@ -1,20 +1,25 @@
 /**
  * Tilemap orchestrator — runs the per-tile pipeline against one worldmap cell.
  *
- * Pipeline (phase 2A):
- *   1. NoiseField        — biome-driven fbm + threshold → openMask
- *   2. PortalPlacement   — carve gate corridors + re-derive rooms → rooms[], portals[]
- *      (room detection is invoked internally by portal placement so the
- *      labelling already accounts for the carved corridors)
- *
- * Boundary filling and feature placement are deferred to phase 2B; their
- * slots in TileInit start empty.
+ * Pipeline:
+ *   1. NoiseField        — biome-driven fbm + threshold → fragmented openMask
+ *   2. Roomify           — drop speckle, dilate, label → rooms[], roomOf
+ *   3. Network           — Delaunay + MST + braid + noise-flow A* carve
+ *                          → re-labelled rooms[], roomOf, openMask
+ *   4. PortalPlacement   — stitch each gate to nearest room with the same
+ *                          carve → portals[], re-labelled rooms[]/roomOf
+ *   5. BoundaryKinds     — per-pixel kind tagging
+ *   6. RiverStamping     — overlay water onto openMask + kindOf
+ *   7. Terrain           — heightmap from openMask + kindOf
+ *   8. Materials         — per-pixel material id
  *
  * Pure function: same (worldCell, tileSeed, options) always yields the
  * same TileInit.
  */
 
 import { runNoiseField } from "./pipeline/noise_field.ts";
+import { runRoomify } from "./pipeline/roomify.ts";
+import { runNetwork } from "./pipeline/network.ts";
 import { runPortalPlacement } from "./pipeline/portal_placement.ts";
 import { runTerrain } from "./pipeline/terrain.ts";
 import { runMaterials } from "./pipeline/materials.ts";
@@ -54,12 +59,35 @@ export function generateTile(
     params: params.noise,
   });
 
-  const placed = runPortalPlacement({
+  const roomified = runRoomify({
     openMask: noise.openMask,
     gridSize,
     px2world,
+    params: params.room,
+  });
+
+  const networked = runNetwork({
+    openMask:   roomified.openMask,
+    noiseField: noise.noiseField,
+    threshold:  noise.threshold,
+    rooms:      roomified.rooms,
+    roomOf:     roomified.roomOf,
+    gridSize,
+    px2world,
+    tileSeed,
+    params:     params.network,
+  });
+
+  const placed = runPortalPlacement({
+    openMask:   networked.openMask,
+    noiseField: noise.noiseField,
+    threshold:  noise.threshold,
+    rooms:      networked.rooms,
+    gridSize,
+    px2world,
     tileSize,
-    gates: worldCell.gates,
+    gates:      worldCell.gates,
+    network:    params.network,
   });
 
   // Kinds runs BEFORE terrain so the terrain stage can decide which

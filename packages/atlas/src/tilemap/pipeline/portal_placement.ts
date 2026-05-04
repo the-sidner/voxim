@@ -1,28 +1,32 @@
 /**
- * Stage 3 — portal placement.
+ * Stage 4 — portal placement.
  *
- * For each worldmap gate, compute the edge-entry pixel and carve a
- * straight 1-pixel-wide corridor inward through openMask until it joins
- * an existing open region. After all carves, re-run room detection so
- * the freshly carved pixels are part of a room — then record each
- * portal with its host roomId.
+ * After roomify + network, the tile already has a connected room graph.
+ * Each worldmap gate gets stitched into that graph with the same noise-flow
+ * A* used by the network stage: pick the nearest room centroid by Euclidean
+ * distance, carve from the gate's edge pixel to that centroid through the
+ * weakest walls. Result: every gate is part of the same network, so the
+ * gate-summary u16 honestly reflects "all gates are reachable from each
+ * other".
  *
- * The carve is naive (straight line, fixed direction) which is fine
- * because rooms emerge from noise and tend to face the edges; pretty
- * carving (curved, varied width) can land later when boundary kinds
- * exist to make it look natural.
- *
- * Mutates `openMask` and `roomOf` in the returned values; callers should
- * treat them as the new authoritative state.
+ * Mutates `openMask` and returns refreshed `roomOf` / `rooms[]`.
  */
 
 import { runRoomDetection } from "./room_detection.ts";
+import { carveCorridor, clampPx, type CarveContext } from "./carve.ts";
 import type { Portal, Room } from "../types.ts";
 import type { Edge, GateSpec } from "../../worldmap/types.ts";
+import type { GenParams } from "../../genparams.ts";
 
 export interface PortalPlacementInput {
-  /** From stage 1. Mutated in place by the carve. */
+  /** From the network stage. Mutated in place by carves. */
   openMask: Uint8Array;
+  /** From the noise stage. Read-only (drives carve cost). */
+  noiseField: Float32Array;
+  /** Threshold from the noise stage. */
+  threshold: number;
+  /** From the network stage. Read-only — we re-flood at the end. */
+  rooms: Room[];
   gridSize: number;
   /** World units per pixel. */
   px2world: number;
@@ -35,10 +39,12 @@ export interface PortalPlacementInput {
     south: GateSpec | null;
     west:  GateSpec | null;
   };
+  /** Carve tuning shared with the network stage. */
+  network: GenParams["network"];
 }
 
 export interface PortalPlacementOutput {
-  /** Updated openMask (carved). Same buffer that was passed in. */
+  /** Same buffer as input, with gate corridors carved. */
   openMask: Uint8Array;
   /** Re-derived room labelling. */
   rooms: Room[];
@@ -50,45 +56,73 @@ export interface PortalPlacementOutput {
 const EDGES: readonly Edge[] = ["north", "east", "south", "west"];
 
 export function runPortalPlacement(input: PortalPlacementInput): PortalPlacementOutput {
-  const { openMask, gridSize, px2world, tileSize, gates } = input;
+  const {
+    openMask, noiseField, threshold, rooms,
+    gridSize, px2world, tileSize, gates, network,
+  } = input;
 
-  // Entry pixel + inward direction per edge.
-  const entries: Array<{ edge: Edge; gate: GateSpec; ex: number; ey: number; dx: number; dy: number }> = [];
+  // Entry pixel per edge (the pixel on the boundary aligned with the gate offset).
+  const entries: Array<{ edge: Edge; gate: GateSpec; ex: number; ey: number }> = [];
   for (const edge of EDGES) {
     const gate = gates[edge];
     if (!gate) continue;
-    const along = clamp(Math.round(gate.offset / px2world), 0, gridSize - 1);
-    let ex = 0, ey = 0, dx = 0, dy = 0;
+    const along = clampPx(Math.round(gate.offset / px2world), gridSize);
+    let ex = 0, ey = 0;
     switch (edge) {
-      case "north": ex = along;          ey = 0;             dx = 0;  dy = 1;  break;
-      case "south": ex = along;          ey = gridSize - 1;  dx = 0;  dy = -1; break;
-      case "west":  ex = 0;              ey = along;         dx = 1;  dy = 0;  break;
-      case "east":  ex = gridSize - 1;   ey = along;         dx = -1; dy = 0;  break;
+      case "north": ex = along;          ey = 0;            break;
+      case "south": ex = along;          ey = gridSize - 1; break;
+      case "west":  ex = 0;              ey = along;        break;
+      case "east":  ex = gridSize - 1;   ey = along;        break;
     }
-    entries.push({ edge, gate, ex, ey, dx, dy });
+    entries.push({ edge, gate, ex, ey });
   }
 
-  // Carve inward until we join an existing open region.
-  for (const e of entries) {
-    let px = e.ex, py = e.ey;
-    while (px >= 0 && px < gridSize && py >= 0 && py < gridSize) {
-      const idx = py * gridSize + px;
-      if (openMask[idx] === 1) break; // joined an open region
-      openMask[idx] = 1;
-      px += e.dx;
-      py += e.dy;
+  // No rooms? carve a single straight corridor from each gate to the centre
+  // so the gate at least exists somewhere walkable. (Pathological tile —
+  // shouldn't happen with sane params, but the pipeline shouldn't blow up.)
+  if (rooms.length === 0) {
+    const ctx: CarveContext = {
+      openMask, noiseField, threshold, gridSize,
+      noiseCostScale: network.noiseCostScale,
+      corridorWidth:  network.corridorWidth,
+    };
+    const mid = (gridSize / 2) | 0;
+    for (const e of entries) carveCorridor(e.ex, e.ey, mid, mid, ctx);
+  } else {
+    const ctx: CarveContext = {
+      openMask, noiseField, threshold, gridSize,
+      noiseCostScale: network.noiseCostScale,
+      corridorWidth:  network.corridorWidth,
+    };
+    for (const e of entries) {
+      // Nearest room centroid (in pixel space) is the carve target.
+      let bestId = 0;
+      let bestD2 = Infinity;
+      for (const r of rooms) {
+        const rx = r.cx / px2world;
+        const ry = r.cy / px2world;
+        const dx = rx - e.ex;
+        const dy = ry - e.ey;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; bestId = r.id; }
+      }
+      const target = rooms[bestId];
+      const tx = clampPx(Math.round(target.cx / px2world), gridSize);
+      const ty = clampPx(Math.round(target.cy / px2world), gridSize);
+      carveCorridor(e.ex, e.ey, tx, ty, ctx);
     }
   }
 
-  // Re-run room detection over the carved openMask.
+  // Re-run room detection over the carved openMask. The returned roomOf
+  // tells us which (re-labelled) component each gate pixel landed in.
   const det = runRoomDetection({ openMask, gridSize, px2world });
 
-  // Build portal records, looking up each entry pixel's room.
+  // Build portal records.
   const portals: Portal[] = [];
   for (const e of entries) {
     const idx = e.ey * gridSize + e.ex;
     const roomId = det.roomOf[idx];
-    if (roomId === 0xFFFF) continue; // shouldn't happen — carve always opens it
+    if (roomId === 0xFFFF) continue; // shouldn't happen — carve always opens it.
     portals.push({
       edge:    e.edge,
       offset:  e.gate.offset,
@@ -98,14 +132,9 @@ export function runPortalPlacement(input: PortalPlacementInput): PortalPlacement
     });
   }
 
-  // Suppress the unused-binding noise about `tileSize` — kept for callers to
-  // pass it consistently with the other stages and for future use (when we
-  // need to sanity-check that offsets fall in (0, tileSize)).
+  // tileSize kept in the API for symmetry with other stages and for future
+  // sanity-checking that gate offsets fall in (0, tileSize).
   void tileSize;
 
   return { openMask, rooms: det.rooms, roomOf: det.roomOf, portals };
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
 }

@@ -96,6 +96,37 @@ export interface GenParams {
     grassMoisture: number;
   };
 
+  /**
+   * Room-extraction stage. Cleans the raw noise blobs into usable rooms:
+   * drops the speckle (one-pixel blobs that aren't real rooms), optionally
+   * dilates the keepers so cramped blobs become walkable.
+   */
+  room: {
+    /** Drop connected open blobs smaller than this many pixels. */
+    minPixelArea: number;
+    /** Number of binary dilation passes (4-conn) on retained blobs. 0 = none. */
+    dilatePasses: number;
+  };
+
+  /**
+   * Room-network stage. Plans corridors between rooms.
+   *
+   * Pipeline: Delaunay triangulation over room centroids → MST for guaranteed
+   * connectivity → keep `loopRate` of the remaining edges as braids. Each
+   * chosen edge is carved via A* using the noise field as cost so corridors
+   * follow the weakest walls and never read as straight cuts.
+   */
+  network: {
+    /** Cap on Delaunay edge length, in pixels. Longer candidates are dropped. */
+    maxEdgeLength: number;
+    /** Fraction of non-tree Delaunay edges kept as loops. 0 = tree, 1 = full net. */
+    loopRate: number;
+    /** Carved-corridor half-width, in pixels. 0 = single-pixel path. */
+    corridorWidth: number;
+    /** Multiplier on per-cell noise cost during A*. Higher → straighter carves. */
+    noiseCostScale: number;
+  };
+
   /** Per-pixel boundary kind (CLIFF / VEGETATION / WATER) selectors. */
   kinds: {
     /** Per-pixel detail noise frequency. */
@@ -116,7 +147,9 @@ export interface GenParams {
 
 /**
  * Defaults — biased toward the "forest maze" feel:
- *   - mostly-closed terrain (low threshold, high frequency = thin winding paths)
+ *   - noise tuned to FRAGMENT into many distinct open blobs (the rooms),
+ *     not to draw connected paths. The network stage rebuilds connectivity
+ *     deliberately: MST + braid + noise-flow A* carve.
  *   - vegetation as the default closed kind (low vegetationMoisture cutoff)
  *   - moisture biased up so most cells are forested
  *   - moderate wall height (not tall enough to look cliff-y)
@@ -136,17 +169,27 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     widthPixels: 2,
   },
   noise: {
-    baseFrequency: 0.05,                 // smaller features → tighter maze
+    baseFrequency: 0.04,                 // bigger blobs → readable rooms
     extraFrequencyPerRuggedness: 0.02,
-    baseThreshold: -0.25,                // lower = thinner open paths
-    extraThresholdPerRuggedness: 0.20,
-    octaves: 4,                          // more wiggle in path edges
+    baseThreshold: 0.10,                 // POSITIVE → fragments into many blobs
+    extraThresholdPerRuggedness: 0.10,
+    octaves: 4,
   },
   terrain: {
     wallHeight: 3.0,
     floorBaseline: 0.0,
     floorModAmplitude: 1.5,
     floorModFrequency: 0.04,
+  },
+  room: {
+    minPixelArea: 12,                    // ~< 0.75% of grid → speckle, drop
+    dilatePasses: 0,
+  },
+  network: {
+    maxEdgeLength: 64,                   // half the grid; cap intra-tile reach
+    loopRate: 0.45,                      // explorative; ~half of non-tree edges
+    corridorWidth: 1,
+    noiseCostScale: 8,
   },
   materials: {
     detailFrequency: 0.06,
@@ -187,33 +230,37 @@ export const PRESETS: Record<string, { name: string; description: string; params
   },
   open_plains: {
     name: "Open plains",
-    description: "Mostly walkable, sparse tree clusters. Big rooms, few obstacles.",
+    description: "Few big rooms, sparse tree clusters, wide corridors. Easy to traverse.",
     params: {
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.05, biasAltitude: -0.20 },
       noise: {
-        baseFrequency: 0.02,
+        baseFrequency: 0.02,                // big features → big blobs
         extraFrequencyPerRuggedness: 0.01,
-        baseThreshold: 0.15,                // higher → mostly open
+        baseThreshold: 0.30,                // strongly open
         extraThresholdPerRuggedness: 0.10,
         octaves: 3,
       },
+      room: { minPixelArea: 80, dilatePasses: 1 },
+      network: { maxEdgeLength: 96, loopRate: 0.20, corridorWidth: 2, noiseCostScale: 4 },
       kinds: { ...DEFAULT_GEN_PARAMS.kinds, vegetationMoisture: 0.10 },
     },
   },
   cliff_dungeon: {
     name: "Cliff dungeon",
-    description: "High altitude, cliff walls dominate. Reads like a stone maze.",
+    description: "Many small rooms, dense interwoven corridors. Reads like a stone labyrinth.",
     params: {
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasAltitude: 0.40, biasRuggedness: 0.20, biasMoisture: -0.10 },
       noise: {
-        baseFrequency: 0.06,
+        baseFrequency: 0.06,                // small features → many small blobs
         extraFrequencyPerRuggedness: 0.02,
-        baseThreshold: -0.30,
-        extraThresholdPerRuggedness: 0.15,
+        baseThreshold: 0.25,
+        extraThresholdPerRuggedness: 0.10,
         octaves: 4,
       },
+      room: { minPixelArea: 8, dilatePasses: 0 },
+      network: { maxEdgeLength: 40, loopRate: 0.70, corridorWidth: 1, noiseCostScale: 12 },
       terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 5.0 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
@@ -226,18 +273,20 @@ export const PRESETS: Record<string, { name: string; description: string; params
   },
   wet_marsh: {
     name: "Wet marsh",
-    description: "Low, wet, scattered water and dense vegetation around it.",
+    description: "Mid-size rooms in dense vegetation, wider corridors meandering past water.",
     params: {
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.40, biasAltitude: -0.30 },
       river: { sourceAltitude: 0.40, minSeparation: 1, widthPixels: 3 },
       noise: {
-        baseFrequency: 0.04,
+        baseFrequency: 0.035,
         extraFrequencyPerRuggedness: 0.01,
-        baseThreshold: -0.15,
+        baseThreshold: 0.15,
         extraThresholdPerRuggedness: 0.10,
         octaves: 3,
       },
+      room: { minPixelArea: 16, dilatePasses: 1 },
+      network: { maxEdgeLength: 64, loopRate: 0.45, corridorWidth: 2, noiseCostScale: 6 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
         waterMoisture: 0.40, waterAltitude: 0.60, waterDetail: 0.30,
@@ -274,6 +323,8 @@ function cloneParams(p: GenParams): GenParams {
     river:     { ...p.river },
     noise:     { ...p.noise },
     terrain:   { ...p.terrain },
+    room:      { ...p.room },
+    network:   { ...p.network },
     materials: { ...p.materials },
     kinds:     { ...p.kinds },
   };

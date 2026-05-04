@@ -944,6 +944,34 @@ when a player or active NPC is within a configurable radius. Serialise and unloa
 no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
+### T-150 · Atlas tilemap — interwoven room network from noise blobs
+Effort: M   Status: in-progress
+
+Today's tilemap pipeline leaves connectivity to luck: noise threshold produces one rambling
+open snake, room detection labels whatever blobs fall out, and `portal_placement` carves a
+straight 1-pixel stub from each gate until it bumps into anything open. There's no guarantee
+gates reach each other, and no design intent behind which rooms connect to which.
+
+Replace the head of the pipeline with a structural pass that uses the noise field as the
+*source of organic shape* but treats connectivity as a deliberate plan:
+
+1. **Tighten noise threshold** so the field fragments into many distinct open blobs
+   instead of one connected region.
+2. **`runRoomify`** — drop blobs below `params.room.minPixelArea`; optionally dilate the
+   keepers; re-flood for a clean `rooms[]` + `roomOf`.
+3. **`runNetwork`** — Delaunay triangulation over room centroids → MST for guaranteed
+   connectivity → keep `params.network.loopRate` of the remaining Delaunay edges as loops.
+   Carve each chosen edge using A\* through closed pixels with **noise-flow cost** (the
+   carve naturally meanders along the weakest walls — no straight-line cuts).
+4. **Shrink `runPortalPlacement`** to "stitch each gate into the network": pick the nearest
+   room centroid, A\* from the gate's edge pixel using the same noise-flow cost.
+5. New `GenParams` slices `room` and `network`; presets and inspector knob hints updated.
+
+Done when: every present gate is on the network, the inspector "rooms" view shows a
+clearly interwoven layout (multiple paths between most room pairs), corridors visibly
+follow noise-thin regions instead of cutting straight lines, and the four named presets
+each give a distinct overall topology.
+
 ---
 
 ## Rendering & Client
