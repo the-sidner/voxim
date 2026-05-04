@@ -16,6 +16,7 @@
 
 import { runNoiseField } from "./pipeline/noise_field.ts";
 import { runPortalPlacement } from "./pipeline/portal_placement.ts";
+import { runTerrain } from "./pipeline/terrain.ts";
 import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
@@ -53,6 +54,13 @@ export function generateTile(
     gates: worldCell.gates,
   });
 
+  const terrain = runTerrain({
+    openMask: placed.openMask,
+    biome:    worldCell.biome,
+    tileSeed,
+    gridSize,
+  });
+
   return {
     cellX:    worldCell.cellX,
     cellY:    worldCell.cellY,
@@ -63,6 +71,7 @@ export function generateTile(
     rooms:    placed.rooms,
     portals:  placed.portals,
     gateSummary: deriveGateSummary(placed.portals),
+    heightMap: terrain.heightMap,
     boundaries: [],
     features:   [],
   };
@@ -78,6 +87,7 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     gridSize: t.gridSize,
     openMaskB64: bytesToBase64(t.openMask),
     roomOfB64:   bytesToBase64(new Uint8Array(t.roomOf.buffer, t.roomOf.byteOffset, t.roomOf.byteLength)),
+    heightMapB64: bytesToBase64(new Uint8Array(t.heightMap.buffer, t.heightMap.byteOffset, t.heightMap.byteLength)),
     rooms:    t.rooms,
     portals:  t.portals,
     gateSummary: t.gateSummary,
@@ -94,6 +104,12 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     roomOfBytes.byteOffset,
     roomOfBytes.byteLength / 2,
   );
+  const heightBytes = base64ToBytes(w.heightMapB64);
+  const heightMap = new Float32Array(
+    heightBytes.buffer,
+    heightBytes.byteOffset,
+    heightBytes.byteLength / 4,
+  );
   return {
     cellX:    w.cellX,
     cellY:    w.cellY,
@@ -101,6 +117,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     gridSize: w.gridSize,
     openMask,
     roomOf,
+    heightMap,
     rooms:    w.rooms,
     portals:  w.portals,
     gateSummary: w.gateSummary,

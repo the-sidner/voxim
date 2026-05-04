@@ -24,6 +24,7 @@ let world = null; // { seed, cells: [...] }
 let summaries = null; // Map<"x,y", number>  — gateSummary u16 per cell
 let worldBbox = null;
 let tile = null; // { tileId, cellX, cellY, seed, payload: TileInitWire }
+let tileLayer = "rooms"; // "rooms" | "height"
 
 const NO_GATE = 0xF;
 const EDGE_NIBBLE = { north: 0, east: 1, south: 2, west: 3 };
@@ -229,6 +230,13 @@ function renderTileAside(cellX, cellY) {
       <button id="back">← world</button>
     </section>
     <section>
+      <h2>Layer</h2>
+      <div class="row" style="gap:6px">
+        <button id="layer-rooms"  style="flex:1">rooms</button>
+        <button id="layer-height" style="flex:1">height</button>
+      </div>
+    </section>
+    <section>
       <h2>Regenerate tile</h2>
       <button id="tregen">Regenerate (${cellX},${cellY})</button>
     </section>
@@ -250,6 +258,16 @@ function renderTileAside(cellX, cellY) {
     await fetch(`/tile/${cellX}/${cellY}/regen`, { method: "POST" });
     await loadTile(cellX, cellY);
   });
+  for (const layer of ["rooms", "height"]) {
+    const btn = document.getElementById(`layer-${layer}`);
+    btn.style.borderColor = tileLayer === layer ? "var(--accent)" : "var(--border)";
+    btn.style.color       = tileLayer === layer ? "var(--accent)" : "var(--text)";
+    btn.addEventListener("click", () => {
+      tileLayer = layer;
+      renderTileAside(cellX, cellY);
+      drawTile();
+    });
+  }
 }
 
 function renderSummarySection(summary) {
@@ -307,11 +325,29 @@ function drawTile() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   const layout = tileLayout(); if (!layout) return;
   const { px, originX, originY, g } = layout;
+
+  if (tileLayer === "rooms") drawTileRooms(layout);
+  else if (tileLayer === "height") drawTileHeight(layout);
+
+  // portal dots on top, regardless of layer
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 1;
+  const dotR = Math.max(3, Math.round(px * 0.6));
+  for (const p of tile.payload.portals) {
+    const cx = originX + p.pixelX * px + px / 2;
+    const cy = originY + p.pixelY * px + px / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+function drawTileRooms({ px, originX, originY, g }) {
   const openMask = bytesFromB64(tile.payload.openMaskB64);
   const roomOf = u16FromB64(tile.payload.roomOfB64);
   const roomColor = (id) => roomColours[id % roomColours.length];
-
-  // pixel grid
   for (let py = 0; py < g; py++) {
     for (let pxi = 0; pxi < g; pxi++) {
       const idx = py * g + pxi;
@@ -324,19 +360,29 @@ function drawTile() {
       ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
     }
   }
+}
 
-  // portal dots on top
-  ctx.fillStyle = "#fff";
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 1;
-  const dotR = Math.max(3, Math.round(px * 0.6));
-  for (const p of tile.payload.portals) {
-    const cx = originX + p.pixelX * px + px / 2;
-    const cy = originY + p.pixelY * px + px / 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+function drawTileHeight({ px, originX, originY, g }) {
+  const heightMap = f32FromB64(tile.payload.heightMapB64);
+  // Find min/max for normalised colouring.
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < heightMap.length; i++) {
+    const h = heightMap[i];
+    if (h < min) min = h;
+    if (h > max) max = h;
+  }
+  const range = Math.max(1e-6, max - min);
+  for (let py = 0; py < g; py++) {
+    for (let pxi = 0; pxi < g; pxi++) {
+      const idx = py * g + pxi;
+      const t = (heightMap[idx] - min) / range;       // 0..1
+      // Cool→warm gradient: low = blue, high = orange-red.
+      const r = Math.round(40  + t * 215);
+      const gr = Math.round(60 + t * 100);
+      const b = Math.round(150 - t * 110);
+      ctx.fillStyle = `rgb(${r},${gr},${b})`;
+      ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
+    }
   }
 }
 
@@ -385,4 +431,9 @@ function bytesFromB64(b64) {
 function u16FromB64(b64) {
   const bytes = bytesFromB64(b64);
   return new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+}
+
+function f32FromB64(b64) {
+  const bytes = bytesFromB64(b64);
+  return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
 }

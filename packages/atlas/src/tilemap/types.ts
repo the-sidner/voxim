@@ -80,6 +80,14 @@ export interface TileInit {
    */
   gateSummary: number;
 
+  /**
+   * World-unit heights at sample-grid resolution, row-major. Length
+   * gridSize². Wall pixels carry an added WALL_HEIGHT step so they
+   * read as non-traversable boundaries; open pixels carry only the
+   * biome's smooth floor modulation.
+   */
+  heightMap: Float32Array;
+
   // ---- placeholders for later phases ------------------------------
   /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
   boundaries: unknown[];
@@ -98,6 +106,8 @@ export interface TileInitWire {
   gridSize: number;
   openMaskB64: string;
   roomOfB64: string;
+  /** Float32 heights, base64-encoded raw bytes (gridSize² × 4 bytes). */
+  heightMapB64: string;
   rooms: Room[];
   portals: Portal[];
   gateSummary: number;

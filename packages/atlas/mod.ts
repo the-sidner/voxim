@@ -23,3 +23,4 @@ export { generateTile, tileInitToWire, tileInitFromWire } from "./src/tilemap/ge
 export type { GenerateTileOptions } from "./src/tilemap/generate.ts";
 export type { Room, Portal, TileInit, TileInitWire } from "./src/tilemap/types.ts";
 export { deriveGateSummary, reachable, nibbleAt, NO_GATE } from "./src/tilemap/summary.ts";
+export { runTerrain, WALL_HEIGHT } from "./src/tilemap/pipeline/terrain.ts";
