@@ -113,7 +113,16 @@ async function handleRequest(
 
   if (req.method === "GET" && url.pathname === "/world/summaries") {
     const summaries = await cfg.tileRepo.listSummaries(cfg.worldId);
-    return jsonOk({ summaries });
+    // Repo returns `seed` as Postgres bigint; downcast to number so
+    // Response.json() doesn't choke. Seeds at our scale fit in 32 bits.
+    return jsonOk({
+      summaries: summaries.map((s) => ({
+        cellX:   s.cellX,
+        cellY:   s.cellY,
+        summary: s.summary,
+        seed:    Number(s.seed),
+      })),
+    });
   }
 
   // GET /tile/:cellX/:cellY  (lazy: regenerates if missing or seed-stale)
