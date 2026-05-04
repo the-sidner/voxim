@@ -10,7 +10,7 @@ export { startAtlasServer } from "./src/server.ts";
 export type { AtlasServerConfig } from "./src/server.ts";
 export { bakeWorld, tileSeedFor } from "./src/bake.ts";
 export type { BakeInput, BakeDeps } from "./src/bake.ts";
-export { DEFAULT_GEN_PARAMS, mergeGenParams } from "./src/genparams.ts";
+export { DEFAULT_GEN_PARAMS, PRESETS, mergeGenParams } from "./src/genparams.ts";
 export type { GenParams, DeepPartialGenParams } from "./src/genparams.ts";
 
 export { generateWorldMap } from "./src/worldmap/generate.ts";

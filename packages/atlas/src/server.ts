@@ -29,7 +29,7 @@ import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@v
 import { generateTile, tileInitToWire } from "./tilemap/generate.ts";
 import { bakeWorld, tileSeedFor } from "./bake.ts";
 import type { WorldCellRecord } from "./worldmap/types.ts";
-import { DEFAULT_GEN_PARAMS, mergeGenParams, type DeepPartialGenParams, type GenParams } from "./genparams.ts";
+import { DEFAULT_GEN_PARAMS, PRESETS, mergeGenParams, type DeepPartialGenParams, type GenParams } from "./genparams.ts";
 
 export interface AtlasServerConfig {
   port: number;
@@ -122,6 +122,11 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
   // DEFAULT_GEN_PARAMS without baking a throwaway world first.
   if (req.method === "GET" && url.pathname === "/genparams/defaults") {
     return jsonOk({ defaults: DEFAULT_GEN_PARAMS });
+  }
+
+  // Named presets — strong shapes the inspector exposes as a dropdown.
+  if (req.method === "GET" && url.pathname === "/genparams/presets") {
+    return jsonOk({ presets: PRESETS });
   }
 
   if (req.method === "POST" && url.pathname === "/world/restart") {

@@ -23,6 +23,20 @@ export interface GenParams {
     frequency: number;
     /** fbm octaves for biome fields. More = more detail at boundaries. */
     octaves: number;
+    /**
+     * Per-channel additive offset applied AFTER the fbm sample. Use to
+     * push the whole world wetter / drier / higher / etc. before any
+     * downstream rule runs. Final value clamped to [0, 1] per channel.
+     *
+     * Examples:
+     *   biasMoisture = +0.3 → forested everywhere (vegetation kind dominates)
+     *   biasAltitude = +0.4 → mountainy everywhere (cliff kind dominates)
+     *   biasMoisture = -0.3 → arid; sand + dirt materials, cliff walls
+     */
+    biasTemperature: number;
+    biasMoisture: number;
+    biasAltitude: number;
+    biasRuggedness: number;
   };
 
   /** River planning at world scale + width at tile scale. */
@@ -101,25 +115,32 @@ export interface GenParams {
 }
 
 /**
- * Defaults match the values that have been hand-tuned through phases
- * 1–5. Any baked world without a `params` column row gets these.
+ * Defaults — biased toward the "forest maze" feel:
+ *   - mostly-closed terrain (low threshold, high frequency = thin winding paths)
+ *   - vegetation as the default closed kind (low vegetationMoisture cutoff)
+ *   - moisture biased up so most cells are forested
+ *   - moderate wall height (not tall enough to look cliff-y)
  */
 export const DEFAULT_GEN_PARAMS: GenParams = {
   biome: {
     frequency: 1 / 6,
     octaves: 3,
+    biasTemperature: 0,
+    biasMoisture: 0.20,    // push forest-y
+    biasAltitude: -0.10,   // pull a bit lower so cliffs don't dominate
+    biasRuggedness: 0,
   },
   river: {
-    sourceAltitude: 0.62,
+    sourceAltitude: 0.55,  // more sources → more rivers
     minSeparation: 2,
     widthPixels: 2,
   },
   noise: {
-    baseFrequency: 0.02,
+    baseFrequency: 0.05,                 // smaller features → tighter maze
     extraFrequencyPerRuggedness: 0.02,
-    baseThreshold: -0.10,
-    extraThresholdPerRuggedness: 0.30,
-    octaves: 3,
+    baseThreshold: -0.25,                // lower = thinner open paths
+    extraThresholdPerRuggedness: 0.20,
+    octaves: 4,                          // more wiggle in path edges
   },
   terrain: {
     wallHeight: 3.0,
@@ -141,13 +162,88 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   },
   kinds: {
     detailFrequency: 0.05,
-    cliffAltitudeStrict: 0.65,
-    cliffAltitudeRugged: 0.50,
-    cliffRuggednessThreshold: 0.60,
+    cliffAltitudeStrict: 0.75,           // cliffs only at very high altitude
+    cliffAltitudeRugged: 0.65,
+    cliffRuggednessThreshold: 0.70,
     waterMoisture: 0.65,
     waterAltitude: 0.45,
     waterDetail: 0.55,
-    vegetationMoisture: 0.30,
+    vegetationMoisture: 0.10,            // almost everything is forest
+  },
+};
+
+// ---- named presets -------------------------------------------------------
+//
+// Each preset is a complete GenParams snapshot. The inspector exposes them
+// as a dropdown so designers can jump between named configurations and then
+// tweak from there. Presets are deliberately strong shapes (the differences
+// between them should be visible at a glance), not subtle variations.
+
+export const PRESETS: Record<string, { name: string; description: string; params: GenParams }> = {
+  forest_maze: {
+    name: "Forest maze",
+    description: "Dense forest with thin winding open paths. The default vision.",
+    params: DEFAULT_GEN_PARAMS,
+  },
+  open_plains: {
+    name: "Open plains",
+    description: "Mostly walkable, sparse tree clusters. Big rooms, few obstacles.",
+    params: {
+      ...DEFAULT_GEN_PARAMS,
+      biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.05, biasAltitude: -0.20 },
+      noise: {
+        baseFrequency: 0.02,
+        extraFrequencyPerRuggedness: 0.01,
+        baseThreshold: 0.15,                // higher → mostly open
+        extraThresholdPerRuggedness: 0.10,
+        octaves: 3,
+      },
+      kinds: { ...DEFAULT_GEN_PARAMS.kinds, vegetationMoisture: 0.10 },
+    },
+  },
+  cliff_dungeon: {
+    name: "Cliff dungeon",
+    description: "High altitude, cliff walls dominate. Reads like a stone maze.",
+    params: {
+      ...DEFAULT_GEN_PARAMS,
+      biome: { ...DEFAULT_GEN_PARAMS.biome, biasAltitude: 0.40, biasRuggedness: 0.20, biasMoisture: -0.10 },
+      noise: {
+        baseFrequency: 0.06,
+        extraFrequencyPerRuggedness: 0.02,
+        baseThreshold: -0.30,
+        extraThresholdPerRuggedness: 0.15,
+        octaves: 4,
+      },
+      terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 5.0 },
+      kinds: {
+        ...DEFAULT_GEN_PARAMS.kinds,
+        cliffAltitudeStrict: 0.30,
+        cliffAltitudeRugged: 0.20,
+        cliffRuggednessThreshold: 0.30,
+        vegetationMoisture: 0.80,           // vegetation rare
+      },
+    },
+  },
+  wet_marsh: {
+    name: "Wet marsh",
+    description: "Low, wet, scattered water and dense vegetation around it.",
+    params: {
+      ...DEFAULT_GEN_PARAMS,
+      biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.40, biasAltitude: -0.30 },
+      river: { sourceAltitude: 0.40, minSeparation: 1, widthPixels: 3 },
+      noise: {
+        baseFrequency: 0.04,
+        extraFrequencyPerRuggedness: 0.01,
+        baseThreshold: -0.15,
+        extraThresholdPerRuggedness: 0.10,
+        octaves: 3,
+      },
+      kinds: {
+        ...DEFAULT_GEN_PARAMS.kinds,
+        waterMoisture: 0.40, waterAltitude: 0.60, waterDetail: 0.30,
+        vegetationMoisture: 0.05,
+      },
+    },
   },
 };
 

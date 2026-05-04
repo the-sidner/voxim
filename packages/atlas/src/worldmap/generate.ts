@@ -69,14 +69,16 @@ function makeCell(
   const fy = cellY * biomeParams.frequency;
   const o  = biomeParams.octaves;
 
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
   return {
     cellX,
     cellY,
     biome: {
-      temperature: fbm(fx, fy, seed ^ SEED_TEMP,   o),
-      moisture:    fbm(fx, fy, seed ^ SEED_MOIST,  o),
-      altitude:    fbm(fx, fy, seed ^ SEED_ALT,    o),
-      ruggedness:  fbm(fx, fy, seed ^ SEED_RUGGED, o),
+      temperature: clamp01(fbm(fx, fy, seed ^ SEED_TEMP,   o) + biomeParams.biasTemperature),
+      moisture:    clamp01(fbm(fx, fy, seed ^ SEED_MOIST,  o) + biomeParams.biasMoisture),
+      altitude:    clamp01(fbm(fx, fy, seed ^ SEED_ALT,    o) + biomeParams.biasAltitude),
+      ruggedness:  clamp01(fbm(fx, fy, seed ^ SEED_RUGGED, o) + biomeParams.biasRuggedness),
     },
     gates: {
       north: gateOnEdge(seed, cellX, cellY, width, height, "north"),

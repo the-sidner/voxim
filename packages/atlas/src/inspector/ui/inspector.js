@@ -35,6 +35,7 @@ let worldBbox = null;
 let tile = null;          // { tileId, cellX, cellY, payload, world } from GET /tile/x/y
 let tileLayer = "rooms";  // "rooms" | "height" | "materials" | "kinds"
 let defaults = null;      // GenParams from GET /genparams/defaults
+let presets = null;       // Record<key, {name, description, params}> from /genparams/presets
 let formParams = null;    // GenParams currently in the form (matches input values)
 let formMeta = { name: "", seed: 1, width: 2, height: 2 };
 
@@ -51,8 +52,12 @@ function reachable(s, a, b) {
 
 const KNOB_CONFIG = {
   biome: {
-    frequency: { step: 0.01, min: 0.01 },
-    octaves:   { step: 1, min: 1, max: 8, integer: true },
+    frequency:       { step: 0.01, min: 0.01 },
+    octaves:         { step: 1, min: 1, max: 8, integer: true },
+    biasTemperature: { step: 0.05, min: -1, max: 1 },
+    biasMoisture:    { step: 0.05, min: -1, max: 1 },
+    biasAltitude:    { step: 0.05, min: -1, max: 1 },
+    biasRuggedness:  { step: 0.05, min: -1, max: 1 },
   },
   river: {
     sourceAltitude: { step: 0.01, min: 0, max: 1 },
@@ -75,6 +80,59 @@ const KNOB_CONFIG = {
   // materials/kinds: every knob is a 0..1 threshold; uniform config.
 };
 
+// Tooltips per knob: short hint shown on hover so designers know which
+// knob to reach for without re-reading the source.
+const KNOB_HINT = {
+  biome: {
+    frequency:       "Lower → larger biome regions.",
+    octaves:         "More → more detail at biome boundaries.",
+    biasTemperature: "Push the WHOLE world warmer / cooler.",
+    biasMoisture:    "Push the world wetter / drier (forest / desert).",
+    biasAltitude:    "Push the world higher / lower (cliffs / valleys).",
+    biasRuggedness:  "Push terrain rougher / smoother.",
+  },
+  river: {
+    sourceAltitude: "Min altitude to start a river. Lower → more rivers.",
+    minSeparation:  "Cells between river sources. Lower → denser.",
+    widthPixels:    "River brush radius. Larger → wider rivers.",
+  },
+  noise: {
+    baseFrequency:               "Higher → smaller features (tighter maze).",
+    extraFrequencyPerRuggedness: "How much frequency rises with ruggedness.",
+    baseThreshold:               "Lower → less open (thinner paths).",
+    extraThresholdPerRuggedness: "How threshold rises with ruggedness.",
+    octaves:                     "More → wigglier path edges.",
+  },
+  terrain: {
+    wallHeight:        "Vertical step at cliff walls. Must exceed 0.75.",
+    floorBaseline:     "Baseline ground height in open regions.",
+    floorModAmplitude: "How bumpy the floor is.",
+    floorModFrequency: "Bump frequency.",
+  },
+  materials: {
+    detailFrequency:           "Per-pixel material noise scale.",
+    stoneAltitudeStrict:       "Above this altitude → stone (no other check).",
+    stoneAltitudeRugged:       "Above this altitude AND rugged → stone.",
+    stoneRuggednessThreshold:  "Ruggedness needed for the rugged-stone branch.",
+    sandTemperature:           "Hot enough for sand.",
+    sandMoisture:              "Below this moisture, hot pixels are sand.",
+    waterMoisture:             "Wet enough for water puddles.",
+    waterAltitude:             "Below this altitude, wet pixels can be water.",
+    waterDetail:               "Detail-noise threshold for water puddles.",
+    grassMoisture:             "Above this moisture, fall back to grass.",
+  },
+  kinds: {
+    detailFrequency:           "Per-pixel kind noise scale.",
+    cliffAltitudeStrict:       "Above this altitude → cliff (no other check).",
+    cliffAltitudeRugged:       "Above this altitude AND rugged → cliff.",
+    cliffRuggednessThreshold:  "Ruggedness needed for the rugged-cliff branch.",
+    waterMoisture:             "Wet enough for water boundary.",
+    waterAltitude:             "Below this altitude, wet pixels can be water.",
+    waterDetail:               "Detail-noise threshold for water boundary.",
+    vegetationMoisture:        "Above this moisture → vegetation. LOW → forest dominates.",
+  },
+};
+
 const SLICE_LABELS = {
   biome:     "Biome",
   river:     "River",
@@ -93,7 +151,10 @@ canvas.addEventListener("click", onCanvasClick);
 bootstrap();
 
 async function bootstrap() {
-  defaults = (await fetch("/genparams/defaults").then(r => r.json())).defaults;
+  [defaults, presets] = await Promise.all([
+    fetch("/genparams/defaults").then(r => r.json()).then(r => r.defaults),
+    fetch("/genparams/presets").then(r => r.json()).then(r => r.presets),
+  ]);
   await loadActiveWorld();
   renderBakeForm();
   route();
@@ -148,6 +209,26 @@ function setCrumbs(...parts) {
 
 function renderBakeForm() {
   const html = [];
+
+  // ---- preset picker ----
+  const presetOpts = Object.entries(presets ?? {})
+    .map(([k, p]) => `<option value="${escape(k)}">${escape(p.name)}</option>`)
+    .join("");
+  const activeDesc = "Pick a strong starting point, then tweak.";
+  html.push(`<section>
+    <h2>Preset</h2>
+    <div class="row" style="gap:6px">
+      <select id="preset" class="full"
+        style="background:#0e0f12;color:var(--text);border:1px solid var(--border);padding:3px 6px;font:inherit;border-radius:3px;flex:1;">
+        <option value="">— pick —</option>
+        ${presetOpts}
+      </select>
+      <button id="preset-apply">Apply</button>
+    </div>
+    <div id="preset-desc" style="font-size:11px;color:var(--text-dim);margin-top:4px">${escape(activeDesc)}</div>
+  </section>`);
+
+  // ---- top-level meta ----
   html.push(`<section>
     <h2>Bake new world</h2>
     <div class="row"><label>Name</label>
@@ -160,9 +241,10 @@ function renderBakeForm() {
       <input id="f-height" type="number" step="1" min="1" max="32" value="${formMeta.height}"></div>
   </section>`);
 
+  // ---- per-slice knob sections ----
   for (const slice of Object.keys(formParams)) {
     const knobs = Object.keys(formParams[slice]);
-    html.push(`<details ${slice === "noise" || slice === "terrain" ? "" : ""} data-slice="${slice}">
+    html.push(`<details data-slice="${slice}">
       <summary>${SLICE_LABELS[slice] ?? slice} <span class="count">${knobs.length} knobs</span></summary>
       <div class="body">
         ${knobs.map(k => knobInput(slice, k, formParams[slice][k])).join("")}
@@ -181,6 +263,22 @@ function renderBakeForm() {
   </section>`);
 
   bakeForm.innerHTML = html.join("");
+
+  // Preset hookup: select highlights description; "Apply" copies into form.
+  const presetSel  = bakeForm.querySelector("#preset");
+  const presetDesc = bakeForm.querySelector("#preset-desc");
+  presetSel.addEventListener("change", () => {
+    const p = presets[presetSel.value];
+    presetDesc.textContent = p ? p.description : "Pick a strong starting point, then tweak.";
+  });
+  bakeForm.querySelector("#preset-apply").addEventListener("click", () => {
+    const p = presets[presetSel.value];
+    if (!p) return;
+    formParams = clone(p.params);
+    if (!formMeta.name) formMeta.name = `${presetSel.value}-${nowSlug()}`;
+    renderBakeForm();
+    toast("info", `Loaded preset "${p.name}". Tweak and bake.`);
+  });
 
   // Wire input listeners — each updates formParams + flags the slice as dirty.
   for (const slice of Object.keys(formParams)) {
@@ -215,12 +313,13 @@ function renderBakeForm() {
 }
 
 function knobInput(slice, key, value) {
-  const cfg = KNOB_CONFIG[slice]?.[key] ?? { step: 0.01 };
+  const cfg  = KNOB_CONFIG[slice]?.[key] ?? { step: 0.01 };
+  const hint = KNOB_HINT[slice]?.[key] ?? `${slice}.${key}`;
   const id = `f-${slice}-${key}`;
   const valStr = cfg.integer ? String(Math.round(value)) : String(value);
   return `<div class="row">
-    <label title="${escape(slice)}.${escape(key)}">${escape(key)}</label>
-    <input id="${id}" type="number"
+    <label title="${escape(hint)}">${escape(key)}</label>
+    <input id="${id}" type="number" title="${escape(hint)}"
       step="${cfg.step}"
       ${cfg.min !== undefined ? `min="${cfg.min}"` : ""}
       ${cfg.max !== undefined ? `max="${cfg.max}"` : ""}
