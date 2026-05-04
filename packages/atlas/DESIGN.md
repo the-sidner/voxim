@@ -173,21 +173,38 @@ packages/atlas/
     common/                ← rng, math, types
 ```
 
-## Boundary-kind contract (target)
+## Boundary kinds — data, not code
+
+A boundary kind is **just metadata**. There is no per-kind callback, no `shape()` or `onTransform()` interface to implement. The whole runtime story is one universal loop, kind-agnostic:
+
+```
+player action at pixel p with verb v:
+  inst = boundaryAt(p)
+  if (!inst) → ignore
+  if (!inst.kind.transformVerbs.includes(v)) → "wrong tool"
+  else:
+    openMask[inst.pixels] = 1   // flip
+    reflood()                   // O(N) BFS over openMask
+    summary = packGateNibbles(rooms, portals)
+    if (summary !== lastSummary) push to coordinator
+```
+
+So a kind is:
 
 ```ts
 interface BoundaryKind {
-  id: string;
-  // Generation: shape the openMask + emit visual entities/spawns
-  shape(region: Region, params: unknown, ctx: TileContext): BoundaryShape;
-  // Runtime: declared verb that transforms it into open space
-  transformVerb: "chop" | "bridge" | "climb" | "mine" | "burn";
-  // Runtime: openMask delta when transformed at point p
-  onTransform(p: Point, state: TileState): OpenMaskDelta;
+  id: string;                  // "vegetation" | "rock" | "water"
+  visual: { modelId, … };      // how to render closed pixels of this kind
+  transformVerbs: string[];    // which player verbs can flip it open
 }
 ```
 
-`onTransform` is what makes "chopping a tree opens a shortcut" work end-to-end: tile-server calls it on chop, gets back an openMask delta, applies it, recomputes inner room graph + summary, pushes the new `u16` to coordinator.
+Kinds live in JSON. Adding a new boundary type is a content task, not an engineering one. The gating, the reflood, the summary recompute, the push — all universal.
+
+A boundary **instance** stored per tile (`{ kind, pixels[] }`) tracks which closed pixels belong to which kind, so:
+- tile-server knows what model to render at each pixel
+- a single chop can atomically clear a multi-pixel boulder
+- verb compatibility is decided per-instance, not per-pixel
 
 ## Phased plan
 
@@ -203,16 +220,18 @@ Worldmap generation: biome params per cell, gate offsets, linear-feature specs. 
 Tile pipeline: noise → rooms → portals → boundaries → features. Write `tile_init` rows. Inspector renders one tile's stage-by-stage view. Tile-server starts reading `tile_init` instead of running its own gen.
 
 **Phase 3 — gate-summary + world graph.**
-Atlas derives the `u16` per tile and stores it. Coordinator aggregates. World-graph view in the inspector.
+Atlas derives the `u16` per tile and stores it. Inspector tile view shows the four nibbles + reachability matrix; world view draws connectivity arcs through each cell. Coordinator aggregation lands here too — tiles push, coordinator holds the world graph.
 
-**Phase 4 — boundary transform contract.**
-Wire `onTransform` for the first boundary kind (trees → chop). Tile-server calls it on chop, recomputes summary, pushes to coordinator. World graph updates live in inspector.
+(The runtime "edit → reflood → push" loop is kind-agnostic and universal — no per-kind callback to wire. Once tile-server reads `tile_init` from atlas in phase 6, it picks up the loop with a single function.)
 
-**Phase 5 — edit overrides.**
-Inspector's "tweak parameter, regen tile" loop. Manual overrides per tile.
+**Phase 4 — boundary kind metadata + per-pixel instances.**
+First boundary kinds (vegetation, rock, water) as JSON with visual + transformVerbs. Atlas tags closed pixels with their kind during generation; persisted in `tile_init`. No new code paths — the universal loop already handles them.
 
-**Phase 6 — linear features land in tile gen.**
+**Phase 5 — linear features land in tile gen.**
 Rivers + roads stamped into openMask via per-tile specs from worldmap layer.
+
+**Phase 6 — tile-server reads tile_init + runs the runtime loop.**
+Tile-server stops generating; reads `tile_init` from atlas at boot, applies player edits on top of it. Player actions that flip openMask pixels trigger the universal `reflood → resummarise → push to coordinator` loop. World graph updates live as players reshape tiles.
 
 ## What carries over from the archived branch (concepts only)
 

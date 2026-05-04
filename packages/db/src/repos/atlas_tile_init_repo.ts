@@ -19,12 +19,27 @@ export interface AtlasTileInitRow {
   generatedAt: Date;
 }
 
+export interface AtlasTileSummaryRow {
+  cellX: number;
+  cellY: number;
+  /** gateSummary u16 extracted from the payload's gateSummary field. */
+  summary: number;
+  seed: bigint;
+}
+
 export interface AtlasTileInitRepo {
   /** Returns null when nothing's been generated for this tile yet. */
   get(tileId: string, worldId?: string): Promise<AtlasTileInitRow | null>;
 
   /** List all tile_init rows for a world (compact metadata, no payload). */
   list(worldId?: string): Promise<Array<Omit<AtlasTileInitRow, "payload">>>;
+
+  /**
+   * Cheap per-tile summary list — pulls only the gateSummary u16 out of
+   * each row's payload. Used by the inspector world view to draw
+   * internal connectivity without dragging full payloads over the wire.
+   */
+  listSummaries(worldId?: string): Promise<AtlasTileSummaryRow[]>;
 
   put(input: {
     worldId?: string;
@@ -106,6 +121,36 @@ export class PgAtlasTileInitRepo implements AtlasTileInitRepo {
         cellY:   r.cell_y,
         seed:    r.seed,
         generatedAt: r.generated_at,
+      }));
+    } finally {
+      conn.release();
+    }
+  }
+
+  async listSummaries(worldId: string = "default"): Promise<AtlasTileSummaryRow[]> {
+    const conn = await this.pool.connect();
+    try {
+      const res = await conn.queryObject<{
+        cell_x: number;
+        cell_y: number;
+        summary: number;
+        seed: bigint;
+      }>({
+        text: `
+          SELECT cell_x, cell_y,
+                 (payload->>'gateSummary')::int AS summary,
+                 seed
+          FROM atlas_tile_init
+          WHERE world_id = $1
+          ORDER BY cell_y, cell_x
+        `,
+        args: [worldId],
+      });
+      return res.rows.map((r) => ({
+        cellX: r.cell_x,
+        cellY: r.cell_y,
+        summary: r.summary,
+        seed: r.seed,
       }));
     } finally {
       conn.release();

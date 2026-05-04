@@ -30,6 +30,7 @@ export { PgAtlasWorldRepo } from "./src/repos/atlas_world_repo.ts";
 
 export type {
   AtlasTileInitRow,
+  AtlasTileSummaryRow,
   AtlasTileInitRepo,
 } from "./src/repos/atlas_tile_init_repo.ts";
 export { PgAtlasTileInitRepo } from "./src/repos/atlas_tile_init_repo.ts";

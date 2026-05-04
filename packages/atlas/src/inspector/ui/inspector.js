@@ -21,8 +21,17 @@ canvas.addEventListener("click", onCanvasClick);
 
 let view = null; // "world" | "tile"
 let world = null; // { seed, cells: [...] }
+let summaries = null; // Map<"x,y", number>  — gateSummary u16 per cell
 let worldBbox = null;
 let tile = null; // { tileId, cellX, cellY, seed, payload: TileInitWire }
+
+const NO_GATE = 0xF;
+const EDGE_NIBBLE = { north: 0, east: 1, south: 2, west: 3 };
+function nibbleAt(summary, edge) { return (summary >> (EDGE_NIBBLE[edge] * 4)) & 0xF; }
+function reachable(summary, a, b) {
+  const na = nibbleAt(summary, a), nb = nibbleAt(summary, b);
+  return na !== NO_GATE && nb !== NO_GATE && na === nb;
+}
 
 route();
 
@@ -44,8 +53,12 @@ function setCrumbs(...parts) {
 
 async function loadWorld() {
   view = "world";
-  const res = await fetch("/world");
-  world = await res.json();
+  const [worldRes, summariesRes] = await Promise.all([
+    fetch("/world").then((r) => r.json()),
+    fetch("/world/summaries").then((r) => r.json()),
+  ]);
+  world = worldRes;
+  summaries = new Map(summariesRes.summaries.map((s) => [`${s.cellX},${s.cellY}`, s.summary]));
   if (world.cells.length === 0) {
     meta.textContent = "no worldmap";
     return;
@@ -54,7 +67,7 @@ async function loadWorld() {
     minX: Math.min(acc.minX, c.cellX), minY: Math.min(acc.minY, c.cellY),
     maxX: Math.max(acc.maxX, c.cellX), maxY: Math.max(acc.maxY, c.cellY),
   }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
-  meta.textContent = `seed ${world.seed} · ${world.cells.length} cells`;
+  meta.textContent = `seed ${world.seed} · ${world.cells.length} cells · ${summaries.size} tiles generated`;
   setCrumbs({ label: "World" });
   renderWorldAside();
   resize();
@@ -113,7 +126,9 @@ function worldLayout() {
 function drawWorld() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   const layout = worldLayout(); if (!layout) return;
+  // Two passes: cells + gates first, connectivity arcs on top.
   for (const c of world.cells) drawWorldCell(c, layout);
+  for (const c of world.cells) drawConnectivityFor(c, layout);
 }
 
 function drawWorldCell(c, layout) {
@@ -140,6 +155,49 @@ function drawWorldCell(c, layout) {
     ctx.beginPath();
     ctx.arc(gx, gy, dotR, 0, Math.PI * 2);
     ctx.fill();
+  }
+}
+
+/**
+ * For each pair of gates internally connected (same nibble in this cell's
+ * gate-summary), draw an arc inside the cell linking the two gate dots.
+ * Skips the cell entirely if no summary is available (tile not generated).
+ */
+function drawConnectivityFor(c, layout) {
+  const summary = summaries.get(`${c.cellX},${c.cellY}`);
+  if (summary === undefined) return;
+
+  const { cellPx, originX, originY } = layout;
+  const x = originX + (c.cellX - worldBbox.minX) * cellPx;
+  const y = originY + (c.cellY - worldBbox.minY) * cellPx;
+  const tile = 512;
+
+  // Resolve each present edge to a {gx, gy} canvas point.
+  const points = {};
+  for (const edge of ["north", "east", "south", "west"]) {
+    const g = c.gates[edge]; if (!g) continue;
+    const along = g.offset / tile * cellPx;
+    let gx, gy;
+    if (edge === "north") { gx = x + along;     gy = y; }
+    if (edge === "south") { gx = x + along;     gy = y + cellPx - 1; }
+    if (edge === "west")  { gx = x;             gy = y + along; }
+    if (edge === "east")  { gx = x + cellPx - 1; gy = y + along; }
+    points[edge] = { gx, gy };
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,0.7)";
+  ctx.lineWidth = Math.max(1, cellPx * 0.015);
+  const edges = ["north", "east", "south", "west"];
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      if (!reachable(summary, edges[i], edges[j])) continue;
+      const a = points[edges[i]], b = points[edges[j]];
+      if (!a || !b) continue;
+      ctx.beginPath();
+      ctx.moveTo(a.gx, a.gy);
+      ctx.lineTo(b.gx, b.gy);
+      ctx.stroke();
+    }
   }
 }
 
@@ -184,13 +242,53 @@ function renderTileAside(cellX, cellY) {
         <dt>portals</dt><dd>${p.portals.length}</dd>
         ${portalsHtml}
       </dl>
-    </section>`;
+    </section>
+    ${renderSummarySection(p.gateSummary)}`;
   document.getElementById("back").addEventListener("click", () => { location.hash = "#world"; });
   document.getElementById("tregen").addEventListener("click", async () => {
     meta.textContent = "regenerating tile…";
     await fetch(`/tile/${cellX}/${cellY}/regen`, { method: "POST" });
     await loadTile(cellX, cellY);
   });
+}
+
+function renderSummarySection(summary) {
+  const hex = "0x" + summary.toString(16).padStart(4, "0");
+  const edges = ["north", "east", "south", "west"];
+  const labelOf = (e) => ({ north: "N", east: "E", south: "S", west: "W" })[e];
+  const nib = (e) => {
+    const n = nibbleAt(summary, e);
+    return n === NO_GATE ? "·" : String(n);
+  };
+  // Reachability matrix: 4×4. "—" diagonal, "✓" connected, blank otherwise.
+  const matrix = `
+    <table style="border-collapse:collapse;font-size:11px;width:100%;text-align:center">
+      <thead><tr><th></th>${edges.map((e) => `<th>${labelOf(e)}</th>`).join("")}</tr></thead>
+      <tbody>
+        ${edges.map((from) => `
+          <tr>
+            <th style="text-align:right;padding-right:6px;color:var(--text-dim)">${labelOf(from)}</th>
+            ${edges.map((to) => {
+              if (from === to) return `<td style="color:var(--text-dim)">—</td>`;
+              const ok = reachable(summary, from, to);
+              const naLeft  = nibbleAt(summary, from) === NO_GATE;
+              const naRight = nibbleAt(summary, to)   === NO_GATE;
+              const cls = ok ? "color:var(--accent)" : (naLeft || naRight) ? "color:var(--text-dim)" : "color:var(--text-dim)";
+              const ch  = ok ? "✓" : (naLeft || naRight) ? "·" : " ";
+              return `<td style="${cls}">${ch}</td>`;
+            }).join("")}
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+  return `
+    <section class="info">
+      <h2>Gate summary</h2>
+      <dl>
+        <dt>u16</dt><dd>${hex}</dd>
+        <dt>N · E · S · W</dt><dd>${nib("north")} · ${nib("east")} · ${nib("south")} · ${nib("west")}</dd>
+      </dl>
+      ${matrix}
+    </section>`;
 }
 
 function tileLayout() {

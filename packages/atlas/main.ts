@@ -18,6 +18,7 @@
 import { createPool, PgAtlasTileInitRepo, PgAtlasWorldRepo } from "@voxim/db";
 import { startAtlasServer } from "./mod.ts";
 import { generateWorldMap } from "./src/worldmap/generate.ts";
+import { generateTile, tileInitToWire } from "./src/tilemap/generate.ts";
 
 const port    = parseInt(Deno.env.get("ATLAS_PORT")   ?? "8082");
 const worldId = Deno.env.get("WORLD_ID")              ?? "default";
@@ -51,9 +52,32 @@ if (!existing || Number(existing.seed) !== seed) {
   });
   // Worldmap re-seeded → all existing tile_init rows are stale.
   await tileRepo.deleteAll(worldId);
-  console.log(`[Atlas] persisted ${wm.cells.length} cells; cleared stale tile_init rows`);
+  // Eagerly populate tile_init for every cell so the inspector has full
+  // summary coverage on first boot.
+  for (const cell of wm.cells) {
+    const tileSeed = tileSeedForBoot(seed, cell.cellX, cell.cellY);
+    const t = generateTile(cell, tileSeed);
+    await tileRepo.put({
+      worldId,
+      tileId:  `${cell.cellX}_${cell.cellY}`,
+      cellX:   cell.cellX,
+      cellY:   cell.cellY,
+      seed:    BigInt(tileSeed),
+      payload: tileInitToWire(t) as unknown as Record<string, unknown>,
+    });
+  }
+  console.log(`[Atlas] persisted ${wm.cells.length} cells + ${wm.cells.length} tile_init rows`);
 } else {
   console.log(`[Atlas] worldmap loaded (seed ${existing.seed}, ${existing.cells.length} cells)`);
 }
 
 startAtlasServer({ port, worldRepo, tileRepo, worldId });
+
+/**
+ * Same hash used in server.ts. Duplicated here rather than re-exported so
+ * main.ts doesn't import server internals beyond the entry point — keeps
+ * the boot path obvious in one file.
+ */
+function tileSeedForBoot(worldSeed: number, cellX: number, cellY: number): number {
+  return ((worldSeed * 0x9e3779b1) ^ (cellX * 73856093) ^ (cellY * 19349663)) >>> 0;
+}

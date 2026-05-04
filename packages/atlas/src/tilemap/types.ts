@@ -72,10 +72,18 @@ export interface TileInit {
   rooms: Room[];
   portals: Portal[];
 
+  /**
+   * Gate-summary u16 — which edge gates are internally connected.
+   * Four nibbles in [N, E, S, W] order; component id (0..2) when a gate
+   * is present, 0xF when absent. Two gates connected iff their nibbles
+   * are equal (and neither is 0xF). See summary.ts.
+   */
+  gateSummary: number;
+
   // ---- placeholders for later phases ------------------------------
-  /** Will be populated by phase 2B (boundary kinds, e.g. tree patches). */
+  /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
   boundaries: unknown[];
-  /** Will be populated by phase 2B (feature kinds, e.g. hearth slot). */
+  /** Will be populated by phase 4 (feature kinds, e.g. hearth slot). */
   features: unknown[];
 }
 
@@ -92,6 +100,7 @@ export interface TileInitWire {
   roomOfB64: string;
   rooms: Room[];
   portals: Portal[];
+  gateSummary: number;
   boundaries: unknown[];
   features: unknown[];
 }

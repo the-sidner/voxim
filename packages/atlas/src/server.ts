@@ -92,7 +92,28 @@ async function handleRequest(
     });
     // Worldmap re-seeded → all existing tile_init rows are stale.
     await cfg.tileRepo.deleteAll(cfg.worldId);
-    return jsonOk({ regenerated: wm.cells.length, seed, width, height });
+    // Eagerly regenerate every tile so the inspector world view has full
+    // summary coverage immediately. Tiny world (≤ 256 cells) → fast.
+    let tilesGenerated = 0;
+    for (const cell of wm.cells) {
+      const tileSeed = tileSeedFor(seed, cell.cellX, cell.cellY);
+      const t = generateTile(cell, tileSeed);
+      await cfg.tileRepo.put({
+        worldId: cfg.worldId,
+        tileId:  tileIdFor(cell.cellX, cell.cellY),
+        cellX:   cell.cellX,
+        cellY:   cell.cellY,
+        seed:    BigInt(tileSeed),
+        payload: tileInitToWire(t) as unknown as Record<string, unknown>,
+      });
+      tilesGenerated++;
+    }
+    return jsonOk({ regenerated: wm.cells.length, tilesGenerated, seed, width, height });
+  }
+
+  if (req.method === "GET" && url.pathname === "/world/summaries") {
+    const summaries = await cfg.tileRepo.listSummaries(cfg.worldId);
+    return jsonOk({ summaries });
   }
 
   // GET /tile/:cellX/:cellY  (lazy: regenerates if missing or seed-stale)

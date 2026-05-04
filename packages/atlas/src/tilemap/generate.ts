@@ -16,6 +16,7 @@
 
 import { runNoiseField } from "./pipeline/noise_field.ts";
 import { runPortalPlacement } from "./pipeline/portal_placement.ts";
+import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 
@@ -61,6 +62,7 @@ export function generateTile(
     roomOf:   placed.roomOf,
     rooms:    placed.rooms,
     portals:  placed.portals,
+    gateSummary: deriveGateSummary(placed.portals),
     boundaries: [],
     features:   [],
   };
@@ -78,6 +80,7 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     roomOfB64:   bytesToBase64(new Uint8Array(t.roomOf.buffer, t.roomOf.byteOffset, t.roomOf.byteLength)),
     rooms:    t.rooms,
     portals:  t.portals,
+    gateSummary: t.gateSummary,
     boundaries: t.boundaries,
     features:   t.features,
   };
@@ -100,6 +103,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     roomOf,
     rooms:    w.rooms,
     portals:  w.portals,
+    gateSummary: w.gateSummary,
     boundaries: w.boundaries,
     features:   w.features,
   };
