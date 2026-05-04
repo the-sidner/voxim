@@ -71,6 +71,7 @@ function encodeEntity(
 export class SaveManager {
   constructor(
     private readonly repo: TileSaveRepo,
+    private readonly worldId: string,
     private readonly tileId: string,
   ) {}
 
@@ -78,7 +79,7 @@ export class SaveManager {
 
   async save(world: World): Promise<void> {
     const payload = this.serialize(world);
-    await this.repo.put(this.tileId, payload);
+    await this.repo.put(this.worldId, this.tileId, payload);
   }
 
   /** Public for tests / future export tools — produces the VXM2 byte payload. */
@@ -142,7 +143,7 @@ export class SaveManager {
    * doesn't match, or the payload is corrupt.
    */
   async load(world: World): Promise<boolean> {
-    const row = await this.repo.get(this.tileId);
+    const row = await this.repo.get(this.worldId, this.tileId);
     if (!row) return false;
     return this.deserialize(world, row.payload);
   }
@@ -217,7 +218,7 @@ export class SaveManager {
 
   /** True if a saved snapshot exists for this tile. */
   async exists(): Promise<boolean> {
-    const row = await this.repo.get(this.tileId);
+    const row = await this.repo.get(this.worldId, this.tileId);
     return row !== null;
   }
 }

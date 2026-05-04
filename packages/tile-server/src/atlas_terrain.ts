@@ -1,19 +1,19 @@
 /**
  * Atlas-driven terrain loader.
  *
- * Tile-server stops generating terrain at boot. Instead it fetches the
- * pre-computed TileInit row written by atlas, decodes it, and upsamples
- * to tile-server's voxel resolution (TILE_SIZE²). Atlas is now the
- * single source of truth for terrain — no fallback path here.
+ * Tile-server stops generating terrain at boot. Instead it queries the
+ * latest baked world via WorldsRepo, fetches its tile_init row from
+ * AtlasTileInitRepo, decodes, and upsamples to tile-server's voxel
+ * resolution (TILE_SIZE²). Atlas is the single source of truth.
  *
- * Boot ordering: atlas eagerly populates tile_init for every cell at
- * startup, but compose can race tile-server up before atlas's first
- * generation completes. We poll the repo with a short retry loop;
- * docker-compose dependencies should normally make this succeed on
- * the first try.
+ * Boot ordering: atlas's bootstrap-on-empty creates a world if none
+ * exists, but compose can race tile-server up before atlas finishes its
+ * first bake. We poll for both the active world and its tile_init row;
+ * docker-compose dependencies normally make this succeed first try.
  */
 
-import type { AtlasTileInitRepo } from "@voxim/db";
+import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
+import type { GatePosition } from "@voxim/protocol";
 import type { ContentStore } from "@voxim/content";
 import type { World } from "@voxim/engine";
 import {
@@ -53,10 +53,18 @@ export interface AtlasTerrainResult {
   tileSeed: number;
   cellX: number;
   cellY: number;
+  /** The active world the tile was loaded from. Drives save scoping + restart polling. */
+  world: WorldRow;
+  /**
+   * Gate positions derived from the worldmap cell's gates. Each present
+   * edge becomes one GatePosition with the destination tile id resolved
+   * from the neighbouring cell's coords (tile id convention: cellX_cellY).
+   * Spawned as entities by tile-server's gate system.
+   */
+  gatePositions: GatePosition[];
 }
 
 export interface LoadOptions {
-  worldId?: string;
   /** Total retries before giving up. Default 30 (~30s with 1s sleep). */
   maxRetries?: number;
   /** Milliseconds between retries. Default 1000. */
@@ -64,26 +72,19 @@ export interface LoadOptions {
 }
 
 /**
- * Convert tile-server's `tile_N` id into atlas's `cellX_cellY` key.
- * Indexing convention: row-major across the macro grid, matching the
- * coordinator's WORLD_TILES list order.
+ * Tile id convention: `cellX_cellY`. Each tile-server process binds to
+ * one tile id at boot via the TILE_ID env. The (cellX, cellY) parsed out
+ * is what atlas's tile_init rows are keyed by.
  */
-export function tileIdToAtlasKey(tileId: string, worldWidth: number): {
-  atlasKey: string;
-  cellX: number;
-  cellY: number;
-} {
-  const m = tileId.match(/^tile_(\d+)$/);
+export function parseTileId(tileId: string): { cellX: number; cellY: number } {
+  const m = tileId.match(/^(\d+)_(\d+)$/);
   if (!m) {
     throw new Error(
-      `tile id "${tileId}" does not match the tile_<n> convention; ` +
-      `cannot derive (cellX, cellY) for atlas lookup`,
+      `tile id "${tileId}" does not match the cellX_cellY convention ` +
+      `(e.g. "0_0" or "2_3"); cannot derive cell coords for atlas lookup`,
     );
   }
-  const idx = parseInt(m[1]);
-  const cellX = idx % worldWidth;
-  const cellY = Math.floor(idx / worldWidth);
-  return { atlasKey: `${cellX}_${cellY}`, cellX, cellY };
+  return { cellX: parseInt(m[1]), cellY: parseInt(m[2]) };
 }
 
 /**
@@ -116,33 +117,61 @@ function buildMaterialMap(content: ContentStore): {
 }
 
 export async function loadTerrainFromAtlas(
-  repo: AtlasTileInitRepo,
+  worldsRepo: WorldsRepo,
+  cellsRepo: AtlasWorldRepo,
+  tilesRepo: AtlasTileInitRepo,
   tileId: string,
-  worldWidth: number,
   content: ContentStore,
   opts: LoadOptions = {},
 ): Promise<AtlasTerrainResult> {
-  const worldId      = opts.worldId      ?? "default";
   const maxRetries   = opts.maxRetries   ?? 30;
   const retryDelayMs = opts.retryDelayMs ?? 1000;
+  const { cellX, cellY } = parseTileId(tileId);
 
-  const { atlasKey, cellX, cellY } = tileIdToAtlasKey(tileId, worldWidth);
-
-  // Poll until atlas has populated the row.
+  // Poll for the active world AND its tile_init row. Either may be missing
+  // transiently while atlas's bootstrap bake is in flight.
+  let world: WorldRow | null = null;
   let row: Awaited<ReturnType<AtlasTileInitRepo["get"]>> = null;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    row = await repo.get(atlasKey, worldId);
-    if (row) break;
+    world = await worldsRepo.getLatest();
+    if (world) row = await tilesRepo.get(world.id, tileId);
+    if (world && row) break;
     if (attempt === 0) {
-      console.log(`[TileServer] waiting for atlas tile_init row "${atlasKey}"…`);
+      console.log(
+        `[TileServer] waiting for atlas (` +
+        `${world ? `tile ${tileId}` : "active world"})…`,
+      );
     }
     await new Promise((r) => setTimeout(r, retryDelayMs));
   }
+  if (!world) {
+    throw new Error(`atlas terrain: no active world after ${maxRetries} attempts`);
+  }
   if (!row) {
     throw new Error(
-      `atlas terrain: no tile_init row "${atlasKey}" after ${maxRetries} attempts; ` +
-      `is the atlas service running and has it generated this world?`,
+      `atlas terrain: no tile_init "${tileId}" in world ${world.id} after ${maxRetries} attempts; ` +
+      `is the world's bake complete and is this tile id valid for its dims?`,
     );
+  }
+
+  // Cell metadata (gates, biome, rivers) lives in atlas_world_cells. We
+  // load it for THIS cell to derive GatePositions for the gate system.
+  const cells = await cellsRepo.load(world.id);
+  const cellRow = cells?.cells.find((c) => c.cellX === cellX && c.cellY === cellY);
+  const gates = (cellRow?.gates ?? {}) as Record<string,
+    { offset: number; toCellX: number; toCellY: number } | null>;
+  const gatePositions: GatePosition[] = [];
+  for (const edge of ["north", "east", "south", "west"] as const) {
+    const g = gates[edge];
+    if (!g) continue;
+    // Note: protocol's GatePosition is currently edge-only (offset lives
+    // inside atlas's tile_init.portals[]). Until tile-server's gate system
+    // honours per-edge offsets, gates spawn at edge midpoints — a small
+    // visual disagreement vs. the inspector's gate dots.
+    gatePositions.push({
+      edge,
+      toTileId: `${g.toCellX}_${g.toCellY}`,
+    });
   }
 
   const tile = tileInitFromWire(row.payload as unknown as TileInitWire);
@@ -162,6 +191,8 @@ export async function loadTerrainFromAtlas(
     tileSeed: Number(row.seed),
     cellX,
     cellY,
+    world,
+    gatePositions,
   };
 }
 

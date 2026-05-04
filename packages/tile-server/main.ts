@@ -33,7 +33,13 @@
  *   deno task tile
  */
 import { TileServer } from "./mod.ts";
-import { createPool, PgAtlasTileInitRepo, PgTileSaveRepo, PgWorldMapRepo } from "@voxim/db";
+import {
+  createPool,
+  PgAtlasTileInitRepo,
+  PgAtlasWorldRepo,
+  PgTileSaveRepo,
+  PgWorldsRepo,
+} from "@voxim/db";
 
 // Prevent WebTransport session timeouts and other async edge-cases from
 // crashing the process. These are expected during normal client disconnects.
@@ -69,7 +75,6 @@ const gatewayWtUrl   = Deno.env.get("GATEWAY_WT_URL");   // undefined → no eve
 const serviceSecret  = Deno.env.get("VOXIM_SERVICE_SECRET");
 const databaseUrl    = Deno.env.get("DATABASE_URL");     // undefined → ephemeral
 const dataDir        = Deno.env.get("DATA_DIR");         // undefined → default loader path
-const worldWidth     = parseInt(Deno.env.get("WORLD_WIDTH") ?? "2");
 const devMode        = !["0", "false"].includes(Deno.env.get("DEV_MODE") ?? "");
 
 const cert = await Deno.readTextFile(certPath);
@@ -82,7 +87,8 @@ if (!databaseUrl) {
 }
 const pool       = createPool({ databaseUrl });
 const tileSaves  = new PgTileSaveRepo(pool);
-const worldMap   = new PgWorldMapRepo(pool);
+const worlds     = new PgWorldsRepo(pool);
+const atlasCells = new PgAtlasWorldRepo(pool);
 const atlasTiles = new PgAtlasTileInitRepo(pool);
 
 const server = new TileServer();
@@ -99,9 +105,9 @@ await server.start({
   ...(gatewayWtUrl   ? { gatewayWtUrl }   : {}),
   ...(serviceSecret  ? { serviceSecret }  : {}),
   tileSaves,
-  worldMap,
+  worlds,
+  atlasCells,
   atlasTiles,
-  worldWidth,
   ...(dataDir        ? { dataDir }        : {}),
   devMode,
 });

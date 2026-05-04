@@ -15,8 +15,8 @@ export { PgTileRepo } from "./src/repos/tile_repo.ts";
 export type { TileSaveRow, TileSaveRepo } from "./src/repos/tile_save_repo.ts";
 export { PgTileSaveRepo } from "./src/repos/tile_save_repo.ts";
 
-export type { WorldMapRow, WorldMapRepo } from "./src/repos/world_map_repo.ts";
-export { PgWorldMapRepo } from "./src/repos/world_map_repo.ts";
+export type { WorldRow, WorldsRepo } from "./src/repos/worlds_repo.ts";
+export { PgWorldsRepo } from "./src/repos/worlds_repo.ts";
 
 export type { CityRow, CityRepo } from "./src/repos/city_repo.ts";
 export { PgCityRepo } from "./src/repos/city_repo.ts";

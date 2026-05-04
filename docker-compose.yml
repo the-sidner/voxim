@@ -18,9 +18,6 @@ x-tile-base: &tile-base
     DATABASE_URL: ${DATABASE_URL}
     GATEWAY_URL: ${GATEWAY_URL}
     VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
-    # Macro-grid width — must match what atlas was started with so
-    # tile-server can map TILE_ID → (cellX, cellY) for atlas lookup.
-    WORLD_WIDTH: ${WORLD_WIDTH:-2}
   volumes:
     - voxim-certs:/app/certs:ro
   restart: unless-stopped
@@ -141,13 +138,16 @@ services:
     environment:
       ATLAS_PORT: 8082
       DATABASE_URL: ${DATABASE_URL}
-      # Aligned with the coordinator's defaults so atlas generates a worldmap
-      # of the same dimensions the rest of the stack expects.
-      WORLD_SEED:   ${WORLD_SEED:-1}
-      WORLD_WIDTH:  ${WORLD_WIDTH:-2}
-      WORLD_HEIGHT: ${WORLD_HEIGHT:-2}
+      # Bootstrap-only defaults — used when no worlds row exists yet to
+      # auto-bake "world #1" so the stack has something to load. After
+      # the bootstrap, the inspector's bake button creates further worlds
+      # with custom seed/dims.
+      BOOTSTRAP_WORLD_NAME:   ${WORLD_NAME:-bootstrap}
+      BOOTSTRAP_WORLD_SEED:   ${WORLD_SEED:-1}
+      BOOTSTRAP_WORLD_WIDTH:  ${WORLD_WIDTH:-2}
+      BOOTSTRAP_WORLD_HEIGHT: ${WORLD_HEIGHT:-2}
     ports:
-      # 8082 — HTTP for /health, /world, /world/cell/*, /world/regen, inspector UI.
+      # 8082 — HTTP for inspector UI + /world, /worlds, /tile, /world/bake, /world/restart.
       - "8082:8082"
     restart: unless-stopped
 
@@ -159,7 +159,7 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
-      TILE_ID: tile_0
+      TILE_ID: 0_0
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4433
       ADMIN_PORT: 14433
       PORT: 4433
@@ -178,7 +178,7 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
-      TILE_ID: tile_1
+      TILE_ID: 1_0
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4434
       ADMIN_PORT: 14434
       PORT: 4433
@@ -197,7 +197,7 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
-      TILE_ID: tile_2
+      TILE_ID: 0_1
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4435
       ADMIN_PORT: 14435
       PORT: 4433
@@ -216,7 +216,7 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
-      TILE_ID: tile_3
+      TILE_ID: 1_1
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4436
       ADMIN_PORT: 14436
       PORT: 4433

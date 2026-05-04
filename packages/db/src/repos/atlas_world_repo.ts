@@ -1,12 +1,10 @@
 /**
- * Atlas worldmap repo — per-cell rows of the procedural worldmap.
+ * Atlas worldmap repo — per-cell rows of a baked worldmap, scoped per
+ * world via the `world_id` uuid FK on the `worlds` table.
  *
- * Atlas owns this table exclusively. Tilemap layer (read-only) and the
- * inspector consume it. Whole-worldmap operations are atomic via a single
- * transaction; per-cell update endpoints can land later when needed.
- *
- * Cell shape is stored as jsonb (biome + gates) so the bundle can grow
- * new fields (Q5) without a migration on every addition.
+ * Atlas owns writes (always inside a bake transaction); tile-server +
+ * coordinator + inspector consume read-only. Cell shape is jsonb so the
+ * parameter bundle can grow without a migration per addition.
  */
 
 import type { DbPool } from "../client.ts";
@@ -28,26 +26,26 @@ export interface LoadedAtlasWorld {
 }
 
 export interface AtlasWorldRepo {
-  /** Returns null when no worldmap exists for this world_id. */
-  load(worldId?: string): Promise<LoadedAtlasWorld | null>;
+  /** Returns null when no worldmap exists for this world. */
+  load(worldId: string): Promise<LoadedAtlasWorld | null>;
   /**
-   * Replace the entire worldmap atomically. Every existing row for
-   * `worldId` is deleted; the supplied cells are inserted with the
-   * given seed. Use when (re-)generating from scratch.
+   * Insert all cells for a freshly-baked world. The world row in `worlds`
+   * must already exist (FK). Bakes never UPSERT — each bake creates a
+   * new world uuid, so DELETE-then-INSERT semantics aren't needed.
    */
   save(input: {
-    worldId?: string;
+    worldId: string;
     seed: bigint;
     cells: AtlasCellRow[];
   }): Promise<void>;
-  /** Drop the worldmap, forcing regeneration on next boot. */
-  clear(worldId?: string): Promise<void>;
+  /** Drop a world's cells. Cascade on `worlds` delete handles this too. */
+  clear(worldId: string): Promise<void>;
 }
 
 export class PgAtlasWorldRepo implements AtlasWorldRepo {
   constructor(private readonly pool: DbPool) {}
 
-  async load(worldId: string = "default"): Promise<LoadedAtlasWorld | null> {
+  async load(worldId: string): Promise<LoadedAtlasWorld | null> {
     const conn = await this.pool.connect();
     try {
       const res = await conn.queryObject<{
@@ -84,54 +82,41 @@ export class PgAtlasWorldRepo implements AtlasWorldRepo {
   }
 
   async save(input: {
-    worldId?: string;
+    worldId: string;
     seed: bigint;
     cells: AtlasCellRow[];
   }): Promise<void> {
-    const worldId = input.worldId ?? "default";
+    if (input.cells.length === 0) return;
     const conn = await this.pool.connect();
     try {
-      await conn.queryArray("BEGIN");
-      try {
-        await conn.queryArray({
-          text: "DELETE FROM atlas_world_cells WHERE world_id = $1",
-          args: [worldId],
-        });
-        // Single multi-row INSERT keeps the round-trips down for any
-        // plausible world size. A 16×16 world is 256 rows in one query.
-        if (input.cells.length > 0) {
-          const valuesSql: string[] = [];
-          const args: unknown[] = [worldId, input.seed];
-          let p = 3;
-          for (const c of input.cells) {
-            valuesSql.push(`($1, $${p++}, $${p++}, $2, $${p++}, $${p++}, $${p++})`);
-            args.push(
-              c.cellX, c.cellY,
-              JSON.stringify(c.biome),
-              JSON.stringify(c.gates),
-              JSON.stringify(c.rivers),
-            );
-          }
-          await conn.queryArray({
-            text: `
-              INSERT INTO atlas_world_cells
-                (world_id, cell_x, cell_y, seed, biome, gates, rivers)
-              VALUES ${valuesSql.join(",")}
-            `,
-            args,
-          });
-        }
-        await conn.queryArray("COMMIT");
-      } catch (e) {
-        await conn.queryArray("ROLLBACK");
-        throw e;
+      // Single multi-row INSERT keeps round-trips down for any plausible
+      // world size (16×16 = 256 rows in one query).
+      const valuesSql: string[] = [];
+      const args: unknown[] = [input.worldId, input.seed];
+      let p = 3;
+      for (const c of input.cells) {
+        valuesSql.push(`($1, $${p++}, $${p++}, $2, $${p++}, $${p++}, $${p++})`);
+        args.push(
+          c.cellX, c.cellY,
+          JSON.stringify(c.biome),
+          JSON.stringify(c.gates),
+          JSON.stringify(c.rivers),
+        );
       }
+      await conn.queryArray({
+        text: `
+          INSERT INTO atlas_world_cells
+            (world_id, cell_x, cell_y, seed, biome, gates, rivers)
+          VALUES ${valuesSql.join(",")}
+        `,
+        args,
+      });
     } finally {
       conn.release();
     }
   }
 
-  async clear(worldId: string = "default"): Promise<void> {
+  async clear(worldId: string): Promise<void> {
     const conn = await this.pool.connect();
     try {
       await conn.queryArray({

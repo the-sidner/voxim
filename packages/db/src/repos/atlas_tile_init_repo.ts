@@ -29,20 +29,20 @@ export interface AtlasTileSummaryRow {
 
 export interface AtlasTileInitRepo {
   /** Returns null when nothing's been generated for this tile yet. */
-  get(tileId: string, worldId?: string): Promise<AtlasTileInitRow | null>;
+  get(tileId: string, worldId: string): Promise<AtlasTileInitRow | null>;
 
   /** List all tile_init rows for a world (compact metadata, no payload). */
-  list(worldId?: string): Promise<Array<Omit<AtlasTileInitRow, "payload">>>;
+  list(worldId: string): Promise<Array<Omit<AtlasTileInitRow, "payload">>>;
 
   /**
    * Cheap per-tile summary list — pulls only the gateSummary u16 out of
    * each row's payload. Used by the inspector world view to draw
    * internal connectivity without dragging full payloads over the wire.
    */
-  listSummaries(worldId?: string): Promise<AtlasTileSummaryRow[]>;
+  listSummaries(worldId: string): Promise<AtlasTileSummaryRow[]>;
 
   put(input: {
-    worldId?: string;
+    worldId: string;
     tileId: string;
     cellX: number;
     cellY: number;
@@ -51,16 +51,16 @@ export interface AtlasTileInitRepo {
   }): Promise<void>;
 
   /** Drop one tile's row, forcing regeneration on next request. */
-  delete(tileId: string, worldId?: string): Promise<void>;
+  delete(tileId: string, worldId: string): Promise<void>;
 
   /** Drop every tile in this world (e.g. on world re-seed). */
-  deleteAll(worldId?: string): Promise<void>;
+  deleteAll(worldId: string): Promise<void>;
 }
 
 export class PgAtlasTileInitRepo implements AtlasTileInitRepo {
   constructor(private readonly pool: DbPool) {}
 
-  async get(tileId: string, worldId: string = "default"): Promise<AtlasTileInitRow | null> {
+  async get(tileId: string, worldId: string): Promise<AtlasTileInitRow | null> {
     const conn = await this.pool.connect();
     try {
       const res = await conn.queryObject<{
@@ -95,7 +95,7 @@ export class PgAtlasTileInitRepo implements AtlasTileInitRepo {
     }
   }
 
-  async list(worldId: string = "default"): Promise<Array<Omit<AtlasTileInitRow, "payload">>> {
+  async list(worldId: string): Promise<Array<Omit<AtlasTileInitRow, "payload">>> {
     const conn = await this.pool.connect();
     try {
       const res = await conn.queryObject<{
@@ -127,7 +127,7 @@ export class PgAtlasTileInitRepo implements AtlasTileInitRepo {
     }
   }
 
-  async listSummaries(worldId: string = "default"): Promise<AtlasTileSummaryRow[]> {
+  async listSummaries(worldId: string): Promise<AtlasTileSummaryRow[]> {
     const conn = await this.pool.connect();
     try {
       const res = await conn.queryObject<{
@@ -158,7 +158,7 @@ export class PgAtlasTileInitRepo implements AtlasTileInitRepo {
   }
 
   async put(input: {
-    worldId?: string;
+    worldId: string;
     tileId: string;
     cellX: number;
     cellY: number;
@@ -180,7 +180,7 @@ export class PgAtlasTileInitRepo implements AtlasTileInitRepo {
                 generated_at = now()
         `,
         args: [
-          input.worldId ?? "default",
+          input.worldId,
           input.tileId,
           input.cellX,
           input.cellY,
@@ -193,7 +193,7 @@ export class PgAtlasTileInitRepo implements AtlasTileInitRepo {
     }
   }
 
-  async delete(tileId: string, worldId: string = "default"): Promise<void> {
+  async delete(tileId: string, worldId: string): Promise<void> {
     const conn = await this.pool.connect();
     try {
       await conn.queryArray({
@@ -205,7 +205,7 @@ export class PgAtlasTileInitRepo implements AtlasTileInitRepo {
     }
   }
 
-  async deleteAll(worldId: string = "default"): Promise<void> {
+  async deleteAll(worldId: string): Promise<void> {
     const conn = await this.pool.connect();
     try {
       await conn.queryArray({

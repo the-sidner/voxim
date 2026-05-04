@@ -15,8 +15,7 @@
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet } from "@voxim/engine";
-import type { AtlasTileInitRepo, TileSaveRepo, WorldMapRepo } from "@voxim/db";
-import { decodeWorldMap, type WorldMapCell } from "@voxim/protocol";
+import type { AtlasTileInitRepo, AtlasWorldRepo, TileSaveRepo, WorldsRepo } from "@voxim/db";
 import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
 import { chunksFromBuffers, TILE_SIZE as WORLD_TILE_SIZE } from "@voxim/world";
@@ -113,22 +112,20 @@ export interface TileServerConfig {
    */
   tileSaves?: TileSaveRepo;
   /**
-   * World-map repo (T-138). When set, the tile fetches its macro-cell at
-   * boot. The cell drives biome / elevation / gate placement. Omit to
-   * run with seed-derived defaults only.
+   * Worlds repo. Required: tile-server resolves the active world (latest
+   * baked_at) at boot and uses its uuid to scope tile_init lookups + saves.
    */
-  worldMap?: WorldMapRepo;
+  worlds: WorldsRepo;
+  /**
+   * Atlas worldmap repo. Read-only here — used to fetch the active world's
+   * cell metadata (gates) so gate entities can be spawned.
+   */
+  atlasCells: AtlasWorldRepo;
   /**
    * Atlas tile_init repo. Required: tile-server reads its terrain from
-   * atlas's pre-computed TileInit row at boot. No internal terrain
-   * generation path remains.
+   * atlas's pre-computed TileInit row for the active world.
    */
   atlasTiles: AtlasTileInitRepo;
-  /**
-   * Macro-grid width in cells. Used to map TILE_ID ("tile_N") into atlas's
-   * (cellX, cellY) key. Must match the value atlas was started with.
-   */
-  worldWidth: number;
   /**
    * Plain HTTP port for gateway → tile internal communication (handoff, health-check).
    * When set, starts a plain HTTP admin server on this port.
@@ -218,6 +215,13 @@ export class TileServer {
   private lastPushedGateSummary = -1;
   private cellX = 0;
   private cellY = 0;
+  /**
+   * Active world this tile-server is serving. Set on atlas terrain load;
+   * the bake-poll loop watches `activeWorldBaked` to detect a newer bake
+   * and triggers Deno.exit(0) so the process restarts and reloads.
+   */
+  private activeWorldId = "";
+  private activeWorldBaked: Date = new Date(0);
   /**
    * Players for whom a handoff fetch is in flight. Prevents a second
    * GateApproached event (or rapidly-repeated collisions) from initiating a
@@ -410,43 +414,57 @@ export class TileServer {
     ];
     this.systems = sortSystemsByDependencies(declared);
 
-    // Set up persistence (optional — only if tileSaves repo is provided)
-    if (config.tileSaves) {
-      this.saveManager = new SaveManager(config.tileSaves, config.tileId);
-    }
-
-    // Fetch this tile's macro-cell if the world map is available. The cell
-    // drives biome / elevation tier / gate placement; T-140 spawns gate
-    // entities from cell.gatePositions. If the coordinator hasn't written
-    // the world_map row yet (race on first boot), retry briefly — the
-    // coordinator typically takes a couple seconds at most.
-    let worldCell: WorldMapCell | null = null;
-    if (config.worldMap) {
-      worldCell = await fetchWorldCell(config.worldMap, config.tileId);
-      if (worldCell) {
-        console.log(
-          `[TileServer] world cell: biome=${worldCell.biome} elev=${worldCell.elevationTier} ` +
-          `river=${worldCell.riverFlag} road=${worldCell.roadFlag} gates=${worldCell.gatePositions.length}`,
-        );
-      } else {
-        console.warn(`[TileServer] no world cell for tile_id="${config.tileId}" after retries — using seed defaults`);
-      }
-    }
-
-    // Atlas is the source of truth for initial terrain AND the gate-summary
-    // we publish to coordinator. Always fetch — chunks only get applied
-    // when no save exists (save-loaded tiles already have their chunks),
-    // but the summary + cell coords come from atlas regardless so the
-    // world graph stays seeded across restarts.
+    // Atlas is the source of truth for initial terrain, the gate-summary
+    // we publish to coordinator, AND the gate positions (cell metadata).
+    // Always fetched — chunks only get applied when no save exists (save-
+    // loaded tiles already have their chunks), but summary + coords + gates
+    // come from atlas regardless so the world graph and gate entities are
+    // consistent across restarts.
     const atlas = await loadTerrainFromAtlas(
+      config.worlds,
+      config.atlasCells,
       config.atlasTiles,
       config.tileId,
-      config.worldWidth,
       content,
     );
     this.currentGateSummary = atlas.gateSummary;
     this.cellX = atlas.cellX;
     this.cellY = atlas.cellY;
+    this.activeWorldId    = atlas.world.id;
+    this.activeWorldBaked = atlas.world.bakedAt;
+    console.log(
+      `[TileServer] active world ${atlas.world.name} (${atlas.world.id.slice(0, 8)}…) ` +
+      `${atlas.world.width}×${atlas.world.height} baked ${atlas.world.bakedAt.toISOString()}`,
+    );
+
+    // Persistence is scoped per (world_id, tile_id) — switching worlds
+    // (rebake) starts that world's tiles fresh.
+    if (config.tileSaves) {
+      this.saveManager = new SaveManager(config.tileSaves, atlas.world.id, config.tileId);
+    }
+
+    // Restart-on-bake: every 5s ask the worlds repo for the latest world.
+    // If a newer bake exists than the one we loaded, exit and let docker
+    // restart us with the new world. The tile_save row is keyed by
+    // (world_id, tile_id) so we won't pick up a stale save against fresh
+    // terrain — switching worlds implicitly starts the new world's tiles
+    // fresh.
+    setInterval(async () => {
+      try {
+        const w = await config.worlds.getLatest();
+        if (!w) return;
+        if (w.id !== this.activeWorldId
+         || w.bakedAt.getTime() > this.activeWorldBaked.getTime()) {
+          console.log(
+            `[TileServer] new world detected (${w.id.slice(0, 8)}… baked ` +
+            `${w.bakedAt.toISOString()}); restarting`,
+          );
+          Deno.exit(0);
+        }
+      } catch (err) {
+        console.warn(`[TileServer] world poll failed: ${(err as Error).message}`);
+      }
+    }, 5000);
 
     const loaded = this.saveManager ? await this.saveManager.load(this.world) : false;
     // zoneGrid is null for now — atlas doesn't produce zones; ProceduralSpawner
@@ -481,11 +499,11 @@ export class TileServer {
     procedural.spawnInitialNpcs();
     procedural.spawnProceduralProps();
 
-    // Gate entities (T-140) — always re-spawned from the world-map cell,
-    // never persisted. Cheap to recreate and the world-map cell is the
-    // source of truth for where gates belong.
-    if (worldCell) {
-      const gateIds = spawnGates(this.world, worldCell.gatePositions);
+    // Gate entities — always re-spawned from atlas's cell metadata, never
+    // persisted. Cheap to recreate and atlas is the source of truth for
+    // where gates belong.
+    if (atlas.gatePositions.length > 0) {
+      const gateIds = spawnGates(this.world, atlas.gatePositions);
       if (gateIds.length > 0) {
         console.log(`[TileServer] spawned ${gateIds.length} gates`);
       }
@@ -1156,33 +1174,5 @@ export class TileServer {
     }
     console.log(`[TileServer] player ${playerId.slice(0, 8)} disconnected`);
   }
-}
-
-/**
- * Read this tile's WorldMapCell, retrying for up to ~10s if the row is
- * absent (covers the cold-start race where tile boots before coordinator
- * has finished generating the map). DB read errors abort immediately —
- * we don't loop on misconfiguration.
- */
-async function fetchWorldCell(repo: WorldMapRepo, tileId: string): Promise<WorldMapCell | null> {
-  const maxAttempts = 10;
-  const delayMs = 1000;
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const row = await repo.get();
-      if (row) {
-        const map = decodeWorldMap(row.payload);
-        return map.cells[tileId] ?? null;
-      }
-    } catch (err) {
-      console.warn(`[TileServer] world map read failed (${(err as Error).message})`);
-      return null;
-    }
-    if (i < maxAttempts - 1) {
-      console.log(`[TileServer] world map not ready yet, retrying (${i + 1}/${maxAttempts})`);
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
-  }
-  return null;
 }
 

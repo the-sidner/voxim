@@ -15,12 +15,9 @@ import { World } from "@voxim/engine";
 import type {
   WorldEventEnvelope,
   TileCommandEnvelope,
-  WorldMapPayload,
 } from "@voxim/protocol";
-import { encodeWorldMap, decodeWorldMap } from "@voxim/protocol";
-import type { WorldMapRepo, CityRepo, CityRow } from "@voxim/db";
+import type { AtlasTileInitRepo, CityRepo, CityRow, WorldRow, WorldsRepo } from "@voxim/db";
 import { GatewayLink } from "./gateway_link.ts";
-import { generateWorldMap } from "./world_map_gen.ts";
 import {
   CITY_EVENT_LOG_LIMIT,
   defaultCityState,
@@ -44,22 +41,20 @@ export interface CoordinatorConfig {
   gatewayCertHashHex?: string;
   /** Tick rate in Hz. Default 1 (macro sim is slow). */
   tickRateHz?: number;
-  /** World-map repo. Required for T-138; omit only for unit tests. */
-  worldMapRepo?: WorldMapRepo;
-  /** Seed used when generating the world map for the first time. */
-  worldSeed?: number;
   /**
-   * Tile ids the world map should cover. Order = row-major grid traversal,
-   * length must equal worldWidth × worldHeight.
+   * Worlds repo. Coordinator picks the latest baked world at boot and
+   * scopes its world-graph aggregation to that world.
    */
-  worldTileIds?: string[];
-  /** Grid width / height. Default 2×2 for the dev slice. */
-  worldWidth?: number;
-  worldHeight?: number;
+  worldsRepo?: WorldsRepo;
   /**
-   * Cities repo (T-142). Required to seed CityState rows for citySeedFlag
-   * tiles and run the macro utility-AI tickloop. Omit for the legacy world-
-   * map-only mode (unit tests).
+   * Atlas tile_init repo. Read-only here — seeds the per-tile gate-summary
+   * map at boot from the active world's baked tiles.
+   */
+  atlasTilesRepo?: AtlasTileInitRepo;
+  /**
+   * Cities repo. The macro utility-AI tickloop reads from it. City seeding
+   * (was driven by citySeedFlag on the legacy world map) is paused until
+   * atlas's worldmap learns to carry city seeds.
    */
   cityRepo?: CityRepo;
   /**
@@ -95,8 +90,8 @@ export class Coordinator {
    * with matching nibble values across the shared edge.
    */
   private tileSummaries = new Map<string, { cellX: number; cellY: number; summary: number }>();
-  /** Decoded world map, available after start(). */
-  private worldMap: WorldMapPayload | null = null;
+  /** Active world (latest baked). null when atlas hasn't bootstrapped one yet. */
+  private activeWorld: WorldRow | null = null;
   private cityRepo: CityRepo | null = null;
   /** In-memory mirror of `cities` rows; refreshed on seed and after each AI pass. */
   private cities: CityRow[] = [];
@@ -109,25 +104,41 @@ export class Coordinator {
   private aiInFlight = new Set<string>();
 
   async start(config: CoordinatorConfig): Promise<void> {
-    // Generate / load the world map first — every other macro decision
-    // depends on knowing what the world looks like.
-    if (config.worldMapRepo) {
-      this.worldMap = await ensureWorldMap(config);
-      console.log(
-        `[Coordinator] world map ready: ${this.worldMap.width}×${this.worldMap.height} cells, ` +
-        `seed=${this.worldMap.seed}`,
-      );
-    } else {
-      console.warn("[Coordinator] no world map repo — running without macro world");
+    // Active world: latest baked. Atlas owns worlds; we just read.
+    if (config.worldsRepo) {
+      this.activeWorld = await config.worldsRepo.getLatest();
+      if (this.activeWorld) {
+        console.log(
+          `[Coordinator] active world: ${this.activeWorld.name} ` +
+          `(${this.activeWorld.id.slice(0, 8)}…) ${this.activeWorld.width}×${this.activeWorld.height} ` +
+          `baked ${this.activeWorld.bakedAt.toISOString()}`,
+        );
+      } else {
+        console.warn(
+          "[Coordinator] no worlds present — atlas hasn't bootstrapped yet. " +
+          "world graph will start empty; tile summaries will populate on tile boot.",
+        );
+      }
     }
 
-    // Seed cities (T-142). Idempotent: ensureCities() only inserts rows that
-    // don't already exist for citySeedFlag tiles.
-    if (config.cityRepo && this.worldMap) {
+    // Seed the world-graph aggregate from atlas's baked tile_init rows.
+    // Coordinator no longer waits for tiles to push their summaries — the
+    // bake is the source of truth. Tile pushes after this point are
+    // delta updates from runtime edits (phase 6D).
+    if (config.atlasTilesRepo && this.activeWorld) {
+      const summaries = await config.atlasTilesRepo.listSummaries(this.activeWorld.id);
+      for (const s of summaries) {
+        // tile_id convention: cellX_cellY
+        const tileId = `${s.cellX}_${s.cellY}`;
+        this.tileSummaries.set(tileId, { cellX: s.cellX, cellY: s.cellY, summary: s.summary });
+      }
+      console.log(`[Coordinator] world graph seeded with ${this.tileSummaries.size} tile summaries`);
+    }
+
+    if (config.cityRepo) {
       this.cityRepo = config.cityRepo;
-      await this.ensureCities(config.worldSeed ?? 1);
       this.cities = await this.cityRepo.list();
-      console.log(`[Coordinator] cities ready: ${this.cities.length} on the world map`);
+      console.log(`[Coordinator] cities ready: ${this.cities.length}`);
     }
 
     // AI manager (T-143). Optional: when AI_MANAGER_URL is unset the
@@ -152,6 +163,30 @@ export class Coordinator {
     console.log(`[Coordinator] tickloop started @ ${tickRate} Hz`);
 
     if (config.httpPort) this.startHttp(config.httpPort);
+
+    // Restart-on-bake: same pattern as tile-server. When atlas writes a
+    // new worlds row, we exit so the world graph reseeds from the fresh
+    // baked tile_init on next boot.
+    if (config.worldsRepo && this.activeWorld) {
+      const repo = config.worldsRepo;
+      const initialId    = this.activeWorld.id;
+      const initialBaked = this.activeWorld.bakedAt.getTime();
+      setInterval(async () => {
+        try {
+          const w = await repo.getLatest();
+          if (!w) return;
+          if (w.id !== initialId || w.bakedAt.getTime() > initialBaked) {
+            console.log(
+              `[Coordinator] new world detected (${w.id.slice(0, 8)}… baked ` +
+              `${w.bakedAt.toISOString()}); restarting`,
+            );
+            Deno.exit(0);
+          }
+        } catch (err) {
+          console.warn(`[Coordinator] world poll failed: ${(err as Error).message}`);
+        }
+      }, 5000);
+    }
   }
 
   /**
@@ -274,32 +309,6 @@ export class Coordinator {
     if (this.tick % CITY_AI_INTERVAL_TICKS === 0 && this.cityRepo) {
       void this.runCityAi();
     }
-  }
-
-  /**
-   * Insert one CityRow per tile flagged citySeedFlag in the world map. A
-   * city seed has a deterministic id and name derived from the world seed
-   * + tileId so re-runs are stable.
-   */
-  private async ensureCities(worldSeed: number): Promise<void> {
-    if (!this.cityRepo || !this.worldMap) return;
-    const existing = await this.cityRepo.list();
-    const existingByTile = new Set(existing.map((c) => c.tileId));
-    let created = 0;
-    for (const cell of Object.values(this.worldMap.cells)) {
-      if (!cell.citySeedFlag || existingByTile.has(cell.tileId)) continue;
-      const cityId = await cityIdFor(worldSeed, cell.tileId);
-      const name = pickCityName(worldSeed, cell.tileId);
-      const state = defaultCityState(worldSeed, cell.tileId);
-      await this.cityRepo.create({
-        cityId,
-        name,
-        tileId: cell.tileId,
-        state: state as unknown as Record<string, unknown>,
-      });
-      created++;
-    }
-    if (created > 0) console.log(`[Coordinator] seeded ${created} new cities`);
   }
 
   /**
@@ -475,31 +484,3 @@ function toTileCommand(cityId: string, cmd: UtilityCommand): { kind: string; [k:
   }
 }
 
-/**
- * Load the world map from `world_map` if a row exists, otherwise generate
- * one from config and write it. Idempotent — once a row is in the table
- * it's authoritative; only `compose-reset` can wipe it.
- */
-async function ensureWorldMap(config: CoordinatorConfig): Promise<WorldMapPayload> {
-  const repo = config.worldMapRepo!;
-  const existing = await repo.get();
-  if (existing) {
-    try {
-      return decodeWorldMap(existing.payload);
-    } catch (err) {
-      // Schema bumped or row corrupt. Regenerating clobbers the row,
-      // which is fine because the world is regenerable from seed.
-      console.warn(`[Coordinator] world_map row unreadable (${(err as Error).message}); regenerating`);
-    }
-  }
-
-  const seed = config.worldSeed ?? 1;
-  const tileIds = config.worldTileIds ?? ["tile_0", "tile_1", "tile_2", "tile_3"];
-  const width = config.worldWidth ?? 2;
-  const height = config.worldHeight ?? 2;
-
-  const payload = generateWorldMap({ seed, tileIds, width, height });
-  await repo.put({ seed: BigInt(seed), payload: encodeWorldMap(payload) });
-  console.log(`[Coordinator] generated + persisted world map (seed=${seed})`);
-  return payload;
-}

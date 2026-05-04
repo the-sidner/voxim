@@ -8,6 +8,8 @@
  */
 export { startAtlasServer } from "./src/server.ts";
 export type { AtlasServerConfig } from "./src/server.ts";
+export { bakeWorld, tileSeedFor } from "./src/bake.ts";
+export type { BakeInput, BakeDeps } from "./src/bake.ts";
 
 export { generateWorldMap } from "./src/worldmap/generate.ts";
 export type {
