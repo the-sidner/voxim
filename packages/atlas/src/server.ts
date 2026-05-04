@@ -29,6 +29,7 @@ import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@v
 import { generateTile, tileInitToWire } from "./tilemap/generate.ts";
 import { bakeWorld, tileSeedFor } from "./bake.ts";
 import type { WorldCellRecord } from "./worldmap/types.ts";
+import { DEFAULT_GEN_PARAMS, mergeGenParams, type DeepPartialGenParams, type GenParams } from "./genparams.ts";
 
 export interface AtlasServerConfig {
   port: number;
@@ -92,16 +93,35 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
   }
 
   if (req.method === "POST" && url.pathname === "/world/bake") {
-    const name   = url.searchParams.get("name") ?? `bake-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-    const seed   = readQueryNumber(url, "seed",   1);
-    const width  = readQueryNumber(url, "width",  2);
-    const height = readQueryNumber(url, "height", 2);
+    // Body is optional; query string provides convenient simple-knob access
+    // (?seed=&width=&height=&name=). For tuning the deeper GenParams,
+    // POST a JSON body { name, seed, width, height, params: { ... } }.
+    let body: {
+      name?: string;
+      seed?: number;
+      width?: number;
+      height?: number;
+      params?: DeepPartialGenParams;
+    } = {};
+    if (req.headers.get("content-type")?.includes("application/json")) {
+      try { body = await req.json(); } catch { /* ignore — fall back to query */ }
+    }
+    const name   = body.name   ?? url.searchParams.get("name") ?? `bake-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const seed   = body.seed   ?? readQueryNumber(url, "seed",   1);
+    const width  = body.width  ?? readQueryNumber(url, "width",  2);
+    const height = body.height ?? readQueryNumber(url, "height", 2);
     const w = await bakeWorld({
       worldsRepo: cfg.worldsRepo,
       cellsRepo:  cfg.cellsRepo,
       tilesRepo:  cfg.tilesRepo,
-    }, { name, seed, width, height });
+    }, { name, seed, width, height, ...(body.params && { params: body.params }) });
     return jsonOk({ baked: worldToWire(w) });
+  }
+
+  // Defaults endpoint: lets the inspector populate forms with
+  // DEFAULT_GEN_PARAMS without baking a throwaway world first.
+  if (req.method === "GET" && url.pathname === "/genparams/defaults") {
+    return jsonOk({ defaults: DEFAULT_GEN_PARAMS });
   }
 
   if (req.method === "POST" && url.pathname === "/world/restart") {
@@ -173,6 +193,10 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
 // ---- helpers --------------------------------------------------------------
 
 function worldToWire(w: WorldRow): Record<string, unknown> {
+  // Merge persisted params over defaults so the inspector always sees the
+  // full effective param set (older worlds with partial params still
+  // expose every field).
+  const params = mergeGenParams(w.params as unknown as DeepPartialGenParams);
   return {
     id: w.id,
     name: w.name,
@@ -181,6 +205,7 @@ function worldToWire(w: WorldRow): Record<string, unknown> {
     height: w.height,
     version: w.version,
     bakedAt: w.bakedAt.toISOString(),
+    params,
   };
 }
 

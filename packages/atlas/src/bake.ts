@@ -16,12 +16,25 @@
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
 import { generateWorldMap } from "./worldmap/generate.ts";
 import { generateTile, tileInitToWire } from "./tilemap/generate.ts";
+import {
+  mergeGenParams,
+  type DeepPartialGenParams,
+  type GenParams,
+} from "./genparams.ts";
 
 export interface BakeInput {
   name: string;
   seed: number;
   width: number;
   height: number;
+  /**
+   * Worldgen tuning override. Each slice is merged on top of
+   * DEFAULT_GEN_PARAMS — leave a key out and you keep the default.
+   * The merged result is what gets persisted on the world row, so
+   * a re-bake at the same params is reproducible even if defaults
+   * change later.
+   */
+  params?: DeepPartialGenParams;
 }
 
 export interface BakeDeps {
@@ -32,18 +45,22 @@ export interface BakeDeps {
 
 export async function bakeWorld(deps: BakeDeps, input: BakeInput): Promise<WorldRow> {
   const id = crypto.randomUUID();
+  const params = mergeGenParams(input.params);
 
   // Insert the worlds row FIRST — the FK on cells / tile_init points at it.
+  // Persist the FULL merged params so re-bakes are reproducible even if
+  // defaults shift later.
   const world = await deps.worldsRepo.insert({
     id,
     name: input.name,
     seed: BigInt(input.seed),
     width: input.width,
     height: input.height,
+    params: params as unknown as Record<string, unknown>,
   });
 
   // Generate + persist cells.
-  const wm = generateWorldMap(input.seed, input.width, input.height);
+  const wm = generateWorldMap(input.seed, input.width, input.height, params);
   await deps.cellsRepo.save({
     worldId: id,
     seed: BigInt(input.seed),
@@ -61,7 +78,7 @@ export async function bakeWorld(deps: BakeDeps, input: BakeInput): Promise<World
   // immediately after restart with no convergence wait.
   for (const cell of wm.cells) {
     const tileSeed = tileSeedFor(input.seed, cell.cellX, cell.cellY);
-    const t = generateTile(cell, tileSeed);
+    const t = generateTile(cell, tileSeed, { params });
     await deps.tilesRepo.put({
       worldId: id,
       tileId:  `${cell.cellX}_${cell.cellY}`,
@@ -74,6 +91,9 @@ export async function bakeWorld(deps: BakeDeps, input: BakeInput): Promise<World
 
   return world;
 }
+
+/** Re-export so callers don't need to import the genparams module separately. */
+export type { GenParams };
 
 /**
  * Per-tile seed: deterministic hash of (worldSeed, cellX, cellY). Same

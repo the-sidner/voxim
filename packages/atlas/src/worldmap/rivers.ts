@@ -25,20 +25,22 @@
 
 import { hash2 } from "../common/noise.ts";
 import type { Edge, RiverEndpoint, WorldCellRecord } from "./types.ts";
+import type { GenParams } from "../genparams.ts";
 
 /** Tile size matches what tile-server uses (mirrors atlas/worldmap/generate.ts). */
 const TILE_WORLD_SIZE = 512;
 const GATE_INSET = 8;
 
-/** Cells with biome.altitude above this can spawn river sources. */
-const SOURCE_ALTITUDE = 0.62;
-/** Sources cannot be within this Chebyshev distance of one another. */
-const SOURCE_MIN_SEPARATION = 2;
-
 const SEED_RIVER_PICK   = 0x70007001;
 const SEED_RIVER_OFFSET = 0x70007003;
 
-export function generateRivers(cells: WorldCellRecord[], width: number, height: number, seed: number): void {
+export function generateRivers(
+  cells: WorldCellRecord[],
+  width: number,
+  height: number,
+  seed: number,
+  params: GenParams["river"],
+): void {
   const cellAt = (cx: number, cy: number): WorldCellRecord | null => {
     if (cx < 0 || cy < 0 || cx >= width || cy >= height) return null;
     return cells[cy * width + cx];
@@ -53,8 +55,8 @@ export function generateRivers(cells: WorldCellRecord[], width: number, height: 
     .sort((a, b) => a.key - b.key);
 
   for (const { c } of order) {
-    if (c.biome.altitude < SOURCE_ALTITUDE) continue;
-    if (tooCloseToExistingSource(c.cellX, c.cellY, sources)) continue;
+    if (c.biome.altitude < params.sourceAltitude) continue;
+    if (tooCloseToExistingSource(c.cellX, c.cellY, sources, params.minSeparation)) continue;
     sources.push({ cx: c.cellX, cy: c.cellY });
   }
 
@@ -67,10 +69,11 @@ export function generateRivers(cells: WorldCellRecord[], width: number, height: 
 function tooCloseToExistingSource(
   cx: number, cy: number,
   sources: { cx: number; cy: number }[],
+  minSeparation: number,
 ): boolean {
   for (const s of sources) {
-    if (Math.abs(s.cx - cx) <= SOURCE_MIN_SEPARATION
-     && Math.abs(s.cy - cy) <= SOURCE_MIN_SEPARATION) return true;
+    if (Math.abs(s.cx - cx) <= minSeparation
+     && Math.abs(s.cy - cy) <= minSeparation) return true;
   }
   return false;
 }

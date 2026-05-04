@@ -14,6 +14,7 @@
 import { fbm, hash2 } from "../common/noise.ts";
 import { generateRivers } from "./rivers.ts";
 import type { Edge, GateSpec, WorldCellRecord, WorldMap } from "./types.ts";
+import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
 
 /**
  * Tile size in world units. Must match the runtime tile size; today
@@ -33,27 +34,23 @@ const SEED_RUGGED  = 0x10001007;
 const SEED_GATE_NS = 0x20002001;
 const SEED_GATE_EW = 0x20002003;
 
-/** Cell-grid spacing of the biome noise. ~6 cells per "biome blob". */
-const BIOME_FREQUENCY = 1 / 6;
-/** Octaves of fbm for biome fields. More = more detail boundaries. */
-const BIOME_OCTAVES = 3;
-
 export function generateWorldMap(
   seed: number,
   width: number,
   height: number,
+  params: GenParams = DEFAULT_GEN_PARAMS,
 ): WorldMap {
   const cells: WorldCellRecord[] = [];
 
   for (let cellY = 0; cellY < height; cellY++) {
     for (let cellX = 0; cellX < width; cellX++) {
-      cells.push(makeCell(seed, cellX, cellY, width, height));
+      cells.push(makeCell(seed, cellX, cellY, width, height, params.biome));
     }
   }
 
   // Linear features run after every cell exists so the river walker can
   // peek at neighbours' altitudes when picking the downhill direction.
-  generateRivers(cells, width, height, seed);
+  generateRivers(cells, width, height, seed, params.river);
 
   return { seed, width, height, cells };
 }
@@ -66,18 +63,20 @@ function makeCell(
   cellY: number,
   width: number,
   height: number,
+  biomeParams: GenParams["biome"],
 ): WorldCellRecord {
-  const fx = cellX * BIOME_FREQUENCY;
-  const fy = cellY * BIOME_FREQUENCY;
+  const fx = cellX * biomeParams.frequency;
+  const fy = cellY * biomeParams.frequency;
+  const o  = biomeParams.octaves;
 
   return {
     cellX,
     cellY,
     biome: {
-      temperature: fbm(fx, fy, seed ^ SEED_TEMP,   BIOME_OCTAVES),
-      moisture:    fbm(fx, fy, seed ^ SEED_MOIST,  BIOME_OCTAVES),
-      altitude:    fbm(fx, fy, seed ^ SEED_ALT,    BIOME_OCTAVES),
-      ruggedness:  fbm(fx, fy, seed ^ SEED_RUGGED, BIOME_OCTAVES),
+      temperature: fbm(fx, fy, seed ^ SEED_TEMP,   o),
+      moisture:    fbm(fx, fy, seed ^ SEED_MOIST,  o),
+      altitude:    fbm(fx, fy, seed ^ SEED_ALT,    o),
+      ruggedness:  fbm(fx, fy, seed ^ SEED_RUGGED, o),
     },
     gates: {
       north: gateOnEdge(seed, cellX, cellY, width, height, "north"),

@@ -20,18 +20,18 @@
 import { BOUNDARY_KIND_WATER } from "./boundary_kinds.ts";
 import type { RiverEndpoint, RiverSegment } from "../../worldmap/types.ts";
 
-const RIVER_WIDTH = 2; // brush radius in pixels (so river is ~5 px wide)
-
 export interface RiversInput {
   rivers: RiverSegment[];
   openMask: Uint8Array; // mutated in place
   kindOf:   Uint16Array; // mutated in place
   gridSize: number;
   tileSize: number;
+  /** Brush radius in pixels (river is ~2*r+1 px wide). */
+  widthPixels: number;
 }
 
 export function runRiverStamping(input: RiversInput): void {
-  const { rivers, openMask, kindOf, gridSize, tileSize } = input;
+  const { rivers, openMask, kindOf, gridSize, tileSize, widthPixels } = input;
   if (rivers.length === 0) return;
   const px2world = tileSize / gridSize;
 
@@ -39,7 +39,7 @@ export function runRiverStamping(input: RiversInput): void {
     const a = endpointToPixel(seg.a, gridSize, px2world);
     const b = endpointToPixel(seg.b, gridSize, px2world);
     rasterLine(a.x, a.y, b.x, b.y, gridSize, (px, py) => {
-      brushDisk(px, py, RIVER_WIDTH, gridSize, openMask, kindOf);
+      brushDisk(px, py, widthPixels, gridSize, openMask, kindOf);
     });
   }
 }

@@ -23,6 +23,7 @@
 
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
+import type { GenParams } from "../../genparams.ts";
 
 /**
  * Atlas's canonical material ids. Stable across versions; downstream
@@ -42,6 +43,7 @@ export interface MaterialsInput {
   biome: BiomeParams;
   tileSeed: number;
   gridSize: number;
+  params: GenParams["materials"];
 }
 
 export interface MaterialsOutput {
@@ -49,42 +51,33 @@ export interface MaterialsOutput {
   materials: Uint16Array;
 }
 
-/** Frequency of the per-pixel detail noise, in cycles per pixel. */
-const DETAIL_FREQ = 0.06;
 const DETAIL_SUB_SEED = 0x50005001;
 
 export function runMaterials(input: MaterialsInput): MaterialsOutput {
-  const { biome, tileSeed, gridSize } = input;
+  const { biome, tileSeed, gridSize, params } = input;
   const N = gridSize * gridSize;
   const materials = new Uint16Array(N);
+  const f = params.detailFrequency;
 
   for (let py = 0; py < gridSize; py++) {
     for (let px = 0; px < gridSize; px++) {
-      const detail = fbm(
-        px * DETAIL_FREQ, py * DETAIL_FREQ,
-        tileSeed ^ DETAIL_SUB_SEED, 2,
-      );
-      materials[py * gridSize + px] = pickMaterial(biome, detail);
+      const detail = fbm(px * f, py * f, tileSeed ^ DETAIL_SUB_SEED, 2);
+      materials[py * gridSize + px] = pickMaterial(biome, detail, params);
     }
   }
 
   return { materials };
 }
 
-function pickMaterial(b: BiomeParams, detail: number): number {
-  // Stone caps: only the strictly highest altitudes, or rugged peaks.
-  if (b.altitude > 0.78) return MATERIAL_STONE;
-  if (b.altitude > 0.65 && b.ruggedness > 0.70) return MATERIAL_STONE;
-
-  // Hot dry → sand (deserts).
-  if (b.temperature > 0.65 && b.moisture < 0.30) return MATERIAL_SAND;
-
-  // Wet + locally high noise → water puddles in low-altitude wet spots.
-  if (b.moisture > 0.60 && detail > 0.60 && b.altitude < 0.55) return MATERIAL_WATER;
-
-  // Moderate moisture → grass.
-  if (b.moisture > 0.40) return MATERIAL_GRASS;
-
-  // Default fallback (drier, low to mid altitude).
+function pickMaterial(
+  b: BiomeParams,
+  detail: number,
+  p: GenParams["materials"],
+): number {
+  if (b.altitude > p.stoneAltitudeStrict) return MATERIAL_STONE;
+  if (b.altitude > p.stoneAltitudeRugged && b.ruggedness > p.stoneRuggednessThreshold) return MATERIAL_STONE;
+  if (b.temperature > p.sandTemperature && b.moisture < p.sandMoisture) return MATERIAL_SAND;
+  if (b.moisture > p.waterMoisture && detail > p.waterDetail && b.altitude < p.waterAltitude) return MATERIAL_WATER;
+  if (b.moisture > p.grassMoisture) return MATERIAL_GRASS;
   return MATERIAL_DIRT;
 }

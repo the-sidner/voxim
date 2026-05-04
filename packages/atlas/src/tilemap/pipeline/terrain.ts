@@ -20,13 +20,14 @@
 
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
+import type { GenParams } from "../../genparams.ts";
 import { BOUNDARY_KIND_CLIFF } from "./boundary_kinds.ts";
 
 export interface TerrainInput {
   openMask: Uint8Array;
   /**
    * Per-pixel boundary kind from the kinds stage (BOUNDARY_KIND_*).
-   * Only CLIFF pixels add the WALL_HEIGHT step — other closed kinds
+   * Only CLIFF pixels add the wallHeight step — other closed kinds
    * (vegetation, water, …) stay at floor height. Collision still
    * blocks them via the openMask path in tile-server's physics.
    */
@@ -34,6 +35,7 @@ export interface TerrainInput {
   biome: BiomeParams;
   tileSeed: number;
   gridSize: number;
+  params: GenParams["terrain"];
 }
 
 export interface TerrainOutput {
@@ -42,30 +44,25 @@ export interface TerrainOutput {
 }
 
 /**
- * Vertical step at every wall pixel. Must exceed the runtime physics
- * stepHeight (currently 0.75u in tile-server) so walls aren't traversable.
+ * Default vertical step at every wall pixel — exposed for downstream
+ * consumers that need a stable constant (e.g. tile-server's upsampler
+ * pre-removes the step before bilinear resampling). Per-world tuning
+ * comes through GenParams.terrain.wallHeight; this default mirrors it.
  */
 export const WALL_HEIGHT = 3.0;
-
-/** Baseline ground height inside open regions, before biome modulation. */
-const FLOOR_BASELINE = 0.0;
-
-/** Amplitude of the floor's fbm modulation, before biome scaling. */
-const FLOOR_MOD_AMPLITUDE = 1.5;
 
 const TERRAIN_SUB_SEED = 0x40004001;
 
 export function runTerrain(input: TerrainInput): TerrainOutput {
-  const { openMask, kindOf, biome, tileSeed, gridSize } = input;
+  const { openMask, kindOf, biome, tileSeed, gridSize, params } = input;
   const N = gridSize * gridSize;
   const heightMap = new Float32Array(N);
 
   // Floor modulation: lower baseline at low altitudes, higher at high.
   // Ruggedness scales the amplitude — flat plains vs. rolling hills.
   const floorBias = (biome.altitude - 0.5) * 4; // ~[-2, +2]
-  const modAmp    = FLOOR_MOD_AMPLITUDE * biome.ruggedness;
-  // Modulation frequency: a few cycles per tile.
-  const modFreq   = 0.04;
+  const modAmp    = params.floorModAmplitude * biome.ruggedness;
+  const modFreq   = params.floorModFrequency;
 
   for (let py = 0; py < gridSize; py++) {
     for (let px = 0; px < gridSize; px++) {
@@ -74,13 +71,13 @@ export function runTerrain(input: TerrainInput): TerrainOutput {
       // Smooth biome-driven modulation. Same function for open and closed
       // pixels so the floor varies naturally; the wall step rides on top.
       const m = (fbm(px * modFreq, py * modFreq, tileSeed ^ TERRAIN_SUB_SEED, 3) - 0.5) * 2;
-      const floor = FLOOR_BASELINE + floorBias + m * modAmp;
+      const floor = params.floorBaseline + floorBias + m * modAmp;
 
       // Only CLIFF kinds raise. Vegetation / water / other kinds stay
       // at floor height — collision is the openMask's job (phase 4B).
       const closed = openMask[idx] === 0;
       const isCliff = closed && kindOf[idx] === BOUNDARY_KIND_CLIFF;
-      heightMap[idx] = isCliff ? floor + WALL_HEIGHT : floor;
+      heightMap[idx] = isCliff ? floor + params.wallHeight : floor;
     }
   }
 

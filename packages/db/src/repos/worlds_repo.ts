@@ -22,6 +22,12 @@ export interface WorldRow {
   /** Bumps on each rebake of the same logical world (manual; not used yet). */
   version: number;
   bakedAt: Date;
+  /**
+   * Worldgen tuning. Opaque to the repo — atlas defines the GenParams
+   * shape. Stored as jsonb; an empty object means "fall back to atlas's
+   * current defaults" (the bake helper merges before persisting).
+   */
+  params: Record<string, unknown>;
 }
 
 export interface WorldsRepo {
@@ -38,6 +44,7 @@ export interface WorldsRepo {
     width: number;
     height: number;
     version?: number;
+    params?: Record<string, unknown>;
   }): Promise<WorldRow>;
   delete(id: string): Promise<void>;
 }
@@ -49,7 +56,7 @@ export class PgWorldsRepo implements WorldsRepo {
     const conn = await this.pool.connect();
     try {
       const res = await conn.queryObject<RawRow>(
-        "SELECT id, name, seed, width, height, version, baked_at FROM worlds ORDER BY baked_at DESC",
+        "SELECT id, name, seed, width, height, version, baked_at, params FROM worlds ORDER BY baked_at DESC",
       );
       return res.rows.map(toRow);
     } finally {
@@ -61,7 +68,7 @@ export class PgWorldsRepo implements WorldsRepo {
     const conn = await this.pool.connect();
     try {
       const res = await conn.queryObject<RawRow>(
-        "SELECT id, name, seed, width, height, version, baked_at FROM worlds ORDER BY baked_at DESC LIMIT 1",
+        "SELECT id, name, seed, width, height, version, baked_at, params FROM worlds ORDER BY baked_at DESC LIMIT 1",
       );
       return res.rows[0] ? toRow(res.rows[0]) : null;
     } finally {
@@ -73,7 +80,7 @@ export class PgWorldsRepo implements WorldsRepo {
     const conn = await this.pool.connect();
     try {
       const res = await conn.queryObject<RawRow>({
-        text: "SELECT id, name, seed, width, height, version, baked_at FROM worlds WHERE id = $1",
+        text: "SELECT id, name, seed, width, height, version, baked_at, params FROM worlds WHERE id = $1",
         args: [id],
       });
       return res.rows[0] ? toRow(res.rows[0]) : null;
@@ -89,16 +96,21 @@ export class PgWorldsRepo implements WorldsRepo {
     width: number;
     height: number;
     version?: number;
+    params?: Record<string, unknown>;
   }): Promise<WorldRow> {
     const conn = await this.pool.connect();
     try {
       const res = await conn.queryObject<RawRow>({
         text: `
-          INSERT INTO worlds (id, name, seed, width, height, version)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING id, name, seed, width, height, version, baked_at
+          INSERT INTO worlds (id, name, seed, width, height, version, params)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id, name, seed, width, height, version, baked_at, params
         `,
-        args: [input.id, input.name, input.seed, input.width, input.height, input.version ?? 1],
+        args: [
+          input.id, input.name, input.seed, input.width, input.height,
+          input.version ?? 1,
+          JSON.stringify(input.params ?? {}),
+        ],
       });
       return toRow(res.rows[0]);
     } finally {
@@ -127,6 +139,7 @@ interface RawRow {
   height: number;
   version: number;
   baked_at: Date;
+  params: Record<string, unknown>;
 }
 
 function toRow(r: RawRow): WorldRow {
@@ -138,5 +151,6 @@ function toRow(r: RawRow): WorldRow {
     height: r.height,
     version: r.version,
     bakedAt: r.baked_at,
+    params: r.params,
   };
 }

@@ -23,6 +23,7 @@
 
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
+import type { GenParams } from "../../genparams.ts";
 
 /**
  * Atlas's canonical boundary-kind ids. Stable across versions; downstream
@@ -42,6 +43,7 @@ export interface BoundaryKindsInput {
   biome: BiomeParams;
   tileSeed: number;
   gridSize: number;
+  params: GenParams["kinds"];
 }
 
 export interface BoundaryKindsOutput {
@@ -49,13 +51,13 @@ export interface BoundaryKindsOutput {
   kindOf: Uint16Array;
 }
 
-const KIND_DETAIL_FREQ = 0.05;
-const KIND_SUB_SEED    = 0x60006001;
+const KIND_SUB_SEED = 0x60006001;
 
 export function runBoundaryKinds(input: BoundaryKindsInput): BoundaryKindsOutput {
-  const { openMask, biome, tileSeed, gridSize } = input;
+  const { openMask, biome, tileSeed, gridSize, params } = input;
   const N = gridSize * gridSize;
   const kindOf = new Uint16Array(N);
+  const f = params.detailFrequency;
 
   for (let py = 0; py < gridSize; py++) {
     for (let px = 0; px < gridSize; px++) {
@@ -64,29 +66,23 @@ export function runBoundaryKinds(input: BoundaryKindsInput): BoundaryKindsOutput
         kindOf[idx] = BOUNDARY_KIND_OPEN;
         continue;
       }
-      const detail = fbm(
-        px * KIND_DETAIL_FREQ, py * KIND_DETAIL_FREQ,
-        tileSeed ^ KIND_SUB_SEED, 2,
-      );
-      kindOf[idx] = pickKind(biome, detail);
+      const detail = fbm(px * f, py * f, tileSeed ^ KIND_SUB_SEED, 2);
+      kindOf[idx] = pickKind(biome, detail, params);
     }
   }
 
   return { kindOf };
 }
 
-function pickKind(b: BiomeParams, detail: number): number {
-  // High altitude or rugged → cliffs. Same biome that drives stone material.
-  if (b.altitude > 0.65) return BOUNDARY_KIND_CLIFF;
-  if (b.altitude > 0.50 && b.ruggedness > 0.60) return BOUNDARY_KIND_CLIFF;
-
-  // Wet biomes — closed pixels in low spots become water.
-  if (b.moisture > 0.65 && b.altitude < 0.45 && detail > 0.55) return BOUNDARY_KIND_WATER;
-
-  // Default in any green/temperate territory: vegetation walls (forests).
-  if (b.moisture > 0.30) return BOUNDARY_KIND_VEGETATION;
-
-  // Dry, low, sparse — fall back to cliff for now (rubble/scree slot is
-  // reserved but unused this phase).
+function pickKind(
+  b: BiomeParams,
+  detail: number,
+  p: GenParams["kinds"],
+): number {
+  if (b.altitude > p.cliffAltitudeStrict) return BOUNDARY_KIND_CLIFF;
+  if (b.altitude > p.cliffAltitudeRugged && b.ruggedness > p.cliffRuggednessThreshold) return BOUNDARY_KIND_CLIFF;
+  if (b.moisture > p.waterMoisture && b.altitude < p.waterAltitude && detail > p.waterDetail) return BOUNDARY_KIND_WATER;
+  if (b.moisture > p.vegetationMoisture) return BOUNDARY_KIND_VEGETATION;
+  // Dry, low, sparse — fall back to cliff (rubble/scree slot reserved for later).
   return BOUNDARY_KIND_CLIFF;
 }

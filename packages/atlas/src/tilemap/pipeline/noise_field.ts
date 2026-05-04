@@ -15,11 +15,13 @@
 
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
+import type { GenParams } from "../../genparams.ts";
 
 export interface NoiseFieldInput {
   biome: BiomeParams;
   tileSeed: number;
   gridSize: number;
+  params: GenParams["noise"];
 }
 
 export interface NoiseFieldOutput {
@@ -32,12 +34,12 @@ export interface NoiseFieldOutput {
 const NOISE_SUB_SEED = 0x30003001;
 
 export function runNoiseField(input: NoiseFieldInput): NoiseFieldOutput {
-  const { biome, tileSeed, gridSize } = input;
+  const { biome, tileSeed, gridSize, params } = input;
   const N = gridSize * gridSize;
 
-  const baseFreq  = 0.02 + biome.ruggedness * 0.02;        // [0.02, 0.04]
-  const threshold = -0.10 + biome.ruggedness * 0.30;       // [-0.10, 0.20]
-  const octaves   = 3;
+  const baseFreq  = params.baseFrequency + biome.ruggedness * params.extraFrequencyPerRuggedness;
+  const threshold = params.baseThreshold + biome.ruggedness * params.extraThresholdPerRuggedness;
+  const octaves   = params.octaves;
 
   const noiseField = new Float32Array(N);
   const openMask   = new Uint8Array(N);

@@ -23,6 +23,7 @@ import { runRiverStamping } from "./pipeline/rivers.ts";
 import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
+import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
 
 const DEFAULT_TILE_SIZE = 512;
 const DEFAULT_GRID_SIZE = 128;
@@ -32,6 +33,8 @@ export interface GenerateTileOptions {
   tileSize?: number;
   /** Sample-grid resolution. Default 128 → 4 world units per pixel. */
   gridSize?: number;
+  /** Worldgen tuning. Defaults from DEFAULT_GEN_PARAMS. */
+  params?: GenParams;
 }
 
 export function generateTile(
@@ -41,12 +44,14 @@ export function generateTile(
 ): TileInit {
   const tileSize = options.tileSize ?? DEFAULT_TILE_SIZE;
   const gridSize = options.gridSize ?? DEFAULT_GRID_SIZE;
+  const params   = options.params   ?? DEFAULT_GEN_PARAMS;
   const px2world = tileSize / gridSize;
 
   const noise = runNoiseField({
     biome: worldCell.biome,
     tileSeed,
     gridSize,
+    params: params.noise,
   });
 
   const placed = runPortalPlacement({
@@ -66,6 +71,7 @@ export function generateTile(
     biome:    worldCell.biome,
     tileSeed,
     gridSize,
+    params:   params.kinds,
   });
 
   // Linear features stamp AFTER kinds (overrides kindOf to WATER) and
@@ -77,6 +83,7 @@ export function generateTile(
     kindOf:   kinds.kindOf,
     gridSize,
     tileSize,
+    widthPixels: params.river.widthPixels,
   });
 
   const terrain = runTerrain({
@@ -85,12 +92,14 @@ export function generateTile(
     biome:    worldCell.biome,
     tileSeed,
     gridSize,
+    params:   params.terrain,
   });
 
   const mats = runMaterials({
     biome: worldCell.biome,
     tileSeed,
     gridSize,
+    params: params.materials,
   });
 
   return {
