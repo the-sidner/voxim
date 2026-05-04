@@ -88,6 +88,14 @@ export interface TileInit {
    */
   heightMap: Float32Array;
 
+  /**
+   * Per-pixel material ids from atlas's canonical set (MATERIAL_* in
+   * pipeline/materials.ts). Length gridSize², row-major. Wall and floor
+   * pixels both carry the underlying ground material — boundary kinds
+   * (tree, rock, …) layer on top in a later phase.
+   */
+  materials: Uint16Array;
+
   // ---- placeholders for later phases ------------------------------
   /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
   boundaries: unknown[];
@@ -108,6 +116,8 @@ export interface TileInitWire {
   roomOfB64: string;
   /** Float32 heights, base64-encoded raw bytes (gridSize² × 4 bytes). */
   heightMapB64: string;
+  /** Uint16 material ids, base64-encoded raw bytes (gridSize² × 2 bytes). */
+  materialsB64: string;
   rooms: Room[];
   portals: Portal[];
   gateSummary: number;

@@ -17,6 +17,7 @@
 import { runNoiseField } from "./pipeline/noise_field.ts";
 import { runPortalPlacement } from "./pipeline/portal_placement.ts";
 import { runTerrain } from "./pipeline/terrain.ts";
+import { runMaterials } from "./pipeline/materials.ts";
 import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
@@ -61,6 +62,12 @@ export function generateTile(
     gridSize,
   });
 
+  const mats = runMaterials({
+    biome: worldCell.biome,
+    tileSeed,
+    gridSize,
+  });
+
   return {
     cellX:    worldCell.cellX,
     cellY:    worldCell.cellY,
@@ -72,6 +79,7 @@ export function generateTile(
     portals:  placed.portals,
     gateSummary: deriveGateSummary(placed.portals),
     heightMap: terrain.heightMap,
+    materials: mats.materials,
     boundaries: [],
     features:   [],
   };
@@ -88,6 +96,7 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     openMaskB64: bytesToBase64(t.openMask),
     roomOfB64:   bytesToBase64(new Uint8Array(t.roomOf.buffer, t.roomOf.byteOffset, t.roomOf.byteLength)),
     heightMapB64: bytesToBase64(new Uint8Array(t.heightMap.buffer, t.heightMap.byteOffset, t.heightMap.byteLength)),
+    materialsB64: bytesToBase64(new Uint8Array(t.materials.buffer, t.materials.byteOffset, t.materials.byteLength)),
     rooms:    t.rooms,
     portals:  t.portals,
     gateSummary: t.gateSummary,
@@ -110,6 +119,12 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     heightBytes.byteOffset,
     heightBytes.byteLength / 4,
   );
+  const matBytes = base64ToBytes(w.materialsB64);
+  const materials = new Uint16Array(
+    matBytes.buffer,
+    matBytes.byteOffset,
+    matBytes.byteLength / 2,
+  );
   return {
     cellX:    w.cellX,
     cellY:    w.cellY,
@@ -118,6 +133,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     openMask,
     roomOf,
     heightMap,
+    materials,
     rooms:    w.rooms,
     portals:  w.portals,
     gateSummary: w.gateSummary,

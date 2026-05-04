@@ -232,8 +232,9 @@ function renderTileAside(cellX, cellY) {
     <section>
       <h2>Layer</h2>
       <div class="row" style="gap:6px">
-        <button id="layer-rooms"  style="flex:1">rooms</button>
-        <button id="layer-height" style="flex:1">height</button>
+        <button id="layer-rooms"     style="flex:1">rooms</button>
+        <button id="layer-height"    style="flex:1">height</button>
+        <button id="layer-materials" style="flex:1">materials</button>
       </div>
     </section>
     <section>
@@ -258,7 +259,7 @@ function renderTileAside(cellX, cellY) {
     await fetch(`/tile/${cellX}/${cellY}/regen`, { method: "POST" });
     await loadTile(cellX, cellY);
   });
-  for (const layer of ["rooms", "height"]) {
+  for (const layer of ["rooms", "height", "materials"]) {
     const btn = document.getElementById(`layer-${layer}`);
     btn.style.borderColor = tileLayer === layer ? "var(--accent)" : "var(--border)";
     btn.style.color       = tileLayer === layer ? "var(--accent)" : "var(--text)";
@@ -328,6 +329,7 @@ function drawTile() {
 
   if (tileLayer === "rooms") drawTileRooms(layout);
   else if (tileLayer === "height") drawTileHeight(layout);
+  else if (tileLayer === "materials") drawTileMaterials(layout);
 
   // portal dots on top, regardless of layer
   ctx.fillStyle = "#fff";
@@ -360,6 +362,41 @@ function drawTileRooms({ px, originX, originY, g }) {
       ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
     }
   }
+}
+
+// Atlas's MATERIAL_* ids → display colours. Stable mapping; tile-server
+// will translate atlas ids to its own content registry separately.
+const MATERIAL_COLOURS = {
+  0: "#222",      // NONE
+  1: "#5a8b3f",   // GRASS
+  2: "#7a5a3a",   // DIRT
+  3: "#7a7a7a",   // STONE
+  4: "#d8c878",   // SAND
+  5: "#3070b8",   // WATER
+};
+
+function drawTileMaterials({ px, originX, originY, g }) {
+  const materials = u16FromB64(tile.payload.materialsB64);
+  const openMask  = bytesFromB64(tile.payload.openMaskB64);
+  for (let py = 0; py < g; py++) {
+    for (let pxi = 0; pxi < g; pxi++) {
+      const idx = py * g + pxi;
+      const matId = materials[idx];
+      const base = MATERIAL_COLOURS[matId] ?? "#444";
+      // Closed pixels rendered slightly darker so the boundary structure
+      // still reads through the material colour.
+      ctx.fillStyle = openMask[idx] === 0 ? darken(base, 0.55) : base;
+      ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
+    }
+  }
+}
+
+function darken(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 0xff) * amount);
+  const g = Math.round(((n >> 8)  & 0xff) * amount);
+  const b = Math.round(( n        & 0xff) * amount);
+  return `rgb(${r},${g},${b})`;
 }
 
 function drawTileHeight({ px, originX, originY, g }) {
