@@ -32,6 +32,15 @@ services:
       - ./scripts:/app/scripts
       - voxim-certs:/app/certs:ro
 
+  atlas:
+    command: >-
+      deno run --watch
+      --allow-net --allow-read --allow-env
+      packages/atlas/main.ts
+    volumes:
+      - ./packages:/app/packages
+      - ./scripts:/app/scripts
+
   tile-1:
     command: >-
       deno run --watch
