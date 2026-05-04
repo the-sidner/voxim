@@ -66,10 +66,28 @@ export interface TileInit {
   /**
    * Per-pixel room id, or 0xFFFF for closed/un-roomed pixels.
    * Length = gridSize². Row-major.
+   *
+   * `rooms[]` are the POST-network connected components — after the
+   * corridor-carve pass merges chambers together, most tiles end up as
+   * one big component. This is what `Portal.roomId` indexes into and
+   * what `gateSummary` uses to express "all gates reachable".
    */
   roomOf: Uint16Array;
 
   rooms: Room[];
+
+  /**
+   * Per-pixel chamber id, or 0xFFFF for closed pixels AND for corridor
+   * pixels carved by the network / portal stages. Length = gridSize².
+   *
+   * `chambers[]` are the PRE-network rooms — the discrete noise blobs
+   * after roomify, before any corridors merged them. Use this to see the
+   * actual chamber layout. Pixels open in `openMask` but with `0xFFFF`
+   * here are corridors (the network's connective tissue).
+   */
+  chamberOf: Uint16Array;
+  chambers: Room[];
+
   portals: Portal[];
 
   /**
@@ -122,6 +140,7 @@ export interface TileInitWire {
   gridSize: number;
   openMaskB64: string;
   roomOfB64: string;
+  chamberOfB64: string;
   /** Float32 heights, base64-encoded raw bytes (gridSize² × 4 bytes). */
   heightMapB64: string;
   /** Uint16 material ids, base64-encoded raw bytes (gridSize² × 2 bytes). */
@@ -129,6 +148,7 @@ export interface TileInitWire {
   /** Uint16 boundary-kind ids, base64-encoded raw bytes (gridSize² × 2 bytes). */
   kindOfB64: string;
   rooms: Room[];
+  chambers: Room[];
   portals: Portal[];
   gateSummary: number;
   boundaries: unknown[];

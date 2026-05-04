@@ -577,7 +577,7 @@ async function loadTile(cellX, cellY) {
     return;
   }
   tile = await res.json();
-  meta.textContent = `tile ${tile.tileId} · seed ${tile.seed} · ${tile.payload.rooms.length} rooms · ${tile.payload.portals.length} portals`;
+  meta.textContent = `tile ${tile.tileId} · seed ${tile.seed} · ${tile.payload.chambers.length} chambers · ${tile.payload.rooms.length} components · ${tile.payload.portals.length} portals`;
   setCrumbs({ label: "World", href: "#world" }, { label: `Tile (${cellX},${cellY})` });
   renderContextTile(cellX, cellY);
   resize();
@@ -611,7 +611,8 @@ function renderContextTile(cellX, cellY) {
         <dt>cell</dt><dd>(${cellX}, ${cellY})</dd>
         <dt>tile size</dt><dd>${p.tileSize}u</dd>
         <dt>grid</dt><dd>${p.gridSize}² (${(p.tileSize/p.gridSize).toFixed(1)}u/px)</dd>
-        <dt>rooms</dt><dd>${p.rooms.length}</dd>
+        <dt>chambers</dt><dd>${p.chambers.length}</dd>
+        <dt>components</dt><dd>${p.rooms.length}</dd>
         <dt>portals</dt><dd>${p.portals.length}</dd>
         ${portalsHtml}
       </dl>
@@ -710,14 +711,37 @@ function drawTile() {
 }
 
 function drawTileRooms({ px, originX, originY, g }) {
-  const openMask = bytesFromB64(tile.payload.openMaskB64);
-  const roomOf   = u16FromB64(tile.payload.roomOfB64);
+  // Three-tone view of the room network:
+  //   - closed pixels  → dark grey (the maze walls)
+  //   - chamber pixels → bright per-chamber colour (the discrete rooms
+  //                      that emerged from the noise field)
+  //   - corridor pixels → light grey (open in openMask but not in any
+  //                       chamber; carved by the network/portal stages
+  //                       to interconnect the chambers)
+  // The corridors are the connective tissue — they should visibly form
+  // the network linking the coloured chambers.
+  const openMask  = bytesFromB64(tile.payload.openMaskB64);
+  const chamberOf = u16FromB64(tile.payload.chamberOfB64);
   const colour = (id) => roomColours[id % roomColours.length];
   for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
     const idx = py * g + pxi;
-    if (openMask[idx] === 0) ctx.fillStyle = "#1a1c21";
-    else { const rid = roomOf[idx]; ctx.fillStyle = rid === 0xFFFF ? "#444" : colour(rid); }
+    if (openMask[idx] === 0) {
+      ctx.fillStyle = "#1a1c21";
+    } else {
+      const cid = chamberOf[idx];
+      ctx.fillStyle = cid === 0xFFFF ? "#9a9aa3" : colour(cid);
+    }
     ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
+  }
+  // Chamber centroids — small black dots so the discrete rooms read
+  // even when they're tiny.
+  ctx.fillStyle = "#000";
+  for (const r of tile.payload.chambers) {
+    const cxPx = originX + (r.cx / tile.payload.tileSize) * (g * px);
+    const cyPx = originY + (r.cy / tile.payload.tileSize) * (g * px);
+    ctx.beginPath();
+    ctx.arc(cxPx, cyPx, Math.max(1.5, px * 0.4), 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 

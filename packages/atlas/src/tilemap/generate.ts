@@ -138,6 +138,11 @@ export function generateTile(
     openMask: placed.openMask,
     roomOf:   placed.roomOf,
     rooms:    placed.rooms,
+    // Pre-network labelling — preserved from roomify so the inspector
+    // (and any future tooling) can see the discrete chambers as they
+    // emerged from noise, before the network stage merged them.
+    chamberOf: roomified.roomOf,
+    chambers:  roomified.rooms,
     portals:  placed.portals,
     gateSummary: deriveGateSummary(placed.portals),
     heightMap: terrain.heightMap,
@@ -156,12 +161,14 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     cellY:    t.cellY,
     tileSize: t.tileSize,
     gridSize: t.gridSize,
-    openMaskB64: bytesToBase64(t.openMask),
-    roomOfB64:   bytesToBase64(new Uint8Array(t.roomOf.buffer, t.roomOf.byteOffset, t.roomOf.byteLength)),
-    heightMapB64: bytesToBase64(new Uint8Array(t.heightMap.buffer, t.heightMap.byteOffset, t.heightMap.byteLength)),
-    materialsB64: bytesToBase64(new Uint8Array(t.materials.buffer, t.materials.byteOffset, t.materials.byteLength)),
-    kindOfB64:    bytesToBase64(new Uint8Array(t.kindOf.buffer,    t.kindOf.byteOffset,    t.kindOf.byteLength)),
+    openMaskB64:   bytesToBase64(t.openMask),
+    roomOfB64:     bytesToBase64(new Uint8Array(t.roomOf.buffer,    t.roomOf.byteOffset,    t.roomOf.byteLength)),
+    chamberOfB64:  bytesToBase64(new Uint8Array(t.chamberOf.buffer, t.chamberOf.byteOffset, t.chamberOf.byteLength)),
+    heightMapB64:  bytesToBase64(new Uint8Array(t.heightMap.buffer, t.heightMap.byteOffset, t.heightMap.byteLength)),
+    materialsB64:  bytesToBase64(new Uint8Array(t.materials.buffer, t.materials.byteOffset, t.materials.byteLength)),
+    kindOfB64:     bytesToBase64(new Uint8Array(t.kindOf.buffer,    t.kindOf.byteOffset,    t.kindOf.byteLength)),
     rooms:    t.rooms,
+    chambers: t.chambers,
     portals:  t.portals,
     gateSummary: t.gateSummary,
     boundaries: t.boundaries,
@@ -176,6 +183,12 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     roomOfBytes.buffer,
     roomOfBytes.byteOffset,
     roomOfBytes.byteLength / 2,
+  );
+  const chamberOfBytes = base64ToBytes(w.chamberOfB64);
+  const chamberOf = new Uint16Array(
+    chamberOfBytes.buffer,
+    chamberOfBytes.byteOffset,
+    chamberOfBytes.byteLength / 2,
   );
   const heightBytes = base64ToBytes(w.heightMapB64);
   const heightMap = new Float32Array(
@@ -202,10 +215,12 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     gridSize: w.gridSize,
     openMask,
     roomOf,
+    chamberOf,
     heightMap,
     materials,
     kindOf,
     rooms:    w.rooms,
+    chambers: w.chambers,
     portals:  w.portals,
     gateSummary: w.gateSummary,
     boundaries: w.boundaries,
