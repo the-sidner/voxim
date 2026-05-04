@@ -20,3 +20,10 @@ export { PgWorldMapRepo } from "./src/repos/world_map_repo.ts";
 
 export type { CityRow, CityRepo } from "./src/repos/city_repo.ts";
 export { PgCityRepo } from "./src/repos/city_repo.ts";
+
+export type {
+  AtlasCellRow,
+  LoadedAtlasWorld,
+  AtlasWorldRepo,
+} from "./src/repos/atlas_world_repo.ts";
+export { PgAtlasWorldRepo } from "./src/repos/atlas_world_repo.ts";
