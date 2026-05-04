@@ -157,7 +157,12 @@ export function stepPhysics(
   // refinement; for now any closed pixel just stops you cold). Mirrors
   // the wall-step branch's response so behaviour is consistent across
   // the two reasons a pixel can block you.
-  if (isOpen && !isOpen(pos.x, pos.y)) {
+  //
+  // Defensive: only fire when the PREVIOUS position was open. If the
+  // entity is already inside a closed pixel (loaded from a save that
+  // predates the current openMask, or pushed in by a knockback), we
+  // let them move so they can escape rather than locking them in place.
+  if (isOpen && !isOpen(pos.x, pos.y) && isOpen(position.x, position.y)) {
     pos = { ...pos, x: position.x, y: position.y };
     velocity = { ...velocity, x: 0, y: 0 };
   }
