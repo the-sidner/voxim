@@ -8,3 +8,13 @@
  */
 export { startAtlasServer } from "./src/server.ts";
 export type { AtlasServerConfig } from "./src/server.ts";
+
+export { generateWorldMap } from "./src/worldmap/generate.ts";
+export type {
+  Edge,
+  GateSpec,
+  BiomeParams,
+  WorldCellRecord,
+  WorldMap,
+} from "./src/worldmap/types.ts";
+export { EDGES } from "./src/worldmap/types.ts";
