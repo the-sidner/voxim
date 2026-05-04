@@ -20,9 +20,17 @@
 
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
+import { BOUNDARY_KIND_CLIFF } from "./boundary_kinds.ts";
 
 export interface TerrainInput {
   openMask: Uint8Array;
+  /**
+   * Per-pixel boundary kind from the kinds stage (BOUNDARY_KIND_*).
+   * Only CLIFF pixels add the WALL_HEIGHT step — other closed kinds
+   * (vegetation, water, …) stay at floor height. Collision still
+   * blocks them via the openMask path in tile-server's physics.
+   */
+  kindOf: Uint16Array;
   biome: BiomeParams;
   tileSeed: number;
   gridSize: number;
@@ -48,7 +56,7 @@ const FLOOR_MOD_AMPLITUDE = 1.5;
 const TERRAIN_SUB_SEED = 0x40004001;
 
 export function runTerrain(input: TerrainInput): TerrainOutput {
-  const { openMask, biome, tileSeed, gridSize } = input;
+  const { openMask, kindOf, biome, tileSeed, gridSize } = input;
   const N = gridSize * gridSize;
   const heightMap = new Float32Array(N);
 
@@ -68,9 +76,11 @@ export function runTerrain(input: TerrainInput): TerrainOutput {
       const m = (fbm(px * modFreq, py * modFreq, tileSeed ^ TERRAIN_SUB_SEED, 3) - 0.5) * 2;
       const floor = FLOOR_BASELINE + floorBias + m * modAmp;
 
-      heightMap[idx] = openMask[idx] === 0
-        ? floor + WALL_HEIGHT
-        : floor;
+      // Only CLIFF kinds raise. Vegetation / water / other kinds stay
+      // at floor height — collision is the openMask's job (phase 4B).
+      const closed = openMask[idx] === 0;
+      const isCliff = closed && kindOf[idx] === BOUNDARY_KIND_CLIFF;
+      heightMap[idx] = isCliff ? floor + WALL_HEIGHT : floor;
     }
   }
 

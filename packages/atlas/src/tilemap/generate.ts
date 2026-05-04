@@ -56,8 +56,20 @@ export function generateTile(
     gates: worldCell.gates,
   });
 
+  // Kinds runs BEFORE terrain so the terrain stage can decide which
+  // closed pixels deserve the wall step (CLIFF) vs. which stay flat
+  // (VEGETATION / WATER / others — they're still impassable via the
+  // openMask collision path in tile-server's physics).
+  const kinds = runBoundaryKinds({
+    openMask: placed.openMask,
+    biome:    worldCell.biome,
+    tileSeed,
+    gridSize,
+  });
+
   const terrain = runTerrain({
     openMask: placed.openMask,
+    kindOf:   kinds.kindOf,
     biome:    worldCell.biome,
     tileSeed,
     gridSize,
@@ -65,13 +77,6 @@ export function generateTile(
 
   const mats = runMaterials({
     biome: worldCell.biome,
-    tileSeed,
-    gridSize,
-  });
-
-  const kinds = runBoundaryKinds({
-    openMask: placed.openMask,
-    biome:    worldCell.biome,
     tileSeed,
     gridSize,
   });

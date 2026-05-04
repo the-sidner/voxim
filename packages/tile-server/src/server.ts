@@ -19,9 +19,9 @@ import type { AtlasTileInitRepo, TileSaveRepo, WorldMapRepo } from "@voxim/db";
 import { decodeWorldMap, type WorldMapCell } from "@voxim/protocol";
 import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
-import { chunksFromBuffers } from "@voxim/world";
+import { chunksFromBuffers, TILE_SIZE as WORLD_TILE_SIZE } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
-import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
+import { loadTerrainFromAtlas, spawnBoundaryEntities } from "./atlas_terrain.ts";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
 import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
@@ -444,6 +444,20 @@ export class TileServer {
       chunksFromBuffers(this.world, atlas.heightBuffer, atlas.materialBuffer, atlas.openBuffer);
       tileSeed = atlas.tileSeed;
       this.spawnWorldState(content);
+
+      // Spawn the entity-side of boundary kinds (trees in vegetation
+      // patches, etc.) on top of the now-populated chunks. heightBuffer
+      // is row-major TILE_SIZE² so a flat index lookup gives us ground Z
+      // for tree placement.
+      const sampleHeight = (x: number, y: number): number => {
+        const ix = Math.max(0, Math.min(WORLD_TILE_SIZE - 1, Math.floor(x)));
+        const iy = Math.max(0, Math.min(WORLD_TILE_SIZE - 1, Math.floor(y)));
+        return atlas.heightBuffer[iy * WORLD_TILE_SIZE + ix];
+      };
+      const boundaries = spawnBoundaryEntities(this.world, atlas.kindBuffer, content, sampleHeight);
+      if (boundaries.trees > 0) {
+        console.log(`[TileServer] spawned ${boundaries.trees} boundary trees`);
+      }
     }
 
     const procedural = new ProceduralSpawner(this.world, content, zoneGrid, tileSeed);

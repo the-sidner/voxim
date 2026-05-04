@@ -15,13 +15,16 @@
 
 import type { AtlasTileInitRepo } from "@voxim/db";
 import type { ContentStore } from "@voxim/content";
+import type { World } from "@voxim/engine";
 import {
   tileInitFromWire,
   upsampleTile,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
+  BOUNDARY_KIND_VEGETATION,
   type TileInitWire,
 } from "@voxim/atlas";
 import { TILE_SIZE } from "@voxim/world";
+import { spawnPrefab } from "./spawner.ts";
 
 export interface AtlasTerrainResult {
   heightBuffer: Float32Array;
@@ -33,6 +36,13 @@ export interface AtlasTerrainResult {
    * render (cliff step, tree entity, water, …).
    */
   openBuffer: Uint8Array;
+  /**
+   * Per-cell boundary-kind ids at TILE_SIZE² resolution. 0 = open;
+   * BOUNDARY_KIND_CLIFF / VEGETATION / WATER on closed pixels. Tile-server
+   * uses this to spawn the right boundary visualisation (tree entities
+   * at vegetation pixels, etc.).
+   */
+  kindBuffer: Uint16Array;
   /** Atlas's per-tile seed. Used as the seed for downstream procedural systems. */
   tileSeed: number;
   cellX: number;
@@ -131,7 +141,7 @@ export async function loadTerrainFromAtlas(
 
   const tile = tileInitFromWire(row.payload as unknown as TileInitWire);
   const { materialMap, defaultMaterialId } = buildMaterialMap(content);
-  const { heightBuffer, materialBuffer, openBuffer } = upsampleTile(tile, {
+  const { heightBuffer, materialBuffer, openBuffer, kindBuffer } = upsampleTile(tile, {
     targetSize: TILE_SIZE,
     materialMap,
     defaultMaterialId,
@@ -141,8 +151,44 @@ export async function loadTerrainFromAtlas(
     heightBuffer,
     materialBuffer,
     openBuffer,
+    kindBuffer,
     tileSeed: Number(row.seed),
     cellX,
     cellY,
   };
+}
+
+/**
+ * Spawn boundary entities for kinds that render as world objects rather
+ * than terrain modifications. Phase 4C: vegetation pixels get a `tree`
+ * prefab. Cliffs are pure terrain; water (when wired) will be too.
+ *
+ * Sub-sampling: scanning every TILE_SIZE pixel produces too many entities
+ * (a forest cell would hit thousands). We sample on a coarser stride
+ * (every TREE_STRIDE world units) and spawn one tree per stride cell whose
+ * sample point is vegetation. With STRIDE = 8 the densest forest yields
+ * roughly 64×64 ≈ 4096 sample points per tile × ~30% vegetation density =
+ * ~1200 trees — too many. STRIDE = 16 → 1024 × 30% = ~300. We default to 16.
+ */
+const TREE_STRIDE = 16;
+
+export function spawnBoundaryEntities(
+  world: World,
+  kindBuffer: Uint16Array,
+  content: ContentStore,
+  groundHeightAt: (x: number, y: number) => number,
+): { trees: number } {
+  let trees = 0;
+
+  for (let y = TREE_STRIDE / 2; y < TILE_SIZE; y += TREE_STRIDE) {
+    for (let x = TREE_STRIDE / 2; x < TILE_SIZE; x += TREE_STRIDE) {
+      const idx = y * TILE_SIZE + x;
+      if (kindBuffer[idx] !== BOUNDARY_KIND_VEGETATION) continue;
+      const z = groundHeightAt(x, y);
+      spawnPrefab(world, content, "tree", { x, y, z });
+      trees++;
+    }
+  }
+
+  return { trees };
 }
