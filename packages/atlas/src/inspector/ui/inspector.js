@@ -1,90 +1,321 @@
 /**
- * Atlas inspector — single-page, hash-routed.
+ * Atlas inspector — single-page edit/bake/tune tool.
  *
- *   #world           default. Shows the worldmap (cells coloured by biome,
- *                    gates as dots). Click a cell → drills into #tile/x/y.
- *   #tile/<x>/<y>    Per-tile view. Renders openMask (bg), rooms (coloured),
- *                    portals (white dots).
+ *   Layout: left bake form | main canvas (world or tile view) | right context panel
+ *
+ *   Routing (URL hash): #world (default) | #tile/<x>/<y>
+ *
+ *   State:
+ *     - activeWorld    — fetched at boot from GET /world
+ *     - defaults       — fetched once from GET /genparams/defaults
+ *     - formParams     — what the bake form is editing (clones activeWorld.params)
+ *     - formMeta       — { name, seed, width, height } the bake form is editing
+ *
+ *   Bake flow:
+ *     1. POST /world/bake with body { name, seed, width, height, params }.
+ *     2. Atlas inserts a new worlds row + cells + tile_init.
+ *     3. Tile-server + coordinator's polling loops detect the new world
+ *        within ~5s and exit; docker restarts them against the new world.
+ *     4. Inspector polls GET /world; when world.id changes, full reload.
  */
 
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const meta = document.getElementById("meta");
-const crumbs = document.getElementById("crumbs");
-const aside = document.getElementById("aside");
+const canvas    = document.getElementById("canvas");
+const ctx       = canvas.getContext("2d");
+const meta      = document.getElementById("meta");
+const crumbs    = document.getElementById("crumbs");
+const aside     = document.getElementById("context");
+const bakeForm  = document.getElementById("bake-form");
+const activeBadge = document.getElementById("active-world");
+const toastEl   = document.getElementById("toast");
 
-// ---- routing --------------------------------------------------------------
+let view = null;          // "world" | "tile"
+let world = null;         // { world, cells } from GET /world
+let summaries = null;     // Map<"x,y", number>
+let worldBbox = null;
+let tile = null;          // { tileId, cellX, cellY, payload, world } from GET /tile/x/y
+let tileLayer = "rooms";  // "rooms" | "height" | "materials" | "kinds"
+let defaults = null;      // GenParams from GET /genparams/defaults
+let formParams = null;    // GenParams currently in the form (matches input values)
+let formMeta = { name: "", seed: 1, width: 2, height: 2 };
+
+const NO_GATE = 0xF;
+const EDGE_NIBBLE = { north: 0, east: 1, south: 2, west: 3 };
+function nibbleAt(s, e) { return (s >> (EDGE_NIBBLE[e] * 4)) & 0xF; }
+function reachable(s, a, b) {
+  const na = nibbleAt(s, a), nb = nibbleAt(s, b);
+  return na !== NO_GATE && nb !== NO_GATE && na === nb;
+}
+
+// ---- per-knob input config -----------------------------------------------
+// step + min/max per slice. Keys missing here default to step 0.01, no bounds.
+
+const KNOB_CONFIG = {
+  biome: {
+    frequency: { step: 0.01, min: 0.01 },
+    octaves:   { step: 1, min: 1, max: 8, integer: true },
+  },
+  river: {
+    sourceAltitude: { step: 0.01, min: 0, max: 1 },
+    minSeparation:  { step: 1, min: 0, integer: true },
+    widthPixels:    { step: 1, min: 1, max: 16, integer: true },
+  },
+  noise: {
+    baseFrequency:               { step: 0.005, min: 0 },
+    extraFrequencyPerRuggedness: { step: 0.005 },
+    baseThreshold:               { step: 0.05 },
+    extraThresholdPerRuggedness: { step: 0.05 },
+    octaves:                     { step: 1, min: 1, max: 8, integer: true },
+  },
+  terrain: {
+    wallHeight:        { step: 0.5, min: 0.75 },
+    floorBaseline:     { step: 0.5 },
+    floorModAmplitude: { step: 0.1, min: 0 },
+    floorModFrequency: { step: 0.005, min: 0 },
+  },
+  // materials/kinds: every knob is a 0..1 threshold; uniform config.
+};
+
+const SLICE_LABELS = {
+  biome:     "Biome",
+  river:     "River",
+  noise:     "Noise (rooms emerge here)",
+  terrain:   "Terrain (heightmap)",
+  materials: "Materials",
+  kinds:     "Boundary kinds",
+};
+
+// ---- routing ------------------------------------------------------------
 
 addEventListener("hashchange", route);
 addEventListener("resize", () => { resize(); redraw(); });
 canvas.addEventListener("click", onCanvasClick);
 
-let view = null; // "world" | "tile"
-let world = null; // { seed, cells: [...] }
-let summaries = null; // Map<"x,y", number>  — gateSummary u16 per cell
-let worldBbox = null;
-let tile = null; // { tileId, cellX, cellY, seed, payload: TileInitWire }
-let tileLayer = "rooms"; // "rooms" | "height"
+bootstrap();
 
-const NO_GATE = 0xF;
-const EDGE_NIBBLE = { north: 0, east: 1, south: 2, west: 3 };
-function nibbleAt(summary, edge) { return (summary >> (EDGE_NIBBLE[edge] * 4)) & 0xF; }
-function reachable(summary, a, b) {
-  const na = nibbleAt(summary, a), nb = nibbleAt(summary, b);
-  return na !== NO_GATE && nb !== NO_GATE && na === nb;
+async function bootstrap() {
+  defaults = (await fetch("/genparams/defaults").then(r => r.json())).defaults;
+  await loadActiveWorld();
+  renderBakeForm();
+  route();
+  startActiveWorldPoller();
 }
 
-route();
+async function loadActiveWorld() {
+  const res = await fetch("/world").then(r => r.json());
+  world = res; // { world: WorldRow, cells: [...] }
+  if (world.world) {
+    activeBadge.textContent =
+      `${world.world.name} · ${world.world.width}×${world.world.height} · ` +
+      `seed ${world.world.seed} · baked ${shortDate(world.world.bakedAt)}`;
+    formParams = clone(world.world.params);
+    formMeta = {
+      name:   "",
+      seed:   world.world.seed,
+      width:  world.world.width,
+      height: world.world.height,
+    };
+  } else {
+    activeBadge.textContent = "no world baked";
+    formParams = clone(defaults);
+    formMeta = { name: "", seed: 1, width: 2, height: 2 };
+  }
+  // Summaries are world-scoped; reload them too.
+  const sm = (await fetch("/world/summaries").then(r => r.json())).summaries;
+  summaries = new Map(sm.map(s => [`${s.cellX},${s.cellY}`, s.summary]));
+  if (world.cells.length > 0) {
+    worldBbox = world.cells.reduce((a, c) => ({
+      minX: Math.min(a.minX, c.cellX), minY: Math.min(a.minY, c.cellY),
+      maxX: Math.max(a.maxX, c.cellX), maxY: Math.max(a.maxY, c.cellY),
+    }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+  }
+}
 
 function route() {
   const m = location.hash.match(/^#tile\/(-?\d+)\/(-?\d+)$/);
   if (m) loadTile(parseInt(m[1]), parseInt(m[2]));
-  else loadWorld();
+  else { view = "world"; setCrumbs({ label: "World" }); renderContextWorld(); resize(); drawWorld(); }
 }
 
 function setCrumbs(...parts) {
   crumbs.innerHTML = parts.map((p, i) =>
     i === parts.length - 1
-      ? `<span>${p.label}</span>`
-      : `<a href="${p.href}">${p.label}</a><span class="sep">›</span>`
+      ? `<span>${escape(p.label)}</span>`
+      : `<a href="${p.href}">${escape(p.label)}</a><span class="sep">›</span>`
   ).join("");
 }
 
-// ---- world view -----------------------------------------------------------
+// ---- bake form -----------------------------------------------------------
 
-async function loadWorld() {
-  view = "world";
-  const [worldRes, summariesRes] = await Promise.all([
-    fetch("/world").then((r) => r.json()),
-    fetch("/world/summaries").then((r) => r.json()),
-  ]);
-  world = worldRes;
-  summaries = new Map(summariesRes.summaries.map((s) => [`${s.cellX},${s.cellY}`, s.summary]));
-  if (world.cells.length === 0) {
-    meta.textContent = "no worldmap";
-    return;
+function renderBakeForm() {
+  const html = [];
+  html.push(`<section>
+    <h2>Bake new world</h2>
+    <div class="row"><label>Name</label>
+      <input id="f-name" type="text" class="full" placeholder="bake-${nowSlug()}"></div>
+    <div class="row"><label>Seed</label>
+      <input id="f-seed" type="number" step="1" value="${formMeta.seed}"></div>
+    <div class="row"><label>Width</label>
+      <input id="f-width" type="number" step="1" min="1" max="32" value="${formMeta.width}"></div>
+    <div class="row"><label>Height</label>
+      <input id="f-height" type="number" step="1" min="1" max="32" value="${formMeta.height}"></div>
+  </section>`);
+
+  for (const slice of Object.keys(formParams)) {
+    const knobs = Object.keys(formParams[slice]);
+    html.push(`<details ${slice === "noise" || slice === "terrain" ? "" : ""} data-slice="${slice}">
+      <summary>${SLICE_LABELS[slice] ?? slice} <span class="count">${knobs.length} knobs</span></summary>
+      <div class="body">
+        ${knobs.map(k => knobInput(slice, k, formParams[slice][k])).join("")}
+        <div class="btn-row">
+          <button class="flex" data-act="reset-slice" data-slice="${slice}">↺ defaults</button>
+        </div>
+      </div>
+    </details>`);
   }
-  worldBbox = world.cells.reduce((acc, c) => ({
-    minX: Math.min(acc.minX, c.cellX), minY: Math.min(acc.minY, c.cellY),
-    maxX: Math.max(acc.maxX, c.cellX), maxY: Math.max(acc.maxY, c.cellY),
-  }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
-  meta.textContent = `seed ${world.seed} · ${world.cells.length} cells · ${summaries.size} tiles generated`;
-  setCrumbs({ label: "World" });
-  renderWorldAside();
-  resize();
-  drawWorld();
+
+  html.push(`<section>
+    <div class="btn-row">
+      <button id="reset-all" class="flex">Reset all</button>
+      <button id="bake" class="primary flex">Bake & restart</button>
+    </div>
+  </section>`);
+
+  bakeForm.innerHTML = html.join("");
+
+  // Wire input listeners — each updates formParams + flags the slice as dirty.
+  for (const slice of Object.keys(formParams)) {
+    for (const k of Object.keys(formParams[slice])) {
+      const el = document.getElementById(`f-${slice}-${k}`);
+      if (!el) continue;
+      el.addEventListener("input", () => {
+        formParams[slice][k] = parseFloat(el.value);
+        markDirty(slice, k, formParams[slice][k] !== defaults[slice][k]);
+      });
+      // Initial dirty marker.
+      markDirty(slice, k, formParams[slice][k] !== defaults[slice][k]);
+    }
+  }
+  for (const m of ["name", "seed", "width", "height"]) {
+    document.getElementById(`f-${m}`).addEventListener("input", (e) => {
+      formMeta[m] = m === "name" ? e.target.value : parseFloat(e.target.value);
+    });
+  }
+  bakeForm.querySelector("#bake").addEventListener("click", onBake);
+  bakeForm.querySelector("#reset-all").addEventListener("click", () => {
+    formParams = clone(defaults);
+    renderBakeForm();
+  });
+  for (const btn of bakeForm.querySelectorAll('[data-act="reset-slice"]')) {
+    btn.addEventListener("click", () => {
+      const s = btn.dataset.slice;
+      formParams[s] = clone(defaults[s]);
+      renderBakeForm();
+    });
+  }
 }
 
-function renderWorldAside() {
-  const w = worldBbox.maxX - worldBbox.minX + 1;
-  const h = worldBbox.maxY - worldBbox.minY + 1;
+function knobInput(slice, key, value) {
+  const cfg = KNOB_CONFIG[slice]?.[key] ?? { step: 0.01 };
+  const id = `f-${slice}-${key}`;
+  const valStr = cfg.integer ? String(Math.round(value)) : String(value);
+  return `<div class="row">
+    <label title="${escape(slice)}.${escape(key)}">${escape(key)}</label>
+    <input id="${id}" type="number"
+      step="${cfg.step}"
+      ${cfg.min !== undefined ? `min="${cfg.min}"` : ""}
+      ${cfg.max !== undefined ? `max="${cfg.max}"` : ""}
+      value="${valStr}">
+  </div>`;
+}
+
+function markDirty(slice, key, isDirty) {
+  const el = document.getElementById(`f-${slice}-${key}`);
+  if (!el) return;
+  el.classList.toggle("dirty", isDirty);
+}
+
+async function onBake() {
+  const btn = bakeForm.querySelector("#bake");
+  btn.disabled = true;
+  btn.textContent = "Baking…";
+  toast("info", "Baking new world…");
+  try {
+    const body = {
+      ...formMeta,
+      name: formMeta.name || `bake-${nowSlug()}`,
+      params: formParams,
+    };
+    const res = await fetch("/world/bake", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    const { baked } = await res.json();
+    toast("good", `Baked "${baked.name}". Services will restart in a few seconds…`);
+    awaitWorldChange(baked.id);
+  } catch (e) {
+    toast("bad", `Bake failed: ${e.message}`);
+    btn.disabled = false;
+    btn.textContent = "Bake & restart";
+  }
+}
+
+/**
+ * Poll /world until the active world id matches `expectedId`. When it does,
+ * the inspector reloads the page so all canvas state, summaries, etc.
+ * regenerate from the new world.
+ */
+async function awaitWorldChange(expectedId) {
+  for (let i = 0; i < 30; i++) {
+    await sleep(1000);
+    try {
+      const r = await fetch("/world").then(r => r.json());
+      if (r.world?.id === expectedId) {
+        toast("good", "New world live. Reloading…");
+        await sleep(500);
+        location.reload();
+        return;
+      }
+    } catch { /* keep polling */ }
+  }
+  toast("bad", "Bake landed but services didn't pick it up within 30s. Check logs.");
+}
+
+/**
+ * After page load, keep checking whether someone ELSE baked a new world
+ * (e.g. via curl) and reload to reflect it. Slow cadence (10s) so it
+ * doesn't compete with bake-driven polling.
+ */
+function startActiveWorldPoller() {
+  const initialId = world?.world?.id;
+  setInterval(async () => {
+    try {
+      const r = await fetch("/world").then(r => r.json());
+      if (r.world?.id && r.world.id !== initialId) location.reload();
+    } catch { /* ignore */ }
+  }, 10_000);
+}
+
+// ---- world view ----------------------------------------------------------
+
+function renderContextWorld() {
+  if (!world?.world) {
+    aside.innerHTML = `<section><div>no world baked yet</div></section>`;
+    return;
+  }
   aside.innerHTML = `
-    <section>
-      <h2>Regenerate world</h2>
-      <div class="row"><label for="seed">Seed</label><input id="seed" type="number" value="${world.seed}"></div>
-      <div class="row"><label for="width">Width</label><input id="width" type="number" value="${w}"></div>
-      <div class="row"><label for="height">Height</label><input id="height" type="number" value="${h}"></div>
-      <button id="regen">Regenerate</button>
+    <section class="info">
+      <h2>Active world</h2>
+      <dl>
+        <dt>name</dt><dd>${escape(world.world.name)}</dd>
+        <dt>id</dt><dd>${escape(world.world.id.slice(0, 8))}…</dd>
+        <dt>seed</dt><dd>${world.world.seed}</dd>
+        <dt>dims</dt><dd>${world.world.width}×${world.world.height}</dd>
+        <dt>baked</dt><dd>${shortDate(world.world.bakedAt)}</dd>
+        <dt>cells</dt><dd>${world.cells.length}</dd>
+        <dt>summaries</dt><dd>${summaries?.size ?? 0}</dd>
+      </dl>
     </section>
     <section>
       <h2>Channels → colour</h2>
@@ -95,24 +326,12 @@ function renderWorldAside() {
         <div><span class="swatch" style="background:#fff;border:1px solid #444"></span>· = gate</div>
       </div>
     </section>
-    <section class="selected">
-      <h2>Cell</h2>
-      <div id="selected">click a cell to drill in</div>
-    </section>`;
-  document.getElementById("regen").addEventListener("click", regenWorld);
-}
-
-async function regenWorld() {
-  const seed   = parseInt(document.getElementById("seed").value);
-  const width  = parseInt(document.getElementById("width").value);
-  const height = parseInt(document.getElementById("height").value);
-  meta.textContent = "regenerating…";
-  await fetch(`/world/regen?seed=${seed}&width=${width}&height=${height}`, { method: "POST" });
-  await loadWorld();
+    <section><h2>Click a cell to drill in</h2></section>
+  `;
 }
 
 function worldLayout() {
-  if (!world) return null;
+  if (!world?.cells?.length || !worldBbox) return null;
   const w = worldBbox.maxX - worldBbox.minX + 1;
   const h = worldBbox.maxY - worldBbox.minY + 1;
   const margin = 24;
@@ -127,11 +346,10 @@ function worldLayout() {
 function drawWorld() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   const layout = worldLayout(); if (!layout) return;
-  // Three passes: cells + gates first, connectivity arcs in the middle,
-  // rivers on top so they read as the strongest world-layer feature.
   for (const c of world.cells) drawWorldCell(c, layout);
   for (const c of world.cells) drawConnectivityFor(c, layout);
   for (const c of world.cells) drawRiversFor(c, layout);
+  meta.textContent = `${world.cells.length} cells · ${summaries.size} tile summaries`;
 }
 
 function drawWorldCell(c, layout) {
@@ -161,11 +379,6 @@ function drawWorldCell(c, layout) {
   }
 }
 
-/**
- * Draw the cell's river segments as solid blue lines. Each segment goes
- * from a → b in tile-local coordinates; we map those into the cell's
- * canvas rect.
- */
 function drawRiversFor(c, layout) {
   if (!c.rivers || c.rivers.length === 0) return;
   const { cellPx, originX, originY } = layout;
@@ -173,20 +386,18 @@ function drawRiversFor(c, layout) {
   const y0 = originY + (c.cellY - worldBbox.minY) * cellPx;
   const tile = 512;
   const u2px = cellPx / tile;
-
   const endpointToCanvas = (e) => {
     if (e.edge !== undefined && e.offset !== undefined) {
       const along = e.offset * u2px;
       switch (e.edge) {
-        case "north": return [x0 + along,           y0];
-        case "south": return [x0 + along,           y0 + cellPx - 1];
-        case "west":  return [x0,                   y0 + along];
-        case "east":  return [x0 + cellPx - 1,      y0 + along];
+        case "north": return [x0 + along,         y0];
+        case "south": return [x0 + along,         y0 + cellPx - 1];
+        case "west":  return [x0,                 y0 + along];
+        case "east":  return [x0 + cellPx - 1,    y0 + along];
       }
     }
     return [x0 + (e.x ?? 0) * u2px, y0 + (e.y ?? 0) * u2px];
   };
-
   ctx.strokeStyle = "#3070ff";
   ctx.lineWidth = Math.max(2, cellPx * 0.04);
   ctx.lineCap = "round";
@@ -200,21 +411,13 @@ function drawRiversFor(c, layout) {
   }
 }
 
-/**
- * For each pair of gates internally connected (same nibble in this cell's
- * gate-summary), draw an arc inside the cell linking the two gate dots.
- * Skips the cell entirely if no summary is available (tile not generated).
- */
 function drawConnectivityFor(c, layout) {
   const summary = summaries.get(`${c.cellX},${c.cellY}`);
   if (summary === undefined) return;
-
   const { cellPx, originX, originY } = layout;
   const x = originX + (c.cellX - worldBbox.minX) * cellPx;
   const y = originY + (c.cellY - worldBbox.minY) * cellPx;
   const tile = 512;
-
-  // Resolve each present edge to a {gx, gy} canvas point.
   const points = {};
   for (const edge of ["north", "east", "south", "west"]) {
     const g = c.gates[edge]; if (!g) continue;
@@ -226,7 +429,6 @@ function drawConnectivityFor(c, layout) {
     if (edge === "east")  { gx = x + cellPx - 1; gy = y + along; }
     points[edge] = { gx, gy };
   }
-
   ctx.strokeStyle = "rgba(255,255,255,0.7)";
   ctx.lineWidth = Math.max(1, cellPx * 0.015);
   const edges = ["north", "east", "south", "west"];
@@ -243,7 +445,7 @@ function drawConnectivityFor(c, layout) {
   }
 }
 
-// ---- tile view ------------------------------------------------------------
+// ---- tile view -----------------------------------------------------------
 
 async function loadTile(cellX, cellY) {
   view = "tile";
@@ -256,32 +458,31 @@ async function loadTile(cellX, cellY) {
   tile = await res.json();
   meta.textContent = `tile ${tile.tileId} · seed ${tile.seed} · ${tile.payload.rooms.length} rooms · ${tile.payload.portals.length} portals`;
   setCrumbs({ label: "World", href: "#world" }, { label: `Tile (${cellX},${cellY})` });
-  renderTileAside(cellX, cellY);
+  renderContextTile(cellX, cellY);
   resize();
   drawTile();
 }
 
-function renderTileAside(cellX, cellY) {
+function renderContextTile(cellX, cellY) {
   const p = tile.payload;
   const portalsHtml = p.portals.map((p) =>
-    `<dt>portal ${p.edge}</dt><dd>room ${p.roomId} · pixel (${p.pixelX},${p.pixelY})</dd>`
+    `<dt>portal ${p.edge}</dt><dd>room ${p.roomId}</dd>`
   ).join("");
   aside.innerHTML = `
     <section>
-      <button id="back">← world</button>
+      <button class="full" id="back">← world</button>
     </section>
     <section>
       <h2>Layer</h2>
-      <div class="row" style="gap:6px;flex-wrap:wrap">
-        <button id="layer-rooms"     style="flex:1 1 45%">rooms</button>
-        <button id="layer-height"    style="flex:1 1 45%">height</button>
-        <button id="layer-materials" style="flex:1 1 45%">materials</button>
-        <button id="layer-kinds"     style="flex:1 1 45%">kinds</button>
+      <div class="btn-row" style="flex-wrap:wrap">
+        <button data-layer="rooms"     class="flex">rooms</button>
+        <button data-layer="height"    class="flex">height</button>
+        <button data-layer="materials" class="flex">materials</button>
+        <button data-layer="kinds"     class="flex">kinds</button>
       </div>
     </section>
     <section>
-      <h2>Regenerate tile</h2>
-      <button id="tregen">Regenerate (${cellX},${cellY})</button>
+      <button class="full" id="tregen">Regenerate this tile</button>
     </section>
     <section class="info">
       <h2>Tile</h2>
@@ -295,19 +496,19 @@ function renderTileAside(cellX, cellY) {
       </dl>
     </section>
     ${renderSummarySection(p.gateSummary)}`;
-  document.getElementById("back").addEventListener("click", () => { location.hash = "#world"; });
-  document.getElementById("tregen").addEventListener("click", async () => {
+  aside.querySelector("#back").addEventListener("click", () => { location.hash = "#world"; });
+  aside.querySelector("#tregen").addEventListener("click", async () => {
     meta.textContent = "regenerating tile…";
     await fetch(`/tile/${cellX}/${cellY}/regen`, { method: "POST" });
     await loadTile(cellX, cellY);
   });
-  for (const layer of ["rooms", "height", "materials", "kinds"]) {
-    const btn = document.getElementById(`layer-${layer}`);
+  for (const btn of aside.querySelectorAll("[data-layer]")) {
+    const layer = btn.dataset.layer;
     btn.style.borderColor = tileLayer === layer ? "var(--accent)" : "var(--border)";
     btn.style.color       = tileLayer === layer ? "var(--accent)" : "var(--text)";
     btn.addEventListener("click", () => {
       tileLayer = layer;
-      renderTileAside(cellX, cellY);
+      renderContextTile(cellX, cellY);
       drawTile();
     });
   }
@@ -321,7 +522,6 @@ function renderSummarySection(summary) {
     const n = nibbleAt(summary, e);
     return n === NO_GATE ? "·" : String(n);
   };
-  // Reachability matrix: 4×4. "—" diagonal, "✓" connected, blank otherwise.
   const matrix = `
     <table style="border-collapse:collapse;font-size:11px;width:100%;text-align:center">
       <thead><tr><th></th>${edges.map((e) => `<th>${labelOf(e)}</th>`).join("")}</tr></thead>
@@ -334,7 +534,7 @@ function renderSummarySection(summary) {
               const ok = reachable(summary, from, to);
               const naLeft  = nibbleAt(summary, from) === NO_GATE;
               const naRight = nibbleAt(summary, to)   === NO_GATE;
-              const cls = ok ? "color:var(--accent)" : (naLeft || naRight) ? "color:var(--text-dim)" : "color:var(--text-dim)";
+              const cls = ok ? "color:var(--accent)" : "color:var(--text-dim)";
               const ch  = ok ? "✓" : (naLeft || naRight) ? "·" : " ";
               return `<td style="${cls}">${ch}</td>`;
             }).join("")}
@@ -367,17 +567,16 @@ function tileLayout() {
 function drawTile() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   const layout = tileLayout(); if (!layout) return;
-  const { px, originX, originY, g } = layout;
-
-  if (tileLayer === "rooms") drawTileRooms(layout);
-  else if (tileLayer === "height") drawTileHeight(layout);
+  if (tileLayer === "rooms")     drawTileRooms(layout);
+  else if (tileLayer === "height")    drawTileHeight(layout);
   else if (tileLayer === "materials") drawTileMaterials(layout);
-  else if (tileLayer === "kinds") drawTileKinds(layout);
+  else if (tileLayer === "kinds")     drawTileKinds(layout);
 
-  // portal dots on top, regardless of layer
+  // portals on top regardless of layer
   ctx.fillStyle = "#fff";
   ctx.strokeStyle = "#000";
   ctx.lineWidth = 1;
+  const { px, originX, originY } = layout;
   const dotR = Math.max(3, Math.round(px * 0.6));
   for (const p of tile.payload.portals) {
     const cx = originX + p.pixelX * px + px / 2;
@@ -391,101 +590,16 @@ function drawTile() {
 
 function drawTileRooms({ px, originX, originY, g }) {
   const openMask = bytesFromB64(tile.payload.openMaskB64);
-  const roomOf = u16FromB64(tile.payload.roomOfB64);
-  const roomColor = (id) => roomColours[id % roomColours.length];
-  for (let py = 0; py < g; py++) {
-    for (let pxi = 0; pxi < g; pxi++) {
-      const idx = py * g + pxi;
-      if (openMask[idx] === 0) {
-        ctx.fillStyle = "#1a1c21";
-      } else {
-        const rid = roomOf[idx];
-        ctx.fillStyle = rid === 0xFFFF ? "#444" : roomColor(rid);
-      }
-      ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
-    }
+  const roomOf   = u16FromB64(tile.payload.roomOfB64);
+  const colour = (id) => roomColours[id % roomColours.length];
+  for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
+    const idx = py * g + pxi;
+    if (openMask[idx] === 0) ctx.fillStyle = "#1a1c21";
+    else { const rid = roomOf[idx]; ctx.fillStyle = rid === 0xFFFF ? "#444" : colour(rid); }
+    ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
   }
 }
 
-// Atlas's MATERIAL_* ids → display colours. Stable mapping; tile-server
-// will translate atlas ids to its own content registry separately.
-const MATERIAL_COLOURS = {
-  0: "#222",      // NONE
-  1: "#5a8b3f",   // GRASS
-  2: "#7a5a3a",   // DIRT
-  3: "#7a7a7a",   // STONE
-  4: "#d8c878",   // SAND
-  5: "#3070b8",   // WATER
-};
-
-function drawTileMaterials({ px, originX, originY, g }) {
-  const materials = u16FromB64(tile.payload.materialsB64);
-  const openMask  = bytesFromB64(tile.payload.openMaskB64);
-  for (let py = 0; py < g; py++) {
-    for (let pxi = 0; pxi < g; pxi++) {
-      const idx = py * g + pxi;
-      const matId = materials[idx];
-      const base = MATERIAL_COLOURS[matId] ?? "#444";
-      // Closed pixels rendered slightly darker so the boundary structure
-      // still reads through the material colour.
-      ctx.fillStyle = openMask[idx] === 0 ? darken(base, 0.55) : base;
-      ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
-    }
-  }
-}
-
-function darken(hex, amount) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.round(((n >> 16) & 0xff) * amount);
-  const g = Math.round(((n >> 8)  & 0xff) * amount);
-  const b = Math.round(( n        & 0xff) * amount);
-  return `rgb(${r},${g},${b})`;
-}
-
-// Atlas's BOUNDARY_KIND_* ids → display colours.
-const KIND_COLOURS = {
-  0: "#dadada",   // OPEN — light, so it stays "background"
-  1: "#7a7a7a",   // CLIFF — slate
-  2: "#3f7a3a",   // VEGETATION — leafy
-  3: "#3070b8",   // WATER — same blue as the materials layer
-};
-
-function drawTileKinds({ px, originX, originY, g }) {
-  const kindOf = u16FromB64(tile.payload.kindOfB64);
-  for (let py = 0; py < g; py++) {
-    for (let pxi = 0; pxi < g; pxi++) {
-      const idx = py * g + pxi;
-      ctx.fillStyle = KIND_COLOURS[kindOf[idx]] ?? "#444";
-      ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
-    }
-  }
-}
-
-function drawTileHeight({ px, originX, originY, g }) {
-  const heightMap = f32FromB64(tile.payload.heightMapB64);
-  // Find min/max for normalised colouring.
-  let min = Infinity, max = -Infinity;
-  for (let i = 0; i < heightMap.length; i++) {
-    const h = heightMap[i];
-    if (h < min) min = h;
-    if (h > max) max = h;
-  }
-  const range = Math.max(1e-6, max - min);
-  for (let py = 0; py < g; py++) {
-    for (let pxi = 0; pxi < g; pxi++) {
-      const idx = py * g + pxi;
-      const t = (heightMap[idx] - min) / range;       // 0..1
-      // Cool→warm gradient: low = blue, high = orange-red.
-      const r = Math.round(40  + t * 215);
-      const gr = Math.round(60 + t * 100);
-      const b = Math.round(150 - t * 110);
-      ctx.fillStyle = `rgb(${r},${gr},${b})`;
-      ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
-    }
-  }
-}
-
-// 24-room palette — pleasant distinct hues
 const roomColours = [
   "#f57676","#7edb8b","#7eb6f5","#f5d976","#c47ef5","#76e9f5",
   "#f59f76","#9af576","#769ff5","#f576c4","#76f5b6","#cdf576",
@@ -493,7 +607,57 @@ const roomColours = [
   "#f5a586","#a5f586","#86a5f5","#f586cb","#86f5b6","#d6f586",
 ];
 
-// ---- shared ---------------------------------------------------------------
+function drawTileHeight({ px, originX, originY, g }) {
+  const heightMap = f32FromB64(tile.payload.heightMapB64);
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < heightMap.length; i++) {
+    if (heightMap[i] < min) min = heightMap[i];
+    if (heightMap[i] > max) max = heightMap[i];
+  }
+  const range = Math.max(1e-6, max - min);
+  for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
+    const idx = py * g + pxi;
+    const t = (heightMap[idx] - min) / range;
+    const r  = Math.round(40  + t * 215);
+    const gr = Math.round(60  + t * 100);
+    const b  = Math.round(150 - t * 110);
+    ctx.fillStyle = `rgb(${r},${gr},${b})`;
+    ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
+  }
+}
+
+const MATERIAL_COLOURS = {
+  0: "#222", 1: "#5a8b3f", 2: "#7a5a3a", 3: "#7a7a7a", 4: "#d8c878", 5: "#3070b8",
+};
+
+function drawTileMaterials({ px, originX, originY, g }) {
+  const materials = u16FromB64(tile.payload.materialsB64);
+  const openMask  = bytesFromB64(tile.payload.openMaskB64);
+  for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
+    const idx = py * g + pxi;
+    const base = MATERIAL_COLOURS[materials[idx]] ?? "#444";
+    ctx.fillStyle = openMask[idx] === 0 ? darken(base, 0.55) : base;
+    ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
+  }
+}
+
+const KIND_COLOURS = { 0: "#dadada", 1: "#7a7a7a", 2: "#3f7a3a", 3: "#3070b8" };
+
+function drawTileKinds({ px, originX, originY, g }) {
+  const kindOf = u16FromB64(tile.payload.kindOfB64);
+  for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
+    const idx = py * g + pxi;
+    ctx.fillStyle = KIND_COLOURS[kindOf[idx]] ?? "#444";
+    ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
+  }
+}
+
+function darken(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${Math.round(((n >> 16) & 0xff) * amount)},${Math.round(((n >> 8) & 0xff) * amount)},${Math.round((n & 0xff) * amount)})`;
+}
+
+// ---- shared --------------------------------------------------------------
 
 function resize() {
   canvas.width  = canvas.clientWidth  * devicePixelRatio;
@@ -507,17 +671,16 @@ function redraw() {
 }
 
 function onCanvasClick(e) {
-  if (view === "world") {
-    const layout = worldLayout(); if (!layout) return;
-    const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    const cx = Math.floor((px - layout.originX) / layout.cellPx) + worldBbox.minX;
-    const cy = Math.floor((py - layout.originY) / layout.cellPx) + worldBbox.minY;
-    const cell = world.cells.find((c) => c.cellX === cx && c.cellY === cy);
-    if (!cell) return;
-    location.hash = `#tile/${cx}/${cy}`;
-  }
+  if (view !== "world") return;
+  const layout = worldLayout(); if (!layout) return;
+  const rect = canvas.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  const cx = Math.floor((px - layout.originX) / layout.cellPx) + worldBbox.minX;
+  const cy = Math.floor((py - layout.originY) / layout.cellPx) + worldBbox.minY;
+  const cell = world.cells.find((c) => c.cellX === cx && c.cellY === cy);
+  if (!cell) return;
+  location.hash = `#tile/${cx}/${cy}`;
 }
 
 function bytesFromB64(b64) {
@@ -526,13 +689,19 @@ function bytesFromB64(b64) {
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
   return out;
 }
+function u16FromB64(b64) { const b = bytesFromB64(b64); return new Uint16Array(b.buffer, b.byteOffset, b.byteLength / 2); }
+function f32FromB64(b64) { const b = bytesFromB64(b64); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4); }
 
-function u16FromB64(b64) {
-  const bytes = bytesFromB64(b64);
-  return new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
-}
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+function escape(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+function nowSlug() { return new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-"); }
+function shortDate(iso) { return new Date(iso).toLocaleString(undefined, { hour12: false, dateStyle: "short", timeStyle: "medium" }); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-function f32FromB64(b64) {
-  const bytes = bytesFromB64(b64);
-  return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+let toastTimer = null;
+function toast(kind, text) {
+  toastEl.className = `toast show ${kind}`;
+  toastEl.textContent = text;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.className = "toast"; }, 4000);
 }

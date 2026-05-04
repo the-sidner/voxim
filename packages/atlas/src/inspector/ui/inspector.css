@@ -1,0 +1,175 @@
+:root {
+  --bg:        #0e0f12;
+  --panel:    #1a1c21;
+  --border:   #2a2d35;
+  --text:     #e6e7ea;
+  --text-dim: #9097a3;
+  --accent:   #5fb4ff;
+  --warn:     #ffb060;
+  --good:     #5fd47a;
+  --bad:      #ff6f6f;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+}
+
+body {
+  display: grid;
+  grid-template-columns: 320px 1fr 300px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+header {
+  grid-column: 1 / -1;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px;
+}
+header h1 { font-size: 14px; font-weight: 600; }
+header .meta { color: var(--text-dim); font-size: 12px; }
+header .grow { flex: 1; }
+header .active-world {
+  color: var(--text-dim); font-size: 12px;
+  background: var(--panel); padding: 2px 8px;
+  border: 1px solid var(--border); border-radius: 3px;
+}
+header .crumbs a {
+  color: var(--accent); text-decoration: none; cursor: pointer;
+}
+header .crumbs a:hover { text-decoration: underline; }
+header .crumbs .sep { color: var(--text-dim); margin: 0 8px; }
+
+main {
+  position: relative;
+  overflow: hidden;
+  background: #06070a;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+aside.left, aside.right {
+  border-left: 1px solid var(--border);
+  padding: 14px;
+  overflow-y: auto;
+}
+aside.left {
+  border-left: none;
+  border-right: 1px solid var(--border);
+}
+
+aside h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+aside section { margin-bottom: 16px; }
+
+.row {
+  display: flex; align-items: center;
+  gap: 8px; margin-bottom: 6px;
+}
+.row label { color: var(--text-dim); flex: 1; }
+.row input[type=number],
+.row input[type=text] {
+  width: 100px;
+  background: #0e0f12;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 3px 6px;
+  font: inherit;
+  border-radius: 3px;
+}
+.row input[type=text].full { flex: 1; width: auto; }
+
+.btn-row {
+  display: flex; gap: 6px; margin-top: 8px;
+}
+button {
+  padding: 5px 10px;
+  background: #1a1c21;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font: inherit;
+  cursor: pointer;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0e0f12;
+  font-weight: 600;
+}
+button.primary:hover { filter: brightness(1.1); }
+button:hover:not(.primary) { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.full { width: 100%; }
+button.flex { flex: 1; }
+
+details {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin-bottom: 6px;
+}
+details summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  user-select: none;
+  display: flex; justify-content: space-between; align-items: center;
+}
+details summary:hover { background: #1a1c21; }
+details summary .count { color: var(--text-dim); font-size: 11px; }
+details[open] summary { border-bottom: 1px solid var(--border); }
+details .body { padding: 8px 10px; }
+
+.dirty { border-color: var(--warn) !important; }
+
+.info dl, .selected dl {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 4px 8px;
+}
+.info dt, .selected dt { color: var(--text-dim); }
+
+.legend {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px;
+  font-size: 11px;
+}
+.legend .swatch {
+  display: inline-block; width: 10px; height: 10px;
+  vertical-align: middle; margin-right: 6px;
+  border-radius: 2px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 16px; right: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 4px;
+  max-width: 360px;
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms;
+}
+.toast.show { opacity: 1; }
+.toast.good { border-color: var(--good); color: var(--good); }
+.toast.bad  { border-color: var(--bad);  color: var(--bad); }
+.toast.info { border-color: var(--accent); color: var(--accent); }
