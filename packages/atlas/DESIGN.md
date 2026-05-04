@@ -199,8 +199,6 @@ New `packages/atlas/`. Empty service that boots, exposes `/health`, has compose 
 **Phase 1 — worldmap layer.**
 Worldmap generation: biome params per cell, gate offsets, linear-feature specs. Persist to DB. Inspector renders the world view (cells coloured by biome, gates marked, river/road overlay). No tile generation yet.
 
-> Schema-ownership note: atlas's tables (`atlas_world_cells`, future `atlas_tile_init`) are NOT in `packages/db/migrations`. Atlas applies its DDL idempotently on boot via `repo.ensureSchema()`. The shared migrations dir is reserved for cross-service tables (users, sessions, tile_saves, tile_registry). This keeps atlas standalone and avoids the boot-order race against the `tools`-profile migrate container.
-
 **Phase 2 — tilemap layer.**
 Tile pipeline: noise → rooms → portals → boundaries → features. Write `tile_init` rows. Inspector renders one tile's stage-by-stage view. Tile-server starts reading `tile_init` instead of running its own gen.
 

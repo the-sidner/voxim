@@ -28,10 +28,6 @@ const height  = parseInt(Deno.env.get("WORLD_HEIGHT") ?? "4");
 const pool = createPool();
 const repo = new PgAtlasWorldRepo(pool);
 
-// Atlas owns its schema; apply it idempotently before anything queries.
-// This avoids racing the shared `tools`-profile migrate container.
-await repo.ensureSchema();
-
 // Ensure a worldmap exists for this (worldId, seed). If the persisted seed
 // differs from the configured one, regenerate — seed change = different world.
 const existing = await repo.load(worldId);

@@ -8,6 +8,8 @@ x-tile-base: &tile-base
   depends_on:
     postgres:
       condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
     certs-init:
       condition: service_completed_successfully
   environment:
@@ -47,7 +49,6 @@ services:
     build:
       context: .
       dockerfile: docker/gateway.Dockerfile
-    profiles: ["tools"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,8 +56,14 @@ services:
       DATABASE_URL: ${DATABASE_URL}
     command: ["deno", "run", "--allow-net", "--allow-read", "--allow-env",
               "packages/db/migrate.ts"]
-    # Run with: docker compose --profile tools run --rm migrate
-    # Or via:   deno task migrate
+    restart: "no"
+    # Auto-runs on every compose-up. Migrations are forward-only and idempotent
+    # (skip already-applied), so re-running is cheap. Other services depend on
+    # this with condition: service_completed_successfully so they wait until the
+    # schema is current before booting.
+    #
+    # Manual invocation (rare — for forcing a re-run without restarting the
+    # stack): `deno task migrate`.
 
   gateway:
     build:
@@ -65,6 +72,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       certs-init:
         condition: service_completed_successfully
     environment:
@@ -91,6 +100,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       gateway:
         condition: service_started
       certs-init:
@@ -116,6 +127,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       ATLAS_PORT: 8082
       DATABASE_URL: ${DATABASE_URL}

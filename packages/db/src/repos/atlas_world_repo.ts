@@ -7,11 +7,6 @@
  *
  * Cell shape is stored as jsonb (biome + gates) so the bundle can grow
  * new fields (Q5) without a migration on every addition.
- *
- * Schema is owned by atlas, not the shared migrations runner — `ensureSchema`
- * applies idempotent DDL at atlas boot. Putting it here (rather than in
- * packages/db/migrations) avoids the boot-order footgun where atlas would
- * race the `tools`-profile migrate container.
  */
 
 import type { DbPool } from "../client.ts";
@@ -31,11 +26,6 @@ export interface LoadedAtlasWorld {
 }
 
 export interface AtlasWorldRepo {
-  /**
-   * Apply atlas's DDL idempotently. Call once at service boot, before any
-   * load/save. Safe to re-run.
-   */
-  ensureSchema(): Promise<void>;
   /** Returns null when no worldmap exists for this world_id. */
   load(worldId?: string): Promise<LoadedAtlasWorld | null>;
   /**
@@ -54,30 +44,6 @@ export interface AtlasWorldRepo {
 
 export class PgAtlasWorldRepo implements AtlasWorldRepo {
   constructor(private readonly pool: DbPool) {}
-
-  async ensureSchema(): Promise<void> {
-    const conn = await this.pool.connect();
-    try {
-      await conn.queryArray(`
-        CREATE TABLE IF NOT EXISTS atlas_world_cells (
-          world_id      text   not null default 'default',
-          cell_x        int    not null,
-          cell_y        int    not null,
-          seed          bigint not null,
-          biome         jsonb  not null,
-          gates         jsonb  not null,
-          generated_at  timestamptz not null default now(),
-          PRIMARY KEY (world_id, cell_x, cell_y)
-        )
-      `);
-      await conn.queryArray(`
-        CREATE INDEX IF NOT EXISTS atlas_world_cells_world_seed_idx
-          ON atlas_world_cells (world_id, seed)
-      `);
-    } finally {
-      conn.release();
-    }
-  }
 
   async load(worldId: string = "default"): Promise<LoadedAtlasWorld | null> {
     const conn = await this.pool.connect();
