@@ -48,6 +48,7 @@ if (!existing || Number(existing.seed) !== seed) {
       cellY: c.cellY,
       biome: c.biome as unknown as Record<string, unknown>,
       gates: c.gates as unknown as Record<string, unknown>,
+      rivers: c.rivers as unknown as unknown[],
     })),
   });
   // Worldmap re-seeded → all existing tile_init rows are stale.

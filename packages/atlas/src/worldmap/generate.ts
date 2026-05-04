@@ -12,6 +12,7 @@
  */
 
 import { fbm, hash2 } from "../common/noise.ts";
+import { generateRivers } from "./rivers.ts";
 import type { Edge, GateSpec, WorldCellRecord, WorldMap } from "./types.ts";
 
 /**
@@ -50,6 +51,10 @@ export function generateWorldMap(
     }
   }
 
+  // Linear features run after every cell exists so the river walker can
+  // peek at neighbours' altitudes when picking the downhill direction.
+  generateRivers(cells, width, height, seed);
+
   return { seed, width, height, cells };
 }
 
@@ -80,6 +85,8 @@ function makeCell(
       south: gateOnEdge(seed, cellX, cellY, width, height, "south"),
       west:  gateOnEdge(seed, cellX, cellY, width, height, "west"),
     },
+    // Filled in by generateRivers() after every cell exists.
+    rivers: [],
   };
 }
 

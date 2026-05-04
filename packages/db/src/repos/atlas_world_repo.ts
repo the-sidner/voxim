@@ -18,6 +18,8 @@ export interface AtlasCellRow {
   biome: Record<string, unknown>;
   /** Per-edge gate specs. Opaque to the repo. */
   gates: Record<string, unknown>;
+  /** River segments crossing this cell (from worldgen's downhill walk). */
+  rivers: unknown[];
 }
 
 export interface LoadedAtlasWorld {
@@ -54,9 +56,10 @@ export class PgAtlasWorldRepo implements AtlasWorldRepo {
         seed: bigint;
         biome: Record<string, unknown>;
         gates: Record<string, unknown>;
+        rivers: unknown[];
       }>({
         text: `
-          SELECT cell_x, cell_y, seed, biome, gates
+          SELECT cell_x, cell_y, seed, biome, gates, rivers
           FROM atlas_world_cells
           WHERE world_id = $1
           ORDER BY cell_y, cell_x
@@ -72,6 +75,7 @@ export class PgAtlasWorldRepo implements AtlasWorldRepo {
           cellY: r.cell_y,
           biome: r.biome,
           gates: r.gates,
+          rivers: r.rivers,
         })),
       };
     } finally {
@@ -100,13 +104,18 @@ export class PgAtlasWorldRepo implements AtlasWorldRepo {
           const args: unknown[] = [worldId, input.seed];
           let p = 3;
           for (const c of input.cells) {
-            valuesSql.push(`($1, $${p++}, $${p++}, $2, $${p++}, $${p++})`);
-            args.push(c.cellX, c.cellY, JSON.stringify(c.biome), JSON.stringify(c.gates));
+            valuesSql.push(`($1, $${p++}, $${p++}, $2, $${p++}, $${p++}, $${p++})`);
+            args.push(
+              c.cellX, c.cellY,
+              JSON.stringify(c.biome),
+              JSON.stringify(c.gates),
+              JSON.stringify(c.rivers),
+            );
           }
           await conn.queryArray({
             text: `
               INSERT INTO atlas_world_cells
-                (world_id, cell_x, cell_y, seed, biome, gates)
+                (world_id, cell_x, cell_y, seed, biome, gates, rivers)
               VALUES ${valuesSql.join(",")}
             `,
             args,

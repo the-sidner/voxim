@@ -19,6 +19,7 @@ import { runPortalPlacement } from "./pipeline/portal_placement.ts";
 import { runTerrain } from "./pipeline/terrain.ts";
 import { runMaterials } from "./pipeline/materials.ts";
 import { runBoundaryKinds } from "./pipeline/boundary_kinds.ts";
+import { runRiverStamping } from "./pipeline/rivers.ts";
 import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
@@ -65,6 +66,17 @@ export function generateTile(
     biome:    worldCell.biome,
     tileSeed,
     gridSize,
+  });
+
+  // Linear features stamp AFTER kinds (overrides kindOf to WATER) and
+  // BEFORE terrain (so river pixels register as non-CLIFF and stay flat).
+  // Mutates placed.openMask + kinds.kindOf in place.
+  runRiverStamping({
+    rivers:   worldCell.rivers,
+    openMask: placed.openMask,
+    kindOf:   kinds.kindOf,
+    gridSize,
+    tileSize,
   });
 
   const terrain = runTerrain({

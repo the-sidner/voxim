@@ -14,6 +14,8 @@ export type {
   Edge,
   GateSpec,
   BiomeParams,
+  RiverEndpoint,
+  RiverSegment,
   WorldCellRecord,
   WorldMap,
 } from "./src/worldmap/types.ts";

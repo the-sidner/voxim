@@ -88,6 +88,7 @@ async function handleRequest(
         cellY: c.cellY,
         biome: c.biome as unknown as Record<string, unknown>,
         gates: c.gates as unknown as Record<string, unknown>,
+        rivers: c.rivers as unknown as unknown[],
       })),
     });
     // Worldmap re-seeded → all existing tile_init rows are stale.
@@ -218,6 +219,7 @@ async function getOrGenerateTile(
     cellY:  cellRow.cellY,
     biome:  cellRow.biome as unknown as WorldCellRecord["biome"],
     gates:  cellRow.gates as unknown as WorldCellRecord["gates"],
+    rivers: cellRow.rivers as unknown as WorldCellRecord["rivers"],
   };
   const tile = generateTile(cell, tileSeed);
   const payload = tileInitToWire(tile) as unknown as Record<string, unknown>;

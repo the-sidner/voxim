@@ -127,9 +127,11 @@ function worldLayout() {
 function drawWorld() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   const layout = worldLayout(); if (!layout) return;
-  // Two passes: cells + gates first, connectivity arcs on top.
+  // Three passes: cells + gates first, connectivity arcs in the middle,
+  // rivers on top so they read as the strongest world-layer feature.
   for (const c of world.cells) drawWorldCell(c, layout);
   for (const c of world.cells) drawConnectivityFor(c, layout);
+  for (const c of world.cells) drawRiversFor(c, layout);
 }
 
 function drawWorldCell(c, layout) {
@@ -156,6 +158,45 @@ function drawWorldCell(c, layout) {
     ctx.beginPath();
     ctx.arc(gx, gy, dotR, 0, Math.PI * 2);
     ctx.fill();
+  }
+}
+
+/**
+ * Draw the cell's river segments as solid blue lines. Each segment goes
+ * from a → b in tile-local coordinates; we map those into the cell's
+ * canvas rect.
+ */
+function drawRiversFor(c, layout) {
+  if (!c.rivers || c.rivers.length === 0) return;
+  const { cellPx, originX, originY } = layout;
+  const x0 = originX + (c.cellX - worldBbox.minX) * cellPx;
+  const y0 = originY + (c.cellY - worldBbox.minY) * cellPx;
+  const tile = 512;
+  const u2px = cellPx / tile;
+
+  const endpointToCanvas = (e) => {
+    if (e.edge !== undefined && e.offset !== undefined) {
+      const along = e.offset * u2px;
+      switch (e.edge) {
+        case "north": return [x0 + along,           y0];
+        case "south": return [x0 + along,           y0 + cellPx - 1];
+        case "west":  return [x0,                   y0 + along];
+        case "east":  return [x0 + cellPx - 1,      y0 + along];
+      }
+    }
+    return [x0 + (e.x ?? 0) * u2px, y0 + (e.y ?? 0) * u2px];
+  };
+
+  ctx.strokeStyle = "#3070ff";
+  ctx.lineWidth = Math.max(2, cellPx * 0.04);
+  ctx.lineCap = "round";
+  for (const seg of c.rivers) {
+    const [ax, ay] = endpointToCanvas(seg.a);
+    const [bx, by] = endpointToCanvas(seg.b);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
   }
 }
 
