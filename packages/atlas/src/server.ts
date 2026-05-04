@@ -15,13 +15,25 @@
  */
 
 import { serveDir } from "@std/http/file-server";
-import type { AtlasWorldRepo } from "@voxim/db";
+import type { AtlasTileInitRepo, AtlasWorldRepo } from "@voxim/db";
 import { generateWorldMap } from "./worldmap/generate.ts";
+import { generateTile, tileInitToWire } from "./tilemap/generate.ts";
+import type { WorldCellRecord } from "./worldmap/types.ts";
 
 export interface AtlasServerConfig {
   port: number;
-  repo: AtlasWorldRepo;
+  worldRepo: AtlasWorldRepo;
+  tileRepo: AtlasTileInitRepo;
   worldId: string;
+}
+
+/** Deterministic per-tile seed derived from (worldSeed, cellX, cellY). */
+function tileSeedFor(worldSeed: number, cellX: number, cellY: number): number {
+  return ((worldSeed * 0x9e3779b1) ^ (cellX * 73856093) ^ (cellY * 19349663)) >>> 0;
+}
+
+function tileIdFor(cellX: number, cellY: number): string {
+  return `${cellX}_${cellY}`;
 }
 
 export function startAtlasServer(cfg: AtlasServerConfig): void {
@@ -43,7 +55,7 @@ async function handleRequest(
   }
 
   if (req.method === "GET" && url.pathname === "/world") {
-    const loaded = await cfg.repo.load(cfg.worldId);
+    const loaded = await cfg.worldRepo.load(cfg.worldId);
     if (!loaded) return jsonOk({ seed: null, cells: [] });
     return jsonOk({
       seed: Number(loaded.seed),
@@ -56,7 +68,7 @@ async function handleRequest(
   if (req.method === "GET" && cellMatch) {
     const cx = parseInt(cellMatch[1]);
     const cy = parseInt(cellMatch[2]);
-    const loaded = await cfg.repo.load(cfg.worldId);
+    const loaded = await cfg.worldRepo.load(cfg.worldId);
     if (!loaded) return notFound("no worldmap");
     const cell = loaded.cells.find((c) => c.cellX === cx && c.cellY === cy);
     if (!cell) return notFound(`cell ${cx},${cy} not found`);
@@ -68,7 +80,7 @@ async function handleRequest(
     const width  = readQueryNumber(url, "width",  4);
     const height = readQueryNumber(url, "height", 4);
     const wm = generateWorldMap(seed, width, height);
-    await cfg.repo.save({
+    await cfg.worldRepo.save({
       worldId: cfg.worldId,
       seed: BigInt(seed),
       cells: wm.cells.map((c) => ({
@@ -78,7 +90,26 @@ async function handleRequest(
         gates: c.gates as unknown as Record<string, unknown>,
       })),
     });
+    // Worldmap re-seeded → all existing tile_init rows are stale.
+    await cfg.tileRepo.deleteAll(cfg.worldId);
     return jsonOk({ regenerated: wm.cells.length, seed, width, height });
+  }
+
+  // GET /tile/:cellX/:cellY  (lazy: regenerates if missing or seed-stale)
+  const tileGet = url.pathname.match(/^\/tile\/(-?\d+)\/(-?\d+)$/);
+  if (req.method === "GET" && tileGet) {
+    const cx = parseInt(tileGet[1]);
+    const cy = parseInt(tileGet[2]);
+    return await getOrGenerateTile(cfg, cx, cy);
+  }
+
+  // POST /tile/:cellX/:cellY/regen  (force regenerate)
+  const tileRegen = url.pathname.match(/^\/tile\/(-?\d+)\/(-?\d+)\/regen$/);
+  if (req.method === "POST" && tileRegen) {
+    const cx = parseInt(tileRegen[1]);
+    const cy = parseInt(tileRegen[2]);
+    await cfg.tileRepo.delete(tileIdFor(cx, cy), cfg.worldId);
+    return await getOrGenerateTile(cfg, cx, cy);
   }
 
   if (req.method === "OPTIONS") {
@@ -123,4 +154,50 @@ function readQueryNumber(url: URL, key: string, fallback: number): number {
   if (v === null) return fallback;
   const n = parseInt(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Lazy tile fetch: return the cached payload if it matches the current
+ * worldmap seed; otherwise generate from the worldmap cell and persist.
+ *
+ * Returns 404 if the worldmap doesn't exist yet (boot ordering issue) or
+ * if the requested cell is out of the worldmap bounds.
+ */
+async function getOrGenerateTile(
+  cfg: AtlasServerConfig,
+  cellX: number,
+  cellY: number,
+): Promise<Response> {
+  const tileId = tileIdFor(cellX, cellY);
+  const world = await cfg.worldRepo.load(cfg.worldId);
+  if (!world) return notFound("no worldmap");
+
+  const cellRow = world.cells.find((c) => c.cellX === cellX && c.cellY === cellY);
+  if (!cellRow) return notFound(`cell ${cellX},${cellY} not in worldmap`);
+
+  const worldSeed = Number(world.seed);
+  const tileSeed  = tileSeedFor(worldSeed, cellX, cellY);
+
+  const cached = await cfg.tileRepo.get(tileId, cfg.worldId);
+  if (cached && Number(cached.seed) === tileSeed) {
+    return jsonOk({ tileId, cellX, cellY, seed: tileSeed, payload: cached.payload });
+  }
+
+  const cell: WorldCellRecord = {
+    cellX:  cellRow.cellX,
+    cellY:  cellRow.cellY,
+    biome:  cellRow.biome as unknown as WorldCellRecord["biome"],
+    gates:  cellRow.gates as unknown as WorldCellRecord["gates"],
+  };
+  const tile = generateTile(cell, tileSeed);
+  const payload = tileInitToWire(tile) as unknown as Record<string, unknown>;
+  await cfg.tileRepo.put({
+    worldId: cfg.worldId,
+    tileId,
+    cellX,
+    cellY,
+    seed: BigInt(tileSeed),
+    payload,
+  });
+  return jsonOk({ tileId, cellX, cellY, seed: tileSeed, payload });
 }

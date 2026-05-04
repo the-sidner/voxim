@@ -15,7 +15,7 @@
  *   WORLD_WIDTH    Macro grid width in cells. Default 4.
  *   WORLD_HEIGHT   Macro grid height in cells. Default 4.
  */
-import { createPool, PgAtlasWorldRepo } from "@voxim/db";
+import { createPool, PgAtlasTileInitRepo, PgAtlasWorldRepo } from "@voxim/db";
 import { startAtlasServer } from "./mod.ts";
 import { generateWorldMap } from "./src/worldmap/generate.ts";
 
@@ -25,12 +25,13 @@ const seed    = parseInt(Deno.env.get("WORLD_SEED")   ?? "1");
 const width   = parseInt(Deno.env.get("WORLD_WIDTH")  ?? "4");
 const height  = parseInt(Deno.env.get("WORLD_HEIGHT") ?? "4");
 
-const pool = createPool();
-const repo = new PgAtlasWorldRepo(pool);
+const pool      = createPool();
+const worldRepo = new PgAtlasWorldRepo(pool);
+const tileRepo  = new PgAtlasTileInitRepo(pool);
 
 // Ensure a worldmap exists for this (worldId, seed). If the persisted seed
 // differs from the configured one, regenerate — seed change = different world.
-const existing = await repo.load(worldId);
+const existing = await worldRepo.load(worldId);
 if (!existing || Number(existing.seed) !== seed) {
   console.log(
     existing
@@ -38,7 +39,7 @@ if (!existing || Number(existing.seed) !== seed) {
       : `[Atlas] no worldmap present — generating ${width}×${height} @ seed ${seed}`,
   );
   const wm = generateWorldMap(seed, width, height);
-  await repo.save({
+  await worldRepo.save({
     worldId,
     seed: BigInt(seed),
     cells: wm.cells.map((c) => ({
@@ -48,9 +49,11 @@ if (!existing || Number(existing.seed) !== seed) {
       gates: c.gates as unknown as Record<string, unknown>,
     })),
   });
-  console.log(`[Atlas] persisted ${wm.cells.length} cells`);
+  // Worldmap re-seeded → all existing tile_init rows are stale.
+  await tileRepo.deleteAll(worldId);
+  console.log(`[Atlas] persisted ${wm.cells.length} cells; cleared stale tile_init rows`);
 } else {
   console.log(`[Atlas] worldmap loaded (seed ${existing.seed}, ${existing.cells.length} cells)`);
 }
 
-startAtlasServer({ port, repo, worldId });
+startAtlasServer({ port, worldRepo, tileRepo, worldId });
