@@ -43,6 +43,12 @@ export interface AtlasTerrainResult {
    * at vegetation pixels, etc.).
    */
   kindBuffer: Uint16Array;
+  /**
+   * Initial gate-summary u16 from atlas. Tile-server publishes this to
+   * coordinator on boot so the world-graph aggregate gets seeded; phase
+   * 6D republishes whenever a runtime openMask edit changes the summary.
+   */
+  gateSummary: number;
   /** Atlas's per-tile seed. Used as the seed for downstream procedural systems. */
   tileSeed: number;
   cellX: number;
@@ -152,6 +158,7 @@ export async function loadTerrainFromAtlas(
     materialBuffer,
     openBuffer,
     kindBuffer,
+    gateSummary: tile.gateSummary,
     tileSeed: Number(row.seed),
     cellX,
     cellY,

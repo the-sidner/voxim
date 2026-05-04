@@ -36,6 +36,7 @@ const worldHeight  = parseInt(Deno.env.get("WORLD_HEIGHT") ?? "2");
 const worldTileIds = (Deno.env.get("WORLD_TILES") ?? "tile_0,tile_1,tile_2,tile_3")
   .split(",").map((s) => s.trim()).filter(Boolean);
 const aiManagerUrl = Deno.env.get("AI_MANAGER_URL");
+const httpPort     = parseInt(Deno.env.get("COORDINATOR_HTTP_PORT") ?? "8083");
 
 const serviceSecret = Deno.env.get("VOXIM_SERVICE_SECRET")
   ?? "dev-local-only-do-not-use-in-prod-0000";
@@ -72,6 +73,7 @@ await coordinator.start({
   worldTileIds,
   worldWidth,
   worldHeight,
+  httpPort,
 });
 
 await new Promise(() => {});

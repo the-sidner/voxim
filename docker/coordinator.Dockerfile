@@ -7,6 +7,8 @@ COPY packages ./packages
 
 RUN deno cache --unstable-net packages/coordinator/main.ts
 
+EXPOSE 8083
+
 CMD ["deno", "run", \
      "--allow-net", "--allow-read", "--allow-env", \
      "--unstable-net", \

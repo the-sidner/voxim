@@ -67,6 +67,11 @@ export interface CoordinatorConfig {
    * When omitted the coordinator runs utility-AI only.
    */
   aiManagerUrl?: string;
+  /**
+   * HTTP port for read-only debug + macro queries (/health, /world-graph).
+   * When omitted the coordinator skips the HTTP server entirely.
+   */
+  httpPort?: number;
 }
 
 /** Macro utility-AI runs every N coordinator ticks. */
@@ -77,8 +82,19 @@ export class Coordinator {
   private link: GatewayLink | null = null;
   private tickTimer: number | null = null;
   private tick = 0;
+  private httpAbort: AbortController | null = null;
   /** Tracks tiles that have published at least one event recently. */
   private liveTiles = new Set<string>();
+  /**
+   * Per-tile gate-summary u16, keyed by tileId. Seeded by tile-server's
+   * tile_summary_updated event on boot; updated by the same event when
+   * the runtime edit loop changes the summary (phase 6D).
+   *
+   * The aggregated world graph derives from this map: nodes are
+   * (tileId, component-of-summary), edges are inter-tile via gates
+   * with matching nibble values across the shared edge.
+   */
+  private tileSummaries = new Map<string, { cellX: number; cellY: number; summary: number }>();
   /** Decoded world map, available after start(). */
   private worldMap: WorldMapPayload | null = null;
   private cityRepo: CityRepo | null = null;
@@ -134,12 +150,45 @@ export class Coordinator {
 
     this.tickTimer = setInterval(() => this.runTick(intervalMs / 1000), intervalMs);
     console.log(`[Coordinator] tickloop started @ ${tickRate} Hz`);
+
+    if (config.httpPort) this.startHttp(config.httpPort);
+  }
+
+  /**
+   * Read-only HTTP for outside consumers — health check + the aggregated
+   * world graph (the live picture of every tile's gate-summary). Tiny:
+   * no streaming, no subscriptions, just a snapshot per request. The
+   * world graph is small enough (≤ a few KB even for large worlds) that
+   * polling is fine.
+   */
+  private startHttp(port: number): void {
+    this.httpAbort = new AbortController();
+    Deno.serve({
+      port,
+      hostname: "0.0.0.0",
+      signal: this.httpAbort.signal,
+    }, (req) => {
+      const url = new URL(req.url);
+      const headers = { "access-control-allow-origin": "*" };
+      if (req.method === "GET" && url.pathname === "/health") {
+        return Response.json({ status: "ok", service: "coordinator" }, { headers });
+      }
+      if (req.method === "GET" && url.pathname === "/world-graph") {
+        return Response.json({ summaries: this.getWorldGraph() }, { headers });
+      }
+      return new Response("not found", { status: 404, headers });
+    });
+    console.log(`[Coordinator] HTTP listening on 0.0.0.0:${port}`);
   }
 
   async stop(): Promise<void> {
     if (this.tickTimer !== null) {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
+    }
+    if (this.httpAbort) {
+      this.httpAbort.abort();
+      this.httpAbort = null;
     }
     await this.link?.close();
     console.log("[Coordinator] stopped");
@@ -158,6 +207,21 @@ export class Coordinator {
   private handleEvent(env: WorldEventEnvelope): void {
     const wasNew = !this.liveTiles.has(env.sourceTileId);
     this.liveTiles.add(env.sourceTileId);
+
+    if (env.event.kind === "tile_summary_updated") {
+      const cellX   = env.event.cellX as number;
+      const cellY   = env.event.cellY as number;
+      const summary = env.event.summary as number;
+      const tileId  = env.sourceTileId;
+      const prev    = this.tileSummaries.get(tileId);
+      this.tileSummaries.set(tileId, { cellX, cellY, summary });
+      if (!prev || prev.summary !== summary) {
+        console.log(
+          `[Coordinator] tile_summary_updated ${tileId} (${cellX},${cellY}) → 0x${summary.toString(16).padStart(4, "0")}`,
+        );
+      }
+      return;
+    }
 
     // Always log discrete events; throttle the steady-state heartbeat.
     if (env.event.kind === "gate_approached") {
@@ -180,6 +244,19 @@ export class Coordinator {
     } else if (this.tick % 10 === 0) {
       console.log(`[Coordinator] event from ${env.sourceTileId} kind=${env.event.kind}`);
     }
+  }
+
+  /**
+   * Snapshot of the aggregated world graph — every tile's gate-summary
+   * indexed for outside consumers (HTTP query, future client subscription).
+   * Returns a fresh array; mutating it doesn't affect the live state.
+   */
+  getWorldGraph(): Array<{ tileId: string; cellX: number; cellY: number; summary: number }> {
+    const out: Array<{ tileId: string; cellX: number; cellY: number; summary: number }> = [];
+    for (const [tileId, v] of this.tileSummaries) {
+      out.push({ tileId, cellX: v.cellX, cellY: v.cellY, summary: v.summary });
+    }
+    return out;
   }
 
   private runTick(_dt: number): void {

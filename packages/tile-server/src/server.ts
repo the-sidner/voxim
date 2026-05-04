@@ -209,6 +209,16 @@ export class TileServer {
   /** Privileged WT link to the gateway for world events / tile commands. */
   private gatewayLink: GatewayLink | null = null;
   /**
+   * Per-tile gate-summary u16 captured from atlas at boot, recomputed
+   * by the runtime edit loop in phase 6D, and pushed to coordinator
+   * whenever it changes. Tracks the last-pushed value so we only emit
+   * deltas (no-op when nothing has changed).
+   */
+  private currentGateSummary = 0;
+  private lastPushedGateSummary = -1;
+  private cellX = 0;
+  private cellY = 0;
+  /**
    * Players for whom a handoff fetch is in flight. Prevents a second
    * GateApproached event (or rapidly-repeated collisions) from initiating a
    * duplicate handoff while the first is still pending its gateway round-trip.
@@ -443,6 +453,9 @@ export class TileServer {
       );
       chunksFromBuffers(this.world, atlas.heightBuffer, atlas.materialBuffer, atlas.openBuffer);
       tileSeed = atlas.tileSeed;
+      this.currentGateSummary = atlas.gateSummary;
+      this.cellX = atlas.cellX;
+      this.cellY = atlas.cellY;
       this.spawnWorldState(content);
 
       // Spawn the entity-side of boundary kinds (trees in vegetation
@@ -519,6 +532,11 @@ export class TileServer {
       });
       link.start();
       this.gatewayLink = link;
+
+      // Push the initial gate-summary so coordinator's world graph gets
+      // seeded immediately. Subsequent pushes happen via maybePushSummary
+      // whenever the runtime edit loop changes the summary (phase 6D).
+      this.maybePushSummary(config.tileId);
 
       // Until concrete events land (T-140+), publish a periodic "tile_alive"
       // ping every 30s so the coordinator's log shows the channel is wired.
@@ -917,6 +935,30 @@ export class TileServer {
     this.world.write(id, TileCorruption, { level: 0 });
     console.log("[TileServer] world-state entity created");
     // Starter entities (workstations, nodes) are declared in tile_layout.json.
+  }
+
+  /**
+   * Push the current gate-summary to coordinator iff it differs from the
+   * last value we pushed. Called on initial boot and (future, phase 6D)
+   * whenever the runtime openMask edit loop recomputes the summary.
+   *
+   * No-op when the gateway link isn't established (single-tile dev mode).
+   */
+  private maybePushSummary(tileId: string): void {
+    if (!this.gatewayLink) return;
+    if (this.currentGateSummary === this.lastPushedGateSummary) return;
+    this.gatewayLink.publish({
+      type: "world_event",
+      sourceTileId: tileId,
+      event: {
+        kind: "tile_summary_updated",
+        tileId,
+        cellX: this.cellX,
+        cellY: this.cellY,
+        summary: this.currentGateSummary,
+      },
+    });
+    this.lastPushedGateSummary = this.currentGateSummary;
   }
 
   private async handleSession(session: WebTransportSession): Promise<void> {

@@ -121,6 +121,10 @@ services:
       WORLD_TILES: ${WORLD_TILES:-tile_0,tile_1,tile_2,tile_3}
       WORLD_WIDTH: ${WORLD_WIDTH:-2}
       WORLD_HEIGHT: ${WORLD_HEIGHT:-2}
+      COORDINATOR_HTTP_PORT: 8083
+    ports:
+      # 8083 — HTTP for /health and /world-graph (read-only macro queries).
+      - "8083:8083"
     volumes:
       - voxim-certs:/app/certs:ro
     restart: unless-stopped
