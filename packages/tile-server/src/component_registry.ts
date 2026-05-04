@@ -99,6 +99,10 @@ import {
 export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Heightmap,
   MaterialGrid,
+  // OpenMask carries the per-cell impassability used by stepPhysics on
+  // both server and client (predictor). Networked so client doesn't have
+  // to rubber-band on boundaries that lack a heightmap step (vegetation).
+  OpenMask,
   Position,
   Velocity,
   Facing,
@@ -161,9 +165,6 @@ export const DEF_BY_TYPE_ID: ReadonlyMap<number, NetworkedComponentDef<any>> =
 export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ...NETWORKED_DEFS,
   // ── Server-only defs (networked: false) ──────────────────────────────────
-  // Per-chunk impassability mask. Source of truth for collision; runs
-  // alongside Heightmap/MaterialGrid on every chunk entity.
-  OpenMask,
   Hitbox,
   SkillInProgress,
   // Combat counters — server-only because the client doesn't act on them.

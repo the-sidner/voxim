@@ -4,7 +4,7 @@
 export { buildCodec, encodeF64, decodeF64, encodeF32, decodeF32, encodeI32, decodeI32 } from "./src/binary.ts";
 
 export type {
-  PositionData, VelocityData, FacingData, HeightmapData, MaterialGridData,
+  PositionData, VelocityData, FacingData, HeightmapData, MaterialGridData, OpenMaskData,
   ItemPart, ModelRefData, AnimationStateData, SkillVerb,
   InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
   InventorySlot, StaminaData, StaggeredData, CounterReadyData, EquipmentSlot, EquipmentData, InventoryData,
@@ -20,7 +20,7 @@ export type {
   GateEdge, GateLinkData,
 } from "./src/components.ts";
 export {
-  positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec,
+  positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec, openMaskCodec,
   itemPartCodec, inventorySlotCodec,
   inputStateCodec, healthCodec, hungerCodec, thirstCodec, lifetimeCodec,
   staminaCodec, staggeredCodec, counterReadyCodec, modelRefCodec, animationStateCodec,

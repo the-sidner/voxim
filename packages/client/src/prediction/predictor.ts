@@ -77,13 +77,19 @@ export class Predictor {
    * Decays the render offset and steps physics.
    * Returns the render position (body.position + decayed renderOffset).
    */
-  step(seq: number, input: PhysicsInput, dt: number, getTerrainHeight: (x: number, y: number) => number): Vec3 {
+  step(
+    seq: number,
+    input: PhysicsInput,
+    dt: number,
+    getTerrainHeight: (x: number, y: number) => number,
+    isOpen?: (x: number, y: number) => boolean,
+  ): Vec3 {
     if (!this._initialised) return this.body.position;
 
     this.pending.push({ seq, input, dt });
     if (this.pending.length > MAX_PENDING) this.pending.shift();
 
-    this.body = stepPhysics(this.body, input, getTerrainHeight, dt, this.physicsConfig);
+    this.body = stepPhysics(this.body, input, getTerrainHeight, dt, this.physicsConfig, isOpen);
 
     // Exponential decay of render offset: retain = 0.5^(dt / halfLife)
     const halfLifeSec = this.predictorConfig.correctionHalfLifeMs / 1000;
@@ -107,6 +113,7 @@ export class Predictor {
     serverPos: Vec3,
     serverVel: Vec3,
     getTerrainHeight: (x: number, y: number) => number,
+    isOpen?: (x: number, y: number) => boolean,
   ): void {
     // Capture render position before reset
     const oldRender = this.renderPosition;
@@ -126,7 +133,7 @@ export class Predictor {
 
     // Replay unacknowledged inputs
     for (const p of this.pending) {
-      this.body = stepPhysics(this.body, p.input, getTerrainHeight, p.dt, this.physicsConfig);
+      this.body = stepPhysics(this.body, p.input, getTerrainHeight, p.dt, this.physicsConfig, isOpen);
     }
 
     // Compute divergence between where the player appeared and where physics landed

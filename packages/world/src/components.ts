@@ -5,11 +5,11 @@
  * as players, NPCs, and items.
  */
 import { defineComponent } from "@voxim/engine";
-import { heightmapCodec, materialGridCodec } from "@voxim/codecs";
-import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
+import { heightmapCodec, materialGridCodec, openMaskCodec } from "@voxim/codecs";
+import type { HeightmapData, MaterialGridData, OpenMaskData } from "@voxim/codecs";
 import { ComponentType } from "@voxim/protocol";
 
-export type { HeightmapData, MaterialGridData };
+export type { HeightmapData, MaterialGridData, OpenMaskData };
 
 const CHUNK_CELLS = 32 * 32;
 
@@ -54,28 +54,13 @@ export const MaterialGrid = defineComponent({
  * the same way a +3u cliff does — the visual rendering of the boundary
  * (raised height vs. tree entity) is independent of the blocking.
  *
- * Server-only for now; client predictor falls back to heightmap-step
- * collision (so closed pixels that happen to also raise the heightmap —
- * cliff kinds — still work end-to-end for prediction). When boundary
- * kinds that DON'T raise the heightmap land (vegetation in phase 4C),
- * client-side will need this networked too to avoid rubber-banding.
+ * Networked so the client predictor can consult the same data the
+ * server uses, avoiding rubber-band corrections at boundaries that
+ * don't show up as a heightmap step (vegetation, water).
  */
-export interface OpenMaskData {
-  data: Uint8Array;
-}
-
-const openMaskCodec = {
-  encode(d: OpenMaskData): Uint8Array {
-    return new Uint8Array(d.data); // copy for safety
-  },
-  decode(bytes: Uint8Array): OpenMaskData {
-    return { data: new Uint8Array(bytes) };
-  },
-};
-
 export const OpenMask = defineComponent({
   name: "openMask" as const,
-  networked: false,
+  wireId: ComponentType.openMask,
   codec: openMaskCodec,
   default: (): OpenMaskData => ({
     // Default: every cell open — a default chunk doesn't block anything

@@ -344,11 +344,12 @@ export class VoximGame {
         const vel = playerState?.velocity;
         if (pos) {
           const terrainFn = (x: number, y: number) => this.world.getTerrainHeight(x, y);
+          const isOpenFn  = (x: number, y: number) => this.world.isOpen(x, y);
           const serverVel = vel ?? { x: 0, y: 0, z: 0 };
           if (!this.predictor.isInitialised) {
             this.predictor.seed(pos, serverVel);
           } else {
-            this.predictor.reconcile(msg.ackInputSeq, pos, serverVel, terrainFn);
+            this.predictor.reconcile(msg.ackInputSeq, pos, serverVel, terrainFn, isOpenFn);
           }
         }
       }
@@ -546,7 +547,8 @@ export class VoximGame {
           jump: hasAction(datagram.actions, ACTION_JUMP),
         };
         const terrainFn = (x: number, y: number) => this.world.getTerrainHeight(x, y);
-        predictedPos = this.predictor.step(datagram.seq, physicsInput, dt, terrainFn);
+        const isOpenFn  = (x: number, y: number) => this.world.isOpen(x, y);
+        predictedPos = this.predictor.step(datagram.seq, physicsInput, dt, terrainFn, isOpenFn);
       }
     }
     // Update hover highlight — must happen after input so mouse coords are current

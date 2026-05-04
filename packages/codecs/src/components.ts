@@ -135,6 +135,22 @@ export const materialGridCodec: Serialiser<MaterialGridData> = {
   },
 };
 
+// ---- OpenMask ---- 1024 bytes (1024 × u8)
+
+export interface OpenMaskData {
+  /** 1024 cells, 1 = open, 0 = closed. Same row-major layout as HeightmapData.data. */
+  data: Uint8Array;
+}
+
+export const openMaskCodec: Serialiser<OpenMaskData> = {
+  encode(data: OpenMaskData): Uint8Array {
+    return new Uint8Array(data.data); // copy for safety
+  },
+  decode(bytes: Uint8Array): OpenMaskData {
+    return { data: new Uint8Array(bytes.slice(0, CHUNK_CELLS)) };
+  },
+};
+
 // ============================================================================
 // Game component binary layouts.
 // All use WireWriter / WireReader (little-endian, no JSON, no base64).

@@ -8,7 +8,7 @@ import type { BinaryComponentDelta, BinaryEntitySpawn, WorldSnapshot } from "@vo
 import { ComponentType, COMPONENT_TYPE_TO_NAME } from "@voxim/protocol";
 import {
   positionCodec, velocityCodec, facingCodec,
-  heightmapCodec, materialGridCodec,
+  heightmapCodec, materialGridCodec, openMaskCodec,
   staminaCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
   blueprintCodec, lightEmitterCodec, darknessModifierCodec,
   staggeredCodec, counterReadyCodec,
@@ -19,7 +19,7 @@ import {
   gateLinkCodec,
 } from "@voxim/codecs";
 import type {
-  HeightmapData, MaterialGridData, ModelRefData, AnimationStateData,
+  HeightmapData, MaterialGridData, OpenMaskData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
   StaggeredData, CounterReadyData,
   LoreLoadoutData, ActiveEffectsData,
@@ -50,6 +50,7 @@ export interface EntityState {
   thirst?: ThirstState;
   heightmap?: HeightmapData;
   materialGrid?: MaterialGridData;
+  openMask?: OpenMaskData;
   modelRef?: ModelRefData;
   animationState?: AnimationStateData;
   equipment?: EquipmentData;
@@ -89,9 +90,24 @@ export class ClientWorld {
   private lastSnapshotTick = -1;
   /** Heightmap data indexed by "chunkX,chunkY" for O(1) terrain height queries. */
   private readonly chunkHeightmaps = new Map<string, Float32Array>();
+  /**
+   * OpenMask data indexed by "chunkX,chunkY". Drives client-side
+   * impassability checks in the predictor so we don't rubber-band on
+   * boundaries that don't show up as a heightmap step (vegetation, water).
+   * Keyed by the SAME coord the heightmap is keyed by — they ride together
+   * on the same chunk entity.
+   */
+  private readonly chunkOpenMasks = new Map<string, Uint8Array>();
+  /**
+   * Reverse map: chunk entityId → "chunkX,chunkY". Lets us index the
+   * OpenMask delivery (which doesn't carry chunkX/chunkY itself) into
+   * chunkOpenMasks via the chunk's already-known heightmap key.
+   */
+  private readonly chunkCoordByEntity = new Map<string, string>();
 
   private applyComponentData(
     entity: EntityState,
+    entityId: string,
     typeId: number,
     data: Uint8Array,
     version: number,
@@ -131,12 +147,30 @@ export class ClientWorld {
       case ComponentType.heightmap: {
         const hm = heightmapCodec.decode(data);
         entity.heightmap = hm;
-        this.chunkHeightmaps.set(`${hm.chunkX},${hm.chunkY}`, hm.data);
+        const key = `${hm.chunkX},${hm.chunkY}`;
+        this.chunkHeightmaps.set(key, hm.data);
+        // Note the entity → coord mapping so an OpenMask delivery on the
+        // same entity (which lacks chunkX/chunkY) can find its slot.
+        this.chunkCoordByEntity.set(entityId, key);
+        // If the openMask arrived earlier on this same entity but its
+        // chunk coord wasn't known yet, bind it now.
+        if (entity.openMask) this.chunkOpenMasks.set(key, entity.openMask.data);
         break;
       }
       case ComponentType.materialGrid:
         entity.materialGrid = materialGridCodec.decode(data);
         break;
+      case ComponentType.openMask: {
+        const om = openMaskCodec.decode(data);
+        entity.openMask = om;
+        // Bind to the chunk coord we recorded when the heightmap arrived.
+        // If the heightmap hasn't arrived yet (mask first on the same
+        // spawn), the heightmap branch will pick this up via the
+        // entity.openMask back-reference.
+        const key = this.chunkCoordByEntity.get(entityId);
+        if (key) this.chunkOpenMasks.set(key, om.data);
+        break;
+      }
       case ComponentType.modelRef:
         entity.modelRef = modelRefCodec.decode(data);
         break;
@@ -230,7 +264,7 @@ export class ClientWorld {
       this.entities.set(spawn.entityId, entity);
     }
     for (const comp of spawn.components) {
-      this.applyComponentData(entity, comp.componentType, comp.data, 0);
+      this.applyComponentData(entity, spawn.entityId, comp.componentType, comp.data, 0);
     }
   }
 
@@ -241,7 +275,7 @@ export class ClientWorld {
       entity = makeEntity();
       this.entities.set(delta.entityId, entity);
     }
-    this.applyComponentData(entity, delta.componentType, delta.data, delta.version);
+    this.applyComponentData(entity, delta.entityId, delta.componentType, delta.data, delta.version);
   }
 
   /**
@@ -292,8 +326,25 @@ export class ClientWorld {
     return data[lx + ly * CHUNK_SIDE] ?? 0;
   }
 
+  /**
+   * Per-cell impassability check. Returns true (open) for unloaded chunks
+   * so out-of-tile coordinates don't accidentally block — same convention
+   * the server-side lookup uses.
+   */
+  isOpen(wx: number, wy: number): boolean {
+    const cx = Math.floor(wx / CHUNK_SIDE);
+    const cy = Math.floor(wy / CHUNK_SIDE);
+    const data = this.chunkOpenMasks.get(`${cx},${cy}`);
+    if (!data) return true;
+    const lx = Math.max(0, Math.min(CHUNK_SIDE - 1, Math.floor(wx - cx * CHUNK_SIDE)));
+    const ly = Math.max(0, Math.min(CHUNK_SIDE - 1, Math.floor(wy - cy * CHUNK_SIDE)));
+    return data[lx + ly * CHUNK_SIDE] === 1;
+  }
+
   clear(): void {
     this.entities.clear();
     this.chunkHeightmaps.clear();
+    this.chunkOpenMasks.clear();
+    this.chunkCoordByEntity.clear();
   }
 }
