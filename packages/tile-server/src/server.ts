@@ -433,29 +433,31 @@ export class TileServer {
       }
     }
 
-    // Populate the world — load from save if one exists, otherwise pull
-    // pre-computed terrain from atlas. Atlas is now the sole source of
-    // initial terrain; the local generator + on-disk cache are gone.
+    // Atlas is the source of truth for initial terrain AND the gate-summary
+    // we publish to coordinator. Always fetch — chunks only get applied
+    // when no save exists (save-loaded tiles already have their chunks),
+    // but the summary + cell coords come from atlas regardless so the
+    // world graph stays seeded across restarts.
+    const atlas = await loadTerrainFromAtlas(
+      config.atlasTiles,
+      config.tileId,
+      config.worldWidth,
+      content,
+    );
+    this.currentGateSummary = atlas.gateSummary;
+    this.cellX = atlas.cellX;
+    this.cellY = atlas.cellY;
+
     const loaded = this.saveManager ? await this.saveManager.load(this.world) : false;
     // zoneGrid is null for now — atlas doesn't produce zones; ProceduralSpawner
     // already no-ops every zone-driven method when this is null.
     const zoneGrid: ZoneGridData | null = null;
-    let tileSeed = 0;
+    const tileSeed = atlas.tileSeed;
     if (!loaded) {
-      const atlas = await loadTerrainFromAtlas(
-        config.atlasTiles,
-        config.tileId,
-        config.worldWidth,
-        content,
-      );
       console.log(
         `[TileServer] atlas terrain loaded: cell (${atlas.cellX},${atlas.cellY}) seed=${atlas.tileSeed}`,
       );
       chunksFromBuffers(this.world, atlas.heightBuffer, atlas.materialBuffer, atlas.openBuffer);
-      tileSeed = atlas.tileSeed;
-      this.currentGateSummary = atlas.gateSummary;
-      this.cellX = atlas.cellX;
-      this.cellY = atlas.cellY;
       this.spawnWorldState(content);
 
       // Spawn the entity-side of boundary kinds (trees in vegetation
@@ -533,10 +535,13 @@ export class TileServer {
       link.start();
       this.gatewayLink = link;
 
-      // Push the initial gate-summary so coordinator's world graph gets
-      // seeded immediately. Subsequent pushes happen via maybePushSummary
-      // whenever the runtime edit loop changes the summary (phase 6D).
-      this.maybePushSummary(config.tileId);
+      // The link establishes asynchronously, so the first publish call
+      // here would be a no-op (writer not yet ready). Retry on a short
+      // interval until lastPushedGateSummary tracks currentGateSummary;
+      // after that the interval is a delta-only no-op (cheap). Phase 6D's
+      // runtime edit loop will set currentGateSummary directly + this
+      // interval picks the change up at most ~1s later.
+      setInterval(() => this.maybePushSummary(config.tileId), 1000);
 
       // Until concrete events land (T-140+), publish a periodic "tile_alive"
       // ping every 30s so the coordinator's log shows the channel is wired.
