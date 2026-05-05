@@ -243,6 +243,12 @@ export interface SpawnPrefabOverrides {
   z?: number;
   /** Per-spawn visual variation (morph params, pool selection). Defaults to 0. */
   seed?: number;
+  /**
+   * Initial facing angle (radians, around world Y). Used to give static
+   * props like trees / rocks per-instance rotation so a forest of one
+   * prefab doesn't read as a regimented grid. Defaults to 0.
+   */
+  facing?: number;
   /** Heritage record applied by the player installer. Absent = default-lineage player. */
   heritage?: HeritageData;
   /** Display-name override applied by the npc installer to NpcTag.name. */
@@ -279,6 +285,9 @@ export function spawnPrefab(
 
   world.create(id);
   world.write(id, Position, { x, y, z });
+  if (overrides.facing !== undefined) {
+    world.write(id, Facing, { angle: overrides.facing });
+  }
   installVisualShell(world, content, id, prefab, seed);
 
   // Raw-material stats live on the prefab and are copied onto the entity at

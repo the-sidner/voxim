@@ -228,11 +228,27 @@ export function spawnBoundaryEntities(
       const idx = y * TILE_SIZE + x;
       if (kindBuffer[idx] !== BOUNDARY_KIND_FOREST) continue;
       const z = groundHeightAt(x, y);
-      spawnPrefab(world, content, "tree", { x, y, z });
+      // Deterministic per-tree variation: hash position into a u32. Top
+      // bits drive the model-displacement seed (vertices wobble per-tree).
+      // Bottom bits drive the y-axis rotation (radians). Same prefab +
+      // scale → all trees still batch into ONE InstancedMesh draw call on
+      // the client; per-instance matrix carries the rotation, per-instance
+      // vertex displacement carries the wobble.
+      const h = hash2u(x, y);
+      const seed   = h >>> 16;
+      const facing = ((h & 0xFFFF) / 0xFFFF) * Math.PI * 2;
+      spawnPrefab(world, content, "tree", { x, y, z, seed, facing });
       trees++;
     }
   }
   return { trees };
+}
+
+function hash2u(x: number, y: number): number {
+  let n = ((x * 1619) ^ (y * 31337) ^ 0x9E3779B1) | 0;
+  n = ((n << 13) ^ n) | 0;
+  n = (n * ((n * n * 15731 + 789221) | 0) + 1376312589) | 0;
+  return n >>> 0;
 }
 
 function clampStride(s: number): number {

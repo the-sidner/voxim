@@ -172,10 +172,25 @@ export class PropInstancePool {
     subModelDefs: Map<string, ModelDefinition>,
     mats: Map<number, MaterialDef>,
     scale: { x: number; y: number; z: number },
+    /**
+     * Y-axis rotation in radians. Used to give static props per-instance
+     * orientation (e.g. trees in a forest don't all face the same way).
+     * Doesn't break instancing — the InstancedMesh batches by
+     * (modelId, matId, scale); rotation lives in the per-slot matrix.
+     */
+    rotationY: number = 0,
   ): void {
     if (this.propSlots.has(entityId)) return;
 
     const slots: { key: string; slot: number }[] = [];
+
+    // Per-prop world transform = translate(worldPos) × rotateY(rotationY).
+    // Computed once and reused for every (subModel × matId) registration
+    // below so all parts of the same prop rotate together.
+    const propRot = new THREE.Matrix4().makeRotationY(rotationY);
+    const propMat = new THREE.Matrix4()
+      .makeTranslation(worldPos.x, worldPos.y, worldPos.z)
+      .multiply(propRot);
 
     const registerModel = (def: ModelDefinition, subMatrix: THREE.Matrix4) => {
       const matIds = new Set(def.nodes.map((n) => n.materialId));
@@ -184,10 +199,8 @@ export class PropInstancePool {
         const entry = this.getOrCreatePool(key, def, matId, scale, mats);
         const slot  = this.allocSlot(entry);
 
-        // World matrix = translate(worldPos) × subMatrix
-        _pos.set(worldPos.x, worldPos.y, worldPos.z);
-        _mat4.makeTranslation(_pos.x, _pos.y, _pos.z);
-        _mat4.multiply(subMatrix);
+        // Final per-instance matrix = world(translate × rotate) × subMatrix.
+        _mat4.copy(propMat).multiply(subMatrix);
         entry.mesh.setMatrixAt(slot, _mat4);
         entry.mesh.instanceMatrix.needsUpdate = true;
 

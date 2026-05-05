@@ -624,7 +624,12 @@ export class VoximRenderer {
           this.scene.remove(capture.group);
           disposeEntityMesh(capture);
           this.entityMeshes.delete(entityId);
-          this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale);
+          // Per-prop Y rotation: tile-server writes Facing with a
+          // deterministic per-tree angle so a forest doesn't read as a
+          // grid. The InstancedMesh batches by (modelId, matId, scale);
+          // rotation rides in the per-instance matrix.
+          const rotationY = state.facing?.angle ?? 0;
+          this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale, rotationY);
           this.propPositions.set(entityId, worldPos);
           const halfExtents = computePropHalfExtents(def, resolvedSubs, subModelDefs, scale);
           this.interactionSystem?.addStaticEntity(entityId, worldPos, this.scene, halfExtents);
