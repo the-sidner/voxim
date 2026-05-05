@@ -945,7 +945,7 @@ no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
 ### T-155 · Atlas tilemap — paths first, rooms emerge at convergent junctions
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 9690371
 
 Inverts the pipeline order. Today chambers come first and corridors are
 forced to bridge them; user wants paths to drive the structure and rooms
