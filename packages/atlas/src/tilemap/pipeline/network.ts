@@ -21,7 +21,7 @@
  */
 
 import { runRoomDetection } from "./room_detection.ts";
-import { carveSpline, makeWaypoints } from "./bezier_carve.ts";
+import { carveSpline, makeWaypoints, samplePoint, sampleTangent } from "./bezier_carve.ts";
 import type { Corridor, Room } from "../types.ts";
 import type { GenParams } from "../../genparams.ts";
 
@@ -120,14 +120,18 @@ export function runNetwork(input: NetworkInput): NetworkOutput {
     const waypoints = makeWaypoints(
       aStart, bStart, params.segments, params.curvature, margin, gridSize, rng,
     );
-    corridors.push(carveSpline({
+    const corridor = carveSpline({
       waypoints,
       halfWidth,
       samplesPerSegment: params.bezierSamples,
       kind: "network",
       openMask,
       gridSize,
-    }));
+    });
+    corridors.push(corridor);
+    // ---- 6b. Recursive branch-paths off this corridor --------------------
+    const parentLen = Math.hypot(bStart.x - aStart.x, bStart.y - aStart.y);
+    spawnBranches(corridor, parentLen, 0, params, gridSize, openMask, rng, corridors);
   }
 
   // ---- 6. Re-flood labels ------------------------------------------------
@@ -290,4 +294,73 @@ function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/**
+ * Recursive branch-paths pass. With probability `branchRate`, picks a
+ * random t ∈ [0.2, 0.8] along the parent corridor's spline, takes the
+ * local tangent + perpendicular, and carves a new spline that veers off
+ * into the wall space. Branches recurse up to `branchMaxDepth` levels,
+ * shrinking by `branchLengthFraction` each level. Branches that
+ * coincidentally hit other corridors / chambers form natural junctions;
+ * ones that don't form dead-end paths.
+ *
+ * Mutates `openMask` and appends every carved branch to `out`.
+ */
+function spawnBranches(
+  parent: Corridor,
+  parentLen: number,
+  depth: number,
+  params: GenParams["network"],
+  gridSize: number,
+  openMask: Uint8Array,
+  rng: () => number,
+  out: Corridor[],
+): void {
+  if (depth >= params.branchMaxDepth) return;
+  // Each level rolls the chance independently — a corridor can spawn 0
+  // branches, sometimes more than one (we make 2 attempts so a "long"
+  // corridor visibly forks).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (rng() >= params.branchRate) continue;
+    const t = 0.2 + rng() * 0.6;
+    const start = samplePoint(parent.waypoints, t);
+    const tang  = sampleTangent(parent.waypoints, t);
+    // Perpendicular (rotate tangent +90°), then jitter the angle ±45°
+    // so branches aren't strictly perpendicular.
+    let nx = -tang.y;
+    let ny =  tang.x;
+    // 50/50 sign — half the branches go to the other side of the parent.
+    if (rng() < 0.5) { nx = -nx; ny = -ny; }
+    const angleJitter = (rng() - 0.5) * Math.PI * 0.5;
+    const cos = Math.cos(angleJitter), sin = Math.sin(angleJitter);
+    const dirX = nx * cos - ny * sin;
+    const dirY = nx * sin + ny * cos;
+    // Length scales down each recursion level.
+    const branchLen = parentLen * params.branchLengthFraction * (0.7 + rng() * 0.6);
+    const halfWidth = sampleWidth(rng, params);
+    const margin = halfWidth + 2;
+    const endX = clamp(start.x + dirX * branchLen, margin, gridSize - 1 - margin);
+    const endY = clamp(start.y + dirY * branchLen, margin, gridSize - 1 - margin);
+    const waypoints = makeWaypoints(
+      start, { x: endX, y: endY },
+      params.segments, params.curvature, margin, gridSize, rng,
+    );
+    const branch = carveSpline({
+      waypoints,
+      halfWidth,
+      samplesPerSegment: params.bezierSamples,
+      kind: "network",
+      openMask,
+      gridSize,
+    });
+    out.push(branch);
+    // Recurse: this branch is the parent for the next level.
+    const branchActualLen = Math.hypot(endX - start.x, endY - start.y);
+    spawnBranches(branch, branchActualLen, depth + 1, params, gridSize, openMask, rng, out);
+  }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
 }

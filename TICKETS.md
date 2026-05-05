@@ -944,6 +944,50 @@ when a player or active NPC is within a configurable radius. Serialise and unloa
 no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
+### T-154 · Atlas tilemap — organic chambers + recursive branch-paths
+Effort: M   Status: in-progress
+
+After T-153 chambers were properly sized but visually too round (compactness
+× distance dominates noise ~10:1, so growth is essentially Voronoi) and
+the network was sparse — only chamber-to-chamber MST + braid corridors,
+~10 carves per tile total. The user wants chambers with organic lobes
+and "many more paths weaving like a maze."
+
+Three bundled changes:
+
+1. **Lower compactness, raise noise frequency.** Drop default
+   `room.compactness` from 0.35 → 0.10 and bump `noise.baseFrequency`
+   from 0.0125 → 0.022 across all presets, so noise wavelength becomes
+   smaller than chamber radius — noise has space to sculpt the boundary
+   into lobes/peninsulas/indents instead of being averaged out.
+
+2. **More mainline interconnections.** Bump `room.targetCount` 7 → 10
+   and `network.loopRate` 0.55 → 0.85 in the forest_maze preset. More
+   chambers → more Delaunay edges; more loop rate → more braids kept.
+   Roughly doubles the main corridor count.
+
+3. **Recursive branch-paths pass.** After the main carve loop, each
+   corridor optionally spawns sub-branches that wander off into the
+   wall space. For each parent corridor: with probability
+   `network.branchRate`, sample a point along its spline at random t
+   in [0.2, 0.8], take the local tangent, pick a perpendicular ± random
+   angle, and carve a new spline of length
+   `branchLengthFraction × parent_length`. Branches recurse up to
+   `branchMaxDepth` levels (each level scaled down by lengthFraction),
+   so the carve fan-out is bounded but visible. Branches that
+   coincidentally hit other corridors / chambers form natural junctions;
+   ones that don't form dead-end paths — both reinforce the maze feel.
+
+The `samplePoint` and `sampleTangent` helpers (Catmull-Rom evaluator
++ analytical derivative) move into `bezier_carve.ts` so other consumers
+(future "POI placement on a corridor", inspector hover markers, …) can
+reuse them.
+
+Done when: forest_maze bake produces ~10 chambers with visible noise
+lobes (no longer reading as disks) and the corridor count rises from
+~10 to 30+, with branches forming dead-ends and crossings throughout
+the wall space.
+
 ### T-153 · Atlas tilemap — generate at runtime resolution (gridSize 128 → 512)
 Effort: S   Status: done   Commit: 1a15c73
 

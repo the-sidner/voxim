@@ -143,3 +143,65 @@ function clamp(v: number, lo: number, hi: number): number {
 export function clampPx(v: number, gridSize: number): number {
   return v < 0 ? 0 : v >= gridSize ? gridSize - 1 : v;
 }
+
+/**
+ * Evaluate the Catmull-Rom spline through `waypoints` at parameter
+ * `t` ∈ [0, 1] (0 = first waypoint, 1 = last). Returns the point on
+ * the curve. Replays the same math as `carveSpline` so caller-visible
+ * sample points lie exactly on the carved path.
+ */
+export function samplePoint(
+  waypoints: ReadonlyArray<{ x: number; y: number }>, t: number,
+): { x: number; y: number } {
+  const N = waypoints.length;
+  if (N === 0) return { x: 0, y: 0 };
+  if (N === 1) return { ...waypoints[0] };
+  const segments = N - 1;
+  const segT = clamp(t, 0, 1) * segments;
+  const i = Math.min(Math.floor(segT), segments - 1);
+  const localT = segT - i;
+  const w0 = waypoints[i - 1] ?? reflect(waypoints[i], waypoints[i + 1]);
+  const w1 = waypoints[i];
+  const w2 = waypoints[i + 1];
+  const w3 = waypoints[i + 2] ?? reflect(waypoints[i + 1], waypoints[i]);
+  const c1x = w1.x + (w2.x - w0.x) / 6;
+  const c1y = w1.y + (w2.y - w0.y) / 6;
+  const c2x = w2.x - (w3.x - w1.x) / 6;
+  const c2y = w2.y - (w3.y - w1.y) / 6;
+  const u = 1 - localT;
+  const tt = localT * localT, uu = u * u;
+  const ttt = tt * localT, uuu = uu * u;
+  return {
+    x: uuu * w1.x + 3 * uu * localT * c1x + 3 * u * tt * c2x + ttt * w2.x,
+    y: uuu * w1.y + 3 * uu * localT * c1y + 3 * u * tt * c2y + ttt * w2.y,
+  };
+}
+
+/**
+ * Unit tangent of the Catmull-Rom spline at parameter `t`. Uses the
+ * analytical cubic-bezier derivative on the active segment.
+ */
+export function sampleTangent(
+  waypoints: ReadonlyArray<{ x: number; y: number }>, t: number,
+): { x: number; y: number } {
+  const N = waypoints.length;
+  if (N < 2) return { x: 1, y: 0 };
+  const segments = N - 1;
+  const segT = clamp(t, 0, 1) * segments;
+  const i = Math.min(Math.floor(segT), segments - 1);
+  const localT = segT - i;
+  const w0 = waypoints[i - 1] ?? reflect(waypoints[i], waypoints[i + 1]);
+  const w1 = waypoints[i];
+  const w2 = waypoints[i + 1];
+  const w3 = waypoints[i + 2] ?? reflect(waypoints[i + 1], waypoints[i]);
+  const c1x = w1.x + (w2.x - w0.x) / 6;
+  const c1y = w1.y + (w2.y - w0.y) / 6;
+  const c2x = w2.x - (w3.x - w1.x) / 6;
+  const c2y = w2.y - (w3.y - w1.y) / 6;
+  const u = 1 - localT;
+  // B'(t) = 3(1-t)² (P1-P0) + 6(1-t)t (P2-P1) + 3t² (P3-P2)
+  const dx = 3*u*u * (c1x - w1.x) + 6*u*localT * (c2x - c1x) + 3*localT*localT * (w2.x - c2x);
+  const dy = 3*u*u * (c1y - w1.y) + 6*u*localT * (c2y - c1y) + 3*localT*localT * (w2.y - c2y);
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
+}

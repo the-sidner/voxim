@@ -170,6 +170,23 @@ export interface GenParams {
      * total stamps per corridor = 200.
      */
     bezierSamples: number;
+    /**
+     * Per-corridor probability of spawning a branch sub-path off into
+     * the wall space. 0 = no branches (just the main MST + braids);
+     * 1 = every corridor branches at every level. Branches recurse up
+     * to `branchMaxDepth` levels deep, scaling by `branchLengthFraction`
+     * each level. They form dead-ends or junctions, depending on whether
+     * they happen to hit other carved space.
+     */
+    branchRate: number;
+    /** Max recursion depth for branches. 0 = disabled, 2-3 typical. */
+    branchMaxDepth: number;
+    /**
+     * Each branch's length as a fraction of its parent's length. 0.6
+     * means branches at depth 1 are 60% of the main edge, depth 2 are
+     * 36%, etc.
+     */
+    branchLengthFraction: number;
   };
 
   /** Per-pixel boundary kind (CLIFF / VEGETATION / WATER) selectors. */
@@ -217,10 +234,8 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     widthPixels: 2,
   },
   noise: {
-    // Frequency is per-pixel; bumped down 4× now that pixels are 4× smaller
-    // so noise features stay at the same world-scale.
-    baseFrequency: 0.0125,
-    extraFrequencyPerRuggedness: 0.005,
+    baseFrequency: 0.022,                // smaller features → noise sculpts chamber walls
+    extraFrequencyPerRuggedness: 0.008,
     baseThreshold: 0.0,
     extraThresholdPerRuggedness: 0.10,
     octaves: 5,
@@ -232,20 +247,23 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     floorModFrequency: 0.01,
   },
   room: {
-    targetCount: 7,
-    minSeparation: 128,                  // ~25% of tile width between seeds
-    sizeMin: 5000,                       // ~70×70 chamber
-    sizeMax: 9500,                       // ~95×100 chamber
-    compactness: 0.35,                   // gridSize-invariant (world units)
+    targetCount: 10,
+    minSeparation: 110,
+    sizeMin: 4000,
+    sizeMax: 8000,
+    compactness: 0.10,                   // low → noise can sculpt boundary lobes
   },
   network: {
-    maxEdgeLength: 360,                  // ~70% of tile size
-    loopRate: 0.55,
+    maxEdgeLength: 320,
+    loopRate: 0.85,                      // lots of mainline loops
     widthMin: 1,                         // 3 wu wide
     widthMax: 3,                         // up to 7 wu wide
     segments: 4,
     curvature: 0.18,
-    bezierSamples: 200,                  // per segment → 800 stamps total
+    bezierSamples: 200,
+    branchRate: 0.65,                    // most corridors spawn at least one branch
+    branchMaxDepth: 2,
+    branchLengthFraction: 0.55,
   },
   materials: {
     detailFrequency: 0.06,
@@ -291,14 +309,18 @@ export const PRESETS: Record<string, { name: string; description: string; params
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.05, biasAltitude: -0.20 },
       noise: {
-        baseFrequency: 0.006,
-        extraFrequencyPerRuggedness: 0.0025,
+        baseFrequency: 0.012,
+        extraFrequencyPerRuggedness: 0.0035,
         baseThreshold: 0.0,
         extraThresholdPerRuggedness: 0.05,
         octaves: 4,
       },
-      room: { targetCount: 4, minSeparation: 175, sizeMin: 9500, sizeMax: 17500, compactness: 0.50 },
-      network: { maxEdgeLength: 480, loopRate: 0.30, widthMin: 2, widthMax: 5, segments: 3, curvature: 0.10, bezierSamples: 240 },
+      room: { targetCount: 5, minSeparation: 175, sizeMin: 9500, sizeMax: 17500, compactness: 0.18 },
+      network: {
+        maxEdgeLength: 480, loopRate: 0.40, widthMin: 2, widthMax: 5,
+        segments: 3, curvature: 0.10, bezierSamples: 240,
+        branchRate: 0.25, branchMaxDepth: 1, branchLengthFraction: 0.40,
+      },
       kinds: { ...DEFAULT_GEN_PARAMS.kinds, vegetationMoisture: 0.10 },
     },
   },
@@ -309,14 +331,18 @@ export const PRESETS: Record<string, { name: string; description: string; params
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasAltitude: 0.40, biasRuggedness: 0.20, biasMoisture: -0.10 },
       noise: {
-        baseFrequency: 0.0175,
-        extraFrequencyPerRuggedness: 0.005,
+        baseFrequency: 0.030,
+        extraFrequencyPerRuggedness: 0.008,
         baseThreshold: 0.0,
         extraThresholdPerRuggedness: 0.05,
         octaves: 6,
       },
-      room: { targetCount: 12, minSeparation: 80, sizeMin: 2200, sizeMax: 4200, compactness: 0.25 },
-      network: { maxEdgeLength: 220, loopRate: 0.85, widthMin: 0, widthMax: 1, segments: 5, curvature: 0.35, bezierSamples: 200 },
+      room: { targetCount: 14, minSeparation: 70, sizeMin: 1800, sizeMax: 3600, compactness: 0.07 },
+      network: {
+        maxEdgeLength: 220, loopRate: 0.95, widthMin: 0, widthMax: 1,
+        segments: 5, curvature: 0.35, bezierSamples: 200,
+        branchRate: 0.85, branchMaxDepth: 3, branchLengthFraction: 0.55,
+      },
       terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 5.0 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
@@ -335,14 +361,18 @@ export const PRESETS: Record<string, { name: string; description: string; params
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.40, biasAltitude: -0.30 },
       river: { sourceAltitude: 0.40, minSeparation: 1, widthPixels: 3 },
       noise: {
-        baseFrequency: 0.011,
-        extraFrequencyPerRuggedness: 0.0025,
+        baseFrequency: 0.020,
+        extraFrequencyPerRuggedness: 0.006,
         baseThreshold: 0.0,
         extraThresholdPerRuggedness: 0.05,
         octaves: 5,
       },
-      room: { targetCount: 6, minSeparation: 120, sizeMin: 6000, sizeMax: 12000, compactness: 0.30 },
-      network: { maxEdgeLength: 360, loopRate: 0.55, widthMin: 2, widthMax: 4, segments: 4, curvature: 0.28, bezierSamples: 220 },
+      room: { targetCount: 8, minSeparation: 105, sizeMin: 4500, sizeMax: 9000, compactness: 0.10 },
+      network: {
+        maxEdgeLength: 320, loopRate: 0.75, widthMin: 2, widthMax: 4,
+        segments: 4, curvature: 0.28, bezierSamples: 220,
+        branchRate: 0.55, branchMaxDepth: 2, branchLengthFraction: 0.50,
+      },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
         waterMoisture: 0.40, waterAltitude: 0.60, waterDetail: 0.30,
