@@ -1,35 +1,34 @@
 /**
- * Stage 4 — terrain heightmap.
- *
- * Phase 6A scope: produce a height field at sample-grid resolution that
- * tile-server can drive its visible terrain from in a later phase.
+ * Stage 7 — terrain heightmap.
  *
  * Two contributions per pixel:
- *   1. Wall baseline. Closed pixels (openMask = 0) rise by WALL_HEIGHT
- *      from the floor — high enough that the runtime physics stepHeight
- *      can't auto-clear them, so they read as boundaries. Nearest-only
- *      sampling at consumption time prevents the wall edge from
- *      averaging into a climbable ramp.
+ *   1. Wall baseline. STONE / FOREST / GRASS_MOUND pixels rise by
+ *      WALL_HEIGHT from the floor — high enough that the runtime
+ *      physics stepHeight can't auto-clear them, so they read as
+ *      boundaries. WATER pixels (rivers/ponds) stay at floor height
+ *      even though they're closed in `openMask`. Nearest-only
+ *      sampling at consumption time prevents wall edges from
+ *      averaging into climbable ramps.
  *   2. Smooth modulation. Low-amplitude fbm shaped by biome.ruggedness
  *      and biome.altitude — gives floors gentle variation without
  *      breaking the open/closed step.
  *
- * Pure function: same (openMask, biome, tileSeed, gridSize) → same
- * Float32Array.
+ * Pure function: same (openMask, kindOf, biome, tileSeed, gridSize) →
+ * same Float32Array.
  */
 
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
-import { BOUNDARY_KIND_CLIFF } from "./boundary_kinds.ts";
+import { BOUNDARY_KIND_WATER, BOUNDARY_KIND_OPEN } from "./boundary_kinds.ts";
 
 export interface TerrainInput {
   openMask: Uint8Array;
   /**
    * Per-pixel boundary kind from the kinds stage (BOUNDARY_KIND_*).
-   * Only CLIFF pixels add the wallHeight step — other closed kinds
-   * (vegetation, water, …) stay at floor height. Collision still
-   * blocks them via the openMask path in tile-server's physics.
+   * Closed pixels other than WATER add the wallHeight step. WATER
+   * pixels stay flat (rivers, ponds). Collision blocks them via the
+   * openMask path in tile-server's physics.
    */
   kindOf: Uint16Array;
   biome: BiomeParams;
@@ -49,7 +48,7 @@ export interface TerrainOutput {
  * pre-removes the step before bilinear resampling). Per-world tuning
  * comes through GenParams.terrain.wallHeight; this default mirrors it.
  */
-export const WALL_HEIGHT = 3.0;
+export const WALL_HEIGHT = 2.0;
 
 const TERRAIN_SUB_SEED = 0x40004001;
 
@@ -73,11 +72,11 @@ export function runTerrain(input: TerrainInput): TerrainOutput {
       const m = (fbm(px * modFreq, py * modFreq, tileSeed ^ TERRAIN_SUB_SEED, 3) - 0.5) * 2;
       const floor = params.floorBaseline + floorBias + m * modAmp;
 
-      // Only CLIFF kinds raise. Vegetation / water / other kinds stay
-      // at floor height — collision is the openMask's job (phase 4B).
-      const closed = openMask[idx] === 0;
-      const isCliff = closed && kindOf[idx] === BOUNDARY_KIND_CLIFF;
-      heightMap[idx] = isCliff ? floor + params.wallHeight : floor;
+      // All wall kinds (STONE / FOREST / GRASS_MOUND) raise. WATER and
+      // OPEN stay flat. Collision still blocks closed pixels via openMask.
+      const k = kindOf[idx];
+      const isWall = openMask[idx] === 0 && k !== BOUNDARY_KIND_WATER && k !== BOUNDARY_KIND_OPEN;
+      heightMap[idx] = isWall ? floor + params.wallHeight : floor;
     }
   }
 

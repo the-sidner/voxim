@@ -101,7 +101,7 @@ const KNOB_CONFIG = {
   kinds: {
     // Most kinds knobs are 0..1 thresholds (uniform default works);
     // the density stride is in world units, integer.
-    vegetationDensityStride: { step: 1, min: 2, max: 64, integer: true },
+    forestDensityStride: { step: 1, min: 2, max: 64, integer: true },
   },
   // materials: every knob is a 0..1 threshold; uniform default.
 };
@@ -170,14 +170,11 @@ const KNOB_HINT = {
   },
   kinds: {
     detailFrequency:           "Per-pixel kind noise scale.",
-    cliffAltitudeStrict:       "Above this altitude → cliff (no other check).",
-    cliffAltitudeRugged:       "Above this altitude AND rugged → cliff.",
-    cliffRuggednessThreshold:  "Ruggedness needed for the rugged-cliff branch.",
-    waterMoisture:             "Wet enough for water boundary.",
-    waterAltitude:             "Below this altitude, wet pixels can be water.",
-    waterDetail:               "Detail-noise threshold for water boundary.",
-    vegetationMoisture:        "Above this moisture → vegetation. LOW → forest dominates.",
-    vegetationDensityStride:   "Tree spawn stride (world units). Smaller → denser forest. ~2200 trees/tile @ 6.",
+    stoneAltitudeStrict:       "Above this altitude → stone wall (no other check).",
+    stoneAltitudeRugged:       "Above this altitude AND rugged → stone wall.",
+    stoneRuggednessThreshold:  "Ruggedness needed for the rugged-stone branch.",
+    forestMoisture:            "Above this moisture → forest wall (with trees). LOW → forest dominates.",
+    forestDensityStride:       "Tree spawn stride (world units). Smaller → denser forest. ~2200 trees/tile @ 6.",
   },
 };
 
@@ -851,7 +848,12 @@ function drawTileMaterials({ px, originX, originY, g }) {
   });
 }
 
-const KIND_COLOURS = { 0: "#dadada", 1: "#7a7a7a", 2: "#3f7a3a", 3: "#3070b8" };
+// Boundary-kind palette. Ids match @voxim/atlas BOUNDARY_KIND_*:
+//   0 OPEN (light grey), 1 STONE (slate), 2 FOREST (deep green),
+//   3 WATER (blue), 4 GRASS_MOUND (bright green).
+const KIND_COLOURS = {
+  0: "#dadada", 1: "#7a7a7a", 2: "#2a5a2a", 3: "#3070b8", 4: "#7ac74a",
+};
 
 function drawTileKinds({ px, originX, originY, g }) {
   const kindOf = u16FromB64(tile.payload.kindOfB64);

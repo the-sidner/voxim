@@ -944,6 +944,35 @@ when a player or active NPC is within a configurable radius. Serialise and unloa
 no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
+### T-156 · Atlas tilemap — three wall kinds (grass mound, stone, forest), all 2u
+Effort: S   Status: in-progress
+
+The maze needs three visually distinct wall types, all non-walkable, all
+raised the same 2 world units (just enough to exceed the 0.75u runtime
+stepHeight). The existing `boundary_kinds` machinery had three slots
+(CLIFF / VEGETATION / WATER) but only CLIFF was raised; VEGETATION was
+flat-with-trees and the third "default" wall type was missing.
+
+  - Rename CLIFF → STONE, VEGETATION → FOREST atomically through atlas
+    + tile-server. Same numeric ids (1, 2) so old wire payloads still
+    decode meaningfully — they were just internal vocabulary.
+  - Add `BOUNDARY_KIND_GRASS_MOUND` (id 4). Becomes the fallback wall
+    type — picked when neither STONE (high altitude / rugged) nor FOREST
+    (high moisture) qualifies. Inspector colours it bright green.
+  - `WALL_HEIGHT` 3.0 → 2.0; terrain stage now raises all three wall
+    kinds (STONE, FOREST, GRASS_MOUND), not only STONE. WATER and OPEN
+    stay at floor height. Players can't step over any wall type.
+  - Per-kind closed material: STONE → STONE, FOREST → DIRT (forest
+    floor), GRASS_MOUND → GRASS, WATER → WATER.
+  - GenParams `kinds` slice renamed: `cliff*` → `stone*`,
+    `vegetationMoisture` → `forestMoisture`, `vegetationDensityStride`
+    → `forestDensityStride`. Inspector knob configs + hints follow.
+
+Done when: a baked tile shows green-mound walls in dry biomes, dark-green
+forest walls (with trees on top) in wet biomes, grey stone walls in
+high-altitude biomes; player can't step over any of them; the inspector
+"kinds" layer paints all four ids distinctly.
+
 ### T-155 · Atlas tilemap — paths first, rooms emerge at convergent junctions
 Effort: M   Status: done   Commit: 9690371
 

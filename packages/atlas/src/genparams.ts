@@ -201,27 +201,23 @@ export interface GenParams {
     branchLengthFraction: number;
   };
 
-  /** Per-pixel boundary kind (CLIFF / VEGETATION / WATER) selectors. */
+  /** Per-pixel boundary kind (STONE / FOREST / GRASS_MOUND) selectors. */
   kinds: {
     /** Per-pixel detail noise frequency. */
     detailFrequency: number;
-    /** Closed pixel: altitude > X → CLIFF. */
-    cliffAltitudeStrict: number;
-    /** altitude > X AND ruggedness > Y → CLIFF. */
-    cliffAltitudeRugged: number;
-    cliffRuggednessThreshold: number;
-    /** moisture > A AND altitude < B AND detail > C → WATER. */
-    waterMoisture: number;
-    waterAltitude: number;
-    waterDetail: number;
-    /** moisture > X → VEGETATION (else falls back to CLIFF). */
-    vegetationMoisture: number;
+    /** Closed pixel: altitude > X → STONE. */
+    stoneAltitudeStrict: number;
+    /** altitude > X AND ruggedness > Y → STONE. */
+    stoneAltitudeRugged: number;
+    stoneRuggednessThreshold: number;
+    /** moisture > X → FOREST (else falls back to GRASS_MOUND). */
+    forestMoisture: number;
     /**
-     * Tile-server tree spawn stride for VEGETATION pixels, in world units.
+     * Tile-server tree spawn stride for FOREST pixels, in world units.
      * Smaller = denser forest. Tile-server reads this from the world's
      * persisted params at boot.
      */
-    vegetationDensityStride: number;
+    forestDensityStride: number;
   };
 }
 
@@ -261,10 +257,10 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   terrain: {
     // Closed pixels stay at floor height by default — visual contrast is
     // carried by darker materials + tree entities, not by a vertical step.
-    // Set this >0 if you want cliff kinds to also rise (impedance via
-    // height as well as openMask). Must exceed runtime stepHeight (0.75)
-    // when non-zero.
-    wallHeight: 0,
+    // All three wall kinds (STONE, FOREST, GRASS_MOUND) rise by this
+    // amount. Must exceed runtime stepHeight (0.75u) so players can't
+    // walk over walls. WATER and OPEN stay at floor height.
+    wallHeight: 2.0,
     floorBaseline: 0.0,
     floorModAmplitude: 1.5,
     floorModFrequency: 0.01,
@@ -304,23 +300,19 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   },
   kinds: {
     detailFrequency: 0.05,
-    cliffAltitudeStrict: 0.75,           // cliffs only at very high altitude
-    cliffAltitudeRugged: 0.65,
-    cliffRuggednessThreshold: 0.70,
-    waterMoisture: 0.65,
-    waterAltitude: 0.45,
-    waterDetail: 0.55,
-    vegetationMoisture: 0.10,            // almost everything is forest
+    stoneAltitudeStrict: 0.75,           // bare rock walls only at very high altitude
+    stoneAltitudeRugged: 0.65,
+    stoneRuggednessThreshold: 0.70,
+    forestMoisture: 0.10,                // almost everything wet enough → forest walls
     /**
-     * Tile-server tree spawn stride for VEGETATION pixels, in world units.
+     * Tile-server tree spawn stride for FOREST wall pixels, in world units.
      * Smaller = denser forest. Trade-off vs. entity count:
-     *   stride 4  → ~5000 trees / fully-vegetated 512u tile (heavy)
-     *   stride 6  → ~2200 trees / fully-vegetated 512u tile (recommended)
-     *   stride 12 → ~600  trees / fully-vegetated 512u tile (sparse cluster)
-     * Read at boot from the world's persisted params; falls back to 6
-     * when missing (older worlds baked before this knob existed).
+     *   stride 4  → ~5000 trees / fully-forested 512u tile (heavy)
+     *   stride 6  → ~2200 trees / fully-forested 512u tile (recommended)
+     *   stride 12 → ~600  trees / fully-forested 512u tile (sparse cluster)
+     * Read at boot from the world's persisted params.
      */
-    vegetationDensityStride: 6,
+    forestDensityStride: 6,
   },
 };
 
@@ -359,7 +351,7 @@ export const PRESETS: Record<string, { name: string; description: string; params
         segments: 3, curvature: 0.10, bezierSamples: 240,
         branchRate: 0.25, branchMaxDepth: 1, branchLengthFraction: 0.40,
       },
-      kinds: { ...DEFAULT_GEN_PARAMS.kinds, vegetationMoisture: 0.10 },
+      kinds: { ...DEFAULT_GEN_PARAMS.kinds, forestMoisture: 0.10 },
     },
   },
   cliff_dungeon: {
@@ -384,13 +376,13 @@ export const PRESETS: Record<string, { name: string; description: string; params
         segments: 5, curvature: 0.35, bezierSamples: 200,
         branchRate: 0.85, branchMaxDepth: 3, branchLengthFraction: 0.55,
       },
-      terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 5.0 },
+      terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 3.0 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
-        cliffAltitudeStrict: 0.30,
-        cliffAltitudeRugged: 0.20,
-        cliffRuggednessThreshold: 0.30,
-        vegetationMoisture: 0.80,           // vegetation rare
+        stoneAltitudeStrict: 0.30,
+        stoneAltitudeRugged: 0.20,
+        stoneRuggednessThreshold: 0.30,
+        forestMoisture: 0.80,               // forest rare; mostly grass-mound walls
       },
     },
   },
@@ -419,8 +411,7 @@ export const PRESETS: Record<string, { name: string; description: string; params
       },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
-        waterMoisture: 0.40, waterAltitude: 0.60, waterDetail: 0.30,
-        vegetationMoisture: 0.05,
+        forestMoisture: 0.05,
       },
     },
   },

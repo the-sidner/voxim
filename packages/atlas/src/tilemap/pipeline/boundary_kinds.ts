@@ -5,18 +5,25 @@
  * how the pixel will eventually render and what player verbs can transform
  * it. Open pixels get BOUNDARY_KIND_OPEN.
  *
- * Phase 4A scope: tag pixels only. Tile-server's renderer + physics still
- * treat every closed pixel uniformly (raised cliff). Subsequent phases:
- *   4B — openMask flows through to physics so collision is independent
- *        of how the boundary chooses to render.
- *   4C — per-kind rendering in tile-server: vegetation stops raising the
- *        heightmap and spawns tree entities; cliffs keep the +3u step.
+ * Three wall kinds in active use, all raised by the terrain stage to the
+ * same WALL_HEIGHT (2u, just past the runtime stepHeight so none of them
+ * are walkable):
+ *
+ *   STONE       — bare grey rock walls. Picked when the biome is high
+ *                 altitude or rugged enough that exposed rock makes sense.
+ *   FOREST      — dense vegetation walls; tile-server spawns tree
+ *                 entities on top of these pixels at runtime so the wall
+ *                 reads as "you can't push through this wall of trees."
+ *   GRASS_MOUND — green grassy berm; the fallback wall when neither of
+ *                 the above qualifies.
+ *
+ * WATER is a separate non-wall kind set by the river-stamping stage; it
+ * stays at floor height and isn't picked from biome (rivers carve it).
  *
  * Selection is rule-based on biome params + per-pixel detail noise.
  * Each closed pixel asks: "what kind of obstacle am I?" — and the rule
  * leans on the same biome that drove the noise field, so transitions
- * across the cell-grid feel coherent (forested cells tend toward
- * vegetation walls, mountainous cells toward cliffs).
+ * across the cell-grid feel coherent.
  *
  * Pure function: same (openMask, biome, tileSeed) → same kindOf array.
  */
@@ -32,10 +39,11 @@ import type { GenParams } from "../../genparams.ts";
  * 0 reserved for "open / not a boundary" so a fresh Uint16Array reads as
  * un-tagged before the stage runs.
  */
-export const BOUNDARY_KIND_OPEN       = 0;
-export const BOUNDARY_KIND_CLIFF      = 1;
-export const BOUNDARY_KIND_VEGETATION = 2;
-export const BOUNDARY_KIND_WATER      = 3;
+export const BOUNDARY_KIND_OPEN        = 0;
+export const BOUNDARY_KIND_STONE       = 1;
+export const BOUNDARY_KIND_FOREST      = 2;
+export const BOUNDARY_KIND_WATER       = 3;
+export const BOUNDARY_KIND_GRASS_MOUND = 4;
 // Room left in the id space for future kinds (rubble, scree, hedge, …).
 
 export interface BoundaryKindsInput {
@@ -79,10 +87,11 @@ function pickKind(
   detail: number,
   p: GenParams["kinds"],
 ): number {
-  if (b.altitude > p.cliffAltitudeStrict) return BOUNDARY_KIND_CLIFF;
-  if (b.altitude > p.cliffAltitudeRugged && b.ruggedness > p.cliffRuggednessThreshold) return BOUNDARY_KIND_CLIFF;
-  if (b.moisture > p.waterMoisture && b.altitude < p.waterAltitude && detail > p.waterDetail) return BOUNDARY_KIND_WATER;
-  if (b.moisture > p.vegetationMoisture) return BOUNDARY_KIND_VEGETATION;
-  // Dry, low, sparse — fall back to cliff (rubble/scree slot reserved for later).
-  return BOUNDARY_KIND_CLIFF;
+  if (b.altitude > p.stoneAltitudeStrict) return BOUNDARY_KIND_STONE;
+  if (b.altitude > p.stoneAltitudeRugged && b.ruggedness > p.stoneRuggednessThreshold) return BOUNDARY_KIND_STONE;
+  if (b.moisture > p.forestMoisture) return BOUNDARY_KIND_FOREST;
+  // Detail noise is unused in the wall-pick today — kept in the call site
+  // so future kinds (rubble, scree) can mix it in without a signature change.
+  void detail;
+  return BOUNDARY_KIND_GRASS_MOUND;
 }

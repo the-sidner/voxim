@@ -4,15 +4,13 @@
  * Open pixels: pick from biome params + detail noise (grass / dirt /
  * stone / sand / water).
  *
- * Closed pixels: override to a darker, kind-driven fallback so walls
- * read as visually distinct on a flat tile (no heightmap lift required):
- *   VEGETATION → DIRT    (forest understory, brown)
- *   CLIFF      → STONE   (gray rock)
- *   WATER      → WATER   (rivers/ponds, blue)
- *   default    → DIRT
- *
- * Tile-server's spawnBoundaryEntities then layers tree entities on top
- * of vegetation pixels for the "look at the dense forest" feel.
+ * Closed pixels: pick by wall kind so each of the three wall types
+ * paints a distinct material on top of its raised step:
+ *   STONE        → STONE   (grey rock)
+ *   FOREST       → DIRT    (forest understory, brown; trees on top)
+ *   GRASS_MOUND  → GRASS   (green berm)
+ *   WATER        → WATER   (rivers/ponds, blue; flat)
+ *   default      → DIRT
  *
  * Atlas IDs are stable semantic markers; tile-server translates to its
  * own registry.
@@ -22,8 +20,9 @@ import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
 import {
-  BOUNDARY_KIND_VEGETATION,
-  BOUNDARY_KIND_CLIFF,
+  BOUNDARY_KIND_STONE,
+  BOUNDARY_KIND_FOREST,
+  BOUNDARY_KIND_GRASS_MOUND,
   BOUNDARY_KIND_WATER,
 } from "./boundary_kinds.ts";
 
@@ -96,9 +95,10 @@ function pickMaterial(
 
 function pickClosedMaterial(kind: number): number {
   switch (kind) {
-    case BOUNDARY_KIND_VEGETATION: return MATERIAL_DIRT;   // forest floor
-    case BOUNDARY_KIND_CLIFF:      return MATERIAL_STONE;  // bare rock
-    case BOUNDARY_KIND_WATER:      return MATERIAL_WATER;  // rivers/ponds
-    default:                       return MATERIAL_DIRT;
+    case BOUNDARY_KIND_STONE:       return MATERIAL_STONE;  // bare rock
+    case BOUNDARY_KIND_FOREST:      return MATERIAL_DIRT;   // forest floor
+    case BOUNDARY_KIND_GRASS_MOUND: return MATERIAL_GRASS;  // green berm
+    case BOUNDARY_KIND_WATER:       return MATERIAL_WATER;  // rivers/ponds
+    default:                        return MATERIAL_DIRT;
   }
 }

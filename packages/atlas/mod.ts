@@ -37,8 +37,9 @@ export {
 } from "./src/tilemap/pipeline/materials.ts";
 export {
   runBoundaryKinds,
-  BOUNDARY_KIND_OPEN, BOUNDARY_KIND_CLIFF,
-  BOUNDARY_KIND_VEGETATION, BOUNDARY_KIND_WATER,
+  BOUNDARY_KIND_OPEN, BOUNDARY_KIND_STONE,
+  BOUNDARY_KIND_FOREST, BOUNDARY_KIND_WATER,
+  BOUNDARY_KIND_GRASS_MOUND,
 } from "./src/tilemap/pipeline/boundary_kinds.ts";
 export { upsampleTile } from "./src/tilemap/upsample.ts";
 export type { UpsampleOptions, UpsampleOutput } from "./src/tilemap/upsample.ts";

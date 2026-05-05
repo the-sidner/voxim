@@ -20,7 +20,7 @@ import {
   tileInitFromWire,
   upsampleTile,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
-  BOUNDARY_KIND_VEGETATION,
+  BOUNDARY_KIND_FOREST,
   type TileInitWire,
 } from "@voxim/atlas";
 import { TILE_SIZE } from "@voxim/world";
@@ -38,9 +38,9 @@ export interface AtlasTerrainResult {
   openBuffer: Uint8Array;
   /**
    * Per-cell boundary-kind ids at TILE_SIZE² resolution. 0 = open;
-   * BOUNDARY_KIND_CLIFF / VEGETATION / WATER on closed pixels. Tile-server
-   * uses this to spawn the right boundary visualisation (tree entities
-   * at vegetation pixels, etc.).
+   * BOUNDARY_KIND_STONE / FOREST / WATER / GRASS_MOUND on closed pixels.
+   * Tile-server uses this to spawn the right boundary visualisation
+   * (tree entities at forest pixels, etc.).
    */
   kindBuffer: Uint16Array;
   /**
@@ -198,10 +198,11 @@ export async function loadTerrainFromAtlas(
 
 /**
  * Spawn boundary entities for kinds that render as world objects.
- * Vegetation pixels get a `tree` prefab on a fixed-stride grid; the stride
+ * FOREST wall pixels get a `tree` prefab on a fixed-stride grid; the stride
  * comes from the world's persisted GenParams so designers can dial forest
- * density per-world via the inspector. Cliffs are pure terrain (visual
- * differentiation by darker material); water is the openMask + river system.
+ * density per-world via the inspector. STONE and GRASS_MOUND walls are
+ * pure terrain (visual differentiation by material on top of the raised
+ * step); WATER is the openMask + river system.
  */
 
 const FALLBACK_TREE_STRIDE = 6;
@@ -214,11 +215,10 @@ export function spawnBoundaryEntities(
   worldParams?: Record<string, unknown>,
 ): { trees: number } {
   // Pull the knob out of the persisted params blob (atlas's GenParams shape).
-  // Older worlds (baked before this knob existed) fall back to the default.
   const kindsParams = (worldParams?.kinds as Record<string, unknown> | undefined);
   const stride = clampStride(
-    typeof kindsParams?.vegetationDensityStride === "number"
-      ? kindsParams.vegetationDensityStride
+    typeof kindsParams?.forestDensityStride === "number"
+      ? kindsParams.forestDensityStride
       : FALLBACK_TREE_STRIDE,
   );
 
@@ -226,7 +226,7 @@ export function spawnBoundaryEntities(
   for (let y = stride / 2 | 0; y < TILE_SIZE; y += stride) {
     for (let x = stride / 2 | 0; x < TILE_SIZE; x += stride) {
       const idx = y * TILE_SIZE + x;
-      if (kindBuffer[idx] !== BOUNDARY_KIND_VEGETATION) continue;
+      if (kindBuffer[idx] !== BOUNDARY_KIND_FOREST) continue;
       const z = groundHeightAt(x, y);
       spawnPrefab(world, content, "tree", { x, y, z });
       trees++;
