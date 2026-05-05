@@ -80,16 +80,18 @@ const KNOB_CONFIG = {
   room: {
     targetCount:    { step: 1, min: 1, max: 32, integer: true },
     minSeparation:  { step: 1, min: 4, max: 96, integer: true },
-    sizeMin:        { step: 5, min: 1, max: 2000, integer: true },
-    sizeMax:        { step: 5, min: 1, max: 4000, integer: true },
+    sizeMin:        { step: 10, min: 1, max: 4000, integer: true },
+    sizeMax:        { step: 10, min: 1, max: 6000, integer: true },
+    compactness:    { step: 0.05, min: 0, max: 2.0 },
   },
   network: {
     maxEdgeLength: { step: 4, min: 4, max: 256, integer: true },
     loopRate:      { step: 0.05, min: 0, max: 1 },
     widthMin:      { step: 1, min: 0, max: 6, integer: true },
     widthMax:      { step: 1, min: 0, max: 6, integer: true },
-    curvature:     { step: 0.05, min: 0, max: 1.0 },
-    bezierSamples: { step: 10, min: 20, max: 800, integer: true },
+    segments:      { step: 1, min: 1, max: 12, integer: true },
+    curvature:     { step: 0.02, min: 0, max: 1.0 },
+    bezierSamples: { step: 5, min: 5, max: 200, integer: true },
   },
   // materials/kinds: every knob is a 0..1 threshold; uniform config.
 };
@@ -128,14 +130,16 @@ const KNOB_HINT = {
     minSeparation: "Min spacing between chamber seeds (px). Higher → spread out.",
     sizeMin:       "Smallest chamber pixel count. Per-chamber size picked in [min,max].",
     sizeMax:       "Largest chamber pixel count.",
+    compactness:   "Tightness of growth around seed. 0 = noise lobes (snake), 0.3 = chunky organic, 1 = round Voronoi.",
   },
   network: {
     maxEdgeLength: "Cap on chamber-to-chamber edge length (px). Bigger → longer corridors.",
     loopRate:      "Extra-corridor rate. 0 = tree (one path). 1 = full Delaunay net.",
     widthMin:      "Min corridor brush half-width. 0 = 1px wide path.",
     widthMax:      "Max corridor brush half-width. Each edge picks uniformly in range.",
-    curvature:     "Bezier control-point displacement (frac of edge length). 0 = straight.",
-    bezierSamples: "Samples along each bezier. Higher = smoother carve, slower bake.",
+    segments:      "Spline segments per corridor. 1 = single arc, 4 = winding, 8 = very twisty.",
+    curvature:     "Per-waypoint perpendicular jitter (frac of edge length). 0 = straight polyline.",
+    bezierSamples: "Brush stamps PER SEGMENT. Total stamps ≈ segments × this. 50 fine for 128² grid.",
   },
   materials: {
     detailFrequency:           "Per-pixel material noise scale.",
@@ -739,22 +743,47 @@ function drawTileRooms({ px, originX, originY, g }) {
     }
     ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
   }
-  // Bezier centerlines for each corridor — so the planned path reads
-  // even when the brush stamps blur into the chamber colours.
-  // Network edges in dark cyan; portal (gate) edges in white.
+  // Catmull-Rom centerlines for each corridor — so the planned path
+  // reads even when brush stamps blur into chamber colours. Same
+  // formula as bezier_carve.ts: each segment becomes a cubic bezier
+  // with control points derived from neighbouring waypoints.
   for (const c of (tile.payload.corridors ?? [])) {
+    const w = c.waypoints ?? [];
+    if (w.length < 2) continue;
     ctx.strokeStyle = c.kind === "portal" ? "#ffffff" : "#103848";
     ctx.lineWidth   = c.kind === "portal" ? 1.6 : 1.2;
     ctx.beginPath();
-    const ax = originX + c.ax  * px + px / 2;
-    const ay = originY + c.ay  * px + px / 2;
-    const cpx = originX + c.cpx * px + px / 2;
-    const cpy = originY + c.cpy * px + px / 2;
-    const bx = originX + c.bx  * px + px / 2;
-    const by = originY + c.by  * px + px / 2;
-    ctx.moveTo(ax, ay);
-    ctx.quadraticCurveTo(cpx, cpy, bx, by);
+    const toCanvas = (p) => ({
+      x: originX + p.x * px + px / 2,
+      y: originY + p.y * px + px / 2,
+    });
+    const reflect = (pivot, near) => ({ x: 2*pivot.x - near.x, y: 2*pivot.y - near.y });
+    ctx.moveTo(toCanvas(w[0]).x, toCanvas(w[0]).y);
+    for (let i = 0; i < w.length - 1; i++) {
+      const w0 = w[i - 1] ?? reflect(w[i], w[i + 1]);
+      const w1 = w[i];
+      const w2 = w[i + 1];
+      const w3 = w[i + 2] ?? reflect(w[i + 1], w[i]);
+      const c1 = toCanvas({
+        x: w1.x + (w2.x - w0.x) / 6,
+        y: w1.y + (w2.y - w0.y) / 6,
+      });
+      const c2 = toCanvas({
+        x: w2.x - (w3.x - w1.x) / 6,
+        y: w2.y - (w3.y - w1.y) / 6,
+      });
+      const end = toCanvas(w2);
+      ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+    }
     ctx.stroke();
+    // Tiny dots at each waypoint so designers can see the segment joins.
+    ctx.fillStyle = c.kind === "portal" ? "#ffffff" : "#225466";
+    for (const p of w) {
+      const cv = toCanvas(p);
+      ctx.beginPath();
+      ctx.arc(cv.x, cv.y, 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   // Chamber centroids — small black dots so even tiny chambers read.
   ctx.fillStyle = "#000";

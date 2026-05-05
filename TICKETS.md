@@ -944,6 +944,53 @@ when a player or active NPC is within a configurable radius. Serialise and unloa
 no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
+### T-152 · Atlas tilemap — room-feeling chambers + segmented spline corridors
+Effort: M   Status: in-progress
+
+T-151 produced chambers that read as snake-shaped fragments of the noise
+field instead of *rooms* (areas you can spawn things inside), and single-
+quadratic corridors that cut straight through chambers and could swing
+outside the tile. Four bundled fixes to land it as a usable level shape:
+
+1. **Compact chamber growth.** Today the priority-flood cost is just
+   `noise[p]`, so chambers follow whichever low-noise lobe drifts away
+   from the seed → snake silhouettes. Add a distance-from-seed term:
+   `cost = noise[p] + compactness · |p − seed|`. `room.compactness`
+   defaults around 0.35 — chambers accrete volume around the seed but
+   still take organic shapes from noise structure. Combined with much
+   bigger `sizeMin/sizeMax` defaults, this gives chambers that read as
+   spaces, not corridors.
+
+2. **Boundary endpoints.** Corridors used to run centroid → centroid,
+   carving straight through the chambers they "connect". Now each
+   network edge ray-marches from each centroid toward the partner and
+   uses the last in-chamber pixel as the bezier endpoint. The chamber
+   interior stays untouched; corridors look like they enter and exit at
+   the chamber walls, which is what makes them feel like *gaps in a wall*
+   rather than tubes drilled through rooms.
+
+3. **Segmented spline paths.** Single quadratic bezier replaced with
+   `network.segments` (default 4) waypoints generated along the line
+   between endpoints, perpendicular-perturbed by `curvature ·
+   edge_length` with a sin envelope so the perturbation tapers to zero
+   at the endpoints. The carve sweeps a Catmull-Rom spline through the
+   waypoints (each segment becomes a cubic bezier; C1 continuous at the
+   joints). This gives real wandering paths instead of one arc.
+
+4. **Tile-interior clipping.** Each waypoint is clamped to a margin
+   inside the tile (margin = halfWidth + 2). Corridors no longer
+   excursion outside the playable area when curvature is high.
+
+`Corridor` record changes from (a, cp, b) to a `waypoints: Array<{x,y}>`
+list. Inspector replicates the same Catmull-Rom math to draw centerlines.
+Defaults retuned: chambers larger and rounder, corridors narrower so
+chambers visually dominate the tile.
+
+Done when: bake forest_maze and the inspector shows ~7 chunky chambers
+of varied organic shape, corridors that wander through 3-5 bends and
+stay inside the tile, and chamber interiors visibly preserved (no
+corridor cutting them in half).
+
 ### T-151 · Atlas tilemap — Poisson-seeded chambers + bezier corridor carve
 Effort: M   Status: done   Commit: 33ec1a6
 

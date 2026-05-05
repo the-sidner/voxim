@@ -1,33 +1,35 @@
 /**
  * Stage 3 — interwoven chamber network.
  *
- * Plans corridors between chambers as a deliberate graph rather than
- * trusting noise to leave the right gaps:
+ * Plans corridors between chambers as a deliberate graph:
  *
  *   1. Delaunay triangulation over chamber centroids → candidate edges.
  *   2. Drop edges longer than `params.maxEdgeLength`.
- *   3. Kruskal MST → guaranteed connectivity (every chamber reachable
- *      from every other chamber through the kept edges).
- *   4. Braid: keep `params.loopRate` of the remaining (non-tree) edges
- *      as loops. THE knob for "explorative vs. linear".
- *   5. Carve each chosen edge as a quadratic bezier between the two
- *      chamber centroids: per-edge brush width sampled from
- *      `[widthMin, widthMax]`, control point perpendicular-displaced by
- *      `curvature × edge_length × ±sign` (sign deterministic per edge).
- *   6. Re-flood `roomOf` so portal placement / gate summary see the
+ *   3. Kruskal MST → guaranteed connectivity.
+ *   4. Braid: keep `params.loopRate` of the non-tree edges as loops.
+ *   5. For each kept edge, ray-march from each centroid toward the
+ *      partner using `chamberOf` to find the chamber-boundary entry/exit
+ *      pixel. The corridor enters and exits the chamber walls instead
+ *      of crossing the interior — chambers stay intact.
+ *   6. Generate `segments + 1` waypoints between the two boundary
+ *      endpoints with sin-tapered perpendicular perturbation, clipped
+ *      to a tile-interior margin. Carve as a Catmull-Rom spline with a
+ *      brush whose half-width is sampled per edge from `[widthMin,
+ *      widthMax]`.
+ *   7. Re-flood `roomOf` so portal placement / gate summary see the
  *      merged connected components.
- *
- * The carved Corridor records are returned for persistence on TileInit.
  */
 
 import { runRoomDetection } from "./room_detection.ts";
-import { carveBezier, clampPx } from "./bezier_carve.ts";
+import { carveSpline, makeWaypoints } from "./bezier_carve.ts";
 import type { Corridor, Room } from "../types.ts";
 import type { GenParams } from "../../genparams.ts";
 
 export interface NetworkInput {
   /** From chambers stage. Mutated in place by carves. */
   openMask: Uint8Array;
+  /** From chambers stage. Read-only — used to locate chamber boundaries. */
+  chamberOf: Uint16Array;
   /** From chambers stage. Read-only. */
   chambers: Room[];
   gridSize: number;
@@ -49,7 +51,7 @@ export interface NetworkOutput {
 const NETWORK_SUB_SEED = 0x4e570001;
 
 export function runNetwork(input: NetworkInput): NetworkOutput {
-  const { openMask, chambers, gridSize, px2world, tileSeed, params } = input;
+  const { openMask, chamberOf, chambers, gridSize, px2world, tileSeed, params } = input;
 
   // 0–1 chambers → no edges to carve. Re-flood and return.
   if (chambers.length < 2) {
@@ -102,27 +104,30 @@ export function runNetwork(input: NetworkInput): NetworkOutput {
     if (rng() < params.loopRate) braids.push(e);
   }
 
-  // ---- 5. Carve each chosen edge as a bezier -----------------------------
+  // ---- 5. Boundary endpoints + 6. carve segmented spline -----------------
   const corridors: Corridor[] = [];
   const chosen = tree.concat(braids);
   for (const e of chosen) {
-    const ax = clampPx(Math.round(pts[e.a].x), gridSize);
-    const ay = clampPx(Math.round(pts[e.a].y), gridSize);
-    const bx = clampPx(Math.round(pts[e.b].x), gridSize);
-    const by = clampPx(Math.round(pts[e.b].y), gridSize);
+    const a = chambers.find(c => c.id === e.a)!;
+    const b = chambers.find(c => c.id === e.b)!;
     const halfWidth = sampleWidth(rng, params);
-    const sign = rng() < 0.5 ? -1 : 1;
-    const corridor = carveBezier({
-      ax, ay, bx, by,
-      curvature: params.curvature,
-      sign,
+    // Walk centroid → partner-centroid in 1px steps; the last in-chamber
+    // pixel is the boundary endpoint. If we never exit (degenerate
+    // overlap), fall back to the centroid itself.
+    const aStart = chamberBoundaryToward(a, b, chamberOf, gridSize, px2world);
+    const bStart = chamberBoundaryToward(b, a, chamberOf, gridSize, px2world);
+    const margin = halfWidth + 2;
+    const waypoints = makeWaypoints(
+      aStart, bStart, params.segments, params.curvature, margin, gridSize, rng,
+    );
+    corridors.push(carveSpline({
+      waypoints,
       halfWidth,
-      samples: params.bezierSamples,
+      samplesPerSegment: params.bezierSamples,
       kind: "network",
       openMask,
       gridSize,
-    });
-    corridors.push(corridor);
+    }));
   }
 
   // ---- 6. Re-flood labels ------------------------------------------------
@@ -136,6 +141,38 @@ function sampleWidth(rng: () => number, params: GenParams["network"]): number {
   if (lo === hi) return lo;
   return lo + Math.floor(rng() * (hi - lo + 1));
 }
+
+/**
+ * Ray-march from chamber `from`'s centroid toward chamber `to`'s centroid
+ * in 1px steps; return the last in-chamber pixel. This is where the
+ * corridor leaves chamber `from` — using it as the bezier endpoint
+ * means the carve enters/exits chamber walls instead of crossing
+ * interiors.
+ */
+function chamberBoundaryToward(
+  from: Room, to: Room,
+  chamberOf: Uint16Array, gridSize: number, px2world: number,
+): { x: number; y: number } {
+  const fx = from.cx / px2world;
+  const fy = from.cy / px2world;
+  const tx = to.cx / px2world;
+  const ty = to.cy / px2world;
+  const dx = tx - fx;
+  const dy = ty - fy;
+  const len = Math.hypot(dx, dy);
+  const steps = Math.max(1, Math.ceil(len));
+  let lastInside = { x: fx, y: fy };
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const x = Math.round(fx + dx * t);
+    const y = Math.round(fy + dy * t);
+    if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) break;
+    if (chamberOf[y * gridSize + x] !== from.id) break;
+    lastInside = { x, y };
+  }
+  return lastInside;
+}
+
 
 // ============================================================================
 // Delaunay — incremental Bowyer–Watson.

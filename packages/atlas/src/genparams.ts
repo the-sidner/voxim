@@ -98,10 +98,16 @@ export interface GenParams {
 
   /**
    * Chamber stage. Places N seeds via Poisson-disk sampling, then grows
-   * each into an organic shape by priority-flooding the noise field
-   * (lowest-noise neighbour added first, round-robin across chambers).
-   * This gives explicit count control AND organic silhouettes, instead
-   * of "whatever the noise threshold happened to leave behind."
+   * each into an organic shape via priority-flood. The growth cost per
+   * pixel is `noise[p] + compactness · |p − seed|`, so chambers accrete
+   * volume around the seed (the compactness term) while still picking
+   * up organic outline detail from the noise field. Round-robin growth
+   * lets adjacent chambers compete fairly for shared territory.
+   *
+   * Tuning intuitions:
+   *   compactness = 0   → chambers follow noise lobes (snake shapes)
+   *   compactness = 0.3 → organic but chunky (room-sized blobs)
+   *   compactness = 1.0 → essentially Voronoi cells (round, no character)
    */
   room: {
     /** Target chamber count per tile. Poisson sampler aims for this many. */
@@ -111,6 +117,12 @@ export interface GenParams {
     /** Per-chamber size range, in pixel cells. */
     sizeMin: number;
     sizeMax: number;
+    /**
+     * Strength of the distance-from-seed cost component during growth.
+     * Higher = chambers stay tighter around their seed (round); lower =
+     * chambers stretch into low-noise lobes (irregular).
+     */
+    compactness: number;
   };
 
   /**
@@ -118,9 +130,15 @@ export interface GenParams {
    *
    * Pipeline: Delaunay triangulation over chamber centroids → Kruskal MST
    * for guaranteed connectivity → keep `loopRate` of the non-tree edges
-   * as braids → carve each edge as a quadratic bezier from centroid to
-   * centroid, with a perpendicular-displaced control point and a
-   * per-edge brush width sampled from `[widthMin, widthMax]`.
+   * as braids → for each kept edge, ray-march from each centroid toward
+   * the partner to find the chamber-boundary entry/exit pixels (so the
+   * carve enters and exits at the chamber walls instead of crossing the
+   * interior) → generate `segments + 1` waypoints along the line, with
+   * interior waypoints perpendicular-perturbed by `curvature × edge_len`
+   * and clamped to a tile-interior margin → sweep a Catmull-Rom spline
+   * through the waypoints (each segment becomes a cubic bezier; C1
+   * continuous at joints) → stamp brush of `widthMin..widthMax` along
+   * the curve.
    */
   network: {
     /** Cap on Delaunay edge length, in pixels. Longer candidates are dropped. */
@@ -134,14 +152,22 @@ export interface GenParams {
     widthMin: number;
     widthMax: number;
     /**
-     * Bezier control-point perpendicular displacement, as a fraction of
-     * edge length. 0 = straight line; 0.25 = gentle arc; 0.5 = strongly
-     * curving S-shape (sign alternates per edge).
+     * Number of spline segments per corridor (waypoints = segments + 1).
+     * 1 = single straight-ish bezier; 4 = visibly winding path; 8 = very
+     * twisty.
+     */
+    segments: number;
+    /**
+     * Per-waypoint perpendicular perturbation, as a fraction of edge
+     * length. The actual displacement is `curvature × edge_length × random
+     * × sin(π·t)` so endpoints stay anchored. 0 = straight polyline; 0.3
+     * = visible S-bends; 0.6 = dramatic switchbacks.
      */
     curvature: number;
     /**
-     * Number of bezier samples per corridor. Higher = denser stamping =
-     * smoother carve at the cost of CPU. 200 is plenty for 128² grids.
+     * Bezier samples per spline segment. Higher = denser stamping =
+     * smoother carve at the cost of CPU. With segments=4 and samples=50,
+     * total stamps per corridor = 200.
      */
     bezierSamples: number;
   };
@@ -205,17 +231,19 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   },
   room: {
     targetCount: 7,
-    minSeparation: 28,
-    sizeMin: 90,
-    sizeMax: 260,
+    minSeparation: 32,
+    sizeMin: 320,                        // big enough to spawn things in
+    sizeMax: 600,
+    compactness: 0.35,                   // chunky organic blobs
   },
   network: {
-    maxEdgeLength: 80,
-    loopRate: 0.60,
+    maxEdgeLength: 90,
+    loopRate: 0.55,
     widthMin: 0,                         // 1px wide
     widthMax: 1,                         // up to 3px wide
-    curvature: 0.22,
-    bezierSamples: 200,
+    segments: 4,                         // 4 spline segments per corridor
+    curvature: 0.18,
+    bezierSamples: 50,                   // per segment → 200 total
   },
   materials: {
     detailFrequency: 0.06,
@@ -267,8 +295,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         extraThresholdPerRuggedness: 0.05,
         octaves: 4,
       },
-      room: { targetCount: 4, minSeparation: 40, sizeMin: 220, sizeMax: 500 },
-      network: { maxEdgeLength: 110, loopRate: 0.30, widthMin: 1, widthMax: 3, curvature: 0.10, bezierSamples: 200 },
+      room: { targetCount: 4, minSeparation: 44, sizeMin: 600, sizeMax: 1100, compactness: 0.50 },
+      network: { maxEdgeLength: 120, loopRate: 0.30, widthMin: 1, widthMax: 3, segments: 3, curvature: 0.10, bezierSamples: 60 },
       kinds: { ...DEFAULT_GEN_PARAMS.kinds, vegetationMoisture: 0.10 },
     },
   },
@@ -285,8 +313,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         extraThresholdPerRuggedness: 0.05,
         octaves: 6,
       },
-      room: { targetCount: 12, minSeparation: 18, sizeMin: 40, sizeMax: 110 },
-      network: { maxEdgeLength: 50, loopRate: 0.85, widthMin: 0, widthMax: 0, curvature: 0.40, bezierSamples: 220 },
+      room: { targetCount: 12, minSeparation: 20, sizeMin: 140, sizeMax: 260, compactness: 0.25 },
+      network: { maxEdgeLength: 55, loopRate: 0.85, widthMin: 0, widthMax: 0, segments: 5, curvature: 0.35, bezierSamples: 50 },
       terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 5.0 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
@@ -311,8 +339,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         extraThresholdPerRuggedness: 0.05,
         octaves: 5,
       },
-      room: { targetCount: 6, minSeparation: 26, sizeMin: 120, sizeMax: 320 },
-      network: { maxEdgeLength: 80, loopRate: 0.55, widthMin: 1, widthMax: 2, curvature: 0.30, bezierSamples: 200 },
+      room: { targetCount: 6, minSeparation: 30, sizeMin: 380, sizeMax: 750, compactness: 0.30 },
+      network: { maxEdgeLength: 90, loopRate: 0.55, widthMin: 1, widthMax: 2, segments: 4, curvature: 0.28, bezierSamples: 55 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
         waterMoisture: 0.40, waterAltitude: 0.60, waterDetail: 0.30,

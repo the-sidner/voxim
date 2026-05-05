@@ -12,12 +12,13 @@
  *      slightly fewer.
  *
  *   2. Priority-flood growth: every chamber's seed pixel is the root of
- *      a min-heap keyed by noise value at the candidate pixel. We
- *      round-robin one pixel per chamber per round, always popping the
- *      lowest-noise neighbour. This makes each chamber's silhouette
- *      organically follow the noise field's low-cost lobes; round-robin
- *      makes adjacent chambers compete for shared territory, so their
- *      shared boundaries land where their respective "pull" balances.
+ *      a min-heap keyed by `noise[p] + compactness · |p − seed|` at the
+ *      candidate pixel. We round-robin one pixel per chamber per round,
+ *      always popping the lowest-cost neighbour. The noise term gives
+ *      organic outline detail; the distance term keeps chambers
+ *      accreting volume around their seed instead of stretching into
+ *      thin noise lobes. Round-robin makes adjacent chambers compete
+ *      fairly for shared territory.
  *
  * Each chamber stops when it reaches its randomly-picked target size
  * (in [sizeMin, sizeMax]) or runs out of un-claimed neighbours.
@@ -85,7 +86,7 @@ export function runChambers(input: ChambersInput): ChambersOutput {
     sizes[c]++;
     sumX[c] += seeds[c].x;
     sumY[c] += seeds[c].y;
-    pushNeighbours(heaps[c], idx, gridSize, noiseField, chamberOf);
+    pushNeighbours(heaps[c], idx, gridSize, noiseField, chamberOf, seeds[c], params.compactness);
   }
 
   // Round-robin until everyone is full or stuck.
@@ -107,7 +108,7 @@ export function runChambers(input: ChambersInput): ChambersOutput {
         const y = (idx - x) / gridSize;
         sumX[c] += x;
         sumY[c] += y;
-        pushNeighbours(heaps[c], idx, gridSize, noiseField, chamberOf);
+        pushNeighbours(heaps[c], idx, gridSize, noiseField, chamberOf, seeds[c], params.compactness);
         placed = true;
         progressed = true;
         break;
@@ -137,6 +138,7 @@ export function runChambers(input: ChambersInput): ChambersOutput {
 function pushNeighbours(
   heap: MinHeap, idx: number, gridSize: number,
   noiseField: Float32Array, chamberOf: Uint16Array,
+  seed: { x: number; y: number }, compactness: number,
 ): void {
   const x = idx % gridSize;
   const y = (idx - x) / gridSize;
@@ -149,7 +151,12 @@ function pushNeighbours(
   for (const nb of candidates) {
     if (nb < 0) continue;
     if (chamberOf[nb] !== ROOM_ID_NONE) continue;
-    heap.push(nb, noiseField[nb]);
+    const nx = nb % gridSize;
+    const ny = (nb - nx) / gridSize;
+    const dx = nx - seed.x;
+    const dy = ny - seed.y;
+    const dist = Math.hypot(dx, dy);
+    heap.push(nb, noiseField[nb] + compactness * dist);
   }
 }
 

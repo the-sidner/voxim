@@ -45,11 +45,13 @@ export interface Portal {
 }
 
 /**
- * One carved corridor — a quadratic bezier from (ax, ay) through control
- * point (cpx, cpy) to (bx, by), stamped with a brush of `halfWidth` pixels.
+ * One carved corridor — a polyline of waypoints stamped as a Catmull-Rom
+ * spline (each segment becomes a cubic bezier with C1 continuity at the
+ * joints). The brush half-width is uniform along the spline.
  *
- * Coordinates are sample-grid pixel space. `kind` distinguishes the two
- * carving sources so the inspector can colour them differently:
+ * Coordinates are sample-grid pixel space (Float — waypoints can sit
+ * between pixel centres). `kind` distinguishes the carving source so
+ * the inspector can colour them differently:
  *   - "network" — chamber↔chamber, planned by the Delaunay+MST+braid pass
  *   - "portal"  — gate→nearest-chamber, one per present gate
  *
@@ -58,9 +60,8 @@ export interface Portal {
  */
 export interface Corridor {
   kind: "network" | "portal";
-  ax: number; ay: number;
-  cpx: number; cpy: number;
-  bx: number; by: number;
+  /** Polyline waypoints, ≥ 2. The spline starts at [0] and ends at [last]. */
+  waypoints: Array<{ x: number; y: number }>;
   halfWidth: number;
 }
 

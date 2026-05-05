@@ -70,22 +70,24 @@ export function generateTile(
   });
 
   const networked = runNetwork({
-    openMask: chambered.openMask,
-    chambers: chambered.chambers,
+    openMask:  chambered.openMask,
+    chamberOf: chambered.chamberOf,
+    chambers:  chambered.chambers,
     gridSize,
     px2world,
     tileSeed,
-    params:   params.network,
+    params:    params.network,
   });
 
   const placed = runPortalPlacement({
-    openMask: networked.openMask,
-    chambers: chambered.chambers,
+    openMask:  networked.openMask,
+    chamberOf: chambered.chamberOf,
+    chambers:  chambered.chambers,
     gridSize,
     px2world,
     tileSize,
-    gates:    worldCell.gates,
-    network:  params.network,
+    gates:     worldCell.gates,
+    network:   params.network,
     tileSeed,
   });
 
