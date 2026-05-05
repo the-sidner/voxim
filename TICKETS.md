@@ -945,7 +945,7 @@ no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
 ### T-156 · Atlas tilemap — three wall kinds (grass mound, stone, forest), all 2u
-Effort: S   Status: in-progress
+Effort: S   Status: done   Commit: 8412026
 
 The maze needs three visually distinct wall types, all non-walkable, all
 raised the same 2 world units (just enough to exceed the 0.75u runtime
