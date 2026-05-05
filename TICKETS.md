@@ -945,7 +945,7 @@ no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
 ### T-151 · Atlas tilemap — Poisson-seeded chambers + bezier corridor carve
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 33ec1a6
 
 T-150 produced too many chambers (~17 typical) with round/blob silhouettes
 and fixed-width A* corridors that read as straight wedges. Replace the
