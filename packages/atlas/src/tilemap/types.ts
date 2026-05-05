@@ -45,6 +45,26 @@ export interface Portal {
 }
 
 /**
+ * One carved corridor — a quadratic bezier from (ax, ay) through control
+ * point (cpx, cpy) to (bx, by), stamped with a brush of `halfWidth` pixels.
+ *
+ * Coordinates are sample-grid pixel space. `kind` distinguishes the two
+ * carving sources so the inspector can colour them differently:
+ *   - "network" — chamber↔chamber, planned by the Delaunay+MST+braid pass
+ *   - "portal"  — gate→nearest-chamber, one per present gate
+ *
+ * Stored on TileInit so any consumer (inspector overlay, runtime debug
+ * draw, future analyses) can recover the curves without re-running gen.
+ */
+export interface Corridor {
+  kind: "network" | "portal";
+  ax: number; ay: number;
+  cpx: number; cpy: number;
+  bx: number; by: number;
+  halfWidth: number;
+}
+
+/**
  * One tile's pre-computed initial state. What atlas writes; what
  * tile-server reads at boot before applying player edits.
  *
@@ -80,13 +100,16 @@ export interface TileInit {
    * Per-pixel chamber id, or 0xFFFF for closed pixels AND for corridor
    * pixels carved by the network / portal stages. Length = gridSize².
    *
-   * `chambers[]` are the PRE-network rooms — the discrete noise blobs
-   * after roomify, before any corridors merged them. Use this to see the
-   * actual chamber layout. Pixels open in `openMask` but with `0xFFFF`
-   * here are corridors (the network's connective tissue).
+   * `chambers[]` are the PRE-network rooms — the discrete chambers grown
+   * by the chambers stage, before any corridors merged them. Use this to
+   * see the actual chamber layout. Pixels open in `openMask` but with
+   * `0xFFFF` here are corridors (the network's connective tissue).
    */
   chamberOf: Uint16Array;
   chambers: Room[];
+
+  /** All carved corridors (network + portal) with their bezier geometry. */
+  corridors: Corridor[];
 
   portals: Portal[];
 
@@ -149,6 +172,8 @@ export interface TileInitWire {
   kindOfB64: string;
   rooms: Room[];
   chambers: Room[];
+  /** Carved corridors with bezier geometry. JSON-friendly — no base64. */
+  corridors: Corridor[];
   portals: Portal[];
   gateSummary: number;
   boundaries: unknown[];

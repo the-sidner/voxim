@@ -944,6 +944,52 @@ when a player or active NPC is within a configurable radius. Serialise and unloa
 no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
+### T-151 · Atlas tilemap — Poisson-seeded chambers + bezier corridor carve
+Effort: M   Status: in-progress
+
+T-150 produced too many chambers (~17 typical) with round/blob silhouettes
+and fixed-width A* corridors that read as straight wedges. Replace the
+chamber and carve stages so designers get explicit count control, organic
+silhouettes, and curving variable-width paths between rooms.
+
+Replace, don't accrete (the prior `roomify` and `carve` modules are
+deleted in the same commit):
+
+1. **`chambers`** (replaces `roomify`) — Poisson-disk sample N seeds
+   (target count, deterministic from tileSeed), then grow each chamber
+   via priority flood over the noise field: round-robin one-pixel-at-a-
+   time accretion, lowest-noise neighbour first. Naturally gives organic
+   shapes (the chamber follows weak-noise lobes) and Voronoi-ish
+   competition between adjacent chambers.
+
+2. **`bezier_carve`** (replaces `carve`) — for an edge between two
+   chamber centroids: midpoint perpendicular-displaced by `network.curvature
+   × edge_length × ±sign`, quadratic bezier sampled densely, square brush
+   of `widthMin..widthMax` stamped at each sample. Per-edge width is
+   sampled per edge from a tile-seeded PRNG so different routes have
+   visibly different girths.
+
+3. **`network`** rewritten to use bezier_carve. Stores the carved
+   corridors (endpoints + control point + width) on `TileInit.corridors`
+   so the inspector can draw centerlines and per-edge widths.
+
+4. **`portal_placement`** carves gates → nearest chamber via the same
+   bezier carve; the gate corridors land in `TileInit.corridors` too.
+
+5. **GenParams** restructured: `room.{targetCount, minSeparation,
+   sizeMin, sizeMax}` and `network.{maxEdgeLength, loopRate, widthMin,
+   widthMax, curvature, bezierSamples}`. Inspector knob hints updated.
+
+6. **Inspector** rooms layer overlays the corridor centerlines as thin
+   contrasting lines on top of the chamber-coloured open pixels, so the
+   network reads as drawn paths instead of just light-grey blobs.
+
+Done when: the four named presets each give 5–10 chambers per tile with
+visibly organic silhouettes, corridors curve and vary in width, the
+inspector renders centerline overlays on the rooms layer, and the gate
+summary stays correct (every present gate reaches every other through
+the carved network).
+
 ### T-150 · Atlas tilemap — interwoven room network from noise blobs
 Effort: M   Status: done   Commit: 64d2bc1
 

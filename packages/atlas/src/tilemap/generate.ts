@@ -2,12 +2,14 @@
  * Tilemap orchestrator — runs the per-tile pipeline against one worldmap cell.
  *
  * Pipeline:
- *   1. NoiseField        — biome-driven fbm + threshold → fragmented openMask
- *   2. Roomify           — drop speckle, dilate, label → rooms[], roomOf
- *   3. Network           — Delaunay + MST + braid + noise-flow A* carve
- *                          → re-labelled rooms[], roomOf, openMask
- *   4. PortalPlacement   — stitch each gate to nearest room with the same
- *                          carve → portals[], re-labelled rooms[]/roomOf
+ *   1. NoiseField        — biome-driven fbm cost surface (Float32Array)
+ *   2. Chambers          — Poisson seeds + priority-flood organic growth
+ *                          → openMask, chamberOf, chambers[]
+ *   3. Network           — Delaunay + MST + braid + bezier carve with
+ *                          per-edge width → re-labelled rooms/roomOf,
+ *                          mutated openMask, corridors[]
+ *   4. PortalPlacement   — bezier-carve gate→nearest-chamber → portals[],
+ *                          additional corridors[], re-labelled rooms/roomOf
  *   5. BoundaryKinds     — per-pixel kind tagging
  *   6. RiverStamping     — overlay water onto openMask + kindOf
  *   7. Terrain           — heightmap from openMask + kindOf
@@ -18,7 +20,7 @@
  */
 
 import { runNoiseField } from "./pipeline/noise_field.ts";
-import { runRoomify } from "./pipeline/roomify.ts";
+import { runChambers } from "./pipeline/chambers.ts";
 import { runNetwork } from "./pipeline/network.ts";
 import { runPortalPlacement } from "./pipeline/portal_placement.ts";
 import { runTerrain } from "./pipeline/terrain.ts";
@@ -59,35 +61,32 @@ export function generateTile(
     params: params.noise,
   });
 
-  const roomified = runRoomify({
-    openMask: noise.openMask,
+  const chambered = runChambers({
+    noiseField: noise.noiseField,
     gridSize,
     px2world,
+    tileSeed,
     params: params.room,
   });
 
   const networked = runNetwork({
-    openMask:   roomified.openMask,
-    noiseField: noise.noiseField,
-    threshold:  noise.threshold,
-    rooms:      roomified.rooms,
-    roomOf:     roomified.roomOf,
+    openMask: chambered.openMask,
+    chambers: chambered.chambers,
     gridSize,
     px2world,
     tileSeed,
-    params:     params.network,
+    params:   params.network,
   });
 
   const placed = runPortalPlacement({
-    openMask:   networked.openMask,
-    noiseField: noise.noiseField,
-    threshold:  noise.threshold,
-    rooms:      networked.rooms,
+    openMask: networked.openMask,
+    chambers: chambered.chambers,
     gridSize,
     px2world,
     tileSize,
-    gates:      worldCell.gates,
-    network:    params.network,
+    gates:    worldCell.gates,
+    network:  params.network,
+    tileSeed,
   });
 
   // Kinds runs BEFORE terrain so the terrain stage can decide which
@@ -138,11 +137,9 @@ export function generateTile(
     openMask: placed.openMask,
     roomOf:   placed.roomOf,
     rooms:    placed.rooms,
-    // Pre-network labelling — preserved from roomify so the inspector
-    // (and any future tooling) can see the discrete chambers as they
-    // emerged from noise, before the network stage merged them.
-    chamberOf: roomified.roomOf,
-    chambers:  roomified.rooms,
+    chamberOf: chambered.chamberOf,
+    chambers:  chambered.chambers,
+    corridors: networked.corridors.concat(placed.corridors),
     portals:  placed.portals,
     gateSummary: deriveGateSummary(placed.portals),
     heightMap: terrain.heightMap,
@@ -169,6 +166,7 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     kindOfB64:     bytesToBase64(new Uint8Array(t.kindOf.buffer,    t.kindOf.byteOffset,    t.kindOf.byteLength)),
     rooms:    t.rooms,
     chambers: t.chambers,
+    corridors: t.corridors,
     portals:  t.portals,
     gateSummary: t.gateSummary,
     boundaries: t.boundaries,
@@ -221,6 +219,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     kindOf,
     rooms:    w.rooms,
     chambers: w.chambers,
+    corridors: w.corridors,
     portals:  w.portals,
     gateSummary: w.gateSummary,
     boundaries: w.boundaries,

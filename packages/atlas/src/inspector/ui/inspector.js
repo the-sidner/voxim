@@ -78,14 +78,18 @@ const KNOB_CONFIG = {
     floorModFrequency: { step: 0.005, min: 0 },
   },
   room: {
-    minPixelArea:  { step: 1, min: 0, max: 1024, integer: true },
-    dilatePasses:  { step: 1, min: 0, max: 4, integer: true },
+    targetCount:    { step: 1, min: 1, max: 32, integer: true },
+    minSeparation:  { step: 1, min: 4, max: 96, integer: true },
+    sizeMin:        { step: 5, min: 1, max: 2000, integer: true },
+    sizeMax:        { step: 5, min: 1, max: 4000, integer: true },
   },
   network: {
-    maxEdgeLength:   { step: 4, min: 4, max: 256, integer: true },
-    loopRate:        { step: 0.05, min: 0, max: 1 },
-    corridorWidth:   { step: 1, min: 0, max: 4, integer: true },
-    noiseCostScale:  { step: 1, min: 0, max: 64 },
+    maxEdgeLength: { step: 4, min: 4, max: 256, integer: true },
+    loopRate:      { step: 0.05, min: 0, max: 1 },
+    widthMin:      { step: 1, min: 0, max: 6, integer: true },
+    widthMax:      { step: 1, min: 0, max: 6, integer: true },
+    curvature:     { step: 0.05, min: 0, max: 1.0 },
+    bezierSamples: { step: 10, min: 20, max: 800, integer: true },
   },
   // materials/kinds: every knob is a 0..1 threshold; uniform config.
 };
@@ -107,11 +111,11 @@ const KNOB_HINT = {
     widthPixels:    "River brush radius. Larger → wider rivers.",
   },
   noise: {
-    baseFrequency:               "Higher → smaller blobs (more rooms per tile).",
+    baseFrequency:               "Higher → finer noise detail (chamber walls more wiggly).",
     extraFrequencyPerRuggedness: "How much frequency rises with ruggedness.",
-    baseThreshold:               "Higher → MORE FRAGMENTED (more, smaller rooms).",
+    baseThreshold:               "Vestigial under chamber-flood gen. Used downstream.",
     extraThresholdPerRuggedness: "How threshold rises with ruggedness.",
-    octaves:                     "More → wigglier room edges.",
+    octaves:                     "More → wigglier chamber silhouettes.",
   },
   terrain: {
     wallHeight:        "Vertical step at cliff walls. Must exceed 0.75.",
@@ -120,14 +124,18 @@ const KNOB_HINT = {
     floorModFrequency: "Bump frequency.",
   },
   room: {
-    minPixelArea: "Drop blobs smaller than this. Filters speckle into walls.",
-    dilatePasses: "Grow kept rooms by N pixels. Use 1 if rooms feel cramped.",
+    targetCount:   "How many chambers per tile. Poisson sampler aims for this.",
+    minSeparation: "Min spacing between chamber seeds (px). Higher → spread out.",
+    sizeMin:       "Smallest chamber pixel count. Per-chamber size picked in [min,max].",
+    sizeMax:       "Largest chamber pixel count.",
   },
   network: {
-    maxEdgeLength:  "Cap on Delaunay edge length (px). Longer edges dropped.",
-    loopRate:       "Extra-corridor rate. 0 = tree (one path). 1 = full net.",
-    corridorWidth:  "Carved corridor half-width. 0 = single pixel, 1 = 3 wide.",
-    noiseCostScale: "How strongly carves prefer thin walls. Higher → more meander.",
+    maxEdgeLength: "Cap on chamber-to-chamber edge length (px). Bigger → longer corridors.",
+    loopRate:      "Extra-corridor rate. 0 = tree (one path). 1 = full Delaunay net.",
+    widthMin:      "Min corridor brush half-width. 0 = 1px wide path.",
+    widthMax:      "Max corridor brush half-width. Each edge picks uniformly in range.",
+    curvature:     "Bezier control-point displacement (frac of edge length). 0 = straight.",
+    bezierSamples: "Samples along each bezier. Higher = smoother carve, slower bake.",
   },
   materials: {
     detailFrequency:           "Per-pixel material noise scale.",
@@ -577,7 +585,7 @@ async function loadTile(cellX, cellY) {
     return;
   }
   tile = await res.json();
-  meta.textContent = `tile ${tile.tileId} · seed ${tile.seed} · ${tile.payload.chambers.length} chambers · ${tile.payload.rooms.length} components · ${tile.payload.portals.length} portals`;
+  meta.textContent = `tile ${tile.tileId} · seed ${tile.seed} · ${tile.payload.chambers.length} chambers · ${(tile.payload.corridors ?? []).length} corridors · ${tile.payload.rooms.length} components · ${tile.payload.portals.length} portals`;
   setCrumbs({ label: "World", href: "#world" }, { label: `Tile (${cellX},${cellY})` });
   renderContextTile(cellX, cellY);
   resize();
@@ -612,6 +620,7 @@ function renderContextTile(cellX, cellY) {
         <dt>tile size</dt><dd>${p.tileSize}u</dd>
         <dt>grid</dt><dd>${p.gridSize}² (${(p.tileSize/p.gridSize).toFixed(1)}u/px)</dd>
         <dt>chambers</dt><dd>${p.chambers.length}</dd>
+        <dt>corridors</dt><dd>${(p.corridors ?? []).length}</dd>
         <dt>components</dt><dd>${p.rooms.length}</dd>
         <dt>portals</dt><dd>${p.portals.length}</dd>
         ${portalsHtml}
@@ -712,14 +721,11 @@ function drawTile() {
 
 function drawTileRooms({ px, originX, originY, g }) {
   // Three-tone view of the room network:
-  //   - closed pixels  → dark grey (the maze walls)
-  //   - chamber pixels → bright per-chamber colour (the discrete rooms
-  //                      that emerged from the noise field)
-  //   - corridor pixels → light grey (open in openMask but not in any
-  //                       chamber; carved by the network/portal stages
-  //                       to interconnect the chambers)
-  // The corridors are the connective tissue — they should visibly form
-  // the network linking the coloured chambers.
+  //   - closed pixels   → dark grey (the maze walls)
+  //   - chamber pixels  → bright per-chamber colour
+  //   - corridor pixels → light grey (open in openMask but not in any chamber)
+  // Plus overlays: chamber centroids (black dots) and bezier centerlines
+  // for each carved corridor (so the network reads as drawn paths).
   const openMask  = bytesFromB64(tile.payload.openMaskB64);
   const chamberOf = u16FromB64(tile.payload.chamberOfB64);
   const colour = (id) => roomColours[id % roomColours.length];
@@ -733,8 +739,24 @@ function drawTileRooms({ px, originX, originY, g }) {
     }
     ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
   }
-  // Chamber centroids — small black dots so the discrete rooms read
-  // even when they're tiny.
+  // Bezier centerlines for each corridor — so the planned path reads
+  // even when the brush stamps blur into the chamber colours.
+  // Network edges in dark cyan; portal (gate) edges in white.
+  for (const c of (tile.payload.corridors ?? [])) {
+    ctx.strokeStyle = c.kind === "portal" ? "#ffffff" : "#103848";
+    ctx.lineWidth   = c.kind === "portal" ? 1.6 : 1.2;
+    ctx.beginPath();
+    const ax = originX + c.ax  * px + px / 2;
+    const ay = originY + c.ay  * px + px / 2;
+    const cpx = originX + c.cpx * px + px / 2;
+    const cpy = originY + c.cpy * px + px / 2;
+    const bx = originX + c.bx  * px + px / 2;
+    const by = originY + c.by  * px + px / 2;
+    ctx.moveTo(ax, ay);
+    ctx.quadraticCurveTo(cpx, cpy, bx, by);
+    ctx.stroke();
+  }
+  // Chamber centroids — small black dots so even tiny chambers read.
   ctx.fillStyle = "#000";
   for (const r of tile.payload.chambers) {
     const cxPx = originX + (r.cx / tile.payload.tileSize) * (g * px);

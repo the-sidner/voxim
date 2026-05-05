@@ -97,34 +97,53 @@ export interface GenParams {
   };
 
   /**
-   * Room-extraction stage. Cleans the raw noise blobs into usable rooms:
-   * drops the speckle (one-pixel blobs that aren't real rooms), optionally
-   * dilates the keepers so cramped blobs become walkable.
+   * Chamber stage. Places N seeds via Poisson-disk sampling, then grows
+   * each into an organic shape by priority-flooding the noise field
+   * (lowest-noise neighbour added first, round-robin across chambers).
+   * This gives explicit count control AND organic silhouettes, instead
+   * of "whatever the noise threshold happened to leave behind."
    */
   room: {
-    /** Drop connected open blobs smaller than this many pixels. */
-    minPixelArea: number;
-    /** Number of binary dilation passes (4-conn) on retained blobs. 0 = none. */
-    dilatePasses: number;
+    /** Target chamber count per tile. Poisson sampler aims for this many. */
+    targetCount: number;
+    /** Min separation between chamber seeds, in pixels. */
+    minSeparation: number;
+    /** Per-chamber size range, in pixel cells. */
+    sizeMin: number;
+    sizeMax: number;
   };
 
   /**
-   * Room-network stage. Plans corridors between rooms.
+   * Network stage. Plans corridors between chambers.
    *
-   * Pipeline: Delaunay triangulation over room centroids → MST for guaranteed
-   * connectivity → keep `loopRate` of the remaining edges as braids. Each
-   * chosen edge is carved via A* using the noise field as cost so corridors
-   * follow the weakest walls and never read as straight cuts.
+   * Pipeline: Delaunay triangulation over chamber centroids → Kruskal MST
+   * for guaranteed connectivity → keep `loopRate` of the non-tree edges
+   * as braids → carve each edge as a quadratic bezier from centroid to
+   * centroid, with a perpendicular-displaced control point and a
+   * per-edge brush width sampled from `[widthMin, widthMax]`.
    */
   network: {
     /** Cap on Delaunay edge length, in pixels. Longer candidates are dropped. */
     maxEdgeLength: number;
     /** Fraction of non-tree Delaunay edges kept as loops. 0 = tree, 1 = full net. */
     loopRate: number;
-    /** Carved-corridor half-width, in pixels. 0 = single-pixel path. */
-    corridorWidth: number;
-    /** Multiplier on per-cell noise cost during A*. Higher → straighter carves. */
-    noiseCostScale: number;
+    /**
+     * Per-edge brush half-width range, in pixels. 0 = 1px wide path, 1 =
+     * 3px, 2 = 5px. Each edge picks its own width uniformly from this range.
+     */
+    widthMin: number;
+    widthMax: number;
+    /**
+     * Bezier control-point perpendicular displacement, as a fraction of
+     * edge length. 0 = straight line; 0.25 = gentle arc; 0.5 = strongly
+     * curving S-shape (sign alternates per edge).
+     */
+    curvature: number;
+    /**
+     * Number of bezier samples per corridor. Higher = denser stamping =
+     * smoother carve at the cost of CPU. 200 is plenty for 128² grids.
+     */
+    bezierSamples: number;
   };
 
   /** Per-pixel boundary kind (CLIFF / VEGETATION / WATER) selectors. */
@@ -147,9 +166,12 @@ export interface GenParams {
 
 /**
  * Defaults — biased toward the "forest maze" feel:
- *   - noise tuned to FRAGMENT into many distinct open blobs (the rooms),
- *     not to draw connected paths. The network stage rebuilds connectivity
- *     deliberately: MST + braid + noise-flow A* carve.
+ *   - 7 chambers per tile with organic noise-derived silhouettes,
+ *     connected by curving variable-width corridors.
+ *   - noise field is now used purely as a *cost surface* (chamber growth
+ *     prefers low-noise pixels). The threshold knob in `noise` is
+ *     vestigial under this approach but kept so other consumers
+ *     (boundary kinds, materials) still have their hooks.
  *   - vegetation as the default closed kind (low vegetationMoisture cutoff)
  *   - moisture biased up so most cells are forested
  *   - moderate wall height (not tall enough to look cliff-y)
@@ -169,11 +191,11 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     widthPixels: 2,
   },
   noise: {
-    baseFrequency: 0.04,                 // bigger blobs → readable rooms
+    baseFrequency: 0.05,
     extraFrequencyPerRuggedness: 0.02,
-    baseThreshold: 0.10,                 // POSITIVE → fragments into many blobs
+    baseThreshold: 0.0,
     extraThresholdPerRuggedness: 0.10,
-    octaves: 4,
+    octaves: 5,                          // more octaves → more wall wiggle
   },
   terrain: {
     wallHeight: 3.0,
@@ -182,14 +204,18 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     floorModFrequency: 0.04,
   },
   room: {
-    minPixelArea: 12,                    // ~< 0.75% of grid → speckle, drop
-    dilatePasses: 0,
+    targetCount: 7,
+    minSeparation: 28,
+    sizeMin: 90,
+    sizeMax: 260,
   },
   network: {
-    maxEdgeLength: 64,                   // half the grid; cap intra-tile reach
-    loopRate: 0.45,                      // explorative; ~half of non-tree edges
-    corridorWidth: 1,
-    noiseCostScale: 8,
+    maxEdgeLength: 80,
+    loopRate: 0.60,
+    widthMin: 0,                         // 1px wide
+    widthMax: 1,                         // up to 3px wide
+    curvature: 0.22,
+    bezierSamples: 200,
   },
   materials: {
     detailFrequency: 0.06,
@@ -230,37 +256,37 @@ export const PRESETS: Record<string, { name: string; description: string; params
   },
   open_plains: {
     name: "Open plains",
-    description: "Few big rooms, sparse tree clusters, wide corridors. Easy to traverse.",
+    description: "A few large clearings linked by short, wide, near-straight paths.",
     params: {
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.05, biasAltitude: -0.20 },
       noise: {
-        baseFrequency: 0.02,                // big features → big blobs
+        baseFrequency: 0.025,
         extraFrequencyPerRuggedness: 0.01,
-        baseThreshold: 0.30,                // strongly open
-        extraThresholdPerRuggedness: 0.10,
-        octaves: 3,
+        baseThreshold: 0.0,
+        extraThresholdPerRuggedness: 0.05,
+        octaves: 4,
       },
-      room: { minPixelArea: 80, dilatePasses: 1 },
-      network: { maxEdgeLength: 96, loopRate: 0.20, corridorWidth: 2, noiseCostScale: 4 },
+      room: { targetCount: 4, minSeparation: 40, sizeMin: 220, sizeMax: 500 },
+      network: { maxEdgeLength: 110, loopRate: 0.30, widthMin: 1, widthMax: 3, curvature: 0.10, bezierSamples: 200 },
       kinds: { ...DEFAULT_GEN_PARAMS.kinds, vegetationMoisture: 0.10 },
     },
   },
   cliff_dungeon: {
     name: "Cliff dungeon",
-    description: "Many small rooms, dense interwoven corridors. Reads like a stone labyrinth.",
+    description: "Many tight chambers, twisty narrow corridors. Reads like a stone labyrinth.",
     params: {
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasAltitude: 0.40, biasRuggedness: 0.20, biasMoisture: -0.10 },
       noise: {
-        baseFrequency: 0.06,                // small features → many small blobs
+        baseFrequency: 0.07,
         extraFrequencyPerRuggedness: 0.02,
-        baseThreshold: 0.25,
-        extraThresholdPerRuggedness: 0.10,
-        octaves: 4,
+        baseThreshold: 0.0,
+        extraThresholdPerRuggedness: 0.05,
+        octaves: 6,
       },
-      room: { minPixelArea: 8, dilatePasses: 0 },
-      network: { maxEdgeLength: 40, loopRate: 0.70, corridorWidth: 1, noiseCostScale: 12 },
+      room: { targetCount: 12, minSeparation: 18, sizeMin: 40, sizeMax: 110 },
+      network: { maxEdgeLength: 50, loopRate: 0.85, widthMin: 0, widthMax: 0, curvature: 0.40, bezierSamples: 220 },
       terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 5.0 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
@@ -273,20 +299,20 @@ export const PRESETS: Record<string, { name: string; description: string; params
   },
   wet_marsh: {
     name: "Wet marsh",
-    description: "Mid-size rooms in dense vegetation, wider corridors meandering past water.",
+    description: "Mid-size irregular chambers in vegetation, broad meandering paths past water.",
     params: {
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.40, biasAltitude: -0.30 },
       river: { sourceAltitude: 0.40, minSeparation: 1, widthPixels: 3 },
       noise: {
-        baseFrequency: 0.035,
+        baseFrequency: 0.045,
         extraFrequencyPerRuggedness: 0.01,
-        baseThreshold: 0.15,
-        extraThresholdPerRuggedness: 0.10,
-        octaves: 3,
+        baseThreshold: 0.0,
+        extraThresholdPerRuggedness: 0.05,
+        octaves: 5,
       },
-      room: { minPixelArea: 16, dilatePasses: 1 },
-      network: { maxEdgeLength: 64, loopRate: 0.45, corridorWidth: 2, noiseCostScale: 6 },
+      room: { targetCount: 6, minSeparation: 26, sizeMin: 120, sizeMax: 320 },
+      network: { maxEdgeLength: 80, loopRate: 0.55, widthMin: 1, widthMax: 2, curvature: 0.30, bezierSamples: 200 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
         waterMoisture: 0.40, waterAltitude: 0.60, waterDetail: 0.30,

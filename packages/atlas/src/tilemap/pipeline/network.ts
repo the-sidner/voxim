@@ -1,43 +1,35 @@
 /**
- * Stage 3 — interwoven room network.
+ * Stage 3 — interwoven chamber network.
  *
- * Plans corridors between rooms so the tile reads as a deliberate net,
- * not as whatever shape the noise field happened to leave behind.
+ * Plans corridors between chambers as a deliberate graph rather than
+ * trusting noise to leave the right gaps:
  *
- *   1. Delaunay triangulation over room centroids
- *        → candidate edges (planar, locally optimal triangulation).
- *   2. Drop edges longer than `params.maxEdgeLength` so we don't carve
- *      across the whole tile when a corner has a lonely room.
- *   3. Kruskal MST → guarantees every room connects to every other.
+ *   1. Delaunay triangulation over chamber centroids → candidate edges.
+ *   2. Drop edges longer than `params.maxEdgeLength`.
+ *   3. Kruskal MST → guaranteed connectivity (every chamber reachable
+ *      from every other chamber through the kept edges).
  *   4. Braid: keep `params.loopRate` of the remaining (non-tree) edges
- *      as loops. This is THE knob that makes the maze feel explorative
- *      vs. linear — at 0 you get a tree, at 1 the full Delaunay net.
- *   5. Carve each chosen edge via A* with NOISE-FLOW COST: closed pixels
- *      cost more the further their noise value sits past the threshold.
- *      The path naturally meanders along weak-wall regions instead of
- *      cutting straight lines.
- *   6. Widen each carved path by `params.corridorWidth` and re-flood so
- *      `roomOf` reflects the merged connected components.
+ *      as loops. THE knob for "explorative vs. linear".
+ *   5. Carve each chosen edge as a quadratic bezier between the two
+ *      chamber centroids: per-edge brush width sampled from
+ *      `[widthMin, widthMax]`, control point perpendicular-displaced by
+ *      `curvature × edge_length × ±sign` (sign deterministic per edge).
+ *   6. Re-flood `roomOf` so portal placement / gate summary see the
+ *      merged connected components.
  *
- * Mutates `openMask` and returns the refreshed `roomOf` / `rooms[]`.
+ * The carved Corridor records are returned for persistence on TileInit.
  */
 
 import { runRoomDetection } from "./room_detection.ts";
-import { carveCorridor, clampPx, type CarveContext } from "./carve.ts";
-import type { Room } from "../types.ts";
+import { carveBezier, clampPx } from "./bezier_carve.ts";
+import type { Corridor, Room } from "../types.ts";
 import type { GenParams } from "../../genparams.ts";
 
 export interface NetworkInput {
-  /** From the noise stage. Mutated in place by carves. */
+  /** From chambers stage. Mutated in place by carves. */
   openMask: Uint8Array;
-  /** From the noise stage. Read-only (drives A* cost). */
-  noiseField: Float32Array;
-  /** Threshold used to derive openMask. Carve cost is relative to this. */
-  threshold: number;
-  /** From roomify. Read-only here; we re-flood at the end. */
-  rooms: Room[];
-  /** From roomify. Read-only — we recompute after carving. */
-  roomOf: Uint16Array;
+  /** From chambers stage. Read-only. */
+  chambers: Room[];
   gridSize: number;
   px2world: number;
   tileSeed: number;
@@ -47,30 +39,32 @@ export interface NetworkInput {
 export interface NetworkOutput {
   /** Same buffer as input, with corridors carved. */
   openMask: Uint8Array;
-  /** Re-flooded labels — fewer components than before (corridors merged some). */
+  /** Re-flooded labels — fewer components than chambers (corridors merged some). */
   rooms: Room[];
   roomOf: Uint16Array;
+  /** Carved corridor records, one per chosen edge. */
+  corridors: Corridor[];
 }
 
 const NETWORK_SUB_SEED = 0x4e570001;
 
 export function runNetwork(input: NetworkInput): NetworkOutput {
-  const { openMask, noiseField, threshold, rooms, gridSize, px2world, tileSeed, params } = input;
+  const { openMask, chambers, gridSize, px2world, tileSeed, params } = input;
 
-  // Edge case: 0–1 rooms — nothing to do.
-  if (rooms.length < 2) {
+  // 0–1 chambers → no edges to carve. Re-flood and return.
+  if (chambers.length < 2) {
     const det = runRoomDetection({ openMask, gridSize, px2world });
-    return { openMask, rooms: det.rooms, roomOf: det.roomOf };
+    return { openMask, rooms: det.rooms, roomOf: det.roomOf, corridors: [] };
   }
 
-  // ---- 1. Delaunay over room centroids (in pixel space) ------------------
-  const pts: Array<{ x: number; y: number }> = rooms.map(r => ({
+  // ---- 1. Delaunay over chamber centroids (in pixel space) ---------------
+  const pts: Array<{ x: number; y: number }> = chambers.map(r => ({
     x: r.cx / px2world,
     y: r.cy / px2world,
   }));
   const tris = delaunay(pts);
 
-  // ---- 2. Edges from triangles, deduped, length-capped -------------------
+  // ---- 2. Edges (deduped, length-capped) ---------------------------------
   type Edge = { a: number; b: number; len: number };
   const seen = new Set<number>();
   const edges: Edge[] = [];
@@ -92,12 +86,11 @@ export function runNetwork(input: NetworkInput): NetworkOutput {
     pushEdge(t[1], t[2]);
     pushEdge(t[2], t[0]);
   }
-  // Sort short→long for both MST and braid steps.
   edges.sort((p, q) => p.len - q.len);
 
-  // ---- 3. Kruskal MST + 4. Braid -----------------------------------------
+  // ---- 3. MST + 4. Braid -------------------------------------------------
   const uf = new UnionFind(pts.length);
-  const tree: Edge[] = [];
+  const tree:   Edge[] = [];
   const extras: Edge[] = [];
   for (const e of edges) {
     if (uf.union(e.a, e.b)) tree.push(e);
@@ -109,35 +102,44 @@ export function runNetwork(input: NetworkInput): NetworkOutput {
     if (rng() < params.loopRate) braids.push(e);
   }
 
-  // ---- 5. Carve each chosen edge with noise-flow A* ----------------------
-  // For each edge we pick the two centroid pixels as endpoints. A* may
-  // pass through other open pixels (cheap) and only carves where it has
-  // to. Each carve mutates openMask before the next runs, so later
-  // carves see and prefer the rooms+corridors built earlier.
-  const ctx: CarveContext = {
-    openMask, noiseField, threshold, gridSize,
-    noiseCostScale: params.noiseCostScale,
-    corridorWidth:  params.corridorWidth,
-  };
+  // ---- 5. Carve each chosen edge as a bezier -----------------------------
+  const corridors: Corridor[] = [];
   const chosen = tree.concat(braids);
   for (const e of chosen) {
     const ax = clampPx(Math.round(pts[e.a].x), gridSize);
     const ay = clampPx(Math.round(pts[e.a].y), gridSize);
     const bx = clampPx(Math.round(pts[e.b].x), gridSize);
     const by = clampPx(Math.round(pts[e.b].y), gridSize);
-    carveCorridor(ax, ay, bx, by, ctx);
+    const halfWidth = sampleWidth(rng, params);
+    const sign = rng() < 0.5 ? -1 : 1;
+    const corridor = carveBezier({
+      ax, ay, bx, by,
+      curvature: params.curvature,
+      sign,
+      halfWidth,
+      samples: params.bezierSamples,
+      kind: "network",
+      openMask,
+      gridSize,
+    });
+    corridors.push(corridor);
   }
 
   // ---- 6. Re-flood labels ------------------------------------------------
   const det = runRoomDetection({ openMask, gridSize, px2world });
-  return { openMask, rooms: det.rooms, roomOf: det.roomOf };
+  return { openMask, rooms: det.rooms, roomOf: det.roomOf, corridors };
+}
+
+function sampleWidth(rng: () => number, params: GenParams["network"]): number {
+  const lo = Math.min(params.widthMin, params.widthMax);
+  const hi = Math.max(params.widthMin, params.widthMax);
+  if (lo === hi) return lo;
+  return lo + Math.floor(rng() * (hi - lo + 1));
 }
 
 // ============================================================================
 // Delaunay — incremental Bowyer–Watson.
-//
-// Returns triangles as triples of point indices into `pts`. Robust enough
-// for the small (≤ ~120) point sets a single tile produces. O(n²) typical.
+// Returns triangles as triples of point indices into `pts`. O(n²) typical.
 // ============================================================================
 
 type Tri = [number, number, number];
@@ -146,7 +148,6 @@ function delaunay(pts: Array<{ x: number; y: number }>): Tri[] {
   const n = pts.length;
   if (n < 3) return [];
 
-  // Super-triangle: big enough that all input points sit comfortably inside.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pts) {
     if (p.x < minX) minX = p.x;
@@ -159,7 +160,6 @@ function delaunay(pts: Array<{ x: number; y: number }>): Tri[] {
   const dmax = Math.max(dx, dy) * 20;
   const midx = (minX + maxX) / 2;
   const midy = (minY + maxY) / 2;
-  // Three super-triangle points indexed n, n+1, n+2 in an extended pts list.
   const ext = pts.slice();
   ext.push({ x: midx - dmax, y: midy - dmax });
   ext.push({ x: midx + dmax, y: midy - dmax });
@@ -168,14 +168,12 @@ function delaunay(pts: Array<{ x: number; y: number }>): Tri[] {
 
   for (let pi = 0; pi < n; pi++) {
     const p = ext[pi];
-    // Find triangles whose circumcircle contains p ("bad triangles").
     const bad: number[] = [];
     for (let ti = 0; ti < triangles.length; ti++) {
       if (inCircumcircle(p, ext[triangles[ti][0]], ext[triangles[ti][1]], ext[triangles[ti][2]])) {
         bad.push(ti);
       }
     }
-    // Polygonal hole = edges that appear exactly once across bad triangles.
     const edgeCount = new Map<string, number>();
     for (const ti of bad) {
       const t = triangles[ti];
@@ -183,9 +181,7 @@ function delaunay(pts: Array<{ x: number; y: number }>): Tri[] {
       addEdge(edgeCount, t[1], t[2]);
       addEdge(edgeCount, t[2], t[0]);
     }
-    // Remove bad triangles (descending so indices stay valid).
     for (let i = bad.length - 1; i >= 0; i--) triangles.splice(bad[i], 1);
-    // Re-triangulate the hole against p.
     for (const [key, count] of edgeCount) {
       if (count !== 1) continue;
       const [a, b] = key.split(",").map(Number);
@@ -193,7 +189,6 @@ function delaunay(pts: Array<{ x: number; y: number }>): Tri[] {
     }
   }
 
-  // Drop triangles touching the super-triangle.
   triangles = triangles.filter(t => t[0] < n && t[1] < n && t[2] < n);
   return triangles;
 }
@@ -212,10 +207,6 @@ function inCircumcircle(
   const ax = a.x - p.x, ay = a.y - p.y;
   const bx = b.x - p.x, by = b.y - p.y;
   const cx = c.x - p.x, cy = c.y - p.y;
-  // Standard incircle determinant: p is inside iff det > 0 for CCW (a,b,c).
-  // We don't know triangle orientation, so test |det| > 0 with sign-aware
-  // result: take the sign of the orientation of (a,b,c) and require det
-  // and orientation to agree.
   const det =
     (ax * ax + ay * ay) * (bx * cy - cx * by) -
     (bx * bx + by * by) * (ax * cy - cx * ay) +
@@ -243,7 +234,6 @@ class UnionFind {
     }
     return x;
   }
-  /** Returns true if the two were in different sets (i.e. an edge was added). */
   union(a: number, b: number): boolean {
     const ra = this.find(a), rb = this.find(b);
     if (ra === rb) return false;
@@ -254,7 +244,6 @@ class UnionFind {
   }
 }
 
-// Mulberry32 — small, deterministic PRNG. Good enough for braid sampling.
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
