@@ -1,29 +1,31 @@
 /**
- * Stage 5 — per-pixel material ids.
+ * Stage — per-pixel material ids.
  *
- * Each sample-grid pixel gets a material id from atlas's small canonical
- * set (see MATERIAL_*). Selection is a deterministic rule over biome
- * params + a per-pixel detail noise:
+ * Open pixels: pick from biome params + detail noise (grass / dirt /
+ * stone / sand / water).
  *
- *   altitude high      → stone
- *   hot + dry          → sand
- *   wet + noise > 0.6  → water puddle
- *   moisture moderate  → grass
- *   else               → dirt
+ * Closed pixels: override to a darker, kind-driven fallback so walls
+ * read as visually distinct on a flat tile (no heightmap lift required):
+ *   VEGETATION → DIRT    (forest understory, brown)
+ *   CLIFF      → STONE   (gray rock)
+ *   WATER      → WATER   (rivers/ponds, blue)
+ *   default    → DIRT
  *
- * Walls and floors run the same rule. Walls get the SAME material as
- * the floor underneath them — the boundary KIND (tree, rock, etc.)
- * lives separately and is what makes a wall pixel render as a tree
- * vs. a boulder. Phase 6B emits just the underlying ground material.
+ * Tile-server's spawnBoundaryEntities then layers tree entities on top
+ * of vegetation pixels for the "look at the dense forest" feel.
  *
- * Tile-server (in a later phase) will translate atlas's small ID set
- * into its own content registry — atlas IDs are stable semantic markers,
- * not tile-server's runtime IDs.
+ * Atlas IDs are stable semantic markers; tile-server translates to its
+ * own registry.
  */
 
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
+import {
+  BOUNDARY_KIND_VEGETATION,
+  BOUNDARY_KIND_CLIFF,
+  BOUNDARY_KIND_WATER,
+} from "./boundary_kinds.ts";
 
 /**
  * Atlas's canonical material ids. Stable across versions; downstream
@@ -44,6 +46,9 @@ export interface MaterialsInput {
   tileSeed: number;
   gridSize: number;
   params: GenParams["materials"];
+  /** From upstream stages — used to pick a darker fallback on closed pixels. */
+  openMask: Uint8Array;
+  kindOf:   Uint16Array;
 }
 
 export interface MaterialsOutput {
@@ -54,15 +59,22 @@ export interface MaterialsOutput {
 const DETAIL_SUB_SEED = 0x50005001;
 
 export function runMaterials(input: MaterialsInput): MaterialsOutput {
-  const { biome, tileSeed, gridSize, params } = input;
+  const { biome, tileSeed, gridSize, params, openMask, kindOf } = input;
   const N = gridSize * gridSize;
   const materials = new Uint16Array(N);
   const f = params.detailFrequency;
 
   for (let py = 0; py < gridSize; py++) {
     for (let px = 0; px < gridSize; px++) {
-      const detail = fbm(px * f, py * f, tileSeed ^ DETAIL_SUB_SEED, 2);
-      materials[py * gridSize + px] = pickMaterial(biome, detail, params);
+      const idx = py * gridSize + px;
+      if (openMask[idx] === 0) {
+        // Closed pixel — visual contrast comes from a darker, kind-driven
+        // fallback so the wall reads on flat ground (no height step needed).
+        materials[idx] = pickClosedMaterial(kindOf[idx]);
+      } else {
+        const detail = fbm(px * f, py * f, tileSeed ^ DETAIL_SUB_SEED, 2);
+        materials[idx] = pickMaterial(biome, detail, params);
+      }
     }
   }
 
@@ -80,4 +92,13 @@ function pickMaterial(
   if (b.moisture > p.waterMoisture && detail > p.waterDetail && b.altitude < p.waterAltitude) return MATERIAL_WATER;
   if (b.moisture > p.grassMoisture) return MATERIAL_GRASS;
   return MATERIAL_DIRT;
+}
+
+function pickClosedMaterial(kind: number): number {
+  switch (kind) {
+    case BOUNDARY_KIND_VEGETATION: return MATERIAL_DIRT;   // forest floor
+    case BOUNDARY_KIND_CLIFF:      return MATERIAL_STONE;  // bare rock
+    case BOUNDARY_KIND_WATER:      return MATERIAL_WATER;  // rivers/ponds
+    default:                       return MATERIAL_DIRT;
+  }
 }

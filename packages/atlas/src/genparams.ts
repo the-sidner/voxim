@@ -204,6 +204,12 @@ export interface GenParams {
     waterDetail: number;
     /** moisture > X → VEGETATION (else falls back to CLIFF). */
     vegetationMoisture: number;
+    /**
+     * Tile-server tree spawn stride for VEGETATION pixels, in world units.
+     * Smaller = denser forest. Tile-server reads this from the world's
+     * persisted params at boot.
+     */
+    vegetationDensityStride: number;
   };
 }
 
@@ -241,7 +247,12 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     octaves: 5,
   },
   terrain: {
-    wallHeight: 3.0,
+    // Closed pixels stay at floor height by default — visual contrast is
+    // carried by darker materials + tree entities, not by a vertical step.
+    // Set this >0 if you want cliff kinds to also rise (impedance via
+    // height as well as openMask). Must exceed runtime stepHeight (0.75)
+    // when non-zero.
+    wallHeight: 0,
     floorBaseline: 0.0,
     floorModAmplitude: 1.5,
     floorModFrequency: 0.01,
@@ -286,6 +297,16 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     waterAltitude: 0.45,
     waterDetail: 0.55,
     vegetationMoisture: 0.10,            // almost everything is forest
+    /**
+     * Tile-server tree spawn stride for VEGETATION pixels, in world units.
+     * Smaller = denser forest. Trade-off vs. entity count:
+     *   stride 4  → ~5000 trees / fully-vegetated 512u tile (heavy)
+     *   stride 6  → ~2200 trees / fully-vegetated 512u tile (recommended)
+     *   stride 12 → ~600  trees / fully-vegetated 512u tile (sparse cluster)
+     * Read at boot from the world's persisted params; falls back to 6
+     * when missing (older worlds baked before this knob existed).
+     */
+    vegetationDensityStride: 6,
   },
 };
 

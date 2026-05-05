@@ -96,7 +96,12 @@ const KNOB_CONFIG = {
     branchMaxDepth:       { step: 1, min: 0, max: 5, integer: true },
     branchLengthFraction: { step: 0.05, min: 0, max: 1 },
   },
-  // materials/kinds: every knob is a 0..1 threshold; uniform config.
+  kinds: {
+    // Most kinds knobs are 0..1 thresholds (uniform default works);
+    // the density stride is in world units, integer.
+    vegetationDensityStride: { step: 1, min: 2, max: 64, integer: true },
+  },
+  // materials: every knob is a 0..1 threshold; uniform default.
 };
 
 // Tooltips per knob: short hint shown on hover so designers know which
@@ -168,6 +173,7 @@ const KNOB_HINT = {
     waterAltitude:             "Below this altitude, wet pixels can be water.",
     waterDetail:               "Detail-noise threshold for water boundary.",
     vegetationMoisture:        "Above this moisture → vegetation. LOW → forest dominates.",
+    vegetationDensityStride:   "Tree spawn stride (world units). Smaller → denser forest. ~2200 trees/tile @ 6.",
   },
 };
 

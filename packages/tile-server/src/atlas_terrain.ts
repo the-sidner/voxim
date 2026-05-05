@@ -197,29 +197,34 @@ export async function loadTerrainFromAtlas(
 }
 
 /**
- * Spawn boundary entities for kinds that render as world objects rather
- * than terrain modifications. Phase 4C: vegetation pixels get a `tree`
- * prefab. Cliffs are pure terrain; water (when wired) will be too.
- *
- * Sub-sampling: scanning every TILE_SIZE pixel produces too many entities
- * (a forest cell would hit thousands). We sample on a coarser stride
- * (every TREE_STRIDE world units) and spawn one tree per stride cell whose
- * sample point is vegetation. With STRIDE = 8 the densest forest yields
- * roughly 64×64 ≈ 4096 sample points per tile × ~30% vegetation density =
- * ~1200 trees — too many. STRIDE = 16 → 1024 × 30% = ~300. We default to 16.
+ * Spawn boundary entities for kinds that render as world objects.
+ * Vegetation pixels get a `tree` prefab on a fixed-stride grid; the stride
+ * comes from the world's persisted GenParams so designers can dial forest
+ * density per-world via the inspector. Cliffs are pure terrain (visual
+ * differentiation by darker material); water is the openMask + river system.
  */
-const TREE_STRIDE = 16;
+
+const FALLBACK_TREE_STRIDE = 6;
 
 export function spawnBoundaryEntities(
   world: World,
   kindBuffer: Uint16Array,
   content: ContentStore,
   groundHeightAt: (x: number, y: number) => number,
+  worldParams?: Record<string, unknown>,
 ): { trees: number } {
-  let trees = 0;
+  // Pull the knob out of the persisted params blob (atlas's GenParams shape).
+  // Older worlds (baked before this knob existed) fall back to the default.
+  const kindsParams = (worldParams?.kinds as Record<string, unknown> | undefined);
+  const stride = clampStride(
+    typeof kindsParams?.vegetationDensityStride === "number"
+      ? kindsParams.vegetationDensityStride
+      : FALLBACK_TREE_STRIDE,
+  );
 
-  for (let y = TREE_STRIDE / 2; y < TILE_SIZE; y += TREE_STRIDE) {
-    for (let x = TREE_STRIDE / 2; x < TILE_SIZE; x += TREE_STRIDE) {
+  let trees = 0;
+  for (let y = stride / 2 | 0; y < TILE_SIZE; y += stride) {
+    for (let x = stride / 2 | 0; x < TILE_SIZE; x += stride) {
       const idx = y * TILE_SIZE + x;
       if (kindBuffer[idx] !== BOUNDARY_KIND_VEGETATION) continue;
       const z = groundHeightAt(x, y);
@@ -227,6 +232,13 @@ export function spawnBoundaryEntities(
       trees++;
     }
   }
-
   return { trees };
+}
+
+function clampStride(s: number): number {
+  // A stride below 2 puts trees on every pixel — would crash tile-server's
+  // entity load. Clamp to keep dev-tweaks safe.
+  if (!Number.isFinite(s) || s < 2) return 2;
+  if (s > 64) return 64;
+  return Math.floor(s);
 }

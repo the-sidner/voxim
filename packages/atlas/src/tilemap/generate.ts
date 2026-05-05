@@ -132,6 +132,8 @@ export function generateTile(
     tileSeed,
     gridSize,
     params: params.materials,
+    openMask: placed.openMask,
+    kindOf:   kinds.kindOf,
   });
 
   return {

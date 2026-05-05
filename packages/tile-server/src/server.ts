@@ -487,7 +487,10 @@ export class TileServer {
         const iy = Math.max(0, Math.min(WORLD_TILE_SIZE - 1, Math.floor(y)));
         return atlas.heightBuffer[iy * WORLD_TILE_SIZE + ix];
       };
-      const boundaries = spawnBoundaryEntities(this.world, atlas.kindBuffer, content, sampleHeight);
+      const boundaries = spawnBoundaryEntities(
+        this.world, atlas.kindBuffer, content, sampleHeight,
+        atlas.world.params as Record<string, unknown>,
+      );
       if (boundaries.trees > 0) {
         console.log(`[TileServer] spawned ${boundaries.trees} boundary trees`);
       }
