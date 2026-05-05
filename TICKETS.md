@@ -945,7 +945,7 @@ no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
 ### T-154 · Atlas tilemap — organic chambers + recursive branch-paths
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: f282b2c
 
 After T-153 chambers were properly sized but visually too round (compactness
 × distance dominates noise ~10:1, so growth is essentially Voronoi) and
