@@ -3,25 +3,28 @@
  *
  * Pipeline:
  *   1. NoiseField        — biome-driven fbm cost surface (Float32Array)
- *   2. Chambers          — Poisson seeds + priority-flood organic growth
- *                          → openMask, chamberOf, chambers[]
- *   3. Network           — Delaunay + MST + braid + bezier carve with
- *                          per-edge width → re-labelled rooms/roomOf,
- *                          mutated openMask, corridors[]
- *   4. PortalPlacement   — bezier-carve gate→nearest-chamber → portals[],
+ *   2. Junctions         — Poisson-disk seeds (graph nodes only, no rooms)
+ *   3. Network           — Delaunay + MST + braid + bezier carve seed→seed
+ *                          + recursive branches → mutated openMask,
+ *                          corridors[], per-junction degrees[]
+ *   4. Rooms             — per junction, roll roomChance(degree); chosen
+ *                          junctions grow noise-flooded disks → chamberOf,
+ *                          chambers[]
+ *   5. PortalPlacement   — bezier-carve gate→nearest-junction → portals[],
  *                          additional corridors[], re-labelled rooms/roomOf
- *   5. BoundaryKinds     — per-pixel kind tagging
- *   6. RiverStamping     — overlay water onto openMask + kindOf
- *   7. Terrain           — heightmap from openMask + kindOf
- *   8. Materials         — per-pixel material id
+ *   6. BoundaryKinds     — per-pixel kind tagging
+ *   7. RiverStamping     — overlay water onto openMask + kindOf
+ *   8. Terrain           — heightmap from openMask + kindOf
+ *   9. Materials         — per-pixel material id
  *
  * Pure function: same (worldCell, tileSeed, options) always yields the
  * same TileInit.
  */
 
 import { runNoiseField } from "./pipeline/noise_field.ts";
-import { runChambers } from "./pipeline/chambers.ts";
+import { runJunctions } from "./pipeline/junctions.ts";
 import { runNetwork } from "./pipeline/network.ts";
+import { runRooms } from "./pipeline/rooms.ts";
 import { runPortalPlacement } from "./pipeline/portal_placement.ts";
 import { runTerrain } from "./pipeline/terrain.ts";
 import { runMaterials } from "./pipeline/materials.ts";
@@ -64,33 +67,40 @@ export function generateTile(
     params: params.noise,
   });
 
-  const chambered = runChambers({
-    noiseField: noise.noiseField,
+  const junctioned = runJunctions({
     gridSize,
-    px2world,
     tileSeed,
     params: params.room,
   });
 
   const networked = runNetwork({
-    openMask:  chambered.openMask,
-    chamberOf: chambered.chamberOf,
-    chambers:  chambered.chambers,
+    openMask: new Uint8Array(gridSize * gridSize), // start fully closed
+    seeds:    junctioned.seeds,
     gridSize,
     px2world,
     tileSeed,
-    params:    params.network,
+    params:   params.network,
+  });
+
+  const roomed = runRooms({
+    openMask:   networked.openMask,
+    noiseField: noise.noiseField,
+    seeds:      junctioned.seeds,
+    degrees:    networked.degrees,
+    gridSize,
+    px2world,
+    tileSeed,
+    params:     params.room,
   });
 
   const placed = runPortalPlacement({
-    openMask:  networked.openMask,
-    chamberOf: chambered.chamberOf,
-    chambers:  chambered.chambers,
+    openMask: roomed.openMask,
+    seeds:    junctioned.seeds,
     gridSize,
     px2world,
     tileSize,
-    gates:     worldCell.gates,
-    network:   params.network,
+    gates:    worldCell.gates,
+    network:  params.network,
     tileSeed,
   });
 
@@ -144,8 +154,8 @@ export function generateTile(
     openMask: placed.openMask,
     roomOf:   placed.roomOf,
     rooms:    placed.rooms,
-    chamberOf: chambered.chamberOf,
-    chambers:  chambered.chambers,
+    chamberOf: roomed.chamberOf,
+    chambers:  roomed.chambers,
     corridors: networked.corridors.concat(placed.corridors),
     portals:  placed.portals,
     gateSummary: deriveGateSummary(placed.portals),

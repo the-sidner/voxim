@@ -944,6 +944,54 @@ when a player or active NPC is within a configurable radius. Serialise and unloa
 no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
+### T-155 · Atlas tilemap — paths first, rooms emerge at convergent junctions
+Effort: M   Status: in-progress
+
+Inverts the pipeline order. Today chambers come first and corridors are
+forced to bridge them; user wants paths to drive the structure and rooms
+to *emerge* where many paths converge.
+
+New stage layout:
+
+  noise → junctions → network → rooms → portals → ...
+
+  - **junctions** (replaces the seed-placement half of `chambers`):
+    Poisson-disk sample N points across the tile. Just positions; no
+    growth. These are first-class graph nodes, not rooms.
+
+  - **network** (modified): operates on `seeds[]` instead of chambers.
+    Delaunay over the seeds, MST + braid as before, carve all chosen
+    edges as Catmull-Rom splines (seed → seed; no boundary-endpoint
+    walk needed since seeds are points). Recursive branches as before.
+    NEW: returns a `degrees[]` array — for each seed, the count of
+    chosen edges touching it.
+
+  - **rooms** (new, replaces the growth half of `chambers`): per
+    junction, roll a probability scaling with degree:
+    `prob = clamp(roomChanceBase + (degree − 1) · roomChancePerDegree, 0, 1)`.
+    Junctions where the roll succeeds get a noise-flooded disk grown
+    around them via the same priority-flood used before, but tightly
+    sized (`sizeMin/sizeMax` tuned for ~200–600 px = small "hub"
+    rooms). Round-robin growth lets adjacent rooms compete fairly.
+    Pass-through junctions (low degree) become invisible bends in the
+    corridor; convergent junctions (degree ≥ 3) usually become rooms.
+
+  - **portal_placement** (modified): targets the nearest junction
+    instead of the nearest chamber. After room growth some junctions
+    have rooms, some don't — gate carves don't care; they just stitch
+    into the network.
+
+GenParams adds `room.roomChanceBase` (default ~0.05) and
+`room.roomChancePerDegree` (default ~0.30): degree 1 → 5%, degree 2 →
+35%, degree 3 → 65%, degree 4 → 95%, ≥5 → 100%. Existing
+`room.sizeMin/Max/compactness` retuned for the smaller room scale.
+`chambers.ts` is deleted (replaced by the junctions + rooms split).
+
+Done when: forest_maze bake produces a dense maze of paths with most
+junctions invisible (just bends) and ~30–50% of junctions hosting small
+noise-shaped rooms. Connectivity: the spanning tree still connects
+every junction (and every gate to every other gate).
+
 ### T-154 · Atlas tilemap — organic chambers + recursive branch-paths
 Effort: M   Status: done   Commit: f282b2c
 

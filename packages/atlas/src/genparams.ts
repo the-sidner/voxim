@@ -97,32 +97,44 @@ export interface GenParams {
   };
 
   /**
-   * Chamber stage. Places N seeds via Poisson-disk sampling, then grows
-   * each into an organic shape via priority-flood. The growth cost per
-   * pixel is `noise[p] + compactness · |p − seed|`, so chambers accrete
-   * volume around the seed (the compactness term) while still picking
-   * up organic outline detail from the noise field. Round-robin growth
-   * lets adjacent chambers compete fairly for shared territory.
+   * Junctions + rooms stages.
+   *
+   * Junctions: Poisson-disk-sampled point set across the tile. They are
+   * the graph nodes the network stage builds Delaunay over; carved
+   * corridors land at junction positions.
+   *
+   * Rooms: AFTER the network is carved, per junction we roll a probability
+   *   prob = clamp(roomChanceBase + (degree − 1) · roomChancePerDegree, 0, 1)
+   * If the roll succeeds the junction grows a small noise-flooded disk
+   * around itself (the priority-flood used to grow the old chambers, but
+   * tightly sized). Pass-through junctions (low degree) become invisible
+   * bends in the corridor; convergent junctions (high degree) become rooms.
    *
    * Tuning intuitions:
-   *   compactness = 0   → chambers follow noise lobes (snake shapes)
-   *   compactness = 0.3 → organic but chunky (room-sized blobs)
-   *   compactness = 1.0 → essentially Voronoi cells (round, no character)
+   *   roomChanceBase = 0.05, perDegree = 0.30
+   *     → degree 1: 5%, 2: 35%, 3: 65%, 4: 95%, ≥5: 100%
+   *   compactness = 0   → rooms follow noise lobes (snake)
+   *   compactness = 0.3 → rooms are chunky organic blobs
+   *   compactness = 1.0 → rooms are round Voronoi cells
    */
   room: {
-    /** Target chamber count per tile. Poisson sampler aims for this many. */
+    /** Target junction count per tile. Poisson sampler aims for this many. */
     targetCount: number;
-    /** Min separation between chamber seeds, in pixels. */
+    /** Min separation between junction seeds, in pixels. */
     minSeparation: number;
-    /** Per-chamber size range, in pixel cells. */
+    /** Per-room size range when grown, in pixels. */
     sizeMin: number;
     sizeMax: number;
     /**
-     * Strength of the distance-from-seed cost component during growth.
-     * Higher = chambers stay tighter around their seed (round); lower =
-     * chambers stretch into low-noise lobes (irregular).
+     * Strength of the distance-from-seed cost component during room growth.
+     * Higher = rooms stay tighter around their junction (round); lower =
+     * rooms stretch into low-noise lobes (irregular).
      */
     compactness: number;
+    /** Probability a degree-1 junction becomes a room. */
+    roomChanceBase: number;
+    /** Extra probability per additional degree above 1 (clamped to 1). */
+    roomChancePerDegree: number;
   };
 
   /**
@@ -258,11 +270,13 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     floorModFrequency: 0.01,
   },
   room: {
-    targetCount: 10,
-    minSeparation: 110,
-    sizeMin: 4000,
-    sizeMax: 8000,
+    targetCount: 14,                     // more junctions → more graph nodes
+    minSeparation: 80,
+    sizeMin: 200,                        // small "hub" rooms
+    sizeMax: 600,
     compactness: 0.10,                   // low → noise can sculpt boundary lobes
+    roomChanceBase: 0.05,
+    roomChancePerDegree: 0.30,
   },
   network: {
     maxEdgeLength: 320,
@@ -336,7 +350,10 @@ export const PRESETS: Record<string, { name: string; description: string; params
         extraThresholdPerRuggedness: 0.05,
         octaves: 4,
       },
-      room: { targetCount: 5, minSeparation: 175, sizeMin: 9500, sizeMax: 17500, compactness: 0.18 },
+      room: {
+        targetCount: 8, minSeparation: 130, sizeMin: 600, sizeMax: 1400,
+        compactness: 0.18, roomChanceBase: 0.10, roomChancePerDegree: 0.35,
+      },
       network: {
         maxEdgeLength: 480, loopRate: 0.40, widthMin: 2, widthMax: 5,
         segments: 3, curvature: 0.10, bezierSamples: 240,
@@ -358,7 +375,10 @@ export const PRESETS: Record<string, { name: string; description: string; params
         extraThresholdPerRuggedness: 0.05,
         octaves: 6,
       },
-      room: { targetCount: 14, minSeparation: 70, sizeMin: 1800, sizeMax: 3600, compactness: 0.07 },
+      room: {
+        targetCount: 22, minSeparation: 55, sizeMin: 100, sizeMax: 350,
+        compactness: 0.07, roomChanceBase: 0.02, roomChancePerDegree: 0.18,
+      },
       network: {
         maxEdgeLength: 220, loopRate: 0.95, widthMin: 0, widthMax: 1,
         segments: 5, curvature: 0.35, bezierSamples: 200,
@@ -388,7 +408,10 @@ export const PRESETS: Record<string, { name: string; description: string; params
         extraThresholdPerRuggedness: 0.05,
         octaves: 5,
       },
-      room: { targetCount: 8, minSeparation: 105, sizeMin: 4500, sizeMax: 9000, compactness: 0.10 },
+      room: {
+        targetCount: 12, minSeparation: 80, sizeMin: 350, sizeMax: 800,
+        compactness: 0.10, roomChanceBase: 0.05, roomChancePerDegree: 0.30,
+      },
       network: {
         maxEdgeLength: 320, loopRate: 0.75, widthMin: 2, widthMax: 4,
         segments: 4, curvature: 0.28, bezierSamples: 220,
