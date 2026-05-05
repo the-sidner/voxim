@@ -33,7 +33,10 @@ import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
 
 const DEFAULT_TILE_SIZE = 512;
-const DEFAULT_GRID_SIZE = 128;
+// One pixel = one world unit = one runtime voxel. Atlas runs the pipeline
+// at the same resolution tile-server samples so the inspector view matches
+// what the player walks on (no upsample seam).
+const DEFAULT_GRID_SIZE = 512;
 
 export interface GenerateTileOptions {
   /** Side length of the playable tile in world units. Default 512. */

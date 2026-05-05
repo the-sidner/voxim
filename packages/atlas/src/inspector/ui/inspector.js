@@ -65,8 +65,8 @@ const KNOB_CONFIG = {
     widthPixels:    { step: 1, min: 1, max: 16, integer: true },
   },
   noise: {
-    baseFrequency:               { step: 0.005, min: 0 },
-    extraFrequencyPerRuggedness: { step: 0.005 },
+    baseFrequency:               { step: 0.001, min: 0 },
+    extraFrequencyPerRuggedness: { step: 0.001 },
     baseThreshold:               { step: 0.05 },
     extraThresholdPerRuggedness: { step: 0.05 },
     octaves:                     { step: 1, min: 1, max: 8, integer: true },
@@ -79,19 +79,19 @@ const KNOB_CONFIG = {
   },
   room: {
     targetCount:    { step: 1, min: 1, max: 32, integer: true },
-    minSeparation:  { step: 1, min: 4, max: 96, integer: true },
-    sizeMin:        { step: 10, min: 1, max: 4000, integer: true },
-    sizeMax:        { step: 10, min: 1, max: 6000, integer: true },
+    minSeparation:  { step: 4, min: 8, max: 384, integer: true },
+    sizeMin:        { step: 50, min: 50, max: 60000, integer: true },
+    sizeMax:        { step: 50, min: 50, max: 80000, integer: true },
     compactness:    { step: 0.05, min: 0, max: 2.0 },
   },
   network: {
-    maxEdgeLength: { step: 4, min: 4, max: 256, integer: true },
+    maxEdgeLength: { step: 8, min: 8, max: 1024, integer: true },
     loopRate:      { step: 0.05, min: 0, max: 1 },
-    widthMin:      { step: 1, min: 0, max: 6, integer: true },
-    widthMax:      { step: 1, min: 0, max: 6, integer: true },
+    widthMin:      { step: 1, min: 0, max: 12, integer: true },
+    widthMax:      { step: 1, min: 0, max: 12, integer: true },
     segments:      { step: 1, min: 1, max: 12, integer: true },
     curvature:     { step: 0.02, min: 0, max: 1.0 },
-    bezierSamples: { step: 5, min: 5, max: 200, integer: true },
+    bezierSamples: { step: 10, min: 20, max: 800, integer: true },
   },
   // materials/kinds: every knob is a 0..1 threshold; uniform config.
 };
@@ -732,17 +732,15 @@ function drawTileRooms({ px, originX, originY, g }) {
   // for each carved corridor (so the network reads as drawn paths).
   const openMask  = bytesFromB64(tile.payload.openMaskB64);
   const chamberOf = u16FromB64(tile.payload.chamberOfB64);
-  const colour = (id) => roomColours[id % roomColours.length];
-  for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
-    const idx = py * g + pxi;
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
     if (openMask[idx] === 0) {
-      ctx.fillStyle = "#1a1c21";
+      buf[p] = 0x1a; buf[p+1] = 0x1c; buf[p+2] = 0x21; buf[p+3] = 0xff;
     } else {
       const cid = chamberOf[idx];
-      ctx.fillStyle = cid === 0xFFFF ? "#9a9aa3" : colour(cid);
+      const c = cid === 0xFFFF ? CORRIDOR_RGB : roomRGB[cid % roomRGB.length];
+      buf[p] = c[0]; buf[p+1] = c[1]; buf[p+2] = c[2]; buf[p+3] = 0xff;
     }
-    ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
-  }
+  });
   // Catmull-Rom centerlines for each corridor — so the planned path
   // reads even when brush stamps blur into chamber colours. Same
   // formula as bezier_carve.ts: each segment becomes a cubic bezier
@@ -811,15 +809,13 @@ function drawTileHeight({ px, originX, originY, g }) {
     if (heightMap[i] > max) max = heightMap[i];
   }
   const range = Math.max(1e-6, max - min);
-  for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
-    const idx = py * g + pxi;
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
     const t = (heightMap[idx] - min) / range;
-    const r  = Math.round(40  + t * 215);
-    const gr = Math.round(60  + t * 100);
-    const b  = Math.round(150 - t * 110);
-    ctx.fillStyle = `rgb(${r},${gr},${b})`;
-    ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
-  }
+    buf[p]   = Math.round(40  + t * 215);
+    buf[p+1] = Math.round(60  + t * 100);
+    buf[p+2] = Math.round(150 - t * 110);
+    buf[p+3] = 0xff;
+  });
 }
 
 const MATERIAL_COLOURS = {
@@ -829,28 +825,63 @@ const MATERIAL_COLOURS = {
 function drawTileMaterials({ px, originX, originY, g }) {
   const materials = u16FromB64(tile.payload.materialsB64);
   const openMask  = bytesFromB64(tile.payload.openMaskB64);
-  for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
-    const idx = py * g + pxi;
-    const base = MATERIAL_COLOURS[materials[idx]] ?? "#444";
-    ctx.fillStyle = openMask[idx] === 0 ? darken(base, 0.55) : base;
-    ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
-  }
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
+    const base = MATERIAL_RGB[materials[idx]] ?? FALLBACK_RGB;
+    const dim = openMask[idx] === 0 ? 0.55 : 1.0;
+    buf[p]   = Math.round(base[0] * dim);
+    buf[p+1] = Math.round(base[1] * dim);
+    buf[p+2] = Math.round(base[2] * dim);
+    buf[p+3] = 0xff;
+  });
 }
 
 const KIND_COLOURS = { 0: "#dadada", 1: "#7a7a7a", 2: "#3f7a3a", 3: "#3070b8" };
 
 function drawTileKinds({ px, originX, originY, g }) {
   const kindOf = u16FromB64(tile.payload.kindOfB64);
-  for (let py = 0; py < g; py++) for (let pxi = 0; pxi < g; pxi++) {
-    const idx = py * g + pxi;
-    ctx.fillStyle = KIND_COLOURS[kindOf[idx]] ?? "#444";
-    ctx.fillRect(originX + pxi * px, originY + py * px, px, px);
-  }
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
+    const c = KIND_RGB[kindOf[idx]] ?? FALLBACK_RGB;
+    buf[p] = c[0]; buf[p+1] = c[1]; buf[p+2] = c[2]; buf[p+3] = 0xff;
+  });
 }
 
-function darken(hex, amount) {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgb(${Math.round(((n >> 16) & 0xff) * amount)},${Math.round(((n >> 8) & 0xff) * amount)},${Math.round((n & 0xff) * amount)})`;
+// Pre-parsed RGB tables — avoids hexToRGB on every pixel and lets the
+// per-pixel layer functions write directly into the ImageData buffer.
+function hexToRGB(hex) {
+  const n = parseInt(hex.slice(1).length === 3
+    ? hex.slice(1).split("").map(c => c + c).join("")
+    : hex.slice(1), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+const roomRGB     = roomColours.map(hexToRGB);
+const MATERIAL_RGB = Object.fromEntries(
+  Object.entries(MATERIAL_COLOURS).map(([k, v]) => [k, hexToRGB(v)]),
+);
+const KIND_RGB = Object.fromEntries(
+  Object.entries(KIND_COLOURS).map(([k, v]) => [k, hexToRGB(v)]),
+);
+const CORRIDOR_RGB = [0x9a, 0x9a, 0xa3];
+const FALLBACK_RGB = [0x44, 0x44, 0x44];
+
+// Single offscreen canvas reused across redraws; holds one layer at the
+// tile's native gridSize. Per-pixel logic writes into the ImageData buffer
+// (constant time for putImageData), then we drawImage scaled-up to the
+// main canvas with smoothing off so the pixel grid stays crisp. This is
+// ~50× faster than the per-pixel fillRect we used to do (essential at
+// gridSize=512 where the loop is 262 144 pixels).
+const _layerOff = document.createElement("canvas");
+function rasterLayer({ px, originX, originY, g }, fillFn) {
+  if (_layerOff.width !== g || _layerOff.height !== g) {
+    _layerOff.width = g;
+    _layerOff.height = g;
+  }
+  const ictx = _layerOff.getContext("2d");
+  const data = ictx.createImageData(g, g);
+  const buf = data.data;
+  for (let i = 0; i < g * g; i++) fillFn(i, buf, i * 4);
+  ictx.putImageData(data, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(_layerOff, 0, 0, g, g, originX, originY, g * px, g * px);
 }
 
 // ---- shared --------------------------------------------------------------

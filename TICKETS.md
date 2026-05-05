@@ -944,6 +944,34 @@ when a player or active NPC is within a configurable radius. Serialise and unloa
 no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
+### T-153 · Atlas tilemap — generate at runtime resolution (gridSize 128 → 512)
+Effort: S   Status: in-progress
+
+Atlas was running its pipeline at a 128² sample grid and the upsample stage
+was scaling the result 4× to fit tile-server's 512² voxel resolution. That
+created a visible seam between what the inspector showed (chunky, coarse)
+and what the player walked on (finer, with bilinear floor reconstruction
+and nearest-neighbour openness). Bump `DEFAULT_GRID_SIZE` to 512 so atlas
+generates at the same resolution as the runtime; one pixel = one voxel
+= one world unit. The upsample stage stays in place but the loop becomes
+effectively a 1:1 copy plus material translation.
+
+Two follow-on cleanups land in the same commit:
+
+- **`compactness` uses world units.** The chamber-growth distance term was
+  in pixels, which would silently mean different things at different
+  gridSize. Multiply by `px2world` so the knob is gridSize-invariant.
+- **Spatial defaults rescaled.** All knobs that previously meant "pixels
+  at 4 wu/px" now mean "pixels at 1 wu/px". minSeparation 32 → 128;
+  sizeMin/Max 320/600 → 5000/9500; maxEdgeLength 90 → 360;
+  widthMin/Max 0/1 → 1/3; bezierSamples 50 → 200. All four presets
+  retuned. Inspector knob ranges widened to fit the new scale.
+
+Done when: re-bake of forest_maze produces ~7 chambers per tile that
+look identical in shape between the inspector and an in-game tile, no
+upsample seam, and player physics behaves the same as before (collision
+& heightmap unchanged).
+
 ### T-152 · Atlas tilemap — room-feeling chambers + segmented spline corridors
 Effort: M   Status: done   Commit: 82c1639
 

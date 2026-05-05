@@ -78,7 +78,10 @@ export function runChambers(input: ChambersInput): ChambersOutput {
   const sumY: number[] = new Array(seeds.length).fill(0);
   const done:  boolean[] = new Array(seeds.length).fill(false);
 
-  // Seed every chamber with its starting pixel.
+  // Seed every chamber with its starting pixel. Compactness multiplies a
+  // distance term measured in WORLD UNITS (not pixels) so the knob means
+  // the same thing regardless of gridSize.
+  const compactnessPerPx = params.compactness * px2world;
   for (let c = 0; c < seeds.length; c++) {
     const idx = seeds[c].y * gridSize + seeds[c].x;
     openMask[idx]  = 1;
@@ -86,7 +89,7 @@ export function runChambers(input: ChambersInput): ChambersOutput {
     sizes[c]++;
     sumX[c] += seeds[c].x;
     sumY[c] += seeds[c].y;
-    pushNeighbours(heaps[c], idx, gridSize, noiseField, chamberOf, seeds[c], params.compactness);
+    pushNeighbours(heaps[c], idx, gridSize, noiseField, chamberOf, seeds[c], compactnessPerPx);
   }
 
   // Round-robin until everyone is full or stuck.
@@ -108,7 +111,7 @@ export function runChambers(input: ChambersInput): ChambersOutput {
         const y = (idx - x) / gridSize;
         sumX[c] += x;
         sumY[c] += y;
-        pushNeighbours(heaps[c], idx, gridSize, noiseField, chamberOf, seeds[c], params.compactness);
+        pushNeighbours(heaps[c], idx, gridSize, noiseField, chamberOf, seeds[c], compactnessPerPx);
         placed = true;
         progressed = true;
         break;
@@ -138,7 +141,7 @@ export function runChambers(input: ChambersInput): ChambersOutput {
 function pushNeighbours(
   heap: MinHeap, idx: number, gridSize: number,
   noiseField: Float32Array, chamberOf: Uint16Array,
-  seed: { x: number; y: number }, compactness: number,
+  seed: { x: number; y: number }, compactnessPerPx: number,
 ): void {
   const x = idx % gridSize;
   const y = (idx - x) / gridSize;
@@ -156,7 +159,7 @@ function pushNeighbours(
     const dx = nx - seed.x;
     const dy = ny - seed.y;
     const dist = Math.hypot(dx, dy);
-    heap.push(nb, noiseField[nb] + compactness * dist);
+    heap.push(nb, noiseField[nb] + compactnessPerPx * dist);
   }
 }
 

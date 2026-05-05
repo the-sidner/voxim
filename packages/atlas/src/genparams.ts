@@ -217,33 +217,35 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     widthPixels: 2,
   },
   noise: {
-    baseFrequency: 0.05,
-    extraFrequencyPerRuggedness: 0.02,
+    // Frequency is per-pixel; bumped down 4× now that pixels are 4× smaller
+    // so noise features stay at the same world-scale.
+    baseFrequency: 0.0125,
+    extraFrequencyPerRuggedness: 0.005,
     baseThreshold: 0.0,
     extraThresholdPerRuggedness: 0.10,
-    octaves: 5,                          // more octaves → more wall wiggle
+    octaves: 5,
   },
   terrain: {
     wallHeight: 3.0,
     floorBaseline: 0.0,
     floorModAmplitude: 1.5,
-    floorModFrequency: 0.04,
+    floorModFrequency: 0.01,
   },
   room: {
     targetCount: 7,
-    minSeparation: 32,
-    sizeMin: 320,                        // big enough to spawn things in
-    sizeMax: 600,
-    compactness: 0.35,                   // chunky organic blobs
+    minSeparation: 128,                  // ~25% of tile width between seeds
+    sizeMin: 5000,                       // ~70×70 chamber
+    sizeMax: 9500,                       // ~95×100 chamber
+    compactness: 0.35,                   // gridSize-invariant (world units)
   },
   network: {
-    maxEdgeLength: 90,
+    maxEdgeLength: 360,                  // ~70% of tile size
     loopRate: 0.55,
-    widthMin: 0,                         // 1px wide
-    widthMax: 1,                         // up to 3px wide
-    segments: 4,                         // 4 spline segments per corridor
+    widthMin: 1,                         // 3 wu wide
+    widthMax: 3,                         // up to 7 wu wide
+    segments: 4,
     curvature: 0.18,
-    bezierSamples: 50,                   // per segment → 200 total
+    bezierSamples: 200,                  // per segment → 800 stamps total
   },
   materials: {
     detailFrequency: 0.06,
@@ -289,14 +291,14 @@ export const PRESETS: Record<string, { name: string; description: string; params
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.05, biasAltitude: -0.20 },
       noise: {
-        baseFrequency: 0.025,
-        extraFrequencyPerRuggedness: 0.01,
+        baseFrequency: 0.006,
+        extraFrequencyPerRuggedness: 0.0025,
         baseThreshold: 0.0,
         extraThresholdPerRuggedness: 0.05,
         octaves: 4,
       },
-      room: { targetCount: 4, minSeparation: 44, sizeMin: 600, sizeMax: 1100, compactness: 0.50 },
-      network: { maxEdgeLength: 120, loopRate: 0.30, widthMin: 1, widthMax: 3, segments: 3, curvature: 0.10, bezierSamples: 60 },
+      room: { targetCount: 4, minSeparation: 175, sizeMin: 9500, sizeMax: 17500, compactness: 0.50 },
+      network: { maxEdgeLength: 480, loopRate: 0.30, widthMin: 2, widthMax: 5, segments: 3, curvature: 0.10, bezierSamples: 240 },
       kinds: { ...DEFAULT_GEN_PARAMS.kinds, vegetationMoisture: 0.10 },
     },
   },
@@ -307,14 +309,14 @@ export const PRESETS: Record<string, { name: string; description: string; params
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasAltitude: 0.40, biasRuggedness: 0.20, biasMoisture: -0.10 },
       noise: {
-        baseFrequency: 0.07,
-        extraFrequencyPerRuggedness: 0.02,
+        baseFrequency: 0.0175,
+        extraFrequencyPerRuggedness: 0.005,
         baseThreshold: 0.0,
         extraThresholdPerRuggedness: 0.05,
         octaves: 6,
       },
-      room: { targetCount: 12, minSeparation: 20, sizeMin: 140, sizeMax: 260, compactness: 0.25 },
-      network: { maxEdgeLength: 55, loopRate: 0.85, widthMin: 0, widthMax: 0, segments: 5, curvature: 0.35, bezierSamples: 50 },
+      room: { targetCount: 12, minSeparation: 80, sizeMin: 2200, sizeMax: 4200, compactness: 0.25 },
+      network: { maxEdgeLength: 220, loopRate: 0.85, widthMin: 0, widthMax: 1, segments: 5, curvature: 0.35, bezierSamples: 200 },
       terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 5.0 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
@@ -333,14 +335,14 @@ export const PRESETS: Record<string, { name: string; description: string; params
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.40, biasAltitude: -0.30 },
       river: { sourceAltitude: 0.40, minSeparation: 1, widthPixels: 3 },
       noise: {
-        baseFrequency: 0.045,
-        extraFrequencyPerRuggedness: 0.01,
+        baseFrequency: 0.011,
+        extraFrequencyPerRuggedness: 0.0025,
         baseThreshold: 0.0,
         extraThresholdPerRuggedness: 0.05,
         octaves: 5,
       },
-      room: { targetCount: 6, minSeparation: 30, sizeMin: 380, sizeMax: 750, compactness: 0.30 },
-      network: { maxEdgeLength: 90, loopRate: 0.55, widthMin: 1, widthMax: 2, segments: 4, curvature: 0.28, bezierSamples: 55 },
+      room: { targetCount: 6, minSeparation: 120, sizeMin: 6000, sizeMax: 12000, compactness: 0.30 },
+      network: { maxEdgeLength: 360, loopRate: 0.55, widthMin: 2, widthMax: 4, segments: 4, curvature: 0.28, bezierSamples: 220 },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
         waterMoisture: 0.40, waterAltitude: 0.60, waterDetail: 0.30,
