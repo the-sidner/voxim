@@ -945,7 +945,7 @@ no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
 ### T-153 · Atlas tilemap — generate at runtime resolution (gridSize 128 → 512)
-Effort: S   Status: in-progress
+Effort: S   Status: done   Commit: 1a15c73
 
 Atlas was running its pipeline at a 128² sample grid and the upsample stage
 was scaling the result 4× to fit tile-server's 512² voxel resolution. That
