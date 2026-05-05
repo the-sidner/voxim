@@ -945,7 +945,7 @@ no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
 
 ### T-152 · Atlas tilemap — room-feeling chambers + segmented spline corridors
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 82c1639
 
 T-151 produced chambers that read as snake-shaped fragments of the noise
 field instead of *rooms* (areas you can spawn things inside), and single-
