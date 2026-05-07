@@ -82,6 +82,12 @@ export interface BinaryStateMessage {
    * when no cells were revealed this tick.
    */
   fogReveals: Uint16Array;
+  /**
+   * Total active sessions on this tile, sampled when the message was built.
+   * Drives the HUD's online-players counter — cheap (one u16 per tick) and
+   * authoritative without an extra HTTP round-trip.
+   */
+  onlineCount: number;
 }
 
 // ---- event encode/decode ----
@@ -343,6 +349,8 @@ export const binaryStateMessageCodec: Serialiser<BinaryStateMessage> = {
       w.writeU16(msg.fogReveals[i]);
     }
 
+    w.writeU16(msg.onlineCount);
+
     return w.toBytes();
   },
 
@@ -403,6 +411,8 @@ export const binaryStateMessageCodec: Serialiser<BinaryStateMessage> = {
       fogReveals[i] = r.readU16();
     }
 
-    return { serverTick, ackInputSeq, spawns, deltas, destroys, events, fogSnapshot, fogReveals };
+    const onlineCount = r.readU16();
+
+    return { serverTick, ackInputSeq, spawns, deltas, destroys, events, fogSnapshot, fogReveals, onlineCount };
   },
 };

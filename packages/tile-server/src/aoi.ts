@@ -113,6 +113,7 @@ export function computeSessionUpdate(
   serverTick: number,
   ackInputSeq: number,
   aoiRadius: number,
+  onlineCount: number,
 ): BinaryStateMessage {
   // ── 1. Build visible entity set ─────────────────────────────────────────────
   const inAoI = new Set<EntityId>();
@@ -261,5 +262,6 @@ export function computeSessionUpdate(
     events: filteredEvents,
     fogSnapshot,
     fogReveals,
+    onlineCount,
   };
 }

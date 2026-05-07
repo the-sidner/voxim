@@ -1439,6 +1439,75 @@ Done when: explore part of a tile, log out, log back in, the explored
 area is immediately visible on join.  Tile-server logs `fog restored`
 on hydration and surfaces save errors without blocking disconnect cleanup.
 
+### T-163 · Weapon damage in prefab data + per-entity soft collision + floating names + HUD diagnostics
+Effort: M   Status: done
+
+Four small features bundled because they all flowed out of the same play
+session.  Each is self-contained but the user noted them together, and
+splitting hindsight tickets one-per-commit would just be ceremony.
+
+**Damage on hit.** `deriveItemStats` in `packages/content/src/store.ts`
+read `weight`, `armor`, `edible`, `illuminator`, `tool` from prefab
+components but never `swingable` — so every equipped weapon's
+`weaponStats.damage` was undefined and the `?? 0` in
+`HealthHitHandler` zeroed every connected hit.  Unarmed worked because
+it pulls from `gameConfig.combat.unarmed.damage` directly.
+
+Fix:
+  - Added `damage?: number` to `SwingableData` (types + valibot schema +
+    server-only Swingable codec, with a presence byte so absent and
+    explicit-zero round-trip distinctly).  Round-trip test got two new
+    cases.
+  - `deriveItemStats` now reads `swingable.damage` and exposes it as
+    `stats.damage`, scaled by per-instance `quality`.
+  - Populated all melee weapon prefabs with sensible base damages:
+    stone_axe 12, stone_pickaxe 9, stone_hammer 14, iron_axe 22,
+    iron_pickaxe 16, iron_sword 25.  `wooden_bow` left damage-less —
+    bow_shot is projectile-driven, not melee.
+  - Crafted iron items still carry per-instance `Stats` from the recipe
+    formula (`head.sharpness * 30 + workstation.quality * 5` etc.); the
+    prefab damage is the fallback.  Wiring an instance-Stats override
+    into `ActionSystem` is a future ticket.
+
+**Player ↔ entity soft collision.**  `PhysicsSystem` previously only
+collided with terrain.  Reworked into a three-pass loop:
+
+  1. Integrate every (Position + Velocity + InputState) entity into a
+     local `Step[]` array (the existing per-entity body, just
+     extracted).
+  2. Pairwise XY separation — overlapping pairs each get pushed half the
+     overlap along the connecting axis.  Pure position correction; no
+     velocity damping (next-tick physics naturally re-runs).
+  3. Commit the corrected positions via `world.set`.
+
+  Brute-force O(N²) is fine: physics-active entities cap at < 100 in
+  AoI; SpatialGrid would only pay off at much higher densities.  Radius
+  is `gameConfig.physics.entityCollisionRadius` (0.4).  Z is untouched
+  so jumping over entities still works.  Degenerate exact-overlap pairs
+  are nudged along +X for determinism.
+
+**Floating name labels.**  New networked `Name` component
+(`ComponentType.name = 44`, `nameCodec` in `@voxim/codecs`).  Players
+get their login name shipped via the new optional
+`TileJoinRequest.displayName` field (client caches it under
+`voxim.login_name` at sign-in); NPCs mirror their `NpcTemplate.displayName`
+into `Name` at spawn.  Empty / missing names fall back to a
+`Player-{id6}` stub on the server.  Client renders one camera-billboarded
+`THREE.Sprite` per labelled entity, parented to the entity mesh group at
+y = 2.2 with a translucent rounded-pill canvas texture.  Texture is
+regenerated only on text change.  `disposeEntityMesh` and
+`syncNameLabel` keep the sprite lifecycle pinned to the mesh's.
+
+**HUD diagnostics.**  `BinaryStateMessage` gained one trailing u16,
+`onlineCount`, sourced from the tile's session map.  Game.ts patches it
+into a new `uiState.hudStats` slice plus a 500 ms-windowed FPS counter.
+A small `HudStats` Preact component sits to the left of the minimap
+(`top: 12, right: 220`), styled to match the minimap chrome.
+
+Done when: starter stone_axe deals 12 damage, two players can't walk
+through each other, every entity has a label above its head, and an
+`fps / online` panel sits next to the minimap.
+
 ### T-162 · Geometric edge detection in `EdgePass`
 Effort: S   Status: done
 

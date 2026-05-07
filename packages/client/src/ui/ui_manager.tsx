@@ -35,6 +35,7 @@ import { RadialMenu }      from "./components/RadialMenu.tsx";
 import { DebugPanel }      from "./components/DebugPanel.tsx";
 import { NetworkPanel }    from "./components/NetworkPanel.tsx";
 import { Minimap }         from "./components/Minimap.tsx";
+import { HudStats }        from "./components/HudStats.tsx";
 
 export interface UIManagerProps {
   /**
@@ -82,6 +83,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       <Hotbar onAction={onAction} />
       <PanelBar />
       <Minimap />
+      <HudStats />
       <ToastQueue />
 
       {/* Toggleable panels */}

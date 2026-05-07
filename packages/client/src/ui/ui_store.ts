@@ -254,6 +254,13 @@ export interface UIState {
   loading: boolean;
   /** 0–1 loading progress (terrain chunks received / 256). */
   loadingProgress: number;
+
+  /**
+   * Diagnostic counters shown in the HUD next to the minimap.
+   * `onlineCount` is the authoritative tile session count from
+   * BinaryStateMessage; `fps` is sampled locally from rAF deltas.
+   */
+  hudStats: { fps: number; onlineCount: number };
 }
 
 // ── Store singleton ────────────────────────────────────────────────────────────
@@ -280,6 +287,7 @@ const _initial: UIState = {
   radialMenu:  null,
   loading:          true,
   loadingProgress:  0,
+  hudStats:         { fps: 0, onlineCount: 0 },
 };
 
 export const uiState = signal<UIState>({ ..._initial });
