@@ -1537,6 +1537,114 @@ no other code referenced them.
 Done when: flat terrain has no diagonal artifact rows, but building
 silhouettes, terrain height steps, and corner creases still outline.
 
+### T-164 · InstancePool refactor — Phase 1: primitive + voxel-geo extraction
+Effort: M   Status: todo
+
+First of four phases that move all procedurally-placed instanced
+rendering (forest decorations, server props, future rocks) onto a
+single CPU-culled pool keyed by archetype.  Motivated by a 2026-05-07
+profiling session: 1 327 draws / 2 M tris per frame, 23 ms GL, with
+forest alone responsible for 7 936 InstancedMesh nodes covering
+204 k instances (~25 instances/draw, well below the instancing
+break-even).  Full design in `INSTANCE_POOL_PLAN.md` at the repo root.
+
+This phase lands the primitive with no callers yet.
+
+  - Extract `buildSubModelGeo`, `buildLocalDispGeo`, `mergeGeos` from
+    `packages/client/src/render/prop_instance_pool.ts` into a new
+    `packages/client/src/render/voxel_geo.ts`.  Update the imports in
+    `prop_instance_pool.ts` and `forest_props.ts`.  No re-export
+    bridge — the helpers' new home is the only home.
+  - Add `packages/client/src/render/instance_pool.ts` exporting an
+    `InstancePool` class with the API in the plan (`registerArchetype`,
+    `add`, `remove`, `removeByPrefix`, `update`, `buildHoverShells`,
+    `dispose`).  InstancedMeshes constructed by the pool use
+    `frustumCulled = false`; visibility is owned by the pool, not
+    Three.js.
+  - Wire `this.instancePool = new InstancePool(this.scene)` in
+    `GameRenderer`'s constructor and call `this.instancePool.update(visibleChunks)`
+    inside `render()` just before the existing terrain-visibility loop
+    is reused to compute the visible-chunks set.
+
+Done when: `deno check packages/client/src/game.ts` passes; the game
+runs and renders identically to before; the HUD draw/tris numbers are
+unchanged because the new pool has zero handles.
+
+### T-165 · InstancePool refactor — Phase 2: forest_props migration
+Effort: M   Status: todo
+
+Rewrite `packages/client/src/render/forest_props.ts` so it registers
+archetypes and per-tree handles into the InstancePool from T-164
+instead of building per-chunk InstancedMeshes itself.
+
+  - `decorateChunk` walks the kinds grid as today, but for each tree
+    contribution it (a) calls `instancePool.registerArchetype("forest:" + def.id + "|" + matId, …)`
+    once per (sub-model × material) pair, then (b) emits one handle
+    per tree position keyed `"forest:cx,cy:lx,ly"` whose chunkKey is
+    `"cx,cy"` and whose slots are the world matrices for each part.
+  - Delete `geoCache`, `matCache`, `chunkMeshes` from the class — the
+    pool owns them now.
+  - `reset()` becomes `instancePool.removeByPrefix("forest:")` plus
+    the existing `decorated`/`queue`/`active` cleanup.
+  - The chunk-arrival queue and `start()`'s 8 ms-budget drain loop
+    are preserved.
+
+Done when: forests render pixel-identically (same trees, same
+positions, same shadows, same canopyFade); HUD draws drop ~10× (660 →
+~60 per pass); HUD tris number unchanged (same content, batched
+differently); tile transition still cleans up the previous tile's
+forest correctly.
+
+### T-166 · InstancePool refactor — Phase 3: prop_instance_pool deletion
+Effort: M   Status: todo
+
+Delete `packages/client/src/render/prop_instance_pool.ts` entirely.
+Server-prop entities (ground items, ruins, resource nodes) register
+with the InstancePool directly.
+
+  - The static-prop branch in `GameRenderer.updateEntity()` (the
+    `else` after the skeleton branch) registers archetypes via the
+    pool, builds slots from the resolved sub-objects, and calls
+    `instancePool.add(entityId, chunkKey, slots)` where `chunkKey =
+    floor(worldPos.x / 32) + "," + floor(worldPos.z / 32)`.  Removal
+    on entity destroy / AoI exit is `instancePool.remove(entityId)`.
+  - The VELOCITY_EPSILON_SQ defer-until-settled gate is preserved
+    verbatim.
+  - `HoverOutlineRenderer` calls `instancePool.buildHoverShells(entityId)`
+    instead of `propPool.buildHoverShells(entityId)`.  Behaviour
+    identical: wrapper Meshes share pool-owned geometry/material and
+    must not be disposed on cleanup beyond the wrapper itself.
+  - `propPool` field on `GameRenderer`, `getPropPool()`, and every
+    other reference to `PropInstancePool` are removed.
+  - `propPositions.set(entityId, worldPos)` and the
+    `interactionSystem.addStaticEntity(...)` registration stay where
+    they are — pick-box handling is parallel to the pool, not part of
+    it.
+
+Done when: ground items, ruins, and resource nodes render with the
+same position and rotation as before; hover outline still highlights
+static props; no references to `PropInstancePool` or `prop_instance_pool.ts`
+remain; HUD shows the prop_pool bucket folded into forest archetypes
+or its own archetypes (down from 6 always-on draws to per-frame slice).
+
+### T-167 · InstancePool refactor — Phase 4: perf validation + plan cleanup
+Effort: S   Status: todo
+
+Final phase.  Validate the perf win, delete the plan document, mark
+all four tickets done with their commit hashes.
+
+  - Capture HUD numbers (FPS, draws, tris, all ms buckets) in a
+    representative scene with shadows on.  Record before/after and
+    paste into the closing commit message.
+  - Confirm 60 FPS sustained on the user's machine in a forested
+    area with shadows on.
+  - Delete `INSTANCE_POOL_PLAN.md` from the repo root.
+  - Update T-164 / T-165 / T-166 / T-167 statuses to `done` with the
+    commit hash that finished each phase.
+
+Done when: plan file is gone; all four tickets show `Status: done`;
+the user can play in a forested area at 60 FPS with shadows on.
+
 ---
 
 ## Player UX

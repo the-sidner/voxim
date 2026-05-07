@@ -35,7 +35,10 @@ import {
   type EntityMeshGroup,
 } from "./entity_mesh.ts";
 import type { InteractionSystem } from "../interaction/interaction_system.ts";
-import { PropInstancePool } from "./prop_instance_pool.ts";
+import { InstancePool, type InstanceSlot } from "./instance_pool.ts";
+import { buildSubModelGeo } from "./voxel_geo.ts";
+import { getVoxelTexture } from "./material_textures.ts";
+import { canopyFade } from "./canopy_fade.ts";
 import { evaluatePose, evaluateWeaponSlice, buildDriveContext, applyIKChains } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
@@ -212,7 +215,17 @@ export class VoximRenderer {
   private readonly terrainHmaps   = new Map<string, HeightmapData>();
   private readonly terrainMats    = new Map<string, MaterialGridData>();
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
-  readonly propPool: PropInstancePool;
+  /**
+   * Single owner of all procedurally-placed static instanced rendering
+   * (forest decorations, server props, future rocks). See
+   * `instance_pool.ts` for the architecture and per-frame culling model.
+   */
+  readonly instancePool: InstancePool;
+  /**
+   * World position of every entity that lives in `instancePool` rather
+   * than as a live EntityMeshGroup. Used by HoverOutlineRenderer to
+   * detect "is this a static prop?" and to size pick boxes.
+   */
   private readonly propPositions  = new Map<string, THREE.Vector3>();
 
   readonly debugOverlayManager: DebugOverlayManager;
@@ -253,6 +266,18 @@ export class VoximRenderer {
   private readonly blitCamera: THREE.OrthographicCamera;
   /** Debug: when true the blit pass shows the raw height texture instead of the scene. */
   private heightDebugEnabled = false;
+  /** Debug: when true, skip the entire post-FX pipeline and render scene direct to canvas. */
+  private bypassPostFX = false;
+
+  /**
+   * CPU time (ms) spent in major sections of the most recent render() call.
+   * Read by the HUD diagnostics in game.ts. Each field is overwritten every
+   * frame; the HUD averages over ~500 ms before display.
+   *
+   * `drawCalls` and `tris` come from renderer.info.render and reflect what
+   * actually reached the GPU (after Three.js frustum culling).
+   */
+  readonly frameTimings = { skMs: 0, trailMs: 0, glMs: 0, drawCalls: 0, tris: 0 };
 
   /**
    * Fog-of-war reference (T-157).  Game owns the FogOfWar instance because
@@ -335,7 +360,7 @@ export class VoximRenderer {
   };
 
   constructor(canvas: HTMLCanvasElement) {
-    this.propPool = new PropInstancePool(this.scene);
+    this.instancePool = new InstancePool(this.scene);
 
     // Build all debug overlays and register them with the manager.
     this._skeletonOverlay = new SkeletonOverlay(this.scene);
@@ -353,6 +378,10 @@ export class VoximRenderer {
     this.renderer.setPixelRatio(1);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.BasicShadowMap; // hard 1-pixel shadow edges → thin outline
+    // Disable auto-reset so renderer.info accumulates draw calls / triangles
+    // across every renderer.render() call within a single frame (shadow pass +
+    // main scene + post-FX passes). render() resets manually at the top.
+    this.renderer.info.autoReset = false;
 
     const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
     this.cameraRig = new CameraRig(aspect);
@@ -438,13 +467,13 @@ export class VoximRenderer {
     this.sun = new THREE.DirectionalLight(0xfffde0, 2.5);
     this.sun.position.copy(SUN_DIR).multiplyScalar(100);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(1024, 1024);
     this.sun.shadow.camera.near   = 0.5;
     this.sun.shadow.camera.far    = 400;
-    this.sun.shadow.camera.left   = -90;
-    this.sun.shadow.camera.right  =  90;
-    this.sun.shadow.camera.top    =  90;
-    this.sun.shadow.camera.bottom = -90;
+    this.sun.shadow.camera.left   = -60;
+    this.sun.shadow.camera.right  =  60;
+    this.sun.shadow.camera.top    =  60;
+    this.sun.shadow.camera.bottom = -60;
     this.sun.shadow.bias = -0.001; // prevent self-shadow acne on flat faces
     this.scene.add(this.sun);
     // Target must be in the scene so Three.js updates its world matrix each frame.
@@ -528,6 +557,7 @@ export class VoximRenderer {
       this.terrainMats.get(`${cx},${cy + 1}`) ?? null,
     );
     if (!existing) {
+      mesh.name = "terrain";
       this.scene.add(mesh);
       this.terrainMeshes.set(key, mesh);
       this._chunkOverlay.addChunk(cx, cy, this.debugOverlayManager.isOn("chunks"));
@@ -551,13 +581,14 @@ export class VoximRenderer {
   // ---- entities ----
 
   updateEntity(entityId: string, state: EntityState): void {
-    // Static props are fully managed by propPool after their first model load.
-    if (this.propPool.hasProp(entityId)) return;
+    // Static props are fully managed by instancePool after their first model load.
+    if (this.instancePool.has(entityId)) return;
 
     const isLocal = entityId === this.localPlayerId;
     let mesh = this.entityMeshes.get(entityId);
     if (!mesh) {
       mesh = createEntityMesh(state, isLocal);
+      mesh.group.name = "entity";
       this.scene.add(mesh.group);
       this.entityMeshes.set(entityId, mesh);
       this.interactionSystem?.addEntity(entityId);
@@ -576,7 +607,7 @@ export class VoximRenderer {
         // (Velocity present), prefetchModel is kicked again next tick.
         // The earlier promise may resolve after a later one already finished
         // the transition; bail before re-entering addProp / disposeMesh.
-        if (this.propPool.hasProp(entityId)) return;
+        if (this.instancePool.has(entityId)) return;
         const def = this.content!.getModelSync(modelRef.modelId);
         if (!def) return;
 
@@ -632,7 +663,7 @@ export class VoximRenderer {
           this.syncEquipment(capture, state);
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
-          // PropInstancePool bakes the entity's position into an instance matrix
+          // InstancePool bakes the entity's position into an instance matrix
           // once and never updates it; the pick box is sized once at this point
           // too.  So we MUST defer the transition until the entity has actually
           // settled — ejected ground items have non-zero velocity while flying,
@@ -656,10 +687,10 @@ export class VoximRenderer {
           this.entityMeshes.delete(entityId);
           // Per-prop Y rotation: tile-server writes Facing with a
           // deterministic per-tree angle so a forest doesn't read as a
-          // grid. The InstancedMesh batches by (modelId, matId, scale);
-          // rotation rides in the per-instance matrix.
+          // grid. Archetypes batch by (modelId, matId, scale); rotation
+          // rides in the per-instance matrix the InstancePool uploads.
           const rotationY = state.facing?.angle ?? 0;
-          this.propPool.addProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale, rotationY);
+          this._addStaticProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale, rotationY);
           this.propPositions.set(entityId, worldPos);
           const halfExtents = computePropHalfExtents(def, resolvedSubs, subModelDefs, scale);
           this.interactionSystem?.addStaticEntity(entityId, worldPos, this.scene, halfExtents);
@@ -698,9 +729,95 @@ export class VoximRenderer {
     }
   }
 
+  /**
+   * Register a server-spawned static prop (ground item, ruin, resource
+   * node) into the InstancePool. Builds one slot per (sub-model ×
+   * material) the model uses; archetypes are registered lazily on first
+   * sight of a (modelId, matId, scale) triple. Chunk key is derived
+   * from world position so the pool's per-frame culling can skip props
+   * whose chunk is outside the visible window.
+   */
+  private _addStaticProp(
+    entityId:     string,
+    worldPos:     THREE.Vector3,
+    mainDef:      ModelDefinition,
+    resolvedSubs: readonly ResolvedSubObject[],
+    subModelDefs: Map<string, ModelDefinition>,
+    mats:         Map<number, MaterialDef>,
+    scale:        { x: number; y: number; z: number },
+    rotationY:    number,
+  ): void {
+    const slots: InstanceSlot[] = [];
+
+    // Per-prop world transform = translate(worldPos) × rotateY(rotationY).
+    const propMat = new THREE.Matrix4()
+      .makeTranslation(worldPos.x, worldPos.y, worldPos.z)
+      .multiply(new THREE.Matrix4().makeRotationY(rotationY));
+
+    const registerModel = (def: ModelDefinition, subMatrix: THREE.Matrix4) => {
+      const matIds = new Set(def.nodes.map((n) => n.materialId));
+      for (const matId of matIds) {
+        const archId = `prop:${def.id}|${matId}|${scale.x.toFixed(3)}|${scale.y.toFixed(3)}|${scale.z.toFixed(3)}`;
+        if (!this.instancePool.hasArchetype(archId)) {
+          const geometry = buildSubModelGeo(def.nodes, matId, scale);
+          const material = this._buildPropMaterial(matId, mats);
+          this.instancePool.registerArchetype(archId, {
+            geometry, material, castShadow: true, receiveShadow: true,
+          });
+        }
+        const slotMat = new THREE.Matrix4().multiplyMatrices(propMat, subMatrix);
+        slots.push({ archetypeId: archId, matrix: slotMat });
+      }
+    };
+
+    if (mainDef.nodes.length > 0) {
+      registerModel(mainDef, new THREE.Matrix4());
+    }
+
+    for (const sub of resolvedSubs) {
+      const subDef = subModelDefs.get(sub.modelId);
+      if (!subDef) continue;
+      const t = sub.transform;
+      // Three.js coord mapping for sub-object position: model(x,y,z) → three(x*sx, z*sz, y*sy)
+      const subPos = new THREE.Vector3(t.x * scale.x, t.z * scale.z, t.y * scale.y);
+      const subQuat = new THREE.Quaternion()
+        .setFromEuler(new THREE.Euler(t.rotX, t.rotZ, t.rotY, "XYZ"));
+      const subMatrix = new THREE.Matrix4().compose(subPos, subQuat, new THREE.Vector3(1, 1, 1));
+      registerModel(subDef, subMatrix);
+    }
+
+    if (slots.length === 0) return;
+    const chunkKey = `${Math.floor(worldPos.x / CHUNK_SIZE)},${Math.floor(worldPos.z / CHUNK_SIZE)}`;
+    this.instancePool.add(entityId, chunkKey, slots);
+  }
+
+  /** Build a Three.js material for a prop voxel.  Mirrors what
+   *  ForestPropsRenderer does for forest archetypes — same Phong + flat
+   *  shading + canopyFade registration, but materials are not shared
+   *  across the two systems because they may diverge over time and the
+   *  shared-cache complexity isn't worth it for a few extra materials. */
+  private _buildPropMaterial(matId: number, mats: Map<number, MaterialDef>): THREE.Material {
+    const matDef = mats.get(matId);
+    const color = matDef?.color ?? 0x888888;
+    const shininess = matDef ? Math.round((1 - matDef.roughness) * 80) : 0;
+    const emissive = matDef && matDef.emissive > 0
+      ? new THREE.Color(color).multiplyScalar(matDef.emissive * 0.7)
+      : new THREE.Color(0);
+    const tex = getVoxelTexture(matId, color);
+    const mat = new THREE.MeshPhongMaterial({
+      color: tex ? 0xffffff : color,
+      map: tex ?? undefined,
+      flatShading: true,
+      shininess,
+      emissive,
+    });
+    canopyFade.register(mat, { voxelMode: true });
+    return mat;
+  }
+
   removeEntity(entityId: string): void {
-    if (this.propPool.hasProp(entityId)) {
-      this.propPool.removeProp(entityId);
+    if (this.instancePool.has(entityId)) {
+      this.instancePool.remove(entityId);
       this.propPositions.delete(entityId);
       this.debugOverlayManager.removeEntity(entityId);
       return;
@@ -747,6 +864,7 @@ export class VoximRenderer {
     let group = this.gateMeshes.get(entityId);
     if (!group) {
       group = buildGateMarker(edge);
+      group.name = "gate";
       this.scene.add(group);
       this.gateMeshes.set(entityId, group);
     }
@@ -815,11 +933,6 @@ export class VoximRenderer {
   /** World position of a static prop entity, or null if it isn't in the prop pool. */
   getPropPosition(entityId: string): THREE.Vector3 | null {
     return this.propPositions.get(entityId) ?? null;
-  }
-
-  /** PropInstancePool — exposed so HoverOutlineRenderer can build proxy shells. */
-  getPropPool(): PropInstancePool {
-    return this.propPool;
   }
 
   /** EdgePass — exposed so HoverOutlineRenderer can drive uHoverActive / uHoverColor. */
@@ -947,6 +1060,89 @@ export class VoximRenderer {
     return this.edgePass.toggleSobelEdges();
   }
 
+  /**
+   * Diagnostic toggle — when on, skip the entire post-FX pipeline (pixelTarget
+   * render, hover mask, depth blit, EdgePass) and render the scene directly to
+   * the canvas.  Used to measure how much of the frame budget the post-FX is
+   * consuming.  The hitbox debug overlay still renders since it's already
+   * direct-to-canvas.
+   */
+  toggleBypassPostFX(): boolean {
+    this.bypassPostFX = !this.bypassPostFX;
+    return this.bypassPostFX;
+  }
+
+  /**
+   * Diagnostic toggle — flip sun shadow casting on/off.  When off, the
+   * shadow map render pass is skipped entirely; useful for measuring
+   * how much of the frame budget the shadow map consumes.
+   * Returns the new enabled state.
+   */
+  toggleShadows(): boolean {
+    this.sun.castShadow = !this.sun.castShadow;
+    return this.sun.castShadow;
+  }
+
+  /**
+   * Diagnostic — walk the scene and log a breakdown by object kind.
+   * For InstancedMesh nodes, logs both the slot count and triangles per
+   * instance × count.  Used to find which subsystem is producing a wad of
+   * draw calls or triangles when the HUD shows numbers higher than expected.
+   */
+  logSceneCensus(): void {
+    interface Bucket { nodes: number; instanced: number; instances: number; tris: number; }
+    const buckets = new Map<string, Bucket>();
+    const bucket = (key: string): Bucket => {
+      let b = buckets.get(key);
+      if (!b) { b = { nodes: 0, instanced: 0, instances: 0, tris: 0 }; buckets.set(key, b); }
+      return b;
+    };
+
+    const classify = (obj: THREE.Object3D): string => {
+      // Walk up the parent chain to find the nearest named ancestor — entity
+      // sub-meshes (skinned bones, weapon attachments) should bucket under
+      // "entity" rather than appear individually as anonymous Meshes.
+      let cur: THREE.Object3D | null = obj;
+      while (cur) {
+        if (cur.name) return cur.name;
+        cur = cur.parent;
+      }
+      return (obj as THREE.Mesh).isMesh ? (obj as THREE.Mesh).type : obj.type;
+    };
+
+    let total = 0, instTotal = 0, triTotal = 0, drawableNodes = 0;
+    this.scene.traverse((obj) => {
+      total++;
+      const m = obj as THREE.Mesh;
+      if (!m.isMesh || !m.visible) return;
+      const inst = (m as THREE.InstancedMesh).isInstancedMesh
+        ? (m as THREE.InstancedMesh)
+        : null;
+      const instCount = inst ? inst.count : 1;
+      const idx = m.geometry.index;
+      const triPer = idx
+        ? idx.count / 3
+        : (m.geometry.attributes.position?.count ?? 0) / 3;
+      const tris = triPer * instCount;
+      const key = classify(obj);
+      const b = bucket(key);
+      b.nodes++;
+      if (inst) { b.instanced++; b.instances += instCount; }
+      b.tris += tris;
+      drawableNodes++;
+      instTotal += instCount;
+      triTotal += tris;
+    });
+
+    const rows = [...buckets.entries()]
+      .map(([k, b]) => ({ key: k, ...b }))
+      .sort((a, b) => b.tris - a.tris);
+
+    console.groupCollapsed(`Scene census — ${total} nodes, ${drawableNodes} drawable, ${instTotal} instances, ${(triTotal / 1000).toFixed(1)}k tris`);
+    console.table(rows);
+    console.groupEnd();
+  }
+
   // ---- render loop ----
 
   render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null): void {
@@ -959,6 +1155,9 @@ export class VoximRenderer {
     }
     this.smoothTick = serverTick + (now - this.lastServerTickMs) / 50;
 
+    this.renderer.info.reset();
+
+    const tSkStart = performance.now();
     // Drive skeleton poses for all animated entities.
     for (const [, mesh] of this.entityMeshes) {
       if (mesh.boneGroups && mesh.skeletonId && this.content) {
@@ -1026,6 +1225,7 @@ export class VoximRenderer {
         mesh.group.rotation.y = lerpAngle(buf[lo].ry, buf[hi].ry, alpha);
       }
     }
+    this.frameTimings.skMs = performance.now() - tSkStart;
 
     // Override local player position with client-side prediction
     if (localPredictedPos && this.localPlayerId) {
@@ -1069,14 +1269,34 @@ export class VoximRenderer {
       this.cameraTarget.copy(localMesh.group.position);
     }
 
-    // Chunk culling — 9×9 window around player (camera ~35m slant; ground footprint can reach far).
+    // Chunk culling — two windows.
+    //
+    // Terrain stays at 9×9 (4-chunk radius, ~128 world units): each
+    // terrain chunk is one cheap mesh, and seam-popping at the edge of
+    // the rendered area is uglier than rendering a few extra meshes.
+    //
+    // The InstancePool gets a tighter 5×5 window (2-chunk radius, ~64
+    // units). The shadow camera frustum is 120×120 (~3.75 chunks wide)
+    // and the main camera's forward cone is similar, so 5×5 covers both
+    // with no visible popping. Forest tris are 100× heavier than terrain
+    // tris, so the 4× area cut here is the difference between 8 M and
+    // 2 M tris drawn per frame. InstancePool iterates these in stable
+    // (cy outer, cx inner) order so per-frame instance ordering doesn't
+    // shuffle.
     const playerPos = localMesh?.group.position ?? this.cameraTarget;
     const pChunkX = Math.floor(playerPos.x / CHUNK_SIZE);
     const pChunkY = Math.floor(playerPos.z / CHUNK_SIZE);
+    const propVisibleChunks = new Set<string>();
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        propVisibleChunks.add(`${pChunkX + dx},${pChunkY + dy}`);
+      }
+    }
     for (const [key, tmesh] of this.terrainMeshes) {
       const [cx, cy] = key.split(",").map(Number);
       tmesh.visible = Math.abs(cx - pChunkX) <= 4 && Math.abs(cy - pChunkY) <= 4;
     }
+    this.instancePool.update(propVisibleChunks);
     // Entity culling — hide entities beyond CULL_RADIUS_SQ
     for (const [id, emesh] of this.entityMeshes) {
       if (id === this.localPlayerId) { emesh.group.visible = true; continue; }
@@ -1128,7 +1348,9 @@ export class VoximRenderer {
       .addScaledVector(SUN_DIR, 350);
 
     // Update weapon tip trail ribbons for all currently attacking entities.
+    const tTrailStart = performance.now();
     this.updateWeaponTrails(now);
+    this.frameTimings.trailMs = performance.now() - tTrailStart;
 
     // Advance hit spark particles and flicker lights.
     const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
@@ -1136,50 +1358,59 @@ export class VoximRenderer {
     this.hitSparkRenderer.update(dt);
     this.lightManager.tick(now);
 
-    // Pass 1: render scene to low-res pixel target (writes colour + depth).
-    this.renderer.setRenderTarget(this.pixelTarget);
-    this.renderer.render(this.scene, this.camera);
-
-    // Hover mask: render whatever's currently on HOVER_LAYER flat-white →
-    // hoverMaskTarget.  HoverOutlineRenderer puts the hovered entity's meshes
-    // (or proxy shells for prop-pool entities) onto the layer and toggles the
-    // EdgePass uniform; the renderer just reads the uniform here to skip the
-    // pass entirely when there's nothing to outline.
-    if (this.edgePass.material.uniforms.uHoverActive.value > 0.0) {
-      const savedMask       = this.camera.layers.mask;
-      const savedBackground = this.scene.background;
-      this.camera.layers.set(HOVER_LAYER);
-      this.scene.overrideMaterial = this.hoverMaskMat;
-      this.scene.background = null;   // prevent sky color flooding the mask
-      this.renderer.setRenderTarget(this.hoverMaskTarget);
-      this.renderer.setClearColor(0x000000, 0);
-      this.renderer.clear();
+    const tGlStart = performance.now();
+    if (this.bypassPostFX) {
+      // Diagnostic mode — render scene directly to canvas, skipping the entire
+      // post-FX chain (pixelTarget, hover mask, depth blit, EdgePass).  Use this
+      // to measure how much of the frame budget post-FX consumes.
+      this.renderer.setRenderTarget(null);
       this.renderer.render(this.scene, this.camera);
-      this.scene.overrideMaterial = null;
-      this.scene.background = savedBackground;
-      this.camera.layers.mask = savedMask;
+    } else {
+      // Pass 1: render scene to low-res pixel target (writes colour + depth).
+      this.renderer.setRenderTarget(this.pixelTarget);
+      this.renderer.render(this.scene, this.camera);
+
+      // Hover mask: render whatever's currently on HOVER_LAYER flat-white →
+      // hoverMaskTarget.  HoverOutlineRenderer puts the hovered entity's meshes
+      // (or proxy shells for prop-pool entities) onto the layer and toggles the
+      // EdgePass uniform; the renderer just reads the uniform here to skip the
+      // pass entirely when there's nothing to outline.
+      if (this.edgePass.material.uniforms.uHoverActive.value > 0.0) {
+        const savedMask       = this.camera.layers.mask;
+        const savedBackground = this.scene.background;
+        this.camera.layers.set(HOVER_LAYER);
+        this.scene.overrideMaterial = this.hoverMaskMat;
+        this.scene.background = null;   // prevent sky color flooding the mask
+        this.renderer.setRenderTarget(this.hoverMaskTarget);
+        this.renderer.setClearColor(0x000000, 0);
+        this.renderer.clear();
+        this.renderer.render(this.scene, this.camera);
+        this.scene.overrideMaterial = null;
+        this.scene.background = savedBackground;
+        this.camera.layers.mask = savedMask;
+      }
+
+      // Depth blit: reconstruct world-Y from pixelTarget.depthTexture → heightTarget.
+      // pixelTarget is no longer the active FBO here, so reading its depth texture is
+      // safe — no same-FBO feedback loop.  Camera matrices are snapped after Pass 1
+      // so they match the frame that produced the depth buffer.
+      this.depthBlitMat.uniforms.uProjInv.value.copy(this.camera.projectionMatrixInverse);
+      this.depthBlitMat.uniforms.uViewInv.value.copy(this.camera.matrixWorld);
+      // Recenter the height-shading band on the player so the perspective view's
+      // broader Y range (sky, distant hills) doesn't compress contrast near the player.
+      this.depthBlitMat.uniforms.uHeightMin.value = playerPos.y - HEIGHT_SHADE_BELOW;
+      this.depthBlitMat.uniforms.uHeightMax.value = playerPos.y + HEIGHT_SHADE_ABOVE;
+      this.renderer.setRenderTarget(this.heightTarget);
+      this.renderer.render(this.depthBlitScene, this.blitCamera);
+
+      // EdgePass reconstructs world XZ from depth too (for fog-of-war), so it
+      // needs the same camera matrices the depth-blit pass just used.
+      this.edgePass.setCameraMatrices(this.camera.projectionMatrixInverse, this.camera.matrixWorld);
+
+      // Pass 2: edge detection + height shading + sRGB → canvas.
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.blitScene, this.blitCamera);
     }
-
-    // Depth blit: reconstruct world-Y from pixelTarget.depthTexture → heightTarget.
-    // pixelTarget is no longer the active FBO here, so reading its depth texture is
-    // safe — no same-FBO feedback loop.  Camera matrices are snapped after Pass 1
-    // so they match the frame that produced the depth buffer.
-    this.depthBlitMat.uniforms.uProjInv.value.copy(this.camera.projectionMatrixInverse);
-    this.depthBlitMat.uniforms.uViewInv.value.copy(this.camera.matrixWorld);
-    // Recenter the height-shading band on the player so the perspective view's
-    // broader Y range (sky, distant hills) doesn't compress contrast near the player.
-    this.depthBlitMat.uniforms.uHeightMin.value = playerPos.y - HEIGHT_SHADE_BELOW;
-    this.depthBlitMat.uniforms.uHeightMax.value = playerPos.y + HEIGHT_SHADE_ABOVE;
-    this.renderer.setRenderTarget(this.heightTarget);
-    this.renderer.render(this.depthBlitScene, this.blitCamera);
-
-    // EdgePass reconstructs world XZ from depth too (for fog-of-war), so it
-    // needs the same camera matrices the depth-blit pass just used.
-    this.edgePass.setCameraMatrices(this.camera.projectionMatrixInverse, this.camera.matrixWorld);
-
-    // Pass 2: edge detection + height shading + sRGB → canvas.
-    this.renderer.setRenderTarget(null);
-    this.renderer.render(this.blitScene, this.blitCamera);
 
     // Pass 3: hitbox debug overlay — rendered directly to canvas, bypassing
     // the pixel-art and edge-detection passes so the lines stay crisp.
@@ -1196,6 +1427,9 @@ export class VoximRenderer {
     this.renderer.autoClear = true;
     this.scene.background = savedBackground;
     this.camera.layers.mask = savedMask;
+    this.frameTimings.glMs = performance.now() - tGlStart;
+    this.frameTimings.drawCalls = this.renderer.info.render.calls;
+    this.frameTimings.tris      = this.renderer.info.render.triangles;
   }
 
   /** Spawn a hit spark burst at the given world-space position. */
@@ -1635,7 +1869,7 @@ export class VoximRenderer {
     this.debugOverlayManager.dispose();
     this.hitSparkRenderer.dispose();
     this.lightManager.dispose();
-    this.propPool.dispose();
+    this.instancePool.dispose();
     this.edgePass.dispose();
     this.pixelTarget.dispose();
     this.heightTarget.dispose();
@@ -1703,7 +1937,7 @@ function buildGateMarker(edge: string): THREE.Group {
  * (the cached getModelAabb only covers main-model nodes).
  *
  * model(x, y, z) → three(x*sx, z*sz, y*sy) — same convention as
- * PropInstancePool.buildLocalDispGeo().
+ * voxel_geo.buildLocalDispGeo().
  */
 function computePropHalfExtents(
   def: ModelDefinition,

@@ -100,6 +100,26 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
           on={overlays.sobel_edges}
           onToggle={() => toggle("sobel_edges")}
         />
+        <ToggleRow
+          label="Bypass post-FX"
+          hint="render scene direct to canvas"
+          on={overlays.bypass_postfx}
+          onToggle={() => toggle("bypass_postfx")}
+        />
+        <ToggleRow
+          label="Shadows"
+          hint="sun shadow map"
+          on={overlays.shadows}
+          onToggle={() => toggle("shadows")}
+        />
+        <button
+          type="button"
+          class="btn interactive"
+          onClick={() => onAction({ type: "debug_scene_census" })}
+          style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)", marginTop: "var(--gap-xs)" }}
+        >
+          Log scene census
+        </button>
       </Section>
 
       {/* ── Render overlays ───────────────────────────────────────────────── */}

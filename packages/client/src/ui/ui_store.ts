@@ -259,8 +259,20 @@ export interface UIState {
    * Diagnostic counters shown in the HUD next to the minimap.
    * `onlineCount` is the authoritative tile session count from
    * BinaryStateMessage; `fps` is sampled locally from rAF deltas.
+   * `*Ms` fields are averaged over the same 500 ms sample window
+   * as fps and are CPU times measured with performance.now().
    */
-  hudStats: { fps: number; onlineCount: number };
+  hudStats: {
+    fps:         number;
+    onlineCount: number;
+    frameMs:     number;
+    skMs:        number;
+    trailMs:     number;
+    glMs:        number;
+    postMs:      number;
+    drawCalls:   number;
+    tris:        number;
+  };
 }
 
 // ── Store singleton ────────────────────────────────────────────────────────────
@@ -287,7 +299,7 @@ const _initial: UIState = {
   radialMenu:  null,
   loading:          true,
   loadingProgress:  0,
-  hudStats:         { fps: 0, onlineCount: 0 },
+  hudStats:         { fps: 0, onlineCount: 0, frameMs: 0, skMs: 0, trailMs: 0, glMs: 0, postMs: 0, drawCalls: 0, tris: 0 },
 };
 
 export const uiState = signal<UIState>({ ..._initial });

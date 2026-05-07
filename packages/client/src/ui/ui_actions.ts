@@ -42,7 +42,8 @@ export type UIAction =
   | { type: "rebind_key"; action: string; key: string }
 
   // Debug
-  | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "sobel_edges" }
+  | { type: "debug_toggle"; layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "sobel_edges" | "bypass_postfx" | "shadows" }
+  | { type: "debug_scene_census" }
   | { type: "debug_give_item";  itemType: string; quantity: number }
   | { type: "debug_spawn_npc";  npcTemplate: string; quantity: number }
   | { type: "debug_set_time";   hour: number }

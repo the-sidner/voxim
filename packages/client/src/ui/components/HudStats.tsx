@@ -56,6 +56,34 @@ export function HudStats() {
         <span style={LABEL}>online</span>
         <span style={VALUE}>{s.onlineCount}</span>
       </div>
+      <div style={{ ...ROW, marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(220,220,220,0.15)" }}>
+        <span style={LABEL}>frame</span>
+        <span style={VALUE}>{s.frameMs.toFixed(1)} ms</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>sk+ik</span>
+        <span style={VALUE}>{s.skMs.toFixed(1)} ms</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>trail</span>
+        <span style={VALUE}>{s.trailMs.toFixed(1)} ms</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>gl</span>
+        <span style={VALUE}>{s.glMs.toFixed(1)} ms</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>post</span>
+        <span style={VALUE}>{s.postMs.toFixed(1)} ms</span>
+      </div>
+      <div style={{ ...ROW, marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(220,220,220,0.15)" }}>
+        <span style={LABEL}>draws</span>
+        <span style={VALUE}>{s.drawCalls}</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>tris</span>
+        <span style={VALUE}>{(s.tris / 1000).toFixed(1)}k</span>
+      </div>
     </div>
   );
 }

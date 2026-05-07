@@ -12,9 +12,9 @@
  *     group; the renderer's mask pass picks them up via the layer filter.
  *     Skeletal entities follow their bone transforms automatically.
  *
- *   Path B — Static prop (PropInstancePool):
+ *   Path B — Static prop (InstancePool):
  *     The entity's geometry was handed off to instanced rendering and its
- *     EntityMeshGroup was disposed.  PropInstancePool.buildHoverShells()
+ *     EntityMeshGroup was disposed.  InstancePool.buildHoverShells()
  *     hands us per-slot Mesh wrappers sharing the pool's geometry; we add
  *     them to the scene on HOVER_LAYER only and drop them on hover-change.
  *
@@ -123,7 +123,7 @@ export class HoverOutlineRenderer implements HoverOutlineSink {
     // Path B first: prop-pool entities have no live EntityMeshGroup.
     const propPos = this.renderer.getPropPosition(hover.entityId);
     if (propPos !== null) {
-      const shells = this.renderer.getPropPool().buildHoverShells(hover.entityId);
+      const shells = this.renderer.instancePool.buildHoverShells(hover.entityId);
       for (const m of shells) {
         m.layers.disableAll();
         m.layers.enable(HOVER_LAYER);

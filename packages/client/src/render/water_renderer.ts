@@ -200,6 +200,7 @@ export class WaterRenderer {
     mesh.receiveShadow = false;
     // Render after opaque terrain so blending sees the bed below.
     mesh.renderOrder = 1;
+    mesh.name = "water";
     this.scene.add(mesh);
     this.chunkMeshes.set(coord, mesh);
     return true;

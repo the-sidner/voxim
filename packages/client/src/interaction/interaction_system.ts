@@ -105,7 +105,7 @@ export class InteractionSystem {
   }
 
   /**
-   * Register a static prop's pick box (PropInstancePool entities).  The
+   * Register a static prop's pick box (InstancePool entities).  The
    * caller supplies half-extents derived from the prop's model AABB so the
    * box matches the rendered geometry without needing to walk the pool.
    */

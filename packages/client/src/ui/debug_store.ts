@@ -7,26 +7,30 @@
  */
 import { signal } from "@preact/signals";
 
-export type DebugLayer = "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "sobel_edges";
+export type DebugLayer = "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "sobel_edges" | "bypass_postfx" | "shadows";
 
 export interface DebugOverlayState {
-  skeleton:    boolean;
-  facing:      boolean;
-  chunks:      boolean;
-  heightmap:   boolean;
-  blade:       boolean;
-  hitbox:      boolean;
-  sobel_edges: boolean;
+  skeleton:      boolean;
+  facing:        boolean;
+  chunks:        boolean;
+  heightmap:     boolean;
+  blade:         boolean;
+  hitbox:        boolean;
+  sobel_edges:   boolean;
+  bypass_postfx: boolean;
+  shadows:       boolean;
 }
 
 export const debugOverlays = signal<DebugOverlayState>({
-  skeleton:    false,
-  facing:      false,
-  chunks:      false,
-  heightmap:   false,
-  blade:       false,
-  hitbox:      false,
-  sobel_edges: true,
+  skeleton:      false,
+  facing:        false,
+  chunks:        false,
+  heightmap:     false,
+  blade:         false,
+  hitbox:        false,
+  sobel_edges:   true,
+  bypass_postfx: false,
+  shadows:       true,
 });
 
 export function setDebugLayer(layer: DebugLayer, on: boolean): void {

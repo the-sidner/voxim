@@ -112,6 +112,8 @@ export class VoximGame {
   private fpsFrames = 0;
   /** Wall-clock at which the current FPS sampling window started. */
   private fpsWindowStart = 0;
+  /** Per-section CPU time accumulators (ms), averaged over the FPS window. */
+  private timingAccum = { frame: 0, sk: 0, trail: 0, gl: 0, post: 0 };
   /** Last `onlineCount` shipped via state message; pushed to UIState as it changes. */
   private lastOnlineCount = -1;
 
@@ -252,7 +254,7 @@ export class VoximGame {
     // never carries individual tree entities. Replays already-loaded chunks
     // on registration so chunks that arrived during connect() get decorated.
     this.forestProps = new ForestPropsRenderer(
-      this.renderer.scene, this.content, this.world,
+      this.renderer.instancePool, this.content, this.world,
     );
 
     // Water surface (T-159) — translucent overlay over WATER cells, animated
@@ -587,7 +589,8 @@ export class VoximGame {
   private frame(): void {
     if (!this.running) return;
 
-    const now = performance.now();
+    const tFrameStart = performance.now();
+    const now = tFrameStart;
     const dt = Math.min((now - this.lastFrameTime) / 1000, 0.1);
     this.lastFrameTime = now;
 
@@ -597,10 +600,19 @@ export class VoximGame {
     if (this.fpsWindowStart === 0) this.fpsWindowStart = now;
     const fpsWindowMs = now - this.fpsWindowStart;
     if (fpsWindowMs >= 500) {
-      const fps = Math.round(this.fpsFrames * 1000 / fpsWindowMs);
+      const f = this.fpsFrames || 1;
+      const fps       = Math.round(this.fpsFrames * 1000 / fpsWindowMs);
+      const frameMs   = +(this.timingAccum.frame / f).toFixed(1);
+      const skMs      = +(this.timingAccum.sk    / f).toFixed(1);
+      const trailMs   = +(this.timingAccum.trail / f).toFixed(1);
+      const glMs      = +(this.timingAccum.gl    / f).toFixed(1);
+      const postMs    = +(this.timingAccum.post  / f).toFixed(1);
+      const drawCalls = this.renderer?.frameTimings.drawCalls ?? 0;
+      const tris      = this.renderer?.frameTimings.tris      ?? 0;
       this.fpsFrames = 0;
       this.fpsWindowStart = now;
-      patchUI({ hudStats: { ...uiState.value.hudStats, fps } });
+      this.timingAccum = { frame: 0, sk: 0, trail: 0, gl: 0, post: 0 };
+      patchUI({ hudStats: { ...uiState.value.hudStats, fps, frameMs, skMs, trailMs, glMs, postMs, drawCalls, tris } });
     }
 
     let predictedPos = null;
@@ -673,6 +685,7 @@ export class VoximGame {
 
     this.renderer?.render(this.serverTick, predictedPos);
 
+    const tPostStart = performance.now();
     // Update world-space entity health bars + gate labels (frame-driven, not reactive)
     if (this.overlay) {
       this.overlay.clearEntityBars();
@@ -688,6 +701,16 @@ export class VoximGame {
         if (pos) this.overlay.setEntityHealth(entityId, state.health.current, state.health.max, pos.x, pos.y);
       }
     }
+    const tPostEnd = performance.now();
+
+    // Accumulate per-section timings for the FPS sample window.
+    if (this.renderer) {
+      this.timingAccum.sk    += this.renderer.frameTimings.skMs;
+      this.timingAccum.trail += this.renderer.frameTimings.trailMs;
+      this.timingAccum.gl    += this.renderer.frameTimings.glMs;
+    }
+    this.timingAccum.post  += tPostEnd - tPostStart;
+    this.timingAccum.frame += tPostEnd - tFrameStart;
 
     this.scheduleFrame();
   }
@@ -943,6 +966,10 @@ export class VoximGame {
         break;
       }
 
+      case "debug_scene_census":
+        this.renderer?.logSceneCensus();
+        break;
+
       case "debug_give_item":
         this._sendCommand({ cmd: CommandType.DebugGiveItem, itemType: action.itemType, quantity: action.quantity });
         break;
@@ -1067,12 +1094,14 @@ export class VoximGame {
     open ? closePanel("network") : openPanel("network");
   }
 
-  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "sobel_edges"): boolean {
+  toggleDebug(layer: "skeleton" | "facing" | "chunks" | "heightmap" | "blade" | "hitbox" | "sobel_edges" | "bypass_postfx" | "shadows"): boolean {
     if (!this.renderer) return false;
     switch (layer) {
-      case "heightmap":   return this.renderer.toggleHeightDebug();
-      case "sobel_edges": return this.renderer.toggleSobelEdges();
-      default:            return this.renderer.debugOverlayManager.toggle(layer);
+      case "heightmap":     return this.renderer.toggleHeightDebug();
+      case "sobel_edges":   return this.renderer.toggleSobelEdges();
+      case "bypass_postfx": return this.renderer.toggleBypassPostFX();
+      case "shadows":       return this.renderer.toggleShadows();
+      default:              return this.renderer.debugOverlayManager.toggle(layer);
     }
   }
 
