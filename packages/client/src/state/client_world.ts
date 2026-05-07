@@ -8,7 +8,7 @@ import type { BinaryComponentDelta, BinaryEntitySpawn, WorldSnapshot } from "@vo
 import { ComponentType, COMPONENT_TYPE_TO_NAME } from "@voxim/protocol";
 import {
   positionCodec, velocityCodec, facingCodec,
-  heightmapCodec, materialGridCodec, openMaskCodec,
+  heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
   staminaCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
   blueprintCodec, lightEmitterCodec, darknessModifierCodec,
   staggeredCodec, counterReadyCodec,
@@ -19,7 +19,7 @@ import {
   gateLinkCodec,
 } from "@voxim/codecs";
 import type {
-  HeightmapData, MaterialGridData, OpenMaskData, ModelRefData, AnimationStateData,
+  HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
   StaggeredData, CounterReadyData,
   LoreLoadoutData, ActiveEffectsData,
@@ -51,6 +51,7 @@ export interface EntityState {
   heightmap?: HeightmapData;
   materialGrid?: MaterialGridData;
   openMask?: OpenMaskData;
+  kindGrid?: KindGridData;
   modelRef?: ModelRefData;
   animationState?: AnimationStateData;
   equipment?: EquipmentData;
@@ -99,11 +100,40 @@ export class ClientWorld {
    */
   private readonly chunkOpenMasks = new Map<string, Uint8Array>();
   /**
+   * KindGrid data indexed by "chunkX,chunkY". Drives client-side
+   * decoration of closed cells (forest pixels render trees, stone
+   * pixels render rocks, …) so trees etc. don't have to exist as
+   * server entities. Same key convention as the heightmap/openMask.
+   */
+  private readonly chunkKinds = new Map<string, Uint16Array>();
+  /**
    * Reverse map: chunk entityId → "chunkX,chunkY". Lets us index the
-   * OpenMask delivery (which doesn't carry chunkX/chunkY itself) into
-   * chunkOpenMasks via the chunk's already-known heightmap key.
+   * OpenMask / KindGrid deliveries (which don't carry chunkX/chunkY
+   * themselves) into the per-coord caches via the chunk's already-known
+   * heightmap key.
    */
   private readonly chunkCoordByEntity = new Map<string, string>();
+  /**
+   * Listeners notified after a chunk gains both its heightmap (so we
+   * know the coord) and its kindGrid (so renderers have something to
+   * decorate). Renderers register here to spawn forest/rock props on
+   * demand instead of polling.
+   */
+  private readonly kindListeners: Array<(coord: string, kinds: Uint16Array) => void> = [];
+
+  onChunkKinds(listener: (coord: string, kinds: Uint16Array) => void): void {
+    this.kindListeners.push(listener);
+    // Replay any chunks already loaded so a late-registered renderer
+    // catches up without waiting for the next delta.
+    for (const [coord, data] of this.chunkKinds) listener(coord, data);
+  }
+
+  private bindKinds(coord: string, data: Uint16Array): void {
+    const prev = this.chunkKinds.get(coord);
+    if (prev === data) return;
+    this.chunkKinds.set(coord, data);
+    for (const fn of this.kindListeners) fn(coord, data);
+  }
 
   private applyComponentData(
     entity: EntityState,
@@ -155,6 +185,7 @@ export class ClientWorld {
         // If the openMask arrived earlier on this same entity but its
         // chunk coord wasn't known yet, bind it now.
         if (entity.openMask) this.chunkOpenMasks.set(key, entity.openMask.data);
+        if (entity.kindGrid) this.bindKinds(key, entity.kindGrid.data);
         break;
       }
       case ComponentType.materialGrid:
@@ -169,6 +200,15 @@ export class ClientWorld {
         // entity.openMask back-reference.
         const key = this.chunkCoordByEntity.get(entityId);
         if (key) this.chunkOpenMasks.set(key, om.data);
+        break;
+      }
+      case ComponentType.kindGrid: {
+        const kg = kindGridCodec.decode(data);
+        entity.kindGrid = kg;
+        // Same back-reference dance as openMask: bind once we know the
+        // chunk coord, otherwise the heightmap branch will pick it up.
+        const key = this.chunkCoordByEntity.get(entityId);
+        if (key) this.bindKinds(key, kg.data);
         break;
       }
       case ComponentType.modelRef:
@@ -345,6 +385,7 @@ export class ClientWorld {
     this.entities.clear();
     this.chunkHeightmaps.clear();
     this.chunkOpenMasks.clear();
+    this.chunkKinds.clear();
     this.chunkCoordByEntity.clear();
   }
 }

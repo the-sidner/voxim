@@ -151,6 +151,28 @@ export const openMaskCodec: Serialiser<OpenMaskData> = {
   },
 };
 
+// ---- KindGrid ---- 2048 bytes (1024 × u16)
+
+export interface KindGridData {
+  /**
+   * Per-cell boundary kind id from atlas's BOUNDARY_KIND_* set. Same
+   * row-major layout as HeightmapData.data. 0 = open / un-tagged.
+   * Drives client-side decoration (trees on FOREST, etc.) without
+   * needing per-tree server entities.
+   */
+  data: Uint16Array;
+}
+
+export const kindGridCodec: Serialiser<KindGridData> = {
+  encode(data: KindGridData): Uint8Array {
+    return new Uint8Array(data.data.buffer, data.data.byteOffset, CHUNK_CELLS * 2);
+  },
+  decode(bytes: Uint8Array): KindGridData {
+    const copy = bytes.slice(0, CHUNK_CELLS * 2);
+    return { data: new Uint16Array(copy.buffer, copy.byteOffset, CHUNK_CELLS) };
+  },
+};
+
 // ============================================================================
 // Game component binary layouts.
 // All use WireWriter / WireReader (little-endian, no JSON, no base64).

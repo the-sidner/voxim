@@ -14,6 +14,7 @@ import * as THREE from "three";
 import type { ModelDefinition, MaterialDef, ResolvedSubObject } from "@voxim/content";
 import { vertexDisp } from "./displacement.ts";
 import { getVoxelTexture } from "./material_textures.ts";
+import { canopyFade } from "./canopy_fade.ts";
 
 /** Maximum instances per (subModel × material × scale) slot. */
 const MAX_SLOTS = 4096;
@@ -36,7 +37,7 @@ function makeKey(modelId: string, matId: number, sx: number, sy: number, sz: num
  * model definition.  Vertex displacement is seeded from local (model-space)
  * position — identical for every instance placed in the world.
  */
-function buildSubModelGeo(
+export function buildSubModelGeo(
   nodes: ModelDefinition["nodes"],
   materialId: number,
   scale: { x: number; y: number; z: number },
@@ -79,6 +80,20 @@ function buildLocalDispGeo(
   pos.needsUpdate = true;
   geo.computeVertexNormals();
   geo.translate(px, py, pz); // move to voxel center in model space
+
+  // Tag every vertex with the voxel's centre in model space. Shaders that
+  // want per-voxel effects (e.g. forest canopy fade that pops voxels in
+  // and out as units instead of slicing them mid-face) read this varying
+  // instead of the per-fragment world position.
+  const vCount = pos.count;
+  const centers = new Float32Array(vCount * 3);
+  for (let i = 0; i < vCount; i++) {
+    centers[i * 3]     = px;
+    centers[i * 3 + 1] = py;
+    centers[i * 3 + 2] = pz;
+  }
+  geo.setAttribute("voxelCenter", new THREE.BufferAttribute(centers, 3));
+
   return geo;
 }
 
@@ -92,13 +107,15 @@ function mergeGeos(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
   const positions = new Float32Array(totalVerts * 3);
   const normals   = new Float32Array(totalVerts * 3);
   const uvs       = new Float32Array(totalVerts * 2);
+  const centers   = new Float32Array(totalVerts * 3);
   const indices   = totalIdx > 0 ? new Uint32Array(totalIdx) : null;
 
   let vOff = 0, iOff = 0;
   for (const g of geos) {
-    const pa = g.getAttribute("position") as THREE.BufferAttribute;
-    const na = g.getAttribute("normal")   as THREE.BufferAttribute;
-    const ua = g.getAttribute("uv")       as THREE.BufferAttribute | undefined;
+    const pa = g.getAttribute("position")    as THREE.BufferAttribute;
+    const na = g.getAttribute("normal")      as THREE.BufferAttribute;
+    const ua = g.getAttribute("uv")          as THREE.BufferAttribute | undefined;
+    const ca = g.getAttribute("voxelCenter") as THREE.BufferAttribute | undefined;
     for (let i = 0; i < pa.count; i++) {
       positions[(vOff + i) * 3    ] = pa.getX(i);
       positions[(vOff + i) * 3 + 1] = pa.getY(i);
@@ -108,6 +125,9 @@ function mergeGeos(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
       normals  [(vOff + i) * 3 + 2] = na.getZ(i);
       uvs      [(vOff + i) * 2    ] = ua ? ua.getX(i) : 0;
       uvs      [(vOff + i) * 2 + 1] = ua ? ua.getY(i) : 0;
+      centers  [(vOff + i) * 3    ] = ca ? ca.getX(i) : 0;
+      centers  [(vOff + i) * 3 + 1] = ca ? ca.getY(i) : 0;
+      centers  [(vOff + i) * 3 + 2] = ca ? ca.getZ(i) : 0;
     }
     if (g.index && indices) {
       for (let i = 0; i < g.index.count; i++) {
@@ -119,9 +139,10 @@ function mergeGeos(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
   }
 
   const out = new THREE.BufferGeometry();
-  out.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  out.setAttribute("normal",   new THREE.BufferAttribute(normals,   3));
-  out.setAttribute("uv",       new THREE.BufferAttribute(uvs,       2));
+  out.setAttribute("position",    new THREE.BufferAttribute(positions, 3));
+  out.setAttribute("normal",      new THREE.BufferAttribute(normals,   3));
+  out.setAttribute("uv",          new THREE.BufferAttribute(uvs,       2));
+  out.setAttribute("voxelCenter", new THREE.BufferAttribute(centers,   3));
   if (indices) out.setIndex(new THREE.BufferAttribute(indices, 1));
   return out;
 }
@@ -324,6 +345,10 @@ export class PropInstancePool {
       shininess,
       emissive,
     });
+    // Camera-occlusion fade: above the player and inside the camera-to-
+    // player blob, voxels pop out as discrete blocks. Prop geometry has
+    // the `voxelCenter` attribute baked in by buildLocalDispGeo.
+    canopyFade.register(mat, { voxelMode: true });
 
     const mesh = new THREE.InstancedMesh(geo, mat, MAX_SLOTS);
     mesh.count = 0;

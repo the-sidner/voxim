@@ -51,6 +51,7 @@ export const ComponentType = {
   provenance:         40,
   gateLink:           41,
   openMask:           42,
+  kindGrid:           43,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

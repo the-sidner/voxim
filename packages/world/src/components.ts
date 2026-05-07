@@ -5,11 +5,11 @@
  * as players, NPCs, and items.
  */
 import { defineComponent } from "@voxim/engine";
-import { heightmapCodec, materialGridCodec, openMaskCodec } from "@voxim/codecs";
-import type { HeightmapData, MaterialGridData, OpenMaskData } from "@voxim/codecs";
+import { heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec } from "@voxim/codecs";
+import type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData } from "@voxim/codecs";
 import { ComponentType } from "@voxim/protocol";
 
-export type { HeightmapData, MaterialGridData, OpenMaskData };
+export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData };
 
 const CHUNK_CELLS = 32 * 32;
 
@@ -66,5 +66,24 @@ export const OpenMask = defineComponent({
     // Default: every cell open — a default chunk doesn't block anything
     // until terrain authoring (atlas) writes a real mask.
     data: new Uint8Array(CHUNK_CELLS).fill(1),
+  }),
+});
+
+/**
+ * KindGrid component — per-cell boundary kind id (atlas's BOUNDARY_KIND_*).
+ *
+ * Lets the client decorate forest / stone / water / etc. boundaries
+ * locally without needing per-tree server entities. Server still gates
+ * collision via OpenMask; KindGrid is purely a visual descriptor.
+ *
+ * Networked so the client can render decoration off the same chunk data
+ * tile-server holds (no parallel atlas-fetch path on the client side).
+ */
+export const KindGrid = defineComponent({
+  name: "kindGrid" as const,
+  wireId: ComponentType.kindGrid,
+  codec: kindGridCodec,
+  default: (): KindGridData => ({
+    data: new Uint16Array(CHUNK_CELLS),  // 0 = OPEN
   }),
 });

@@ -4,7 +4,7 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
-import { Heightmap, MaterialGrid, OpenMask } from "./components.ts";
+import { Heightmap, MaterialGrid, OpenMask, KindGrid } from "./components.ts";
 import { CHUNK_SIZE } from "./terrain.ts";
 
 const CHUNK_CELLS = CHUNK_SIZE * CHUNK_SIZE;
@@ -31,6 +31,11 @@ export function createChunk(world: World, chunkX: number, chunkY: number): Entit
   // Default-open: a chunk without a written openMask doesn't block anything.
   world.write(id, OpenMask, {
     data: new Uint8Array(CHUNK_CELLS).fill(1),
+  });
+
+  // Default-untagged: 0 = OPEN. Decoration renderer skips these.
+  world.write(id, KindGrid, {
+    data: new Uint16Array(CHUNK_CELLS),
   });
 
   return id;
@@ -74,4 +79,18 @@ export function setChunkOpenness(
   const existing = world.get(chunkId, OpenMask);
   if (!existing) throw new Error(`setChunkOpenness: chunk ${chunkId} has no OpenMask`);
   world.write(chunkId, OpenMask, { ...existing, data: open });
+}
+
+/**
+ * Overwrite a chunk's kindGrid via immediate write. Each cell carries a
+ * BOUNDARY_KIND_* id from atlas's set; 0 = OPEN.
+ */
+export function setChunkKinds(
+  world: World,
+  chunkId: EntityId,
+  kinds: Uint16Array,
+): void {
+  const existing = world.get(chunkId, KindGrid);
+  if (!existing) throw new Error(`setChunkKinds: chunk ${chunkId} has no KindGrid`);
+  world.write(chunkId, KindGrid, { ...existing, data: kinds });
 }

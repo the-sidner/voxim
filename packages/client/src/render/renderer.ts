@@ -210,7 +210,7 @@ export class VoximRenderer {
   private readonly terrainHmaps   = new Map<string, HeightmapData>();
   private readonly terrainMats    = new Map<string, MaterialGridData>();
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
-  private readonly propPool: PropInstancePool;
+  readonly propPool: PropInstancePool;
   private readonly propPositions  = new Map<string, THREE.Vector3>();
 
   readonly debugOverlayManager: DebugOverlayManager;

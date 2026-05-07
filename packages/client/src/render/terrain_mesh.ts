@@ -23,6 +23,7 @@
 import * as THREE from "three";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import { vertexDisp } from "./displacement.ts";
+import { canopyFade } from "./canopy_fade.ts";
 
 const CHUNK = 32;
 
@@ -238,6 +239,10 @@ export function buildTerrainMesh(
     shininess:    0,
     side:         THREE.DoubleSide,
   });
+  // Same camera-occlusion fade as forest trees: above the player and inside
+  // the camera-to-player blob → discard. Terrain is smooth (no per-voxel
+  // attribute), so it uses the per-fragment world-position branch.
+  canopyFade.register(mat, { voxelMode: false });
 
   if (existing) {
     existing.geometry.dispose();

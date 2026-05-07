@@ -20,7 +20,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
-import { Heightmap, MaterialGrid, OpenMask } from "@voxim/world";
+import { Heightmap, KindGrid, MaterialGrid, OpenMask } from "@voxim/world";
 import {
   AnimationState,
   Facing,
@@ -103,6 +103,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // both server and client (predictor). Networked so client doesn't have
   // to rubber-band on boundaries that lack a heightmap step (vegetation).
   OpenMask,
+  // KindGrid: per-cell boundary kind (forest/stone/water/grass mound).
+  // Lets the client decorate the closed pixels (forest tiles → trees,
+  // stone tiles → rocks) without server entities.
+  KindGrid,
   Position,
   Velocity,
   Facing,

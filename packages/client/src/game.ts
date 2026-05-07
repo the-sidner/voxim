@@ -21,6 +21,8 @@ import { ContentCache } from "./state/content_cache.ts";
 import { VoximRenderer } from "./render/renderer.ts";
 import { BuildGhostRenderer } from "./render/build_ghost.ts";
 import { HoverOutlineRenderer } from "./render/hover_outline.ts";
+import { ForestPropsRenderer } from "./render/forest_props.ts";
+import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
 import { makeWorkstationHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
@@ -89,6 +91,7 @@ export class VoximGame {
   private interactionSystem: InteractionSystem | null = null;
   private buildGhost: BuildGhostRenderer | null = null;
   private hoverOutline: HoverOutlineRenderer | null = null;
+  private forestProps: ForestPropsRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
@@ -216,6 +219,15 @@ export class VoximGame {
     // Hover outline — subscribes to hoverState; decides outline tint per
     // entity category and feeds the silhouette into the EdgePass mask.
     this.hoverOutline = new HoverOutlineRenderer(this.renderer, this.world);
+
+    // Forest decoration — subscribes to chunk KindGrid arrivals and spawns
+    // synthetic tree props at every FOREST pixel via the same instanced
+    // pool the regular entity props use. Entirely client-side; the server
+    // never carries individual tree entities. Replays already-loaded chunks
+    // on registration so chunks that arrived during connect() get decorated.
+    this.forestProps = new ForestPropsRenderer(
+      this.renderer.scene, this.content, this.world,
+    );
 
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
@@ -486,6 +498,7 @@ export class VoximGame {
 
     // Wipe per-tile state. The renderer instance is kept; only its scene
     // contents go.
+    this.forestProps?.reset();
     this.world.clear();
     this.renderer?.clearWorld();
     this.terrainChunksReceived = 0;
@@ -567,6 +580,20 @@ export class VoximGame {
         cursorCellState.value = cell;
       }
     }
+    // Camera-occlusion fade — push the player's world position into the
+    // shared canopyFade uniforms so every registered material (forest,
+    // terrain, props) fades anything above the player along the camera
+    // line of sight. Use the predicted position when available so the
+    // fade tracks smooth client motion rather than the 20Hz snapshot.
+    if (this.playerId && this.renderer) {
+      const px = predictedPos?.x ?? this.world.get(this.playerId)?.position?.x;
+      const py = predictedPos?.y ?? this.world.get(this.playerId)?.position?.y;
+      const pz = predictedPos?.z ?? this.world.get(this.playerId)?.position?.z;
+      if (px !== undefined && py !== undefined && pz !== undefined) {
+        canopyFade.update(px, py, pz, this.renderer.camera);
+      }
+    }
+
     this.renderer?.render(this.serverTick, predictedPos);
 
     // Update world-space entity health bars + gate labels (frame-driven, not reactive)
@@ -1018,8 +1045,14 @@ export class VoximGame {
     Promise.all([...modelIds].map((id) => content.prefetchModel(id))).then(() => {
       console.log(`[Game] models ready — dismissing loading screen`);
       patchUI({ loading: false });
+      // Forest decoration was deferred during loading — running it then
+      // would have starved the WebTransport read loop and stalled chunk
+      // delivery. Now that the screen is gone and the message stream is
+      // quiet, drain the queued chunks across animation frames.
+      this.forestProps?.start();
     }).catch(() => {
       patchUI({ loading: false });
+      this.forestProps?.start();
     });
   }
 
@@ -1035,6 +1068,7 @@ export class VoximGame {
     this.buildGhost = null;
     this.hoverOutline?.dispose();
     this.hoverOutline = null;
+    this.forestProps = null;
     this.inputCapture?.dispose();
     this.inputCapture = null;
     this.input = null;

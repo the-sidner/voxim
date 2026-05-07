@@ -20,11 +20,10 @@ import {
   tileInitFromWire,
   upsampleTile,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
-  BOUNDARY_KIND_FOREST,
+  MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
   type TileInitWire,
 } from "@voxim/atlas";
 import { TILE_SIZE } from "@voxim/world";
-import { spawnPrefab } from "./spawner.ts";
 
 export interface AtlasTerrainResult {
   heightBuffer: Float32Array;
@@ -105,14 +104,24 @@ function buildMaterialMap(content: ContentStore): {
     return m.id;
   };
   const map = new Map<number, number>();
-  map.set(MATERIAL_GRASS, byName("grass"));
-  map.set(MATERIAL_DIRT,  byName("dirt"));
-  map.set(MATERIAL_STONE, byName("stone"));
-  map.set(MATERIAL_SAND,  byName("sand"));
+  map.set(MATERIAL_GRASS,  byName("grass"));
+  map.set(MATERIAL_DIRT,   byName("dirt"));
+  map.set(MATERIAL_STONE,  byName("stone"));
+  map.set(MATERIAL_SAND,   byName("sand"));
+  map.set(MATERIAL_GRAVEL, byName("gravel"));
+  map.set(MATERIAL_MUD,    byName("mud"));
+  map.set(MATERIAL_SNOW,   byName("snow"));
+  // No dedicated "moss" content material yet — closest neighbour visually
+  // is dark grass; falling back to grass keeps green patches readable.
+  map.set(MATERIAL_MOSS,   byName("grass"));
+  // Carved paths read as worn earth — gravel gives the trodden-trail feel
+  // without needing a new content asset. If we add a "path"/"clay"
+  // material later this is the place to switch it on.
+  map.set(MATERIAL_PATH,   byName("gravel"));
   // Atlas's WATER falls back to mud — content has no water material yet.
   // When phase 4 boundary kinds land, water boundaries will own their own
   // visual instead of leaning on the ground material.
-  map.set(MATERIAL_WATER, byName("mud"));
+  map.set(MATERIAL_WATER,  byName("mud"));
   return { materialMap: map, defaultMaterialId: byName("dirt") };
 }
 
@@ -196,65 +205,3 @@ export async function loadTerrainFromAtlas(
   };
 }
 
-/**
- * Spawn boundary entities for kinds that render as world objects.
- * FOREST wall pixels get a `tree` prefab on a fixed-stride grid; the stride
- * comes from the world's persisted GenParams so designers can dial forest
- * density per-world via the inspector. STONE and GRASS_MOUND walls are
- * pure terrain (visual differentiation by material on top of the raised
- * step); WATER is the openMask + river system.
- */
-
-const FALLBACK_TREE_STRIDE = 6;
-
-export function spawnBoundaryEntities(
-  world: World,
-  kindBuffer: Uint16Array,
-  content: ContentStore,
-  groundHeightAt: (x: number, y: number) => number,
-  worldParams?: Record<string, unknown>,
-): { trees: number } {
-  // Pull the knob out of the persisted params blob (atlas's GenParams shape).
-  const kindsParams = (worldParams?.kinds as Record<string, unknown> | undefined);
-  const stride = clampStride(
-    typeof kindsParams?.forestDensityStride === "number"
-      ? kindsParams.forestDensityStride
-      : FALLBACK_TREE_STRIDE,
-  );
-
-  let trees = 0;
-  for (let y = stride / 2 | 0; y < TILE_SIZE; y += stride) {
-    for (let x = stride / 2 | 0; x < TILE_SIZE; x += stride) {
-      const idx = y * TILE_SIZE + x;
-      if (kindBuffer[idx] !== BOUNDARY_KIND_FOREST) continue;
-      const z = groundHeightAt(x, y);
-      // Deterministic per-tree variation: hash position into a u32. Top
-      // bits drive the model-displacement seed (vertices wobble per-tree).
-      // Bottom bits drive the y-axis rotation (radians). Same prefab +
-      // scale → all trees still batch into ONE InstancedMesh draw call on
-      // the client; per-instance matrix carries the rotation, per-instance
-      // vertex displacement carries the wobble.
-      const h = hash2u(x, y);
-      const seed   = h >>> 16;
-      const facing = ((h & 0xFFFF) / 0xFFFF) * Math.PI * 2;
-      spawnPrefab(world, content, "tree", { x, y, z, seed, facing });
-      trees++;
-    }
-  }
-  return { trees };
-}
-
-function hash2u(x: number, y: number): number {
-  let n = ((x * 1619) ^ (y * 31337) ^ 0x9E3779B1) | 0;
-  n = ((n << 13) ^ n) | 0;
-  n = (n * ((n * n * 15731 + 789221) | 0) + 1376312589) | 0;
-  return n >>> 0;
-}
-
-function clampStride(s: number): number {
-  // A stride below 2 puts trees on every pixel — would crash tile-server's
-  // entity load. Clamp to keep dev-tweaks safe.
-  if (!Number.isFinite(s) || s < 2) return 2;
-  if (s > 64) return 64;
-  return Math.floor(s);
-}

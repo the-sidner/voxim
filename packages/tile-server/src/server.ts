@@ -18,9 +18,9 @@ import type { EntityId, ChangesetSet } from "@voxim/engine";
 import type { AtlasTileInitRepo, AtlasWorldRepo, TileSaveRepo, WorldsRepo } from "@voxim/db";
 import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
-import { chunksFromBuffers, TILE_SIZE as WORLD_TILE_SIZE } from "@voxim/world";
+import { chunksFromBuffers } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
-import { loadTerrainFromAtlas, spawnBoundaryEntities } from "./atlas_terrain.ts";
+import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
 import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
@@ -475,25 +475,19 @@ export class TileServer {
       console.log(
         `[TileServer] atlas terrain loaded: cell (${atlas.cellX},${atlas.cellY}) seed=${atlas.tileSeed}`,
       );
-      chunksFromBuffers(this.world, atlas.heightBuffer, atlas.materialBuffer, atlas.openBuffer);
+      chunksFromBuffers(
+        this.world,
+        atlas.heightBuffer,
+        atlas.materialBuffer,
+        atlas.openBuffer,
+        atlas.kindBuffer,
+      );
       this.spawnWorldState(content);
 
-      // Spawn the entity-side of boundary kinds (trees in vegetation
-      // patches, etc.) on top of the now-populated chunks. heightBuffer
-      // is row-major TILE_SIZE² so a flat index lookup gives us ground Z
-      // for tree placement.
-      const sampleHeight = (x: number, y: number): number => {
-        const ix = Math.max(0, Math.min(WORLD_TILE_SIZE - 1, Math.floor(x)));
-        const iy = Math.max(0, Math.min(WORLD_TILE_SIZE - 1, Math.floor(y)));
-        return atlas.heightBuffer[iy * WORLD_TILE_SIZE + ix];
-      };
-      const boundaries = spawnBoundaryEntities(
-        this.world, atlas.kindBuffer, content, sampleHeight,
-        atlas.world.params as Record<string, unknown>,
-      );
-      if (boundaries.trees > 0) {
-        console.log(`[TileServer] spawned ${boundaries.trees} boundary trees`);
-      }
+      // Boundary decoration (forest trees, stone debris, …) is purely
+      // visual and lives client-side now: KindGrid is networked so the
+      // client decorates closed pixels itself. Server keeps no per-tree
+      // entities — collision is handled by OpenMask in stepPhysics.
     }
 
     const procedural = new ProceduralSpawner(this.world, content, zoneGrid, tileSeed);
