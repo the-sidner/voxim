@@ -1,0 +1,35 @@
+# Voxim2 — Caddy reverse proxy.
+#
+# Terminates HTTPS at the edge so the page is delivered in a Secure Context
+# (browser requirement for the WebTransport API). Auto-HTTPS via Let's
+# Encrypt — Caddy provisions and renews the cert on its own.
+#
+# Routing on the public hostname:
+#   /gateway/*  → gateway:8081  (POST /gateway/connect)
+#   /account/*  → gateway:8081  (login/register/logout/me)
+#   everything else → client-dev:3000  (HTML + dist/game.js + assets)
+#
+# Server-to-server gateway routes (/register, /heartbeat, /handoff,
+# /internal/*) are NOT exposed here — they ride the internal docker
+# network only.
+#
+# Required env (passed in via docker-compose):
+#   VOXIM_DOMAIN   public DNS name, e.g. voxim.example.com
+#   ACME_EMAIL     contact email for Let's Encrypt (optional but recommended)
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$VOXIM_DOMAIN} {
+	encode gzip zstd
+
+	@api path /gateway/* /account/*
+	handle @api {
+		reverse_proxy gateway:8081
+	}
+
+	handle {
+		reverse_proxy client-dev:3000
+	}
+}

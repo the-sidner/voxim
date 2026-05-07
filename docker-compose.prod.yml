@@ -17,16 +17,25 @@
 #   GATEWAY_URL, GATEWAY_WT_URL, HOST_ADDR, WORLD_SEED
 #
 # Network exposure model:
-#   - Public surface (BIND_IP, default 0.0.0.0): gateway HTTP 8081/tcp,
-#     gateway WebTransport 8080/udp, tile-N WebTransport 4433-4436/udp,
-#     client-dev 3000/tcp.
+#   - Public surface (BIND_IP, default 0.0.0.0):
+#       caddy 80/tcp + 443/tcp (HTTPS edge for client + /gateway + /account)
+#       tile-N WebTransport 4433-4436/udp (browser direct WT to tile)
 #   - Loopback only (127.0.0.1): atlas 8082, coordinator 8083, tile-N
 #     admin 14433-14436. Reach these via SSH tunnel.
-#   - Not published at all: postgres. Other services reach it via the
-#     internal docker network at host `postgres:5432`. For an admin
-#     `psql` use `docker compose exec postgres psql -U voxim`.
+#   - Not published at all: postgres, gateway HTTP 8081, gateway WT 8080,
+#     client-dev 3000. They ride the internal docker network.
+#       - postgres reachable as `postgres:5432` from the other services.
+#       - gateway 8081 is reverse-proxied by Caddy; gateway 8080/udp is the
+#         server-to-server stream (tile + coordinator → gateway), browsers
+#         never touch it.
+#       - client-dev 3000 is reverse-proxied by Caddy.
+#   For an admin `psql` use `docker compose exec postgres psql -U voxim`.
 # Set BIND_IP in `.env` to a specific public IP if the host has multiple
 # interfaces and you only want voxim on one of them.
+#
+# Required `.env` entries beyond the base:
+#   VOXIM_DOMAIN   public DNS name, e.g. voxim.4npserver.com
+#   ACME_EMAIL     Let's Encrypt contact email (recommended)
 #
 # Bring up:    docker compose -f docker-compose.prod.yml --env-file .env up -d
 # Roll fwd:    VOXIM_TAG=sha-abc123def456 docker compose -f docker-compose.prod.yml pull \
@@ -106,11 +115,31 @@ services:
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
       TLS_CERT: /app/certs/cert.pem
       TLS_KEY: /app/certs/key.pem
-    ports:
-      - "${BIND_IP:-0.0.0.0}:8081:8081"
-      - "${BIND_IP:-0.0.0.0}:8080:8080/udp"
+    # No host port. 8081 is reverse-proxied by Caddy; 8080/udp is the
+    # privileged server-to-server WebTransport stream (tile + coordinator
+    # → gateway), reachable inside the docker network only.
     volumes:
       - voxim-certs:/app/certs:ro
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      gateway:
+        condition: service_started
+      client-dev:
+        condition: service_started
+    environment:
+      VOXIM_DOMAIN: ${VOXIM_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "${BIND_IP:-0.0.0.0}:80:80"
+      - "${BIND_IP:-0.0.0.0}:443:443"
+      - "${BIND_IP:-0.0.0.0}:443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - voxim-caddy-data:/data
+      - voxim-caddy-config:/config
     restart: unless-stopped
 
   coordinator:
@@ -236,10 +265,12 @@ services:
 
   client-dev:
     image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/client-dev:${VOXIM_TAG:-latest}
-    ports:
-      - "${BIND_IP:-0.0.0.0}:3000:3000"
+    # No host port. Caddy reverse-proxies port 3000 from inside the docker
+    # network and serves the bundle to the public over HTTPS.
     restart: unless-stopped
 
 volumes:
   voxim-pg-data:
   voxim-certs:
+  voxim-caddy-data:
+  voxim-caddy-config:

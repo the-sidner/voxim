@@ -9,9 +9,12 @@
  *   Gateway (production):
  *     3. globalThis.VOXIM_GATEWAY_URL  — set by parent application before loading
  *     4. ?gateway=<url>                — URL query param
- *     5. <page protocol>//<page hostname>:8081 — same-origin default. Works
- *        for local dev (http://localhost:3000 → http://localhost:8081) and
- *        any prod host where gateway is reachable on the page's hostname.
+ *     5. Default depends on page protocol:
+ *          - https: same origin (e.g. https://voxim.example.com).
+ *            Production behind a TLS-terminating reverse proxy (Caddy) that
+ *            exposes /gateway/* and /account/* on the same host:443.
+ *          - http:  <protocol>//<hostname>:8081.
+ *            Local dev hitting the gateway directly on its own port.
  *
  * In direct tile mode the cert hash is resolved as:
  *     1. globalThis.VOXIM_CERT_HASH    — hex string, set by embedding page
@@ -72,7 +75,9 @@ addEventListener("resize", () => {
     const gatewayUrl: string =
       (g.VOXIM_GATEWAY_URL as string | undefined) ??
       params.get("gateway") ??
-      `${location.protocol}//${location.hostname}:8081`;
+      (location.protocol === "https:"
+        ? location.origin
+        : `${location.protocol}//${location.hostname}:8081`);
 
     console.log(`[Voxim] gateway mode → ${gatewayUrl}`);
 
