@@ -1439,6 +1439,35 @@ Done when: explore part of a tile, log out, log back in, the explored
 area is immediately visible on join.  Tile-server logs `fog restored`
 on hydration and surfaces save errors without blocking disconnect cleanup.
 
+### T-162 · Geometric edge detection in `EdgePass`
+Effort: S   Status: done
+
+The Sobel pass in `edge_pass.ts` ran on luminance, normalised by local
+mean brightness so day/night fired equally hard.  Side effect: the
+±8 % per-cell brightness hash on terrain (`cellVariation` in
+`terrain_mesh.ts`) became visible as diagonal dot rows on flat ground —
+the normalised gradient on dark cells easily cleared `lumThreshold`,
+and the 1-unit cell grid projects to ≈45° under the isometric camera.
+
+Replaced with a depth-only detector that ignores colour entirely:
+  - Sobel on linearised view-space depth (= -view.z), normalised by
+    centre depth so a 1-unit step looks the same near and far —
+    catches silhouettes against the background and terrain height steps.
+  - 1 - cos(angle) between four "quadrant" view-space normals
+    reconstructed via cross-products of asymmetric position derivatives
+    (R/L × U/D) — catches creases between faces of different orientation.
+  - `max(edgeD, edgeN) * edgeStrength` — whichever fires harder wins.
+  - Sky pixels (depth ≥ 0.9999) skip the whole block; `vpos()` would
+    explode there.
+
+Tunables on the material are now `uDepthThreshold` (default 0.04 ≈
+1-unit z-step at typical cam distance) and `uNormalThreshold` (default
+0.10 ≈ 25° crease).  `lumThreshold` and the `luma()` helper are gone;
+no other code referenced them.
+
+Done when: flat terrain has no diagonal artifact rows, but building
+silhouettes, terrain height steps, and corner creases still outline.
+
 ---
 
 ## Player UX

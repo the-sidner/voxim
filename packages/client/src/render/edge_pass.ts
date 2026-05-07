@@ -1,10 +1,15 @@
 /**
- * Screen-space post-process pass: Sobel edge detection + height AO + hover
+ * Screen-space post-process pass: geometric edge detection + height AO + hover
  * silhouette outline + fog-of-war modulation + sRGB output.
  *
- * Uses a normalised luminance Sobel: the gradient is divided by the local mean
- * brightness, so edges fire at consistent strength across day/night cycles and
- * on dark surfaces (terrain faces, midnight shadows, etc.).
+ * Edges are detected from the depth buffer alone — independent of vertex colour,
+ * lighting, fog, or material. Two signals are combined:
+ *   - Sobel on linearised depth (silhouettes, terrain height steps),
+ *   - 1 - cos(angle) between four "quadrant" view-space normals reconstructed
+ *     from depth derivatives (creases between faces of different orientation).
+ * Whichever fires harder wins. This avoids the colour-Sobel artifacts where
+ * per-cell brightness hashes on flat ground produced diagonal dot rows under
+ * the isometric camera.
  *
  * Hover outline: HoverOutlineRenderer paints the hovered entity onto a separate
  * mask texture (hoverMaskTarget), depth-test off so the silhouette is visible
@@ -48,13 +53,18 @@ const FRAG = /* glsl */`
   uniform vec2      texelSize;
   uniform float     edgeStrength;
   uniform vec3      edgeColor;
-  uniform float     lumThreshold;
+  uniform float     uDepthThreshold;     // depth Sobel / depth — fires on silhouettes & height steps
+  uniform float     uNormalThreshold;    // 1 - cos(angle) between quadrant normals — fires on creases
   uniform float     uHoverActive;
   uniform vec3      uHoverColor;
   uniform float     uHoverRadius;
 
-  float luma(vec3 c) {
-    return dot(c, vec3(0.2126, 0.7152, 0.0722));
+  // View-space position from a (uv, raw-depth) sample. Garbage at the far
+  // plane (w → 0); callers must skip sky pixels via the depth >= 0.9999 test.
+  vec3 vpos(vec2 uv, float d) {
+    vec4 ndc = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vec4 v   = uProjInv * ndc;
+    return v.xyz / v.w;
   }
 
   // Map the packed fog enum (0 / 0.5 / 1.0 in [0,1]) to a brightness factor.
@@ -69,28 +79,68 @@ const FRAG = /* glsl */`
     vec2 uv = vUv;
     vec2 e = texelSize;
 
-    // ---- Sobel on luminance (normalised by local mean) ------------------
-    float l00 = luma(texture2D(tColor, uv + e * vec2(-1.0, -1.0)).rgb);
-    float l10 = luma(texture2D(tColor, uv + e * vec2( 0.0, -1.0)).rgb);
-    float l20 = luma(texture2D(tColor, uv + e * vec2( 1.0, -1.0)).rgb);
-    float l01 = luma(texture2D(tColor, uv + e * vec2(-1.0,  0.0)).rgb);
-    float l21 = luma(texture2D(tColor, uv + e * vec2( 1.0,  0.0)).rgb);
-    float l02 = luma(texture2D(tColor, uv + e * vec2(-1.0,  1.0)).rgb);
-    float l12 = luma(texture2D(tColor, uv + e * vec2( 0.0,  1.0)).rgb);
-    float l22 = luma(texture2D(tColor, uv + e * vec2( 1.0,  1.0)).rgb);
+    // ---- Geometry edges from depth + reconstructed view-space normal ----
+    // Two independent signals:
+    //   depthEdge  — Sobel on linearised depth (= -view.z), normalised by
+    //                centre depth so a 1-unit step looks the same near and
+    //                far. Fires on silhouettes against the background and
+    //                on terrain height steps.
+    //   normalEdge — 1 - cos(angle) between four "quadrant" normals built
+    //                from asymmetric position derivatives (R/L × U/D crosses).
+    //                On a smooth plane all four agree → ≈0; at a crease two
+    //                of them swing toward the new face → significant value.
+    // Sky pixels (depth ≥ 0.9999) are exempt: vpos() explodes there.
+    float dCC = texture2D(tDepth, uv).r;
+    float edge = 0.0;
+    if (dCC < 0.9999) {
+      float d00 = texture2D(tDepth, uv + e * vec2(-1.0, -1.0)).r;
+      float d10 = texture2D(tDepth, uv + e * vec2( 0.0, -1.0)).r;
+      float d20 = texture2D(tDepth, uv + e * vec2( 1.0, -1.0)).r;
+      float d01 = texture2D(tDepth, uv + e * vec2(-1.0,  0.0)).r;
+      float d21 = texture2D(tDepth, uv + e * vec2( 1.0,  0.0)).r;
+      float d02 = texture2D(tDepth, uv + e * vec2(-1.0,  1.0)).r;
+      float d12 = texture2D(tDepth, uv + e * vec2( 0.0,  1.0)).r;
+      float d22 = texture2D(tDepth, uv + e * vec2( 1.0,  1.0)).r;
 
-    float gxL = -l00 + l20 - 2.0*l01 + 2.0*l21 - l02 + l22;
-    float gyL = -l00 - 2.0*l10 - l20 + l02 + 2.0*l12 + l22;
-    float edgeLumAbs = sqrt(gxL*gxL + gyL*gyL);
+      vec3 pC  = vpos(uv,                          dCC);
+      vec3 pE  = vpos(uv + e * vec2( 1.0,  0.0),   d21);
+      vec3 pW  = vpos(uv + e * vec2(-1.0,  0.0),   d01);
+      vec3 pN  = vpos(uv + e * vec2( 0.0,  1.0),   d12);
+      vec3 pS  = vpos(uv + e * vec2( 0.0, -1.0),   d10);
+      vec3 pNE = vpos(uv + e * vec2( 1.0,  1.0),   d22);
+      vec3 pNW = vpos(uv + e * vec2(-1.0,  1.0),   d02);
+      vec3 pSE = vpos(uv + e * vec2( 1.0, -1.0),   d20);
+      vec3 pSW = vpos(uv + e * vec2(-1.0, -1.0),   d00);
 
-    // Normalise by local mean brightness — edges fire equally at noon and midnight.
-    float avgLuma = (l00+l10+l20+l01+l21+l02+l12+l22) / 8.0;
-    float edgeLum = edgeLumAbs / max(avgLuma, 0.001);
+      float zC = -pC.z;
 
-    float edge = clamp(
-      smoothstep(lumThreshold, lumThreshold * 2.0, edgeLum) * edgeStrength,
-      0.0, 1.0
-    );
+      // Linearised-depth Sobel.
+      float lz00 = -pSW.z, lz10 = -pS.z, lz20 = -pSE.z;
+      float lz01 = -pW.z,                lz21 = -pE.z;
+      float lz02 = -pNW.z, lz12 = -pN.z, lz22 = -pNE.z;
+      float gxZ = -lz00 + lz20 - 2.0*lz01 + 2.0*lz21 - lz02 + lz22;
+      float gyZ = -lz00 - 2.0*lz10 - lz20 + lz02 + 2.0*lz12 + lz22;
+      float depthEdge = sqrt(gxZ*gxZ + gyZ*gyZ) / max(zC, 0.001);
+
+      // Quadrant normals: each cross product mixes one horizontal derivative
+      // (right or left) with one vertical (up or down). On a smooth surface
+      // R≈L and U≈D, so all four normals coincide.
+      vec3 dxR = pE - pC, dxL = pC - pW;
+      vec3 dyU = pN - pC, dyD = pC - pS;
+      vec3 nRU = normalize(cross(dxR, dyU));
+      vec3 nLU = normalize(cross(dxL, dyU));
+      vec3 nRD = normalize(cross(dxR, dyD));
+      vec3 nLD = normalize(cross(dxL, dyD));
+      float minDot = min(
+        min(min(dot(nRU, nLU), dot(nRU, nRD)), dot(nRU, nLD)),
+        min(min(dot(nLU, nRD), dot(nLU, nLD)), dot(nRD, nLD))
+      );
+      float normalEdge = 1.0 - clamp(minDot, 0.0, 1.0);
+
+      float edgeD = smoothstep(uDepthThreshold,  uDepthThreshold  * 2.0, depthEdge);
+      float edgeN = smoothstep(uNormalThreshold, uNormalThreshold * 2.0, normalEdge);
+      edge = clamp(max(edgeD, edgeN) * edgeStrength, 0.0, 1.0);
+    }
 
     vec4 color = texture2D(tColor, uv);
 
@@ -184,9 +234,13 @@ export class EdgePass {
         uFogSeen:      { value: 0.55 },
         uFogVisible:   { value: 1.0 },
         texelSize:     { value: new THREE.Vector2(1 / width, 1 / height) },
-        edgeStrength:  { value: 1.0 },
-        edgeColor:     { value: new THREE.Color(0x0d0d0d) },
-        lumThreshold:  { value: 0.4 },
+        edgeStrength:     { value: 1.0 },
+        edgeColor:        { value: new THREE.Color(0x0d0d0d) },
+        // Tuned for the isometric camera and 1-unit voxel cells:
+        //   depthEdge of ~0.04 ≈ a 1-unit z-step at typical camera distance,
+        //   normalEdge of ~0.10 ≈ a ~25° crease (1 - cos 25° ≈ 0.094).
+        uDepthThreshold:  { value: 0.04 },
+        uNormalThreshold: { value: 0.10 },
         uHoverActive:  { value: 0.0 },
         uHoverColor:   { value: new THREE.Color().setRGB(1.0, 0.96, 0.78) },
         uHoverRadius:  { value: 2.0 },
