@@ -199,8 +199,8 @@ bootstrap();
 
 async function bootstrap() {
   [defaults, presets] = await Promise.all([
-    fetch("/genparams/defaults").then(r => r.json()).then(r => r.defaults),
-    fetch("/genparams/presets").then(r => r.json()).then(r => r.presets),
+    fetch("genparams/defaults").then(r => r.json()).then(r => r.defaults),
+    fetch("genparams/presets").then(r => r.json()).then(r => r.presets),
   ]);
   await loadActiveWorld();
   renderBakeForm();
@@ -209,7 +209,7 @@ async function bootstrap() {
 }
 
 async function loadActiveWorld() {
-  const res = await fetch("/world").then(r => r.json());
+  const res = await fetch("world").then(r => r.json());
   world = res; // { world: WorldRow, cells: [...] }
   if (world.world) {
     activeBadge.textContent =
@@ -228,7 +228,7 @@ async function loadActiveWorld() {
     formMeta = { name: "", seed: 1, width: 2, height: 2 };
   }
   // Summaries are world-scoped; reload them too.
-  const sm = (await fetch("/world/summaries").then(r => r.json())).summaries;
+  const sm = (await fetch("world/summaries").then(r => r.json())).summaries;
   summaries = new Map(sm.map(s => [`${s.cellX},${s.cellY}`, s.summary]));
   if (world.cells.length > 0) {
     worldBbox = world.cells.reduce((a, c) => ({
@@ -391,7 +391,7 @@ async function onBake() {
       name: formMeta.name || `bake-${nowSlug()}`,
       params: formParams,
     };
-    const res = await fetch("/world/bake", {
+    const res = await fetch("world/bake", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -416,7 +416,7 @@ async function awaitWorldChange(expectedId) {
   for (let i = 0; i < 30; i++) {
     await sleep(1000);
     try {
-      const r = await fetch("/world").then(r => r.json());
+      const r = await fetch("world").then(r => r.json());
       if (r.world?.id === expectedId) {
         toast("good", "New world live. Reloading…");
         await sleep(500);
@@ -437,7 +437,7 @@ function startActiveWorldPoller() {
   const initialId = world?.world?.id;
   setInterval(async () => {
     try {
-      const r = await fetch("/world").then(r => r.json());
+      const r = await fetch("world").then(r => r.json());
       if (r.world?.id && r.world.id !== initialId) location.reload();
     } catch { /* ignore */ }
   }, 10_000);
@@ -596,7 +596,7 @@ function drawConnectivityFor(c, layout) {
 async function loadTile(cellX, cellY) {
   view = "tile";
   meta.textContent = `loading tile (${cellX},${cellY})…`;
-  const res = await fetch(`/tile/${cellX}/${cellY}`);
+  const res = await fetch(`tile/${cellX}/${cellY}`);
   if (!res.ok) {
     meta.textContent = await res.text();
     return;
@@ -647,7 +647,7 @@ function renderContextTile(cellX, cellY) {
   aside.querySelector("#back").addEventListener("click", () => { location.hash = "#world"; });
   aside.querySelector("#tregen").addEventListener("click", async () => {
     meta.textContent = "regenerating tile…";
-    await fetch(`/tile/${cellX}/${cellY}/regen`, { method: "POST" });
+    await fetch(`tile/${cellX}/${cellY}/regen`, { method: "POST" });
     await loadTile(cellX, cellY);
   });
   for (const btn of aside.querySelectorAll("[data-layer]")) {
