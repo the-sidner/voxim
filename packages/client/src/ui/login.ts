@@ -13,7 +13,8 @@
  * before the game's renderer boots.
  */
 
-export const TOKEN_STORAGE_KEY = "voxim.session_token";
+export const TOKEN_STORAGE_KEY     = "voxim.session_token";
+export const LOGIN_NAME_STORAGE_KEY = "voxim.login_name";
 
 export interface LoginScreenConfig {
   /** Gateway base URL, e.g. "http://localhost:8081". */
@@ -42,6 +43,20 @@ export function clearToken(): void {
 
 export function loadToken(): string | null {
   try { return localStorage.getItem(TOKEN_STORAGE_KEY); } catch { return null; }
+}
+
+/**
+ * Cache the login name the user just authenticated with so subsequent tile
+ * connects can ship it as `displayName` in the join handshake (rendered as
+ * the floating label above the player's head). Best-effort — if storage is
+ * unavailable the label falls back to a playerId-derived stub on the server.
+ */
+export function storeLoginName(name: string): void {
+  try { localStorage.setItem(LOGIN_NAME_STORAGE_KEY, name); } catch { /* ignore */ }
+}
+
+export function loadLoginName(): string | null {
+  try { return localStorage.getItem(LOGIN_NAME_STORAGE_KEY); } catch { return null; }
 }
 
 /**
@@ -258,6 +273,7 @@ function buildRoot(gatewayUrl: string, onAuthenticated: (token: string) => void)
 
       const data = await res.json() as AuthResponse;
       storeToken(data.token);
+      storeLoginName(loginName);
       // Remove ourselves from the DOM before starting the game — the game's
       // renderer wants the canvas uncovered.
       root.remove();

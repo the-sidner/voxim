@@ -35,6 +35,7 @@ import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
 import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
+import { loadLoginName } from "./ui/login.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { EquipmentData, InventoryData, LoreLoadoutData } from "@voxim/codecs";
@@ -107,6 +108,13 @@ export class VoximGame {
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
+  /** Rolling FPS sampler — counts frames between publish ticks. */
+  private fpsFrames = 0;
+  /** Wall-clock at which the current FPS sampling window started. */
+  private fpsWindowStart = 0;
+  /** Last `onlineCount` shipped via state message; pushed to UIState as it changes. */
+  private lastOnlineCount = -1;
+
   /** Total terrain chunks expected per tile (32×32 chunks of 16×16 = 256). */
   private static readonly TOTAL_CHUNKS = 256;
 
@@ -153,7 +161,11 @@ export class VoximGame {
 
     // Step 3: connect — handlers are already wired so no messages can be dropped
     console.log(`[Game] connecting to tile ${tileAddress} as ${this.playerId.slice(0, 8)}`);
-    const assignedId = await this.connection.connect(tileAddress, this.playerId, tileToken, certHashHex);
+    const assignedId = await this.connection.connect(
+      tileAddress, this.playerId, tileToken,
+      loadLoginName() ?? "",
+      certHashHex,
+    );
     this.playerId = assignedId;
     console.log(`[Game] tile-assigned player ID: ${this.playerId}`);
     (globalThis as unknown as Record<string, unknown>)._voxim_connected = true;
@@ -279,6 +291,11 @@ export class VoximGame {
     conn.onStateMessage = (msg) => {
       this.serverTick = msg.serverTick;
       recordState(msg);
+
+      if (msg.onlineCount !== this.lastOnlineCount) {
+        this.lastOnlineCount = msg.onlineCount;
+        patchUI({ hudStats: { ...uiState.value.hudStats, onlineCount: msg.onlineCount } });
+      }
 
       // Fog of war (T-157) — server is authoritative for `seenEver`.
       // Snapshots arrive on the first state message after join (and on resync);
@@ -544,7 +561,11 @@ export class VoximGame {
     if (this.content) this.content.attachConnection(conn);
 
     try {
-      const assignedId = await conn.connect(address, this.playerId, this.tileToken, certHashHex || undefined);
+      const assignedId = await conn.connect(
+        address, this.playerId, this.tileToken,
+        loadLoginName() ?? "",
+        certHashHex || undefined,
+      );
       this.playerId = assignedId;
       this.renderer?.setLocalPlayer(this.playerId);
       console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);
@@ -569,6 +590,18 @@ export class VoximGame {
     const now = performance.now();
     const dt = Math.min((now - this.lastFrameTime) / 1000, 0.1);
     this.lastFrameTime = now;
+
+    // FPS sampler — accumulate frames, publish ~twice per second. Cheap and
+    // keeps the HUD readable (raw per-frame fps fluctuates too fast to read).
+    this.fpsFrames++;
+    if (this.fpsWindowStart === 0) this.fpsWindowStart = now;
+    const fpsWindowMs = now - this.fpsWindowStart;
+    if (fpsWindowMs >= 500) {
+      const fps = Math.round(this.fpsFrames * 1000 / fpsWindowMs);
+      this.fpsFrames = 0;
+      this.fpsWindowStart = now;
+      patchUI({ hudStats: { ...uiState.value.hudStats, fps } });
+    }
 
     let predictedPos = null;
     if (this.input) {

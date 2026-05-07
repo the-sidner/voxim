@@ -29,6 +29,7 @@ import {
   InputState,
   Lifetime,
   ModelRef,
+  Name,
   Position,
   Stamina,
   Thirst,
@@ -153,6 +154,7 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Staggered,
   CounterReady,
   GateLink,
+  Name,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */

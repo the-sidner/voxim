@@ -28,6 +28,7 @@ import {
   Stamina,
   ModelRef,
   AnimationState,
+  Name,
 } from "./components/game.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
@@ -143,10 +144,15 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
   writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
   world.write(id, SpeedModifier, { multiplier: speedMultiplier });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
+  const npcDisplayName = overrides.instanceName ?? template?.displayName ?? data.npcType;
   world.write(id, NpcTag, {
     npcType: data.npcType,
-    name: overrides.instanceName ?? template?.displayName ?? data.npcType,
+    name: npcDisplayName,
   });
+  // Mirror the same string into the networked Name component so the client's
+  // floating-name overlay sees NPCs without re-deriving from NpcTag (which is
+  // server-only).
+  world.write(id, Name, { value: npcDisplayName });
 
   const eq = emptyEquipment();
   if (template?.weaponItemType) {

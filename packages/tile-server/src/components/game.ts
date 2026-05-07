@@ -12,19 +12,19 @@ import * as v from "valibot";
 import {
   positionCodec, velocityCodec, facingCodec,
   inputStateCodec, healthCodec, hungerCodec, thirstCodec, lifetimeCodec,
-  staminaCodec, modelRefCodec, animationStateCodec,
+  staminaCodec, modelRefCodec, animationStateCodec, nameCodec,
 } from "@voxim/codecs";
 import type {
   PositionData, VelocityData, FacingData,
   InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
-  StaminaData, ModelRefData, AnimationStateData,
+  StaminaData, ModelRefData, AnimationStateData, NameData,
 } from "@voxim/codecs";
 
 // ---- re-exported shared types for convenience ----
 export type {
   PositionData, VelocityData, FacingData,
   InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
-  StaminaData,
+  StaminaData, NameData,
 };
 
 // Re-export content types that other files import from here
@@ -163,4 +163,20 @@ export const AnimationState = defineComponent({
     weaponActionId: "",
     ticksIntoAction: 0,
   }),
+});
+
+// ---- Name ---- display label rendered above the entity's head on the client.
+// Players carry the login name supplied at handshake; NPCs carry their
+// template's `displayName`. Empty string suppresses the label.
+
+const nameSchema = v.object({
+  value: v.string(),
+});
+
+export const Name = defineComponent({
+  name: "name" as const,
+  wireId: ComponentType.name,
+  codec: nameCodec,
+  schema: nameSchema,
+  default: (): NameData => ({ value: "" }),
 });

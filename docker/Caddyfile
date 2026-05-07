@@ -7,7 +7,12 @@
 # Routing on the public hostname:
 #   /gateway/*  → gateway:8081  (POST /gateway/connect)
 #   /account/*  → gateway:8081  (login/register/logout/me)
+#   /atlas/*    → atlas:8082    (world rebakes; prefix stripped before forward)
 #   everything else → client-dev:3000  (HTML + dist/game.js + assets)
+#
+# Atlas has no built-in auth — every /atlas/* route is reachable by anyone
+# who can resolve the public domain. Front it with basicauth or an SSH
+# tunnel before deploying anywhere with real users.
 #
 # Server-to-server gateway routes (/register, /heartbeat, /handoff,
 # /internal/*) are NOT exposed here — they ride the internal docker
@@ -27,6 +32,10 @@
 	@api path /gateway/* /account/*
 	handle @api {
 		reverse_proxy gateway:8081
+	}
+
+	handle_path /atlas/* {
+		reverse_proxy atlas:8082
 	}
 
 	handle {

@@ -18,6 +18,7 @@ export type {
   LightEmitterData, DarknessModifierData,
   DurabilityData, InscribedData, QualityStampedData,
   GateEdge, GateLinkData,
+  NameData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
@@ -39,6 +40,7 @@ export {
   lightEmitterCodec, darknessModifierCodec,
   durabilityCodec, inscribedCodec, qualityStampedCodec,
   gateLinkCodec,
+  nameCodec,
   WIRE_LIMITS,
 } from "./src/components.ts";
 

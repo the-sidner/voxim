@@ -1572,3 +1572,24 @@ export const gateLinkCodec: Serialiser<GateLinkData> = {
     return { destinationTileId, edge, radius };
   },
 };
+
+// ---- Name -------------------------------------------------------------------
+// Display name for floating labels above an entity's head. Players carry the
+// account login the user signed in with; NPCs carry their template's
+// `displayName` (e.g. "Wolf"). Empty string = render no label.
+
+export interface NameData {
+  value: string;
+}
+
+export const nameCodec: Serialiser<NameData> = {
+  encode(v: NameData): Uint8Array {
+    const w = new WireWriter();
+    w.writeStr(v.value);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): NameData {
+    const r = new WireReader(bytes);
+    return { value: r.readStr() };
+  },
+};

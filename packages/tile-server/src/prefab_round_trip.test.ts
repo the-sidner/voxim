@@ -122,6 +122,10 @@ Deno.test("Swingable — schema/codec agreement", () => {
       { actionId: "slash",    chargeMin: 0,   chargeMax: 200 },
       { actionId: "overhead", chargeMin: 200, chargeMax: 65535 },
     ] },
+    // damage: present round-trips as a number
+    { actions: [{ actionId: "slash", chargeMin: 0, chargeMax: 65535 }], damage: 12 },
+    // damage: absent round-trips as absent (undefined ≠ explicit 0)
+    { actions: [{ actionId: "slash", chargeMin: 0, chargeMax: 65535 }] },
   ], "Swingable");
 });
 

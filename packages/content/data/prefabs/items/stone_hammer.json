@@ -11,7 +11,8 @@
         {
           "actionId": "overhead"
         }
-      ]
+      ],
+      "damage": 14
     },
     "tool": {
       "toolType": "hammer"

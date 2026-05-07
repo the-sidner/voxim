@@ -254,6 +254,13 @@ export interface SwingableActionEntry {
 
 export interface SwingableData {
   actions: SwingableActionEntry[];
+  /**
+   * Base damage per hit when the weapon connects. Optional to keep
+   * non-damaging swingables (placeholders, debug items) representable.
+   * `deriveItemStats` exposes this as `DerivedItemStats.damage`,
+   * scaled by the per-instance quality multiplier.
+   */
+  damage?: number;
 }
 export interface ToolData { toolType: string; }
 export interface DeployableData { prefabId: string; }
@@ -1007,6 +1014,13 @@ export interface GameConfig {
     dragRetainPerSec: number;
     jumpImpulse: number;
     stepHeight: number;
+    /**
+     * XY radius of the soft-collision capsule applied to every moving entity
+     * (players + NPCs). Pairs whose centres come within (rA + rB) get pushed
+     * apart along the connecting axis after `stepPhysics` runs. Z is ignored —
+     * collision is purely horizontal so jumping over another entity still works.
+     */
+    entityCollisionRadius: number;
   };
   trade: {
     rangeWorldUnits: number;

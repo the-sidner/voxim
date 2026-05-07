@@ -35,12 +35,22 @@ export class TileConnection {
    * @param playerId     The player ID (== userId) assigned by the gateway.
    * @param token        Session token. Tile server re-validates it against
    *                     the gateway before accepting the join.
+   * @param displayName  Optional login label shipped in the join request and
+   *                     written to the player entity's `Name` component.
+   *                     Empty / undefined → server falls back to a
+   *                     playerId-derived stub.
    * @param certHashHex  SHA-256 fingerprint (hex) of the server TLS cert —
    *                     required for self-signed certs (dev/demo). Omit when
    *                     the cert is CA-signed.
    * @returns            The canonical player ID assigned by the tile server.
    */
-  async connect(tileAddress: string, playerId: string, token: string, certHashHex?: string): Promise<string> {
+  async connect(
+    tileAddress: string,
+    playerId: string,
+    token: string,
+    displayName: string,
+    certHashHex?: string,
+  ): Promise<string> {
     // deno-lint-ignore no-explicit-any
     const options: Record<string, any> = {};
     if (certHashHex) {
@@ -63,7 +73,7 @@ export class TileConnection {
     const jWriter = joinStream.writable.getWriter();
     const jReader = joinStream.readable.getReader();
 
-    const req: TileJoinRequest = { type: "join", playerId, token };
+    const req: TileJoinRequest = { type: "join", playerId, token, displayName };
     await jWriter.write(encodeFrame(req));
     jWriter.close().catch(() => {}); // signal FIN without blocking on remote ACK
     console.log("[TileConn] join sent, awaiting ack");

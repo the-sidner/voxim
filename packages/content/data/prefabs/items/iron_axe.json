@@ -10,7 +10,8 @@
         {
           "actionId": "slash"
         }
-      ]
+      ],
+      "damage": 22
     },
     "tool": {
       "toolType": "axe"

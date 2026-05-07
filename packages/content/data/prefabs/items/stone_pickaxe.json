@@ -11,7 +11,8 @@
         {
           "actionId": "overhead"
         }
-      ]
+      ],
+      "damage": 9
     },
     "tool": {
       "toolType": "pickaxe"

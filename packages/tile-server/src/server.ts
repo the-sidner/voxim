@@ -42,7 +42,7 @@ import type { SessionInfo } from "./account_client.ts";
 import { spawnPrefab } from "./spawner.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
-import { Position, Velocity, Facing, InputState } from "./components/game.ts";
+import { Position, Velocity, Facing, InputState, Name } from "./components/game.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
@@ -718,7 +718,7 @@ export class TileServer {
         const msg = computeSessionUpdate(
           this.world, session, this.spatial, playerId,
           changedComponents, worldDestroys, events, serverTick, ackInputSeq,
-          aoiRadius,
+          aoiRadius, this.sessions.size,
         );
         const payload = binaryStateMessageCodec.encode(msg);
         const framed = new Uint8Array(4 + payload.byteLength);
@@ -968,6 +968,7 @@ export class TileServer {
       }],
       fogSnapshot: null,
       fogReveals: new Uint16Array(0),
+      onlineCount: this.sessions.size,
     };
     const payload = binaryStateMessageCodec.encode(msg);
     const framed = new Uint8Array(4 + payload.byteLength);
@@ -1105,6 +1106,14 @@ export class TileServer {
         heritage,
       });
 
+      // Display label for floating-name overlay. Falls back to a
+      // playerId-derived stub when the client didn't ship a displayName —
+      // the AnimationSystem-style "presence as flag" rule applies, so we
+      // always write *something* (empty string suppresses the label).
+      const displayName = (joinMsg.displayName ?? "").trim()
+        || `Player-${playerId.slice(0, 6)}`;
+      this.world.write(playerId, Name, { value: displayName });
+
       // Fog of war (T-161): hydrate the freshly-spawned player's FogState
       // bitmap from the account service.  Failure is non-fatal — the player
       // just starts on a fresh fog.  pendingSnapshot is left at its default
@@ -1155,6 +1164,7 @@ export class TileServer {
         this.world, clientSession, this.spatial, playerId,
         new Map(), new Set(), [], this.tickLoop.currentTick, 0,
         this.content.getGameConfig().network.aoiRadius,
+        this.sessions.size,
       );
       const initialPayload = binaryStateMessageCodec.encode(initialMsg);
       const initialFramed = new Uint8Array(4 + initialPayload.byteLength);

@@ -15,7 +15,8 @@
           "actionId": "overhead",
           "chargeMin": 200
         }
-      ]
+      ],
+      "damage": 25
     },
     "weight": {
       "baseWeight": 1.5

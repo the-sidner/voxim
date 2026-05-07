@@ -86,6 +86,7 @@ const swingableSchema = v.object({
     chargeMin: v.optional(v.number()),
     chargeMax: v.optional(v.number()),
   })),
+  damage: v.optional(v.number()),
 });
 
 export const Swingable = defineComponent({
@@ -101,6 +102,15 @@ export const Swingable = defineComponent({
         w.writeI32(a.chargeMin ?? 0);
         w.writeI32(a.chargeMax ?? 0xFFFF);
       }
+      // Optional base damage — presence byte then f32. Absent damage
+      // round-trips as undefined so callers can distinguish "no damage
+      // declared" from "explicit zero" if they ever care.
+      if (v.damage !== undefined) {
+        w.writeU8(1);
+        w.writeF32(v.damage);
+      } else {
+        w.writeU8(0);
+      }
       return w.toBytes();
     },
     decode(b: Uint8Array): SwingableData {
@@ -114,6 +124,8 @@ export const Swingable = defineComponent({
           chargeMax: r.readI32(),
         });
       }
+      const hasDamage = r.readU8();
+      if (hasDamage) return { actions, damage: r.readF32() };
       return { actions };
     },
   },

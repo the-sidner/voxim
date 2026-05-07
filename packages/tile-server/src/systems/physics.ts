@@ -27,6 +27,7 @@ export class PhysicsSystem implements System {
     const gameCfg = this.content.getGameConfig();
     const cfgRaw = gameCfg.physics;
     const crouchSpeedMultiplier = gameCfg.crouch.speedMultiplier;
+    const collisionRadius = cfgRaw.entityCollisionRadius;
     const baseConfig: PhysicsConfig = {
       gravity: cfgRaw.gravity,
       maxGroundSpeed: cfgRaw.maxGroundSpeed,
@@ -40,6 +41,16 @@ export class PhysicsSystem implements System {
     const getHeight = buildTerrainLookup(world);
     const isOpen    = buildOpennessLookup(world);
 
+    // Pass 1 — integrate every moving entity into a local map. We defer
+    // writes so the post-integration entity-vs-entity separation pass can
+    // mutate next positions before they land in the changeset.
+    type Step = {
+      entityId: string;
+      position: { x: number; y: number; z: number };
+      velocity: { x: number; y: number; z: number };
+      facing:   number;
+    };
+    const steps: Step[] = [];
     for (const { entityId, position, velocity, inputState } of world.query(
       Position,
       Velocity,
@@ -89,9 +100,57 @@ export class PhysicsSystem implements System {
         isOpen,
       );
 
-      world.set(entityId, Position, next.position);
-      world.set(entityId, Velocity, next.velocity);
-      world.set(entityId, Facing, { angle: inputState.facing });
+      steps.push({
+        entityId,
+        position: { ...next.position },
+        velocity: { ...next.velocity },
+        facing:   inputState.facing,
+      });
+    }
+
+    // Pass 2 — pairwise XY soft separation. O(N²) is fine: physics-active
+    // entities are players + NPCs in the live tile, typically < 100 in AoI.
+    // Using SpatialGrid would only pay off at much higher densities.
+    if (collisionRadius > 0) {
+      const minSep = collisionRadius * 2;
+      const minSepSq = minSep * minSep;
+      for (let i = 0; i < steps.length; i++) {
+        const a = steps[i];
+        for (let j = i + 1; j < steps.length; j++) {
+          const b = steps[j];
+          const dx = b.position.x - a.position.x;
+          const dy = b.position.y - a.position.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq >= minSepSq) continue;
+
+          // Degenerate overlap (two entities at the exact same XY): nudge
+          // along an arbitrary fixed axis so the next iteration separates
+          // them properly. Picks +X for determinism — players spawning on
+          // top of each other after reconnect end up side-by-side, not
+          // randomly scattered.
+          let nx: number, ny: number, dist: number;
+          if (distSq < 1e-6) {
+            nx = 1; ny = 0; dist = 0;
+          } else {
+            dist = Math.sqrt(distSq);
+            nx = dx / dist;
+            ny = dy / dist;
+          }
+          const overlap = (minSep - dist) * 0.5;
+          a.position.x -= nx * overlap;
+          a.position.y -= ny * overlap;
+          b.position.x += nx * overlap;
+          b.position.y += ny * overlap;
+        }
+      }
+    }
+
+    // Pass 3 — commit. Position/Velocity/Facing as deferred sets so the
+    // changeset owns the final state.
+    for (const s of steps) {
+      world.set(s.entityId, Position, s.position);
+      world.set(s.entityId, Velocity, s.velocity);
+      world.set(s.entityId, Facing, { angle: s.facing });
     }
   }
 }

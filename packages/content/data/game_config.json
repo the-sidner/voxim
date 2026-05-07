@@ -69,7 +69,8 @@
     "airControlMult": 0.3,
     "dragRetainPerSec": 0.05,
     "jumpImpulse": 9,
-    "stepHeight": 0.75
+    "stepHeight": 0.75,
+    "entityCollisionRadius": 0.4
   },
   "trade": {
     "rangeWorldUnits": 3.0,

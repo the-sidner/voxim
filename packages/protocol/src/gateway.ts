@@ -101,6 +101,14 @@ export interface TileJoinRequest {
    * different user than the one claimed in `playerId`.
    */
   token: string;
+  /**
+   * Display label rendered above the player's head. Sourced from the
+   * client's stored login name. Empty string / missing → tile-server
+   * uses a short fallback derived from `playerId`. Non-authoritative —
+   * a future ticket should fetch the canonical username from the account
+   * service alongside session validation.
+   */
+  displayName?: string;
 }
 
 export interface TileJoinAck {

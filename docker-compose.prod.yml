@@ -2,7 +2,10 @@
 #
 # Pulls pre-built images from a container registry instead of building from
 # source — the box running this file does not need a copy of the source tree,
-# only this file plus a populated `.env` and the cert volume.
+# only this file plus a populated `.env`. Persistent state lives under
+# `./data/{pg,certs,caddy-data,caddy-config}` next to this compose file —
+# the directories are created on first `up` (postgres needs ./data/pg owned
+# by uid 999, the certs-init bootstrap populates ./data/certs on its own).
 #
 # Image source is parameterised:
 #   VOXIM_IMAGE_REPO   default: ghcr.io/the-sidner/voxim
@@ -18,7 +21,8 @@
 #
 # Network exposure model:
 #   - Public surface (BIND_IP, default 0.0.0.0):
-#       caddy 80/tcp + 443/tcp (HTTPS edge for client + /gateway + /account)
+#       caddy 80/tcp + 443/tcp (HTTPS edge for client + /gateway + /account
+#         + /atlas, the last one for world rebakes from outside)
 #       tile-N WebTransport 4433-4436/udp (browser direct WT to tile)
 #   - Loopback only (127.0.0.1): atlas 8082, coordinator 8083, tile-N
 #     admin 14433-14436. Reach these via SSH tunnel.
@@ -58,7 +62,7 @@ x-tile-base: &tile-base
     GATEWAY_URL: ${GATEWAY_URL}
     VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
   volumes:
-    - voxim-certs:/app/certs:ro
+    - ./data/certs:/app/certs:ro
   restart: unless-stopped
 
 services:
@@ -71,7 +75,7 @@ services:
     # No `ports:` — postgres is reached only over the internal docker
     # network by gateway/coordinator/atlas/tile-* via host `postgres:5432`.
     volumes:
-      - voxim-pg-data:/var/lib/postgresql/data
+      - ./data/pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U voxim -d voxim"]
       interval: 2s
@@ -82,7 +86,7 @@ services:
   certs-init:
     image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/certs-init:${VOXIM_TAG:-latest}
     volumes:
-      - voxim-certs:/out
+      - ./data/certs:/out
     restart: "no"
     # One-shot bootstrap. If the operator provides their own TLS cert, replace
     # this with a bind-mounted host directory at /app/certs in each consumer
@@ -119,7 +123,7 @@ services:
     # privileged server-to-server WebTransport stream (tile + coordinator
     # → gateway), reachable inside the docker network only.
     volumes:
-      - voxim-certs:/app/certs:ro
+      - ./data/certs:/app/certs:ro
     restart: unless-stopped
 
   caddy:
@@ -128,6 +132,8 @@ services:
       gateway:
         condition: service_started
       client-dev:
+        condition: service_started
+      atlas:
         condition: service_started
     environment:
       VOXIM_DOMAIN: ${VOXIM_DOMAIN}
@@ -138,8 +144,8 @@ services:
       - "${BIND_IP:-0.0.0.0}:443:443/udp"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - voxim-caddy-data:/data
-      - voxim-caddy-config:/config
+      - ./data/caddy-data:/data
+      - ./data/caddy-config:/config
     restart: unless-stopped
 
   coordinator:
@@ -167,7 +173,7 @@ services:
     ports:
       - "127.0.0.1:8083:8083"
     volumes:
-      - voxim-certs:/app/certs:ro
+      - ./data/certs:/app/certs:ro
     restart: unless-stopped
 
   atlas:
@@ -268,9 +274,3 @@ services:
     # No host port. Caddy reverse-proxies port 3000 from inside the docker
     # network and serves the bundle to the public over HTTPS.
     restart: unless-stopped
-
-volumes:
-  voxim-pg-data:
-  voxim-certs:
-  voxim-caddy-data:
-  voxim-caddy-config:

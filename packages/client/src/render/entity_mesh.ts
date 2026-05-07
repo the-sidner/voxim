@@ -19,6 +19,7 @@ import type { EntityState } from "../state/client_world.ts";
 import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject } from "@voxim/content";
 import { getVoxelTexture } from "./material_textures.ts";
 import { vertexDisp } from "./displacement.ts";
+import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
 
 // Shared placeholder geometries — never disposed individually
 const GEO_BODY  = new THREE.BoxGeometry(0.8, 1.8, 0.8);
@@ -166,6 +167,14 @@ export interface EntityMeshGroup {
    * Used by the hitbox debug overlay to convert voxel units to world units.
    */
   modelScale: number;
+  /**
+   * Floating name label sprite parented to the group. Null when the entity
+   * has no Name component / an empty name. Maintained by syncNameLabel each
+   * tick the entity state advances.
+   */
+  nameLabel: THREE.Sprite | null;
+  /** Cached label text — lets syncNameLabel skip canvas regen when unchanged. */
+  nameLabelText: string;
 }
 
 // ---- create ----
@@ -193,8 +202,11 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     bladeDimensions: null,
     modelSeed: 0,
     modelScale: 0,
+    nameLabel: null,
+    nameLabelText: "",
   };
   updateEntityMesh(mesh, state);
+  syncNameLabel(mesh, state);
   return mesh;
 }
 
@@ -543,6 +555,35 @@ export function updateSkeletonPose(
 
 // ---- update transform ----
 
+/**
+ * Reconcile the entity's floating name label with the latest networked
+ * `Name` component. Creates the sprite on first sight, replaces its texture
+ * when the text changes, and tears it down when the name is cleared.
+ *
+ * Called from `updateEntityMesh` so the label tracks the same lifecycle
+ * as the rest of the mesh (parent group, position, disposal).
+ */
+export function syncNameLabel(mesh: EntityMeshGroup, state: EntityState): void {
+  const next = state.name?.value ?? "";
+  if (next === mesh.nameLabelText) return;
+  mesh.nameLabelText = next;
+
+  if (next === "") {
+    if (mesh.nameLabel) {
+      disposeNameSprite(mesh.nameLabel);
+      mesh.nameLabel = null;
+    }
+    return;
+  }
+
+  if (mesh.nameLabel) {
+    setNameSpriteText(mesh.nameLabel, next);
+  } else {
+    mesh.nameLabel = makeNameSprite(next);
+    mesh.group.add(mesh.nameLabel);
+  }
+}
+
 /** Sync mesh world position and facing from entity state. */
 export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): void {
   const pos = state.position;
@@ -586,6 +627,8 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
     const color = pickPlaceholderColor(state, false);
     (mesh.placeholder.body.material as THREE.MeshLambertMaterial).color.set(color);
   }
+
+  syncNameLabel(mesh, state);
 }
 
 // ---- item attachment slots ----
@@ -732,6 +775,10 @@ export function detachModelFromSlot(mesh: EntityMeshGroup, slotId: string): void
 
 export function disposeEntityMesh(mesh: EntityMeshGroup): void {
   clearMeshContent(mesh);
+  if (mesh.nameLabel) {
+    disposeNameSprite(mesh.nameLabel);
+    mesh.nameLabel = null;
+  }
   // GEO_BODY, GEO_DIR, GEO_VOXEL are shared — do NOT dispose them here
 }
 
