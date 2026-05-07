@@ -1169,6 +1169,20 @@ export class VoximRenderer {
         const pose = evaluatePose(skeleton, clipIndex, maskIndex, anim);
         updateSkeletonPose(mesh, pose);
 
+        // Roll vertical lift — sin(πt) parabola peaking at clip mid-point so the
+        // tucked body clears the ground during the somersault. Tied to the
+        // entity's own scale so a 2× big NPC also lifts 2×.
+        let lift = 0;
+        if (anim) {
+          for (const layer of anim.layers) {
+            if (layer.clipId === "roll" && layer.weight > 0) {
+              lift = Math.sin(layer.time * Math.PI) * 1.6 * mesh.modelScale * layer.weight;
+              break;
+            }
+          }
+        }
+        mesh.rollLiftY = lift;
+
         // Look up weapon action for attachment positioning and trail rendering.
         const weaponActionId = anim?.weaponActionId ?? "";
         const weaponAction = weaponActionId ? this.weaponActionsMap.get(weaponActionId) : undefined;
@@ -1202,7 +1216,7 @@ export class VoximRenderer {
       const buf = mesh.posBuffer;
       if (buf.length === 0) continue;
       if (buf.length === 1) {
-        mesh.group.position.set(buf[0].x, buf[0].y, buf[0].z);
+        mesh.group.position.set(buf[0].x, buf[0].y + mesh.rollLiftY, buf[0].z);
         mesh.group.rotation.y = buf[0].ry;
         continue;
       }
@@ -1213,13 +1227,13 @@ export class VoximRenderer {
       }
       const hi = Math.min(lo + 1, buf.length - 1);
       if (lo === hi) {
-        mesh.group.position.set(buf[lo].x, buf[lo].y, buf[lo].z);
+        mesh.group.position.set(buf[lo].x, buf[lo].y + mesh.rollLiftY, buf[lo].z);
         mesh.group.rotation.y = buf[lo].ry;
       } else {
         const alpha = Math.max(0, Math.min(1, (renderTime - buf[lo].t) / (buf[hi].t - buf[lo].t)));
         mesh.group.position.set(
           lerpN(buf[lo].x, buf[hi].x, alpha),
-          lerpN(buf[lo].y, buf[hi].y, alpha),
+          lerpN(buf[lo].y, buf[hi].y, alpha) + mesh.rollLiftY,
           lerpN(buf[lo].z, buf[hi].z, alpha),
         );
         mesh.group.rotation.y = lerpAngle(buf[lo].ry, buf[hi].ry, alpha);
@@ -1232,7 +1246,7 @@ export class VoximRenderer {
       const localMesh = this.entityMeshes.get(this.localPlayerId);
       if (localMesh) {
         // world(x, y, z) → three(x, height, y) — same mapping as updateEntityMesh
-        localMesh.group.position.set(localPredictedPos.x, localPredictedPos.z + localMesh.groundOffsetWorld, localPredictedPos.y);
+        localMesh.group.position.set(localPredictedPos.x, localPredictedPos.z + localMesh.groundOffsetWorld + localMesh.rollLiftY, localPredictedPos.y);
       }
     }
 

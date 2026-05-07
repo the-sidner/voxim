@@ -175,6 +175,13 @@ export interface EntityMeshGroup {
   nameLabel: THREE.Sprite | null;
   /** Cached label text — lets syncNameLabel skip canvas regen when unchanged. */
   nameLabelText: string;
+  /**
+   * Synthetic Y offset added to group.position.y this frame.  Animation tracks
+   * carry rotations only (no translation), so the dodge roll's full forward
+   * somersault would dip the head below ground; the renderer injects a parabolic
+   * lift while the "roll" clip is active to keep the body visible.
+   */
+  rollLiftY: number;
 }
 
 // ---- create ----
@@ -204,6 +211,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     modelScale: 0,
     nameLabel: null,
     nameLabelText: "",
+    rollLiftY: 0,
   };
   updateEntityMesh(mesh, state);
   syncNameLabel(mesh, state);

@@ -2,9 +2,13 @@
  * Static dev server for devtools on port 8888.
  *
  * Routes:
- *   /            → packages/devtools/dist/voxel_editor.html
- *   /*.js        → packages/devtools/dist/
- *   /content/*   → packages/content/data/  (JSON game data)
+ *   /                       → packages/devtools/dist/voxel_editor.html
+ *   /*.js                   → packages/devtools/dist/
+ *   /content/*              → packages/content/data/  (JSON game data — GET)
+ *   POST /content/*         → write a JSON file under packages/content/data/
+ *                             (only paths under anim_library/ are allowed; the
+ *                             devtool needs to save imported clips to disk)
+ *   DELETE /content/*       → delete a JSON file (anim_library/ only)
  *
  * Run:
  *   deno run -A scripts/serve_devtools.ts
@@ -55,12 +59,11 @@ async function serveContentFile(contentDir: string, file: string): Promise<Respo
     const dirPath = `${contentDir}${dirName}`;
     try {
       const items: unknown[] = [];
-      for await (const entry of Deno.readDir(dirPath)) {
-        if (entry.isFile && entry.name.endsWith(".json")) {
-          const text = await Deno.readTextFile(`${dirPath}/${entry.name}`);
-          items.push(JSON.parse(text));
-        }
-      }
+      // Recurse into nested directories — matches the server-side loader, so
+      // `prefabs.json` aggregates both `prefabs/*.json` AND `prefabs/items/*.json`
+      // (and any deeper buckets a future refactor introduces).  Without this
+      // the Assign panel would only see top-level prefabs.
+      await collectAllJson(dirPath, items);
       items.sort((a, b) => {
         const ai = (a as Record<string, unknown>).id as string ?? "";
         const bi = (b as Record<string, unknown>).id as string ?? "";
@@ -75,9 +78,73 @@ async function serveContentFile(contentDir: string, file: string): Promise<Respo
   return new Response("Not found", { status: 404 });
 }
 
+async function collectAllJson(dir: string, out: unknown[]): Promise<void> {
+  for await (const entry of Deno.readDir(dir)) {
+    const full = `${dir}/${entry.name}`;
+    if (entry.isDirectory) {
+      await collectAllJson(full, out);
+    } else if (entry.isFile && entry.name.endsWith(".json")) {
+      const text = await Deno.readTextFile(full);
+      out.push(JSON.parse(text));
+    }
+  }
+}
+
+/**
+ * Whitelist of subdirectories the devtool may write into.
+ * - anim_library/ — imported / mixed animation clips and compound recipes
+ * - prefabs/      — devtool's Assign workflow rewrites a prefab's
+ *                   animationSlots field; full file replacement so don't
+ *                   hand-edit a prefab while the devtool has it loaded
+ */
+const WRITABLE_PREFIXES = ["anim_library/", "prefabs/"];
+
+function isWritablePath(file: string): boolean {
+  // Reject any traversal; require the path to be inside one of WRITABLE_PREFIXES.
+  if (file.includes("..") || file.startsWith("/")) return false;
+  if (!file.endsWith(".json")) return false;
+  return WRITABLE_PREFIXES.some((p) => file.startsWith(p));
+}
+
 Deno.serve({ port: 8888 }, async (req) => {
   const url = new URL(req.url);
-  let pathname = url.pathname;
+  const pathname = url.pathname;
+
+  if (req.method === "POST" && pathname.startsWith("/content/")) {
+    const file = pathname.slice("/content/".length);
+    if (!isWritablePath(file)) {
+      return new Response(`Path not writable: ${file}`, { status: 403 });
+    }
+    try {
+      const body = await req.text();
+      // Validate JSON before writing — prevents partial corruption.
+      JSON.parse(body);
+      const target = `${contentDir}${file}`;
+      const dir = target.slice(0, target.lastIndexOf("/"));
+      await Deno.mkdir(dir, { recursive: true });
+      await Deno.writeTextFile(target, body);
+      return new Response(JSON.stringify({ ok: true, path: file }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      return new Response(`Write failed: ${(err as Error).message}`, { status: 400 });
+    }
+  }
+
+  if (req.method === "DELETE" && pathname.startsWith("/content/")) {
+    const file = pathname.slice("/content/".length);
+    if (!isWritablePath(file)) {
+      return new Response(`Path not deletable: ${file}`, { status: 403 });
+    }
+    try {
+      await Deno.remove(`${contentDir}${file}`);
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      return new Response(`Delete failed: ${(err as Error).message}`, { status: 400 });
+    }
+  }
 
   if (pathname === "/" || pathname === "/index.html") {
     return serveFile(`${distDir}voxel_editor.html`);

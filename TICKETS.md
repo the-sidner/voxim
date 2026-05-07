@@ -1645,6 +1645,141 @@ all four tickets done with their commit hashes.
 Done when: plan file is gone; all four tickets show `Status: done`;
 the user can play in a forested area at 60 FPS with shadows on.
 
+### T-168 · Basic-item detail pass via per-prefab `modelScale`
+Effort: M   Status: done
+
+Sweep over hand-held items and small pickups: re-author every voxel
+model at finer resolution and set `modelScale` on the prefab so the
+physical size stays the same.  Hero weapons (sword, spear, bow,
+crossbow) drop to `modelScale 0.25–0.33` (3–4× more voxels per axis,
+enough to suggest a fuller, crossguard, recurve limbs, prod + string +
+stirrup).  Tools and resources drop to `modelScale 0.5` (2× per axis).
+
+  - Split shared models so iron and stone variants look different:
+    `model_axe_basic` becomes the iron axe; new `model_axe_stone` and
+    `model_pickaxe_stone` carry stone heads with leather binding.
+  - Add prefabs for `iron_spear` (uses existing `thrust` action) and
+    `wooden_crossbow` (uses existing `crossbow_shot`).  Add `model_bolt`
+    (shorter than an arrow, broader head) and point `crossbow_shot`'s
+    projectile at it instead of `model_arrow`.
+  - Hitbox is auto-derived from voxels — no `hitbox` field in the
+    refreshed model files.
+
+Done when: every item under `prefabs/items/` has a `modelScale` set;
+sword/spear/bow/crossbow render with recognisable detail; iron and
+stone tool variants look distinct; `deno task gen-content` and
+`deno check` are clean.
+
+### T-169 · Human animation polish + walk-style variants
+Effort: M   Status: done
+
+Refresh every existing clip on the `human` skeleton with denser
+keyframes (more in-betweens through each cycle) and asymmetric
+secondary motion: idle gets a real breath cycle and slow weight
+shift; walk gets heel-strike dorsiflexion, hip drop, counter-shoulder
+roll, head bob and wrist follow-through; crouch + crouch_walk get a
+slight asymmetric stance and listening head turn; roll picks up a
+recovery overshoot before settling; death staggers torso/head timing
+and adds a sideways head loll.
+
+Add three locomotion variants for character / state expression:
+  - `walk_slouch`: forward-tipped torso, head down, short stride,
+    minimal arm swing — defeated / weary.
+  - `walk_boast`: chest puffed back, head tilted up, exaggerated
+    stride and shoulder roll — confident / threatening.
+  - `walk_limp`: asymmetric stride favouring the left leg, right leg
+    dragging, side-tilt toward injured side — wounded.
+
+Wire `walk_limp` automatically: AnimationSystem picks it instead of
+`walk` when `Health.current / Health.max < 0.30`.  `walk_slouch` and
+`walk_boast` are authored content for future NPC archetypes / scripted
+moments — they don't change behaviour by themselves.
+
+Done when: idle and walk look noticeably more alive; a player at
+< 30% health limps without further wiring; `deno check` is clean.
+
+### T-170 · Held-weapon grip anchor + roll Y-lift + A/D fix
+Effort: S   Status: done
+
+Three independent bugs surfaced once T-168/T-169 were in front of the
+camera:
+
+  - **Weapons held wrong.**  Item models had `z=0` at the pommel/butt,
+    so the renderer (which anchors the model origin at the wrist)
+    placed the wrist at the END of the weapon and the blade extended
+    a full 2m past the hand.  Re-author every held model so model
+    `z=0` sits inside the grip — pommel/butt go into negative z, blade
+    extends into positive z.  `bladeDimensions.length` (`maxZ*scale`)
+    now correctly measures grip-to-tip.
+
+  - **Dodge roll dipped through the floor.**  Animation tracks rotate
+    bones but cannot translate the root, so a full forward somersault
+    around the feet pivot swings the head below ground.  Renderer now
+    reads the active "roll" layer's `time` and adds a `sin(πt) ·
+    1.6 · modelScale · weight` Y offset to the entity group's position
+    so the body clears the ground at mid-roll.  Stored on
+    `EntityMeshGroup.rollLiftY`; applied to both the local-prediction
+    and remote-interpolation position writes.
+
+  - **A and D were swapped.**  The right-vector formula was
+    `(sin f, -cos f)` (clockwise of facing in math-y-up convention),
+    but with the top-down camera using world +Y as screen-up, that
+    sent strafe-D into the screen-LEFT direction.  Flipped to
+    `(-sin f, cos f)` so `D` strafes to the player's visual right and
+    `A` to the left.
+
+Done when: a held sword visibly hangs from the grip not the pommel; a
+forward roll stays above ground; pressing D moves the player to the
+right of where the cursor points.
+
+### T-171 · Animation library + per-prefab slot assignment + devtool
+Effort: L   Status: done
+
+Three layers landed together:
+
+  - **Animation library.**  `packages/content/data/anim_library/` —
+    one file per clip.  Two file shapes: plain (`AnimationClip` +
+    `_skeleton`/`_source`) and compound (`_kind: additive | crossfade
+    | phase_shift` + recipe).  Compounds get **baked into plain clips
+    at content load**, so `AnimationSystem` and the bone evaluator
+    stay unchanged — no runtime support for compound clips needed.
+    Library clips with the same `id` as a skeleton's inline clip
+    override the inline one (that's how the devtool import workflow
+    swaps a hand-authored `walk` for an imported one).  Loader work
+    lives in `packages/content/src/anim_library.ts`.
+
+  - **Per-prefab slot indirection.**  New `Prefab.animationSlots`
+    field maps slot names (`"walk"`, `"idle"`, ...) to clip ids on
+    the entity's skeleton.  `Spawner` writes a server-only
+    `AnimationSlots` component from this; `AnimationSystem` looks up
+    `slots["walk"]` instead of hard-coding `"walk"`.  Two prefabs
+    sharing one skeleton can now play different walks — `walk_zombie`
+    on a zombie, `walk_normal` on the player — without forking the
+    skeleton.  Absent component / absent slot falls through to the
+    slot name as the clip id, so existing prefabs keep working.
+
+  - **Devtool: Library tab.**  New top-level tab in the voxel editor
+    with four sub-workflows:
+      * **Browse** — list library + inline clips per skeleton, with a
+        delete button.  Shows when an inline clip is overridden.
+      * **Import GLB** — file picker → animation picker → bone-map
+        preset (quaternius / mixamo / cmu) → previews how many bones
+        match vs. drop → saves as a `LibraryClipPlain`.
+      * **Mix** — author a compound clip recipe (additive / crossfade
+        / phase-shift), pick base + overlay, set weight / mask, save.
+      * **Assign** — pick a prefab, edit its slot → clipId map (as a
+        dropdown of clips known to the prefab's skeleton), save back
+        to the prefab JSON.
+
+    Devtool writes go through new POST/DELETE endpoints in
+    `scripts/serve_devtools.ts`, restricted to `anim_library/` and
+    `prefabs/`.  The browser uses three.js's GLTFLoader (already a
+    dep) for parsing GLBs — no new toolchain needed.
+
+Done when: a Quaternius GLB can be imported via the UI, the resulting
+clip appears in Browse, an Assign edit on a prefab updates the
+prefab JSON, and the tile server picks the new clip up after restart.
+
 ---
 
 ## Player UX

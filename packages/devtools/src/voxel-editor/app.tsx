@@ -52,11 +52,14 @@ import {
 import { buildSkeletonView, clearSkeletonView, applyPoseToView, resetToRestPose, highlightBone } from "./animate/skeleton_view.ts";
 import { pickBone } from "./animate/bone_pick.ts";
 
+// ---- library editor imports ----
+import { LibraryPanel } from "./library/ui/library_panel.tsx";
+
 import type { BrowserContentStore } from "./content_loader.ts";
 
 // ---- editor mode ----
 
-const editorMode = signal<"voxel" | "animate">("voxel");
+const editorMode = signal<"voxel" | "animate" | "library">("voxel");
 
 // ---- component ----
 
@@ -286,6 +289,10 @@ export function App({ content }: Props) {
           style={mode === "animate" ? TAB_ACTIVE : TAB_INACTIVE}
           onClick={() => { editorMode.value = "animate"; }}
         >Animate</button>
+        <button
+          style={mode === "library" ? TAB_ACTIVE : TAB_INACTIVE}
+          onClick={() => { editorMode.value = "library"; }}
+        >Library</button>
 
         {/* Mode-specific toolbar content */}
         <div style={{ flex: 1 }}>
@@ -304,6 +311,10 @@ export function App({ content }: Props) {
 
       {/* ── Main area ── */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden", flexDirection: "column" }}>
+        {mode === "library" && (
+          <LibraryPanel content={content} />
+        )}
+        {mode !== "library" && (
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           {/* 3D Viewport */}
           <canvas
@@ -330,6 +341,7 @@ export function App({ content }: Props) {
             <AnimSidebar skeletons={skeletons} />
           )}
         </div>
+        )}
 
         {/* Timeline (animate mode only, below viewport) */}
         {mode === "animate" && (

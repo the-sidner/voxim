@@ -1,0 +1,37 @@
+{
+  "_comment": "CMU Motion Capture Database map (cgspeed BVH, converted to GLB). CMU's lowerback/upperback/thorax map cleanly to our three torso bones. CMU is T-pose so restDeltas should mostly be zero. Bone names are CMU's lowercase abbreviations; don't confuse 'humerus' (upper arm) with 'radius' (lower arm).",
+  "bones": {
+    "hip":         "torso_lower",
+    "lhipjoint":   "upper_leg_l",
+    "rhipjoint":   "upper_leg_r",
+    "lowerback":   "torso_lower",
+    "upperback":   "torso_mid",
+    "thorax":      "torso_upper",
+    "lowerneck":   "head",
+    "upperneck":   "head",
+    "head":        "head",
+
+    "lclavicle":   "upper_arm_l",
+    "lhumerus":    "upper_arm_l",
+    "lradius":     "lower_arm_l",
+    "lwrist":      "hand_l",
+    "lhand":       "hand_l",
+
+    "rclavicle":   "upper_arm_r",
+    "rhumerus":    "upper_arm_r",
+    "rradius":     "lower_arm_r",
+    "rwrist":      "hand_r",
+    "rhand":       "hand_r",
+
+    "lfemur":      "upper_leg_l",
+    "ltibia":      "lower_leg_l",
+    "lfoot":       "foot_l",
+    "ltoes":       "foot_l",
+
+    "rfemur":      "upper_leg_r",
+    "rtibia":      "lower_leg_r",
+    "rfoot":       "foot_r",
+    "rtoes":       "foot_r"
+  },
+  "restDeltas": {}
+}

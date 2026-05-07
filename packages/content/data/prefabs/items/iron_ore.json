@@ -1,6 +1,7 @@
 {
   "id": "iron_ore",
   "modelId": "model_iron_ore",
+  "modelScale": 0.5,
   "category": "ore",
   "tags": [
     "metal"

@@ -779,6 +779,14 @@ export interface Prefab {
   /** Multiplier applied on top of the base entity scale at spawn. Defaults to 1. */
   modelScale?: number;
   /**
+   * Per-prefab animation slot map: AnimationSystem slot name → clipId on the
+   * entity's skeleton.  Lets two prefabs sharing the same skeleton play
+   * different clips for the same gameplay state — e.g. `walk_zombie` for a
+   * zombie prefab versus `walk_normal` for the player.  Slots not present
+   * here fall through to the slot name itself as the clip id (back-compat).
+   */
+  animationSlots?: Record<string, string>;
+  /**
    * Generic category. Recipes match inputs by category (e.g. "wood",
    * "cordage", "ingot"). Loose filter — no central schema, just convention.
    */

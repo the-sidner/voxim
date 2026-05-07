@@ -1,6 +1,7 @@
 {
   "id": "iron_axe",
   "modelId": "model_axe_basic",
+  "modelScale": 0.5,
   "components": {
     "equippable": {
       "slot": "weapon"

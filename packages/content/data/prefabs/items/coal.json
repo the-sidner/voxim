@@ -1,6 +1,7 @@
 {
   "id": "coal",
   "modelId": "model_coal",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "weight": {

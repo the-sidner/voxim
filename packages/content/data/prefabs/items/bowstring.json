@@ -1,6 +1,7 @@
 {
   "id": "bowstring",
   "modelId": "model_string",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "weight": {

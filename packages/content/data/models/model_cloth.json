@@ -1,42 +1,24 @@
 {
   "id": "model_cloth",
-  "version": 1,
-  "hitbox": {
-    "minX": 0,
-    "minY": 0,
-    "minZ": 0,
-    "maxX": 2,
-    "maxY": 2,
-    "maxZ": 1
-  },
+  "version": 2,
   "nodes": [
-    {
-      "x": 0,
-      "y": 0,
-      "z": 0,
-      "materialId": 102
-    },
-    {
-      "x": 0,
-      "y": 1,
-      "z": 0,
-      "materialId": 102
-    },
-    {
-      "x": 1,
-      "y": 0,
-      "z": 0,
-      "materialId": 102
-    },
-    {
-      "x": 1,
-      "y": 1,
-      "z": 0,
-      "materialId": 102
-    }
+    { "x": 0, "y": 0, "z": 0, "materialId": 108 },
+    { "x": 1, "y": 0, "z": 0, "materialId": 108 },
+    { "x": 2, "y": 0, "z": 0, "materialId": 108 },
+    { "x": 3, "y": 0, "z": 0, "materialId": 108 },
+    { "x": 0, "y": 1, "z": 0, "materialId": 108 },
+    { "x": 1, "y": 1, "z": 0, "materialId": 108 },
+    { "x": 2, "y": 1, "z": 0, "materialId": 108 },
+    { "x": 3, "y": 1, "z": 0, "materialId": 108 },
+    { "x": 0, "y": 2, "z": 0, "materialId": 108 },
+    { "x": 1, "y": 2, "z": 0, "materialId": 108 },
+    { "x": 2, "y": 2, "z": 0, "materialId": 108 },
+    { "x": 3, "y": 2, "z": 0, "materialId": 108 },
+    { "x": 1, "y": 0, "z": 1, "materialId": 108 },
+    { "x": 2, "y": 0, "z": 1, "materialId": 108 },
+    { "x": 1, "y": 1, "z": 1, "materialId": 108 },
+    { "x": 2, "y": 1, "z": 1, "materialId": 108 }
   ],
   "subObjects": [],
-  "materials": [
-    102
-  ]
+  "materials": [108]
 }

@@ -31,6 +31,7 @@ import {
   Name,
 } from "./components/game.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
+import { AnimationSlots } from "./components/animation_slots.ts";
 import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
@@ -297,6 +298,14 @@ export function spawnPrefab(
     world.write(id, Facing, { angle: overrides.facing });
   }
   installVisualShell(world, content, id, prefab, seed);
+
+  // Per-prefab animation slot map — copied onto the entity so AnimationSystem
+  // can pick clips per-prefab without walking back through the prefab table.
+  // Only written when the prefab declares slots; absence is the back-compat
+  // path where AnimationSystem falls back to the slot name as the clip id.
+  if (prefab.animationSlots && Object.keys(prefab.animationSlots).length > 0) {
+    world.write(id, AnimationSlots, { slots: { ...prefab.animationSlots } });
+  }
 
   // Raw-material stats live on the prefab and are copied onto the entity at
   // spawn so subsequent recipes (and the future Stats UI) read them uniformly

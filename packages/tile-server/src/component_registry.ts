@@ -81,6 +81,7 @@ import { Hearth } from "./components/hearth.ts";
 import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
 import { NpcJobQueue, NpcTag } from "./components/npcs.ts";
 import { ProjectileData } from "./components/projectile.ts";
+import { AnimationSlots } from "./components/animation_slots.ts";
 import {
   Armor,
   Composed,
@@ -183,6 +184,7 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   NpcTag,
   NpcJobQueue,
   ProjectileData,
+  AnimationSlots,
   SpeedModifier,
   EncumbrancePenalty,
   // ── Instance-lifetime components (server-only) ──────────────────────────

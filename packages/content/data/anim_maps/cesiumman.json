@@ -1,0 +1,26 @@
+{
+  "_comment": "Khronos sample asset CesiumMan (https://github.com/KhronosGroup/glTF-Sample-Assets). Bone names are bespoke; this map exists to smoke-test the converter end-to-end with a public, license-clean GLB.",
+  "bones": {
+    "Skeleton_torso_joint_1":    "torso_lower",
+    "Skeleton_torso_joint_2":    "torso_mid",
+    "torso_joint_3":             "torso_upper",
+    "Skeleton_neck_joint_2":     "head",
+
+    "Skeleton_arm_joint_L__4_":  "upper_arm_l",
+    "Skeleton_arm_joint_L__3_":  "lower_arm_l",
+    "Skeleton_arm_joint_L__2_":  "hand_l",
+
+    "Skeleton_arm_joint_R":      "upper_arm_r",
+    "Skeleton_arm_joint_R__2_":  "lower_arm_r",
+    "Skeleton_arm_joint_R__3_":  "hand_r",
+
+    "leg_joint_L_1":             "upper_leg_l",
+    "leg_joint_L_2":             "lower_leg_l",
+    "leg_joint_L_3":             "foot_l",
+
+    "leg_joint_R_1":             "upper_leg_r",
+    "leg_joint_R_2":             "lower_leg_r",
+    "leg_joint_R_3":             "foot_r"
+  },
+  "restDeltas": {}
+}

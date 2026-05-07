@@ -1,0 +1,29 @@
+{
+  "_comment": "Mixamo retarget map. Source rig is ~65 bones; we keep ~16 and drop fingers, twist bones, and the spine subdivisions we don't have. mixamorig:Hips → torso_lower puts the gait pivot at the right place; mixamorig:Spine and Spine1/2 collapse onto our 3 torso bones; head sits on neck. restDeltas are starting guesses — eyeball-tune by importing 'idle' and adjusting until arms hang at your rest position.",
+  "bones": {
+    "mixamorig:Hips":           "torso_lower",
+    "mixamorig:Spine":          "torso_mid",
+    "mixamorig:Spine1":         "torso_upper",
+    "mixamorig:Neck":           "head",
+    "mixamorig:Head":           "head",
+
+    "mixamorig:LeftShoulder":   "upper_arm_l",
+    "mixamorig:LeftArm":        "upper_arm_l",
+    "mixamorig:LeftForeArm":    "lower_arm_l",
+    "mixamorig:LeftHand":       "hand_l",
+
+    "mixamorig:RightShoulder":  "upper_arm_r",
+    "mixamorig:RightArm":       "upper_arm_r",
+    "mixamorig:RightForeArm":   "lower_arm_r",
+    "mixamorig:RightHand":      "hand_r",
+
+    "mixamorig:LeftUpLeg":      "upper_leg_l",
+    "mixamorig:LeftLeg":        "lower_leg_l",
+    "mixamorig:LeftFoot":       "foot_l",
+
+    "mixamorig:RightUpLeg":     "upper_leg_r",
+    "mixamorig:RightLeg":       "lower_leg_r",
+    "mixamorig:RightFoot":      "foot_r"
+  },
+  "restDeltas": {}
+}

@@ -162,7 +162,8 @@ export class StaticContentStore implements ContentStore {
   private materials = new Map<MaterialId, MaterialDef>();
   private materialsByName = new Map<string, MaterialDef>();
   private models = new Map<string, ModelDefinition>();
-  private skeletons = new Map<string, SkeletonDef>();
+  /** Public so the loader can splice library clips into skeletons after registration. */
+  public readonly skeletons = new Map<string, SkeletonDef>();
   private recipes = new Map<string, Recipe>();
   /** Cached reverse index. Invalidated by registerRecipe; built on first access. */
   private recipeGraph: RecipeGraph | null = null;

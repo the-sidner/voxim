@@ -1,6 +1,7 @@
 {
   "id": "iron_sword",
   "modelId": "model_sword_basic",
+  "modelScale": 0.25,
   "components": {
     "equippable": {
       "slot": "weapon"

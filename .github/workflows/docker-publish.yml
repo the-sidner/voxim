@@ -41,6 +41,7 @@ jobs:
           - { name: tile-server,  dockerfile: docker/tile-server.Dockerfile }
           - { name: certs-init,   dockerfile: docker/certs-init.Dockerfile }
           - { name: client-dev,   dockerfile: docker/client-dev.Dockerfile }
+          - { name: devtools,     dockerfile: docker/devtools.Dockerfile }
 
     steps:
       - name: Checkout

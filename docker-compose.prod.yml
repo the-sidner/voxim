@@ -274,3 +274,14 @@ services:
     # No host port. Caddy reverse-proxies port 3000 from inside the docker
     # network and serves the bundle to the public over HTTPS.
     restart: unless-stopped
+
+  devtools:
+    image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/devtools:${VOXIM_TAG:-latest}
+    # Loopback only — same posture as atlas:8082 and coordinator:8083.
+    # The devtool serves writable POST/DELETE endpoints under /content/* so
+    # it MUST NOT be exposed publicly. Reach it via SSH tunnel:
+    #   ssh -L 8888:127.0.0.1:8888 <prod-host>
+    # then open http://localhost:8888 in your browser.
+    ports:
+      - "127.0.0.1:8888:8888"
+    restart: unless-stopped

@@ -22,6 +22,7 @@ import type { ContentStore, AnimationStateData, AnimationLayer } from "@voxim/co
 import { ACTION_CROUCH, hasAction } from "@voxim/protocol";
 import { Velocity, Health, AnimationState, InputState } from "../components/game.ts";
 import { SkillInProgress, Rolling } from "../components/combat.ts";
+import { AnimationSlots } from "../components/animation_slots.ts";
 
 // ---- constants ----
 
@@ -85,11 +86,26 @@ export class AnimationSystem implements System {
         }
       }
 
+      // Per-prefab slot map lets two prefabs sharing one skeleton play
+      // different clips for the same gameplay state — see AnimationSlots
+      // component docs.  Falls through to the slot name as the clip id so
+      // skeletons authored before the indirection landed keep working.
+      const slotMap = world.get(entityId, AnimationSlots)?.slots ?? {};
+      const slot = (name: string): string => slotMap[name] ?? name;
+
+      // Low health → limp variant.  Slot indirection is honoured: the prefab
+      // can override "walk_limp" to its own injured-style clip if needed.
+      const useLimp = health !== null && health.max > 0 && health.current / health.max < 0.30;
+      const walkClipId = useLimp ? slot("walk_limp") : slot("walk");
+
       const layers = isDead
-        ? buildDeathLayers(prevByClip, animCfg.deathSpeedScale)
+        ? buildDeathLayers(prevByClip, animCfg.deathSpeedScale, slot("death"))
         : rolling
-          ? buildRollLayers(prevByClip)
-          : buildLocomotionLayers(prevByClip, crouching, moving, speed, walkSpeedRef, animCfg.idleSpeedScale, animCfg.crouchSpeedScale);
+          ? buildRollLayers(prevByClip, slot("roll"))
+          : buildLocomotionLayers(
+              prevByClip, crouching, moving, speed, walkSpeedRef,
+              animCfg.idleSpeedScale, animCfg.crouchSpeedScale,
+              walkClipId, slot("idle"), slot("crouch"), slot("crouch_walk"));
 
       const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
 
@@ -102,12 +118,12 @@ export class AnimationSystem implements System {
 
 // ---- layer builders ----
 
-function buildDeathLayers(prevByClip: Map<string, number>, deathSpeedScale: number): AnimationLayer[] {
-  const prev = prevByClip.get("death") ?? 0;
+function buildDeathLayers(prevByClip: Map<string, number>, deathSpeedScale: number, clipId: string): AnimationLayer[] {
+  const prev = prevByClip.get(clipId) ?? 0;
   // Clamp at 1.0 — death clip plays once and holds last frame.
   const time = Math.min(prev + deathSpeedScale * TICK_DT, 1.0);
   return [{
-    clipId: "death",
+    clipId,
     maskId: "",
     time,
     weight: 1,
@@ -123,11 +139,11 @@ function buildDeathLayers(prevByClip: Map<string, number>, deathSpeedScale: numb
 // last tick holds the recovery pose instead of snapping back to t=0.
 const ROLL_SPEED_SCALE = 20 / 14;
 
-function buildRollLayers(prevByClip: Map<string, number>): AnimationLayer[] {
-  const prev = prevByClip.get("roll") ?? 0;
+function buildRollLayers(prevByClip: Map<string, number>, clipId: string): AnimationLayer[] {
+  const prev = prevByClip.get(clipId) ?? 0;
   const time = Math.min(prev + ROLL_SPEED_SCALE * TICK_DT, 1.0);
   return [{
-    clipId: "roll",
+    clipId,
     maskId: "",
     time,
     weight: 1,
@@ -144,17 +160,21 @@ function buildLocomotionLayers(
   walkSpeedRef: number,
   idleSpeedScale: number,
   crouchSpeedScale: number,
+  walkClipId: string,
+  idleClipId: string,
+  crouchClipId: string,
+  crouchWalkClipId: string,
 ): AnimationLayer[] {
   if (crouching && moving) {
-    return [makeLoop("crouch_walk", prevByClip, "velocity", walkSpeedRef, speed)];
+    return [makeLoop(crouchWalkClipId, prevByClip, "velocity", walkSpeedRef, speed)];
   }
   if (crouching) {
-    return [makeLoop("crouch", prevByClip, crouchSpeedScale)];
+    return [makeLoop(crouchClipId, prevByClip, crouchSpeedScale)];
   }
   if (moving) {
-    return [makeLoop("walk", prevByClip, "velocity", walkSpeedRef, speed)];
+    return [makeLoop(walkClipId, prevByClip, "velocity", walkSpeedRef, speed)];
   }
-  return [makeLoop("idle", prevByClip, idleSpeedScale)];
+  return [makeLoop(idleClipId, prevByClip, idleSpeedScale)];
 }
 
 /** Build one looping layer with time advanced from the previous value. */

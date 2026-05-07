@@ -69,9 +69,9 @@ export async function loadContentBrowser(): Promise<BrowserContentStore> {
     fetchArray("models.json"),
     fetchArray("skeletons.json"),
     fetchArray("recipes.json"),
-    fetchArray("lore_fragments.json"),
+    fetchArray("lore.json"),
     fetchArray("prefabs.json"),
-    fetchArray("npc_templates.json"),
+    fetchArray("npcs.json"),
     fetchArray("concept_verb_matrix.json"),
     fetchArray("weapon_actions.json"),
     fetchArray("verbs.json"),
@@ -94,4 +94,17 @@ export async function loadContentBrowser(): Promise<BrowserContentStore> {
     (modelsRaw as ModelDefinition[]).map((m) => m.id);
 
   return store;
+}
+
+/**
+ * Fetch the raw anim_library/ directory.  Unlike the server-side loader we do
+ * NOT merge clips into skeletons here — the devtool needs to see the library
+ * as discrete files so it can edit / delete them individually.
+ */
+export async function loadAnimLibraryRaw(): Promise<unknown[]> {
+  try {
+    return await fetchArray("anim_library.json");
+  } catch {
+    return [];
+  }
 }

@@ -1,6 +1,7 @@
 {
   "id": "stone_hammer",
   "modelId": "model_hammer_basic",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "equippable": {

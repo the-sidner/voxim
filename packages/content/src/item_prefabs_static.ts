@@ -18,6 +18,7 @@ import iron_head from "../data/prefabs/items/iron_head.json" with { type: "json"
 import iron_ingot from "../data/prefabs/items/iron_ingot.json" with { type: "json" };
 import iron_ore from "../data/prefabs/items/iron_ore.json" with { type: "json" };
 import iron_pickaxe from "../data/prefabs/items/iron_pickaxe.json" with { type: "json" };
+import iron_spear from "../data/prefabs/items/iron_spear.json" with { type: "json" };
 import iron_sword from "../data/prefabs/items/iron_sword.json" with { type: "json" };
 import oak_wood from "../data/prefabs/items/oak_wood.json" with { type: "json" };
 import plant_fiber from "../data/prefabs/items/plant_fiber.json" with { type: "json" };
@@ -28,6 +29,7 @@ import stone_pickaxe from "../data/prefabs/items/stone_pickaxe.json" with { type
 import string from "../data/prefabs/items/string.json" with { type: "json" };
 import wood_handle from "../data/prefabs/items/wood_handle.json" with { type: "json" };
 import wooden_bow from "../data/prefabs/items/wooden_bow.json" with { type: "json" };
+import wooden_crossbow from "../data/prefabs/items/wooden_crossbow.json" with { type: "json" };
 import workbench_kit from "../data/prefabs/items/workbench_kit.json" with { type: "json" };
 import yew_wood from "../data/prefabs/items/yew_wood.json" with { type: "json" };
 
@@ -48,6 +50,7 @@ export const item_prefabs: readonly Prefab[] = [
   iron_ingot as unknown as Prefab,
   iron_ore as unknown as Prefab,
   iron_pickaxe as unknown as Prefab,
+  iron_spear as unknown as Prefab,
   iron_sword as unknown as Prefab,
   oak_wood as unknown as Prefab,
   plant_fiber as unknown as Prefab,
@@ -58,6 +61,7 @@ export const item_prefabs: readonly Prefab[] = [
   string as unknown as Prefab,
   wood_handle as unknown as Prefab,
   wooden_bow as unknown as Prefab,
+  wooden_crossbow as unknown as Prefab,
   workbench_kit as unknown as Prefab,
   yew_wood as unknown as Prefab,
 ];

@@ -1,6 +1,7 @@
 {
   "id": "stone_pickaxe",
-  "modelId": "pickaxe",
+  "modelId": "model_pickaxe_stone",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "equippable": {

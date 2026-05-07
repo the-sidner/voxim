@@ -1,0 +1,26 @@
+{
+  "id": "model_axe_stone",
+  "version": 2,
+  "nodes": [
+    { "x": 0, "y": 0, "z": -5, "materialId": 100 },
+    { "x": 0, "y": 0, "z": -4, "materialId": 100 },
+    { "x": 0, "y": 0, "z": -3, "materialId": 100 },
+    { "x": 0, "y": 0, "z": -2, "materialId": 100 },
+    { "x": 0, "y": 0, "z": -1, "materialId": 100 },
+    { "x": 0, "y": 0, "z":  0, "materialId": 100 },
+    { "x": 0, "y": 0, "z":  1, "materialId": 100 },
+
+    { "x": 0, "y": 1, "z": 1, "materialId": 109 },
+    { "x": 0, "y": -1, "z": 1, "materialId": 109 },
+    { "x": 0, "y": 1, "z": 2, "materialId": 109 },
+
+    { "x": 0, "y": 0, "z": 2, "materialId": 3 },
+    { "x": 1, "y": 0, "z": 2, "materialId": 3 },
+    { "x": 2, "y": 0, "z": 2, "materialId": 3 },
+    { "x": 2, "y": 0, "z": 1, "materialId": 3 },
+    { "x": 2, "y": 0, "z": 3, "materialId": 3 },
+    { "x": 3, "y": 0, "z": 2, "materialId": 3 }
+  ],
+  "subObjects": [],
+  "materials": [100, 109, 3]
+}

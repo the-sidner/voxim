@@ -92,7 +92,14 @@ export type { BoneRotation, Quat } from "./src/ik_solver.ts";
 export { solveTwoBoneIK, quatFromEulerXYZ, quatMultiply, invertQuat, applyQuat } from "./src/ik_solver.ts";
 
 // ---- Animation layer evaluator (shared server + client) ----
-export { evaluateAnimationLayers, buildClipIndex, buildMaskIndex } from "./src/animation_eval.ts";
+export { evaluateAnimationLayers, buildClipIndex, buildMaskIndex, sampleTrack } from "./src/animation_eval.ts";
+
+// ---- Animation library (load-time bake of compound clips) ----
+export type {
+  LibraryClipFile, LibraryClipPlain, LibraryClipCompound,
+  LibraryAdditiveClip, LibraryCrossfadeClip, LibraryPhaseShiftClip,
+} from "./src/anim_library.ts";
+export { mergeLibraryIntoSkeletons } from "./src/anim_library.ts";
 
 // ---- Skeleton FK solver (shared server + client) ----
 export type { BoneTransform } from "./src/skeleton_solver.ts";

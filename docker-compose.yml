@@ -234,6 +234,17 @@ services:
       - "3000:3000"
     restart: unless-stopped
 
+  # Devtools — animation library editor + voxel editor.  Brought up by
+  # default alongside the rest of the stack (mirroring atlas's admin tool
+  # treatment); reach it at http://localhost:8888.
+  devtools:
+    build:
+      context: .
+      dockerfile: docker/devtools.Dockerfile
+    ports:
+      - "8888:8888"
+    restart: unless-stopped
+
 volumes:
   voxim-pg-data:
   voxim-certs:

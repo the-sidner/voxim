@@ -220,9 +220,12 @@ export class IntentTranslator {
     // moves south — character rotates, camera doesn't.
     const fwdX =  Math.cos(this.facing);
     const fwdY =  Math.sin(this.facing);
-    // Player-right vector: 90° clockwise from facing in game (X, Y).
-    const rgtX =  Math.sin(this.facing);
-    const rgtY = -Math.cos(this.facing);
+    // Player-right vector in game (X, Y). Top-down camera with the world's
+    // +Y rendering "up" on screen means the screen-right of the facing
+    // vector is the math-CCW perpendicular, not the CW one — pressing D
+    // strafes to the right of the cursor direction as the player sees it.
+    const rgtX = -Math.sin(this.facing);
+    const rgtY =  Math.cos(this.facing);
 
     let movX = 0, movY = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    { movX += fwdX; movY += fwdY; }

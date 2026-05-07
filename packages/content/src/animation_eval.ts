@@ -127,7 +127,7 @@ const ZERO_ROT: BoneRotation = { x: 0, y: 0, z: 0 };
  * Linearly interpolates between adjacent keyframes.
  * Keyframes must be sorted by ascending `time`.
  */
-function sampleTrack(track: AnimationKeyframe[], t: number): BoneRotation {
+export function sampleTrack(track: AnimationKeyframe[], t: number): BoneRotation {
   if (track.length === 0) return ZERO_ROT;
   if (track.length === 1) return { x: track[0].rotX, y: track[0].rotY, z: track[0].rotZ };
 

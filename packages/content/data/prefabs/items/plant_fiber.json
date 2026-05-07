@@ -1,6 +1,7 @@
 {
   "id": "plant_fiber",
   "modelId": "model_plant_fiber",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "weight": {

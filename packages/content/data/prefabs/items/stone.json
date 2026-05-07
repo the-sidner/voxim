@@ -1,6 +1,7 @@
 {
   "id": "stone",
   "modelId": "model_stone_chunk",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "weight": {

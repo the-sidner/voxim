@@ -1,6 +1,7 @@
 {
   "id": "cloth",
   "modelId": "model_cloth",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "weight": {

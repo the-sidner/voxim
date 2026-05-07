@@ -1,6 +1,7 @@
 {
   "id": "iron_ingot",
   "modelId": "model_ingot",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "weight": {

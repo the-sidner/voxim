@@ -1,6 +1,7 @@
 {
   "id": "wooden_bow",
   "modelId": "model_bow_basic",
+  "modelScale": 0.33,
   "components": {
     "equippable": {
       "slot": "weapon"

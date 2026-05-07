@@ -1,0 +1,33 @@
+{
+  "_comment": "Quaternius Universal Animation Library map. Their rig is already a stripped humanoid close to ours; bone names follow the standard Mixamo-ish pattern but without the prefix. Names below match UAL1 / UAL2 — verify against the actual GLB you download (use scripts/inspect_glb.ts to dump node names). Quaternius is A-pose: arms hang ~30° outward, so upper_arm restDeltas pull them back toward our T-pose.",
+  "bones": {
+    "Hips":            "torso_lower",
+    "Spine":           "torso_mid",
+    "Spine1":          "torso_upper",
+    "Spine2":          "torso_upper",
+    "Neck":            "head",
+    "Head":            "head",
+
+    "LeftShoulder":    "upper_arm_l",
+    "LeftArm":         "upper_arm_l",
+    "LeftForeArm":     "lower_arm_l",
+    "LeftHand":        "hand_l",
+
+    "RightShoulder":   "upper_arm_r",
+    "RightArm":        "upper_arm_r",
+    "RightForeArm":    "lower_arm_r",
+    "RightHand":       "hand_r",
+
+    "LeftUpLeg":       "upper_leg_l",
+    "LeftLeg":         "lower_leg_l",
+    "LeftFoot":        "foot_l",
+
+    "RightUpLeg":      "upper_leg_r",
+    "RightLeg":        "lower_leg_r",
+    "RightFoot":       "foot_r"
+  },
+  "restDeltas": {
+    "upper_arm_l": [0, 0,  0.25],
+    "upper_arm_r": [0, 0, -0.25]
+  }
+}

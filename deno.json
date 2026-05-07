@@ -31,6 +31,8 @@
     "demo-client":  "deno task bundle",
     "gen-terrain":  "deno run --allow-read --allow-write scripts/gen_terrain.ts",
     "gen-content":  "deno run --allow-read --allow-write scripts/gen_content.ts",
+    "anim-convert": "deno run -A --node-modules-dir=auto scripts/convert_anim.ts",
+    "anim-inspect": "deno run -A --node-modules-dir=auto scripts/inspect_glb.ts",
     "gen-certs":    "deno run --allow-run --allow-write scripts/gen_certs.ts",
     "build-voxel-editor": "deno run -A --node-modules-dir=auto scripts/build_voxel_editor.ts",
     "devtools":     "deno task build-voxel-editor && deno run --allow-net --allow-read scripts/serve_devtools.ts",

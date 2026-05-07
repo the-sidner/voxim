@@ -1,6 +1,7 @@
 {
   "id": "bow_stave",
   "modelId": "model_stave",
+  "modelScale": 0.5,
   "components": {
     "stackable": {},
     "weight": {

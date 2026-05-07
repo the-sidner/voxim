@@ -13,6 +13,7 @@
  */
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef } from "./types.ts";
+import { mergeLibraryIntoSkeletons, type LibraryClipFile } from "./anim_library.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
 const DEFAULT_DATA_DIR = new URL("../data", import.meta.url).pathname;
@@ -26,7 +27,7 @@ export async function loadContentStore(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw,
+    biomesRaw, zonesRaw, animLibraryRaw,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -41,6 +42,7 @@ export async function loadContentStore(
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
     readJsonDir(dataDir, "zones"),
+    readJsonDir(dataDir, "anim_library").catch(() => []),
   ]);
 
   for (const raw of materialsRaw as RawMaterialDef[]) {
@@ -53,6 +55,13 @@ export async function loadContentStore(
 
   for (const raw of skeletonsRaw as SkeletonDef[]) {
     store.registerSkeleton(raw);
+  }
+
+  // Library clips override or extend each skeleton's inline `clips` array,
+  // and compound clip recipes get baked into plain clips here so the runtime
+  // never sees them.
+  if (animLibraryRaw.length > 0) {
+    mergeLibraryIntoSkeletons(store.skeletons, animLibraryRaw as LibraryClipFile[]);
   }
 
   for (const raw of recipesRaw as Recipe[]) {

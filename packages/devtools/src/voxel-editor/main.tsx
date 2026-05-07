@@ -4,7 +4,9 @@
  */
 import { render } from "preact";
 import { App } from "./app.tsx";
-import { loadContentBrowser } from "./content_loader.ts";
+import { loadContentBrowser, loadAnimLibraryRaw } from "./content_loader.ts";
+import { libraryClips } from "./library/lib_state.ts";
+import type { LibraryClipFile } from "@voxim/content";
 
 (async () => {
   const root = document.getElementById("app");
@@ -16,6 +18,11 @@ import { loadContentBrowser } from "./content_loader.ts";
   let content;
   try {
     content = await loadContentBrowser();
+    // Load anim_library/ raw (not merged into skeletons) so the Library tab
+    // can show + edit individual files.  The runtime sees the merged version
+    // when the tile server re-reads the data dir.
+    const libRaw = await loadAnimLibraryRaw();
+    libraryClips.value = libRaw as LibraryClipFile[];
   } catch (err) {
     root.innerHTML = `<div style="color:#c66;padding:20px;font-family:monospace">Failed to load content: ${err}</div>`;
     return;

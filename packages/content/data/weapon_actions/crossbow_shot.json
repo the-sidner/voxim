@@ -12,6 +12,6 @@
     "radius": 0.07,
     "maxHits": 1,
     "lifetimeTicks": 80,
-    "modelId": "model_arrow"
+    "modelId": "model_bolt"
   }
 }
