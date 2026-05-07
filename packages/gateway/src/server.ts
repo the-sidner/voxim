@@ -30,7 +30,7 @@ import type {
   GatewayHeartbeatResponse,
   GatewayTileResponse,
 } from "@voxim/protocol";
-import type { UserRepo, HeritageRepo, SessionRepo, TileRepo } from "@voxim/db";
+import type { UserRepo, HeritageRepo, SessionRepo, TileRepo, UserTileFogRepo } from "@voxim/db";
 import { SessionService } from "./account/session_service.ts";
 import { AccountEndpoints } from "./account/endpoints.ts";
 import { NoopSpawner, TileOrchestrator, type TileSpawner } from "./edge/tile_orchestrator.ts";
@@ -69,6 +69,7 @@ export interface GatewayConfig {
     heritage: HeritageRepo;
     sessions: SessionRepo;
     tiles: TileRepo;
+    userFog: UserTileFogRepo;
   };
   /**
    * How to bring up a tile-server when the gateway needs one that isn't
@@ -109,6 +110,7 @@ export class GatewayServer {
     this.accountEndpoints = new AccountEndpoints({
       users: config.repos.users,
       heritage: config.repos.heritage,
+      userFog: config.repos.userFog,
       sessions: this.sessions,
       serviceSecret: config.serviceSecret,
     });

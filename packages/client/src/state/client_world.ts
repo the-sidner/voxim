@@ -367,6 +367,14 @@ export class ClientWorld {
   }
 
   /**
+   * Raw heightmap buffer for one chunk, or null if not yet loaded.  Used by
+   * decorators that key off chunk-local cells (forest props, water surface).
+   */
+  getHeightmapData(chunkX: number, chunkY: number): Float32Array | null {
+    return this.chunkHeightmaps.get(`${chunkX},${chunkY}`) ?? null;
+  }
+
+  /**
    * Per-cell impassability check. Returns true (open) for unloaded chunks
    * so out-of-tile coordinates don't accidentally block — same convention
    * the server-side lookup uses.

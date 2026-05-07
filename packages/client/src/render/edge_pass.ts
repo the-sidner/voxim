@@ -1,6 +1,6 @@
 /**
  * Screen-space post-process pass: Sobel edge detection + height AO + hover
- * silhouette outline + sRGB output.
+ * silhouette outline + fog-of-war modulation + sRGB output.
  *
  * Uses a normalised luminance Sobel: the gradient is divided by the local mean
  * brightness, so edges fire at consistent strength across day/night cycles and
@@ -13,9 +13,12 @@
  * the +× sample it replaced) and composites the dilated ring as uHoverColor.
  * The model itself is left untouched: outline only, no interior wash.
  *
- * Depth texture is reserved for a future packed-depth pass; direct DEPTH_COMPONENT
- * sampling via sampler2D produces undefined results on several WebGL2 drivers due
- * to framebuffer-attachment feedback, so it is not used here.
+ * Fog of war (T-157): `tFog` is a 512×512 R8 texture covering the current tile
+ * (one texel per world unit; see state/fog_of_war.ts).  We reconstruct world
+ * XZ from `tDepth` + inverse projection/view matrices (the same trick the
+ * separate depth-blit pass uses for height shading) and use it to look up the
+ * cell's fog state.  Pixel brightness is multiplied by the resulting factor.
+ * Sky pixels (depth ≥ 0.9999) are exempt — they're never on the tile grid.
  */
 
 import * as THREE from "three";
@@ -34,6 +37,14 @@ const FRAG = /* glsl */`
   uniform sampler2D tColor;
   uniform sampler2D tHeight;
   uniform sampler2D tHoverMask;
+  uniform sampler2D tDepth;
+  uniform sampler2D tFog;
+  uniform mat4      uProjInv;
+  uniform mat4      uViewInv;
+  uniform float     uTileSize;          // world units per tile axis (= fog texture side)
+  uniform float     uFogUnseen;         // brightness for unexplored cells
+  uniform float     uFogSeen;           // brightness for explored, not currently visible
+  uniform float     uFogVisible;        // brightness for cells in current LOS
   uniform vec2      texelSize;
   uniform float     edgeStrength;
   uniform vec3      edgeColor;
@@ -44,6 +55,14 @@ const FRAG = /* glsl */`
 
   float luma(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
+  }
+
+  // Map the packed fog enum (0 / 0.5 / 1.0 in [0,1]) to a brightness factor.
+  // Texture is R8 → 0/128/255 → 0/~0.502/1.0.
+  float fogBrightness(float v) {
+    if (v > 0.75) return uFogVisible;   // 1.0
+    if (v > 0.25) return uFogSeen;      // ~0.5
+    return uFogUnseen;                  // 0
   }
 
   void main() {
@@ -113,6 +132,25 @@ const FRAG = /* glsl */`
     float hRim = hDil * (1.0 - hMask) * uHoverActive;
     color.rgb = mix(color.rgb, uHoverColor, hRim);
 
+    // ---- Fog of war (T-157) ---------------------------------------------
+    // Reconstruct world position from depth + inverse camera matrices.
+    // Sky pixels have depth = 1.0; skip them.
+    float depth = texture2D(tDepth, vUv).r;
+    if (depth < 0.9999 && uTileSize > 0.0) {
+      vec4 ndc     = vec4(vUv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+      vec4 viewPos = uProjInv * ndc;
+      viewPos     /= viewPos.w;
+      vec4 world   = uViewInv * viewPos;
+
+      // Server (wx, wy) horizontal == ThreeJS (x, z).
+      vec2 fogUv = vec2(world.x / uTileSize, world.z / uTileSize);
+      // Off-tile geometry stays at unseen brightness.
+      float fogVal = (fogUv.x < 0.0 || fogUv.x > 1.0 || fogUv.y < 0.0 || fogUv.y > 1.0)
+        ? 0.0
+        : texture2D(tFog, fogUv).r;
+      color.rgb *= fogBrightness(fogVal);
+    }
+
     // Linear → sRGB for canvas output.
     color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
 
@@ -127,6 +165,8 @@ export class EdgePass {
     colorTex: THREE.Texture,
     heightTex: THREE.Texture,
     hoverMaskTex: THREE.Texture,
+    depthTex: THREE.Texture,
+    fogTex: THREE.Texture,
     width: number,
     height: number,
   ) {
@@ -135,6 +175,14 @@ export class EdgePass {
         tColor:        { value: colorTex },
         tHeight:       { value: heightTex },
         tHoverMask:    { value: hoverMaskTex },
+        tDepth:        { value: depthTex },
+        tFog:          { value: fogTex },
+        uProjInv:      { value: new THREE.Matrix4() },
+        uViewInv:      { value: new THREE.Matrix4() },
+        uTileSize:     { value: 0.0 },           // 0 disables fog (no tile yet)
+        uFogUnseen:    { value: 0.05 },
+        uFogSeen:      { value: 0.55 },
+        uFogVisible:   { value: 1.0 },
         texelSize:     { value: new THREE.Vector2(1 / width, 1 / height) },
         edgeStrength:  { value: 1.0 },
         edgeColor:     { value: new THREE.Color(0x0d0d0d) },
@@ -175,6 +223,26 @@ export class EdgePass {
   /** Tint color for the rim and the interior wash (sRGB; converted in shader). */
   setHoverColor(color: THREE.ColorRepresentation): void {
     (this.material.uniforms.uHoverColor.value as THREE.Color).set(color);
+  }
+
+  /**
+   * Update the camera matrices used to reconstruct world XZ from the depth
+   * texture.  Caller passes the camera's `projectionMatrixInverse` and
+   * `matrixWorld`.  Must be refreshed every frame after the scene is rendered.
+   */
+  setCameraMatrices(projInv: THREE.Matrix4, viewInv: THREE.Matrix4): void {
+    (this.material.uniforms.uProjInv.value as THREE.Matrix4).copy(projInv);
+    (this.material.uniforms.uViewInv.value as THREE.Matrix4).copy(viewInv);
+  }
+
+  /** Set the tile size in world units (== fog texture side).  0 disables fog. */
+  setTileSize(size: number): void {
+    this.material.uniforms.uTileSize.value = size;
+  }
+
+  /** Bind the live fog texture (replaces the constructor placeholder). */
+  setFogTexture(tex: THREE.Texture): void {
+    this.material.uniforms.tFog.value = tex;
   }
 
   dispose(): void {

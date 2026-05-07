@@ -21,6 +21,7 @@ import { spawnGates, mirrorPosition } from "./gate.ts";
 import { chunksFromBuffers } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
+import { placePois, spawnMobPois } from "./poi_placer.ts";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
 import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
@@ -29,7 +30,7 @@ import { GatewayLink } from "./gateway_link.ts";
 
 // Bits that represent held keys — use latest-wins rather than OR across the tick.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
-import type { BinaryComponentDelta, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
+import type { BinaryComponentDelta, BinaryStateMessage, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
 import { loadContentStore, validateRecipeGraph, type ContentStore } from "@voxim/content";
 import { ClientSession } from "./session.ts";
@@ -46,6 +47,8 @@ import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
 import { PhysicsSystem } from "./systems/physics.ts";
+import { FogOfWarSystem } from "./systems/fog_of_war.ts";
+import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
 import { DodgeSystem } from "./systems/dodge.ts";
 import { HungerSystem } from "./systems/hunger.ts";
@@ -398,6 +401,7 @@ export class TileServer {
       new EncumbranceSystem(content),
       new BuffSystem(effects.tick, effects.compose, deathSystem),
       new PhysicsSystem(content),
+      new FogOfWarSystem(),
       new DodgeSystem(content),
       skill,
       new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers),
@@ -471,9 +475,25 @@ export class TileServer {
     // already no-ops every zone-driven method when this is null.
     const zoneGrid: ZoneGridData | null = null;
     const tileSeed = atlas.tileSeed;
+    // POIs (T-160): mob list filled before chunks commit; room-POI walls
+    // get stamped into the buffers in place by `placePois`.  Always re-derived
+    // from `(tileSeed, chamber.id)` so the layout is stable across restarts;
+    // mob NPCs are not persisted (consistent with `procedural.spawnInitialNpcs`).
+    let mobSpawns: ReturnType<typeof placePois> = [];
     if (!loaded) {
       console.log(
         `[TileServer] atlas terrain loaded: cell (${atlas.cellX},${atlas.cellY}) seed=${atlas.tileSeed}`,
+      );
+      const woodMat = content.getMaterialByName("wood");
+      if (!woodMat) throw new Error("POI placer: missing 'wood' content material");
+      mobSpawns = placePois(
+        atlas.heightBuffer,
+        atlas.openBuffer,
+        atlas.kindBuffer,
+        atlas.materialBuffer,
+        atlas.chambers,
+        tileSeed,
+        woodMat.id,
       );
       chunksFromBuffers(
         this.world,
@@ -495,6 +515,13 @@ export class TileServer {
     // NPCs and props are always re-spawned from layout (not persisted across restarts).
     procedural.spawnInitialNpcs();
     procedural.spawnProceduralProps();
+
+    // Mob POIs run AFTER procedural NPCs / props so they ride on top of the
+    // base population.  Skipped on loaded saves — mob entities aren't
+    // persisted, so re-running placePois every boot would double-spawn.
+    if (!loaded && mobSpawns.length > 0) {
+      spawnMobPois(this.world, content, mobSpawns);
+    }
 
     // Gate entities — always re-spawned from atlas's cell metadata, never
     // persisted. Cheap to recreate and atlas is the source of truth for
@@ -927,7 +954,7 @@ export class TileServer {
     destinationTileAddress: string,
     destinationTileCertHashHex: string,
   ): void {
-    const msg = {
+    const msg: BinaryStateMessage = {
       serverTick: this.tickLoop.currentTick,
       ackInputSeq: this.world.get(entityId, InputState)?.seq ?? 0,
       spawns: [],
@@ -939,6 +966,8 @@ export class TileServer {
         destinationTileAddress,
         destinationTileCertHashHex,
       }],
+      fogSnapshot: null,
+      fogReveals: new Uint16Array(0),
     };
     const payload = binaryStateMessageCodec.encode(msg);
     const framed = new Uint8Array(4 + payload.byteLength);
@@ -1075,6 +1104,24 @@ export class TileServer {
         z: spawnZ,
         heritage,
       });
+
+      // Fog of war (T-161): hydrate the freshly-spawned player's FogState
+      // bitmap from the account service.  Failure is non-fatal — the player
+      // just starts on a fresh fog.  pendingSnapshot is left at its default
+      // (true) so the next state message ships the (now hydrated) bitmap.
+      if (this.accountClient) {
+        const fogBitmap = await this.accountClient.getFog(playerId, this.tileId).catch((err: unknown) => {
+          console.error("[TileServer] fog fetch failed:", err);
+          return null;
+        });
+        if (fogBitmap) {
+          const fog = this.world.get(playerId, FogState);
+          if (fog && fogBitmap.byteLength === fog.seenEver.byteLength) {
+            fog.seenEver.set(fogBitmap);
+            console.log(`[TileServer] fog restored for ${playerId.slice(0, 8)} on ${this.tileId}`);
+          }
+        }
+      }
     }
 
     // Send ack with canonical playerId
@@ -1156,6 +1203,16 @@ export class TileServer {
     if (wasHandedOff) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
       return;
+    }
+    // Persist fog of war (T-161) before the entity (and its FogState) is
+    // dropped.  Best-effort: errors log but never block disconnect cleanup.
+    if (this.accountClient) {
+      const fog = this.world.get(playerId, FogState);
+      if (fog) {
+        await this.accountClient.saveFog(playerId, this.tileId, fog.seenEver).catch((err: unknown) => {
+          console.error("[TileServer] fog save failed:", err);
+        });
+      }
     }
     if (this.world.isAlive(playerId)) {
       this.world.destroy(playerId);

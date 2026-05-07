@@ -34,6 +34,7 @@ import { ToastQueue }      from "./components/ToastQueue.tsx";
 import { RadialMenu }      from "./components/RadialMenu.tsx";
 import { DebugPanel }      from "./components/DebugPanel.tsx";
 import { NetworkPanel }    from "./components/NetworkPanel.tsx";
+import { Minimap }         from "./components/Minimap.tsx";
 
 export interface UIManagerProps {
   /**
@@ -80,6 +81,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       <StatusBars />
       <Hotbar onAction={onAction} />
       <PanelBar />
+      <Minimap />
       <ToastQueue />
 
       {/* Toggleable panels */}

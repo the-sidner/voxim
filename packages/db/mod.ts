@@ -6,6 +6,9 @@ export { PgUserRepo } from "./src/repos/user_repo.ts";
 export type { HeritageRow, HeritageRepo } from "./src/repos/heritage_repo.ts";
 export { PgHeritageRepo } from "./src/repos/heritage_repo.ts";
 
+export type { UserTileFogRow, UserTileFogRepo } from "./src/repos/user_tile_fog_repo.ts";
+export { PgUserTileFogRepo } from "./src/repos/user_tile_fog_repo.ts";
+
 export type { SessionRow, SessionRepo } from "./src/repos/session_repo.ts";
 export { PgSessionRepo } from "./src/repos/session_repo.ts";
 

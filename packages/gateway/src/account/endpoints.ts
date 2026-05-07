@@ -13,7 +13,7 @@
  * endpoints never see SQL.
  */
 
-import type { UserRepo, HeritageRepo, UserRow, HearthAnchor } from "@voxim/db";
+import type { UserRepo, HeritageRepo, UserRow, HearthAnchor, UserTileFogRepo } from "@voxim/db";
 import type { SessionService } from "./session_service.ts";
 import { hashPassword, verifyPassword } from "./auth.ts";
 import { heritageCodec, type HeritageData, type HeritageTrait } from "@voxim/codecs";
@@ -22,6 +22,8 @@ import type { SessionInfo } from "./types.ts";
 export interface AccountEndpointsDeps {
   users: UserRepo;
   heritage: HeritageRepo;
+  /** Per-(user, tile) fog-of-war bitmaps (T-161). */
+  userFog: UserTileFogRepo;
   sessions: SessionService;
   /** Shared secret gating the `/internal/*` endpoints. Must be non-empty. */
   serviceSecret: string;
@@ -126,6 +128,13 @@ export class AccountEndpoints {
         if (req.method === "POST"  && sub === "/death")    return this.internalDeath(userId, req);
         if (req.method === "PATCH" && sub === "/location") return this.internalLocation(userId, req);
         if (req.method === "PATCH" && sub === "/hearth")   return this.internalSetHearth(userId, req);
+        // Fog of war (T-161): `/internal/user/:id/fog/:tileId`
+        const fogMatch = sub.match(/^\/fog\/(.+)$/);
+        if (fogMatch) {
+          const tileId = decodeURIComponent(fogMatch[1]);
+          if (req.method === "GET") return this.internalGetFog(userId, tileId);
+          if (req.method === "PUT") return this.internalPutFog(userId, tileId, req);
+        }
       }
 
       return textError("not found", 404);
@@ -276,6 +285,28 @@ export class AccountEndpoints {
     const user = await this.deps.users.getById(userId);
     if (!user) return textError("user not found", 404);
     await this.deps.users.updateLocation(userId, body.lastTileId);
+    return new Response(null, { status: 204 });
+  }
+
+  private async internalGetFog(userId: string, tileId: string): Promise<Response> {
+    const row = await this.deps.userFog.get(userId, tileId);
+    if (!row) return textError("fog not found", 404);
+    // Copy into a fresh ArrayBuffer-backed Uint8Array — same trick the
+    // heritage GET uses; some lib.dom variants reject SharedArrayBuffer-
+    // backed views as BodyInit.
+    const body = new Uint8Array(row.bitmap.length);
+    body.set(row.bitmap);
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/octet-stream" },
+    });
+  }
+
+  private async internalPutFog(userId: string, tileId: string, req: Request): Promise<Response> {
+    const ab = await req.arrayBuffer();
+    const bitmap = new Uint8Array(ab);
+    if (bitmap.byteLength === 0) return textError("empty body", 400);
+    await this.deps.userFog.put(userId, tileId, bitmap);
     return new Response(null, { status: 204 });
   }
 

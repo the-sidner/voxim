@@ -108,6 +108,20 @@ export type {
 
 export { WorldEvents } from "./src/world_events.ts";
 
+export {
+  FOG_GRID_SIZE,
+  FOG_CELL_SIZE,
+  FOG_CELL_COUNT,
+  FOG_GRID_BYTES,
+  LOS_HALF_ANGLE_RAD,
+  LOS_RADIUS,
+  LOS_RAY_COUNT,
+  LOS_STEP,
+  fogCellIndex,
+  packFogCell,
+  unpackFogCell,
+} from "./src/fog.ts";
+
 export type {
   GatewayConnectRequest,
   GatewayTileResponse,

@@ -18,10 +18,12 @@ import type { Intent } from "./input/intents.ts";
 import { modeState, cursorCellState, type WorldCell } from "./input/context.ts";
 import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
+import { FogOfWar } from "./state/fog_of_war.ts";
 import { VoximRenderer } from "./render/renderer.ts";
 import { BuildGhostRenderer } from "./render/build_ghost.ts";
 import { HoverOutlineRenderer } from "./render/hover_outline.ts";
 import { ForestPropsRenderer } from "./render/forest_props.ts";
+import { WaterRenderer } from "./render/water_renderer.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
 import { makeWorkstationHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
@@ -29,6 +31,7 @@ import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
 import { setClientWorld } from "./ui/client_world_ref.ts";
+import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
 import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
@@ -74,6 +77,14 @@ const E_PICKUP_FALLBACK_RANGE = 3.0;
 export class VoximGame {
   private connection: TileConnection = new TileConnection();
   private world = new ClientWorld();
+  /**
+   * Fog-of-war state (T-157).  Lives on Game (not the renderer) because
+   * server fog messages can arrive during `connect()` before the renderer
+   * has been constructed; ClientWorld follows the same pattern.  The
+   * renderer is given a reference once it's built so its EdgePass shader
+   * can sample the texture.
+   */
+  private fog = new FogOfWar();
   private content: ContentCache | null = null;
   private renderer: VoximRenderer | null = null;
   private overlay: WorldOverlay | null = null;
@@ -92,6 +103,7 @@ export class VoximGame {
   private buildGhost: BuildGhostRenderer | null = null;
   private hoverOutline: HoverOutlineRenderer | null = null;
   private forestProps: ForestPropsRenderer | null = null;
+  private waterRenderer: WaterRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
@@ -167,6 +179,8 @@ export class VoximGame {
     // (tooltips reading per-instance Stats, provenance, etc.) without prop
     // threading.
     setClientWorld(this.world);
+    setFogRef(this.fog);
+    this.renderer.attachFog(this.fog);
 
     // Count any terrain chunks that arrived during connect() (before renderer existed).
     // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
@@ -229,6 +243,11 @@ export class VoximGame {
       this.renderer.scene, this.content, this.world,
     );
 
+    // Water surface (T-159) — translucent overlay over WATER cells, animated
+    // via a uTime-driven shader.  Same KindGrid hook the forest renderer
+    // uses; no server-side water entities.
+    this.waterRenderer = new WaterRenderer(this.renderer.scene, this.world);
+
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
       // deno-lint-ignore no-explicit-any
@@ -260,6 +279,18 @@ export class VoximGame {
     conn.onStateMessage = (msg) => {
       this.serverTick = msg.serverTick;
       recordState(msg);
+
+      // Fog of war (T-157) — server is authoritative for `seenEver`.
+      // Snapshots arrive on the first state message after join (and on resync);
+      // reveal lists ride every tick that uncovered new cells.  Applied to
+      // the Game-owned FogOfWar so messages received during connect() (before
+      // the renderer is built) aren't dropped.
+      if (msg.fogSnapshot) {
+        this.fog.applySnapshot(msg.fogSnapshot);
+      }
+      if (msg.fogReveals.length > 0) {
+        this.fog.applyReveals(msg.fogReveals);
+      }
 
       const updated = new Set<string>();
       for (const spawn of msg.spawns) {
@@ -499,6 +530,7 @@ export class VoximGame {
     // Wipe per-tile state. The renderer instance is kept; only its scene
     // contents go.
     this.forestProps?.reset();
+    this.waterRenderer?.clear();
     this.world.clear();
     this.renderer?.clearWorld();
     this.terrainChunksReceived = 0;
@@ -592,7 +624,19 @@ export class VoximGame {
       if (px !== undefined && py !== undefined && pz !== undefined) {
         canopyFade.update(px, py, pz, this.renderer.camera);
       }
+      // Fog-of-war LOS update (T-157) — predicted position + last-known
+      // facing so the cone tracks smooth client motion.  Only the local
+      // `currentlyVisible` arc is computed here; `seenEver` is server-driven
+      // and arrives via BinaryStateMessage's fogSnapshot / fogReveals.
+      if (px !== undefined && py !== undefined) {
+        const facing = this.world.get(this.playerId)?.facing?.angle ?? 0;
+        this.fog.updateLocalLOS(px, py, facing, (x, y) => this.world.isOpen(x, y));
+      }
     }
+
+    // Water animation: bump the shared shader's uTime + flush any chunks
+    // whose kindGrid arrived before their heightmap.
+    this.waterRenderer?.tick(now);
 
     this.renderer?.render(this.serverTick, predictedPos);
 
@@ -1069,6 +1113,8 @@ export class VoximGame {
     this.hoverOutline?.dispose();
     this.hoverOutline = null;
     this.forestProps = null;
+    this.waterRenderer?.clear();
+    this.waterRenderer = null;
     this.inputCapture?.dispose();
     this.inputCapture = null;
     this.input = null;

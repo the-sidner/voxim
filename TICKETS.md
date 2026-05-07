@@ -1266,6 +1266,179 @@ When an entity with an unknown `modelId` arrives, render a bounding-box placehol
 Replace with real geometry when baking completes (T-067). Never block the game loop.
 Done when: new entities always appear immediately as boxes; real model swaps in without a pop.
 
+### T-157 · Fog of war + LOS + minimap
+Effort: L   Status: done   Commit: HEAD
+
+Exploration tracking split across client and server.  The world is dark
+by default; the player's line-of-sight reveals it.  Once seen, a cell
+stays "explored" (dim) for the rest of the session.  Currently-visible
+cells (the LOS arc in front of the player) render at full brightness.
+
+Data is split by lifetime:
+
+  - **`seenEver`** lives on the **server** — authoritative, persistent,
+    can survive reconnects.  Per-player bitmap of explored fog cells.
+  - **`currentlyVisible`** stays on the **client** — too ephemeral to
+    network at 20 Hz; the client recomputes it each frame from `OpenMask`
+    and the player's facing.
+
+Resolution: 256×256 fog cells over the 512-unit tile (one fog cell per
+2×2 world units).  Bit-packed to **8 KB per (player, tile)** on the wire
+and on disk.  2u matches wall thickness (T-156) so the resolution drop
+isn't visible.
+
+Shared constants in `@voxim/protocol/src/fog.ts`:
+`FOG_GRID_SIZE = 256`, `FOG_CELL_SIZE = 2`, `FOG_GRID_BYTES = 8192`,
+`LOS_HALF_ANGLE_RAD ≈ 0.96`, `LOS_RADIUS = 40`, `LOS_RAY_COUNT = 110`,
+`LOS_STEP = 0.5`.  Both sides import these — no drift possible.
+
+Server (`packages/tile-server`):
+  - `components/fog_state.ts` — server-only component: bit-packed
+    `Uint8Array(FOG_GRID_BYTES)`, plus a `revealedThisTick: number[]`
+    queue of newly-set cell indices (drained by the send path each
+    tick).
+  - `systems/fog_of_war.ts` — runs each tick.  For every player entity
+    with `FogState`, casts the LOS cone in world-unit ray steps and
+    marks fog cells.  Reads `OpenMask` from terrain chunks for
+    occlusion; rays stop at closed cells.  New bits are pushed to
+    `revealedThisTick`.
+  - `aoi.ts` / `server.ts` — embeds fog data inside `BinaryStateMessage`:
+    full snapshot on the first tick the client sees (cleared after
+    send), reveal list on every subsequent tick that has new cells.
+
+Wire format additions to `BinaryStateMessage`:
+  - `fogSnapshot: Uint8Array | null` — 8 KB bit-packed bitmap, set only
+    on the first message after join.
+  - `fogReveals: Uint16Array` — newly-revealed fog cell indices as u16
+    (256² = 65536 fits exactly).
+
+Client (`packages/client`):
+  - `state/fog_of_war.ts` refactored: `seenEver` is bit-packed and
+    server-driven (applied via `applySnapshot`/`applyReveals`).
+    `currentlyVisible` stays client-computed at 256² resolution (matches
+    server grid).  Texture upload from packed bits: pack three states
+    (unseen/seen/visible) into the R8 channel for the shader.
+  - `connection/tile_connection.ts` and `game.ts`: forward fog fields
+    from BinaryStateMessage into FogOfWar.
+
+Persistence (deferred to follow-up): bitmap saved per (playerId, tileId)
+to the account service or a tile-local file.  In-memory only for now —
+fog resets on tile-server restart, but survives client refresh during
+one server lifetime.
+
+Renderer (`packages/client/src/render/edge_pass.ts`): unchanged shader
+math; just samples the new 256² fog texture instead of 512².
+
+UI (`packages/client/src/ui/components/Minimap.tsx`): 200×200 canvas in
+the top-right.  Reads the bit-packed grids from `FogOfWar` and draws
+the player marker.  Throttled to ~10 Hz.
+
+Done when: world is black on first connect; walking forward reveals a
+cone-shaped trail that stays dim behind the player; the LOS arc in
+front is full-bright; closed cells (walls) block the cone; the minimap
+top-right shows the same explored shape; on client refresh the player
+sees their previously-explored area immediately on join (server-driven
+snapshot).
+
+### T-159 · River cells render as translucent water
+Effort: S   Status: in-progress
+
+Atlas marks rivers/ponds with `BOUNDARY_KIND_WATER` and they're already
+closed in `OpenMask`, but visually they used to be just flat blue cells —
+nothing said "water".  Two changes:
+
+  - `atlas/.../terrain.ts`: WATER cells now drop to `floor - RIVER_DEPTH`
+    (0.5 world units below floor) instead of staying flat.  Rivers carve
+    a shallow trench.  STONE / FOREST / GRASS_MOUND walls still rise by
+    `wallHeight`; OPEN cells unchanged.
+  - `client/render/water_renderer.ts` (new): per-chunk translucent surface
+    mesh at the original floor height (`heights[idx] + RIVER_DEPTH`) over
+    every WATER cell.  One shared `THREE.ShaderMaterial` with a `uTime`-
+    driven sin/cos wave pattern in the fragment shader — three crossed
+    bands plus a sparkle highlight.  Subscribes to `ClientWorld.onChunkKinds`
+    (same hook ForestPropsRenderer uses) and pulls the heightmap out of
+    `ClientWorld` (new `getHeightmapData` accessor).
+
+`RIVER_DEPTH = 0.5` is duplicated in the client mirror with a cross-
+referencing comment (atlas isn't a client dep).  Per-frame `uTime` pump
+runs from `game.ts` next to the renderer call.
+
+Done when: rivers render as visibly recessed channels with an animated
+translucent water surface above them; the bed (mud material) shows
+through the water; the surface ripples gently at game speed.
+
+### T-160 · First POI primitive: room + mob placement in chambers
+Effort: M   Status: in-progress
+
+Empty chambers feel pointless.  Atlas already detects discrete pre-network
+chambers (T-152/155 — `TileInit.chambers`); this ticket gives each chamber
+a deterministic chance of being a "point of interest".
+
+Two POI types, deliberately primitive (the user spec was "first primitive"):
+
+  - **mob POI** (40 % roll): 3 random NPCs spawn near the chamber centroid.
+    Pool = `["wolf", "bandit", "archer"]` (whatever's in `content/npcs/`).
+    Re-derived every boot from `(tileSeed, chamberId)`; NPCs aren't
+    persisted (consistent with `procedural.spawnInitialNpcs`).
+  - **room POI** (25 % roll): a 5×5 wooden enclosure stamped directly into
+    the terrain buffers (closed `openMask`, raised `heights`, wood
+    `material`, stone `kind` to suppress forest decoration).  One cell on
+    the south wall is left open as a doorway.  Stamping happens BEFORE
+    `chunksFromBuffers` so the walls are part of the world from boot.
+  - 35 % empty.  Tiny chambers (<25 pixels) skipped outright.
+
+Implementation entirely in `tile-server`:
+  - `atlas_terrain.ts` exposes `chambers` on its result (world-unit
+    centroids passed through from `TileInit`).
+  - `poi_placer.ts` (new): `placePois(buffers, chambers, seed, woodId)`
+    mutates buffers in place for room POIs and returns a list of mob
+    spawns; `spawnMobPois(world, content, mobs)` instantiates them after
+    chunks are committed.
+  - `server.ts` calls both on the no-save boot path, between
+    `loadTerrainFromAtlas` and `chunksFromBuffers` (room) and after
+    `procedural.spawnProceduralProps()` (mobs).
+
+Atlas-side `Feature[]` typing is intentionally out of scope — the
+placeholders in `TileInit.features` stay `unknown[]` for now.  When the
+POI system grows past "first primitive" it'll move into the atlas
+pipeline so layouts are part of the persisted bake.
+
+Done when: walking through a freshly-baked tile reveals empty rooms,
+small wood-walled enclosures with a south door, and chamber clusters of
+3 hostile NPCs scattered across the map — same layout on every restart.
+
+### T-161 · Persist fog of war across sessions
+Effort: M   Status: in-progress
+
+T-157 left fog as ephemeral in-memory state — refresh / disconnect
+discarded the whole exploration map.  This ticket lifts `seenEver` to
+durable storage so reconnects start with the player's prior progress.
+
+Persistence shape:
+  - DB: `user_tile_fog (user_id uuid, tile_id text, bitmap bytea,
+    updated_at timestamptz)` keyed by (user, tile).  Migration
+    `0013_user_tile_fog.sql`; repo `PgUserTileFogRepo` mirrors the
+    `PgHeritageRepo` upsert pattern.
+  - Account service: two new endpoints under `/internal/user/:id/fog/:tileId`
+    — `GET` returns the bitmap as `application/octet-stream` (404 if none),
+    `PUT` writes the request body verbatim.  Service-secret gated like the
+    other internal routes.
+  - `AccountClient.getFog(userId, tileId)` / `saveFog(userId, tileId, bitmap)`.
+  - Tile-server: after spawning the player, fetch fog and copy into
+    `FogState.seenEver`; `pendingSnapshot` stays `true` so the next state
+    message ships the hydrated bitmap to the client.  On disconnect (alive
+    OR dead, before `world.destroy`), save the current `seenEver` back.
+    Handoff path is intentionally not yet handled (rare in current dev mode).
+  - Dev mode (no `accountClient`): noop — fog stays per-process as before.
+
+Concurrency / size: 8 KB per (user, tile).  Upsert each disconnect — at
+human play frequencies that's well under any DB pressure.  Buffer is
+opaque to Postgres; the account service trusts what tile-server writes.
+
+Done when: explore part of a tile, log out, log back in, the explored
+area is immediately visible on join.  Tile-server logs `fog restored`
+on hydration and surfaces save errors without blocking disconnect cleanup.
+
 ---
 
 ## Player UX
@@ -2762,4 +2935,37 @@ walks to one, and the existing T-140/141 handoff carries them across.
 - Durable `world_events` log with replay.
 - Live tile migration between hosts.
 - Real LLM API integration (separate ticket once T-143 wiring proves out).
+
+---
+
+## Ops & Deployment
+
+### T-158 · CI image publish + production compose
+Effort: S   Status: done   Commit: db7c589
+
+Until now there was no path from a green build to a deployable artifact —
+the sysadmin would have had to clone the repo, run `docker compose build`,
+and reason about source state on the host. Replace that with a registry-
+based deploy: GitHub Actions builds and pushes every server image, the
+sysadmin runs a compose file that only references images.
+
+- `.github/workflows/docker-publish.yml`: manual `workflow_dispatch` trigger.
+  Matrix builds all six images (gateway, coordinator, atlas, tile-server,
+  certs-init, client-dev) in parallel, pushes to
+  `ghcr.io/<owner>/<repo>/<service>`. Every build gets `:sha-<short>`;
+  runs whose ref is `main` (or that pass `tag_latest=true`) also update
+  `:latest`. Auth via `GITHUB_TOKEN` with `packages: write` — no extra
+  secrets. GHA cache wired per-service so reruns are fast.
+- `docker-compose.prod.yml`: mirrors the base compose service shape but
+  replaces every `build:` with an `image:` reference parameterised by
+  `VOXIM_IMAGE_REPO` (default `ghcr.io/the-sidner/voxim`) and `VOXIM_TAG`
+  (default `latest`). Drops dev-only bind mounts. Sysadmin keeps a
+  populated `.env` and runs
+  `docker compose -f docker-compose.prod.yml --env-file .env up -d`.
+  To pin a specific build set `VOXIM_TAG=sha-<short>` before `pull && up -d`.
+- `.env.example`: document the two new variables.
+
+Done when: a manual workflow run produces six ghcr.io tags, the sysadmin
+pulls them on a clean host with only `docker-compose.prod.yml` + `.env`,
+and the stack comes up identically to the dev compose.
 

@@ -47,6 +47,8 @@ import { HitSparkRenderer } from "./hit_spark_renderer.ts";
 import { LightManager } from "./light_manager.ts";
 import { EdgePass } from "./edge_pass.ts";
 import { CameraRig } from "./camera_rig.ts";
+import type { FogOfWar } from "../state/fog_of_war.ts";
+import { FOG_GRID_SIZE, FOG_CELL_SIZE } from "@voxim/protocol";
 
 /**
  * One recorded frame of the weapon blade during an attack's active phase.
@@ -253,6 +255,14 @@ export class VoximRenderer {
   private heightDebugEnabled = false;
 
   /**
+   * Fog-of-war reference (T-157).  Game owns the FogOfWar instance because
+   * server fog messages may arrive before the renderer is constructed; we
+   * receive a reference here via {@link attachFog} once the renderer is
+   * ready, and the EdgePass starts sampling the real texture from then on.
+   */
+  private attachedFog: FogOfWar | null = null;
+
+  /**
    * Weapon tip trail system.
    *
    * During an attack's active phase the weapon blade traces a path through world
@@ -402,10 +412,19 @@ export class VoximRenderer {
     });
 
     // ---- edge pass + fullscreen blit scene ----
+    // EdgePass also applies fog-of-war modulation (T-157): it samples the
+    // depth texture to reconstruct world XZ, looks up the fog cell, and
+    // multiplies the final colour.  Until attachFog() runs we hand it a
+    // 1×1 placeholder so the shader compiles cleanly; uTileSize stays 0
+    // (fog disabled) until attach.
+    const fogPlaceholder = new THREE.DataTexture(new Uint8Array([255]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
+    fogPlaceholder.needsUpdate = true;
     this.edgePass = new EdgePass(
       this.pixelTarget.texture,
       this.heightTarget.texture,
       this.hoverMaskTarget.texture,
+      depthTex,
+      fogPlaceholder,
       pw, ph,
     );
     this.blitScene  = new THREE.Scene();
@@ -461,6 +480,17 @@ export class VoximRenderer {
 
   setLocalPlayer(id: string): void {
     this.localPlayerId = id;
+  }
+
+  /**
+   * Hand the renderer the Game-owned FogOfWar (T-157).  The EdgePass shader
+   * will start sampling its texture from the next frame; before this call
+   * a 1×1 placeholder is bound and `uTileSize = 0` disables fog modulation.
+   */
+  attachFog(fog: FogOfWar): void {
+    this.attachedFog = fog;
+    this.edgePass.setFogTexture(fog.texture);
+    this.edgePass.setTileSize(FOG_GRID_SIZE * FOG_CELL_SIZE);
   }
 
   setContentCache(cache: ContentCache): void {
@@ -701,6 +731,7 @@ export class VoximRenderer {
       const [cx, cy] = key.split(",").map(Number);
       this.removeTerrain(cx, cy);
     }
+    this.attachedFog?.reset();
   }
 
   // ---- gate markers (T-145) ----
@@ -1141,6 +1172,10 @@ export class VoximRenderer {
     this.depthBlitMat.uniforms.uHeightMax.value = playerPos.y + HEIGHT_SHADE_ABOVE;
     this.renderer.setRenderTarget(this.heightTarget);
     this.renderer.render(this.depthBlitScene, this.blitCamera);
+
+    // EdgePass reconstructs world XZ from depth too (for fog-of-war), so it
+    // needs the same camera matrices the depth-blit pass just used.
+    this.edgePass.setCameraMatrices(this.camera.projectionMatrixInverse, this.camera.matrixWorld);
 
     // Pass 2: edge detection + height shading + sRGB → canvas.
     this.renderer.setRenderTarget(null);

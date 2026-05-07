@@ -25,6 +25,7 @@ import { Position } from "./components/game.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { GateLink } from "./components/gate.ts";
+import { FogState } from "./components/fog_state.ts";
 import { NETWORKED_DEFS } from "./component_registry.ts";
 
 /**
@@ -231,5 +232,34 @@ export function computeSessionUpdate(
     isEventRelevant(ev, playerId, session.knownEntities)
   );
 
-  return { serverTick, ackInputSeq, spawns, deltas, destroys, events: filteredEvents };
+  // ── 6. Fog of war (T-157) ───────────────────────────────────────────────────
+  // Drain the player's FogState into the message.  pendingSnapshot fires the
+  // first tick after spawn (and after any future server-side resync); after
+  // that we just ship the per-tick reveal list.  We mutate the component
+  // instance directly — no world.set — because the inner buffer/array is
+  // reference-typed and the FogOfWarSystem mutates it the same way.
+  let fogSnapshot: Uint8Array | null = null;
+  let fogReveals = new Uint16Array(0);
+  const fog = world.get(playerId, FogState);
+  if (fog) {
+    if (fog.pendingSnapshot) {
+      fogSnapshot = new Uint8Array(fog.seenEver);
+      fog.pendingSnapshot = false;
+      fog.revealedThisTick.length = 0;
+    } else if (fog.revealedThisTick.length > 0) {
+      fogReveals = Uint16Array.from(fog.revealedThisTick);
+      fog.revealedThisTick.length = 0;
+    }
+  }
+
+  return {
+    serverTick,
+    ackInputSeq,
+    spawns,
+    deltas,
+    destroys,
+    events: filteredEvents,
+    fogSnapshot,
+    fogReveals,
+  };
 }

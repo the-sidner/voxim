@@ -39,6 +39,7 @@ import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
+import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { Stats } from "./components/instance.ts";
 import type {
@@ -128,6 +129,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
     world, id,
     Hunger, Thirst, Stamina, CorruptionExposure,
     LoreLoadout, ActiveEffects, CraftingQueue, AnimationState,
+    FogState,
   );
 };
 

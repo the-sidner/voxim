@@ -50,6 +50,16 @@ export interface TerrainOutput {
  */
 export const WALL_HEIGHT = 2.0;
 
+/**
+ * How far below floor the WATER channel cuts (T-159).  Rivers carve a
+ * shallow trench so the water surface (drawn by the client at
+ * `floor` height as a translucent overlay) sits visibly above the bed.
+ *
+ * Client mirrors this value at `client/render/water_mesh.ts:RIVER_DEPTH` —
+ * keep them in sync when tuning.
+ */
+export const RIVER_DEPTH = 0.5;
+
 const TERRAIN_SUB_SEED = 0x40004001;
 
 export function runTerrain(input: TerrainInput): TerrainOutput {
@@ -72,11 +82,17 @@ export function runTerrain(input: TerrainInput): TerrainOutput {
       const m = (fbm(px * modFreq, py * modFreq, tileSeed ^ TERRAIN_SUB_SEED, 3) - 0.5) * 2;
       const floor = params.floorBaseline + floorBias + m * modAmp;
 
-      // All wall kinds (STONE / FOREST / GRASS_MOUND) raise. WATER and
-      // OPEN stay flat. Collision still blocks closed pixels via openMask.
+      // All wall kinds (STONE / FOREST / GRASS_MOUND) raise.  WATER cuts a
+      // shallow trench (rivers run below the surrounding floor — T-159); the
+      // client renders a translucent water surface back at `floor` height.
+      // OPEN cells stay at floor.  Collision still blocks closed pixels via openMask.
       const k = kindOf[idx];
-      const isWall = openMask[idx] === 0 && k !== BOUNDARY_KIND_WATER && k !== BOUNDARY_KIND_OPEN;
-      heightMap[idx] = isWall ? floor + params.wallHeight : floor;
+      const isClosed = openMask[idx] === 0;
+      const isWater  = isClosed && k === BOUNDARY_KIND_WATER;
+      const isWall   = isClosed && k !== BOUNDARY_KIND_WATER && k !== BOUNDARY_KIND_OPEN;
+      heightMap[idx] = isWall  ? floor + params.wallHeight
+                     : isWater ? floor - RIVER_DEPTH
+                               : floor;
     }
   }
 

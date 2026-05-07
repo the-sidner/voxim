@@ -127,6 +127,42 @@ export class AccountClient {
       throw new Error(`AccountClient.updateHearth: HTTP ${res.status}`);
     }
   }
+
+  /**
+   * Fetch the persisted fog-of-war bitmap for `(userId, tileId)`, or null if
+   * none stored yet (first time on this tile).  Returns the raw bit-packed
+   * `seenEver` buffer; tile-server's FogState consumes it directly.  T-161.
+   */
+  async getFog(userId: string, tileId: string): Promise<Uint8Array | null> {
+    const res = await fetch(
+      `${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/fog/${encodeURIComponent(tileId)}`,
+      { headers: this.headers() },
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      throw new Error(`AccountClient.getFog: HTTP ${res.status}`);
+    }
+    const ab = await res.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+
+  /**
+   * Persist the player's current fog bitmap.  Called on disconnect (and could
+   * be called periodically as a checkpoint if needed).  T-161.
+   */
+  async saveFog(userId: string, tileId: string, bitmap: Uint8Array): Promise<void> {
+    const res = await fetch(
+      `${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/fog/${encodeURIComponent(tileId)}`,
+      {
+        method: "PUT",
+        headers: this.headers({ "content-type": "application/octet-stream" }),
+        body: bitmap,
+      },
+    );
+    if (!res.ok) {
+      throw new Error(`AccountClient.saveFog: HTTP ${res.status}`);
+    }
+  }
 }
 
 // ---- derived stats (moved from the deleted HeritageStore) ----

@@ -13,6 +13,10 @@
  *     per destroy: [uuid16 entityId]
  *   u16  numEvents
  *     per event: [u8 eventTypeId] [event-specific fields…]
+ *   u8   hasFogSnapshot       (T-157)
+ *     if 1: bytes (FOG_GRID_BYTES = 8192, bit-packed seenEver bitmap)
+ *   u16  numFogReveals        (T-157)
+ *     per reveal: u16 fog-cell index
  *
  * Event field layouts:
  *   DamageDealt       uuid targetId, uuid sourceId, f32 amount, u8 blocked
@@ -35,6 +39,7 @@ import type { Serialiser } from "@voxim/engine";
 import { WireWriter, WireReader } from "@voxim/codecs";
 import { EventType } from "./event_types.ts";
 import type { GameEvent, BuildingMaterial } from "./messages.ts";
+import { FOG_GRID_BYTES } from "./fog.ts";
 
 // ---- public types ----
 
@@ -65,6 +70,18 @@ export interface BinaryStateMessage {
   /** Entity UUIDs removed from this client's view (world destroy or left AoI). */
   destroys: string[];
   events: GameEvent[];
+  /**
+   * Full fog-of-war snapshot (T-157), bit-packed.  Sent only on the first
+   * tick after the player joins (or when the server explicitly resyncs);
+   * `null` on every other tick.  Length is always `FOG_GRID_BYTES` when set.
+   */
+  fogSnapshot: Uint8Array | null;
+  /**
+   * Newly-revealed fog cell indices (T-157).  Each entry is a u16 index
+   * into the 256×256 fog grid (`packFogCell` from fog.ts).  Empty array
+   * when no cells were revealed this tick.
+   */
+  fogReveals: Uint16Array;
 }
 
 // ---- event encode/decode ----
@@ -311,6 +328,21 @@ export const binaryStateMessageCodec: Serialiser<BinaryStateMessage> = {
       encodeEvent(w, ev);
     }
 
+    // fog (T-157)
+    if (msg.fogSnapshot) {
+      if (msg.fogSnapshot.byteLength !== FOG_GRID_BYTES) {
+        throw new Error(`fogSnapshot must be ${FOG_GRID_BYTES} bytes, got ${msg.fogSnapshot.byteLength}`);
+      }
+      w.writeU8(1);
+      w.writeBytes(msg.fogSnapshot);
+    } else {
+      w.writeU8(0);
+    }
+    w.writeU16(msg.fogReveals.length);
+    for (let i = 0; i < msg.fogReveals.length; i++) {
+      w.writeU16(msg.fogReveals[i]);
+    }
+
     return w.toBytes();
   },
 
@@ -362,6 +394,15 @@ export const binaryStateMessageCodec: Serialiser<BinaryStateMessage> = {
       events.push(decodeEvent(r));
     }
 
-    return { serverTick, ackInputSeq, spawns, deltas, destroys, events };
+    // fog (T-157)
+    const hasFog = r.readU8();
+    const fogSnapshot = hasFog === 1 ? r.readBytes(FOG_GRID_BYTES) : null;
+    const numReveals = r.readU16();
+    const fogReveals = new Uint16Array(numReveals);
+    for (let i = 0; i < numReveals; i++) {
+      fogReveals[i] = r.readU16();
+    }
+
+    return { serverTick, ackInputSeq, spawns, deltas, destroys, events, fogSnapshot, fogReveals };
   },
 };

@@ -33,6 +33,7 @@ import {
   PgHeritageRepo,
   PgSessionRepo,
   PgTileRepo,
+  PgUserTileFogRepo,
 } from "@voxim/db";
 
 const port      = parseInt(Deno.env.get("ADMIN_PORT") ?? "8081");
@@ -55,6 +56,7 @@ const repos = {
   heritage: new PgHeritageRepo(pool),
   sessions: new PgSessionRepo(pool),
   tiles:    new PgTileRepo(pool),
+  userFog:  new PgUserTileFogRepo(pool),
 };
 
 const server = new GatewayServer();

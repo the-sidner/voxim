@@ -61,6 +61,12 @@ export interface AtlasTerrainResult {
    * Spawned as entities by tile-server's gate system.
    */
   gatePositions: GatePosition[];
+  /**
+   * Pre-network chambers (T-160) — discrete open regions before corridors
+   * merged them.  Each carries a stable id and a world-unit centroid.
+   * Used by `poi_placer.ts` as anchor points for room/mob POIs.
+   */
+  chambers: Array<{ id: number; cx: number; cy: number; pixelCount: number }>;
 }
 
 export interface LoadOptions {
@@ -202,6 +208,11 @@ export async function loadTerrainFromAtlas(
     cellY,
     world,
     gatePositions,
+    // Atlas chambers carry their centroid in world units already; the wire
+    // round-trip preserves cx/cy/pixelCount as plain numbers.
+    chambers: tile.chambers.map((c) => ({
+      id: c.id, cx: c.cx, cy: c.cy, pixelCount: c.pixelCount,
+    })),
   };
 }
 
