@@ -1,0 +1,104 @@
+name: Build and publish Docker images
+
+# Manual trigger only — run from the GitHub UI ("Run workflow") or via
+#   gh workflow run docker-publish.yml --ref <branch-or-tag>
+#
+# Each run builds all six images in parallel and pushes them to the GitHub
+# Container Registry under ghcr.io/<owner>/<repo>/<service>. Every image
+# gets a :sha-<short> tag; runs whose ref is `main` additionally update
+# :latest. Use the tag_latest input to force-update :latest from any ref
+# (e.g. a hotfix branch). Pull on the server with:
+#
+#   docker pull ghcr.io/<owner>/<repo>/<service>:sha-<short>
+#   docker pull ghcr.io/<owner>/<repo>/<service>:latest
+#
+# Authentication uses the workflow's GITHUB_TOKEN — no extra secrets to
+# configure. The token needs `packages: write`, granted below.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_latest:
+        description: "Also push :latest (forced; main always does)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - { name: gateway,      dockerfile: docker/gateway.Dockerfile }
+          - { name: coordinator,  dockerfile: docker/coordinator.Dockerfile }
+          - { name: atlas,        dockerfile: docker/atlas.Dockerfile }
+          - { name: tile-server,  dockerfile: docker/tile-server.Dockerfile }
+          - { name: certs-init,   dockerfile: docker/certs-init.Dockerfile }
+          - { name: client-dev,   dockerfile: docker/client-dev.Dockerfile }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image name and tags
+        id: tags
+        env:
+          REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          FORCE_LATEST: ${{ inputs.tag_latest }}
+          SERVICE: ${{ matrix.service.name }}
+        run: |
+          set -euo pipefail
+          # ghcr requires lowercase image paths.
+          repo_lc="$(echo "$REPO" | tr '[:upper:]' '[:lower:]')"
+          image="ghcr.io/${repo_lc}/${SERVICE}"
+          sha_short="$(git rev-parse --short=12 HEAD)"
+          tags="${image}:sha-${sha_short}"
+          if [ "$REF_NAME" = "main" ] || [ "$FORCE_LATEST" = "true" ]; then
+            tags="${tags},${image}:latest"
+          fi
+          echo "image=${image}"        >> "$GITHUB_OUTPUT"
+          echo "sha_short=${sha_short}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}"          >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,scope=${{ matrix.service.name }},mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### ${{ matrix.service.name }}"
+            echo ""
+            echo "Pushed tags:"
+            echo '```'
+            echo "${{ steps.tags.outputs.tags }}" | tr ',' '\n'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

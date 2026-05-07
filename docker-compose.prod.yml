@@ -1,0 +1,233 @@
+# Voxim2 — production compose stack.
+#
+# Pulls pre-built images from a container registry instead of building from
+# source — the box running this file does not need a copy of the source tree,
+# only this file plus a populated `.env` and the cert volume.
+#
+# Image source is parameterised:
+#   VOXIM_IMAGE_REPO   default: ghcr.io/the-sidner/voxim
+#   VOXIM_TAG          default: latest
+#
+# To pin a deploy to a specific build, set `VOXIM_TAG=sha-<short>` in the
+# environment before `docker compose pull && docker compose up -d`. Images
+# are produced by .github/workflows/docker-publish.yml.
+#
+# Required `.env` entries (same as base compose):
+#   POSTGRES_PASSWORD, DATABASE_URL, VOXIM_SERVICE_SECRET,
+#   GATEWAY_URL, GATEWAY_WT_URL, HOST_ADDR, WORLD_SEED
+#
+# Bring up:    docker compose -f docker-compose.prod.yml --env-file .env up -d
+# Roll fwd:    VOXIM_TAG=sha-abc123def456 docker compose -f docker-compose.prod.yml pull \
+#                && docker compose -f docker-compose.prod.yml up -d
+# Tail logs:   docker compose -f docker-compose.prod.yml logs -f gateway
+
+x-tile-base: &tile-base
+  image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/tile-server:${VOXIM_TAG:-latest}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+    atlas:
+      condition: service_started
+    certs-init:
+      condition: service_completed_successfully
+  environment:
+    DATABASE_URL: ${DATABASE_URL}
+    GATEWAY_URL: ${GATEWAY_URL}
+    VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+  volumes:
+    - voxim-certs:/app/certs:ro
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: voxim
+      POSTGRES_USER: voxim
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - voxim-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voxim -d voxim"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    restart: unless-stopped
+
+  certs-init:
+    image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/certs-init:${VOXIM_TAG:-latest}
+    volumes:
+      - voxim-certs:/out
+    restart: "no"
+    # One-shot bootstrap. If the operator provides their own TLS cert, replace
+    # this with a bind-mounted host directory at /app/certs in each consumer
+    # service and remove this entry.
+
+  migrate:
+    image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/gateway:${VOXIM_TAG:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    command: ["deno", "run", "--allow-net", "--allow-read", "--allow-env",
+              "packages/db/migrate.ts"]
+    restart: "no"
+
+  gateway:
+    image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/gateway:${VOXIM_TAG:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      certs-init:
+        condition: service_completed_successfully
+    environment:
+      ADMIN_PORT: 8081
+      WT_PORT: 8080
+      DATABASE_URL: ${DATABASE_URL}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "8081:8081"
+      - "8080:8080/udp"
+    volumes:
+      - voxim-certs:/app/certs:ro
+    restart: unless-stopped
+
+  coordinator:
+    image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/coordinator:${VOXIM_TAG:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      gateway:
+        condition: service_started
+      certs-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TLS_CERT: /app/certs/cert.pem
+      TICK_RATE: ${COORDINATOR_TICK_RATE:-1}
+      WORLD_SEED: ${WORLD_SEED:-1}
+      WORLD_TILES: ${WORLD_TILES:-tile_0,tile_1,tile_2,tile_3}
+      WORLD_WIDTH: ${WORLD_WIDTH:-2}
+      WORLD_HEIGHT: ${WORLD_HEIGHT:-2}
+      COORDINATOR_HTTP_PORT: 8083
+    ports:
+      - "8083:8083"
+    volumes:
+      - voxim-certs:/app/certs:ro
+    restart: unless-stopped
+
+  atlas:
+    image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/atlas:${VOXIM_TAG:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      ATLAS_PORT: 8082
+      DATABASE_URL: ${DATABASE_URL}
+      BOOTSTRAP_WORLD_NAME:   ${WORLD_NAME:-bootstrap}
+      BOOTSTRAP_WORLD_SEED:   ${WORLD_SEED:-1}
+      BOOTSTRAP_WORLD_WIDTH:  ${WORLD_WIDTH:-2}
+      BOOTSTRAP_WORLD_HEIGHT: ${WORLD_HEIGHT:-2}
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+
+  tile-1:
+    <<: *tile-base
+    hostname: tile-1
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TILE_ID: "0_0"
+      TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4433
+      ADMIN_PORT: 14433
+      PORT: 4433
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "4433:4433/udp"
+      - "14433:14433"
+
+  tile-2:
+    <<: *tile-base
+    hostname: tile-2
+    profiles: ["scale"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TILE_ID: "1_0"
+      TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4434
+      ADMIN_PORT: 14434
+      PORT: 4433
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "4434:4433/udp"
+      - "14434:14434"
+
+  tile-3:
+    <<: *tile-base
+    hostname: tile-3
+    profiles: ["scale"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TILE_ID: "0_1"
+      TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4435
+      ADMIN_PORT: 14435
+      PORT: 4433
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "4435:4433/udp"
+      - "14435:14435"
+
+  tile-4:
+    <<: *tile-base
+    hostname: tile-4
+    profiles: ["scale"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      GATEWAY_URL: ${GATEWAY_URL}
+      GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      TILE_ID: "1_1"
+      TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4436
+      ADMIN_PORT: 14436
+      PORT: 4433
+      TLS_CERT: /app/certs/cert.pem
+      TLS_KEY: /app/certs/key.pem
+    ports:
+      - "4436:4433/udp"
+      - "14436:14436"
+
+  client-dev:
+    image: ${VOXIM_IMAGE_REPO:-ghcr.io/the-sidner/voxim}/client-dev:${VOXIM_TAG:-latest}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  voxim-pg-data:
+  voxim-certs:
