@@ -34,6 +34,8 @@ export {
   runMaterials,
   MATERIAL_NONE, MATERIAL_GRASS, MATERIAL_DIRT,
   MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
+  MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS,
+  MATERIAL_PATH, MATERIAL_SNOW,
 } from "./src/tilemap/pipeline/materials.ts";
 export {
   runBoundaryKinds,
