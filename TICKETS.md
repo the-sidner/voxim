@@ -831,7 +831,7 @@ Rate-limit: one call per city per event; no tick-driven calls.
 Done when: a live city reacts to a significant event with LLM-generated tool calls.
 
 ### T-172 · Drowner creature + UAL2 import pipeline fix
-Effort: M   Status: done
+Effort: M   Status: done   Commit: 84771f9
 
 First non-human/non-canine creature: a Gollum-like swamp ambusher running on all fours with
 elongated arms. Skeleton reuses the human bone-name schema so existing `anim_maps/` entries
