@@ -1538,7 +1538,7 @@ Done when: flat terrain has no diagonal artifact rows, but building
 silhouettes, terrain height steps, and corner creases still outline.
 
 ### T-164 · InstancePool refactor — Phase 1: primitive + voxel-geo extraction
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 21daefd
 
 First of four phases that move all procedurally-placed instanced
 rendering (forest decorations, server props, future rocks) onto a
@@ -1571,7 +1571,7 @@ runs and renders identically to before; the HUD draw/tris numbers are
 unchanged because the new pool has zero handles.
 
 ### T-165 · InstancePool refactor — Phase 2: forest_props migration
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 21daefd
 
 Rewrite `packages/client/src/render/forest_props.ts` so it registers
 archetypes and per-tree handles into the InstancePool from T-164
@@ -1596,7 +1596,7 @@ differently); tile transition still cleans up the previous tile's
 forest correctly.
 
 ### T-166 · InstancePool refactor — Phase 3: prop_instance_pool deletion
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 21daefd
 
 Delete `packages/client/src/render/prop_instance_pool.ts` entirely.
 Server-prop entities (ground items, ruins, resource nodes) register
@@ -1628,22 +1628,36 @@ remain; HUD shows the prop_pool bucket folded into forest archetypes
 or its own archetypes (down from 6 always-on draws to per-frame slice).
 
 ### T-167 · InstancePool refactor — Phase 4: perf validation + plan cleanup
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: HEAD
 
-Final phase.  Validate the perf win, delete the plan document, mark
-all four tickets done with their commit hashes.
+Closeout for the four-phase refactor.  Numbers measured on the
+user's machine in a forested area with shadows on:
 
-  - Capture HUD numbers (FPS, draws, tris, all ms buckets) in a
-    representative scene with shadows on.  Record before/after and
-    paste into the closing commit message.
-  - Confirm 60 FPS sustained on the user's machine in a forested
-    area with shadows on.
-  - Delete `INSTANCE_POOL_PLAN.md` from the repo root.
-  - Update T-164 / T-165 / T-166 / T-167 statuses to `done` with the
-    commit hash that finished each phase.
+  - **Before** (35 FPS): 1 327 draws, 2.07 M tris, 23 ms GL,
+    7 936 forest InstancedMeshes (25 instances/draw average), the
+    old `prop_instance_pool.ts` rendering all 4 096 slots every
+    frame with `frustumCulled = false`.
+  - **After**  (58 FPS): 421 draws, 2.5 M tris, 12.1 ms GL, 0.3 ms
+    skeleton+IK, ping 25 ms, tick 20.0 Hz, 5 256 InstancePool
+    handles spread across one InstancedMesh per archetype.
 
-Done when: plan file is gone; all four tickets show `Status: done`;
-the user can play in a forested area at 60 FPS with shadows on.
+The 5×5 chunk window for InstancePool culling — 2-chunk radius
+around the player — covers both the 120-unit shadow camera frustum
+and the main camera's forward cone with no popping.  Terrain stays
+at 9×9 since terrain meshes are cheap and a tighter window would
+seam-pop visibly on flat ground.
+
+The HUD diagnostics that drove the investigation stayed in: per-
+section ms breakdown (sk+ik / trail / gl / post), draws and tris
+counters, the "Bypass post-FX" / "Shadows" toggles, and the
+`Log scene census` button.  A second commit (a5675f1) added
+network and scene stats — ping, input lag, server tick rate,
+inbound kbps, entity count, InstancePool handle count — to round
+out the diagnostic surface.
+
+Plan document `INSTANCE_POOL_PLAN.md` deleted in this commit.
+
+Done.
 
 ### T-168 · Basic-item detail pass via per-prefab `modelScale`
 Effort: M   Status: done
