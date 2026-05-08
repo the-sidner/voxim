@@ -56,7 +56,7 @@ export class NpcAiSystem implements System {
       const pos = world.get(entityId, Position);
       if (!pos) continue;
 
-      const template = this.content.getNpcTemplate(npcTag.npcType);
+      const template = this.content.npcTemplates.get(npcTag.npcType);
       if (!template) {
         log.warn("no template for npcType=%s entity=%s", npcTag.npcType, entityId);
         continue;

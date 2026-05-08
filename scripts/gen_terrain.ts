@@ -26,10 +26,10 @@ console.time("gen-terrain");
 const content = await loadContentStore();
 
 const worldGenContent: WorldGenContent = {
-  biomes: content.getAllBiomes(),
-  zones: content.getAllZones(),
+  biomes: content.getBiomesByPriority(),
+  zones: content.getZonesByPriority(),
   resolveMaterialId(name: string): number {
-    const m = content.getMaterialByName(name);
+    const m = content.materials.get(name);
     if (!m) throw new Error(`unknown material "${name}" referenced from biome data`);
     return m.id;
   },

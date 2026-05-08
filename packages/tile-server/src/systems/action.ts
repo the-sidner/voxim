@@ -16,7 +16,7 @@
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
-import type { ContentStore, DerivedItemStats, SwingableData } from "@voxim/content";
+import type { ContentStore, DerivedItemStats, SwingableData, WeaponActionDef } from "@voxim/content";
 import { pickWeaponAction } from "../components/item_behaviours.ts";
 import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
@@ -94,7 +94,7 @@ export class ActionSystem implements System {
       // player's chargeMs. Naked swing or weapons without a swingable
       // declaration fall back to unarmed.
       const swingable = weaponPrefabId
-        ? this.content.getPrefab(weaponPrefabId)?.components["swingable"] as SwingableData | undefined
+        ? this.content.prefabs.get(weaponPrefabId)?.components["swingable"] as SwingableData | undefined
         : undefined;
       const picked = swingable ? pickWeaponAction(swingable, inputState.chargeMs ?? 0) : null;
       const weaponActionId = picked?.actionId ?? unarmedActionId;
@@ -119,7 +119,7 @@ export class ActionSystem implements System {
 
     // ── 2. Advance phase + resolve hits ──────────────────────────────────────
     for (const { entityId, skillInProgress: sip } of world.query(SkillInProgress)) {
-      const action = this.content.getWeaponAction(sip.weaponActionId);
+      const action = this.content.weaponActions.get(sip.weaponActionId);
       if (!action) {
         world.remove(entityId, SkillInProgress);
         continue;
@@ -176,7 +176,7 @@ export class ActionSystem implements System {
     unarmed: DerivedItemStats,
     rewindTick: number,
   ): HitRecord[] {
-    const action = this.content.getWeaponAction(sip.weaponActionId);
+    const action = this.content.weaponActions.get(sip.weaponActionId);
     if (!action) return sip.hitEntities;
     // resolveHits is only called for melee actions; swingPath is required for melee
     if (!action.swingPath) return sip.hitEntities;
@@ -190,7 +190,7 @@ export class ActionSystem implements System {
     // Derive blade geometry from the equipped weapon's model AABB.
     // Model Z axis = blade axis (voxel Z maps to Three.js Y for weapon rendering).
     // Fall back to swingPath defaults for unarmed (no weapon model).
-    const weaponPrefab = weaponPrefabId2 ? this.content.getPrefab(weaponPrefabId2) : null;
+    const weaponPrefab = weaponPrefabId2 ? this.content.prefabs.get(weaponPrefabId2) : null;
     const weaponAabb = weaponPrefab?.modelId
       ? this.content.getModelAabb(weaponPrefab.modelId)
       : null;
@@ -337,7 +337,7 @@ export class ActionSystem implements System {
     world: World,
     entityId: string,
     sip: SkillInProgressData,
-    action: ReturnType<ContentStore["getWeaponAction"]>,
+    action: WeaponActionDef | undefined,
     unarmed: DerivedItemStats,
   ): void {
     if (!action?.projectile) return;

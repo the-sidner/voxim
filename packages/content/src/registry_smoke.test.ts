@@ -20,7 +20,7 @@ Deno.test("ContentRegistry<MaterialDef> indexes real materials by tag", async ()
     kind: "material",
     idOf: (m) => m.name,
   });
-  for (const m of store.getAllMaterials()) reg.register(m);
+  for (const m of store.materials.values()) reg.register(m);
 
   // Subset checks — concrete tags we authored, names must be present.
   const metals = reg.byTag("metal").map((m) => m.name).sort();

@@ -3372,7 +3372,7 @@ type-check clean; bone world positions sane (feet near ground, hands at
 chest height instead of flying above the head).
 
 ### T-174 · ContentRegistry<T> primitive + tag indexing
-Effort: S   Status: done
+Effort: S   Status: done   Commit: 86e435a
 
 Generic id-keyed registry primitive in `@voxim/content`:
 
@@ -3389,7 +3389,7 @@ Done when: `ContentRegistry<T>` exists with unit coverage; materials have
 tags; `byTag("metal")` returns the iron / steel / copper / worn_iron rows.
 
 ### T-175 · Federate ContentStore into typed registries
-Effort: L   Status: todo
+Effort: L   Status: done
 
 Refactor `ContentStore`'s ~30 ad-hoc `get*` methods into a federated shape:
 

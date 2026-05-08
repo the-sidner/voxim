@@ -39,10 +39,10 @@ export function MixPanel({ content }: Props) {
   const skeletons: SkeletonDef[] = (() => {
     const ids = new Set<string>();
     for (const id of content.allModelIds) {
-      const m = content.getModel(id);
+      const m = content.models.get(id);
       if (m?.skeletonId) ids.add(m.skeletonId);
     }
-    return [...ids].map((id) => content.getSkeleton(id)).filter(Boolean) as SkeletonDef[];
+    return [...ids].map((id) => content.skeletons.get(id)).filter(Boolean) as SkeletonDef[];
   })();
   const skel = skeletons.find((s) => s.id === skeletonId);
 

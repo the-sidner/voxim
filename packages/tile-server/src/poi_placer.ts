@@ -138,7 +138,7 @@ export function spawnMobPois(
   mobs: MobSpawn[],
 ): void {
   for (const m of mobs) {
-    if (!content.getPrefab(m.prefabId)) continue;
+    if (!content.prefabs.get(m.prefabId)) continue;
     spawnPrefab(world, content, m.prefabId, { x: m.x, y: m.y });
   }
 }

@@ -105,7 +105,7 @@ function buildMaterialMap(content: ContentStore): {
   defaultMaterialId: number;
 } {
   const byName = (name: string): number => {
-    const m = content.getMaterialByName(name);
+    const m = content.materials.get(name);
     if (!m) throw new Error(`atlas terrain: tile-server content missing material "${name}"`);
     return m.id;
   };

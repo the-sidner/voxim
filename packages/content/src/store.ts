@@ -17,10 +17,11 @@
  *   content.materials.byTag("metal") — tag-indexed query
  *   content.skeletons.values()       — iteration
  *
- * The legacy `getX(id)` / `getAllX()` methods remain for now as 1-line
- * delegates so call sites can migrate incrementally; they will be deleted
- * in a follow-up commit (per CLAUDE.md "no shims" — the transition aid is
- * temporary, not a permanent layer).
+ * Specialized lookups (`getMaterialById`, `getPrefabsByCategory`,
+ * `getBiomesByPriority`, the derived caches `getBoneIndex` /
+ * `getHitboxTemplate` / `getClipIndex` / `getMaskIndex` / `getRecipeGraph`,
+ * and the singletons `getGameConfig` / `getTileLayout`) remain as named
+ * methods. Generic id-lookups go through the registries.
  */
 import type {
   MaterialId,
@@ -48,7 +49,7 @@ import type {
   WeaponActionDef,
   VerbDef,
 } from "./types.ts";
-import type { HitboxPartTemplate } from "./hitbox_derive.ts";
+import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
 import type { AnimationClip, BoneMask } from "./types.ts";
 import { buildClipIndex, buildMaskIndex } from "./animation_eval.ts";
@@ -114,32 +115,6 @@ export interface ContentStore {
   // ---- singletons ----
   getGameConfig(): GameConfig;
   getTileLayout(): TileLayout | null;
-
-  // ---- legacy getter-shape (TRANSITIONAL — deleted in follow-up) ----
-  // Kept for incremental call-site migration. Each is a 1-line delegate to
-  // a registry / specialized method.
-  getMaterial(id: MaterialId): MaterialDef | null;
-  getMaterialByName(name: string): MaterialDef | null;
-  getAllMaterials(): MaterialDef[];
-  getModel(id: string): ModelDefinition | null;
-  getSkeleton(id: string): SkeletonDef | null;
-  getRecipe(id: string): Recipe | null;
-  getAllRecipes(): readonly Recipe[];
-  getNpcTemplate(id: string): NpcTemplate | null;
-  getAllNpcTemplates(): readonly NpcTemplate[];
-  getBehaviorTree(id: string): BehaviorTreeSpec | null;
-  getAllBehaviorTrees(): readonly BehaviorTreeSpec[];
-  getAllBiomes(): readonly BiomeDef[];
-  getBiome(id: string): BiomeDef | null;
-  getAllZones(): readonly ZoneDef[];
-  getZone(id: string): ZoneDef | null;
-  getPrefab(id: string): Prefab | null;
-  getAllPrefabs(): readonly Prefab[];
-  getLoreFragment(id: string): LoreFragment | null;
-  getAllLoreFragments(): readonly LoreFragment[];
-  getWeaponAction(id: string): WeaponActionDef | null;
-  getAllWeaponActions(): readonly WeaponActionDef[];
-  getVerbDef(id: SkillVerb): VerbDef | null;
 }
 
 export class StaticContentStore implements ContentStore {
@@ -402,7 +377,14 @@ export class StaticContentStore implements ContentStore {
     const key = `${modelId}:${seed}:${scale}`;
     let tmpl = this.hitboxTemplateCache.get(key);
     if (!tmpl) {
-      tmpl = deriveHitboxTemplate(modelId, seed, this, scale);
+      // Inline adapter — keeps the legacy `getModel` shape out of the public
+      // ContentStore surface. Mirrors how ContentCache wraps its own model
+      // lookup at the call site.
+      const adapter: HitboxContentAdapter = {
+        getModel: (id) => this.models.get(id) ?? null,
+        getModelAabb: (id) => this.modelAabb.get(id) ?? null,
+      };
+      tmpl = deriveHitboxTemplate(modelId, seed, adapter, scale);
       this.hitboxTemplateCache.set(key, tmpl);
     }
     return tmpl;
@@ -436,31 +418,6 @@ export class StaticContentStore implements ContentStore {
   getTileLayout(): TileLayout | null {
     return this.tileLayout;
   }
-
-  // ---- legacy getter-shape (TRANSITIONAL — deleted in T-175 follow-up) ----
-
-  getMaterial(id: MaterialId): MaterialDef | null { return this.materialsByNumericId.get(id) ?? null; }
-  getMaterialByName(name: string): MaterialDef | null { return this.materials.get(name) ?? null; }
-  getAllMaterials(): MaterialDef[] { return Array.from(this.materials.values()); }
-  getModel(id: string): ModelDefinition | null { return this.models.get(id) ?? null; }
-  getSkeleton(id: string): SkeletonDef | null { return this.skeletons.get(id) ?? null; }
-  getRecipe(id: string): Recipe | null { return this.recipes.get(id) ?? null; }
-  getAllRecipes(): readonly Recipe[] { return Array.from(this.recipes.values()); }
-  getNpcTemplate(id: string): NpcTemplate | null { return this.npcTemplates.get(id) ?? null; }
-  getAllNpcTemplates(): readonly NpcTemplate[] { return Array.from(this.npcTemplates.values()); }
-  getBehaviorTree(id: string): BehaviorTreeSpec | null { return this.behaviorTrees.get(id) ?? null; }
-  getAllBehaviorTrees(): readonly BehaviorTreeSpec[] { return Array.from(this.behaviorTrees.values()); }
-  getAllBiomes(): readonly BiomeDef[] { return this.biomesByPrioritySorted; }
-  getBiome(id: string): BiomeDef | null { return this.biomes.get(id) ?? null; }
-  getAllZones(): readonly ZoneDef[] { return this.zonesByPrioritySorted; }
-  getZone(id: string): ZoneDef | null { return this.zones.get(id) ?? null; }
-  getPrefab(id: string): Prefab | null { return this.prefabs.get(id) ?? null; }
-  getAllPrefabs(): readonly Prefab[] { return Array.from(this.prefabs.values()); }
-  getLoreFragment(id: string): LoreFragment | null { return this.loreFragments.get(id) ?? null; }
-  getAllLoreFragments(): readonly LoreFragment[] { return Array.from(this.loreFragments.values()); }
-  getWeaponAction(id: string): WeaponActionDef | null { return this.weaponActions.get(id) ?? null; }
-  getAllWeaponActions(): readonly WeaponActionDef[] { return Array.from(this.weaponActions.values()); }
-  getVerbDef(id: SkillVerb): VerbDef | null { return this.verbs.get(id) ?? null; }
 }
 
 // ---- procedural model variation ----

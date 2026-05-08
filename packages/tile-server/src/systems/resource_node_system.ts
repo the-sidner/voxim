@@ -22,7 +22,7 @@ export class ResourceNodeSystem implements System {
 
       const remaining = rn.respawnTicksRemaining - 1;
       if (remaining <= 0) {
-        const prefab = this.content.getPrefab(rn.nodeTypeId);
+        const prefab = this.content.prefabs.get(rn.nodeTypeId);
         const template = prefab?.components.resourceNode as PrefabResourceNodeData | undefined;
         log.info("node respawned: entity=%s type=%s", entityId, rn.nodeTypeId);
         world.set(entityId, ResourceNode, {

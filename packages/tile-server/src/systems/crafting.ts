@@ -93,7 +93,7 @@ export class CraftingSystem implements System {
   }
 
   private _handleSelectRecipe(world: World, entityId: EntityId, recipeId: string): void {
-    const recipe = this.content.getRecipe(recipeId);
+    const recipe = this.content.recipes.get(recipeId);
     if (!recipe) {
       log.debug("select-recipe: unknown recipe=%s", recipeId);
       return;
@@ -261,7 +261,7 @@ export class CraftingSystem implements System {
     // Stack items: merge into an existing matching stack if any, otherwise
     // append a new stack slot. Unique items always take a fresh unique slot.
     // The prefab decides via the `stackable: {}` component declaration.
-    const prefab = this.content.getPrefab(item.prefabId);
+    const prefab = this.content.prefabs.get(item.prefabId);
     const isStackable = prefab?.components["stackable"] !== undefined;
 
     let newSlots = inv.slots.slice();
@@ -324,7 +324,7 @@ export function findMatchingRecipe(
   stepType: Recipe["stepType"],
   bufferSlots: WorkstationBufferData["slots"],
 ): RecipeMatch | null {
-  for (const recipe of content.getAllRecipes()) {
+  for (const recipe of content.recipes.values()) {
     if (recipe.stationType !== stationType) continue;
     if ((recipe.stepType ?? "time") !== stepType) continue;
     const assignment = tryAssignRoles(recipe, bufferSlots, content);
@@ -391,7 +391,7 @@ function inputAccepts(input: Recipe["inputs"][number], prefabId: string, content
     return prefabId === input.itemType;
   }
   if ("category" in input && input.category !== undefined) {
-    const prefab = content.getPrefab(prefabId);
+    const prefab = content.prefabs.get(prefabId);
     if (!prefab || prefab.category !== input.category) return false;
     if (input.tags) {
       const have = prefab.tags ?? [];
@@ -463,7 +463,7 @@ export function spawnOutputNear(
   match: RecipeMatch,
   bufferSlotsBeforeConsume: WorkstationBufferData["slots"],
 ): void {
-  const prefab = content.getPrefab(output.itemType);
+  const prefab = content.prefabs.get(output.itemType);
   const pos = world.get(stationId, Position);
   const x = (pos?.x ?? 0) + 0.5;
   const y = (pos?.y ?? 0) + 0.5;
@@ -552,7 +552,7 @@ function evaluateOutputStats(
     // whatever upstream recipe created it).
     let stats: Record<string, number> = {};
     if (slot.kind === "stack") {
-      stats = content.getPrefab(slot.itemType)?.stats ?? {};
+      stats = content.prefabs.get(slot.itemType)?.stats ?? {};
     } else {
       stats = world.get(slot.entityId as EntityId, Stats) ?? {};
     }

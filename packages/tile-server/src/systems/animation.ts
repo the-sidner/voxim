@@ -78,7 +78,7 @@ export class AnimationSystem implements System {
         weaponActionId = sip.weaponActionId;
         // Compute cumulative ticks across phases so the client receives a
         // monotonically increasing counter the renderer can extrapolate smoothly.
-        const def = this.content.getWeaponAction(sip.weaponActionId);
+        const def = this.content.weaponActions.get(sip.weaponActionId);
         ticksIntoAction = sip.ticksInPhase;
         if (def) {
           if (sip.phase === "active")    ticksIntoAction += def.windupTicks;

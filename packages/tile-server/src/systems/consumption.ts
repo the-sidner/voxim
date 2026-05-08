@@ -21,7 +21,7 @@ export class ConsumptionSystem implements System {
 
       const idx = inventory.slots.findIndex((s) => {
         const prefabId = slotPrefabId(s, world);
-        return !!prefabId && !!this.content.getPrefab(prefabId)?.components["edible"];
+        return !!prefabId && !!this.content.prefabs.get(prefabId)?.components["edible"];
       });
       if (idx === -1) {
         log.debug("consume: entity=%s no consumable in inventory", entityId);

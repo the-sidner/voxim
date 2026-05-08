@@ -85,7 +85,7 @@ export class EquipmentSystem implements System {
       return;
     }
 
-    const prefab = this.content.getPrefab(prefabId);
+    const prefab = this.content.prefabs.get(prefabId);
     const equippable = prefab?.components["equippable"] as { slot: string } | undefined;
     if (!equippable) {
       log.debug("equip rejected: entity=%s item=%s has no equippable component", entityId, prefabId);
@@ -276,7 +276,7 @@ export class EquipmentSystem implements System {
     const prefabId = slotPrefabId(slot, world);
     if (!prefabId) return;
 
-    const prefab = this.content.getPrefab(prefabId);
+    const prefab = this.content.prefabs.get(prefabId);
     if (!prefab?.components["edible"]) {
       log.debug("use_item rejected: entity=%s item=%s has no edible component", entityId, prefabId);
       return;

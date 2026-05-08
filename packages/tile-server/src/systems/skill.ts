@@ -68,8 +68,8 @@ export class SkillSystem implements System {
         const skillSlot = loreLoadout.skills[slot];
         if (!skillSlot) continue;
 
-        const f1 = this.content.getLoreFragment(skillSlot.outwardFragmentId);
-        const f2 = this.content.getLoreFragment(skillSlot.inwardFragmentId);
+        const f1 = this.content.loreFragments.get(skillSlot.outwardFragmentId);
+        const f2 = this.content.loreFragments.get(skillSlot.inwardFragmentId);
         if (!f1 || !f2) {
           log.warn("skill slot %d: missing fragment f1=%s f2=%s entity=%s",
             slot, skillSlot.outwardFragmentId, skillSlot.inwardFragmentId, entityId);
@@ -146,8 +146,8 @@ export class SkillSystem implements System {
     const cooldowns = loreLoadout.skillCooldowns;
     if ((cooldowns[slot] ?? 0) > 0) return false;
 
-    const f1 = this.content.getLoreFragment(skillSlot.outwardFragmentId);
-    const f2 = this.content.getLoreFragment(skillSlot.inwardFragmentId);
+    const f1 = this.content.loreFragments.get(skillSlot.outwardFragmentId);
+    const f2 = this.content.loreFragments.get(skillSlot.inwardFragmentId);
     if (!f1 || !f2) return false;
 
     const entry = this.content.getConceptVerbEntry(skillSlot.verb, f1.concept, f2.concept);

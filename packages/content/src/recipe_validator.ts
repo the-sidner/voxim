@@ -36,8 +36,8 @@ const KNOWN_AMBIENT_VARS: ReadonlySet<string> = new Set([
 
 /** Validate every recipe in the store. Throws on the first defect found. */
 export function validateRecipeGraph(content: ContentStore): void {
-  const allRecipes = content.getAllRecipes();
-  const allPrefabs = content.getAllPrefabs();
+  const allRecipes = [...content.recipes.values()];
+  const allPrefabs = [...content.prefabs.values()];
   const producibleByPrefab = computeProducibleStats(allRecipes, allPrefabs);
 
   for (const recipe of allRecipes) {

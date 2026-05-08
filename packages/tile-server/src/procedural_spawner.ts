@@ -93,7 +93,7 @@ export class ProceduralSpawner {
     if (layout) {
       let spawned = 0;
       for (const cfg of layout.entities) {
-        if (!this.content.getPrefab(cfg.prefabId)) {
+        if (!this.content.prefabs.get(cfg.prefabId)) {
           console.warn(`[ProceduralSpawner] unknown prefab "${cfg.prefabId}"`);
           continue;
         }
@@ -118,7 +118,7 @@ export class ProceduralSpawner {
     const layout = this.content.getTileLayout();
     if (layout) {
       for (const cfg of layout.npcs) {
-        if (!this.content.getPrefab(cfg.prefabId)) {
+        if (!this.content.prefabs.get(cfg.prefabId)) {
           console.warn(`[ProceduralSpawner] unknown prefab "${cfg.prefabId}"`);
           continue;
         }
@@ -153,7 +153,7 @@ export class ProceduralSpawner {
     for (let cy = 0; cy < grid.gridSize; cy++) {
       for (let cx = 0; cx < grid.gridSize; cx++) {
         const cell = grid.cells[cx + cy * grid.gridSize];
-        const zone = this.content.getZone(cell.zoneId);
+        const zone = this.content.zones.get(cell.zoneId);
         if (!zone) continue;
         const totalWeight = Object.values(zone.npcWeights).reduce((s, w) => s + w, 0);
         if (totalWeight === 0) continue;
@@ -165,7 +165,7 @@ export class ProceduralSpawner {
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const npcType = weightedPick(zone.npcWeights, rng);
           if (!npcType) continue;
-          if (!this.content.getPrefab(npcType)) continue;
+          if (!this.content.prefabs.get(npcType)) continue;
           spawnPrefab(this.world, this.content, npcType, { x: wx, y: wy });
           total++;
         }
@@ -191,7 +191,7 @@ export class ProceduralSpawner {
     for (let cy = 0; cy < grid.gridSize; cy++) {
       for (let cx = 0; cx < grid.gridSize; cx++) {
         const cell = grid.cells[cx + cy * grid.gridSize];
-        const zone = this.content.getZone(cell.zoneId);
+        const zone = this.content.zones.get(cell.zoneId);
         if (!zone) continue;
         const totalWeight = Object.values(zone.entityWeights).reduce((s, w) => s + w, 0);
         if (totalWeight === 0) continue;
@@ -203,7 +203,7 @@ export class ProceduralSpawner {
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const prefabId = weightedPick(zone.entityWeights, rng);
           if (!prefabId) continue;
-          if (!this.content.getPrefab(prefabId)) continue;
+          if (!this.content.prefabs.get(prefabId)) continue;
           spawnPrefab(this.world, this.content, prefabId, {
             x: wx, y: wy, z: getTerrainZ(wx, wy),
             seed: positionSeed(wx, wy),
@@ -229,7 +229,7 @@ export class ProceduralSpawner {
     for (let cy = 0; cy < grid.gridSize; cy++) {
       for (let cx = 0; cx < grid.gridSize; cx++) {
         const cell = grid.cells[cx + cy * grid.gridSize];
-        const zone = this.content.getZone(cell.zoneId);
+        const zone = this.content.zones.get(cell.zoneId);
         if (!zone) continue;
         const totalWeight = Object.values(zone.propWeights).reduce((s, w) => s + w, 0);
         if (totalWeight === 0) continue;
@@ -241,7 +241,7 @@ export class ProceduralSpawner {
           const wy = cy * cellWorldSize + MARGIN + rng() * (cellWorldSize - 2 * MARGIN);
           const propPrefabId = weightedPick(zone.propWeights, rng);
           if (!propPrefabId) continue;
-          if (!this.content.getPrefab(propPrefabId)) continue;
+          if (!this.content.prefabs.get(propPrefabId)) continue;
           spawnPrefab(this.world, this.content, propPrefabId, {
             x: wx, y: wy, z: getTerrainZ(wx, wy),
             seed: positionSeed(wx, wy),

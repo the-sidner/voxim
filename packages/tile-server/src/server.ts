@@ -308,7 +308,7 @@ export class TileServer {
     const btNodes = createBTNodeRegistry();
     registerBuiltinBTNodes(btNodes);
     const behaviorTrees = buildAllBehaviorTrees(content, btNodes);
-    for (const tmpl of content.getAllNpcTemplates()) {
+    for (const tmpl of content.npcTemplates.values()) {
       if (!behaviorTrees.has(tmpl.behaviorTreeId)) {
         throw new Error(
           `NpcTemplate "${tmpl.id}" references behaviorTreeId "${tmpl.behaviorTreeId}" ` +
@@ -323,7 +323,7 @@ export class TileServer {
     // + one register call.
     const recipeSteps = createRecipeStepRegistry();
     registerBuiltinSteps(recipeSteps);
-    for (const recipe of content.getAllRecipes()) {
+    for (const recipe of content.recipes.values()) {
       const stepType = recipe.stepType ?? "time";
       if (!recipeSteps.has(stepType)) {
         throw new Error(
@@ -349,7 +349,7 @@ export class TileServer {
       const accountClient = this.accountClient;
       const tileId = config.tileId;
       this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
-        const prefab = content.getPrefab(p.prefabId);
+        const prefab = content.prefabs.get(p.prefabId);
         if (!prefab?.components.hearth) return;
         accountClient.updateHearth(p.placerId, {
           tileId,
@@ -484,7 +484,7 @@ export class TileServer {
       console.log(
         `[TileServer] atlas terrain loaded: cell (${atlas.cellX},${atlas.cellY}) seed=${atlas.tileSeed}`,
       );
-      const woodMat = content.getMaterialByName("wood");
+      const woodMat = content.materials.get("wood");
       if (!woodMat) throw new Error("POI placer: missing 'wood' content material");
       mobSpawns = placePois(
         atlas.heightBuffer,
@@ -601,10 +601,10 @@ export class TileServer {
 
     console.log(
       `[TileServer] ${config.tileId} listening on port ${config.port} at ${tickRateHz}Hz`,
-      `| ${content.getAllRecipes().length} recipes,`,
-      `${content.getAllNpcTemplates().length} NPC types,`,
-      `${content.getAllPrefabs().length} prefabs,`,
-      `${content.getAllLoreFragments().length} lore fragments,`,
+      `| ${content.recipes.size} recipes,`,
+      `${content.npcTemplates.size} NPC types,`,
+      `${content.prefabs.size} prefabs,`,
+      `${content.loreFragments.size} lore fragments,`,
       `${content.getAllConceptVerbEntries().length} skill entries loaded`,
     );
   }

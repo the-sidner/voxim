@@ -33,11 +33,11 @@ export function AssignPanel({ content }: Props) {
 
   // Filter to prefabs that ultimately reference a skeleton-bearing model.
   const prefabsWithSkeleton: { id: string; relPath: string; skeleton: string }[] = (() => {
-    const all = content.getAllPrefabs ? content.getAllPrefabs() : [];
+    const all = content.prefabs.values();
     const out: { id: string; relPath: string; skeleton: string }[] = [];
     for (const p of all) {
       if (!p.modelId) continue;
-      const m = content.getModel(p.modelId);
+      const m = content.models.get(p.modelId);
       if (!m?.skeletonId) continue;
       // Best-effort guess: assume prefabs/{id}.json or prefabs/items/{id}.json.
       const guessed = guessPrefabPath(p.id);
@@ -47,8 +47,8 @@ export function AssignPanel({ content }: Props) {
   })();
 
   const skel: SkeletonDef | null = prefab && prefab.modelId
-    ? (content.getModel(prefab.modelId)?.skeletonId
-        ? content.getSkeleton(content.getModel(prefab.modelId)!.skeletonId!)
+    ? (content.models.get(prefab.modelId)?.skeletonId
+        ? content.skeletons.get(content.models.get(prefab.modelId)!.skeletonId!)
         : null)
     : null;
 

@@ -141,18 +141,18 @@ export class ClientSession {
         let resp: ContentResponse;
 
         if (req.type === "model_req") {
-          const def = content.getModel(req.modelId);
+          const def = content.models.get(req.modelId);
           resp = def
             ? { type: "model_def", modelId: req.modelId, version: def.version, def }
             : { type: "not_found", id: req.modelId };
         } else if (req.type === "material_req") {
-          const def = content.getMaterial(req.materialId);
+          const def = content.getMaterialById(req.materialId);
           resp = def
             ? { type: "material_def", materialId: req.materialId, def }
             : { type: "not_found", id: String(req.materialId) };
         } else {
           // skeleton_req
-          const def = content.getSkeleton(req.skeletonId);
+          const def = content.skeletons.get(req.skeletonId);
           resp = def
             ? { type: "skeleton_def", skeletonId: req.skeletonId, def }
             : { type: "not_found", id: req.skeletonId };

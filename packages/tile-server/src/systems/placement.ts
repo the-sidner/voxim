@@ -85,7 +85,7 @@ export class PlacementSystem implements System {
         log.debug("place rejected: placer=%s slot=%d is not a stack (unique items deploy via drop)", placerId, cmd.fromInventorySlot);
         return;
       }
-      const itemPrefab = this.content.getPrefab(slot.prefabId);
+      const itemPrefab = this.content.prefabs.get(slot.prefabId);
       const deployable = itemPrefab?.components["deployable"] as { prefabId?: string } | undefined;
       if (!deployable?.prefabId) {
         log.debug("place rejected: placer=%s item=%s has no deployable component", placerId, slot.prefabId);
@@ -96,7 +96,7 @@ export class PlacementSystem implements System {
     }
 
     // ── Load spawn prefab + placement rules ──────────────────────────────
-    const spawnPrefab_ = this.content.getPrefab(spawnPrefabId);
+    const spawnPrefab_ = this.content.prefabs.get(spawnPrefabId);
     if (!spawnPrefab_) {
       log.warn("place rejected: unknown spawn prefab=%s (placer=%s)", spawnPrefabId, placerId);
       return;

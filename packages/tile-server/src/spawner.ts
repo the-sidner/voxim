@@ -138,7 +138,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 /** NPC: NpcTemplate-driven stats + NpcTag + survival defaults. */
 const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, overrides) => {
   const data = rawData as PrefabNpcData;
-  const template = content.getNpcTemplate(data.npcType);
+  const template = content.npcTemplates.get(data.npcType);
   const maxHealth = template?.maxHealth ?? 80;
   const speedMultiplier = template?.speedMultiplier ?? 1.0;
 
@@ -280,7 +280,7 @@ export function spawnPrefab(
   prefabId: string,
   overrides: SpawnPrefabOverrides = {},
 ): EntityId {
-  const prefab = content.getPrefab(prefabId);
+  const prefab = content.prefabs.get(prefabId);
   if (!prefab) throw new Error(`spawnPrefab: unknown prefab '${prefabId}'`);
   if (prefab.id.startsWith("_")) {
     throw new Error(`spawnPrefab: '${prefab.id}' is abstract and cannot be spawned directly`);
@@ -394,7 +394,7 @@ export function spawnGroundStack(
   }
 
   world.write(id, ItemData, { prefabId, quantity });
-  const prefab = content.getPrefab(prefabId);
+  const prefab = content.prefabs.get(prefabId);
   if (prefab) installVisualShell(world, content, id, prefab, 0);
   return id;
 }

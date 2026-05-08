@@ -22,7 +22,7 @@ import { DEF_BY_NAME } from "./component_registry.ts";
 import { COMPOUND_ARCHETYPE_KEYS } from "./spawner.ts";
 
 export function validatePrefabs(content: ContentStore): void {
-  for (const prefab of content.getAllPrefabs()) {
+  for (const prefab of content.prefabs.values()) {
     for (const [name, rawData] of Object.entries(prefab.components)) {
       if (COMPOUND_ARCHETYPE_KEYS.has(name)) continue;
 

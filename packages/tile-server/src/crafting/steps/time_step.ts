@@ -42,7 +42,7 @@ export const timeStep: RecipeStepHandler = {
       return;
     }
 
-    const recipe = buffer.activeRecipeId ? content.getRecipe(buffer.activeRecipeId) : null;
+    const recipe = buffer.activeRecipeId ? content.recipes.get(buffer.activeRecipeId) : null;
     if (!recipe) {
       // Stale activeRecipeId — clear and continue.
       world.set(stationId, WorkstationBuffer, { ...buffer, progressTicks: null, activeRecipeId: null });

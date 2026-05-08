@@ -24,7 +24,7 @@ export class ResourceNodeHitHandler implements HitHandler {
     if (!rn) return;
     if (rn.depleted) return;
 
-    const prefab = this.content.getPrefab(rn.nodeTypeId);
+    const prefab = this.content.prefabs.get(rn.nodeTypeId);
     // Prefab.components is open-set; resource-node archetype data is cast
     // through its known shape. Full schema-backed lookup arrives with the
     // prefab plan's later phases.

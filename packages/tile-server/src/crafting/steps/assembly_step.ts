@@ -17,7 +17,7 @@ export const assemblyStep: RecipeStepHandler = {
   id: ID,
   onHit(ctx: RecipeHitContext): void {
     if (!ctx.buffer.activeRecipeId) return;
-    const recipe = ctx.content.getRecipe(ctx.buffer.activeRecipeId);
+    const recipe = ctx.content.recipes.get(ctx.buffer.activeRecipeId);
     if (!recipe) return;
     if ((recipe.stepType ?? "time") !== ID) return;
     if (recipe.stationType !== ctx.stationType) return;

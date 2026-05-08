@@ -67,7 +67,7 @@ export function buildAllBehaviorTrees(
   nodeRegistry: Registry<BTNodeFactory>,
 ): Map<string, BTNode> {
   const built = new Map<string, BTNode>();
-  for (const spec of content.getAllBehaviorTrees()) {
+  for (const spec of content.behaviorTrees.values()) {
     try {
       built.set(spec.id, buildBehaviorTree(spec.root, nodeRegistry));
     } catch (e) {

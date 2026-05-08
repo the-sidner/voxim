@@ -85,7 +85,7 @@ export class DebugCommandSystem implements System {
   private _spawnNpc(world: World, entityId: EntityId, npcTemplate: string, quantity: number): void {
     const pos = world.get(entityId, Position);
     if (!pos) return;
-    if (!this.content.getPrefab(npcTemplate)) {
+    if (!this.content.prefabs.get(npcTemplate)) {
       log.warn("debug_spawn_npc: unknown prefab '%s'", npcTemplate);
       return;
     }

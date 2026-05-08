@@ -59,7 +59,7 @@ function buildVoxelMesh(
   content: ContentStore,
   opacity = 1,
 ): THREE.Mesh {
-  const matDef    = content.getMaterial(matId);
+  const matDef    = content.getMaterialById(matId);
   const color     = matDef ? matDef.color : 0x888888;
   const roughness = matDef ? matDef.roughness : 0.8;
   const emissive  = matDef && matDef.emissive > 0
@@ -134,7 +134,7 @@ export function rebuildSubObjectMeshes(
     const mid = sub.pool?.[0] ?? sub.modelId;
     if (!mid) continue;
 
-    const def = content.getModel(mid);
+    const def = content.models.get(mid);
     if (!def) continue;
 
     const isSelected = i === selectedIndex;
