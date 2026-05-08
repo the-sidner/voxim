@@ -1,0 +1,9 @@
+{
+  "id": "drowner",
+  "modelId": "drowner",
+  "components": {
+    "npc": {
+      "npcType": "drowner"
+    }
+  }
+}

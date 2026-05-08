@@ -97,7 +97,13 @@ for (const anim of animations) {
   if (wantedClip && animName !== wantedClip) continue;
 
   // Collect rotation channels per source bone.
-  type SourceTrack = { times: number[]; quats: [number, number, number, number][] };
+  type SourceTrack = {
+    times: number[];
+    quats: [number, number, number, number][];
+    /** Source node's bind-pose rotation. Animated frames are stored as deltas
+     * from this so the importer's identity rest pose composes correctly. */
+    bind: [number, number, number, number];
+  };
   const sourceTracks = new Map<string, SourceTrack>();
   let maxTime = 0;
 
@@ -123,12 +129,14 @@ for (const anim of animations) {
       quats.push([flat[i * 4], flat[i * 4 + 1], flat[i * 4 + 2], flat[i * 4 + 3]]);
       if (times[i] > maxTime) maxTime = times[i];
     }
+    const nodeBind = node.getRotation() as [number, number, number, number] | undefined;
+    const bind: [number, number, number, number] = nodeBind ?? [0, 0, 0, 1];
     // If the same target bone appears twice (e.g. multiple source bones map
     // to the same target), the later channel wins. Warn and overwrite.
     if (sourceTracks.has(targetName)) {
       console.error(`warning: ${sourceName} → ${targetName} overwrites earlier channel`);
     }
-    sourceTracks.set(targetName, { times, quats });
+    sourceTracks.set(targetName, { times, quats, bind });
   }
 
   if (sourceTracks.size === 0) {
@@ -147,15 +155,23 @@ for (const anim of animations) {
   const tmpQuat = new Quaternion();
   const tmpEuler = new Euler();
 
+  const tmpBindInv = new Quaternion();
+  const tmpDelta = new Quaternion();
   for (const [boneName, src] of sourceTracks) {
     const restDelta = map.restDeltas?.[boneName] ?? [0, 0, 0];
+    // inverse(bind) so animated frames become bind-relative deltas. Without this
+    // the source rig's bind orientation (e.g. a leg bone whose local Y points
+    // along the bone instead of up) gets baked into every keyframe and stacks
+    // on top of our identity-rest skeleton, producing massive distortions.
+    tmpBindInv.set(src.bind[0], src.bind[1], src.bind[2], src.bind[3]).invert();
     const out: ClipKeyframe[] = [];
     for (let i = 0; i < numSamples; i++) {
       const tNorm = i / (numSamples - 1);
       const tSec = tNorm * maxTime;
       const q = sampleQuat(src.times, src.quats, tSec);
       tmpQuat.set(q[0], q[1], q[2], q[3]);
-      tmpEuler.setFromQuaternion(tmpQuat, "XYZ");
+      tmpDelta.multiplyQuaternions(tmpBindInv, tmpQuat);
+      tmpEuler.setFromQuaternion(tmpDelta, "XYZ");
       out.push({
         time: round(tNorm, 4),
         rotX: round(tmpEuler.x + restDelta[0], 4),

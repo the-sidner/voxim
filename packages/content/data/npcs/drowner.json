@@ -1,0 +1,26 @@
+{
+  "id": "drowner",
+  "displayName": "Drowner",
+  "maxHealth": 55,
+  "fleeHealthRatio": 0.0,
+  "behaviorTreeId": "hostile",
+  "aggroRange": 18,
+  "wanderRadius": 30,
+  "wanderTicks": 80,
+  "idleTicks": 40,
+  "attackTicks": 4000,
+  "fleeTicks": 100,
+  "seekFoodTicks": 200,
+  "speedMultiplier": 1.3,
+  "weaponItemType": "drowner_claws",
+  "skillLoadout": [
+    {
+      "verb": "strike",
+      "outwardFragmentId": "vampiric_drain",
+      "inwardFragmentId": "swift_step"
+    },
+    null,
+    null,
+    null
+  ]
+}

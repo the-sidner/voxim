@@ -1,0 +1,10 @@
+{
+  "id": "drowner_upper_leg",
+  "version": 2,
+  "nodes": [
+    { "x": 0, "y": 0, "z": -2, "materialId": 211 },
+    { "x": 0, "y": 0, "z": -1, "materialId": 211 }
+  ],
+  "subObjects": [],
+  "materials": [211]
+}

@@ -1,0 +1,33 @@
+{
+  "_comment": "Quaternius Universal Animation Library (UAL2) map. UAL2 ships an Unreal-style rig (pelvis, spine_01/02/03, upperarm_l, lowerarm_l, thigh_l, calf_l, etc.) — distinct from the older UAL1 Mixamo-flavored bone names handled by quaternius.json. Source is A-pose so upper-arm restDeltas pull the arms back toward our T-pose. Clavicle and upperarm both map onto upper_arm_l/r; the converter warns and last-wins (upperarm wins, which is what we want — the dominant rotation).",
+  "bones": {
+    "pelvis":      "torso_lower",
+    "spine_01":    "torso_mid",
+    "spine_02":    "torso_mid",
+    "spine_03":    "torso_upper",
+    "neck_01":     "head",
+    "Head":        "head",
+
+    "clavicle_l":  "upper_arm_l",
+    "upperarm_l":  "upper_arm_l",
+    "lowerarm_l":  "lower_arm_l",
+    "hand_l":      "hand_l",
+
+    "clavicle_r":  "upper_arm_r",
+    "upperarm_r":  "upper_arm_r",
+    "lowerarm_r":  "lower_arm_r",
+    "hand_r":      "hand_r",
+
+    "thigh_l":     "upper_leg_l",
+    "calf_l":      "lower_leg_l",
+    "foot_l":      "foot_l",
+
+    "thigh_r":     "upper_leg_r",
+    "calf_r":      "lower_leg_r",
+    "foot_r":      "foot_r"
+  },
+  "restDeltas": {
+    "upper_arm_l": [0, 0,  0.25],
+    "upper_arm_r": [0, 0, -0.25]
+  }
+}

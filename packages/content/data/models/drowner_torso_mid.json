@@ -1,0 +1,12 @@
+{
+  "id": "drowner_torso_mid",
+  "version": 1,
+  "nodes": [
+    { "x": -1, "y": 0, "z": 0, "materialId": 105 },
+    { "x":  0, "y": 0, "z": 0, "materialId": 105 },
+    { "x": -1, "y": 1, "z": 0, "materialId": 211 },
+    { "x":  0, "y": 1, "z": 0, "materialId": 211 }
+  ],
+  "subObjects": [],
+  "materials": [105, 211]
+}

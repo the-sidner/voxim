@@ -830,6 +830,35 @@ Context packet assembly, call trigger from world event bus, response parsing, to
 Rate-limit: one call per city per event; no tick-driven calls.
 Done when: a live city reacts to a significant event with LLM-generated tool calls.
 
+### T-172 · Drowner creature + UAL2 import pipeline fix
+Effort: M   Status: done
+
+First non-human/non-canine creature: a Gollum-like swamp ambusher running on all fours with
+elongated arms. Skeleton reuses the human bone-name schema so existing `anim_maps/` entries
+work; voxel parts in a new `drowner_flesh` material with bone showing through skull/ribs/claws.
+NPC template + prefab + addition to `MOB_NPC_POOL` so it spawns at mob POIs alongside
+wolf/bandit/archer.
+
+The work also exposed and fixed two latent bugs in `scripts/convert_anim.ts` and the
+content-data conventions:
+  - The converter was emitting absolute source-bone quaternions per keyframe, which baked the
+    source rig's bind orientation (e.g. a leg bone whose source local Y points along the bone)
+    into every frame and stacked it on top of our identity-rest skeleton. Fix: subtract the
+    source node's bind rotation before Euler conversion so frames are stored as deltas-from-bind.
+    Benefits any future Mixamo/CMU/Quaternius import.
+  - Bone segment lengths must match attached voxel-model lengths or you get visible gaps at
+    every joint (1-voxel-wide limbs make this glaring). Drowner part-models extended to fill
+    the 2.5-unit arm and 1.5-unit upper-leg segments.
+
+New `anim_maps/ual.json` covers the Unreal-style bone names (`pelvis`, `spine_01/02/03`,
+`upperarm_l/r`, `thigh_l/r`, `calf_l/r`) used by `UAL2_Standard.fbx`, distinct from the older
+Mixamo-style names handled by `quaternius.json`. Four core clips converted: idle / walk /
+attack / death.
+
+Done when: a drowner spawns at a mob POI, plays the converted Zombie idle in rest pose without
+distortion, and the rest of the UAL2 library can be imported by any caller running
+`convert_anim.ts <glb> ual --clip <name>`.
+
 ---
 
 ## Gateway & Multi-tile
