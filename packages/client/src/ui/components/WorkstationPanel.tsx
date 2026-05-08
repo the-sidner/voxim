@@ -18,8 +18,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { uiState, closePanel, type ItemStack, type WorkstationBufferSlotView, type WorkstationPanelState } from "../ui_store.ts";
 import { usePanel } from "../use_panel.ts";
 import { dragSystem } from "../drag_system.ts";
-import { recipes as recipesData, item_prefabs as itemPrefabsData } from "@voxim/content";
-import type { Prefab, Recipe } from "@voxim/content";
+import type { Recipe } from "@voxim/content";
+import { contentService } from "../content_ref.ts";
 import type { UIAction } from "../ui_actions.ts";
 
 const workstation = computed(() => uiState.value.workstation);
@@ -28,17 +28,18 @@ const workstation = computed(() => uiState.value.workstation);
 //
 // Mirrors the server's tryAssignRoles: each role claims a single buffer slot
 // (more-specific roles first), inputs accept either an exact `itemType` or
-// any prefab in `category` whose tags satisfy the filter. Module-load index
-// of prefab id → Prefab keeps the per-render lookup cheap.
-
-const PREFAB_BY_ID: ReadonlyMap<string, Prefab> = new Map(itemPrefabsData.map((p) => [p.id, p]));
+// any prefab in `category` whose tags satisfy the filter. Prefab lookup goes
+// through the bootstrap-delivered ContentService (T-177 phase 3); the
+// federated `prefabs` registry already has O(1) get-by-id, so no separate
+// module-load index is needed.
 
 type RecipeInput = Recipe["inputs"][number];
 
 function inputAccepts(input: RecipeInput, prefabId: string): boolean {
   if ("itemType" in input && input.itemType !== undefined) return prefabId === input.itemType;
   if ("category" in input && input.category !== undefined) {
-    const p = PREFAB_BY_ID.get(prefabId);
+    const svc = contentService.value;
+    const p = svc?.prefabs.get(prefabId);
     if (!p || p.category !== input.category) return false;
     if (input.tags) {
       const have = p.tags ?? [];
@@ -83,7 +84,13 @@ function recipeMatches(recipe: Recipe, slots: readonly (WorkstationBufferSlotVie
 }
 
 function findMatchingRecipes(panel: WorkstationPanelState): Recipe[] {
-  return recipesData.filter((r) => r.stationType === panel.stationType && recipeMatches(r, panel.slots));
+  const svc = contentService.value;
+  if (!svc) return [];
+  const out: Recipe[] = [];
+  for (const r of svc.recipes.values()) {
+    if (r.stationType === panel.stationType && recipeMatches(r, panel.slots)) out.push(r);
+  }
+  return out;
 }
 
 // ---- buffer slot cell -----------------------------------------------------

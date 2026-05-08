@@ -58,7 +58,7 @@ Hard rules:
   `if (useNewFoo)` appears in the diff, rewrite the patch.
 - **No backwards compatibility with on-disk state or wire formats.** Saves, heritage
   files, save files, and the binary protocol may all break between refactors. Users
-  reconnect; worlds regenerate from seed; data regenerates via `deno task gen-content`.
+  reconnect; worlds regenerate from seed; clients re-receive content over WT handshake.
   This freedom is why the code stays shapely — defend it.
 - **Data and code move together.** Renaming a field means updating every JSON file that
   uses it in the same commit as the TypeScript rename. Regenerated static files go in
@@ -79,7 +79,7 @@ deno task demo          # bundle client + start tile server
 deno task tile          # server only
 deno task bundle        # client bundle only
 deno task gen-terrain   # regenerate terrain_tile_0.bin
-deno task gen-content   # regenerate static TS aggregation files after adding/renaming data files
+# content auto-loads from packages/content/data/ at server boot — no aggregation step needed
 deno check packages/tile-server/mod.ts packages/client/src/game.ts packages/codecs/mod.ts packages/content/mod.ts
 ```
 
@@ -323,21 +323,21 @@ data/
 
 ### Loader
 
-The server calls `loadContentStore(dataDir?)` from `@voxim/content`. It scans each subdirectory,
+The server calls `JsonSource.load(dataDir?)` from `@voxim/content`. It scans each subdirectory,
 sorts filenames alphabetically for deterministic registration order, and loads each file as one item.
 
-### Client bundle
+### Client bootstrap
 
-The browser client cannot use `Deno.readDir`. A generated TypeScript file in
-`packages/content/src/` aggregates per-item imports statically for bundling:
-- `weapon_actions_static.ts` — all weapon actions
+The browser client cannot use `Deno.readDir`. Instead, the tile-server pre-encodes the entire
+ContentService into a binary blob (`encodeBootstrap`) at startup and sends it on the join stream
+right after `TileJoinAck`. The client reads the blob, calls `BootstrapSource.load(blob)`, and
+holds a fully-hydrated ContentService for the session — every lookup is in-process / synchronous.
 
-**After adding or renaming a weapon action file, run:**
-```
-deno task gen-content
-```
-The generator lives at `scripts/gen_content.ts`. Add new categories to `TARGETS` there if the
-client needs them. Always commit the regenerated `*_static.ts` files.
+Property: tile-server crash → client connection dies → client reconnects → fresh blob → version
+drift impossible. Edit content, restart the tile-server, players reload — no client rebuild.
+
+UI components access content via the `contentService` signal (`packages/client/src/ui/content_ref.ts`)
+— Preact reactivity rebuilds derived values when the signal swaps on tile transition.
 
 ### Adding a new weapon action
 
@@ -362,10 +362,11 @@ Drop a file in `data/weapon_actions/spear_thrust.json`:
   ]
 }
 ```
-Set `weaponActionId: "spear_thrust"` in the item prefab's `swingable` component. Run `deno task gen-content`.
+Set `weaponActionId: "spear_thrust"` in the item prefab's `swingable` component. Restart the
+tile-server; clients pick up the new action automatically on next connect via the bootstrap blob.
 No other code changes needed — the swingPath drives hit detection, arm IK, and trail rendering.
 
-### ContentStore access
+### ContentService access
 
 Injected into every system constructor. Never import JSON files directly. Never hardcode tuning.
 

@@ -136,7 +136,3 @@ export { validateRecipeGraph } from "./src/recipe_validator.ts";
 export { JsonSource } from "./src/loader.ts";
 export { BootstrapSource, encodeBootstrap, decodeBootstrap, BOOTSTRAP_VERSION } from "./src/bootstrap_codec.ts";
 
-// ---- static aggregations (used by the browser client bundle) ----
-export { weapon_actions } from "./src/weapon_actions_static.ts";
-export { item_prefabs } from "./src/item_prefabs_static.ts";
-export { recipes } from "./src/recipes_static.ts";

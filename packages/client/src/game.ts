@@ -31,6 +31,7 @@ import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
 import { setClientWorld } from "./ui/client_world_ref.ts";
+import { setContentService } from "./ui/content_ref.ts";
 import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
@@ -42,7 +43,7 @@ import type { EquipmentData, InventoryData, LoreLoadoutData } from "@voxim/codec
 import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
-import { weapon_actions as weaponActionsData, item_prefabs as itemPrefabsData, BootstrapSource } from "@voxim/content";
+import { BootstrapSource } from "@voxim/content";
 import type { ContentService, Prefab, ToolData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
@@ -200,6 +201,7 @@ export class VoximGame {
     const blob = this.connection.bootstrapBlob();
     if (blob) {
       this.contentService = BootstrapSource.load(blob);
+      setContentService(this.contentService);
       console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons`);
     } else {
       console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");
@@ -207,13 +209,25 @@ export class VoximGame {
     this.renderer = new VoximRenderer(canvas);
     this.renderer.setLocalPlayer(this.playerId!);
     this.renderer.setContentCache(this.content);
-    // Renderer-facing weapon actions / item prefabs (still static-bundled —
-    // phase 3 of T-177 will source these from this.contentService).
-    this.renderer.setWeaponActions([...weaponActionsData]);
-    this.renderer.setItemPrefabs(itemPrefabsData);
-
-    // Populate the debug give-item list from the static item prefab data.
-    setDebugItemList(itemPrefabsData.map((p) => ({ id: p.id })));
+    // Renderer-facing weapon actions + item prefabs sourced from the
+    // bootstrap-delivered ContentService (T-177 phase 3).  Items are
+    // filtered to those that look like inventory items (have an
+    // equippable / swingable / tool / consumable / deployable component) —
+    // mirrors what the static `item_prefabs` aggregation contained.
+    if (this.contentService) {
+      this.renderer.setWeaponActions([...this.contentService.weaponActions.values()]);
+      const itemPrefabs: Prefab[] = [];
+      for (const p of this.contentService.prefabs.values()) {
+        const c = p.components;
+        if ("equippable" in c || "swingable" in c || "tool" in c
+            || "edible" in c || "deployable" in c || "stackable" in c
+            || "weight" in c) {
+          itemPrefabs.push(p);
+        }
+      }
+      this.renderer.setItemPrefabs(itemPrefabs);
+      setDebugItemList(itemPrefabs.map((p) => ({ id: p.id })));
+    }
 
     // Mount world overlay (entity health bars, floating damage numbers — frame-driven)
     this.overlay = new WorldOverlay();
@@ -411,7 +425,7 @@ export class VoximGame {
           if (state.equipment) {
             patchUI({ equipment: mapEquipmentToUI(state.equipment) });
             if (this.input) {
-              const toolType = getToolType(state.equipment.weapon?.prefabId);
+              const toolType = getToolType(state.equipment.weapon?.prefabId, this.contentService);
               const newBuildMode = toolType === "hammer";
               if (newBuildMode !== this.input.buildMode) {
                 console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.prefabId ?? "none"} toolType=${toolType ?? "none"}`);
@@ -624,6 +638,7 @@ export class VoximGame {
       const blob = conn.bootstrapBlob();
       if (blob) {
         this.contentService = BootstrapSource.load(blob);
+        setContentService(this.contentService);
         console.log(`[Game] content service re-hydrated for new tile`);
       }
       console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);
@@ -1134,7 +1149,7 @@ export class VoximGame {
       case "select_blueprint": {
         console.log(`[Build] selected blueprint type=${action.structureType}`);
         patchUI({ selectedBlueprint: action.structureType, radialMenu: null });
-        const prefab = itemPrefabsData.find((p: Prefab) => p.id === action.structureType);
+        const prefab = this.contentService?.prefabs.get(action.structureType);
         const placeable = prefab?.components.placeable as { tool?: "single" | "polyline" } | undefined;
         const tool = placeable?.tool ?? "single";
         modeState.value = { kind: "build", blueprintId: action.structureType, tool };
@@ -1352,9 +1367,9 @@ function mapLoreLoadoutToUI(loadout: LoreLoadoutData): SkillLoadoutState {
   return { slots };
 }
 
-function getToolType(prefabId: string | undefined): string | undefined {
-  if (!prefabId) return undefined;
-  const prefab = itemPrefabsData.find((p: Prefab) => p.id === prefabId);
+function getToolType(prefabId: string | undefined, content: ContentService | null): string | undefined {
+  if (!prefabId || !content) return undefined;
+  const prefab = content.prefabs.get(prefabId);
   const tool = prefab?.components.tool as ToolData | undefined;
   return tool?.toolType;
 }

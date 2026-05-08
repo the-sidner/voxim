@@ -3,19 +3,24 @@ import { uiState, patchUI } from "../ui_store.ts";
 import { usePanel } from "../use_panel.ts";
 import { dragSystem } from "../drag_system.ts";
 import { clientWorld } from "../client_world_ref.ts";
+import { contentService } from "../content_ref.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { ContextMenuAction, ItemStack } from "../ui_store.ts";
-import { item_prefabs as itemPrefabsData } from "@voxim/content";
 
 const inventory = computed(() => uiState.value.inventory);
 
-// Index built once at module load so context menus don't scan all 450 prefabs
-// per right-click. Maps prefabId → true when the item carries a `deployable`
-// component; the server will reject any Place/source=inventory call for items
-// that aren't in this set, so this is purely a UX gate to hide the option.
-const DEPLOYABLE_PREFABS: ReadonlySet<string> = new Set(
-  itemPrefabsData.filter((p) => "deployable" in p.components).map((p) => p.id),
-);
+// Reactive index of deployable prefabs (T-177 phase 3): rebuilds when the
+// bootstrap-delivered ContentService swaps in (initial connect, tile
+// transition). Empty until the bootstrap blob arrives.
+const deployablePrefabs = computed<ReadonlySet<string>>(() => {
+  const svc = contentService.value;
+  if (!svc) return new Set();
+  const out = new Set<string>();
+  for (const p of svc.prefabs.values()) {
+    if ("deployable" in p.components) out.add(p.id);
+  }
+  return out;
+});
 
 function ItemSlotCell({ item, index, onAction }: {
   item: ItemStack | null;
@@ -34,7 +39,7 @@ function ItemSlotCell({ item, index, onAction }: {
       { label: "Use",   onSelect: () => onAction({ type: "use_item",  fromSlot: index }) },
       { label: "Equip", onSelect: () => onAction({ type: "equip", itemType: item.itemType, fromSlot: index }) },
     ];
-    if (DEPLOYABLE_PREFABS.has(item.itemType)) {
+    if (deployablePrefabs.value.has(item.itemType)) {
       actions.push({ label: "Place", onSelect: () => onAction({ type: "deploy_item", fromSlot: index }) });
     }
     actions.push({ label: "Drop", danger: true, onSelect: () => onAction({ type: "drop_item", fromSlot: index }) });
