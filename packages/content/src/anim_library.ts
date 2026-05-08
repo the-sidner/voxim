@@ -87,8 +87,13 @@ function isCompound(c: LibraryClipFile): c is LibraryClipCompound {
  * plain clips into each skeleton's `clips` array.  Library clips with an id
  * already present on the skeleton override the inline version.
  */
+export interface SkeletonLookup {
+  get(id: string): SkeletonDef | undefined;
+  values(): IterableIterator<SkeletonDef>;
+}
+
 export function mergeLibraryIntoSkeletons(
-  skeletons: Map<string, SkeletonDef>,
+  skeletons: SkeletonLookup,
   libraryFiles: LibraryClipFile[],
 ): void {
   // Bake compounds: order matters since a compound may reference another

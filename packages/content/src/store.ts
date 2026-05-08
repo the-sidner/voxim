@@ -8,6 +8,19 @@
  *
  * Systems receive the ContentStore by injection — they never import hardcoded
  * data tables directly.
+ *
+ * # Federated registry shape (T-175)
+ *
+ * The primary access pattern is **typed registries** exposed as readonly fields:
+ *
+ *   content.prefabs.getOrThrow(id)   — single-item lookup
+ *   content.materials.byTag("metal") — tag-indexed query
+ *   content.skeletons.values()       — iteration
+ *
+ * The legacy `getX(id)` / `getAllX()` methods remain for now as 1-line
+ * delegates so call sites can migrate incrementally; they will be deleted
+ * in a follow-up commit (per CLAUDE.md "no shims" — the transition aid is
+ * temporary, not a permanent layer).
  */
 import type {
   MaterialId,
@@ -41,169 +54,176 @@ import type { AnimationClip, BoneMask } from "./types.ts";
 import { buildClipIndex, buildMaskIndex } from "./animation_eval.ts";
 import type { RecipeGraph } from "./recipe_graph.ts";
 import { buildRecipeGraph } from "./recipe_graph.ts";
+import type { ContentRegistryReadonly } from "./registry.ts";
+import { ContentRegistry } from "./registry.ts";
 
 export interface ContentStore {
-  // ---- materials ----
-  getMaterial(id: MaterialId): MaterialDef | null;
-  getMaterialByName(name: string): MaterialDef | null;
-  getAllMaterials(): MaterialDef[];
+  // ---- federated registries (T-175) ----
+  // Primary access path. Each registry is read-only post-load.
+  // Materials are keyed by string name (the unique craft-system key); the
+  // numeric MaterialId is a secondary handle, looked up via getMaterialById().
+  readonly materials:       ContentRegistryReadonly<MaterialDef>;
+  readonly models:          ContentRegistryReadonly<ModelDefinition>;
+  readonly skeletons:       ContentRegistryReadonly<SkeletonDef>;
+  readonly prefabs:         ContentRegistryReadonly<Prefab>;
+  readonly recipes:         ContentRegistryReadonly<Recipe>;
+  readonly npcTemplates:    ContentRegistryReadonly<NpcTemplate>;
+  readonly behaviorTrees:   ContentRegistryReadonly<BehaviorTreeSpec>;
+  readonly biomes:          ContentRegistryReadonly<BiomeDef>;
+  readonly zones:           ContentRegistryReadonly<ZoneDef>;
+  readonly loreFragments:   ContentRegistryReadonly<LoreFragment>;
+  readonly weaponActions:   ContentRegistryReadonly<WeaponActionDef>;
+  readonly verbs:           ContentRegistryReadonly<VerbDef>;
 
-  // ---- models ----
-  getModel(id: string): ModelDefinition | null;
+  // ---- specialized lookups ----
+  /** Resolve a material by its numeric MaterialId (the wire/storage key). */
+  getMaterialById(id: MaterialId): MaterialDef | undefined;
   /**
    * AABB derived from the model's VoxelNode positions at registration time.
    * Computed once and cached — never re-derived at runtime.
-   * Returns null for unknown model IDs or models with no nodes.
    */
   getModelAabb(id: string): Hitbox | null;
-
-  // ---- skeletons ----
-  getSkeleton(id: string): SkeletonDef | null;
-
-  /**
-   * Derive the stat block for a prefab-based item.
-   * Reads behaviour components (Weight, Armor, Edible, Illuminator, Tool, Swingable)
-   * from the prefab's components dict. The `parts` parameter is accepted for
-   * call-site compatibility but is not used today — material-axis stat
-   * derivation is deferred until Composed-based parts data lives on a per-
-   * instance component rather than on the inventory slot.
-   *
-   * `quality` (0–1, default 1.0) scales stats written by a crafting workstation's quality tier.
-   * Pass `world.get(itemEntityId, QualityStamped)?.quality` at call sites that care about it.
-   */
-  deriveItemStats(prefabId: string, parts?: ItemPart[], quality?: number): DerivedItemStats;
-
-  // ---- recipes ----
-  getRecipe(id: string): Recipe | null;
-  getAllRecipes(): readonly Recipe[];
-  /** Reverse index: producers by item, recipes by workstation, primitive items. */
-  getRecipeGraph(): RecipeGraph;
-
-  // ---- NPC templates ----
-  getNpcTemplate(id: string): NpcTemplate | null;
-  getAllNpcTemplates(): readonly NpcTemplate[];
-
-  // ---- behavior trees ----
-  getBehaviorTree(id: string): BehaviorTreeSpec | null;
-  getAllBehaviorTrees(): readonly BehaviorTreeSpec[];
-
-  // ---- biomes ----
-  /** All biomes, pre-sorted by ascending priority. */
-  getAllBiomes(): readonly BiomeDef[];
-  getBiome(id: string): BiomeDef | null;
-
-  // ---- zones ----
-  /** All zones, pre-sorted by ascending priority. */
-  getAllZones(): readonly ZoneDef[];
-  getZone(id: string): ZoneDef | null;
-
-  // ---- prefabs ----
-  getPrefab(id: string): Prefab | null;
-  getAllPrefabs(): readonly Prefab[];
-  /**
-   * Every prefab whose `category` matches AND whose `tags` is a superset of
-   * the requested tag list. Used by the crafting matcher and the
-   * recipe-graph validator to enumerate "what items satisfy this category
-   * input slot". Empty `requiredTags` returns all prefabs in the category.
-   */
-  getPrefabsByCategory(category: string, requiredTags?: readonly string[]): readonly Prefab[];
-
-  // ---- lore fragments ----
-  getLoreFragment(id: string): LoreFragment | null;
-  getAllLoreFragments(): readonly LoreFragment[];
-
-  // ---- concept-verb matrix ----
+  /** Returns the SkeletonDef associated with the given model ID, or null. */
+  getSkeletonForModel(modelId: string): SkeletonDef | null;
   getConceptVerbEntry(verb: SkillVerb, outward: LoreConcept, inward: LoreConcept): ConceptVerbEntry | null;
   getAllConceptVerbEntries(): readonly ConceptVerbEntry[];
-
-  // ---- weapon actions ----
-  getWeaponAction(id: string): WeaponActionDef | null;
-  getAllWeaponActions(): readonly WeaponActionDef[];
-
-  // ---- skeleton lookup by model ----
-  /** Returns the SkeletonDef associated with the given model ID, or null if none. */
-  getSkeletonForModel(modelId: string): SkeletonDef | null;
-
   /**
-   * Returns a cached bone index (Map<boneId, BoneDef>) for the given skeleton.
-   * Built once per skeleton type and reused — avoids per-tick linear searches in solveSkeleton.
+   * Every prefab whose `category` matches AND whose `tags` is a superset of
+   * the requested tag list. Empty `requiredTags` returns all prefabs in the
+   * category.
    */
+  getPrefabsByCategory(category: string, requiredTags?: readonly string[]): readonly Prefab[];
+  /** Biomes pre-sorted by ascending priority. */
+  getBiomesByPriority(): readonly BiomeDef[];
+  /** Zones pre-sorted by ascending priority. */
+  getZonesByPriority(): readonly ZoneDef[];
+
+  // ---- derived caches ----
+  deriveItemStats(prefabId: string, parts?: ItemPart[], quality?: number): DerivedItemStats;
+  /** Reverse index: producers by item, recipes by workstation, primitive items. */
+  getRecipeGraph(): RecipeGraph;
+  /** Cached bone index (Map<boneId, BoneDef>) — built once per skeleton type. */
   getBoneIndex(skeletonId: string): ReadonlyMap<string, BoneDef>;
-
-  /**
-   * Returns the cached hitbox template for a (modelId, seed, scale) combination.
-   * Derived once and reused — the template does not depend on live animation state.
-   */
+  /** Cached hitbox template per (modelId, seed, scale). */
   getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[];
-
-  /**
-   * Returns a pre-built clip lookup map (clipId → AnimationClip) for a skeleton.
-   * Built once per skeleton type and reused — avoids linear searches in evaluateAnimationLayers.
-   */
+  /** Cached clip lookup map (clipId → AnimationClip) per skeleton type. */
   getClipIndex(skeletonId: string): ReadonlyMap<string, AnimationClip>;
-
-  /**
-   * Returns a pre-built bone mask lookup map (maskId → BoneMask) for a skeleton.
-   * Built once per skeleton type and reused.
-   */
+  /** Cached bone mask lookup map (maskId → BoneMask) per skeleton type. */
   getMaskIndex(skeletonId: string): ReadonlyMap<string, BoneMask>;
 
-  // ---- verbs ----
-  getVerbDef(id: SkillVerb): VerbDef | null;
-
-  // ---- game config ----
+  // ---- singletons ----
   getGameConfig(): GameConfig;
-
-  // ---- tile layout ----
   getTileLayout(): TileLayout | null;
+
+  // ---- legacy getter-shape (TRANSITIONAL — deleted in follow-up) ----
+  // Kept for incremental call-site migration. Each is a 1-line delegate to
+  // a registry / specialized method.
+  getMaterial(id: MaterialId): MaterialDef | null;
+  getMaterialByName(name: string): MaterialDef | null;
+  getAllMaterials(): MaterialDef[];
+  getModel(id: string): ModelDefinition | null;
+  getSkeleton(id: string): SkeletonDef | null;
+  getRecipe(id: string): Recipe | null;
+  getAllRecipes(): readonly Recipe[];
+  getNpcTemplate(id: string): NpcTemplate | null;
+  getAllNpcTemplates(): readonly NpcTemplate[];
+  getBehaviorTree(id: string): BehaviorTreeSpec | null;
+  getAllBehaviorTrees(): readonly BehaviorTreeSpec[];
+  getAllBiomes(): readonly BiomeDef[];
+  getBiome(id: string): BiomeDef | null;
+  getAllZones(): readonly ZoneDef[];
+  getZone(id: string): ZoneDef | null;
+  getPrefab(id: string): Prefab | null;
+  getAllPrefabs(): readonly Prefab[];
+  getLoreFragment(id: string): LoreFragment | null;
+  getAllLoreFragments(): readonly LoreFragment[];
+  getWeaponAction(id: string): WeaponActionDef | null;
+  getAllWeaponActions(): readonly WeaponActionDef[];
+  getVerbDef(id: SkillVerb): VerbDef | null;
 }
 
 export class StaticContentStore implements ContentStore {
-  private materials = new Map<MaterialId, MaterialDef>();
-  private materialsByName = new Map<string, MaterialDef>();
-  private models = new Map<string, ModelDefinition>();
-  /** Public so the loader can splice library clips into skeletons after registration. */
-  public readonly skeletons = new Map<string, SkeletonDef>();
-  private recipes = new Map<string, Recipe>();
-  /** Cached reverse index. Invalidated by registerRecipe; built on first access. */
-  private recipeGraph: RecipeGraph | null = null;
-  /** Cached category → Prefab[] index. Invalidated when prefabs change. */
-  private categoryIndex: Map<string, Prefab[]> | null = null;
-  private npcTemplates = new Map<string, NpcTemplate>();
-  private behaviorTrees = new Map<string, BehaviorTreeSpec>();
-  private biomes = new Map<string, BiomeDef>();
-  private biomesByPriority: BiomeDef[] = [];
-  private zones = new Map<string, ZoneDef>();
-  private zonesByPriority: ZoneDef[] = [];
-  private prefabs = new Map<string, Prefab>();
-  private loreFragments = new Map<string, LoreFragment>();
+  // ---- federated registries ----
+  // Materials registered by NAME (the craft-system key); numeric id is a
+  // secondary index on materialsByNumericId.
+  public readonly materials = new ContentRegistry<MaterialDef>({
+    kind: "material",
+    idOf: (m) => m.name,
+  });
+  public readonly models = new ContentRegistry<ModelDefinition>({
+    kind: "model",
+    idOf: (m) => m.id,
+  });
+  public readonly skeletons = new ContentRegistry<SkeletonDef>({
+    kind: "skeleton",
+    idOf: (s) => s.id,
+  });
+  public readonly prefabs = new ContentRegistry<Prefab>({
+    kind: "prefab",
+    idOf: (p) => p.id,
+  });
+  public readonly recipes = new ContentRegistry<Recipe>({
+    kind: "recipe",
+    idOf: (r) => r.id,
+  });
+  public readonly npcTemplates = new ContentRegistry<NpcTemplate>({
+    kind: "npcTemplate",
+    idOf: (t) => t.id,
+  });
+  public readonly behaviorTrees = new ContentRegistry<BehaviorTreeSpec>({
+    kind: "behaviorTree",
+    idOf: (t) => t.id,
+  });
+  public readonly biomes = new ContentRegistry<BiomeDef>({
+    kind: "biome",
+    idOf: (b) => b.id,
+  });
+  public readonly zones = new ContentRegistry<ZoneDef>({
+    kind: "zone",
+    idOf: (z) => z.id,
+  });
+  public readonly loreFragments = new ContentRegistry<LoreFragment>({
+    kind: "loreFragment",
+    idOf: (f) => f.id,
+  });
+  public readonly weaponActions = new ContentRegistry<WeaponActionDef>({
+    kind: "weaponAction",
+    idOf: (w) => w.id,
+  });
+  public readonly verbs = new ContentRegistry<VerbDef>({
+    kind: "verb",
+    idOf: (v) => v.id,
+  });
+
+  // ---- secondary indices ----
+  private materialsByNumericId = new Map<MaterialId, MaterialDef>();
   private conceptVerbEntries = new Map<string, ConceptVerbEntry>();
-  private weaponActions = new Map<string, WeaponActionDef>();
-  private verbDefs = new Map<SkillVerb, VerbDef>();
+  private biomesByPrioritySorted: BiomeDef[] = [];
+  private zonesByPrioritySorted: ZoneDef[] = [];
+  private categoryIndex: Map<string, Prefab[]> | null = null;
+  private modelAabb = new Map<string, Hitbox>();
+  /** Cached reverse index. Invalidated on registerRecipe/registerPrefab. */
+  private recipeGraph: RecipeGraph | null = null;
+
+  // ---- singletons ----
   private gameConfig: GameConfig | null = null;
   private tileLayout: TileLayout | null = null;
 
   // ---- derived caches ----
-  /** Per-model AABB derived from VoxelNode positions at registerModel() time. */
-  private aabbCache = new Map<string, Hitbox>();
-  /** One entry per skeleton type (skeletonId → Map<boneId, BoneDef>). */
   private boneIndexCache = new Map<string, ReadonlyMap<string, BoneDef>>();
-  /** One entry per (modelId:seed:scale) combination. */
   private hitboxTemplateCache = new Map<string, HitboxPartTemplate[]>();
-  /** One entry per skeleton type (skeletonId → Map<clipId, AnimationClip>). */
   private clipIndexCache = new Map<string, ReadonlyMap<string, AnimationClip>>();
-  /** One entry per skeleton type (skeletonId → Map<maskId, BoneMask>). */
   private maskIndexCache = new Map<string, ReadonlyMap<string, BoneMask>>();
 
   // ---- registration ----
 
   registerMaterial(def: MaterialDef): void {
-    this.materials.set(def.id, def);
-    this.materialsByName.set(def.name, def);
+    this.materials.register(def);
+    this.materialsByNumericId.set(def.id, def);
   }
 
   registerModel(def: ModelDefinition): void {
-    this.models.set(def.id, def);
+    this.models.register(def);
     // Derive and cache AABB from voxel positions once, at registration time.
     if (def.nodes.length > 0) {
       let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -213,47 +233,47 @@ export class StaticContentStore implements ContentStore {
         if (n.y < minY) minY = n.y; if (n.y + 1 > maxY) maxY = n.y + 1;
         if (n.z < minZ) minZ = n.z; if (n.z + 1 > maxZ) maxZ = n.z + 1;
       }
-      this.aabbCache.set(def.id, { minX, minY, minZ, maxX, maxY, maxZ });
+      this.modelAabb.set(def.id, { minX, minY, minZ, maxX, maxY, maxZ });
     }
   }
 
   registerSkeleton(def: SkeletonDef): void {
-    this.skeletons.set(def.id, def);
+    this.skeletons.register(def);
   }
 
   registerRecipe(recipe: Recipe): void {
-    this.recipes.set(recipe.id, recipe);
+    this.recipes.register(recipe);
     this.recipeGraph = null;
   }
 
   registerNpcTemplate(template: NpcTemplate): void {
-    this.npcTemplates.set(template.id, template);
+    this.npcTemplates.register(template);
   }
 
   registerBehaviorTree(spec: BehaviorTreeSpec): void {
-    this.behaviorTrees.set(spec.id, spec);
+    this.behaviorTrees.register(spec);
   }
 
   registerBiome(def: BiomeDef): void {
-    this.biomes.set(def.id, def);
-    this.biomesByPriority.push(def);
-    this.biomesByPriority.sort((a, b) => a.priority - b.priority);
+    this.biomes.register(def);
+    this.biomesByPrioritySorted.push(def);
+    this.biomesByPrioritySorted.sort((a, b) => a.priority - b.priority);
   }
 
   registerZone(def: ZoneDef): void {
-    this.zones.set(def.id, def);
-    this.zonesByPriority.push(def);
-    this.zonesByPriority.sort((a, b) => a.priority - b.priority);
+    this.zones.register(def);
+    this.zonesByPrioritySorted.push(def);
+    this.zonesByPrioritySorted.sort((a, b) => a.priority - b.priority);
   }
 
   registerPrefab(prefab: Prefab): void {
-    this.prefabs.set(prefab.id, prefab);
+    this.prefabs.register(prefab);
     this.recipeGraph = null;
     this.categoryIndex = null;
   }
 
   registerLoreFragment(fragment: LoreFragment): void {
-    this.loreFragments.set(fragment.id, fragment);
+    this.loreFragments.register(fragment);
   }
 
   registerConceptVerbEntry(entry: ConceptVerbEntry): void {
@@ -261,11 +281,11 @@ export class StaticContentStore implements ContentStore {
   }
 
   registerWeaponAction(def: WeaponActionDef): void {
-    this.weaponActions.set(def.id, def);
+    this.weaponActions.register(def);
   }
 
   registerVerbDef(def: VerbDef): void {
-    this.verbDefs.set(def.id, def);
+    this.verbs.register(def);
   }
 
   setGameConfig(config: GameConfig): void {
@@ -276,38 +296,61 @@ export class StaticContentStore implements ContentStore {
     this.tileLayout = layout;
   }
 
-  // ---- ContentStore impl — materials ----
+  // ---- specialized lookups ----
 
-  getMaterial(id: MaterialId): MaterialDef | null {
-    return this.materials.get(id) ?? null;
-  }
-
-  getMaterialByName(name: string): MaterialDef | null {
-    return this.materialsByName.get(name) ?? null;
-  }
-
-  getAllMaterials(): MaterialDef[] {
-    return Array.from(this.materials.values());
-  }
-
-  // ---- models ----
-
-  getModel(id: string): ModelDefinition | null {
-    return this.models.get(id) ?? null;
+  getMaterialById(id: MaterialId): MaterialDef | undefined {
+    return this.materialsByNumericId.get(id);
   }
 
   getModelAabb(id: string): Hitbox | null {
-    return this.aabbCache.get(id) ?? null;
+    return this.modelAabb.get(id) ?? null;
   }
 
-  // ---- skeletons ----
-
-  getSkeleton(id: string): SkeletonDef | null {
-    return this.skeletons.get(id) ?? null;
+  getSkeletonForModel(modelId: string): SkeletonDef | null {
+    const model = this.models.get(modelId);
+    if (!model?.skeletonId) return null;
+    return this.skeletons.get(model.skeletonId) ?? null;
   }
+
+  getConceptVerbEntry(verb: SkillVerb, outward: LoreConcept, inward: LoreConcept): ConceptVerbEntry | null {
+    return this.conceptVerbEntries.get(`${verb}:${outward}:${inward}`) ?? null;
+  }
+
+  getAllConceptVerbEntries(): readonly ConceptVerbEntry[] {
+    return Array.from(this.conceptVerbEntries.values());
+  }
+
+  getPrefabsByCategory(category: string, requiredTags: readonly string[] = []): readonly Prefab[] {
+    if (this.categoryIndex === null) {
+      this.categoryIndex = new Map();
+      for (const p of this.prefabs.values()) {
+        if (!p.category) continue;
+        const bucket = this.categoryIndex.get(p.category);
+        if (bucket) bucket.push(p);
+        else this.categoryIndex.set(p.category, [p]);
+      }
+    }
+    const all = this.categoryIndex.get(category) ?? [];
+    if (requiredTags.length === 0) return all;
+    return all.filter((p) => {
+      const have = p.tags ?? [];
+      for (const t of requiredTags) if (!have.includes(t)) return false;
+      return true;
+    });
+  }
+
+  getBiomesByPriority(): readonly BiomeDef[] {
+    return this.biomesByPrioritySorted;
+  }
+
+  getZonesByPriority(): readonly ZoneDef[] {
+    return this.zonesByPrioritySorted;
+  }
+
+  // ---- derived ----
 
   deriveItemStats(prefabId: string, _parts?: ItemPart[], quality = 1): DerivedItemStats {
-    const prefab = this.getPrefab(prefabId);
+    const prefab = this.prefabs.get(prefabId);
     if (!prefab) return { weight: 1 };
 
     const c = prefab.components;
@@ -335,21 +378,7 @@ export class StaticContentStore implements ContentStore {
     return stats;
   }
 
-  // ---- recipes ----
-
-  getRecipe(id: string): Recipe | null {
-    return this.recipes.get(id) ?? null;
-  }
-
-  getAllRecipes(): readonly Recipe[] {
-    return Array.from(this.recipes.values());
-  }
-
   getRecipeGraph(): RecipeGraph {
-    // Built lazily on first access; invalidated whenever a recipe or prefab
-    // is registered (registerRecipe / registerPrefab clear the cache). In
-    // practice the store is fully loaded before any planner touches the
-    // graph.
     if (!this.recipeGraph) {
       this.recipeGraph = buildRecipeGraph(
         Array.from(this.recipes.values()),
@@ -357,111 +386,6 @@ export class StaticContentStore implements ContentStore {
       );
     }
     return this.recipeGraph;
-  }
-
-  // ---- NPC templates ----
-
-  getNpcTemplate(id: string): NpcTemplate | null {
-    return this.npcTemplates.get(id) ?? null;
-  }
-
-  getAllNpcTemplates(): readonly NpcTemplate[] {
-    return Array.from(this.npcTemplates.values());
-  }
-
-  // ---- behavior trees ----
-
-  getBehaviorTree(id: string): BehaviorTreeSpec | null {
-    return this.behaviorTrees.get(id) ?? null;
-  }
-
-  getAllBehaviorTrees(): readonly BehaviorTreeSpec[] {
-    return Array.from(this.behaviorTrees.values());
-  }
-
-  // ---- biomes ----
-
-  getAllBiomes(): readonly BiomeDef[] {
-    return this.biomesByPriority;
-  }
-
-  getBiome(id: string): BiomeDef | null {
-    return this.biomes.get(id) ?? null;
-  }
-
-  // ---- zones ----
-
-  getAllZones(): readonly ZoneDef[] {
-    return this.zonesByPriority;
-  }
-
-  getZone(id: string): ZoneDef | null {
-    return this.zones.get(id) ?? null;
-  }
-
-  // ---- prefabs ----
-
-  getPrefab(id: string): Prefab | null {
-    return this.prefabs.get(id) ?? null;
-  }
-
-  getAllPrefabs(): readonly Prefab[] {
-    return Array.from(this.prefabs.values());
-  }
-
-  getPrefabsByCategory(category: string, requiredTags: readonly string[] = []): readonly Prefab[] {
-    if (this.categoryIndex === null) {
-      this.categoryIndex = new Map();
-      for (const p of this.prefabs.values()) {
-        if (!p.category) continue;
-        const bucket = this.categoryIndex.get(p.category);
-        if (bucket) bucket.push(p);
-        else this.categoryIndex.set(p.category, [p]);
-      }
-    }
-    const all = this.categoryIndex.get(category) ?? [];
-    if (requiredTags.length === 0) return all;
-    return all.filter((p) => {
-      const have = p.tags ?? [];
-      for (const t of requiredTags) if (!have.includes(t)) return false;
-      return true;
-    });
-  }
-
-  // ---- lore ----
-
-  getLoreFragment(id: string): LoreFragment | null {
-    return this.loreFragments.get(id) ?? null;
-  }
-
-  getAllLoreFragments(): readonly LoreFragment[] {
-    return Array.from(this.loreFragments.values());
-  }
-
-  // ---- concept-verb matrix ----
-
-  getConceptVerbEntry(verb: SkillVerb, outward: LoreConcept, inward: LoreConcept): ConceptVerbEntry | null {
-    return this.conceptVerbEntries.get(`${verb}:${outward}:${inward}`) ?? null;
-  }
-
-  getAllConceptVerbEntries(): readonly ConceptVerbEntry[] {
-    return Array.from(this.conceptVerbEntries.values());
-  }
-
-  // ---- weapon actions ----
-
-  getWeaponAction(id: string): WeaponActionDef | null {
-    return this.weaponActions.get(id) ?? null;
-  }
-
-  getAllWeaponActions(): readonly WeaponActionDef[] {
-    return Array.from(this.weaponActions.values());
-  }
-
-  getSkeletonForModel(modelId: string): SkeletonDef | null {
-    const model = this.models.get(modelId);
-    if (!model?.skeletonId) return null;
-    return this.skeletons.get(model.skeletonId) ?? null;
   }
 
   getBoneIndex(skeletonId: string): ReadonlyMap<string, BoneDef> {
@@ -504,24 +428,39 @@ export class StaticContentStore implements ContentStore {
     return idx;
   }
 
-  // ---- verbs ----
-
-  getVerbDef(id: SkillVerb): VerbDef | null {
-    return this.verbDefs.get(id) ?? null;
-  }
-
-  // ---- game config ----
-
   getGameConfig(): GameConfig {
     if (!this.gameConfig) throw new Error("GameConfig not loaded");
     return this.gameConfig;
   }
 
-  // ---- tile layout ----
-
   getTileLayout(): TileLayout | null {
     return this.tileLayout;
   }
+
+  // ---- legacy getter-shape (TRANSITIONAL — deleted in T-175 follow-up) ----
+
+  getMaterial(id: MaterialId): MaterialDef | null { return this.materialsByNumericId.get(id) ?? null; }
+  getMaterialByName(name: string): MaterialDef | null { return this.materials.get(name) ?? null; }
+  getAllMaterials(): MaterialDef[] { return Array.from(this.materials.values()); }
+  getModel(id: string): ModelDefinition | null { return this.models.get(id) ?? null; }
+  getSkeleton(id: string): SkeletonDef | null { return this.skeletons.get(id) ?? null; }
+  getRecipe(id: string): Recipe | null { return this.recipes.get(id) ?? null; }
+  getAllRecipes(): readonly Recipe[] { return Array.from(this.recipes.values()); }
+  getNpcTemplate(id: string): NpcTemplate | null { return this.npcTemplates.get(id) ?? null; }
+  getAllNpcTemplates(): readonly NpcTemplate[] { return Array.from(this.npcTemplates.values()); }
+  getBehaviorTree(id: string): BehaviorTreeSpec | null { return this.behaviorTrees.get(id) ?? null; }
+  getAllBehaviorTrees(): readonly BehaviorTreeSpec[] { return Array.from(this.behaviorTrees.values()); }
+  getAllBiomes(): readonly BiomeDef[] { return this.biomesByPrioritySorted; }
+  getBiome(id: string): BiomeDef | null { return this.biomes.get(id) ?? null; }
+  getAllZones(): readonly ZoneDef[] { return this.zonesByPrioritySorted; }
+  getZone(id: string): ZoneDef | null { return this.zones.get(id) ?? null; }
+  getPrefab(id: string): Prefab | null { return this.prefabs.get(id) ?? null; }
+  getAllPrefabs(): readonly Prefab[] { return Array.from(this.prefabs.values()); }
+  getLoreFragment(id: string): LoreFragment | null { return this.loreFragments.get(id) ?? null; }
+  getAllLoreFragments(): readonly LoreFragment[] { return Array.from(this.loreFragments.values()); }
+  getWeaponAction(id: string): WeaponActionDef | null { return this.weaponActions.get(id) ?? null; }
+  getAllWeaponActions(): readonly WeaponActionDef[] { return Array.from(this.weaponActions.values()); }
+  getVerbDef(id: SkillVerb): VerbDef | null { return this.verbs.get(id) ?? null; }
 }
 
 // ---- procedural model variation ----

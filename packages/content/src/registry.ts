@@ -15,12 +15,18 @@
  * the read surface — engines should never mutate registries after load.
  */
 
+/**
+ * Items MAY carry a `tags` array; if present it's indexed by `byTag()`.
+ * The interface is structural, not enforced via `extends` — TypeScript's
+ * "zero-overlap" check rejects types that don't declare a `tags` property
+ * even when the constraint is optional. Instead, registries treat the
+ * tags field as a probed, possibly-undefined attribute.
+ */
 export interface Tagged {
-  /** Optional categorical tags. Indexed for `byTag()` queries. */
   readonly tags?: readonly string[];
 }
 
-export interface ContentRegistryReadonly<T extends Tagged> {
+export interface ContentRegistryReadonly<T> {
   /** Returns the item with this id, or undefined. */
   get(id: string): T | undefined;
   /** Returns the item, or throws a descriptive error if missing. */
@@ -37,7 +43,7 @@ export interface ContentRegistryReadonly<T extends Tagged> {
   readonly size: number;
 }
 
-export interface ContentRegistryOptions<T extends Tagged> {
+export interface ContentRegistryOptions<T> {
   /** What this registry stores — used in error messages. e.g. "material". */
   kind: string;
   /** Extracts the canonical id from an item. */
@@ -46,7 +52,7 @@ export interface ContentRegistryOptions<T extends Tagged> {
   validate?: (item: T) => void;
 }
 
-export class ContentRegistry<T extends Tagged> implements ContentRegistryReadonly<T> {
+export class ContentRegistry<T> implements ContentRegistryReadonly<T> {
   private readonly items = new Map<string, T>();
   private readonly byTagIndex = new Map<string, Set<T>>();
   private readonly opts: ContentRegistryOptions<T>;
@@ -70,8 +76,9 @@ export class ContentRegistry<T extends Tagged> implements ContentRegistryReadonl
       throw new Error(`ContentRegistry[${this.opts.kind}]: duplicate id "${id}"`);
     }
     this.items.set(id, item);
-    if (item.tags) {
-      for (const tag of item.tags) {
+    const maybeTags = (item as Tagged).tags;
+    if (maybeTags) {
+      for (const tag of maybeTags) {
         let set = this.byTagIndex.get(tag);
         if (!set) {
           set = new Set();
