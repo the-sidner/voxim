@@ -3459,7 +3459,7 @@ Done when: client receives content over WT handshake on every join;
 fresh content visible without rebuild.
 
 ### T-178 · AnimationLibrary as peer registry (decouple from Skeleton)
-Effort: M   Status: todo
+Effort: M   Status: done
 
 Animation clips currently live as `clips: AnimationClip[]` inside
 `SkeletonDef`, populated at load by splicing files tagged `_skeleton: "X"`

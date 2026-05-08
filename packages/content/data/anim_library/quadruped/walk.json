@@ -1,0 +1,274 @@
+{
+  "id": "walk",
+  "loop": true,
+  "tracks": {
+    "body": [
+      {
+        "time": 0,
+        "rotX": -0.04,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": -0.048,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": -0.04,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": -0.048,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "head": [
+      {
+        "time": 0,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "tail": [
+      {
+        "time": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": 0,
+        "rotY": 0.15,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": 0,
+        "rotY": -0.15,
+        "rotZ": 0
+      }
+    ],
+    "fl_upper": [
+      {
+        "time": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": -0.65,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": 0.65,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "fl_lower": [
+      {
+        "time": 0,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": 0.5,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "fr_upper": [
+      {
+        "time": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": 0.65,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": -0.65,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "fr_lower": [
+      {
+        "time": 0,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": 0.5,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "rl_upper": [
+      {
+        "time": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": 0.65,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": -0.65,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "rl_lower": [
+      {
+        "time": 0,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": 0.5,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "rr_upper": [
+      {
+        "time": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": -0.65,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": 0.65,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "rr_lower": [
+      {
+        "time": 0,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.25,
+        "rotX": 0.5,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.5,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 0.75,
+        "rotX": 0.05,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ]
+  }
+}

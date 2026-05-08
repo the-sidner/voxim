@@ -202,7 +202,8 @@ export class VoximGame {
     if (blob) {
       this.contentService = BootstrapSource.load(blob);
       setContentService(this.contentService);
-      console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons`);
+      this.content.setBootstrapService(this.contentService);
+      console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons, ${this.contentService.animationLibraries.size} animation libraries`);
     } else {
       console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");
     }
@@ -639,6 +640,7 @@ export class VoximGame {
       if (blob) {
         this.contentService = BootstrapSource.load(blob);
         setContentService(this.contentService);
+        this.content?.setBootstrapService(this.contentService);
         console.log(`[Game] content service re-hydrated for new tile`);
       }
       console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);

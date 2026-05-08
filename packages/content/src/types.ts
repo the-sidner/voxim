@@ -1249,11 +1249,17 @@ export interface MorphParamDef {
  */
 export interface SkeletonDef {
   id: string;
+  /**
+   * Animation archetype — names the AnimationLibrary this skeleton draws
+   * clips from (T-178). Skeletons sharing an archetype share clips by
+   * reference; e.g. drowner / rotten_knight / human all declare
+   * `archetype: "biped"` and pull from `data/anim_library/biped/`.
+   * Required.
+   */
+  archetype: string;
   bones: BoneDef[];
   /** Named bone subsets for animation layer masking. Empty = all bones. */
   boneMasks?: BoneMask[];
-  /** Named animation clips that belong to this skeleton archetype. */
-  clips?: AnimationClip[];
   /**
    * IK chains defined for this skeleton.
    * Weapon actions and other systems activate chains by ID via DriveContext.
@@ -1266,6 +1272,22 @@ export interface SkeletonDef {
    * without authoring separate skeleton files per variant.
    */
   morphParams?: MorphParamDef[];
+}
+
+/**
+ * Animation library — the catalog of clips for one skeleton archetype.
+ * Multiple skeletons sharing the same archetype share the same library by
+ * reference (T-178). Replaces the old per-skeleton `clips` field.
+ *
+ * Built once at content load by scanning `data/anim_library/{archetype}/`.
+ * Compound clip recipes (additive / crossfade / phase_shift) bake into
+ * plain clips at load; the runtime only sees plain clips.
+ */
+export interface AnimationLibrary {
+  /** Archetype id, also serves as the registry key. */
+  id: string;
+  /** All plain clips in this archetype, keyed by clip id. */
+  clips: Record<string, AnimationClip>;
 }
 
 // ---- animation clip system ----

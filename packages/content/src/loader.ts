@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef } from "./types.ts";
-import { mergeLibraryIntoSkeletons, type LibraryClipFile } from "./anim_library.ts";
+import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
 const DEFAULT_DATA_DIR = new URL("../data", import.meta.url).pathname;
@@ -49,7 +49,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, animLibraryRaw,
+    biomesRaw, zonesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -64,7 +64,9 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
     readJsonDir(dataDir, "zones"),
-    readJsonDir(dataDir, "anim_library").catch(() => []),
+    // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
+    // subfolders. Returns Map<archetype, clipFile[]>.
+    readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
   ]);
 
   for (const raw of materialsRaw as RawMaterialDef[]) {
@@ -79,11 +81,21 @@ async function loadContentStoreInternal(
     store.registerSkeleton(raw);
   }
 
-  // Library clips override or extend each skeleton's inline `clips` array,
-  // and compound clip recipes get baked into plain clips here so the runtime
-  // never sees them.
-  if (animLibraryRaw.length > 0) {
-    mergeLibraryIntoSkeletons(store.skeletons, animLibraryRaw as LibraryClipFile[]);
+  // Build one AnimationLibrary per archetype subdirectory under
+  // data/anim_library/. Compound clip recipes bake into plain clips here
+  // so the runtime never sees them. Skeletons declaring an archetype with
+  // no library entries are valid (rest pose only) — we don't error on
+  // missing archetypes, we just leave the library registry empty for them.
+  for (const [archetype, files] of animLibraryArchetypes as Map<string, LibraryClipFile[]>) {
+    // Pick any skeleton of this archetype to satisfy compound baking that
+    // needs bone names. All skeletons sharing an archetype have the same
+    // bone names by construction.
+    let skeletonForBaking: SkeletonDef | undefined;
+    for (const s of store.skeletons.values()) {
+      if (s.archetype === archetype) { skeletonForBaking = s; break; }
+    }
+    const lib = buildAnimationLibrary(archetype, files, skeletonForBaking);
+    store.registerAnimationLibrary(lib);
   }
 
   for (const raw of recipesRaw as Recipe[]) {
@@ -169,6 +181,30 @@ async function collectJsonPaths(dir: string, out: string[]): Promise<void> {
       out.push(full);
     }
   }
+}
+
+/**
+ * Read `dir/{subdir}/{archetype}/*.json` grouped by archetype subfolder.
+ * Used for the per-archetype animation library layout (T-178).
+ * Bare files at the top level of `subdir` are ignored — every clip lives
+ * inside an archetype directory.
+ */
+async function readJsonArchetypeDirs(dir: string, subdir: string): Promise<Map<string, unknown[]>> {
+  const fullDir = `${dir}/${subdir}`;
+  const result = new Map<string, unknown[]>();
+  for await (const entry of Deno.readDir(fullDir)) {
+    if (!entry.isDirectory) continue;
+    const archetype = entry.name;
+    const archetypeDir = `${fullDir}/${archetype}`;
+    const paths: string[] = [];
+    await collectJsonPaths(archetypeDir, paths);
+    paths.sort();
+    const items = await Promise.all(
+      paths.map(async (p) => JSON.parse(await Deno.readTextFile(p))),
+    );
+    result.set(archetype, items);
+  }
+  return result;
 }
 
 /**

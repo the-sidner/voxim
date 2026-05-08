@@ -32,6 +32,7 @@ import type {
   ResolvedSubObject,
   SkeletonDef,
   BoneDef,
+  AnimationLibrary,
   ItemPart,
   DerivedItemStats,
   Recipe,
@@ -75,6 +76,12 @@ export interface ContentService {
   readonly loreFragments:   ContentRegistryReadonly<LoreFragment>;
   readonly weaponActions:   ContentRegistryReadonly<WeaponActionDef>;
   readonly verbs:           ContentRegistryReadonly<VerbDef>;
+  /**
+   * Animation libraries keyed by archetype id (T-178). Look up clips via
+   * `store.animationLibraries.getOrThrow(skeleton.archetype).clips[clipId]`.
+   * Multiple skeletons sharing an archetype share the same library entry.
+   */
+  readonly animationLibraries: ContentRegistryReadonly<AnimationLibrary>;
 
   // ---- specialized lookups ----
   /** Resolve a material by its numeric MaterialId (the wire/storage key). */
@@ -169,6 +176,10 @@ export class StaticContentStore implements ContentService {
     kind: "verb",
     idOf: (v) => v.id,
   });
+  public readonly animationLibraries = new ContentRegistry<AnimationLibrary>({
+    kind: "animationLibrary",
+    idOf: (lib) => lib.id,
+  });
 
   // ---- secondary indices ----
   private materialsByNumericId = new Map<MaterialId, MaterialDef>();
@@ -261,6 +272,10 @@ export class StaticContentStore implements ContentService {
 
   registerVerbDef(def: VerbDef): void {
     this.verbs.register(def);
+  }
+
+  registerAnimationLibrary(lib: AnimationLibrary): void {
+    this.animationLibraries.register(lib);
   }
 
   setGameConfig(config: GameConfig): void {
@@ -394,7 +409,8 @@ export class StaticContentStore implements ContentService {
     let idx = this.clipIndexCache.get(skeletonId);
     if (!idx) {
       const skeleton = this.skeletons.get(skeletonId);
-      idx = skeleton ? buildClipIndex(skeleton) : new Map();
+      const lib = skeleton ? this.animationLibraries.get(skeleton.archetype) : undefined;
+      idx = lib ? new Map(Object.entries(lib.clips)) : new Map();
       this.clipIndexCache.set(skeletonId, idx);
     }
     return idx;

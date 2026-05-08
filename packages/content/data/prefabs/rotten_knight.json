@@ -1,6 +1,11 @@
 {
   "id": "rotten_knight",
   "modelId": "rotten_knight",
+  "animationSlots": {
+    "idle":  "zombie_idle",
+    "walk":  "zombie_walk",
+    "death": "zombie_death"
+  },
   "components": {
     "npc": {
       "npcType": "rotten_knight"

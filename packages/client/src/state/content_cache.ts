@@ -1,11 +1,15 @@
 /// <reference lib="dom" />
 /**
- * ContentCache — lazy-loads model and material definitions via the content
- * bidi stream.  Deduplicates in-flight requests so each definition is fetched
- * at most once per session.
+ * ContentCache — legacy lazy fetcher for model / material / skeleton
+ * definitions. Predates T-177's bootstrap blob delivery; the bootstrapped
+ * ContentService now carries the same data without round-trips. The cache
+ * is still in place for the renderer's per-frame animation evaluation
+ * (delegating to the bootstrap service for clip / mask / library lookups
+ * via T-178). A future ticket will retire the cache entirely once the
+ * renderer reads from ContentService directly.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef } from "@voxim/content";
-import { buildClipIndex, buildMaskIndex, deriveHitboxTemplate } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService } from "@voxim/content";
+import { buildMaskIndex, deriveHitboxTemplate } from "@voxim/content";
 import type { HitboxContentAdapter } from "@voxim/content";
 import type { TileConnection } from "../connection/tile_connection.ts";
 
@@ -24,7 +28,23 @@ export class ContentCache {
   private readonly materialPending = new Map<number, Promise<MaterialDef | null>>();
   private readonly skeletonPending = new Map<string, Promise<SkeletonDef | null>>();
 
+  /**
+   * Bootstrap-delivered ContentService (T-177). Source of truth for
+   * animation libraries (T-178), since clips no longer live on
+   * SkeletonDef. When set, getClipIndex / getMaskIndex resolve through it.
+   */
+  private bootstrapService: ContentService | null = null;
+
   constructor(private connection: TileConnection) {}
+
+  /** Wired by Game.start once the bootstrap blob has been decoded. */
+  setBootstrapService(svc: ContentService | null): void {
+    this.bootstrapService = svc;
+    // Drop the cached clip/mask indexes — they may have been built against
+    // an empty fallback before the service arrived.
+    this.clipIndexCache.clear();
+    this.maskIndexCache.clear();
+  }
 
   /**
    * Swap the underlying connection — used by tile transitions (T-141). Cached
@@ -143,8 +163,12 @@ export class ContentCache {
   getClipIndex(skeletonId: string): ReadonlyMap<string, AnimationClip> {
     let idx = this.clipIndexCache.get(skeletonId);
     if (!idx) {
-      const skeleton = this.skeletons.get(skeletonId);
-      idx = skeleton ? buildClipIndex(skeleton) : new Map();
+      // T-178: clips live on the per-archetype AnimationLibrary on the
+      // bootstrapped ContentService. Skeleton.archetype determines which.
+      const svc = this.bootstrapService;
+      const skel = svc?.skeletons.get(skeletonId) ?? this.skeletons.get(skeletonId);
+      const lib = svc && skel ? svc.animationLibraries.get(skel.archetype) : undefined;
+      idx = lib ? new Map(Object.entries(lib.clips)) : new Map();
       this.clipIndexCache.set(skeletonId, idx);
     }
     return idx;

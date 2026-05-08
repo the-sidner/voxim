@@ -26,6 +26,7 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
+  AnimationLibrary,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
@@ -38,6 +39,7 @@ interface ContentBootstrap {
   materials:           MaterialDef[];
   models:              ModelDefinition[];
   skeletons:           SkeletonDef[];
+  animationLibraries:  AnimationLibrary[];
   prefabs:             Prefab[];
   recipes:             Recipe[];
   npcTemplates:        NpcTemplate[];
@@ -63,6 +65,7 @@ export function encodeBootstrap(service: ContentService): Uint8Array {
     materials:           [...service.materials.values()],
     models:              [...service.models.values()],
     skeletons:           [...service.skeletons.values()],
+    animationLibraries:  [...service.animationLibraries.values()],
     prefabs:             [...service.prefabs.values()],
     recipes:             [...service.recipes.values()],
     npcTemplates:        [...service.npcTemplates.values()],
@@ -122,6 +125,7 @@ export function decodeBootstrap(blob: Uint8Array): ContentService {
   for (const m of body.materials)            store.registerMaterial(m);
   for (const m of body.models)               store.registerModel(m);
   for (const s of body.skeletons)            store.registerSkeleton(s);
+  for (const lib of body.animationLibraries) store.registerAnimationLibrary(lib);
   for (const p of body.prefabs)              store.registerPrefab(p);
   for (const r of body.recipes)              store.registerRecipe(r);
   for (const n of body.npcTemplates)         store.registerNpcTemplate(n);

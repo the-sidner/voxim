@@ -1,5 +1,5 @@
 {
-  "id": "attack",
+  "id": "zombie_attack",
   "loop": false,
   "tracks": {
     "torso_lower": [
@@ -5315,7 +5315,6 @@
       }
     ]
   },
-  "_skeleton": "drowner",
   "_source": "quaternius:UAL2:Zombie_Scratch",
   "durationSeconds": 1.4333333333333333
 }

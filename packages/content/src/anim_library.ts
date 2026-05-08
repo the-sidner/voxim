@@ -1,31 +1,30 @@
 /**
- * Animation library — per-skeleton clip files in `data/anim_library/`.
+ * Animation library — per-archetype clip files in
+ * `data/anim_library/{archetype}/`. Folder placement is authoritative:
+ * a file at `data/anim_library/biped/idle.json` is a clip with id "idle"
+ * for the biped archetype. No `_skeleton` field — the path determines
+ * which library it joins.
  *
  * Two file shapes are supported:
  *
- *  - **Plain clip**: same JSON as an inline `AnimationClip` plus a `_skeleton`
- *    field naming which skeleton the clip belongs to.  Loaded as-is.
+ *  - **Plain clip**: same JSON as an inline `AnimationClip`. Loaded as-is.
  *
  *  - **Compound clip**: a recipe (`additive` / `crossfade` / `phase_shift`)
  *    referencing other library clip ids, **baked into a plain clip at content
  *    load**.  The runtime never sees compound clips — `AnimationSystem` and
  *    the bone evaluator stay unchanged.
  *
- * After loading + baking, library clips are merged into each `SkeletonDef`'s
- * `clips` array.  A library clip with the same `id` as an inline skeleton clip
- * **overrides** the inline one — that's how the devtool import workflow lets
- * you replace a hand-authored "walk" with an imported Quaternius "walk"
- * without editing the skeleton JSON.
+ * After loading + baking, the result is one `AnimationLibrary` per archetype
+ * (T-178). Multiple skeletons sharing an archetype share the same library by
+ * reference.
  */
 
-import type { AnimationClip, AnimationKeyframe, SkeletonDef, BoneMask } from "./types.ts";
+import type { AnimationClip, AnimationKeyframe, AnimationLibrary, SkeletonDef, BoneMask } from "./types.ts";
 
 // ---- file shapes ----
 
-/** A plain clip file in the library — `AnimationClip` + skeleton scope. */
+/** A plain clip file in the library — exactly an `AnimationClip`. */
 export interface LibraryClipPlain extends AnimationClip {
-  /** Which skeleton this clip belongs to.  Required. */
-  _skeleton: string;
   /** Optional provenance (e.g. "quaternius:Walking") for the devtool to show. */
   _source?: string;
 }
@@ -40,7 +39,6 @@ interface CompoundCommon {
   id: string;
   loop: boolean;
   durationSeconds?: number;
-  _skeleton: string;
   _source?: string;
 }
 
@@ -83,83 +81,58 @@ function isCompound(c: LibraryClipFile): c is LibraryClipCompound {
 // ---- merge into skeletons ----
 
 /**
- * After all library files are loaded and compounds baked, splice the resulting
- * plain clips into each skeleton's `clips` array.  Library clips with an id
- * already present on the skeleton override the inline version.
+ * Build a single archetype's animation library from its clip files.
+ * Plain clips load as-is; compound clips bake against earlier-loaded plain
+ * clips (sharing the same archetype). Cycles or missing references throw.
+ *
+ * Compounds may reference any plain clip in the SAME archetype — they
+ * cannot reach across archetypes (a quadruped compound can't reference a
+ * biped clip). That's by design: compounds operate on the shape of the
+ * skeleton, which is archetype-specific.
+ *
+ * The "skeleton lookup" parameter is needed because compound baking
+ * sometimes needs the bone hierarchy (e.g. mask-aware additive). Pass any
+ * one skeleton of the archetype — they all share bone names.
  */
-export interface SkeletonLookup {
-  get(id: string): SkeletonDef | undefined;
-  values(): IterableIterator<SkeletonDef>;
-}
-
-export function mergeLibraryIntoSkeletons(
-  skeletons: SkeletonLookup,
-  libraryFiles: LibraryClipFile[],
-): void {
-  // Bake compounds: order matters since a compound may reference another
-  // compound.  We loop until no progress is made; cycles raise.
+export function buildAnimationLibrary(
+  archetype: string,
+  files: LibraryClipFile[],
+  skeletonForBaking: SkeletonDef | undefined,
+): AnimationLibrary {
+  // First pass: index plain clips.
   const baked = new Map<string, AnimationClip>();
-  const bySkeleton = new Map<string, AnimationClip[]>();
-
-  // First pass: index plain clips by `${_skeleton}:${id}`.
-  const plainKey = (s: string, id: string) => `${s}:${id}`;
-  for (const f of libraryFiles) {
+  for (const f of files) {
     if (!isCompound(f)) {
-      baked.set(plainKey(f._skeleton, f.id), stripMeta(f));
-    }
-  }
-  // Also seed the index with the skeleton's inline clips so compounds can
-  // reference hand-authored clips by id.
-  for (const skel of skeletons.values()) {
-    for (const c of skel.clips ?? []) {
-      const k = plainKey(skel.id, c.id);
-      if (!baked.has(k)) baked.set(k, c);
+      baked.set(f.id, stripMeta(f));
     }
   }
 
-  // Second pass: bake compounds, repeating until stable.
-  const remaining = libraryFiles.filter(isCompound);
+  // Second pass: bake compounds, repeating until stable. Cycles and
+  // missing references surface as a non-empty `remaining` after the loop.
+  const remaining = files.filter(isCompound);
+  if (remaining.length > 0 && !skeletonForBaking) {
+    throw new Error(`buildAnimationLibrary: archetype "${archetype}" has compound clips but no skeleton was supplied for baking`);
+  }
   for (let safety = 0; remaining.length > 0 && safety < 100; safety++) {
     const before = remaining.length;
     for (let i = remaining.length - 1; i >= 0; i--) {
       const c = remaining[i];
-      const skel = skeletons.get(c._skeleton);
-      if (!skel) {
-        remaining.splice(i, 1);
-        console.warn(`anim_library: compound "${c.id}" targets unknown skeleton "${c._skeleton}" — skipped`);
-        continue;
-      }
-      const refs = compoundRefs(c).map((r) => baked.get(plainKey(c._skeleton, r)));
+      const refs = compoundRefs(c).map((r) => baked.get(r));
       if (refs.some((r) => !r)) continue; // dependency not yet baked
-      const result = bakeCompound(c, refs as AnimationClip[], skel);
-      baked.set(plainKey(c._skeleton, c.id), result);
+      const result = bakeCompound(c, refs as AnimationClip[], skeletonForBaking!);
+      baked.set(c.id, result);
       remaining.splice(i, 1);
     }
     if (remaining.length === before) break;
   }
   if (remaining.length > 0) {
     const ids = remaining.map((r) => r.id).join(", ");
-    throw new Error(`anim_library: unresolvable compound clip references (cycle or missing source): ${ids}`);
+    throw new Error(`buildAnimationLibrary: archetype "${archetype}" has unresolvable compound clip references (cycle or missing source): ${ids}`);
   }
 
-  // Group baked clips by skeleton.
-  for (const [k, clip] of baked) {
-    const sep = k.indexOf(":");
-    const skId = k.slice(0, sep);
-    const arr = bySkeleton.get(skId) ?? [];
-    arr.push(clip);
-    bySkeleton.set(skId, arr);
-  }
-
-  // Merge into each skeleton, library overriding inline.
-  for (const skel of skeletons.values()) {
-    const lib = bySkeleton.get(skel.id) ?? [];
-    if (lib.length === 0) continue;
-    const inlineById = new Map<string, AnimationClip>();
-    for (const c of skel.clips ?? []) inlineById.set(c.id, c);
-    for (const c of lib) inlineById.set(c.id, c); // library wins
-    skel.clips = [...inlineById.values()];
-  }
+  const clips: Record<string, AnimationClip> = {};
+  for (const [id, clip] of baked) clips[id] = clip;
+  return { id: archetype, clips };
 }
 
 // ---- baking ----

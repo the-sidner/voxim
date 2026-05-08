@@ -1,5 +1,5 @@
 {
-  "id": "death",
+  "id": "zombie_death",
   "loop": false,
   "tracks": {
     "torso_lower": [
@@ -2531,7 +2531,6 @@
       }
     ]
   },
-  "_skeleton": "drowner",
   "_source": "quaternius:UAL2:Hit_Knockback",
   "durationSeconds": 0.6666666666666666
 }

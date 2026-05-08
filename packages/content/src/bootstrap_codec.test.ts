@@ -15,18 +15,25 @@ Deno.test("bootstrap codec round-trips every registry", async () => {
   const dst = decodeBootstrap(blob);
 
   // Registry-wise count parity
-  assertEquals(dst.materials.size,      src.materials.size);
-  assertEquals(dst.models.size,         src.models.size);
-  assertEquals(dst.skeletons.size,      src.skeletons.size);
-  assertEquals(dst.prefabs.size,        src.prefabs.size);
-  assertEquals(dst.recipes.size,        src.recipes.size);
-  assertEquals(dst.npcTemplates.size,   src.npcTemplates.size);
-  assertEquals(dst.behaviorTrees.size,  src.behaviorTrees.size);
-  assertEquals(dst.biomes.size,         src.biomes.size);
-  assertEquals(dst.zones.size,          src.zones.size);
-  assertEquals(dst.loreFragments.size,  src.loreFragments.size);
-  assertEquals(dst.weaponActions.size,  src.weaponActions.size);
-  assertEquals(dst.verbs.size,          src.verbs.size);
+  assertEquals(dst.materials.size,           src.materials.size);
+  assertEquals(dst.models.size,              src.models.size);
+  assertEquals(dst.skeletons.size,           src.skeletons.size);
+  assertEquals(dst.prefabs.size,             src.prefabs.size);
+  assertEquals(dst.recipes.size,             src.recipes.size);
+  assertEquals(dst.npcTemplates.size,        src.npcTemplates.size);
+  assertEquals(dst.behaviorTrees.size,       src.behaviorTrees.size);
+  assertEquals(dst.biomes.size,              src.biomes.size);
+  assertEquals(dst.zones.size,               src.zones.size);
+  assertEquals(dst.loreFragments.size,       src.loreFragments.size);
+  assertEquals(dst.weaponActions.size,       src.weaponActions.size);
+  assertEquals(dst.verbs.size,               src.verbs.size);
+  assertEquals(dst.animationLibraries.size,  src.animationLibraries.size);
+
+  // Libraries: clip ids per archetype must match exactly.
+  for (const lib of src.animationLibraries.values()) {
+    const dstLib = dst.animationLibraries.getOrThrow(lib.id);
+    assertEquals(Object.keys(dstLib.clips).sort(), Object.keys(lib.clips).sort());
+  }
 });
 
 Deno.test("bootstrap codec preserves item content (sample probe)", async () => {

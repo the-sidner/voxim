@@ -11,19 +11,19 @@
  *   - Binary search over keyframes is O(log K) per bone per layer.
  */
 
-import type { SkeletonDef, AnimationClip, AnimationLayer, BoneMask, AnimationKeyframe } from "./types.ts";
+import type { SkeletonDef, AnimationClip, AnimationLibrary, AnimationLayer, BoneMask, AnimationKeyframe } from "./types.ts";
 import type { BoneRotation } from "./ik_solver.ts";
 
 /**
- * Build a clip lookup map for a skeleton (clipId → AnimationClip).
+ * Build a clip lookup map (clipId → AnimationClip) for an AnimationLibrary.
  * Pre-computed once by ContentService.getClipIndex().
+ *
+ * Skeletons no longer carry their own `clips` array (T-178); clips live on
+ * the per-archetype AnimationLibrary, and ContentService resolves them via
+ * `skeleton.archetype` → library.
  */
-export function buildClipIndex(skeleton: SkeletonDef): ReadonlyMap<string, AnimationClip> {
-  const m = new Map<string, AnimationClip>();
-  for (const clip of skeleton.clips ?? []) {
-    m.set(clip.id, clip);
-  }
-  return m;
+export function buildClipIndex(lib: AnimationLibrary): ReadonlyMap<string, AnimationClip> {
+  return new Map(Object.entries(lib.clips));
 }
 
 /**

@@ -1,5 +1,5 @@
 {
-  "id": "idle",
+  "id": "zombie_idle",
   "loop": true,
   "tracks": {
     "torso_lower": [
@@ -3971,7 +3971,6 @@
       }
     ]
   },
-  "_skeleton": "rotten_knight",
   "_source": "quaternius:UAL2:Zombie_Idle_Loop",
   "durationSeconds": 1.0666666666666667
 }

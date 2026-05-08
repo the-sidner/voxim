@@ -24,6 +24,7 @@ export type {
   SkeletonDef,
   AnimationKeyframe,
   AnimationClip,
+  AnimationLibrary,
   BoneMask,
   AnimationLayer,
   AnimationStateData,
@@ -94,12 +95,12 @@ export { solveTwoBoneIK, quatFromEulerXYZ, quatMultiply, invertQuat, applyQuat }
 // ---- Animation layer evaluator (shared server + client) ----
 export { evaluateAnimationLayers, buildClipIndex, buildMaskIndex, sampleTrack } from "./src/animation_eval.ts";
 
-// ---- Animation library (load-time bake of compound clips) ----
+// ---- Animation library (load-time bake of compound clips, T-178) ----
 export type {
   LibraryClipFile, LibraryClipPlain, LibraryClipCompound,
   LibraryAdditiveClip, LibraryCrossfadeClip, LibraryPhaseShiftClip,
 } from "./src/anim_library.ts";
-export { mergeLibraryIntoSkeletons } from "./src/anim_library.ts";
+export { buildAnimationLibrary } from "./src/anim_library.ts";
 
 // ---- Skeleton FK solver (shared server + client) ----
 export type { BoneTransform } from "./src/skeleton_solver.ts";
