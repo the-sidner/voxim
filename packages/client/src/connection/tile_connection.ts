@@ -29,6 +29,15 @@ export class TileConnection {
   onClose:        (() => void) | null = null;
 
   /**
+   * Drain-style counters for the HUD diagnostic panel.  Incremented by
+   * the state-stream loop; the FPS-window sampler reads + zeroes them
+   * via `drainNetStats()` once per ~500 ms so it can compute kbps and
+   * tick rate.
+   */
+  private _stateBytesIn   = 0;
+  private _stateMsgsIn    = 0;
+
+  /**
    * Connect to the tile server and perform the join handshake.
    *
    * @param tileAddress  "hostname:port" as returned by the gateway.
@@ -179,6 +188,8 @@ export class TileConnection {
         const payload = await readPayload();
         if (!payload) { console.log(`[TileConn] state stream ended after ${msgCount} messages`); break; }
         msgCount++;
+        this._stateBytesIn += payload.byteLength;
+        this._stateMsgsIn  += 1;
         try {
           this.onStateMessage?.(binaryStateMessageCodec.decode(payload));
         } catch (err) {
@@ -189,6 +200,18 @@ export class TileConnection {
       reader.releaseLock();
       this.onClose?.();
     }
+  }
+
+  /**
+   * Reads + zeroes the state-stream byte and message counters since
+   * the last call. Used by the HUD's FPS-window sampler to derive
+   * kbps and tick-rate without retaining a per-frame history.
+   */
+  drainNetStats(): { bytes: number; messages: number } {
+    const out = { bytes: this._stateBytesIn, messages: this._stateMsgsIn };
+    this._stateBytesIn = 0;
+    this._stateMsgsIn  = 0;
+    return out;
   }
 
   close(): void {

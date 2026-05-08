@@ -116,6 +116,17 @@ export class VoximGame {
   private timingAccum = { frame: 0, sk: 0, trail: 0, gl: 0, post: 0 };
   /** Last `onlineCount` shipped via state message; pushed to UIState as it changes. */
   private lastOnlineCount = -1;
+  /**
+   * Recently-sent input timestamps keyed by seq.  When a state message
+   * arrives with `ackInputSeq`, we look up the original send timestamp
+   * to compute round-trip time. Map is pruned on lookup so older entries
+   * fall off when their seq is acked or eclipsed.
+   */
+  private readonly inputSentAt = new Map<number, number>();
+  /** Smoothed RTT in ms (EMA, α = 0.2). 0 until the first ack arrives. */
+  private smoothedPingMs = 0;
+  /** Latest `ackInputSeq` from the server; used to compute input lag. */
+  private lastAckedSeq = 0;
 
   /** Total terrain chunks expected per tile (32×32 chunks of 16×16 = 256). */
   private static readonly TOTAL_CHUNKS = 256;
@@ -297,6 +308,23 @@ export class VoximGame {
       if (msg.onlineCount !== this.lastOnlineCount) {
         this.lastOnlineCount = msg.onlineCount;
         patchUI({ hudStats: { ...uiState.value.hudStats, onlineCount: msg.onlineCount } });
+      }
+
+      // RTT — find the wall-clock timestamp we stamped when sending the
+      // input that this state message acknowledges.  Drop it and any
+      // older entries from the buffer (their seqs are now eclipsed).
+      const sentAt = this.inputSentAt.get(msg.ackInputSeq);
+      if (sentAt !== undefined) {
+        const rtt = Date.now() - sentAt;
+        // EMA with α=0.2 — smooth enough to read but reactive to spikes.
+        this.smoothedPingMs = this.smoothedPingMs === 0
+          ? rtt
+          : this.smoothedPingMs * 0.8 + rtt * 0.2;
+      }
+      this.lastAckedSeq = msg.ackInputSeq;
+      // Prune everything ≤ acked seq. Keys are integers; iterate once.
+      for (const seq of this.inputSentAt.keys()) {
+        if (seq <= msg.ackInputSeq) this.inputSentAt.delete(seq);
       }
 
       // Fog of war (T-157) — server is authoritative for `seenEver`.
@@ -609,10 +637,23 @@ export class VoximGame {
       const postMs    = +(this.timingAccum.post  / f).toFixed(1);
       const drawCalls = this.renderer?.frameTimings.drawCalls ?? 0;
       const tris      = this.renderer?.frameTimings.tris      ?? 0;
+      // Drain network counters since the last window so we can derive
+      // bandwidth and tick rate from the counts and the window span.
+      const net       = this.connection.drainNetStats();
+      const tickHz    = +(net.messages * 1000 / fpsWindowMs).toFixed(1);
+      const kbpsIn    = +(net.bytes * 8 / fpsWindowMs).toFixed(1);  // bytes·8/ms = kilobits/s
+      const pingMs    = Math.round(this.smoothedPingMs);
+      const inputLag  = Math.max(0, this.inputSeq - this.lastAckedSeq);
+      const entities  = this.renderer?.entityCount ?? 0;
+      const handles   = this.renderer?.instancePool.handleCount ?? 0;
       this.fpsFrames = 0;
       this.fpsWindowStart = now;
       this.timingAccum = { frame: 0, sk: 0, trail: 0, gl: 0, post: 0 };
-      patchUI({ hudStats: { ...uiState.value.hudStats, fps, frameMs, skMs, trailMs, glMs, postMs, drawCalls, tris } });
+      patchUI({ hudStats: {
+        ...uiState.value.hudStats,
+        fps, frameMs, skMs, trailMs, glMs, postMs, drawCalls, tris,
+        pingMs, inputLag, tickHz, kbpsIn, entities, handles,
+      } });
     }
 
     let predictedPos = null;
@@ -620,6 +661,10 @@ export class VoximGame {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
       this.connection.sendMovement(datagram);
       recordInput(datagram);
+      // Track the send timestamp so we can derive RTT when this seq is
+      // acked.  The Map is pruned on lookup so it stays small even if
+      // some inputs are dropped on the unreliable datagram channel.
+      this.inputSentAt.set(datagram.seq, datagram.timestamp);
       if (hasAction(datagram.actions, ACTION_USE_SKILL)) {
         // Use the last server-confirmed attack params so the prediction matches the
         // real weapon. Falls back to "slash" defaults if no confirmed state yet.

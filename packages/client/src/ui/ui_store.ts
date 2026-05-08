@@ -272,6 +272,18 @@ export interface UIState {
     postMs:      number;
     drawCalls:   number;
     tris:        number;
+    /** Smoothed round-trip time in ms (input → ack). */
+    pingMs:      number;
+    /** In-flight inputs: inputSeq − ackInputSeq at the FPS-window boundary. */
+    inputLag:    number;
+    /** Server state-message rate over the FPS window (target ~20 Hz). */
+    tickHz:      number;
+    /** Inbound state-stream bandwidth, kilobits per second. */
+    kbpsIn:      number;
+    /** Live EntityMeshGroups (animated + placeholder). */
+    entities:    number;
+    /** Active InstancePool handles (forest trees + static props). */
+    handles:     number;
   };
 }
 
@@ -299,7 +311,11 @@ const _initial: UIState = {
   radialMenu:  null,
   loading:          true,
   loadingProgress:  0,
-  hudStats:         { fps: 0, onlineCount: 0, frameMs: 0, skMs: 0, trailMs: 0, glMs: 0, postMs: 0, drawCalls: 0, tris: 0 },
+  hudStats: {
+    fps: 0, onlineCount: 0,
+    frameMs: 0, skMs: 0, trailMs: 0, glMs: 0, postMs: 0, drawCalls: 0, tris: 0,
+    pingMs: 0, inputLag: 0, tickHz: 0, kbpsIn: 0, entities: 0, handles: 0,
+  },
 };
 
 export const uiState = signal<UIState>({ ..._initial });

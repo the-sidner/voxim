@@ -86,6 +86,11 @@ export class InstancePool {
     return this.archetypes.has(id);
   }
 
+  /** Diagnostic — count of registered archetypes (for HUD). */
+  get archetypeCount(): number { return this.archetypes.size; }
+  /** Diagnostic — count of all registered handles across every chunk. */
+  get handleCount():    number { return this.handles.size; }
+
   registerArchetype(id: string, spec: ArchetypeSpec): void {
     if (this.archetypes.has(id)) return;
     const mesh = new THREE.InstancedMesh(spec.geometry, spec.material, MAX_INSTANCES_PER_ARCHETYPE);

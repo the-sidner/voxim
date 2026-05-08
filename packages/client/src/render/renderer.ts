@@ -215,6 +215,8 @@ export class VoximRenderer {
   private readonly terrainHmaps   = new Map<string, HeightmapData>();
   private readonly terrainMats    = new Map<string, MaterialGridData>();
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
+  /** Diagnostic — count of live EntityMeshGroups (animated and placeholder). */
+  get entityCount(): number { return this.entityMeshes.size; }
   /**
    * Single owner of all procedurally-placed static instanced rendering
    * (forest decorations, server props, future rocks). See

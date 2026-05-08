@@ -84,6 +84,30 @@ export function HudStats() {
         <span style={LABEL}>tris</span>
         <span style={VALUE}>{(s.tris / 1000).toFixed(1)}k</span>
       </div>
+      <div style={ROW}>
+        <span style={LABEL}>entities</span>
+        <span style={VALUE}>{s.entities}</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>handles</span>
+        <span style={VALUE}>{s.handles}</span>
+      </div>
+      <div style={{ ...ROW, marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(220,220,220,0.15)" }}>
+        <span style={LABEL}>ping</span>
+        <span style={VALUE}>{s.pingMs > 0 ? `${s.pingMs} ms` : "—"}</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>lag</span>
+        <span style={VALUE}>{s.inputLag}</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>tick</span>
+        <span style={VALUE}>{s.tickHz.toFixed(1)} Hz</span>
+      </div>
+      <div style={ROW}>
+        <span style={LABEL}>down</span>
+        <span style={VALUE}>{s.kbpsIn.toFixed(0)} kb/s</span>
+      </div>
     </div>
   );
 }
