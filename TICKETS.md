@@ -3440,7 +3440,7 @@ Done when: tile-server constructs JsonSource at boot; engine accepts
 ContentService; no `Deno.readDir` outside `JsonSource`.
 
 ### T-177 · Content bootstrap codec + WT handshake delivery
-Effort: M   Status: done
+Effort: M   Status: done   Commit: 61f3c59+ebc1bc0+ac1c401
 
 Binary codec serializes a fully-loaded `ContentStore` into a length-prefixed
 blob (target ~1–5 MB compressed) with a content hash in its manifest.
