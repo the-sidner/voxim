@@ -32,7 +32,7 @@ import { GatewayLink } from "./gateway_link.ts";
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 import type { BinaryComponentDelta, BinaryStateMessage, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
-import { JsonSource, validateRecipeGraph, type ContentService } from "@voxim/content";
+import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
 import { ClientSession } from "./session.ts";
 import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
@@ -197,6 +197,15 @@ export class TileServer {
   /** Cached from config so disconnect paths can tell the gateway where the player logged off. */
   private tileId = "";
   private content!: ContentService;
+  /**
+   * Pre-encoded content bootstrap blob (T-177). Built once at startup, sent
+   * to every joining client after TileJoinAck. Lets the client construct a
+   * full local ContentService without round-trips for individual lookups,
+   * and guarantees the client's content matches THIS tile-server's exactly
+   * — reconnect after a server restart picks up content changes
+   * automatically.
+   */
+  private contentBlob!: Uint8Array;
   // Initialised in start() — subscribes to the event bus and drained each tick.
   private events!: EventRouter;
 
@@ -271,6 +280,11 @@ export class TileServer {
     // resolves to a producer (raw-material default OR an upstream recipe
     // formula). Surfaces NaN-bow-class bugs at boot, not at first craft.
     validateRecipeGraph(content);
+    // Pre-encode the bootstrap blob once — every joining client gets a copy
+    // after TileJoinAck. Encoding here means a single allocation per server
+    // process; the same Uint8Array reference is sent to every session.
+    this.contentBlob = encodeBootstrap(content);
+    console.log(`[TileServer] content bootstrap blob: ${(this.contentBlob.length / 1024).toFixed(1)} KB`);
 
     // Effect handler registries — apply/tick/compose are plug-in points for
     // SkillSystem and BuffSystem. Built-in effects are registered here; every
@@ -1136,6 +1150,11 @@ export class TileServer {
     // Send ack with canonical playerId
     const ack: TileJoinAck = { type: "joined", playerId };
     await jWriter.write(encodeFrame(ack));
+    // Then the content bootstrap blob (T-177) as a length-framed binary
+    // payload on the same join stream. Client reads the ack JSON, then
+    // reads this blob, then closes — half-duplex, single stream, no
+    // separate request/response.
+    await jWriter.write(encodeFrame(this.contentBlob));
     // Fire-and-forget — don't block on the client consuming the stream FIN.
     // Awaiting close() here caused an 80% failure rate: the tick loop could fire
     // between the await and createUnidirectionalStream(), registering no session

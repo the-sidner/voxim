@@ -29,6 +29,15 @@ export class TileConnection {
   onClose:        (() => void) | null = null;
 
   /**
+   * Bootstrap blob received on the join stream after TileJoinAck (T-177).
+   * Decoded by BootstrapSource.load() into a ContentService once the
+   * handshake completes. Stored as raw bytes here so the connection layer
+   * stays content-agnostic — the game-init code performs the decode.
+   */
+  private _bootstrapBlob: Uint8Array | null = null;
+  bootstrapBlob(): Uint8Array | null { return this._bootstrapBlob; }
+
+  /**
    * Drain-style counters for the HUD diagnostic panel.  Incremented by
    * the state-stream loop; the FPS-window sampler reads + zeroes them
    * via `drainNetStats()` once per ~500 ms so it can compute kbps and
@@ -87,13 +96,27 @@ export class TileConnection {
     jWriter.close().catch(() => {}); // signal FIN without blocking on remote ACK
     console.log("[TileConn] join sent, awaiting ack");
 
-    const ack = await makeFrameReader(jReader).readJson() as TileJoinAck | null;
-    jReader.releaseLock();
-
+    // Read the ack and the bootstrap blob from the same stream — server
+    // writes both before closing. Frame reader reuses the same buffered
+    // reader across both reads, so leftover bytes after readJson don't
+    // confuse the second read.
+    const frameReader = makeFrameReader(jReader);
+    const ack = await frameReader.readJson() as TileJoinAck | null;
     if (!ack || ack.type !== "joined") {
+      jReader.releaseLock();
       throw new Error("Tile server join handshake failed");
     }
     console.log(`[TileConn] joined, server-assigned playerId=${ack.playerId.slice(0, 8)}`);
+
+    // Bootstrap blob (T-177) — full ContentService serialized.
+    const blob = await frameReader.readPayload();
+    if (!blob) {
+      jReader.releaseLock();
+      throw new Error("Tile server handshake missing content bootstrap blob");
+    }
+    this._bootstrapBlob = blob;
+    console.log(`[TileConn] bootstrap blob: ${(blob.length / 1024).toFixed(1)} KB`);
+    jReader.releaseLock();
 
     // --- datagram writer for input (C→S) ---
     this.datagramWriter = this.transport.datagrams.writable.getWriter();

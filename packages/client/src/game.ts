@@ -42,8 +42,8 @@ import type { EquipmentData, InventoryData, LoreLoadoutData } from "@voxim/codec
 import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
-import { weapon_actions as weaponActionsData, item_prefabs as itemPrefabsData } from "@voxim/content";
-import type { Prefab, ToolData } from "@voxim/content";
+import { weapon_actions as weaponActionsData, item_prefabs as itemPrefabsData, BootstrapSource } from "@voxim/content";
+import type { ContentService, Prefab, ToolData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
 export interface GameConfig {
@@ -87,6 +87,13 @@ export class VoximGame {
    */
   private fog = new FogOfWar();
   private content: ContentCache | null = null;
+  /**
+   * ContentService hydrated from the WT-handshake bootstrap blob (T-177).
+   * Replaces the static-bundled `*_static.ts` imports for non-renderer
+   * consumers (UI panels, debug item list, weapon-action lookup). Held
+   * here so tile transitions can swap it for the new tile's blob.
+   */
+  private contentService: ContentService | null = null;
   private renderer: VoximRenderer | null = null;
   private overlay: WorldOverlay | null = null;
   private input: IntentTranslator | null = null;
@@ -186,9 +193,22 @@ export class VoximGame {
     // Step 4: renderer, content cache, HUD, input — push any world state that
     // arrived during connect() into the renderer now that it exists.
     this.content = new ContentCache(this.connection);
+    // Decode the bootstrap blob into a full ContentService (T-177). Receiving
+    // this from the same tile-server we just connected to guarantees the
+    // client and server agree on content version — no drift, no mismatched
+    // ids. Subsequent reconnects pick up server-side content edits for free.
+    const blob = this.connection.bootstrapBlob();
+    if (blob) {
+      this.contentService = BootstrapSource.load(blob);
+      console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons`);
+    } else {
+      console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");
+    }
     this.renderer = new VoximRenderer(canvas);
     this.renderer.setLocalPlayer(this.playerId!);
     this.renderer.setContentCache(this.content);
+    // Renderer-facing weapon actions / item prefabs (still static-bundled —
+    // phase 3 of T-177 will source these from this.contentService).
     this.renderer.setWeaponActions([...weaponActionsData]);
     this.renderer.setItemPrefabs(itemPrefabsData);
 
@@ -598,6 +618,14 @@ export class VoximGame {
       );
       this.playerId = assignedId;
       this.renderer?.setLocalPlayer(this.playerId);
+      // Re-hydrate ContentService from the new tile-server's blob — content
+      // could have changed across the boundary (different version, different
+      // tile-specific overrides). Picks up server restarts for free.
+      const blob = conn.bootstrapBlob();
+      if (blob) {
+        this.contentService = BootstrapSource.load(blob);
+        console.log(`[Game] content service re-hydrated for new tile`);
+      }
       console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);
     } catch (err) {
       console.error("[Game] tile transition failed:", err);
