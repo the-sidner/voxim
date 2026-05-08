@@ -3389,7 +3389,7 @@ Done when: `ContentRegistry<T>` exists with unit coverage; materials have
 tags; `byTag("metal")` returns the iron / steel / copper / worn_iron rows.
 
 ### T-175 · Federate ContentStore into typed registries
-Effort: L   Status: done
+Effort: L   Status: done   Commit: e48cd39+e4c0e5c
 
 Refactor `ContentStore`'s ~30 ad-hoc `get*` methods into a federated shape:
 
