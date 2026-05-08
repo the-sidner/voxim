@@ -3338,7 +3338,7 @@ together retire the per-creature skeleton sprawl. T-181 / T-182 / T-183 can land
 in parallel once the foundation is in.
 
 ### T-173 · BoneDef rest rotations + correct retargeting math
-Effort: M   Status: done
+Effort: M   Status: done   Commit: 6e260e9
 
 Add `restRotX/Y/Z` (Euler XYZ radians, parent-local frame) to `BoneDef`,
 default 0/0/0 (forward-compatible — existing identity-rest skeletons
@@ -3372,7 +3372,7 @@ type-check clean; bone world positions sane (feet near ground, hands at
 chest height instead of flying above the head).
 
 ### T-174 · ContentRegistry<T> primitive + tag indexing
-Effort: S   Status: todo
+Effort: S   Status: done
 
 Generic id-keyed registry primitive in `@voxim/content`:
 

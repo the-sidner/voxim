@@ -3,8 +3,8 @@
   "name": "oak",
   "color": "#92400e",
   "roughness": 0.85,
-  "metallic": 0.0,
-  "emissive": 0.0,
+  "metallic": 0,
+  "emissive": 0,
   "solid": true,
   "walkable": false,
   "properties": {
@@ -13,5 +13,9 @@
     "flexibility": 0.55,
     "flammability": 0.85,
     "toughness": 0.35
-  }
+  },
+  "tags": [
+    "organic",
+    "wood"
+  ]
 }

@@ -112,6 +112,15 @@ export { ModelRef } from "./src/component.ts";
 export type { ContentStore } from "./src/store.ts";
 export { StaticContentStore, resolveSubObjects, resolveMorphParams } from "./src/store.ts";
 
+// ---- generic content registry primitive (T-174) ----
+// Building block for the federated ContentStore (T-175). Replaces the
+// pattern of `private foos = new Map<string, FooDef>()` plus per-type
+// accessor methods accumulated on ContentStore. Consumers should be
+// typed against ContentRegistryReadonly<T> so engines never mutate the
+// registry after load.
+export type { ContentRegistryReadonly, ContentRegistryOptions, Tagged } from "./src/registry.ts";
+export { ContentRegistry } from "./src/registry.ts";
+
 // ---- recipe graph (reverse index for crafting planner) ----
 export type { RecipeGraph } from "./src/recipe_graph.ts";
 export { buildRecipeGraph } from "./src/recipe_graph.ts";

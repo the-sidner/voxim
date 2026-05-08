@@ -3,8 +3,8 @@
   "name": "dirt",
   "color": "#6b4226",
   "roughness": 0.95,
-  "metallic": 0.0,
-  "emissive": 0.0,
+  "metallic": 0,
+  "emissive": 0,
   "solid": true,
   "walkable": true,
   "properties": {
@@ -13,5 +13,9 @@
     "flexibility": 0.3,
     "flammability": 0.3,
     "toughness": 0.15
-  }
+  },
+  "tags": [
+    "ground",
+    "soil"
+  ]
 }

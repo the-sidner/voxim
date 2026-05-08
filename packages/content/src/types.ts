@@ -45,6 +45,8 @@ export interface MaterialDef {
   walkable: boolean;
   // mechanical properties (server + client) — drive item stat derivation
   properties: MaterialProperties;
+  /** Categorical tags. Indexed by ContentRegistry.byTag() (T-174). */
+  tags?: readonly string[];
 }
 
 // ---- voxel model ----

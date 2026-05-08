@@ -3,8 +3,8 @@
   "name": "wolf_fur_dark",
   "color": "#4a4444",
   "roughness": 0.9,
-  "metallic": 0.0,
-  "emissive": 0.0,
+  "metallic": 0,
+  "emissive": 0,
   "solid": false,
   "walkable": false,
   "properties": {
@@ -13,5 +13,9 @@
     "flexibility": 0.9,
     "flammability": 0.4,
     "toughness": 0.1
-  }
+  },
+  "tags": [
+    "organic",
+    "fur"
+  ]
 }

@@ -3,8 +3,8 @@
   "name": "bone",
   "color": "#e8e0c0",
   "roughness": 0.75,
-  "metallic": 0.0,
-  "emissive": 0.0,
+  "metallic": 0,
+  "emissive": 0,
   "solid": true,
   "walkable": false,
   "properties": {
@@ -13,5 +13,9 @@
     "flexibility": 0.2,
     "flammability": 0.3,
     "toughness": 0.45
-  }
+  },
+  "tags": [
+    "organic",
+    "bone"
+  ]
 }

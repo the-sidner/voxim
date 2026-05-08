@@ -3,8 +3,8 @@
   "name": "pine",
   "color": "#a05020",
   "roughness": 0.8,
-  "metallic": 0.0,
-  "emissive": 0.0,
+  "metallic": 0,
+  "emissive": 0,
   "solid": true,
   "walkable": false,
   "properties": {
@@ -13,5 +13,9 @@
     "flexibility": 0.7,
     "flammability": 0.95,
     "toughness": 0.25
-  }
+  },
+  "tags": [
+    "organic",
+    "wood"
+  ]
 }

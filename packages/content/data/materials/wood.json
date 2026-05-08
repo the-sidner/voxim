@@ -3,8 +3,8 @@
   "name": "wood",
   "color": "#8b6340",
   "roughness": 0.85,
-  "metallic": 0.0,
-  "emissive": 0.0,
+  "metallic": 0,
+  "emissive": 0,
   "solid": true,
   "walkable": true,
   "properties": {
@@ -13,5 +13,9 @@
     "flexibility": 0.65,
     "flammability": 0.9,
     "toughness": 0.3
-  }
+  },
+  "tags": [
+    "organic",
+    "wood"
+  ]
 }

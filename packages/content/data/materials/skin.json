@@ -3,8 +3,8 @@
   "name": "skin",
   "color": "#c8a882",
   "roughness": 0.9,
-  "metallic": 0.0,
-  "emissive": 0.0,
+  "metallic": 0,
+  "emissive": 0,
   "solid": false,
   "walkable": false,
   "properties": {
@@ -13,5 +13,9 @@
     "flexibility": 0.95,
     "flammability": 0.3,
     "toughness": 0.05
-  }
+  },
+  "tags": [
+    "organic",
+    "flesh"
+  ]
 }

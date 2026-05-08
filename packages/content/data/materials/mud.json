@@ -3,8 +3,8 @@
   "name": "mud",
   "color": "#4a3520",
   "roughness": 0.98,
-  "metallic": 0.0,
-  "emissive": 0.0,
+  "metallic": 0,
+  "emissive": 0,
   "solid": true,
   "walkable": true,
   "properties": {
@@ -13,5 +13,10 @@
     "flexibility": 0.5,
     "flammability": 0.1,
     "toughness": 0.08
-  }
+  },
+  "tags": [
+    "ground",
+    "soil",
+    "wet"
+  ]
 }

@@ -4,14 +4,19 @@
   "color": "#6a6870",
   "roughness": 0.55,
   "metallic": 0.7,
-  "emissive": 0.0,
+  "emissive": 0,
   "solid": true,
   "walkable": false,
   "properties": {
     "hardness": 0.85,
-    "density": 1.0,
+    "density": 1,
     "flexibility": 0.1,
-    "flammability": 0.0,
+    "flammability": 0,
     "toughness": 0.9
-  }
+  },
+  "tags": [
+    "metal",
+    "iron",
+    "worn"
+  ]
 }
