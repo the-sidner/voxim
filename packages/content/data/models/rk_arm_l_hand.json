@@ -1,0 +1,9 @@
+{
+  "id": "rk_arm_l_hand",
+  "version": 1,
+  "nodes": [
+    { "x": 0, "y": 0, "z": -1, "materialId": 105 }
+  ],
+  "subObjects": [],
+  "materials": [105]
+}

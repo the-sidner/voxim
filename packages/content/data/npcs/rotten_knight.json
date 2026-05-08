@@ -1,0 +1,26 @@
+{
+  "id": "rotten_knight",
+  "displayName": "Rotten Knight",
+  "maxHealth": 140,
+  "fleeHealthRatio": 0.0,
+  "behaviorTreeId": "hostile",
+  "aggroRange": 16,
+  "wanderRadius": 20,
+  "wanderTicks": 120,
+  "idleTicks": 60,
+  "attackTicks": 4500,
+  "fleeTicks": 0,
+  "seekFoodTicks": 9999,
+  "speedMultiplier": 0.85,
+  "weaponItemType": "rotten_knight_arm",
+  "skillLoadout": [
+    {
+      "verb": "strike",
+      "outwardFragmentId": "infernal_brand",
+      "inwardFragmentId": "ward_of_stone"
+    },
+    null,
+    null,
+    null
+  ]
+}

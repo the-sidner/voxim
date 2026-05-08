@@ -8,11 +8,17 @@
  *   3. Resample rotation tracks at a fixed timestep (slerp between source
  *      keyframes).  Translation/scale channels are ignored — our format has
  *      no translation tracks; locomotion comes from the entity's velocity.
- *   4. Quaternion → Euler XYZ (radians).
- *   5. Apply per-bone rest-pose delta (radians, additive) so the source's
- *      bind pose maps onto our rest pose.  Without this, Mixamo's slightly
- *      forward arms or Quaternius's A-pose look stiff/off when the converted
- *      clip is sampled against our T-pose.
+ *   4. Retarget to identity rest: emit `R = A * B^-1` per frame — the rotation
+ *      in parent-local frame from source's bind to source's animated. Applied
+ *      to a target with identity rest, this reproduces the source's animation
+ *      direction (small approximation when source/target binds differ in
+ *      orientation, exact when they match).
+ *      Quaternion → Euler XYZ (radians).
+ *   5. Apply per-bone rest-pose delta (radians, additive) for cosmetic tuning.
+ *
+ * When a target skeleton declares its own bind via `BoneDef.restRotX/Y/Z`
+ * matching the source's bind (T-179 work), the retargeting becomes exact
+ * (post-multiply cancels source bind, restRot reapplies target bind).
  *
  * Usage:
  *   deno run -A scripts/convert_anim.ts <input.glb> <library> \
@@ -100,8 +106,7 @@ for (const anim of animations) {
   type SourceTrack = {
     times: number[];
     quats: [number, number, number, number][];
-    /** Source node's bind-pose rotation. Animated frames are stored as deltas
-     * from this so the importer's identity rest pose composes correctly. */
+    /** Source node's bind-pose rotation, captured for the retarget transform. */
     bind: [number, number, number, number];
   };
   const sourceTracks = new Map<string, SourceTrack>();
@@ -156,13 +161,14 @@ for (const anim of animations) {
   const tmpEuler = new Euler();
 
   const tmpBindInv = new Quaternion();
-  const tmpDelta = new Quaternion();
+  const tmpRetarget = new Quaternion();
   for (const [boneName, src] of sourceTracks) {
     const restDelta = map.restDeltas?.[boneName] ?? [0, 0, 0];
-    // inverse(bind) so animated frames become bind-relative deltas. Without this
-    // the source rig's bind orientation (e.g. a leg bone whose local Y points
-    // along the bone instead of up) gets baked into every keyframe and stacks
-    // on top of our identity-rest skeleton, producing massive distortions.
+    // R = A * B^-1 — post-multiply by inverse bind.  Pre-multiply (B^-1 * A)
+    // also produces a rotation of the same magnitude but expresses it in
+    // bind-local axes; visually fine for symmetric bipeds close to T-pose,
+    // but breaks for asymmetric or non-identity bind chains. Post-multiply
+    // is the correct retargeting transform for identity-rest targets.
     tmpBindInv.set(src.bind[0], src.bind[1], src.bind[2], src.bind[3]).invert();
     const out: ClipKeyframe[] = [];
     for (let i = 0; i < numSamples; i++) {
@@ -170,8 +176,8 @@ for (const anim of animations) {
       const tSec = tNorm * maxTime;
       const q = sampleQuat(src.times, src.quats, tSec);
       tmpQuat.set(q[0], q[1], q[2], q[3]);
-      tmpDelta.multiplyQuaternions(tmpBindInv, tmpQuat);
-      tmpEuler.setFromQuaternion(tmpDelta, "XYZ");
+      tmpRetarget.multiplyQuaternions(tmpQuat, tmpBindInv);
+      tmpEuler.setFromQuaternion(tmpRetarget, "XYZ");
       out.push({
         time: round(tNorm, 4),
         rotX: round(tmpEuler.x + restDelta[0], 4),

@@ -1,5 +1,5 @@
 {
-  "id": "drowner",
+  "id": "rotten_knight",
   "bones": [
     {
       "id": "root",
@@ -13,7 +13,7 @@
       "parent": "root",
       "restX": 0,
       "restY": 0,
-      "restZ": 2.5
+      "restZ": 2.7
     },
     {
       "id": "torso_mid",
@@ -39,7 +39,7 @@
     {
       "id": "upper_arm_l",
       "parent": "torso_upper",
-      "restX": -1,
+      "restX": -1.2,
       "restY": 0,
       "restZ": 0
     },
@@ -48,19 +48,19 @@
       "parent": "upper_arm_l",
       "restX": 0,
       "restY": 0,
-      "restZ": -2.5
+      "restZ": -2
     },
     {
       "id": "hand_l",
       "parent": "lower_arm_l",
       "restX": 0,
       "restY": 0,
-      "restZ": -2.5
+      "restZ": -2
     },
     {
       "id": "upper_arm_r",
       "parent": "torso_upper",
-      "restX": 1,
+      "restX": 1.6,
       "restY": 0,
       "restZ": 0
     },
@@ -69,21 +69,21 @@
       "parent": "upper_arm_r",
       "restX": 0,
       "restY": 0,
-      "restZ": -2.5
+      "restZ": -3
     },
     {
       "id": "hand_r",
       "parent": "lower_arm_r",
       "restX": 0,
       "restY": 0,
-      "restZ": -2.5
+      "restZ": -3
     },
     {
       "id": "upper_leg_l",
       "parent": "root",
-      "restX": -0.7,
+      "restX": -0.8,
       "restY": 0,
-      "restZ": 2.5
+      "restZ": 2.7
     },
     {
       "id": "lower_leg_l",
@@ -97,14 +97,14 @@
       "parent": "lower_leg_l",
       "restX": 0,
       "restY": 0,
-      "restZ": -1
+      "restZ": -1.2
     },
     {
       "id": "upper_leg_r",
       "parent": "root",
-      "restX": 0.7,
+      "restX": 0.8,
       "restY": 0,
-      "restZ": 2.5
+      "restZ": 2.7
     },
     {
       "id": "lower_leg_r",
@@ -118,7 +118,7 @@
       "parent": "lower_leg_r",
       "restX": 0,
       "restY": 0,
-      "restZ": -1
+      "restZ": -1.2
     }
   ],
   "boneMasks": [

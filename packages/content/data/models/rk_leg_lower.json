@@ -1,0 +1,9 @@
+{
+  "id": "rk_leg_lower",
+  "version": 1,
+  "nodes": [
+    { "x": 0, "y": 0, "z": -1, "materialId": 110 }
+  ],
+  "subObjects": [],
+  "materials": [110]
+}

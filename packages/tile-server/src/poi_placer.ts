@@ -31,7 +31,7 @@ const BOUNDARY_KIND_OPEN  = 0;
 const BOUNDARY_KIND_STONE = 1;
 
 /** Pool of NPC prefab ids used by the mob POI.  Wired by id; kept lean for "first primitive". */
-const MOB_NPC_POOL = ["wolf", "bandit", "archer", "drowner"] as const;
+const MOB_NPC_POOL = ["wolf", "bandit", "archer", "drowner", "rotten_knight"] as const;
 
 /** Number of NPCs spawned per mob POI.  User spec: "3 random mobs". */
 const MOB_COUNT = 3;

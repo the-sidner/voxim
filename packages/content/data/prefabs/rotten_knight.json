@@ -1,0 +1,9 @@
+{
+  "id": "rotten_knight",
+  "modelId": "rotten_knight",
+  "components": {
+    "npc": {
+      "npcType": "rotten_knight"
+    }
+  }
+}

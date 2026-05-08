@@ -3322,6 +3322,293 @@ walks to one, and the existing T-140/141 handoff carries them across.
 
 ---
 
+## Content Architecture
+
+End-state: every distinct piece of game tuning is content; the engine ships small
+generic algorithms that consume content; a single typed-registry federation owns
+it all. Client and server share content via a WebTransport-handshake bootstrap
+blob — no separate HTTP service, no client-side static bundle. Procedural
+generators (loot, names, POIs, quests, dialogue) live as data declarations on top
+of engine-side algorithms in `@voxim/content`. Tile-server crash → connection
+dies → client reconnects → fresh content blob, version drift impossible.
+
+T-173 unblocks immediate creature work and is independent of the rest. T-174 →
+T-175 → T-176 → T-177 are the foundation, sequenced. T-178 → T-179 → T-180
+together retire the per-creature skeleton sprawl. T-181 / T-182 / T-183 can land
+in parallel once the foundation is in.
+
+### T-173 · BoneDef rest rotations + correct retargeting math
+Effort: M   Status: done
+
+Add `restRotX/Y/Z` (Euler XYZ radians, parent-local frame) to `BoneDef`,
+default 0/0/0 (forward-compatible — existing identity-rest skeletons
+unchanged). Solver falls back to `restRot` for bones the clip omits, so
+rest pose / sparse clips show the bind not identity.
+
+Convert_anim.ts retargeting fixed from pre-multiply (`B^-1 * A`) to
+post-multiply (`R = A * B^-1`). Pre-multiply produces a rotation of the
+correct magnitude but expresses it in the source bind's local axes —
+visually fine for symmetric bipeds close to T-pose, breaks for asymmetric
+or non-identity bind chains (rotten knight's giant arm exposed this).
+Post-multiply is the correct retargeting transform for identity-rest
+targets: `target_world = parent_world * R = parent_world * A * B^-1`,
+which differs from source's `parent_world * A` only by `B^-1` — exact
+when source/target binds match (T-179 work), good approximation
+otherwise. Removes the 47° "zombie reaching" amplification on rotten
+knight's right arm.
+
+Originally scoped as "drop bind subtraction entirely" + "encode source
+bind in target's restRot". Tested empirically — that path requires
+rewriting our translation convention (source rig uses near-zero
+translations + bone-local-axis positioning; we use entity-local Z-up
+translations + voxel models authored along world axes). Deferred to
+T-179 where canonical biped + voxel models can be authored together.
+T-173 ships the schema + correct retargeting math; existing skeletons
+keep identity rest; clips re-imported with the corrected formula.
+
+Done: schema field added; solver falls back to restRot; convert_anim.ts
+post-multiplies; drowner + rotten_knight clips re-imported (8 clips);
+type-check clean; bone world positions sane (feet near ground, hands at
+chest height instead of flying above the head).
+
+### T-174 · ContentRegistry<T> primitive + tag indexing
+Effort: S   Status: todo
+
+Generic id-keyed registry primitive in `@voxim/content`:
+
+  get(id) | getOrThrow(id) | has(id) | byTag(tag) | forEach() | size
+
+Tags declared per item via optional `tags: string[]` on the schema; registry
+maintains a reverse `Map<tag, Set<T>>` populated on register. Validation hook
+(per-type schema check) called on register. Smoke-test by tagging existing
+materials (`metal` / `flesh` / `wood`) and verifying `byTag` queries.
+
+Building block for T-175. No engine call-site changes yet.
+
+Done when: `ContentRegistry<T>` exists with unit coverage; materials have
+tags; `byTag("metal")` returns the iron / steel / copper / worn_iron rows.
+
+### T-175 · Federate ContentStore into typed registries
+Effort: L   Status: todo
+
+Refactor `ContentStore`'s ~30 ad-hoc `get*` methods into a federated shape:
+
+  store.materials, store.skeletons, store.models, store.prefabs,
+  store.verbs, store.loreFragments, store.weaponActions, store.recipes,
+  store.zones, store.tileLayouts                — ContentRegistry<T>
+  store.gameConfig, store.terrainConfig, store.conceptVerbMatrix
+                                                — singletons
+
+Engine call sites updated: `content.getPrefab(id)` → `content.prefabs.getOrThrow(id)`.
+Old methods deleted (no shim, per refactor philosophy).
+
+Top-level package layout uses namespace re-exports for call-site clarity:
+
+  // packages/content/mod.ts
+  export * as registries from "./registries.ts"
+  export * as generators from "./generators/index.ts"
+  export * as algorithms from "./algorithms/index.ts"
+  export { ContentService, type Prefab, ... } from "./service.ts"
+
+Consumers write `import { registries, generators } from "@voxim/content"` then
+`registries.prefabs.getOrThrow(id)` / `generators.names.invoke(...)`.
+Modules stay side-effect-free so esbuild's default tree-shaking still prunes
+unused namespace members on the client. Subpath exports
+(`@voxim/content/generators`) deferred until measurable need.
+
+Sequenced behind T-174 since registries are the building block. Touches every
+package that consumes ContentStore, but each call-site change is mechanical.
+
+Done when: every consumer reads via the federated shape; old getters gone;
+`deno check` clean across all packages; runtime behavior unchanged.
+
+### T-176 · ContentService interface + JsonSource
+Effort: M   Status: todo
+
+Extract `ContentService` interface in `@voxim/content` describing the read
+surface (federated registries + `invoke()` for generators). Implementations:
+
+  - `JsonSource`     — scans `data/**/*.json`, builds a `ContentService`.
+                       Used by tile-server at startup.
+  - `BootstrapSource` — hydrates from a binary blob (T-177).
+                       Used by client.
+
+Engine code consumes `ContentService`, never `ContentStore` directly.
+JsonSource is the only on-disk reader; nothing else touches the filesystem.
+
+Done when: tile-server constructs JsonSource at boot; engine accepts
+ContentService; no `Deno.readDir` outside `JsonSource`.
+
+### T-177 · Content bootstrap codec + WT handshake delivery
+Effort: M   Status: todo
+
+Binary codec serializes a fully-loaded `ContentStore` into a length-prefixed
+blob (target ~1–5 MB compressed) with a content hash in its manifest.
+Tile-server sends the blob immediately after `TileJoinAck` on the reliable
+stream. Client's `BootstrapSource` (T-176) reads the length-framed blob,
+decodes, hydrates an in-memory ContentStore.
+
+Removes the client's compile-time content dependency: delete
+`scripts/gen_content.ts`, delete the generated `*_static.ts` files, drop
+static imports of JSON from `packages/client/`. Bundle shrinks; content is
+always in sync with the server it just connected to. Hash in manifest sits
+unused for now — enables future delta / cache strategies.
+
+Done when: client receives content over WT handshake on every join;
+`gen-content` deno task gone; tile-server restart → client reconnect →
+fresh content visible without rebuild.
+
+### T-178 · AnimationLibrary as peer registry (decouple from Skeleton)
+Effort: M   Status: todo
+
+Animation clips currently live as `clips: AnimationClip[]` inside
+`SkeletonDef`, populated at load by splicing files tagged `_skeleton: "X"`
+from `data/anim_library/`. Move them out:
+
+  store.animationLibraries: ContentRegistry<AnimationLibrary>
+  AnimationLibrary { archetype, clips: ContentRegistry<AnimationClip> }
+
+Skeletons declare `archetype: "biped" | "quadruped" | …`. Folder layout:
+`data/anim_library/{archetype}/{clipId}.json` — folder is authoritative,
+`_skeleton` field dropped. Loader sweeps each archetype subfolder, builds
+one library per archetype. Multiple skeletons of the same archetype share
+clips by reference (no duplication, as we currently do for drowner →
+rotten_knight).
+
+Animation system / skeleton evaluator look up clips via
+`store.animationLibraries.getOrThrow(skeleton.archetype).clips.get(clipId)`.
+Splice machinery in `anim_library.ts` deleted.
+
+Done when: drowner_*.json and rotten_knight_*.json consolidated into one
+biped library; both creatures animate from the shared library; no
+`_skeleton` field anywhere; clip-splice code path gone.
+
+### T-179 · Canonical biped skeleton + full UAL2 clip suite
+Effort: M   Status: todo
+
+Author `data/skeletons/biped.json` from the UAL2 bind directly: 17 bones
+using UAL bone names (pelvis, spine_01/02/03, neck_01, Head, clavicle_l/r,
+upperarm_l/r, lowerarm_l/r, hand_l/r, thigh_l/r, calf_l/r, foot_l/r),
+translations from `inverseBindMatrices` decomposition, restRot from bind
+quaternion (T-173). `archetype: "biped"`.
+
+Morph params: `legLength`, `armLength`, `torsoHeight`, `shoulderWidth`,
+`headSize`, `hipWidth`, plus per-side variants (`rightArmScale`,
+`leftArmScale`, `rightLegScale`, `leftLegScale`) for asymmetric monsters.
+
+Import ~20 UAL2 clips into `data/anim_library/biped/`: idle, walk, run
+(Walk_Carry_Loop), jump_start/loop/land, slide, melee_hook, sword_combo,
+hit_knockback, death, idle variants. No `_skeleton` field — folder placement
+is authoritative (T-178).
+
+Done when: biped skeleton + library load via JsonSource; sample biped NPC
+plays distinct walk vs. run vs. attack from library clips; AnimationSlots
+mappings resolve cleanly.
+
+### T-180 · Migrate creatures to biped via morphs (retire one-off skeletons)
+Effort: M   Status: todo
+
+Drowner, rotten_knight, human, bandit, archer, villager all migrate to
+`skeletonId: "biped"`. Per-prefab morph values express proportions:
+
+  drowner       { armLength: 1.4, legLength: 0.85, headSize: 1.1 }
+  rotten_knight { torsoHeight: 1.1, rightArmScale: 1.5, … }
+  human         { } (defaults)
+
+Per-side morph application: extend the morph applier in
+`skeleton_solver.ts` to scale single bones (not bilateral) when the param
+targets an `_l`/`_r` suffix bone. Voxel parts updated to match canonical
+biped offsets.
+
+Delete `skeletons/drowner.json`, `skeletons/rotten_knight.json`, and
+`skeletons/human.json` (the latter only if all human prefabs migrate
+cleanly). `skeletons/wolf.json` untouched — different archetype.
+
+Done when: every humanoid creature uses biped + morphs; old per-creature
+humanoid skeleton JSONs deleted; rotten_knight's giant arm renders correctly
+without authoring a separate skeleton.
+
+### T-181 · Behavior tree runtime in @voxim/content + first BT as data
+Effort: L   Status: todo
+
+Move behavior-tree concepts from `tile-server/src/systems/npc_ai.ts` into
+`@voxim/content` as a generic engine algorithm. Schema for `BehaviorTreeDef`:
+
+  Composite nodes: sequence, selector, parallel
+  Decorator nodes: invert, repeat, succeed-on-fail, cooldown
+  Leaf nodes:      declarative action references (find_target, move_to,
+                   attack_target, idle_wait) that resolve against an
+                   ActionRegistry the host process supplies
+
+Tree definitions live at `data/behavior_trees/{id}.json`. Migrate the
+"hostile" tree (currently hardcoded in npc_ai.ts) to data. NPC templates
+already reference `behaviorTreeId`; the lookup goes through
+`content.behaviorTrees.getOrThrow(id)`.
+
+Algorithm/data split: tree TICK runtime in `@voxim/content` (engine code),
+tree DEFINITIONS in JSON (data), leaf ACTION implementations in tile-server
+(registered with the runtime). Adding a new AI archetype = one JSON file.
+
+Done when: hostile tree loads from data; NPC AI ticks against the loaded
+tree; adding "skittish" or "patrol" archetypes is a content-only change
+with no code edits.
+
+### T-182 · State machine runtime + animation state machines as data
+Effort: M   Status: todo
+
+State machine concepts (currently buried in animation slot indirection plus
+ad-hoc velocity-checks in `animation.ts`) move to `@voxim/content` as a
+generic runtime. Schema for `StateMachineDef`:
+
+  states:      { id, onEnter?, onExit?, layers? }
+  transitions: { from, to, condition: ConditionExpr, priority }
+
+`ConditionExpr` is a small data-driven expression: comparisons on entity
+component values (`velocity.magnitude > 4`, `health.current / health.max < 0.3`,
+`isOnGround === true`), boolean composition. Evaluated each tick.
+
+Existing animation slot logic refactored into a state machine
+(`humanoid_default`) with idle/walk/run/death/attack states. NPC templates
+declare `stateMachineId: "humanoid_default"`.
+
+Done when: animation transitions resolve via SM tick (not hardcoded velocity
+comparisons); two NPCs sharing an SM share behavior; per-prefab SM override
+is one JSON field flip.
+
+### T-183 · Procedural generator framework + loot / names / POIs
+Effort: L   Status: todo
+
+Generic procedural-generation runtime in `@voxim/content`. Engine ships a
+small set of named algorithms registered by id:
+
+  weighted_draw  picks from a weighted list (loot, spawn weights)
+  markov         Markov-chain sampling (names from phoneme tables)
+  grammar        L-system / context-free expansion (POI / settlement layouts)
+  template       placeholder substitution (quest / dialogue text)
+  curve          piecewise-linear evaluator (stat scaling, difficulty curves)
+
+Each generator declaration in content names an algorithm + params:
+
+  data/generators/loot/{id}.json   LootTableDef    (uses weighted_draw)
+  data/generators/names/{id}.json  NameGeneratorDef (uses markov)
+  data/generators/poi/{id}.json    PoiTemplateDef   (uses grammar)
+
+Engine entry point: `content.invoke<I, O>(generatorId, input): O` — routes
+to the algorithm based on the declaration's `algorithm` field.
+
+First migrations:
+  - `poi_placer`'s hardcoded room shape → `PoiTemplateDef` (grammar)
+  - new loot tables for wolf / drowner / rotten_knight corpses
+  - one name generator per culture (NPCs currently share their type as name)
+
+Done when: poi_placer reads its room shape from data; killing a wolf drops
+items from a generator-driven loot table; spawned NPCs receive names from a
+generator. Adding a new generator type (e.g. dialogue templates) is purely
+additive — register the algorithm in @voxim/content, drop declarations in
+data/generators/.
+
+---
+
 ## Ops & Deployment
 
 ### T-158 · CI image publish + production compose

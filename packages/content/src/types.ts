@@ -1198,8 +1198,16 @@ export interface TileLayout {
 
 /**
  * One bone in a skeleton hierarchy.
+ *
  * restX/Y/Z are the bone's rest-pose position in LOCAL parent space
  * (model coordinate units — same scale as VoxelNode positions).
+ *
+ * restRotX/Y/Z are the bone's rest-pose orientation in parent-local frame,
+ * Euler XYZ in radians. Default 0/0/0 means identity (bone's local axes
+ * align with parent's). Non-zero values let an imported source rig's bind
+ * pose be encoded directly — e.g. a UAL2 thigh bone whose local Y points
+ * along the bone gets its bind rotation here, so animation frames sampled
+ * from glTF play 1:1 against our solver without retargeting.
  */
 export interface BoneDef {
   id: string;
@@ -1207,6 +1215,9 @@ export interface BoneDef {
   restX: number;
   restY: number;
   restZ: number;
+  restRotX?: number;
+  restRotY?: number;
+  restRotZ?: number;
 }
 
 /**

@@ -104,7 +104,21 @@ export function solveSkeleton(
     };
 
     // Compose orientation: parent * local.
-    const euler = poseRotations.get(bone.id) ?? { x: 0, y: 0, z: 0 };
+    //
+    // Clip rotations (poseRotations) are stored as absolute parent-local Euler
+    // and OVERRIDE the rest rotation when present — the clip already encodes
+    // any bind orientation it inherited from its source rig.
+    //
+    // When the clip omits a bone (sparse clip, or pure rest pose), fall back
+    // to the bone's restRot (the bind orientation). For skeletons authored
+    // against an identity bind (default 0/0/0), this collapses to the prior
+    // behavior.
+    const animEuler = poseRotations.get(bone.id);
+    const euler = animEuler ?? {
+      x: bone.restRotX ?? 0,
+      y: bone.restRotY ?? 0,
+      z: bone.restRotZ ?? 0,
+    };
     const localRot = quatFromEulerXYZ(euler.x, euler.y, euler.z);
     const boneRot = quatMultiply(parentTransform.rot, localRot);
 

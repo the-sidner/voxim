@@ -2531,7 +2531,7 @@
       }
     ]
   },
-  "_skeleton": "drowner",
+  "_skeleton": "rotten_knight",
   "_source": "quaternius:UAL2:Hit_Knockback",
   "durationSeconds": 0.6666666666666666
 }
