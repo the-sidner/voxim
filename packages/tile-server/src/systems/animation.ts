@@ -18,7 +18,7 @@
 import type { World } from "@voxim/engine";
 import type { DeferredEventQueue } from "../deferred_events.ts";
 import type { System } from "../system.ts";
-import type { ContentStore, AnimationStateData, AnimationLayer } from "@voxim/content";
+import type { ContentService, AnimationStateData, AnimationLayer } from "@voxim/content";
 import { ACTION_CROUCH, hasAction } from "@voxim/protocol";
 import { Velocity, Health, AnimationState, InputState } from "../components/game.ts";
 import { SkillInProgress, Rolling } from "../components/combat.ts";
@@ -43,7 +43,7 @@ export class AnimationSystem implements System {
    */
   readonly dependsOn = ["NpcAiSystem", "ActionSystem"];
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   prepare(_tick: number): void {}
 

@@ -24,7 +24,7 @@
  * can unblock a previously-null result.
  */
 import type { InventoryData } from "@voxim/codecs";
-import type { ContentStore, RecipeGraph, Recipe, RecipeInput } from "@voxim/content";
+import type { ContentService, RecipeGraph, Recipe, RecipeInput } from "@voxim/content";
 import type { EntityId } from "@voxim/engine";
 
 export interface GatherStep {
@@ -60,7 +60,7 @@ export interface CraftingPlan {
 /**
  * Lightweight view of the world passed into the planner. Built by the BT
  * node before invocation — it carries only what the algorithm needs, not a
- * full ContentStore or SpatialGrid handle.
+ * full ContentService or SpatialGrid handle.
  */
 export interface WorldView {
   /** workstationType → entity ids of placed workstations of that type. */
@@ -79,7 +79,7 @@ export function plan(
   inventory: InventoryData,
   world: WorldView,
   graph: RecipeGraph,
-  content: ContentStore,
+  content: ContentService,
   maxDepth: number = DEFAULT_MAX_DEPTH,
 ): CraftingPlan | null {
   const steps = resolve(target, quantity, inventory, world, graph, content, 0, maxDepth, new Set());
@@ -92,7 +92,7 @@ function resolve(
   inventory: InventoryData,
   world: WorldView,
   graph: RecipeGraph,
-  content: ContentStore,
+  content: ContentService,
   depth: number,
   maxDepth: number,
   visited: ReadonlySet<string>,
@@ -133,7 +133,7 @@ function tryRecipe(
   inventory: InventoryData,
   world: WorldView,
   graph: RecipeGraph,
-  content: ContentStore,
+  content: ContentService,
   depth: number,
   maxDepth: number,
   visited: ReadonlySet<string>,
@@ -164,7 +164,7 @@ function tryRecipe(
   return out;
 }
 
-function inputCandidates(input: RecipeInput, content: ContentStore): readonly string[] {
+function inputCandidates(input: RecipeInput, content: ContentService): readonly string[] {
   if ("itemType" in input && input.itemType !== undefined) return [input.itemType];
   if ("category" in input && input.category !== undefined) {
     return content.getPrefabsByCategory(input.category, input.tags ?? []).map((p) => p.id);

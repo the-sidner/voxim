@@ -45,7 +45,7 @@ import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { Stats } from "./components/instance.ts";
 import type {
-  ContentStore,
+  ContentService,
   Prefab,
   PrefabResourceNodeData,
   PrefabNpcData,
@@ -92,7 +92,7 @@ function spawnEquipEntity(world: World, prefabId: string): import("@voxim/codecs
 
 type CompoundInstaller = (
   world: World,
-  content: ContentStore,
+  content: ContentService,
   id: EntityId,
   prefab: Prefab,
   data: unknown,
@@ -215,7 +215,7 @@ export const COMPOUND_ARCHETYPE_KEYS: ReadonlySet<string> = new Set(COMPOUND_INS
  */
 function installVisualShell(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   id: EntityId,
   prefab: Prefab,
   seed: number,
@@ -276,7 +276,7 @@ export interface SpawnPrefabOverrides {
  */
 export function spawnPrefab(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   prefabId: string,
   overrides: SpawnPrefabOverrides = {},
 ): EntityId {
@@ -373,7 +373,7 @@ export interface DropEjection {
 
 export function spawnGroundStack(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   prefabId: string,
   quantity: number,
   pos: { x: number; y: number; z: number },

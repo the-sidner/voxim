@@ -5,7 +5,7 @@
  *
  * All game content (materials, models, recipes, prefabs, lore fragments)
  * is declared in packages/content/data/ as JSON files and accessed at runtime
- * via the ContentStore interface. Systems receive a ContentStore by injection
+ * via the ContentService interface. Systems receive a ContentService by injection
  * rather than importing hardcoded data tables.
  */
 
@@ -109,13 +109,13 @@ export { solveSkeleton, REST_POSE } from "./src/skeleton_solver.ts";
 export { ModelRef } from "./src/component.ts";
 
 // ---- content store ----
-export type { ContentStore } from "./src/store.ts";
+export type { ContentService } from "./src/store.ts";
 export { StaticContentStore, resolveSubObjects, resolveMorphParams } from "./src/store.ts";
 
 // ---- generic content registry primitive (T-174) ----
-// Building block for the federated ContentStore (T-175). Replaces the
+// Building block for the federated ContentService (T-175). Replaces the
 // pattern of `private foos = new Map<string, FooDef>()` plus per-type
-// accessor methods accumulated on ContentStore. Consumers should be
+// accessor methods accumulated on ContentService. Consumers should be
 // typed against ContentRegistryReadonly<T> so engines never mutate the
 // registry after load.
 export type { ContentRegistryReadonly, ContentRegistryOptions, Tagged } from "./src/registry.ts";
@@ -132,8 +132,8 @@ export { parseFormula, evalFormula, checkVars } from "./src/formula.ts";
 // ---- recipe-graph validator (server boot) ----
 export { validateRecipeGraph } from "./src/recipe_validator.ts";
 
-// ---- file loader (Deno server-side) ----
-export { loadContentStore } from "./src/loader.ts";
+// ---- content sources (JSON on disk for server, bootstrap blob for client) ----
+export { JsonSource } from "./src/loader.ts";
 
 // ---- static aggregations (used by the browser client bundle) ----
 export { weapon_actions } from "./src/weapon_actions_static.ts";

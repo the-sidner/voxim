@@ -14,7 +14,7 @@
 
 import { buildTerrainBuffers, saveTerrainCache, seedFromTileId } from "@voxim/world";
 import type { WorldGenContent } from "@voxim/world";
-import { loadContentStore } from "@voxim/content";
+import { JsonSource } from "@voxim/content";
 
 const tileId = Deno.args[0] ?? "tile_0";
 const outPath = Deno.args[1] ?? `./terrain_${tileId}.bin`;
@@ -23,7 +23,7 @@ const seed = seedFromTileId(tileId);
 console.log(`Generating terrain for tile "${tileId}" (seed=${seed})…`);
 console.time("gen-terrain");
 
-const content = await loadContentStore();
+const content = await JsonSource.load();
 
 const worldGenContent: WorldGenContent = {
   biomes: content.getBiomesByPriority(),

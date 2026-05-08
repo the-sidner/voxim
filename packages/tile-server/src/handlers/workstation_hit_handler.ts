@@ -8,7 +8,7 @@
  * wins over auto-match).
  */
 import type { World, Registry } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
@@ -16,7 +16,7 @@ import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 
 export class WorkstationHitHandler implements HitHandler {
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly steps: Registry<RecipeStepHandler>,
   ) {}
 

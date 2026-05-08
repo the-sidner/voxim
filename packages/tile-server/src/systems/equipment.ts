@@ -3,7 +3,7 @@ import { newEntityId } from "@voxim/engine";
 import { spawnGroundStack } from "../spawner.ts";
 import { CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { ContentStore, EquipSlot } from "@voxim/content";
+import type { ContentService, EquipSlot } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
 import { Inventory, ItemData } from "../components/items.ts";
@@ -32,7 +32,7 @@ const log = createLogger("EquipmentSystem");
 export class EquipmentSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
     this._commands = ctx.pendingCommands;

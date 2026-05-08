@@ -133,7 +133,7 @@ Deno.test("non-resource-node prefabs are ignored by gatherers", () => {
   assertEquals(g.gatherers.size, 0);
 });
 
-Deno.test("ContentStore graph is cached across calls but rebuilt after registerRecipe", async () => {
+Deno.test("ContentService graph is cached across calls but rebuilt after registerRecipe", async () => {
   const { StaticContentStore } = await import("./store.ts");
   const store = new StaticContentStore();
   store.registerRecipe(recipe("r1", [{ itemType: "a", quantity: 1 }], [{ itemType: "b", quantity: 1 }]));

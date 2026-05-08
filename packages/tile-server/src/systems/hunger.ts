@@ -1,6 +1,6 @@
 import type { World } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Hunger, Thirst, Health } from "../components/game.ts";
 import type { DeathRequestPort } from "../events/death.ts";
@@ -10,7 +10,7 @@ const log = createLogger("HungerSystem");
 
 export class HungerSystem implements System {
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly deaths: DeathRequestPort,
   ) {}
 

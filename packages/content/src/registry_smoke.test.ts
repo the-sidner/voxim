@@ -5,17 +5,17 @@
  * registering every loaded material is duplicate-free.
  *
  * Note: this is an integration test, not a unit test. It depends on
- * loadContentStore() and the materials/*.json files. Marked as
+ * JsonSource.load() and the materials/*.json files. Marked as
  * separate from the pure registry.test.ts so the unit tests run fast.
  */
 
 import { assertEquals } from "jsr:@std/assert";
 import { ContentRegistry } from "./registry.ts";
-import { loadContentStore } from "./loader.ts";
+import { JsonSource } from "./loader.ts";
 import type { MaterialDef } from "./types.ts";
 
 Deno.test("ContentRegistry<MaterialDef> indexes real materials by tag", async () => {
-  const store = await loadContentStore();
+  const store = await JsonSource.load();
   const reg = new ContentRegistry<MaterialDef>({
     kind: "material",
     idOf: (m) => m.name,

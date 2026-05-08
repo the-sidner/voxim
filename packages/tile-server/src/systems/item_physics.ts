@@ -14,7 +14,7 @@
  * the "settle" policy on terrain contact instead of "destroy".
  */
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, Velocity } from "../components/game.ts";
 import { ItemData } from "../components/items.ts";
@@ -26,7 +26,7 @@ import { createLogger } from "../logger.ts";
 const log = createLogger("ItemPhysicsSystem");
 
 export class ItemPhysicsSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: EventEmitter, dt: number): void {
     const gravity = this.content.getGameConfig().physics.gravity;

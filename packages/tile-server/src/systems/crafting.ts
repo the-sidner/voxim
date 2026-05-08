@@ -22,7 +22,7 @@ import type { SpatialGrid } from "../spatial_grid.ts";
 import { newEntityId } from "@voxim/engine";
 import { CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { ContentStore, Recipe, RecipeOutput } from "@voxim/content";
+import type { ContentService, Recipe, RecipeOutput } from "@voxim/content";
 import { evalFormula, parseFormula } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
@@ -44,7 +44,7 @@ export class CraftingSystem implements System {
   private _spatial: SpatialGrid | null = null;
 
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly steps: Registry<RecipeStepHandler>,
   ) {}
 
@@ -319,7 +319,7 @@ export interface RecipeMatch {
 }
 
 export function findMatchingRecipe(
-  content: ContentStore,
+  content: ContentService,
   stationType: string,
   stepType: Recipe["stepType"],
   bufferSlots: WorkstationBufferData["slots"],
@@ -342,7 +342,7 @@ export function findMatchingRecipe(
 export function tryAssignRoles(
   recipe: Recipe,
   bufferSlots: WorkstationBufferData["slots"],
-  content: ContentStore,
+  content: ContentService,
 ): RoleAssignment | null {
   const ordered = [...recipe.inputs].sort((a, b) => inputSpecificity(b) - inputSpecificity(a));
   const claimed = new Set<number>();
@@ -386,7 +386,7 @@ function inputSpecificity(input: Recipe["inputs"][number]): number {
   return 0;
 }
 
-function inputAccepts(input: Recipe["inputs"][number], prefabId: string, content: ContentStore): boolean {
+function inputAccepts(input: Recipe["inputs"][number], prefabId: string, content: ContentService): boolean {
   if ("itemType" in input && input.itemType !== undefined) {
     return prefabId === input.itemType;
   }
@@ -457,7 +457,7 @@ export function consumeFromBuffer(
  */
 export function spawnOutputNear(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   stationId: EntityId,
   output: RecipeOutput,
   match: RecipeMatch,
@@ -536,7 +536,7 @@ function evaluateOutputStats(
   formulas: Record<string, string>,
   match: RecipeMatch,
   bufferSlots: WorkstationBufferData["slots"],
-  content: ContentStore,
+  content: ContentService,
   qualityTier: number,
 ): Record<string, number> {
   const scope: Record<string, number> = {

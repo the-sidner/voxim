@@ -1,6 +1,6 @@
 import type { World, Registry, EntityId } from "@voxim/engine";
 import { ACTION_BLOCK, hasAction, TileEvents } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { Health, Stamina } from "../components/game.ts";
@@ -37,7 +37,7 @@ const log = createLogger("HealthHitHandler");
  */
 export class HealthHitHandler implements HitHandler {
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly deaths: DeathRequestPort,
     private readonly outgoingHooks: Registry<OutgoingDamageHook>,
     private readonly incomingHooks: Registry<IncomingDamageHook>,

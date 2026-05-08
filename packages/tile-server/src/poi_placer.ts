@@ -20,7 +20,7 @@
  * AFTER chunks are committed (they need the world graph populated).
  */
 import type { World } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import { spawnPrefab } from "./spawner.ts";
 
 const TILE_SIZE = 512;
@@ -134,7 +134,7 @@ export function placePois(
  */
 export function spawnMobPois(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   mobs: MobSpawn[],
 ): void {
   for (const m of mobs) {

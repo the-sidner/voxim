@@ -8,7 +8,7 @@
  *   4. Moisture               — independent wetness field
  *   5. Temperature            — temperature with altitude falloff
  *   6. Combined base          — continent + tectonic contribution
- *   7. Biome classification   — picks a BiomeDef from ContentStore data
+ *   7. Biome classification   — picks a BiomeDef from ContentService data
  *   8. Detail noise           — high-frequency surface roughness
  *   9. Combine                — base + detail scaled by biome.roughness
  *  10. Height curve           — maps normalised noise to world-unit heights
@@ -45,8 +45,8 @@ import { classifyZone, type ZoneCell, type ZoneGridData } from "./zones.ts";
 // ---------------------------------------------------------------------------
 
 /**
- * Minimal slice of ContentStore that the generator needs. Callers build
- * this from their full ContentStore at the edge of the world package.
+ * Minimal slice of ContentService that the generator needs. Callers build
+ * this from their full ContentService at the edge of the world package.
  */
 export interface WorldGenContent {
   readonly biomes: readonly BiomeDef[];

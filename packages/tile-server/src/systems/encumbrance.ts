@@ -1,5 +1,5 @@
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Inventory, ItemData } from "../components/items.ts";
 import { Equipment } from "../components/equipment.ts";
@@ -16,7 +16,7 @@ const log = createLogger("EncumbranceSystem");
  * EncumbranceSystem never touches SpeedModifier directly — it only sets the base.
  */
 export class EncumbranceSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().encumbrance;

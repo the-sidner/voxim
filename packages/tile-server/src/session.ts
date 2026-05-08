@@ -3,7 +3,7 @@ import type { EntityId } from "@voxim/engine";
 import type { CommandPayload } from "@voxim/protocol";
 import { decodeDatagram, worldSnapshotCodec, contentRequestCodec, contentResponseCodec, makeFrameReader } from "@voxim/protocol";
 import type { WorldSnapshot, ContentRequest, ContentResponse } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import { InputRingBuffer } from "./input_buffer.ts";
 
 /**
@@ -117,7 +117,7 @@ export class ClientSession {
    */
   async serveContent(
     stream: { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> },
-    content: ContentStore,
+    content: ContentService,
   ): Promise<void> {
     const reader = (stream.readable as ReadableStream<Uint8Array>).getReader();
     const writer = (stream.writable as WritableStream<Uint8Array>).getWriter();

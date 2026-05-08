@@ -1,6 +1,6 @@
 import { assertEquals, assertExists } from "jsr:@std/assert";
 import { buildRecipeGraph } from "@voxim/content";
-import type { ContentStore, Recipe, Prefab } from "@voxim/content";
+import type { ContentService, Recipe, Prefab } from "@voxim/content";
 import type { InventoryData } from "@voxim/codecs";
 import { plan } from "./crafting_planner.ts";
 import type { WorldView } from "./crafting_planner.ts";
@@ -31,7 +31,7 @@ function recipe(
  */
 const stubContent = {
   getPrefabsByCategory(_c: string, _t?: readonly string[]): readonly Prefab[] { return []; },
-} as unknown as ContentStore;
+} as unknown as ContentService;
 
 const emptyInv: InventoryData = { slots: [], capacity: 20 };
 

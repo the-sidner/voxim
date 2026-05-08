@@ -58,7 +58,7 @@ export interface ConvertOpts {
   id: string;
   /** Which animation to convert (`name` from GLBSummary.animations). */
   animationName: string;
-  /** Skeleton scope this clip targets — used by ContentStore.merge. */
+  /** Skeleton scope this clip targets — used by ContentService.merge. */
   skeleton: string;
   /** Bone map (source → target). */
   map: BoneMapPreset;

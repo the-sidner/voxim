@@ -12,7 +12,7 @@
  * startup since those entities are not persisted.
  */
 import type { World } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { ZoneGridData } from "@voxim/world";
 import { Heightmap } from "@voxim/world";
 import { spawnPrefab } from "./spawner.ts";
@@ -77,7 +77,7 @@ function buildTerrainHeightLookup(world: World): (wx: number, wy: number) => num
 export class ProceduralSpawner {
   constructor(
     private readonly world: World,
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly zoneGrid: ZoneGridData | null,
     private readonly tileSeed: number,
   ) {}

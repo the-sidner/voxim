@@ -2,10 +2,10 @@
  * ContentRegistry<T> — generic id-keyed container for content items
  * with optional tag indexing.
  *
- * Building block for the federated ContentStore (T-175). Replaces the
+ * Building block for the federated ContentService (T-175). Replaces the
  * pattern of `private foos = new Map<string, FooDef>()` plus an ad-hoc
  * `getFoo(id)` accessor that has accumulated dozens of variants on
- * `ContentStore`.
+ * `ContentService`.
  *
  * Items implement the `Tagged` interface (an optional `tags?: string[]`
  * field). Tags are indexed at register-time so `byTag()` is O(1) lookup.

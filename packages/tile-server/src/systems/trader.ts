@@ -1,7 +1,7 @@
 import type { World, EntityId } from "@voxim/engine";
 import { CommandType, TileEvents } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
 import { Inventory } from "../components/items.ts";
@@ -14,7 +14,7 @@ const log = createLogger("TraderSystem");
 export class TraderSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
     this._commands = ctx.pendingCommands;

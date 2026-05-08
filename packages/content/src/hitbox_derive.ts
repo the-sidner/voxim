@@ -132,9 +132,9 @@ export interface HitboxPartTemplate {
 /**
  * Minimal model-lookup interface required by deriveHitboxTemplate.
  *
- * The full ContentStore satisfies this interface. The client-side ContentCache
+ * The full ContentService satisfies this interface. The client-side ContentCache
  * also satisfies it — allowing hitbox templates to be derived on the client
- * without pulling in the server-only ContentStore.
+ * without pulling in the server-only ContentService.
  */
 export interface HitboxContentAdapter {
   getModel(id: string): { subObjects?: Array<{ probability?: number; pool?: string[]; modelId?: string; boneId?: string; hitbox?: boolean; transform: SubObjectRef["transform"] }>; nodes: Array<{ x: number; y: number; z: number }> } | null;
@@ -149,7 +149,7 @@ export interface HitboxContentAdapter {
  *
  * @param modelId  Root model to derive hitbox for.
  * @param seed     Procedural seed — must match ModelRef.seed for this entity.
- * @param content  HitboxContentAdapter (ContentStore or ContentCache) for model lookups.
+ * @param content  HitboxContentAdapter (ContentService or ContentCache) for model lookups.
  * @param scale    Uniform entity scale (e.g. 0.35). Converts voxel units to world units.
  */
 export function deriveHitboxTemplate(

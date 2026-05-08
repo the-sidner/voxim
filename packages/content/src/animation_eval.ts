@@ -7,7 +7,7 @@
  *
  * Performance notes:
  *   - Pass an `out` map to reuse storage across ticks (zero allocation on hot path).
- *   - ClipIndex / maskIndex are pre-built once by ContentStore and passed in as refs.
+ *   - ClipIndex / maskIndex are pre-built once by ContentService and passed in as refs.
  *   - Binary search over keyframes is O(log K) per bone per layer.
  */
 
@@ -16,7 +16,7 @@ import type { BoneRotation } from "./ik_solver.ts";
 
 /**
  * Build a clip lookup map for a skeleton (clipId → AnimationClip).
- * Pre-computed once by ContentStore.getClipIndex().
+ * Pre-computed once by ContentService.getClipIndex().
  */
 export function buildClipIndex(skeleton: SkeletonDef): ReadonlyMap<string, AnimationClip> {
   const m = new Map<string, AnimationClip>();
@@ -28,7 +28,7 @@ export function buildClipIndex(skeleton: SkeletonDef): ReadonlyMap<string, Anima
 
 /**
  * Build a bone mask lookup map for a skeleton (maskId → BoneMask).
- * Pre-computed once by ContentStore.getMaskIndex().
+ * Pre-computed once by ContentService.getMaskIndex().
  *
  * Throws on duplicate mask ids — silently keeping one and dropping the
  * other would surface as missing bones in animation layers.
@@ -51,8 +51,8 @@ export function buildMaskIndex(skeleton: SkeletonDef): ReadonlyMap<string, BoneM
  * the result for the bones covered by its mask. Weight controls blend strength.
  *
  * @param skeleton   Skeleton definition — bones must be in parent-before-child order.
- * @param clipIndex  Pre-built clip map from ContentStore.getClipIndex(skeletonId).
- * @param maskIndex  Pre-built mask map from ContentStore.getMaskIndex(skeletonId).
+ * @param clipIndex  Pre-built clip map from ContentService.getClipIndex(skeletonId).
+ * @param maskIndex  Pre-built mask map from ContentService.getMaskIndex(skeletonId).
  * @param layers     Ordered animation layer stack, bottom to top.
  * @param out        Optional output map reused across calls — cleared on entry.
  * @returns          Map from boneId to Euler XYZ BoneRotation (radians), for solveSkeleton().

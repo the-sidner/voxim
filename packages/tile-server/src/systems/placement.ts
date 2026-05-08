@@ -29,7 +29,7 @@
 import type { World, EntityId } from "@voxim/engine";
 import { CommandType, TileEvents } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { ContentStore, PlaceableData } from "@voxim/content";
+import type { ContentService, PlaceableData } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
@@ -45,7 +45,7 @@ const CHUNK_SIZE = 32;
 export class PlacementSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
     this._commands = ctx.pendingCommands;

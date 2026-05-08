@@ -7,7 +7,7 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
-import type { ContentStore, Recipe } from "@voxim/content";
+import type { ContentService, Recipe } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import { WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
@@ -19,7 +19,7 @@ import type { RecipeMatch } from "../systems/crafting.ts";
 
 export function resolveRecipe(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   events: EventEmitter,
   stationId: EntityId,
   buffer: WorkstationBufferData,

@@ -8,7 +8,7 @@ import {
   TileEvents,
 } from "@voxim/protocol";
 import type { StrikeLandedPayload } from "@voxim/protocol";
-import type { ContentStore, ConceptVerbEntry } from "@voxim/content";
+import type { ContentService, ConceptVerbEntry } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import { InputState, Health, Stamina, Position } from "../components/game.ts";
@@ -31,7 +31,7 @@ export class SkillSystem implements System {
   private spatial: SpatialGrid | null = null;
 
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly applyRegistry: Registry<EffectApplyHandler>,
     private readonly deaths: DeathRequestPort,
   ) {}

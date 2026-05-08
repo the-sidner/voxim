@@ -1,5 +1,5 @@
 import type { World, Registry } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import { Position, InputState, Health, Hunger, Thirst } from "../components/game.ts";
@@ -36,7 +36,7 @@ export class NpcAiSystem implements System {
   private replansRemaining = 0;
 
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly jobs: Registry<JobHandler>,
     private readonly behaviorTrees: ReadonlyMap<string, BTNode>,
   ) {}

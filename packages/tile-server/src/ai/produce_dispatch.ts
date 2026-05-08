@@ -7,7 +7,7 @@
  * step-dispatch, and sub-job synthesis are identical.
  */
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { InventoryData, Job } from "@voxim/codecs";
 import { Inventory } from "../components/items.ts";
 import { ResourceNode } from "../components/resource_node.ts";
@@ -36,7 +36,7 @@ function inventorySnapshot(world: World, entityId: EntityId): InventoryData {
 
 function buildWorldView(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   px: number,
   py: number,
   scanRadius: number,
@@ -139,7 +139,7 @@ function stepToJob(step: CraftingPlanStep, currentTick: number): Job {
  */
 export function dispatchProduce(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   entityId: EntityId,
   px: number,
   py: number,

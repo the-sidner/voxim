@@ -1,6 +1,6 @@
 import type { World } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { WorldClock, timeOfDay } from "../components/world.ts";
 import { createLogger } from "../logger.ts";
@@ -9,7 +9,7 @@ import type { Logger } from "../logger.ts";
 const log = createLogger("DayNightSystem");
 
 export class DayNightSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().dayNight;

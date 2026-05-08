@@ -1,6 +1,6 @@
 import type { World, EntityId } from "@voxim/engine";
 import { ACTION_CONSUME, hasAction } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { InputState, Hunger, Thirst } from "../components/game.ts";
 import { Inventory, ItemData } from "../components/items.ts";
@@ -11,7 +11,7 @@ import { createLogger } from "../logger.ts";
 const log = createLogger("ConsumptionSystem");
 
 export class ConsumptionSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {
     for (const { entityId, inputState, inventory } of world.query(

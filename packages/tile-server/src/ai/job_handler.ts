@@ -8,7 +8,7 @@
  * and queue transitions (auto-consume, target invalidation).
  */
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentStore, GameConfig } from "@voxim/content";
+import type { ContentService, GameConfig } from "@voxim/content";
 import type { Job, NpcPlanData } from "../components/npcs.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
 
@@ -32,7 +32,7 @@ export interface NpcTuning {
 export interface JobContext {
   readonly world: World;
   readonly spatial: SpatialGrid;
-  readonly content: ContentStore;
+  readonly content: ContentService;
   readonly currentTick: number;
   readonly entityId: EntityId;
   readonly pos: { readonly x: number; readonly y: number };

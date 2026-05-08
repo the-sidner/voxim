@@ -17,7 +17,7 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { CommandType } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { CommandPayload } from "@voxim/protocol";
 import { Position, Health, Stamina } from "../components/game.ts";
@@ -33,7 +33,7 @@ export class DebugCommandSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
 
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly devMode: boolean,
   ) {}
 

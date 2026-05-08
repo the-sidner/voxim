@@ -23,7 +23,7 @@
  * Throws on first failure with both the recipe id and the missing variable
  * name. Server boot fails — no half-loaded crafting state.
  */
-import type { ContentStore } from "./store.ts";
+import type { ContentService } from "./store.ts";
 import type { Prefab, Recipe, RecipeInput } from "./types.ts";
 import { parseFormula } from "./formula.ts";
 
@@ -35,7 +35,7 @@ const KNOWN_AMBIENT_VARS: ReadonlySet<string> = new Set([
 ]);
 
 /** Validate every recipe in the store. Throws on the first defect found. */
-export function validateRecipeGraph(content: ContentStore): void {
+export function validateRecipeGraph(content: ContentService): void {
   const allRecipes = [...content.recipes.values()];
   const allPrefabs = [...content.prefabs.values()];
   const producibleByPrefab = computeProducibleStats(allRecipes, allPrefabs);

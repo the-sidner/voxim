@@ -33,7 +33,7 @@ const IDENTITY_TRANSFORM: BoneTransform = { pos: { x: 0, y: 0, z: 0 }, rot: IDEN
  * and compute each bone's transform in solver space.
  *
  * @param skeleton       The skeleton definition. Bones must be in parent-before-child order.
- * @param boneIndex      Pre-built Map<boneId, BoneDef> from ContentStore.getBoneIndex().
+ * @param boneIndex      Pre-built Map<boneId, BoneDef> from ContentService.getBoneIndex().
  *                       Passed in to avoid linear searches inside the loop.
  * @param poseRotations  Bone id → Euler XYZ rotation in solver space.
  *                       Bones absent from this map use identity rotation.

@@ -32,7 +32,7 @@ import { GatewayLink } from "./gateway_link.ts";
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 import type { BinaryComponentDelta, BinaryStateMessage, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
-import { loadContentStore, validateRecipeGraph, type ContentStore } from "@voxim/content";
+import { JsonSource, validateRecipeGraph, type ContentService } from "@voxim/content";
 import { ClientSession } from "./session.ts";
 import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
@@ -196,7 +196,7 @@ export class TileServer {
   private accountClient: AccountClient | null = null;
   /** Cached from config so disconnect paths can tell the gateway where the player logged off. */
   private tileId = "";
-  private content!: ContentStore;
+  private content!: ContentService;
   // Initialised in start() — subscribes to the event bus and drained each tick.
   private events!: EventRouter;
 
@@ -262,7 +262,7 @@ export class TileServer {
 
     // Load all game content (recipes, prefabs, lore, materials) from data files.
     // Systems receive the store by injection — no hardcoded tables in game logic.
-    this.content = await loadContentStore(config.dataDir);
+    this.content = await JsonSource.load(config.dataDir);
     const content = this.content;
     // Validate every prefab against the component registry + schemas + requires.
     // Fails fast on malformed content so a booted server is known-good.
@@ -281,7 +281,7 @@ export class TileServer {
     for (const entry of content.getAllConceptVerbEntries()) {
       if (!effects.apply.has(entry.effectStat)) {
         throw new Error(
-          `ContentStore references effectStat "${entry.effectStat}" ` +
+          `ContentService references effectStat "${entry.effectStat}" ` +
           `(verb=${entry.verb} outward=${entry.outwardConcept} inward=${entry.inwardConcept}) ` +
           `but no apply handler is registered. Registered: [${effects.apply.ids().join(", ")}]`
         );
@@ -977,7 +977,7 @@ export class TileServer {
     session.sendStateRaw(framed);
   }
 
-  private spawnWorldState(content: ContentStore): void {
+  private spawnWorldState(content: ContentService): void {
     const dayLengthTicks = content.getGameConfig().dayNight.dayLengthTicks;
     const id = newEntityId();
     this.world.create(id);

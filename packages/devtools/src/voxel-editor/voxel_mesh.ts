@@ -10,7 +10,7 @@
  */
 import * as THREE from "three";
 import type { MaterialId, SubObjectRef } from "@voxim/content";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { VoxelKey } from "./state.ts";
 import { parseKey } from "./state.ts";
 import { vertexDisp } from "../../../client/src/render/displacement.ts";
@@ -56,7 +56,7 @@ function buildDisplacedVoxelGeo(cx: number, cy: number, cz: number): THREE.Buffe
 function buildVoxelMesh(
   x: number, y: number, z: number,
   matId: MaterialId,
-  content: ContentStore,
+  content: ContentService,
   opacity = 1,
 ): THREE.Mesh {
   const matDef    = content.getMaterialById(matId);
@@ -88,7 +88,7 @@ function buildVoxelMesh(
 
 export function rebuildVoxelMesh(
   voxelMap: Map<VoxelKey, MaterialId>,
-  content: ContentStore,
+  content: ContentService,
 ): THREE.Group | null {
   if (_voxelGroup) {
     _voxelGroup.traverse((obj) => {
@@ -116,7 +116,7 @@ export function rebuildVoxelMesh(
  */
 export function rebuildSubObjectMeshes(
   subs: SubObjectRef[],
-  content: ContentStore,
+  content: ContentService,
   selectedIndex: number | null,
 ): THREE.Group | null {
   if (_subObjectGroup) {

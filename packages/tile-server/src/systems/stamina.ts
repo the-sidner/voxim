@@ -1,5 +1,5 @@
 import type { World } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Stamina } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
@@ -9,7 +9,7 @@ import { createLogger } from "../logger.ts";
 const log = createLogger("StaminaSystem");
 
 export class StaminaSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: EventEmitter, dt: number): void {
     const corruptionCfg = this.content.getGameConfig().corruption;

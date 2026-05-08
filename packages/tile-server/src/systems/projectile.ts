@@ -17,7 +17,7 @@
  * ensures ActionSystem sees clean state before we process new projectiles).
  */
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import { TileEvents } from "@voxim/protocol";
 import type { System, EventEmitter, TickContext } from "../system.ts";
@@ -38,7 +38,7 @@ export class ProjectileSystem implements System {
   private spatial: SpatialGrid | null = null;
 
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly handlers: HitHandler[],
   ) {}
 

@@ -5,7 +5,7 @@
  * advancement, and spatial scans. No job-specific logic.
  */
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import type { PlanStep, NpcPlanData } from "../components/npcs.ts";
 import { Position, Health } from "../components/game.ts";
@@ -131,7 +131,7 @@ export function findNearestConsumable(
   world: World,
   px: number,
   py: number,
-  content: ContentStore,
+  content: ContentService,
   kind: "food" | "water",
   scanRadius: number,
 ): { entityId: EntityId; x: number; y: number } | null {

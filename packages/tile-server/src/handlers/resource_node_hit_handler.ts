@@ -1,6 +1,6 @@
 import type { World } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
-import type { ContentStore, PrefabResourceNodeData } from "@voxim/content";
+import type { ContentService, PrefabResourceNodeData } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { ResourceNode } from "../components/resource_node.ts";
@@ -17,7 +17,7 @@ const log = createLogger("ResourceNodeHitHandler");
  * Extracted from GatheringSystem — the respawn countdown remains in ResourceNodeSystem.
  */
 export class ResourceNodeHitHandler implements HitHandler {
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
     const rn = world.get(ctx.targetId, ResourceNode);
@@ -85,7 +85,7 @@ export class ResourceNodeHitHandler implements HitHandler {
 
 function spawnYields(
   world: World,
-  content: ContentStore,
+  content: ContentService,
   yields: Array<{ itemType: string; quantity: number; quantityPerHarvestPower?: number }>,
   harvestPower: number,
   hitX: number,

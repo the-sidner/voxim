@@ -1,5 +1,5 @@
 import type { World } from "@voxim/engine";
-import type { ContentStore, PrefabResourceNodeData } from "@voxim/content";
+import type { ContentService, PrefabResourceNodeData } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { ResourceNode } from "../components/resource_node.ts";
 import { createLogger } from "../logger.ts";
@@ -13,7 +13,7 @@ const log = createLogger("ResourceNodeSystem");
  * which is called by ActionSystem on each confirmed hit.
  */
 export class ResourceNodeSystem implements System {
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {
     for (const { entityId, resource_node: rn } of world.query(ResourceNode)) {

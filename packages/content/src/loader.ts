@@ -1,16 +1,25 @@
 /**
- * File-based content loader for the Deno tile server.
+ * JsonSource — file-based ContentService loader for the Deno tile server.
  *
  * Each content type lives in its own subdirectory under the data root, with one
- * JSON file per item.  The loader scans each directory and registers every file
+ * JSON file per item. The loader scans each directory and registers every file
  * it finds — adding a new item requires only dropping a new file.
  *
  * Singleton config files (game_config.json etc.) stay as flat objects.
  *
- * Usage:
- *   const content = await loadContentStore();
- *   const prefab = content.getPrefab("wooden_sword");
+ * Usage (T-176):
+ *   const content = await JsonSource.load();
+ *   const prefab = content.prefabs.get("wooden_sword");
+ *
+ * The companion BootstrapSource (T-177) hydrates a ContentService from a
+ * binary blob delivered over the WebTransport handshake — used by the
+ * browser client. Both produce ContentService instances with identical
+ * shape; engines never know which source built the content they consume.
+ *
+ * JsonSource is the ONLY filesystem reader in the codebase. No engine code
+ * touches `Deno.readDir` directly.
  */
+import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef } from "./types.ts";
 import { mergeLibraryIntoSkeletons, type LibraryClipFile } from "./anim_library.ts";
@@ -18,8 +27,21 @@ import { mergeLibraryIntoSkeletons, type LibraryClipFile } from "./anim_library.
 /** Default data directory — packages/content/data/ relative to this file. */
 const DEFAULT_DATA_DIR = new URL("../data", import.meta.url).pathname;
 
-export async function loadContentStore(
-  dataDir: string = DEFAULT_DATA_DIR,
+/**
+ * Loader class for the JSON-on-disk source-of-truth. Single static `load()`
+ * method returns a fully-populated ContentService. The class form (vs. a
+ * bare function) parallels BootstrapSource and any future content sources,
+ * and gives a stable identity for the engine to declare its content
+ * provenance against.
+ */
+export class JsonSource {
+  static async load(dataDir: string = DEFAULT_DATA_DIR): Promise<ContentService> {
+    return loadContentStoreInternal(dataDir);
+  }
+}
+
+async function loadContentStoreInternal(
+  dataDir: string,
 ): Promise<StaticContentStore> {
   const store = new StaticContentStore();
 

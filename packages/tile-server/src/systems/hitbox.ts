@@ -22,7 +22,7 @@
 import type { World } from "@voxim/engine";
 import type { DeferredEventQueue } from "../deferred_events.ts";
 import type { System } from "../system.ts";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { BodyPartVolume } from "@voxim/content";
 import type { BoneRotation } from "@voxim/content";
 import type { BoneTransform } from "@voxim/content";
@@ -42,7 +42,7 @@ export class HitboxSystem implements System {
   private readonly posePool      = new Map<string, Map<string, BoneRotation>>();
   private readonly transformPool = new Map<string, Map<string, BoneTransform>>();
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   prepare(_tick: number): void {}
 

@@ -1,6 +1,6 @@
 import type { World } from "@voxim/engine";
 import { ACTION_BLOCK, ACTION_DODGE, hasAction } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { InputState, Velocity, Stamina } from "../components/game.ts";
 import {
@@ -25,7 +25,7 @@ export class DodgeSystem implements System {
   /** Reads InputState written by NpcAi via world.write(); must precede. */
   readonly dependsOn = ["NpcAiSystem"];
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().dodge;

@@ -2,7 +2,7 @@
  * ModelRef — ECS component carried by renderable entities.
  *
  * Entities carry a lean ModelRef (ID + scale) rather than the full
- * ModelDefinition.  The client resolves modelId against the ContentStore
+ * ModelDefinition.  The client resolves modelId against the ContentService
  * to obtain voxels and sub-objects for geometry baking.
  *
  * The server attaches this component at entity creation so that clients

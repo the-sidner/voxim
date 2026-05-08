@@ -16,7 +16,7 @@
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
-import type { ContentStore, DerivedItemStats, SwingableData, WeaponActionDef } from "@voxim/content";
+import type { ContentService, DerivedItemStats, SwingableData, WeaponActionDef } from "@voxim/content";
 import { pickWeaponAction } from "../components/item_behaviours.ts";
 import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
@@ -46,7 +46,7 @@ export class ActionSystem implements System {
   constructor(
     private readonly stateHistory: StateHistoryBuffer,
     private readonly tickRateHz: number,
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly handlers: HitHandler[],
   ) {}
 

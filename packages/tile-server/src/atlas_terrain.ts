@@ -14,7 +14,7 @@
 
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
 import type { GatePosition } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { World } from "@voxim/engine";
 import {
   tileInitFromWire,
@@ -100,7 +100,7 @@ export function parseTileId(tileId: string): { cellX: number; cellY: number } {
  * one up by name; missing entries throw — atlas content is meant to map
  * 1:1 onto tile-server's catalog.
  */
-function buildMaterialMap(content: ContentStore): {
+function buildMaterialMap(content: ContentService): {
   materialMap: Map<number, number>;
   defaultMaterialId: number;
 } {
@@ -136,7 +136,7 @@ export async function loadTerrainFromAtlas(
   cellsRepo: AtlasWorldRepo,
   tilesRepo: AtlasTileInitRepo,
   tileId: string,
-  content: ContentStore,
+  content: ContentService,
   opts: LoadOptions = {},
 ): Promise<AtlasTerrainResult> {
   const maxRetries   = opts.maxRetries   ?? 30;

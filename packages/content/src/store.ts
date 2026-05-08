@@ -1,12 +1,12 @@
 /**
- * ContentStore — interface and in-memory implementation.
+ * ContentService — interface and in-memory implementation.
  *
  * All game content (materials, models, recipes, prefabs, lore, item templates)
  * is accessed through this interface.  The server populates it at startup by
  * reading the JSON data files via loadContentStore().  The future client will
  * have a NetworkContentStore that fetches definitions via WebTransport on demand.
  *
- * Systems receive the ContentStore by injection — they never import hardcoded
+ * Systems receive the ContentService by injection — they never import hardcoded
  * data tables directly.
  *
  * # Federated registry shape (T-175)
@@ -58,7 +58,7 @@ import { buildRecipeGraph } from "./recipe_graph.ts";
 import type { ContentRegistryReadonly } from "./registry.ts";
 import { ContentRegistry } from "./registry.ts";
 
-export interface ContentStore {
+export interface ContentService {
   // ---- federated registries (T-175) ----
   // Primary access path. Each registry is read-only post-load.
   // Materials are keyed by string name (the unique craft-system key); the
@@ -117,7 +117,7 @@ export interface ContentStore {
   getTileLayout(): TileLayout | null;
 }
 
-export class StaticContentStore implements ContentStore {
+export class StaticContentStore implements ContentService {
   // ---- federated registries ----
   // Materials registered by NAME (the craft-system key); numeric id is a
   // secondary index on materialsByNumericId.
@@ -378,7 +378,7 @@ export class StaticContentStore implements ContentStore {
     let tmpl = this.hitboxTemplateCache.get(key);
     if (!tmpl) {
       // Inline adapter — keeps the legacy `getModel` shape out of the public
-      // ContentStore surface. Mirrors how ContentCache wraps its own model
+      // ContentService surface. Mirrors how ContentCache wraps its own model
       // lookup at the call site.
       const adapter: HitboxContentAdapter = {
         getModel: (id) => this.models.get(id) ?? null,

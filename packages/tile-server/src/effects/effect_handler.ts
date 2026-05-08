@@ -7,7 +7,7 @@
  * composed stats.
  *
  * Registered in `server.ts`. Validated at startup against
- * `ContentStore.getAllConceptVerbEntries()` — unknown effectStat = fail fast.
+ * `ContentService.getAllConceptVerbEntries()` — unknown effectStat = fail fast.
  */
 import type { World, EntityId } from "@voxim/engine";
 import type { ConceptVerbEntry } from "@voxim/content";

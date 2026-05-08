@@ -2,7 +2,7 @@ import type { World } from "@voxim/engine";
 import { stepPhysics, vec2Normalize } from "@voxim/engine";
 import type { PhysicsConfig } from "@voxim/engine";
 import { ACTION_JUMP, ACTION_CROUCH, hasAction } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { createLogger } from "../logger.ts";
 import { Position, Velocity, Facing, InputState } from "../components/game.ts";
@@ -21,7 +21,7 @@ export class PhysicsSystem implements System {
   /** NpcAi writes NPC InputState via world.write() (immediate); must precede. */
   readonly dependsOn = ["NpcAiSystem"];
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: EventEmitter, dt: number): void {
     const gameCfg = this.content.getGameConfig();

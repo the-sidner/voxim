@@ -1,5 +1,5 @@
 import type { World } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Health } from "../components/game.ts";
 import { WorldClock, TileCorruption, CorruptionExposure, isDay } from "../components/world.ts";
@@ -10,7 +10,7 @@ const log = createLogger("CorruptionSystem");
 
 export class CorruptionSystem implements System {
   constructor(
-    private readonly content: ContentStore,
+    private readonly content: ContentService,
     private readonly deaths: DeathRequestPort,
   ) {}
 

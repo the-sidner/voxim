@@ -944,7 +944,7 @@ export interface LoreFragment {
 
 /**
  * Global game balance configuration loaded from game_config.json.
- * Accessed via ContentStore.getGameConfig().
+ * Accessed via ContentService.getGameConfig().
  * All tuning constants that would otherwise be hardcoded in system files live here.
  */
 export interface GameConfig {

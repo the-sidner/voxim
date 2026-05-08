@@ -8,7 +8,7 @@
  *   approach → place → swing → recipe resolves via the existing workstation
  *   hit handler. No NPC-specific crafting code lives downstream.
  */
-import type { GameConfig, ContentStore } from "@voxim/content";
+import type { GameConfig, ContentService } from "@voxim/content";
 import type { World, EntityId } from "@voxim/engine";
 import { ACTION_USE_SKILL } from "@voxim/protocol";
 import type {
@@ -128,7 +128,7 @@ export const craftAtWorkbenchJob: JobHandler = {
  */
 function findNearestWorkstation(
   world: World,
-  _content: ContentStore,
+  _content: ContentService,
   px: number,
   py: number,
   stationType: string,

@@ -17,11 +17,11 @@
  * is preferable.
  */
 import * as v from "valibot";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import { DEF_BY_NAME } from "./component_registry.ts";
 import { COMPOUND_ARCHETYPE_KEYS } from "./spawner.ts";
 
-export function validatePrefabs(content: ContentStore): void {
+export function validatePrefabs(content: ContentService): void {
   for (const prefab of content.prefabs.values()) {
     for (const [name, rawData] of Object.entries(prefab.components)) {
       if (COMPOUND_ARCHETYPE_KEYS.has(name)) continue;

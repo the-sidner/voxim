@@ -11,7 +11,7 @@
  * output + emit CraftingCompleted) lives in `util.ts`.
  */
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitContext } from "../hit_handler.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
@@ -19,7 +19,7 @@ import type { WorkstationBufferData } from "../components/building.ts";
 export interface RecipeTickContext {
   readonly world: World;
   readonly events: EventEmitter;
-  readonly content: ContentStore;
+  readonly content: ContentService;
   readonly stationId: EntityId;
   readonly stationType: string;
   readonly buffer: WorkstationBufferData;

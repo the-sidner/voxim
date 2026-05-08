@@ -11,7 +11,7 @@
  */
 import type { World } from "@voxim/engine";
 import { Heightmap, MaterialGrid, CHUNK_SIZE, snapHeight } from "@voxim/world";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
 import { SkillInProgress } from "../components/combat.ts";
@@ -28,7 +28,7 @@ export class TerrainDigSystem implements System {
    */
   readonly dependsOn = ["NpcAiSystem", "ActionSystem"];
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().terrain;

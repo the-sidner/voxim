@@ -2,7 +2,7 @@ import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { CommandType, TileEvents } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Inventory, ItemData } from "../components/items.ts";
 import { Inscribed } from "../components/instance.ts";
@@ -14,7 +14,7 @@ const log = createLogger("DynastySystem");
 export class DynastySystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
 
-  constructor(private readonly content: ContentStore) {}
+  constructor(private readonly content: ContentService) {}
 
   prepare(_serverTick: number, ctx: TickContext): void {
     this._commands = ctx.pendingCommands;

@@ -5,11 +5,11 @@
  * `nodes/`, and register it below.
  *
  * `buildAllBehaviorTrees` is called once at server startup to turn every
- * BehaviorTreeSpec in ContentStore into a ready-to-tick `BTNode`. Failure
+ * BehaviorTreeSpec in ContentService into a ready-to-tick `BTNode`. Failure
  * fast on unknown node types or malformed specs.
  */
 import { Registry } from "@voxim/engine";
-import type { ContentStore } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import { buildBehaviorTree } from "./behavior_tree.ts";
 import type { BTNode, BTNodeFactory } from "./behavior_tree.ts";
 import { sequenceNodeFactory } from "./nodes/sequence.ts";
@@ -59,11 +59,11 @@ export function registerBuiltinBTNodes(registry: Registry<BTNodeFactory>): void 
 }
 
 /**
- * Build every BehaviorTreeSpec in the ContentStore into a BTNode.
+ * Build every BehaviorTreeSpec in the ContentService into a BTNode.
  * Fails fast on malformed specs or unknown node types.
  */
 export function buildAllBehaviorTrees(
-  content: ContentStore,
+  content: ContentService,
   nodeRegistry: Registry<BTNodeFactory>,
 ): Map<string, BTNode> {
   const built = new Map<string, BTNode>();
