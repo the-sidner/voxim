@@ -3423,7 +3423,7 @@ Done when: every consumer reads via the federated shape; old getters gone;
 `deno check` clean across all packages; runtime behavior unchanged.
 
 ### T-176 · ContentService interface + JsonSource
-Effort: M   Status: done
+Effort: M   Status: done   Commit: d8398ee
 
 Extract `ContentService` interface in `@voxim/content` describing the read
 surface (federated registries + `invoke()` for generators). Implementations:
