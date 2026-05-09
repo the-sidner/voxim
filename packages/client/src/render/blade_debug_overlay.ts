@@ -2,10 +2,10 @@
  * BladeDebugOverlay — live visualisation of the weapon blade capsule.
  *
  * Renders the exact hilt→tip segment and endpoint spheres (at blade radius)
- * that the server's ActionSystem uses for hit detection.  The same
- * evaluateWeaponSlice + matrixWorld transform used by the trail system drives
- * the positions, so what you see is a faithful real-time projection of the
- * server hitbox onto the client scene.
+ * that the server's ActionSystem uses for hit detection. Both client overlay
+ * and server hit detection sample the same `WeaponActionDef.blade` endpoints
+ * transformed by the holding-hand bone — so what you see is a faithful
+ * real-time projection of the server hitbox onto the client scene.
  *
  * Phase colours:
  *   windup   — yellow  (blade not yet active)
@@ -19,7 +19,7 @@
  */
 import * as THREE from "three";
 import type { ManagedOverlay, DebugUpdateContext } from "./debug_overlay_manager.ts";
-import { evaluateWeaponSlice } from "./skeleton_evaluator.ts";
+import { evaluateBladeWorld } from "./skeleton_evaluator.ts";
 
 const COL_WINDUP   = new THREE.Color(1.0, 0.85, 0.0);
 const COL_ACTIVE   = new THREE.Color(1.0, 0.08, 0.08);
@@ -53,26 +53,24 @@ export class BladeDebugOverlay implements ManagedOverlay {
       if (!anim || !anim.weaponActionId) continue;
 
       const weaponAction = ctx.weaponActionsMap.get(anim.weaponActionId);
-      const keyframes = weaponAction?.swingPath?.keyframes;
-      if (!keyframes?.length) continue;
+      const blade = weaponAction?.blade;
+      if (!blade) continue;
 
       const elapsed = (ctx.now - mesh.lastAnimUpdateMs) / 50;
-      const total   = weaponAction
-        ? weaponAction.windupTicks + weaponAction.activeTicks + weaponAction.winddownTicks
+      const ticks   = weaponAction
+        ? Math.min(
+          anim.ticksIntoAction + elapsed,
+          weaponAction.windupTicks + weaponAction.activeTicks + weaponAction.winddownTicks,
+        )
         : 0;
-      const ticks   = Math.min(anim.ticksIntoAction + elapsed, total);
-      const t       = total > 0 ? ticks / total : 0;
 
-      const bladeLength = mesh.bladeDimensions?.length    ?? 1.0;
-      const bladeRadius = mesh.bladeDimensions?.halfCross ?? 0.05;
-
-      const local = evaluateWeaponSlice(keyframes, t, bladeLength);
-
+      const holdBone = weaponAction?.holdHand ?? "hand_r";
       mesh.group.updateWorldMatrix(true, false);
-      const mat = mesh.group.matrixWorld;
-
-      const worldHilt = new THREE.Vector3(local.hiltX, local.hiltY, local.hiltZ).applyMatrix4(mat);
-      const worldTip  = new THREE.Vector3(local.tipX,  local.tipY,  local.tipZ ).applyMatrix4(mat);
+      const bw = evaluateBladeWorld(mesh, blade, holdBone);
+      if (!bw) continue;
+      const worldHilt = bw.base;
+      const worldTip  = bw.tip;
+      const bladeRadius = blade.radius;
 
       let color: THREE.Color;
       if (!weaponAction || ticks < weaponAction.windupTicks)                                          color = COL_WINDUP;

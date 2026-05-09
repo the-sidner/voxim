@@ -39,7 +39,7 @@ import { InstancePool, type InstanceSlot } from "./instance_pool.ts";
 import { buildSubModelGeo } from "./voxel_geo.ts";
 import { getVoxelTexture } from "./material_textures.ts";
 import { canopyFade } from "./canopy_fade.ts";
-import { evaluatePose, evaluateWeaponSlice } from "./skeleton_evaluator.ts";
+import { evaluatePose, evaluateBladeWorld } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
@@ -1634,18 +1634,18 @@ export class VoximRenderer {
       if (slot.boneParented) continue;
 
       if (slotId === "main_hand") {
-        if (anim?.weaponActionId && weaponAction?.swingPath?.keyframes?.length) {
-          // Authoritative hilt position + blade orientation from swing path.
-          // Same source as server hit detection — weapon model is visually exact.
-          const bladeLength = mesh.bladeDimensions?.length ?? 1.0;
-          const s = evaluateWeaponSlice(
-            weaponAction.swingPath.keyframes, t, bladeLength,
-          );
-          slot.anchor.position.set(s.hiltX, s.hiltY, s.hiltZ);
-          // Orient anchor so its +Y axis (= blade direction in model space,
-          // Three.js local +Y) points from hilt toward tip.
-          // setFromUnitVectors(+Y, dir_to_tip) is exact — no gimbal issues.
-          _bladeTip.set(s.tipX, s.tipY, s.tipZ);
+        // FK-driven anchor: read the holding-hand bone's world transform and
+        // place the weapon's hilt at blade.baseLocal, oriented so its +Y axis
+        // points at blade.tipLocal. Same blade authoring as server hit
+        // detection — visuals and hitbox track the same hand-local segment.
+        const blade = weaponAction?.blade;
+        const holdBone = weaponAction?.holdHand ?? "hand_r";
+        const bw = blade ? evaluateBladeWorld(mesh, blade, holdBone) : null;
+        if (anim?.weaponActionId && bw) {
+          // Convert world-space endpoints into mesh.group-local for the anchor.
+          mesh.group.worldToLocal(_attachTmp.copy(bw.base));
+          slot.anchor.position.copy(_attachTmp);
+          mesh.group.worldToLocal(_bladeTip.copy(bw.tip));
           _attachTmp.subVectors(_bladeTip, slot.anchor.position).normalize();
           slot.anchor.quaternion.setFromUnitVectors(_bladeUp, _attachTmp);
         } else {
@@ -1713,7 +1713,6 @@ export class VoximRenderer {
       }
 
       const weaponAction = this.weaponActionsMap.get(anim.weaponActionId);
-      const keyframes = weaponAction?.swingPath?.keyframes;
       const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
       const total = weaponAction
         ? weaponAction.windupTicks + weaponAction.activeTicks + weaponAction.winddownTicks
@@ -1725,19 +1724,18 @@ export class VoximRenderer {
 
       let slices = this.trailSlices.get(entityId) ?? [];
 
-      if (inActive && keyframes && keyframes.length > 0) {
-        const t = total > 0 ? ticks / total : 0;
-        const bladeLength = mesh.bladeDimensions?.length ?? 1.0;
-        const halfW       = mesh.bladeDimensions?.halfCross ?? 0.1;
-        const local = evaluateWeaponSlice(keyframes, t, bladeLength);
+      const blade = weaponAction?.blade;
+      const holdBone = weaponAction?.holdHand ?? "hand_r";
+      // Force entity matrix recompute so the bone matrixWorld pulled inside
+      // evaluateBladeWorld reflects this frame's pose, not last frame's.
+      // (updateWeaponTrails runs before renderer.render's own update pass.)
+      if (inActive && blade) mesh.group.updateWorldMatrix(true, false);
+      const bw = inActive && blade ? evaluateBladeWorld(mesh, blade, holdBone) : null;
 
-        // Force matrix recompute so we get current-frame position, not last frame's.
-        // (updateWeaponTrails runs before renderer.render which would normally do this.)
-        mesh.group.updateWorldMatrix(true, false);
-
-        const mat = mesh.group.matrixWorld;
-        const wHilt = new THREE.Vector3(local.hiltX, local.hiltY, local.hiltZ).applyMatrix4(mat);
-        const wTip  = new THREE.Vector3(local.tipX,  local.tipY,  local.tipZ).applyMatrix4(mat);
+      if (bw) {
+        const halfW = mesh.bladeDimensions?.halfCross ?? 0.1;
+        const wHilt = bw.base;
+        const wTip  = bw.tip;
 
         // Perpendicular to blade in the horizontal plane — gives the trail width.
         const bx = wTip.x - wHilt.x, by = wTip.y - wHilt.y, bz = wTip.z - wHilt.z;

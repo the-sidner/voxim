@@ -406,39 +406,6 @@ export interface Recipe {
 // ---- weapon actions ----
 
 /**
- * One keyframe in a weapon swing path.
- * t is normalised 0..1 over the ENTIRE action (windup + active + winddown).
- *
- * Hilt position is in entity-local (fwd, right, up) space.
- * Blade direction is a unit vector pointing from hilt toward tip.
- * The tip is derived by callers: tip = hilt + bladeDir × bladeLength.
- */
-export interface SwingKeyframe {
-  /** Normalised time 0..1 over the entire action. */
-  t: number;
-  hiltFwd: number;
-  hiltRight: number;
-  hiltUp: number;
-  /** Unit vector from hilt toward blade tip — forward component. */
-  bladeFwd: number;
-  /** Unit vector from hilt toward blade tip — rightward component. */
-  bladeRight: number;
-  /** Unit vector from hilt toward blade tip — upward component. */
-  bladeUp: number;
-}
-
-/**
- * Time-series description of the weapon hilt's path through entity-local space.
- * Blade geometry (length and radius) is derived at runtime from the equipped
- * weapon's model AABB (model Z axis = blade axis, scale = entity voxel scale).
- * Unarmed swings use constants defined in ActionSystem.
- */
-export interface WeaponSwingPath {
-  /** Ordered keyframes; t values must be strictly increasing from 0 to 1. */
-  keyframes: SwingKeyframe[];
-}
-
-/**
  * One IK chain defined on a skeleton.
  * The skeleton owns the anatomy (which bones, how the joint bends) and
  * which named drive source to track ("hilt", "grip_l", "ground_l", …).
@@ -474,8 +441,7 @@ export interface ProjectileActionConfig {
   /**
    * Where the projectile originates in entity-local (fwd, right, up) coordinates.
    * Lets each weapon declare its own muzzle (e.g. bow string, spear tip, wand tip).
-   * If absent and the action has a swingPath, the hilt pose at t=active-start is
-   * used; if both are absent, combat.projectileDefaults.spawnOffset is the fallback.
+   * Absent = combat.projectileDefaults.spawnOffset is the fallback.
    */
   spawnOffset?: { fwd: number; right: number; up: number };
 }
@@ -550,20 +516,6 @@ export interface WeaponActionDef {
   actionType?: "melee" | "ranged";
   /** Projectile spawn parameters. Required for ranged, absent for melee. */
   projectile?: ProjectileActionConfig;
-  /**
-   * @deprecated Legacy entity-local hilt path. The server no longer reads
-   * this — clip-driven hand FK supersedes it. Still consumed by the client
-   * weapon-trail ribbon until the trail is rewritten to sample the FK
-   * blade endpoints directly. Will be retired once the client trail
-   * migration lands.
-   */
-  swingPath?: WeaponSwingPath;
-  /**
-   * @deprecated Animation tag used by the IK-driven arm path that retired
-   * in T-182 step 6. Kept on the type only because old JSONs still carry
-   * it; the loader ignores extra keys.
-   */
-  animationStyle?: string;
 }
 
 // ---- body part volumes ----
@@ -1163,9 +1115,9 @@ export interface GameConfig {
     unarmedBladeRadius: number;
     unarmed: DerivedItemStats;
     /**
-     * Fallback projectile spawn parameters used only when a ranged weapon action
-     * has no swingPath (no hilt pose) and no explicit ProjectileActionConfig.spawnOffset.
-     * Values are entity-local (fwd, right, up) coordinates applied via localToWorld
+     * Fallback projectile spawn parameters used only when a ranged weapon
+     * action has no explicit ProjectileActionConfig.spawnOffset. Values are
+     * entity-local (fwd, right, up) coordinates applied via localToWorld
      * from the shooter's facing — i.e. approximately "from the shoulder, forward".
      */
     projectileDefaults: {
@@ -1571,9 +1523,10 @@ export interface AnimationStateData {
   /** Animation layer stack — evaluated bottom→top by evaluateAnimationLayers(). */
   layers: AnimationLayer[];
   /**
-   * WeaponActionDef id driving the current attack (e.g. "unarmed", "slash_r").
-   * Empty string when not attacking.
-   * Used by HitboxSystem and the client to look up swingPath keyframes + ikTargets.
+   * WeaponActionDef id driving the current attack (e.g. "unarmed", "slash").
+   * Empty string when not attacking. The client reads this to look up the
+   * weapon's blade definition for trail / debug overlay rendering; hit
+   * detection uses the same lookup server-side.
    */
   weaponActionId: string;
   /** Elapsed ticks since the current attack started. 0 when not attacking. */

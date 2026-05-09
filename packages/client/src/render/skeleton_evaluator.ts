@@ -14,15 +14,15 @@
  * `evaluateAnimationLayers` lives in `@voxim/content` so the server
  * (HitboxSystem) can also call it without Three.js.
  *
- * `evaluateWeaponSlice` is retained for the weapon trail ribbon — that
- * still derives tip positions from the swing path until the trail system
- * is moved to a clip-driven blade-points scheme.
+ * `evaluateBladeWorld` produces world-space blade endpoints by transforming
+ * `WeaponActionDef.blade.baseLocal` / `tipLocal` by the holding-hand bone's
+ * `matrixWorld` — same blade authoring as the server hit detection, so the
+ * trail ribbon and hit capsule are guaranteed to match.
  */
 import * as THREE from "three";
-import type { SkeletonDef, AnimationClip, BoneMask, AnimationStateData } from "@voxim/content";
+import type { SkeletonDef, AnimationClip, BoneMask, AnimationStateData, WeaponBladeDef } from "@voxim/content";
 import { evaluateAnimationLayers } from "@voxim/content";
-import { evaluateSwingPath, deriveTip } from "@voxim/content";
-import type { SwingKeyframe } from "@voxim/content";
+import type { EntityMeshGroup } from "./entity_mesh.ts";
 
 // ---- FK pose evaluation ----
 
@@ -46,26 +46,39 @@ export function evaluatePose(
   return out;
 }
 
-// ---- weapon position evaluation (used by trail rendering only) ----
+// ---- weapon blade endpoints from FK (used by trail + attachment + debug overlay) ----
+
+const _bladeBase = new THREE.Vector3();
+const _bladeTip  = new THREE.Vector3();
 
 /**
- * Evaluate hilt, tip, and blade direction at normalised time t in entity-local
- * Three.js space (right=X, up=Y, forward=-Z).
+ * Compute world-space blade endpoints from the FK-evaluated holding-hand bone.
+ *
+ * `blade.baseLocal` / `tipLocal` are in hand-bone-local space (matching the
+ * bone restX/Y/Z units and three.js axes — right=X, up=Y, fwd=-Z). Multiplying
+ * by the hand bone's `matrixWorld` directly yields world-space endpoints
+ * because mesh.group's entity scale is already baked into matrixWorld.
+ *
+ * Returns null when the requested bone isn't on this mesh — trail / overlay
+ * code skips the entity for that frame.
  */
-export function evaluateWeaponSlice(
-  keyframes: SwingKeyframe[],
-  t: number,
-  bladeLength: number,
-): {
-  hiltX: number; hiltY: number; hiltZ: number;
-  tipX: number;  tipY: number;  tipZ: number;
-  bladeDirX: number; bladeDirY: number; bladeDirZ: number;
-} {
-  const pose = evaluateSwingPath(keyframes, t);
-  const tip = deriveTip(pose.hilt, pose.bladeDir, bladeLength);
-  return {
-    hiltX:  pose.hilt.right,     hiltY:  pose.hilt.up,     hiltZ: -pose.hilt.fwd,
-    tipX:   tip.right,           tipY:   tip.up,           tipZ:  -tip.fwd,
-    bladeDirX: pose.bladeDir.right, bladeDirY: pose.bladeDir.up, bladeDirZ: -pose.bladeDir.fwd,
-  };
+export function evaluateBladeWorld(
+  mesh: EntityMeshGroup,
+  blade: WeaponBladeDef,
+  holdBoneId: string,
+  outBase: THREE.Vector3 = new THREE.Vector3(),
+  outTip:  THREE.Vector3 = new THREE.Vector3(),
+): { base: THREE.Vector3; tip: THREE.Vector3 } | null {
+  const bone = mesh.boneGroups?.get(holdBoneId);
+  if (!bone) return null;
+  bone.updateWorldMatrix(true, false);
+  const mat = bone.matrixWorld;
+  outBase.set(blade.baseLocal[0], blade.baseLocal[1], blade.baseLocal[2]).applyMatrix4(mat);
+  outTip .set(blade.tipLocal[0],  blade.tipLocal[1],  blade.tipLocal[2] ).applyMatrix4(mat);
+  return { base: outBase, tip: outTip };
+}
+
+/** Scratch vectors callers can reuse to avoid allocation. */
+export function bladeScratch(): { base: THREE.Vector3; tip: THREE.Vector3 } {
+  return { base: _bladeBase, tip: _bladeTip };
 }
