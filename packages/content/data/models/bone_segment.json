@@ -1,12 +1,12 @@
 {
-  "_comment": "Generic bone-segment debug model. A 1×4×1 column of voxels along the model's +Y axis, intended to be attached to a bone and stretched/scaled per-segment by biped_skeletal. Mixamo bones have local +Y aligned with the bone direction (toward the child), so this column visually fills the bone when attached with no extra rotation.",
+  "_comment": "Generic bone-segment debug model. A 1×1×4 column of voxels along the model's +Z axis. Entity-local +Z (up) is the axis the renderer maps to three.js +Y; Mixamo's bone bind rotates each bone group so its three.js +Y points along the bone direction. So the column built along +Z lines up with the bone direction in world space when attached with no extra rotation.",
   "id": "bone_segment",
   "version": 1,
   "nodes": [
     { "x": 0, "y": 0, "z": 0, "materialId": 105 },
-    { "x": 0, "y": 1, "z": 0, "materialId": 105 },
-    { "x": 0, "y": 2, "z": 0, "materialId": 105 },
-    { "x": 0, "y": 3, "z": 0, "materialId": 105 }
+    { "x": 0, "y": 0, "z": 1, "materialId": 105 },
+    { "x": 0, "y": 0, "z": 2, "materialId": 105 },
+    { "x": 0, "y": 0, "z": 3, "materialId": 105 }
   ],
   "subObjects": [],
   "materials": [105]

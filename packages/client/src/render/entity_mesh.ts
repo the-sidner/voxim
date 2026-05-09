@@ -500,6 +500,15 @@ export function upgradeToSkeletonModel(
       sub.transform.z * scale.z,
       sub.transform.y * scale.y,
     );
+    // Apply per-sub-object rotation with the same entity→three.js axis swap
+    // used for position. Previously this path (bone-attached sub-objects)
+    // skipped rotation entirely, so any sub-object meant to be reoriented
+    // relative to its bone silently rendered at identity.
+    subGroup.rotation.set(
+      sub.transform.rotX,
+      sub.transform.rotZ,
+      sub.transform.rotY,
+    );
     parent.add(subGroup);
 
     const subScale = {

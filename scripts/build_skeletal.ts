@@ -124,14 +124,17 @@ for (const bone of biped.bones) {
     modelId: "bone_segment",
     boneId: bone.id,
     transform: {
-      // Voxel column starts at y=0 (the bone's origin) and extends to y=4
-      // along the bone's +Y axis. After scaleY = length/4, the column spans
-      // from the bone's position to length units along its +Y.
+      // bone_segment.json's voxels are stacked along its model +Z axis
+      // (entity-local up). The entity-to-three.js axis swap maps that to
+      // three.js +Y, which is also where the bone's bind rotation puts its
+      // local +Y in world space (Mixamo convention: bone-local +Y = bone
+      // direction). So scaleZ stretches the column along the bone, while
+      // scaleX/Y set the perpendicular thickness.
       x: 0, y: 0, z: 0,
       rotX: 0, rotY: 0, rotZ: 0,
-      scaleX: radius * 2, // column is 1 voxel wide; scale to 2*radius for diameter
-      scaleY: length / SEGMENT_VOXEL_LENGTH,
-      scaleZ: radius * 2,
+      scaleX: radius * 2,
+      scaleY: radius * 2,
+      scaleZ: length / SEGMENT_VOXEL_LENGTH,
     },
     hitbox: false, // skeletal viz is purely visual; HitboxSystem derives capsules from the skeleton
   });

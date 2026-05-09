@@ -16,8 +16,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.64,
-        "scaleY": 0.07144458079518698,
-        "scaleZ": 0.64
+        "scaleY": 0.64,
+        "scaleZ": 0.07144458079518698
       },
       "hitbox": false
     },
@@ -32,8 +32,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.6,
-        "scaleY": 0.08335,
-        "scaleZ": 0.6
+        "scaleY": 0.6,
+        "scaleZ": 0.08335
       },
       "hitbox": false
     },
@@ -48,8 +48,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.68,
-        "scaleY": 0.2740495507203032,
-        "scaleZ": 0.68
+        "scaleY": 0.68,
+        "scaleZ": 0.2740495507203032
       },
       "hitbox": false
     },
@@ -64,8 +64,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.72,
-        "scaleY": 0.1375,
-        "scaleZ": 0.72
+        "scaleY": 0.72,
+        "scaleZ": 0.1375
       },
       "hitbox": false
     },
@@ -80,8 +80,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.36,
-        "scaleY": 0.166575,
-        "scaleZ": 0.36
+        "scaleY": 0.36,
+        "scaleZ": 0.166575
       },
       "hitbox": false
     },
@@ -96,8 +96,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.32,
-        "scaleY": 0.17965,
-        "scaleZ": 0.32
+        "scaleY": 0.32,
+        "scaleZ": 0.17965
       },
       "hitbox": false
     },
@@ -112,8 +112,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.36,
-        "scaleY": 0.075,
-        "scaleZ": 0.36
+        "scaleY": 0.36,
+        "scaleZ": 0.075
       },
       "hitbox": false
     },
@@ -128,8 +128,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.36,
-        "scaleY": 0.1665,
-        "scaleZ": 0.36
+        "scaleY": 0.36,
+        "scaleZ": 0.1665
       },
       "hitbox": false
     },
@@ -144,8 +144,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.32,
-        "scaleY": 0.1797,
-        "scaleZ": 0.32
+        "scaleY": 0.32,
+        "scaleZ": 0.1797
       },
       "hitbox": false
     },
@@ -160,8 +160,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.36,
-        "scaleY": 0.075,
-        "scaleZ": 0.36
+        "scaleY": 0.36,
+        "scaleZ": 0.075
       },
       "hitbox": false
     },
@@ -176,8 +176,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.48,
-        "scaleY": 0.2915,
-        "scaleZ": 0.48
+        "scaleY": 0.48,
+        "scaleZ": 0.2915
       },
       "hitbox": false
     },
@@ -192,8 +192,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.44,
-        "scaleY": 0.27075,
-        "scaleZ": 0.44
+        "scaleY": 0.44,
+        "scaleZ": 0.27075
       },
       "hitbox": false
     },
@@ -208,8 +208,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.44,
-        "scaleY": 0.1125,
-        "scaleZ": 0.44
+        "scaleY": 0.44,
+        "scaleZ": 0.1125
       },
       "hitbox": false
     },
@@ -224,8 +224,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.48,
-        "scaleY": 0.2912,
-        "scaleZ": 0.48
+        "scaleY": 0.48,
+        "scaleZ": 0.2912
       },
       "hitbox": false
     },
@@ -240,8 +240,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.44,
-        "scaleY": 0.2708,
-        "scaleZ": 0.44
+        "scaleY": 0.44,
+        "scaleZ": 0.2708
       },
       "hitbox": false
     },
@@ -256,8 +256,8 @@
         "rotY": 0,
         "rotZ": 0,
         "scaleX": 0.44,
-        "scaleY": 0.1125,
-        "scaleZ": 0.44
+        "scaleY": 0.44,
+        "scaleZ": 0.1125
       },
       "hitbox": false
     }
