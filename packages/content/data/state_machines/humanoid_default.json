@@ -57,9 +57,9 @@
       "initial": "idle",
       "states": {
         "idle":           { "clip": null },
-        "swing.windup":   { "clip": "$weapon.swing_clip", "loop": false, "duration": "$action.windup_seconds" },
-        "swing.active":   { "clip": "$weapon.swing_clip", "loop": false, "duration": "$action.active_seconds" },
-        "swing.winddown": { "clip": "$weapon.swing_clip", "loop": false, "duration": "$action.winddown_seconds" },
+        "swing.windup":   { "clip": "$weapon.swing_clip", "loop": false, "mask": "", "duration": "$action.windup_seconds" },
+        "swing.active":   { "clip": "$weapon.swing_clip", "loop": false, "mask": "", "duration": "$action.active_seconds" },
+        "swing.winddown": { "clip": "$weapon.swing_clip", "loop": false, "mask": "", "duration": "$action.winddown_seconds" },
         "block":          { "clip": "$weapon.block_clip", "loop": true },
         "aim":            { "clip": "$weapon.aim_clip",   "loop": true },
         "shoot":          { "clip": "$weapon.shoot_clip", "loop": false, "duration": 0.4 }

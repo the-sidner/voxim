@@ -139,9 +139,17 @@ export class AnimationSystem implements System {
           speed,
         );
 
+        // Per-state mask override: the state's `mask` (if set) wins over the
+        // layer's; an explicit "" means full body. undefined falls back to
+        // the layer's mask. This is how combat layer's swing.* states
+        // escape the upper_body mask to drive the whole skeleton.
+        const maskId = eff.mask !== undefined
+          ? eff.mask
+          : compiledLayer.raw.mask ?? "";
+
         layers.push({
           clipId,
-          maskId: compiledLayer.raw.mask ?? "",
+          maskId,
           time,
           weight: 1,
           blend: "override",

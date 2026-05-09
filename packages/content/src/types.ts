@@ -590,6 +590,18 @@ export interface SMState {
   /** Realign root bone on state-enter. Used by "roll" to face the dodge dir. */
   rotateRoot?: "velocity.dir";
   /**
+   * Override the parent layer's bone mask for this state.
+   *   undefined = inherit `SMLayer.mask`
+   *   ""        = full body (no mask), even if the layer carries one
+   *   "<id>"    = override with the named mask
+   *
+   * Lets a single layer mix masked and unmasked states — e.g. the combat
+   * layer's `block` state overrides only the upper body via the layer's
+   * upper_body mask, while its `swing.*` states override the whole body
+   * (since a swing's hip twist + leg drive are part of the motion).
+   */
+  mask?: string;
+  /**
    * Clip playback rate. A number is a fixed multiplier (1 = one full clip
    * cycle per second). "velocity" scales by entity speed / speedReference,
    * letting walk/run cycles match foot-plant cadence. Default 1.
