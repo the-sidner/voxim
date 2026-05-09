@@ -28,13 +28,16 @@ export type {
   LifetimeData,
 } from "./src/components/game.ts";
 export {
-  SkillInProgress,
   Staggered, CounterReady, IFrameActive, BlockHeld, DodgeCooldown,
 } from "./src/components/combat.ts";
 export type {
-  SkillInProgressData, HitRecord,
   IFrameActiveData, BlockHeldData, DodgeCooldownData,
 } from "./src/components/combat.ts";
+export { CharacterStateMachine } from "./src/components/character_state_machine.ts";
+export type { CharacterStateMachineData } from "./src/components/character_state_machine.ts";
+export { SwingContext } from "./src/components/swing_context.ts";
+export type { SwingContextData, HitRecord } from "./src/components/swing_context.ts";
+export { TickEventBuffer } from "./src/tick_events.ts";
 
 // NPC components
 export { NpcTag, NpcJobQueue } from "./src/components/npcs.ts";

@@ -583,11 +583,22 @@ export interface SMState {
   loop?: boolean;
   /**
    * Optional duration in seconds, exposed as `state.duration` in transition
-   * expressions. 0 / absent = unlimited (state never auto-exits).
+   * expressions. 0 / absent = unlimited (state never auto-exits). When a
+   * string (e.g. `"$action.windup_seconds"`), the value is looked up in the
+   * SM scope at tick time — lets swing-phase durations come from the
+   * equipped weapon's WeaponActionDef rather than being hardcoded in JSON.
    */
-  duration?: number;
+  duration?: number | string;
   /** Realign root bone on state-enter. Used by "roll" to face the dodge dir. */
   rotateRoot?: "velocity.dir";
+  /**
+   * Clip playback rate. A number is a fixed multiplier (1 = one full clip
+   * cycle per second). "velocity" scales by entity speed / speedReference,
+   * letting walk/run cycles match foot-plant cadence. Default 1.
+   */
+  speedScale?: number | "velocity";
+  /** Reference speed for "velocity" speedScale (world units / sec). */
+  speedReference?: number;
   /**
    * Conditional partial overrides applied to this state when the condition
    * matches. Key is a DSL condition; value is a partial of SMState replacing

@@ -14,7 +14,8 @@ import { Heightmap, MaterialGrid, CHUNK_SIZE, snapHeight } from "@voxim/world";
 import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
-import { SkillInProgress } from "../components/combat.ts";
+import { SwingContext } from "../components/swing_context.ts";
+import { CharacterStateMachine } from "../components/character_state_machine.ts";
 import { Equipment } from "../components/equipment.ts";
 import { spawnGroundStack } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
@@ -23,7 +24,7 @@ const log = createLogger("TerrainDigSystem");
 
 export class TerrainDigSystem implements System {
   /**
-   * Reads InputState (NpcAi writes via world.write()) and SkillInProgress
+   * Reads InputState (NpcAi writes via world.write()) and SwingContext / CSM
    * (Action writes via world.write() on swing start); both must precede.
    */
   readonly dependsOn = ["NpcAiSystem", "ActionSystem"];
@@ -34,9 +35,12 @@ export class TerrainDigSystem implements System {
     const cfg = this.content.getGameConfig().terrain;
     const digReach = cfg.digReach;
 
-    for (const { entityId, skillInProgress, position } of world.query(SkillInProgress, Position)) {
-      // Fire only on the first tick of the active phase (prevents multi-dig per swing)
-      if (skillInProgress.phase !== "active" || skillInProgress.ticksInPhase !== 0) continue;
+    for (const { entityId, swingContext: _, position } of world.query(SwingContext, Position)) {
+      // Fire only on the first tick of the active phase (CSM elapsed=0 right
+      // after windup→active transition; non-zero on subsequent ticks).
+      const csm = world.get(entityId, CharacterStateMachine);
+      const combat = csm?.layerStates["combat"];
+      if (!combat || combat.node !== "swing.active" || combat.elapsed !== 0) continue;
 
       const equip = world.get(entityId, Equipment);
       if (!equip?.weapon) continue;

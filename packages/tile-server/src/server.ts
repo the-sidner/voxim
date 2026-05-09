@@ -55,6 +55,8 @@ import { HungerSystem } from "./systems/hunger.ts";
 import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionSystem } from "./systems/action.ts";
+import { CharacterStateMachineSystem } from "./systems/character_state_machine.ts";
+import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
@@ -385,6 +387,10 @@ export class TileServer {
       new WorkstationHitHandler(content, recipeSteps),
     ];
 
+    // One-tick event channel from gameplay systems → CSM. Cleared at the end
+    // of CharacterStateMachineSystem.run each tick.
+    const tickEvents = new TickEventBuffer();
+
     // System pipeline, declared in reading order. Real ordering constraints
     // live on each system as `dependsOn` (e.g. PhysicsSystem.dependsOn =
     // ["NpcAiSystem"] because NpcAi writes InputState via world.write() that
@@ -416,9 +422,10 @@ export class TileServer {
       new BuffSystem(effects.tick, effects.compose, deathSystem),
       new PhysicsSystem(content),
       new FogOfWarSystem(),
+      new CharacterStateMachineSystem(content, tickEvents),
       new DodgeSystem(content),
       skill,
-      new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers),
+      new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers, tickEvents),
       new ProjectileSystem(content, hitHandlers),
       new ItemPhysicsSystem(content),
       new TerrainDigSystem(content),

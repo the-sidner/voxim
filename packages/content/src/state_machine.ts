@@ -235,7 +235,7 @@ export function smTickAll(
     const layerScope: Record<string, SMScopeValue> = {
       ...baseScope,
       "state.elapsed": prevState.elapsed,
-      "state.duration": eff.duration ?? 0,
+      "state.duration": resolveDuration(eff.duration, baseScope),
     };
 
     // First matching transition wins (transitions are pre-sorted by priority).
@@ -268,4 +268,20 @@ export function buildCsmVars(state: SMRuntimeState): Record<string, string> {
     out[`csm.${layerId}`] = ls.node;
   }
   return out;
+}
+
+/**
+ * Resolve an SMState `duration` field to a number for `state.duration` lookups.
+ * Numbers pass through; "$var" strings look up `var` in the scope (numeric
+ * values only, others fall back to 0). Absent / non-numeric defaults to 0.
+ */
+export function resolveDuration(
+  duration: number | string | undefined,
+  scope: SMScope,
+): number {
+  if (typeof duration === "number") return duration;
+  if (typeof duration !== "string") return 0;
+  if (!duration.startsWith("$")) return 0;
+  const v = scope[duration.slice(1)];
+  return typeof v === "number" ? v : 0;
 }

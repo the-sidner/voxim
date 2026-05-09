@@ -4,7 +4,7 @@
  * Validates that 5000 unique item entities in inventories don't meaningfully
  * impact per-tick cost. Measures:
  *   - world.query(Inventory) + slot iteration across all inventory holders
- *   - world.query(SkillInProgress) + DurabilitySystem-style weapon lookup
+ *   - world.query(SwingContext) + DurabilitySystem-style weapon lookup
  *   - world.query(ItemData) full scan (linear in item count)
  *
  * Run with:
@@ -14,7 +14,8 @@ import { World, newEntityId } from "@voxim/engine";
 import { ItemData, Inventory } from "../src/components/items.ts";
 import { Durability } from "../src/components/instance.ts";
 import { Equipment } from "../src/components/equipment.ts";
-import { SkillInProgress } from "../src/components/combat.ts";
+import { SwingContext } from "../src/components/swing_context.ts";
+import { CharacterStateMachine } from "../src/components/character_state_machine.ts";
 
 const ITEM_COUNT = 5_000;
 const HOLDER_COUNT = 100;
@@ -61,13 +62,17 @@ function setup(): World {
     weapon: weaponId, offHand: null, head: null, chest: null,
     legs: null, feet: null, back: null,
   });
-  world.write(swingerId, SkillInProgress, {
+  world.write(swingerId, SwingContext, {
     weaponActionId: "slash",
-    phase: "active",
-    ticksInPhase: 0,
-    hitEntities: [],
     rewindTick: 0,
+    hitEntities: [],
     pendingSkillVerb: "",
+    weaponPrefabId: "",
+    weaponQuality: 1,
+  });
+  world.write(swingerId, CharacterStateMachine, {
+    stateMachineId: "humanoid_default",
+    layerStates: { combat: { node: "swing.active", elapsed: 0 } },
   });
 
   return world;
@@ -93,8 +98,10 @@ function benchItemDataScan(world: World): number {
 
 function benchDurabilityPath(world: World): number {
   let hits = 0;
-  for (const { entityId, skillInProgress } of world.query(SkillInProgress)) {
-    if (skillInProgress.phase !== "active" || skillInProgress.ticksInPhase !== 0) continue;
+  for (const { entityId, swingContext: _ } of world.query(SwingContext)) {
+    const csm = world.get(entityId, CharacterStateMachine);
+    const combat = csm?.layerStates["combat"];
+    if (!combat || combat.node !== "swing.active" || combat.elapsed !== 0) continue;
     const equip = world.get(entityId, Equipment);
     if (!equip?.weapon) continue;
     const dur = world.get(equip.weapon as string, Durability);

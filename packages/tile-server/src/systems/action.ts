@@ -1,15 +1,22 @@
 /**
  * ActionSystem — Layer 1 of the hit architecture.
  *
- * Owns everything up to and including confirming that a blade capsule intersected
- * a target's Hitbox. What happens as a result of that hit is entirely delegated to
- * the HitHandler registry — ActionSystem has no knowledge of health, resources,
- * blueprints, or any other game concept.
+ * Owns swing initiation, active-phase hit detection (lag-compensated capsule
+ * sweep), and projectile spawning for ranged actions. Phase progression is
+ * driven by the CSM combat layer (swing.windup → swing.active → swing.winddown
+ * → idle), not by ActionSystem itself.
  *
- * Adding a new hittable entity type:
- *   1. Give the entity a Hitbox component at spawn.
- *   2. Register a HitHandler in server.ts that checks for the relevant component.
- *   ActionSystem never changes.
+ * The mode/payload split (T-182):
+ *   - csm.combat.node = "swing.windup" / "swing.active" / "swing.winddown" /
+ *     "idle" — the authoritative phase. Read by AnimationSystem (animation),
+ *     by damage handlers (block check), by ActionSystem (gating + dispatch).
+ *   - SwingContext (this entity's payload component) — weaponActionId,
+ *     hitEntities dedup set, rewindTick, weapon prefab + quality. Present
+ *     iff csm.combat is in any swing.* state.
+ *
+ * What used to be SkillInProgress is now this split. Phase-tick counters
+ * are derived from `csm.combat.elapsed * tickRateHz`. Hit handlers,
+ * durability, etc. read SwingContext for the gameplay payload.
  *
  * Single code path for players and NPCs. No isNpc branches.
  */
@@ -22,8 +29,9 @@ import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, Facing, Velocity, InputState, Stamina, Lifetime, ModelRef } from "../components/game.ts";
-import { SkillInProgress, Staggered } from "../components/combat.ts";
-import type { SkillInProgressData, HitRecord } from "../components/combat.ts";
+import { Staggered } from "../components/combat.ts";
+import { SwingContext, type SwingContextData, type HitRecord } from "../components/swing_context.ts";
+import { CharacterStateMachine } from "../components/character_state_machine.ts";
 import { Equipment } from "../components/equipment.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
@@ -31,15 +39,21 @@ import { Hitbox } from "../components/hitbox.ts";
 import { ProjectileData } from "../components/projectile.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import type { StateHistoryBuffer, TickSnapshot, EntitySnapshot } from "../state_history.ts";
+import { TickEventBuffer } from "../tick_events.ts";
 import { deductStamina } from "../combat/helpers.ts";
 import { testHitboxIntersection } from "../combat/hit_resolver.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ActionSystem");
 
+const SECONDS_PER_TICK = 1 / 20;
+
 export class ActionSystem implements System {
-  /** Reads InputState written by NpcAi via world.write(); must precede. */
-  readonly dependsOn = ["NpcAiSystem"];
+  /**
+   * Reads csm.combat.node (set by CharacterStateMachineSystem) for phase
+   * detection, and InputState (NpcAi writes via world.write()).
+   */
+  readonly dependsOn = ["NpcAiSystem", "CharacterStateMachineSystem"];
 
   private serverTick = 0;
 
@@ -48,6 +62,7 @@ export class ActionSystem implements System {
     private readonly tickRateHz: number,
     private readonly content: ContentService,
     private readonly handlers: HitHandler[],
+    private readonly tickEvents: TickEventBuffer,
   ) {}
 
   prepare(serverTick: number, _ctx: TickContext): void {
@@ -65,12 +80,11 @@ export class ActionSystem implements System {
       staminaCostPerSwing: combatCfg.unarmed.staminaCostPerSwing,
     };
 
-    // ── 1. Initiate new actions ───────────────────────────────────────────────
+    // ── 1. Initiate new swings ────────────────────────────────────────────────
     for (const { entityId, inputState } of world.query(InputState)) {
       if (!hasAction(inputState.actions, ACTION_USE_SKILL)) continue;
-      const existing = world.get(entityId, SkillInProgress);
-      if (existing) continue;
-
+      // Already swinging? CSM combat node tells us.
+      if (isSwingingNode(combatNode(world, entityId))) continue;
       if (world.has(entityId, Staggered)) continue;
 
       const equipment = world.get(entityId, Equipment);
@@ -84,87 +98,70 @@ export class ActionSystem implements System {
       const stamina = world.get(entityId, Stamina);
       deductStamina(world, entityId, stamina, staminaCost);
 
-      // Find which skill slot (if any) has verb "strike" to fire on connect
       const loreLoadout = world.get(entityId, LoreLoadout);
       const strikeSlot = loreLoadout?.skills.findIndex((s) => s?.verb === "strike") ?? -1;
 
-      // Pick the weapon's swing variant from chargeMs. Walks the equipped
-      // weapon prefab's swingable.actions[] (declared light/heavy/etc.) and
-      // returns the first whose [chargeMin, chargeMax] window contains the
-      // player's chargeMs. Naked swing or weapons without a swingable
-      // declaration fall back to unarmed.
       const swingable = weaponPrefabId
         ? this.content.prefabs.get(weaponPrefabId)?.components["swingable"] as SwingableData | undefined
         : undefined;
       const picked = swingable ? pickWeaponAction(swingable, inputState.chargeMs ?? 0) : null;
       const weaponActionId = picked?.actionId ?? unarmedActionId;
-      // Bake in the weapon we swung with. Downstream phases (resolveHits,
-      // spawnProjectile) derive stats from these fields so a mid-swing
-      // equipment swap can't corrupt damage, blade geometry, or projectile
-      // output. A naked swing stores weaponPrefabId="" and weaponQuality=1.
-      world.write(entityId, SkillInProgress, {
+
+      // Install SwingContext payload, fire event for the SM. CSM transitions
+      // combat → swing.windup next tick.
+      world.write(entityId, SwingContext, {
         weaponActionId,
-        phase: "windup",
-        ticksInPhase: 0,
-        hitEntities: [],
         rewindTick: -1,
+        hitEntities: [],
         pendingSkillVerb: strikeSlot >= 0 ? `strike:${strikeSlot}` : "",
         weaponPrefabId: weaponPrefabId ?? "",
         weaponQuality,
       });
+      this.tickEvents.fire(entityId, "event.swing_started");
 
       log.info("swing start: entity=%s weapon=%s action=%s charge=%dms stamina=%f",
         entityId, weaponPrefabId ?? "unarmed", weaponActionId, inputState.chargeMs ?? 0, stamina?.current ?? 0);
     }
 
-    // ── 2. Advance phase + resolve hits ──────────────────────────────────────
-    for (const { entityId, skillInProgress: sip } of world.query(SkillInProgress)) {
-      const action = this.content.weaponActions.get(sip.weaponActionId);
-      if (!action) {
-        world.remove(entityId, SkillInProgress);
-        continue;
-      }
+    // ── 2. Active-phase hit / projectile dispatch ────────────────────────────
+    // Read csm.combat.node to detect active phase. Hit handling and projectile
+    // spawn fire only during swing.active. Phase advancement itself is owned
+    // by the CSM (state.elapsed >= state.duration transitions); ActionSystem
+    // just observes and dispatches.
+    for (const { entityId, swingContext: sc } of world.query(SwingContext)) {
+      const action = this.content.weaponActions.get(sc.weaponActionId);
+      if (!action) continue;
 
-      // Compute rewindTick once on the first active tick; reuse it for the
-      // entire active phase so every hit in a multi-tick window is evaluated
-      // against the same historical snapshot.
-      let rewindTick = sip.rewindTick;
-      let newHitEntities = sip.hitEntities;
+      const node = combatNode(world, entityId);
+      if (node !== "swing.active") continue;
 
-      if (sip.phase === "active") {
-        if ((action.actionType ?? "melee") === "ranged") {
-          // Ranged: spawn projectile on first active tick; no blade sweep
-          if (sip.ticksInPhase === 0) {
-            this.spawnProjectile(world, entityId, sip, action, unarmed);
-          }
-        } else {
-          // Melee: lag-compensated blade sweep
-          if (rewindTick < 0) {
-            const inputState = world.get(entityId, InputState);
-            const rttMs = inputState?.rttMs ?? 0;
-            const rttTicks = Math.round(rttMs / (1000 / this.tickRateHz));
-            rewindTick = Math.max(0, this.serverTick - rttTicks);
-          }
-          newHitEntities = this.resolveHits(world, events, entityId, sip, unarmed, rewindTick);
+      // Sub-tick within active phase, derived from the CSM elapsed.
+      const csm = world.get(entityId, CharacterStateMachine);
+      const elapsed = csm?.layerStates["combat"]?.elapsed ?? 0;
+      const ticksInPhase = Math.round(elapsed / SECONDS_PER_TICK);
+
+      if ((action.actionType ?? "melee") === "ranged") {
+        // Ranged: spawn projectile on first active tick (rewindTick is the marker).
+        if (sc.rewindTick < 0) {
+          this.spawnProjectile(world, entityId, sc, action, unarmed);
+          // Mark "spawned" by setting rewindTick to a non-negative sentinel.
+          world.set(entityId, SwingContext, { ...sc, rewindTick: 0 });
         }
-      }
-
-      const nextTicks = sip.ticksInPhase + 1;
-      let next: SkillInProgressData = { ...sip, ticksInPhase: nextTicks, hitEntities: newHitEntities, rewindTick };
-
-      if (sip.phase === "windup" && nextTicks >= action.windupTicks) {
-        next = { ...next, phase: "active", ticksInPhase: 0 };
-        log.info("swing active: entity=%s action=%s", entityId, sip.weaponActionId);
-      } else if (sip.phase === "active" && nextTicks >= action.activeTicks) {
-        next = { ...next, phase: "winddown", ticksInPhase: 0 };
-        log.info("swing winddown: entity=%s action=%s hits=%d", entityId, sip.weaponActionId, newHitEntities.length);
-      } else if (sip.phase === "winddown" && nextTicks >= action.winddownTicks) {
-        log.info("swing done: entity=%s action=%s", entityId, sip.weaponActionId);
-        world.remove(entityId, SkillInProgress);
         continue;
       }
 
-      world.set(entityId, SkillInProgress, next);
+      // Melee: lag-compensated blade sweep.
+      let rewindTick = sc.rewindTick;
+      if (rewindTick < 0) {
+        const inputState = world.get(entityId, InputState);
+        const rttMs = inputState?.rttMs ?? 0;
+        const rttTicks = Math.round(rttMs / (1000 / this.tickRateHz));
+        rewindTick = Math.max(0, this.serverTick - rttTicks);
+      }
+      const newHitEntities = this.resolveHits(world, events, entityId, sc, action, unarmed, rewindTick, ticksInPhase);
+      if (newHitEntities !== sc.hitEntities || rewindTick !== sc.rewindTick) {
+        world.set(entityId, SwingContext, { ...sc, rewindTick, hitEntities: newHitEntities });
+      }
     }
   }
 
@@ -172,24 +169,17 @@ export class ActionSystem implements System {
     world: World,
     events: EventEmitter,
     entityId: string,
-    sip: SkillInProgressData,
+    sc: SwingContextData,
+    action: WeaponActionDef,
     unarmed: DerivedItemStats,
     rewindTick: number,
+    ticksInPhase: number,
   ): HitRecord[] {
-    const action = this.content.weaponActions.get(sip.weaponActionId);
-    if (!action) return sip.hitEntities;
-    // resolveHits is only called for melee actions; swingPath is required for melee
-    if (!action.swingPath) return sip.hitEntities;
+    if (!action.swingPath) return sc.hitEntities;
 
-    // Read the weapon captured at swing-start. A mid-swing equipment swap
-    // does not affect hit resolution — the swing completes with its origin
-    // weapon's damage, geometry, and tool-type.
-    const weaponPrefabId2 = sip.weaponPrefabId || null;
-    const weaponStats = weaponPrefabId2 ? this.content.deriveItemStats(weaponPrefabId2, [], sip.weaponQuality) : unarmed;
+    const weaponPrefabId2 = sc.weaponPrefabId || null;
+    const weaponStats = weaponPrefabId2 ? this.content.deriveItemStats(weaponPrefabId2, [], sc.weaponQuality) : unarmed;
 
-    // Derive blade geometry from the equipped weapon's model AABB.
-    // Model Z axis = blade axis (voxel Z maps to Three.js Y for weapon rendering).
-    // Fall back to swingPath defaults for unarmed (no weapon model).
     const weaponPrefab = weaponPrefabId2 ? this.content.prefabs.get(weaponPrefabId2) : null;
     const weaponAabb = weaponPrefab?.modelId
       ? this.content.getModelAabb(weaponPrefab.modelId)
@@ -202,23 +192,20 @@ export class ActionSystem implements System {
       : combat.unarmedBladeRadius;
 
     const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
-    const globalTickPrev = action.windupTicks + sip.ticksInPhase - 1;
-    const globalTickCurr = action.windupTicks + sip.ticksInPhase;
+    const globalTickPrev = action.windupTicks + ticksInPhase - 1;
+    const globalTickCurr = action.windupTicks + ticksInPhase;
     const tPrev = Math.max(0, globalTickPrev / totalTicks);
     const tCurr = globalTickCurr / totalTicks;
 
     let snap = this.stateHistory.getAt(rewindTick);
     if (!snap) {
-      // Rewind fell outside the retained history window (very high RTT or
-      // early-session). Fall back to current world state — hit reg degrades
-      // but still resolves. Log at debug so it's visible without spamming.
       const oldest = this.stateHistory.oldestTick();
       const newest = this.stateHistory.newestTick();
       log.debug("rewind out of window: entity=%s rewindTick=%d window=[%s,%s] — using current state",
         entityId, rewindTick, oldest ?? "?", newest ?? "?");
       snap = this.buildCurrentSnapshot(world);
     }
-    if (!snap) return sip.hitEntities;
+    if (!snap) return sc.hitEntities;
 
     const attackerSnap = snap.entities.find((e) => e.entityId === entityId);
     const ax = attackerSnap?.x ?? (world.get(entityId, Position)?.x ?? 0);
@@ -240,11 +227,7 @@ export class ActionSystem implements System {
     const hiltCurr = localToWorld(poseCurr.hilt.fwd, poseCurr.hilt.right, poseCurr.hilt.up, attackerOrigin, attackFacing);
     const tipCurr  = localToWorld(tipLocalCurr.fwd,  tipLocalCurr.right,  tipLocalCurr.up,  attackerOrigin, attackFacing);
 
-    log.info("resolve: entity=%s pos=(%.1f,%.1f) facing=%.2f t=[%.3f,%.3f] candidates=%d tipFwd=(%.2f→%.2f)",
-      entityId, ax, ay, attackFacing, tPrev, tCurr, snap.entities.length,
-      tipLocalPrev.fwd, tipLocalCurr.fwd);
-
-    const newHitEntities = [...sip.hitEntities];
+    const newHitEntities: HitRecord[] = [...sc.hitEntities];
 
     for (const target of snap.entities) {
       if (target.entityId === entityId) continue;
@@ -255,16 +238,12 @@ export class ActionSystem implements System {
       const broadDist = Math.sqrt(bdx * bdx + bdy * bdy + bdz * bdz);
       if (broadDist > bladeLength + 0.5) continue;
 
-      // Gate: entity must have a Hitbox component with at least one part
       const hitbox = world.get(target.entityId, Hitbox);
       if (!hitbox || hitbox.parts.length === 0) continue;
 
       const targetPos: Vec3 = { x: target.x, y: target.y, z: target.z ?? 0 };
       const targetFacing = target.facing ?? 0;
 
-      // Swept capsule: prev-tick and curr-tick blade segments. Passing both
-      // prevents fast swings from tunneling through a narrow target between
-      // ticks, and keeps the contact point precise whichever segment connected.
       const hit = testHitboxIntersection(
         hitbox,
         targetPos,
@@ -320,31 +299,17 @@ export class ActionSystem implements System {
     return newHitEntities;
   }
 
-  /**
-   * Spawns a projectile entity for a ranged action on the first active tick.
-   *
-   * Spawn origin is resolved in priority order:
-   *   1. action.projectile.spawnOffset — explicit per-weapon muzzle (bow string, spear tip)
-   *   2. action.swingPath hilt at t=active-start — derived from the same path that
-   *      drives melee hit detection and client arm IK, keeping server and client
-   *      weapon geometry consistent
-   *   3. combat.projectileDefaults.spawnOffset — global fallback
-   * All three resolve to entity-local (fwd, right, up) coordinates and are
-   * transformed by localToWorld using the shooter's facing. There is no
-   * hand-picked shoulder-height constant in this code.
-   */
   private spawnProjectile(
     world: World,
     entityId: string,
-    sip: SkillInProgressData,
+    sc: SwingContextData,
     action: WeaponActionDef | undefined,
     unarmed: DerivedItemStats,
   ): void {
     if (!action?.projectile) return;
 
-    // Read the weapon captured at swing-start — same baking as resolveHits.
-    const weaponPrefabId3 = sip.weaponPrefabId || null;
-    const weaponStats = weaponPrefabId3 ? this.content.deriveItemStats(weaponPrefabId3, [], sip.weaponQuality) : unarmed;
+    const weaponPrefabId3 = sc.weaponPrefabId || null;
+    const weaponStats = weaponPrefabId3 ? this.content.deriveItemStats(weaponPrefabId3, [], sc.weaponQuality) : unarmed;
 
     const pos = world.get(entityId, Position);
     const inputState = world.get(entityId, InputState);
@@ -356,12 +321,10 @@ export class ActionSystem implements System {
     const combatCfg = this.content.getGameConfig().combat;
     const worldCfg = this.content.getGameConfig().world;
 
-    // Resolve entity-local muzzle position.
     let localMuzzle: { fwd: number; right: number; up: number };
     if (action.projectile.spawnOffset) {
       localMuzzle = action.projectile.spawnOffset;
     } else if (action.swingPath?.keyframes.length) {
-      // Use the hilt at the start of the active phase — same geometry as melee.
       const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
       const tActive = totalTicks > 0 ? action.windupTicks / totalTicks : 0;
       const pose = evaluateSwingPath(action.swingPath.keyframes, tActive);
@@ -373,7 +336,6 @@ export class ActionSystem implements System {
     const attackerOrigin = { x: pos.x, y: pos.y, z: pos.z };
     const spawn = localToWorld(localMuzzle.fwd, localMuzzle.right, localMuzzle.up, attackerOrigin, facing);
 
-    // Velocity: horizontal component along facing; upward arc seeded for gravity projectiles.
     const vx = Math.cos(facing) * speed;
     const vy = Math.sin(facing) * speed;
     const vz = gravityScale > 0 ? speed * combatCfg.projectileDefaults.arcFactor : 0;
@@ -405,12 +367,6 @@ export class ActionSystem implements System {
       projId, entityId, weaponPrefabId3 ?? "unarmed", speed, facing);
   }
 
-  /**
-   * Fallback snapshot built from current world state.
-   * Used when the history buffer doesn't yet cover the requested rewindTick
-   * (e.g. early in the session). Hit detection degrades gracefully rather than
-   * aborting — positions are current-tick rather than lag-compensated.
-   */
   private buildCurrentSnapshot(world: World): TickSnapshot {
     const entities: EntitySnapshot[] = [];
     for (const { entityId, position } of world.query(Position)) {
@@ -431,4 +387,13 @@ export class ActionSystem implements System {
     }
     return { serverTick: this.serverTick, timestamp: Date.now(), entities };
   }
+}
+
+function combatNode(world: World, entityId: string): string {
+  const csm = world.get(entityId, CharacterStateMachine);
+  return csm?.layerStates["combat"]?.node ?? "idle";
+}
+
+function isSwingingNode(node: string): boolean {
+  return node === "swing.windup" || node === "swing.active" || node === "swing.winddown";
 }

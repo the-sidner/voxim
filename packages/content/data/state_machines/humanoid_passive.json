@@ -31,6 +31,7 @@
         "walk": {
           "clip": "$walk",
           "loop": true,
+          "speedScale": "velocity",
           "paramOverrides": {
             "csm.posture == crouched": { "clip": "$crouch_walk" }
           }

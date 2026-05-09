@@ -32,6 +32,7 @@ import {
 } from "./components/game.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
+import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
@@ -309,6 +310,17 @@ export function spawnPrefab(
   // path where AnimationSystem falls back to the slot name as the clip id.
   if (prefab.animationSlots && Object.keys(prefab.animationSlots).length > 0) {
     world.write(id, AnimationSlots, { slots: { ...prefab.animationSlots } });
+  }
+
+  // CSM: actor prefabs declaring a stateMachineId get the runtime component
+  // installed with empty layerStates. CharacterStateMachineSystem seeds
+  // initial nodes from the SM def on the first tick — keeps the spawner
+  // free of SM-def lookups.
+  if (prefab.stateMachineId) {
+    world.write(id, CharacterStateMachine, {
+      stateMachineId: prefab.stateMachineId,
+      layerStates: {},
+    });
   }
 
   // Raw-material stats live on the prefab and are copied onto the entity at

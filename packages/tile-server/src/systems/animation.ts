@@ -1,211 +1,183 @@
 /**
- * AnimationSystem — derives AnimationState (layer stack + weapon data) from
- * observable entity state each tick.
+ * AnimationSystem — projects the CSM's animation-typed layers into
+ * AnimationLayer[] each tick.
  *
- * Priority order (highest first):
- *   death      — Health.current <= 0
- *   attack     — SkillInProgress present (sets weaponActionId; locomotion layers continue)
- *   crouch_walk / crouch — crouching + moving / crouching only
- *   walk       — velocity magnitude > threshold
- *   idle       — otherwise
+ * Reads CharacterStateMachine layer states (set by CharacterStateMachineSystem
+ * earlier this tick), walks every layer with output: "animation", resolves
+ * the active state's clip via `prefab.animationSlots`, advances per-clip time
+ * from the previous AnimationState, and emits one AnimationLayer per
+ * animation-typed CSM layer. Higher-priority layers compose on top via the
+ * existing AnimationLayer evaluator (HitboxSystem on server, skeleton
+ * evaluator on client).
  *
- * Layer time is advanced here at 20 Hz.  The client receives the authoritative
- * time in each AnimationState delta and uses it directly (no client-side time
- * accumulation for locomotion).
- *
- * Hitbox updates are handled by HitboxSystem, which runs immediately after.
+ * The CSM is the source of truth for "what should this actor be playing."
+ * AnimationSystem is a pure projector — no `if (sip)` branches, no per-state
+ * cascades, no `if (rolling)` overrides. State priorities live in JSON.
  */
 import type { World } from "@voxim/engine";
 import type { DeferredEventQueue } from "../deferred_events.ts";
 import type { System } from "../system.ts";
-import type { ContentService, AnimationStateData, AnimationLayer } from "@voxim/content";
-import { ACTION_CROUCH, hasAction } from "@voxim/protocol";
-import { Velocity, Health, AnimationState, InputState } from "../components/game.ts";
-import { SkillInProgress, Rolling } from "../components/combat.ts";
+import type {
+  ContentService,
+  AnimationStateData,
+  AnimationLayer,
+  CompiledStateMachine,
+  SMRuntimeState,
+  SMScopeValue,
+  SMState,
+} from "@voxim/content";
+import {
+  compileStateMachine,
+  effectiveState,
+  buildCsmVars,
+} from "@voxim/content";
+import { Velocity, AnimationState } from "../components/game.ts";
+import { CharacterStateMachine } from "../components/character_state_machine.ts";
+import { SwingContext } from "../components/swing_context.ts";
 import { AnimationSlots } from "../components/animation_slots.ts";
 
-// ---- constants ----
-
-/**
- * Base time advance per tick for fixed-rate clips (speedScale is a number).
- * speedScale=1 → one full cycle per 20 ticks (1 second at 20 Hz).
- * Structural: derived from the server tick rate, not a tuning knob.
- */
 const TICK_DT = 1 / 20;
 
-// ---- AnimationSystem ----
-
 export class AnimationSystem implements System {
-  /**
-   * Reads InputState (NpcAi writes via world.write() for crouch detection)
-   * and SkillInProgress (Action writes via world.write() on swing start).
-   * Both must precede so this tick's animation layers reflect this tick's input.
-   */
-  readonly dependsOn = ["NpcAiSystem", "ActionSystem"];
+  /** Runs after CSM ticks. */
+  readonly dependsOn = ["CharacterStateMachineSystem", "ActionSystem"];
+
+  /** Compiled SM cache shared with CharacterStateMachineSystem (computed lazily). */
+  private compiledCache = new Map<string, CompiledStateMachine>();
 
   constructor(private readonly content: ContentService) {}
 
-  prepare(_tick: number): void {}
-
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
     const cfg = this.content.getGameConfig();
-    // Reference speed for velocity-scaled clips: the entity's max ground speed
-    // in world units/sec, matching the units stored in the Velocity component.
-    // Walk animation plays at 1× when the entity moves at this speed.
     const walkSpeedRef = cfg.physics.maxGroundSpeed;
-    const walkThresholdSq = cfg.animation.walkSpeedThresholdSq;
-    const animCfg = cfg.animation;
 
-    for (const { entityId, velocity } of world.query(Velocity, AnimationState)) {
-      const health = world.get(entityId, Health);
-      const isDead = health !== null && health.current <= 0;
-      const sip    = isDead ? null : world.get(entityId, SkillInProgress);
-      const input  = isDead ? null : world.get(entityId, InputState);
-      const rolling = isDead ? null : world.get(entityId, Rolling);
+    for (const { entityId, characterStateMachine: csm } of world.query(CharacterStateMachine, AnimationState)) {
+      const compiled = this.getCompiled(csm.stateMachineId);
+      if (!compiled) continue;
 
-      const speed  = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
-      const crouching = input !== null && hasAction(input.actions, ACTION_CROUCH);
-      const moving    = speed * speed > walkThresholdSq;
+      const layerStates: SMRuntimeState = csm.layerStates as SMRuntimeState;
+      const slotMap = world.get(entityId, AnimationSlots)?.slots ?? {};
+      const speed = velocityMagnitude(world, entityId);
+      const prev  = world.get(entityId, AnimationState);
+      const prevTime = getTimeByClip(prev);
 
-      // Determine locomotion clip and advance its time.
-      const current = world.get(entityId, AnimationState);
-      const prevByClip = getTimeByClip(current);
+      // Build the SM scope just well enough to evaluate paramOverrides
+      // (typically just csm.<layer> reads). No need for full input/event vars
+      // here — those gate transitions, not effective-state overrides.
+      const baseScope: Record<string, SMScopeValue> = { ...buildCsmVars(layerStates) };
 
-      let weaponActionId  = "";
-      let ticksIntoAction = 0;
+      const layers: AnimationLayer[] = [];
+      for (const compiledLayer of compiled.layers) {
+        if (compiledLayer.raw.output !== "animation") continue;
 
-      if (sip) {
-        weaponActionId = sip.weaponActionId;
-        // Compute cumulative ticks across phases so the client receives a
-        // monotonically increasing counter the renderer can extrapolate smoothly.
-        const def = this.content.weaponActions.get(sip.weaponActionId);
-        ticksIntoAction = sip.ticksInPhase;
-        if (def) {
-          if (sip.phase === "active")    ticksIntoAction += def.windupTicks;
-          else if (sip.phase === "winddown") ticksIntoAction += def.windupTicks + def.activeTicks;
-        }
+        const lstate = layerStates[compiledLayer.raw.id];
+        if (!lstate) continue;
+
+        const eff = effectiveState(compiledLayer, lstate.node, baseScope);
+        if (!eff.clip) continue; // null clip — layer contributes nothing this tick
+
+        const clipId = resolveClipId(eff.clip, slotMap);
+        if (!clipId) continue;
+
+        const speedScale = eff.speedScale ?? 1;
+        const speedReference = eff.speedReference ?? walkSpeedRef;
+
+        const time = computeClipTime(
+          prevTime.get(clipId) ?? 0,
+          eff,
+          speedScale,
+          speedReference,
+          speed,
+        );
+
+        layers.push({
+          clipId,
+          maskId: compiledLayer.raw.mask ?? "",
+          time,
+          weight: 1,
+          blend: "override",
+          speedScale,
+          speedReference: speedScale === "velocity" ? speedReference : undefined,
+        });
       }
 
-      // Per-prefab slot map lets two prefabs sharing one skeleton play
-      // different clips for the same gameplay state — see AnimationSlots
-      // component docs.  Falls through to the slot name as the clip id so
-      // skeletons authored before the indirection landed keep working.
-      const slotMap = world.get(entityId, AnimationSlots)?.slots ?? {};
-      const slot = (name: string): string => slotMap[name] ?? name;
-
-      // Low health → limp variant.  Slot indirection is honoured: the prefab
-      // can override "walk_limp" to its own injured-style clip if needed.
-      const useLimp = health !== null && health.max > 0 && health.current / health.max < 0.30;
-      const walkClipId = useLimp ? slot("walk_limp") : slot("walk");
-
-      const layers = isDead
-        ? buildDeathLayers(prevByClip, animCfg.deathSpeedScale, slot("death"))
-        : rolling
-          ? buildRollLayers(prevByClip, slot("roll"))
-          : buildLocomotionLayers(
-              prevByClip, crouching, moving, speed, walkSpeedRef,
-              animCfg.idleSpeedScale, animCfg.crouchSpeedScale,
-              walkClipId, slot("idle"), slot("crouch"), slot("crouch_walk"));
+      // weaponActionId/ticksIntoAction still drive client weapon trail/IK
+      // until step 6 retires the IK swing-path. Read from SwingContext if a
+      // swing is in progress (csm.combat in swing.*); empty otherwise.
+      const swing = world.get(entityId, SwingContext);
+      const combatNode = layerStates["combat"]?.node ?? "";
+      const inSwing = combatNode.startsWith("swing.");
+      const weaponActionId  = inSwing && swing ? swing.weaponActionId : "";
+      const ticksIntoAction = inSwing
+        ? Math.round((layerStates["combat"]?.elapsed ?? 0) / TICK_DT)
+        : 0;
 
       const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
-
-      if (!animStatesEqual(current, next)) {
+      if (!animStatesEqual(prev, next)) {
         world.set(entityId, AnimationState, next);
       }
     }
   }
-}
 
-// ---- layer builders ----
-
-function buildDeathLayers(prevByClip: Map<string, number>, deathSpeedScale: number, clipId: string): AnimationLayer[] {
-  const prev = prevByClip.get(clipId) ?? 0;
-  // Clamp at 1.0 — death clip plays once and holds last frame.
-  const time = Math.min(prev + deathSpeedScale * TICK_DT, 1.0);
-  return [{
-    clipId,
-    maskId: "",
-    time,
-    weight: 1,
-    blend: "override",
-    speedScale: deathSpeedScale,
-  }];
-}
-
-// Roll layer — plays the authored "roll" clip across the dodge duration.
-// rollTicks=14 in game_config and TICK_DT=1/20 → 14 ticks × (1/20 s/tick) =
-// 0.7 s of real time. Speed-scale = 1 / 0.7 ≈ 1.43 makes the clip's normalised
-// time span 0→1 over exactly that window. Clamps at 1.0 (non-looping) so the
-// last tick holds the recovery pose instead of snapping back to t=0.
-const ROLL_SPEED_SCALE = 20 / 14;
-
-function buildRollLayers(prevByClip: Map<string, number>, clipId: string): AnimationLayer[] {
-  const prev = prevByClip.get(clipId) ?? 0;
-  const time = Math.min(prev + ROLL_SPEED_SCALE * TICK_DT, 1.0);
-  return [{
-    clipId,
-    maskId: "",
-    time,
-    weight: 1,
-    blend: "override",
-    speedScale: ROLL_SPEED_SCALE,
-  }];
-}
-
-function buildLocomotionLayers(
-  prevByClip: Map<string, number>,
-  crouching: boolean,
-  moving: boolean,
-  speed: number,
-  walkSpeedRef: number,
-  idleSpeedScale: number,
-  crouchSpeedScale: number,
-  walkClipId: string,
-  idleClipId: string,
-  crouchClipId: string,
-  crouchWalkClipId: string,
-): AnimationLayer[] {
-  if (crouching && moving) {
-    return [makeLoop(crouchWalkClipId, prevByClip, "velocity", walkSpeedRef, speed)];
+  private getCompiled(id: string): CompiledStateMachine | null {
+    if (!id) return null;
+    let c = this.compiledCache.get(id);
+    if (!c) {
+      const def = this.content.stateMachines.get(id);
+      if (!def) return null;
+      c = compileStateMachine(def);
+      this.compiledCache.set(id, c);
+    }
+    return c;
   }
-  if (crouching) {
-    return [makeLoop(crouchClipId, prevByClip, crouchSpeedScale)];
-  }
-  if (moving) {
-    return [makeLoop(walkClipId, prevByClip, "velocity", walkSpeedRef, speed)];
-  }
-  return [makeLoop(idleClipId, prevByClip, idleSpeedScale)];
-}
-
-/** Build one looping layer with time advanced from the previous value. */
-function makeLoop(
-  clipId: string,
-  prevByClip: Map<string, number>,
-  speedScale: number | "velocity",
-  speedReference?: number,
-  currentSpeed?: number,
-): AnimationLayer {
-  const prev = prevByClip.get(clipId) ?? 0;
-  let advance: number;
-  if (speedScale === "velocity" && speedReference && currentSpeed !== undefined) {
-    advance = (currentSpeed / speedReference) * TICK_DT;
-  } else if (typeof speedScale === "number") {
-    advance = speedScale * TICK_DT;
-  } else {
-    advance = TICK_DT;
-  }
-  const time = (prev + advance) % 1.0;
-  return { clipId, maskId: "", time, weight: 1, blend: "override", speedScale, speedReference };
 }
 
 // ---- helpers ----
 
-/** Build a clip-id → last time map from the entity's current AnimationState. */
+function velocityMagnitude(world: World, entityId: string): number {
+  const v = world.get(entityId, Velocity);
+  if (!v) return 0;
+  return Math.sqrt(v.x * v.x + v.y * v.y);
+}
+
+/**
+ * Resolve a state's clip reference to an actual clip id.
+ *   "$slot"  → slotMap[slot]  (or empty if not mapped)
+ *   "raw_id" → "raw_id"
+ */
+function resolveClipId(clipRef: string, slotMap: Record<string, string>): string {
+  if (clipRef.startsWith("$")) {
+    const slotName = clipRef.slice(1);
+    return slotMap[slotName] ?? "";
+  }
+  return clipRef;
+}
+
+function computeClipTime(
+  prev: number,
+  state: SMState,
+  speedScale: number | "velocity",
+  speedReference: number,
+  currentSpeed: number,
+): number {
+  let advance: number;
+  if (speedScale === "velocity") {
+    advance = (currentSpeed / speedReference) * TICK_DT;
+  } else {
+    advance = speedScale * TICK_DT;
+  }
+  if (state.loop) {
+    return (prev + advance) % 1.0;
+  }
+  // One-shot: advance and clamp at 1. Per-weapon timing comes from the SM
+  // state's duration (number or scope ref); the projection just walks the
+  // clip from 0 → 1 across whatever real-time window the SM imposes.
+  return Math.min(prev + advance, 1.0);
+}
+
 function getTimeByClip(state: AnimationStateData | null): Map<string, number> {
   const m = new Map<string, number>();
-  for (const l of state?.layers ?? []) {
-    m.set(l.clipId, l.time);
-  }
+  for (const l of state?.layers ?? []) m.set(l.clipId, l.time);
   return m;
 }
 
@@ -219,6 +191,7 @@ function animStatesEqual(a: AnimationStateData | null, b: AnimationStateData): b
     if (la.clipId !== lb.clipId) return false;
     if (Math.abs(la.time - lb.time) > 0.0001) return false;
     if (la.weight !== lb.weight) return false;
+    if (la.maskId !== lb.maskId) return false;
   }
   return true;
 }

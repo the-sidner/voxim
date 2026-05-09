@@ -36,13 +36,14 @@ import {
   Velocity,
 } from "./components/game.ts";
 import {
-  SkillInProgress,
   Staggered,
   CounterReady,
   IFrameActive,
   BlockHeld,
   DodgeCooldown,
 } from "./components/combat.ts";
+import { CharacterStateMachine } from "./components/character_state_machine.ts";
+import { SwingContext } from "./components/swing_context.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
@@ -173,7 +174,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ...NETWORKED_DEFS,
   // ── Server-only defs (networked: false) ──────────────────────────────────
   Hitbox,
-  SkillInProgress,
+  // CSM (T-182): mode tracking + swing payload, both server-only.
+  CharacterStateMachine,
+  SwingContext,
   // Combat counters — server-only because the client doesn't act on them.
   IFrameActive,
   BlockHeld,

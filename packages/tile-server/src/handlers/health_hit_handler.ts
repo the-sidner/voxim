@@ -5,12 +5,12 @@ import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { Health, Stamina } from "../components/game.ts";
 import {
-  SkillInProgress,
   Staggered,
   CounterReady,
   IFrameActive,
   BlockHeld,
 } from "../components/combat.ts";
+import { SwingContext } from "../components/swing_context.ts";
 import { Equipment } from "../components/equipment.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
@@ -148,9 +148,9 @@ export class HealthHitHandler implements HitHandler {
     // Publish-only: SkillSystem subscribes to StrikeLanded on the real bus and
     // applies stamina / cooldown / effect via world.set during the post-changeset
     // flush. Writes land in the next tick's changeset.
-    const sip = world.get(ctx.attackerId, SkillInProgress);
-    if (sip?.pendingSkillVerb.startsWith("strike:")) {
-      const slot = parseInt(sip.pendingSkillVerb.slice(7), 10);
+    const sc = world.get(ctx.attackerId, SwingContext);
+    if (sc?.pendingSkillVerb.startsWith("strike:")) {
+      const slot = parseInt(sc.pendingSkillVerb.slice(7), 10);
       events.publish(TileEvents.StrikeLanded, {
         casterId: ctx.attackerId,
         slot,

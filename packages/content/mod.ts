@@ -150,6 +150,7 @@ export {
   smTickAll,
   buildCsmVars,
   effectiveState,
+  resolveDuration,
 } from "./src/state_machine.ts";
 
 // ---- recipe-graph validator (server boot) ----
