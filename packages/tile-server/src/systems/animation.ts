@@ -35,6 +35,9 @@ import { Velocity, AnimationState } from "../components/game.ts";
 import { CharacterStateMachine } from "../components/character_state_machine.ts";
 import { SwingContext } from "../components/swing_context.ts";
 import { AnimationSlots } from "../components/animation_slots.ts";
+import { createLogger } from "../logger.ts";
+
+const log = createLogger("AnimationSystem");
 
 const TICK_DT = 1 / 20;
 
@@ -42,18 +45,44 @@ export class AnimationSystem implements System {
   /** Runs after CSM ticks. */
   readonly dependsOn = ["CharacterStateMachineSystem", "ActionSystem"];
 
-  /** Compiled SM cache shared with CharacterStateMachineSystem (computed lazily). */
+  /** Compiled SM cache — eager-built at construction so any SM def parse error fails fast at server boot. */
   private compiledCache = new Map<string, CompiledStateMachine>();
+  /** One-shot dedupe for projection failures so a recurring per-entity issue logs once. */
+  private loggedFailures = new Set<string>();
 
-  constructor(private readonly content: ContentService) {}
+  constructor(private readonly content: ContentService) {
+    for (const def of content.stateMachines.values()) {
+      this.compiledCache.set(def.id, compileStateMachine(def));
+    }
+  }
 
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
     const cfg = this.content.getGameConfig();
     const walkSpeedRef = cfg.physics.maxGroundSpeed;
 
     for (const { entityId, characterStateMachine: csm } of world.query(CharacterStateMachine, AnimationState)) {
-      const compiled = this.getCompiled(csm.stateMachineId);
+      const compiled = this.compiledCache.get(csm.stateMachineId);
       if (!compiled) continue;
+      try {
+        this.projectOne(world, entityId, csm, compiled, walkSpeedRef);
+      } catch (err) {
+        const key = `${csm.stateMachineId}:${(err as Error).message}`;
+        if (!this.loggedFailures.has(key)) {
+          this.loggedFailures.add(key);
+          log.error("animation projection failed for entity=%s sm=%s: %s",
+            entityId, csm.stateMachineId, (err as Error).message);
+        }
+      }
+    }
+  }
+
+  private projectOne(
+    world: World,
+    entityId: string,
+    csm: { stateMachineId: string; layerStates: Record<string, { node: string; elapsed: number }> },
+    compiled: CompiledStateMachine,
+    walkSpeedRef: number,
+  ): void {
 
       const layerStates: SMRuntimeState = csm.layerStates as SMRuntimeState;
       const baseSlots = world.get(entityId, AnimationSlots)?.slots ?? {};
@@ -134,19 +163,6 @@ export class AnimationSystem implements System {
       if (!animStatesEqual(prev, next)) {
         world.set(entityId, AnimationState, next);
       }
-    }
-  }
-
-  private getCompiled(id: string): CompiledStateMachine | null {
-    if (!id) return null;
-    let c = this.compiledCache.get(id);
-    if (!c) {
-      const def = this.content.stateMachines.get(id);
-      if (!def) return null;
-      c = compileStateMachine(def);
-      this.compiledCache.set(id, c);
-    }
-    return c;
   }
 }
 

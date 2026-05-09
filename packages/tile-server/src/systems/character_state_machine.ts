@@ -16,7 +16,7 @@
  */
 
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentService, CompiledStateMachine, SMRuntimeState, SMTransitionFired, SMScopeValue } from "@voxim/content";
+import type { ContentService, CompiledStateMachine, SMRuntimeState, SMScopeValue } from "@voxim/content";
 import {
   compileStateMachine,
   smTickAll,
@@ -29,6 +29,9 @@ import { Equipment } from "../components/equipment.ts";
 import { CharacterStateMachine } from "../components/character_state_machine.ts";
 import { SwingContext } from "../components/swing_context.ts";
 import { TickEventBuffer } from "../tick_events.ts";
+import { createLogger } from "../logger.ts";
+
+const log = createLogger("CharacterStateMachineSystem");
 
 /** 20 Hz server tick — one tick = 0.05 seconds. */
 const SECONDS_PER_TICK = 1 / 20;
@@ -43,55 +46,75 @@ export class CharacterStateMachineSystem implements System {
    */
   readonly dependsOn = ["NpcAiSystem", "PhysicsSystem"];
 
-  /** Compiled SM defs cached by id; lazy-built on first use. */
+  /** Compiled SM defs — built eagerly at construction time so any parse / schema error fails fast at server boot, not at the first tick involving an actor that uses the SM. */
   private compiledCache = new Map<string, CompiledStateMachine>();
+  /** Per-SM-id: rate-limit "skipped due to error" log spam to one per id. */
+  private loggedFailures = new Set<string>();
 
   constructor(
     private readonly content: ContentService,
     private readonly tickEvents: TickEventBuffer,
-  ) {}
+  ) {
+    for (const def of content.stateMachines.values()) {
+      try {
+        this.compiledCache.set(def.id, compileStateMachine(def));
+      } catch (err) {
+        log.error("failed to compile state machine '%s': %s", def.id, (err as Error).message);
+        throw err;
+      }
+    }
+  }
 
   run(world: World, _events: EventEmitter, _dt: number): void {
     for (const { entityId, characterStateMachine: csm } of world.query(CharacterStateMachine)) {
-      const compiled = this.getCompiled(csm.stateMachineId);
+      const compiled = this.compiledCache.get(csm.stateMachineId);
       if (!compiled) continue;
 
-      const prev: SMRuntimeState = csm.layerStates as SMRuntimeState;
-      // First tick after spawn: layerStates may be empty. Seed from def.
-      const seeded = Object.keys(prev).length === 0 ? initialSMState(compiled) : prev;
-
-      const scope = buildSMScope(world, entityId, this.tickEvents, this.content);
-
-      const { next, fired } = smTickAll(compiled, seeded, scope, TICK_DT_SECONDS);
-
-      // Transition-event handling: payload components bound to a state are
-      // removed when the CSM exits that state.
-      for (const f of fired) {
-        if (f.layer === "combat" && isSwingNode(f.from) && !isSwingNode(f.to)) {
-          if (world.has(entityId, SwingContext)) world.remove(entityId, SwingContext);
+      try {
+        this.tickOne(world, entityId, csm, compiled);
+      } catch (err) {
+        // One bad entity must not stall the tick loop. Log once per SM id —
+        // the same entity will keep failing if its scope is missing a var,
+        // and we don't want to spam every frame.
+        const key = `${csm.stateMachineId}:${(err as Error).message}`;
+        if (!this.loggedFailures.has(key)) {
+          this.loggedFailures.add(key);
+          log.error("CSM tick failed for entity=%s sm=%s: %s",
+            entityId, csm.stateMachineId, (err as Error).message);
         }
       }
-
-      world.set(entityId, CharacterStateMachine, {
-        stateMachineId: csm.stateMachineId,
-        layerStates: next,
-      });
     }
 
     // One-tick events are consumed by the SM tick above; clear for next frame.
     this.tickEvents.clear();
   }
 
-  private getCompiled(id: string): CompiledStateMachine | null {
-    if (!id) return null;
-    let c = this.compiledCache.get(id);
-    if (!c) {
-      const def = this.content.stateMachines.get(id);
-      if (!def) return null;
-      c = compileStateMachine(def);
-      this.compiledCache.set(id, c);
+  private tickOne(
+    world: World,
+    entityId: EntityId,
+    csm: { stateMachineId: string; layerStates: Record<string, { node: string; elapsed: number }> },
+    compiled: CompiledStateMachine,
+  ): void {
+    const prev: SMRuntimeState = csm.layerStates as SMRuntimeState;
+    // First tick after spawn: layerStates may be empty. Seed from def.
+    const seeded = Object.keys(prev).length === 0 ? initialSMState(compiled) : prev;
+
+    const scope = buildSMScope(world, entityId, this.tickEvents, this.content);
+
+    const { next, fired } = smTickAll(compiled, seeded, scope, TICK_DT_SECONDS);
+
+    // Transition-event handling: payload components bound to a state are
+    // removed when the CSM exits that state.
+    for (const f of fired) {
+      if (f.layer === "combat" && isSwingNode(f.from) && !isSwingNode(f.to)) {
+        if (world.has(entityId, SwingContext)) world.remove(entityId, SwingContext);
+      }
     }
-    return c;
+
+    world.set(entityId, CharacterStateMachine, {
+      stateMachineId: csm.stateMachineId,
+      layerStates: next,
+    });
   }
 }
 
