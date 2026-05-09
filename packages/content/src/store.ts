@@ -49,6 +49,7 @@ import type {
   TileLayout,
   WeaponActionDef,
   VerbDef,
+  StateMachineDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
@@ -82,6 +83,12 @@ export interface ContentService {
    * Multiple skeletons sharing an archetype share the same library entry.
    */
   readonly animationLibraries: ContentRegistryReadonly<AnimationLibrary>;
+  /**
+   * Character State Machines keyed by id (T-182). One actor prefab references
+   * one via `prefab.stateMachineId`. Animation is one of the layer outputs;
+   * gameplay systems also read CSM nodes for mode gating.
+   */
+  readonly stateMachines: ContentRegistryReadonly<StateMachineDef>;
 
   // ---- specialized lookups ----
   /** Resolve a material by its numeric MaterialId (the wire/storage key). */
@@ -180,6 +187,10 @@ export class StaticContentStore implements ContentService {
     kind: "animationLibrary",
     idOf: (lib) => lib.id,
   });
+  public readonly stateMachines = new ContentRegistry<StateMachineDef>({
+    kind: "stateMachine",
+    idOf: (sm) => sm.id,
+  });
 
   // ---- secondary indices ----
   private materialsByNumericId = new Map<MaterialId, MaterialDef>();
@@ -276,6 +287,10 @@ export class StaticContentStore implements ContentService {
 
   registerAnimationLibrary(lib: AnimationLibrary): void {
     this.animationLibraries.register(lib);
+  }
+
+  registerStateMachine(sm: StateMachineDef): void {
+    this.stateMachines.register(sm);
   }
 
   setGameConfig(config: GameConfig): void {

@@ -551,6 +551,113 @@ export interface VerbDef {
   baseMagnitude: number;
 }
 
+// ---- character state machine ----
+
+/**
+ * What a layer's nodes project to.
+ *
+ *   "animation" — contributes one bone-masked clip slot to AnimationLayer[].
+ *   "flag"      — exposes the current node as a queryable enum for other
+ *                 systems (read via csm.<layer> in DSL or via runtime API).
+ *   "mode"      — internal-only; visible to other layers' transitions but
+ *                 produces no external output.
+ */
+export type SMLayerOutput = "animation" | "flag" | "mode";
+
+/**
+ * One state in a CSM layer.
+ *
+ * `clip` and `loop` are only meaningful for layers with output: "animation".
+ * `duration` (in seconds) exposes itself as `state.duration` to transition
+ * expressions on this layer; useful for "play-out" semantics like
+ * `state.elapsed >= state.duration` triggering the next transition.
+ */
+export interface SMState {
+  /**
+   * Clip slot reference. Use "$slotName" to reference a slot resolved via
+   * `prefab.animationSlots`. A bare clip id is also accepted. Null or absent
+   * means no animation contribution. Ignored for non-animation layers.
+   */
+  clip?: string | null;
+  /** Loop the clip when the time reaches 1. Default false. */
+  loop?: boolean;
+  /**
+   * Optional duration in seconds, exposed as `state.duration` in transition
+   * expressions. 0 / absent = unlimited (state never auto-exits).
+   */
+  duration?: number;
+  /** Realign root bone on state-enter. Used by "roll" to face the dodge dir. */
+  rotateRoot?: "velocity.dir";
+  /**
+   * Conditional partial overrides applied to this state when the condition
+   * matches. Key is a DSL condition; value is a partial of SMState replacing
+   * the listed fields while the condition holds. Multiple matching overrides
+   * apply in JSON declaration order; later ones win on conflicts.
+   *
+   * Example: `{ "csm.posture == crouched": { "clip": "$crouch_idle" } }`
+   * swaps the clip when crouched without authoring a separate state.
+   */
+  paramOverrides?: Record<string, Partial<SMState>>;
+}
+
+/**
+ * One transition rule in a layer.
+ * Evaluated each tick; the first matching transition (highest priority,
+ * declaration order on tie) is taken.
+ */
+export interface SMTransition {
+  /**
+   * Source state(s). String or array of strings. Omit (or "*") for "any
+   * state" (still constrained by transitions only firing if the from differs
+   * from the to, to avoid no-op cycling).
+   */
+  from?: string | string[] | "*";
+  to: string;
+  /** DSL expression — see sm_expression.ts. */
+  when: string;
+  /** Higher priority wins when multiple transitions match in one tick. Default 0. */
+  priority?: number;
+}
+
+/**
+ * One layer of a CSM.
+ * Layers are independent axes of state; their nodes compose without exploding
+ * into N×M states.
+ */
+export interface SMLayer {
+  /** Unique within the SM. e.g. "locomotion", "combat", "reaction", "posture". */
+  id: string;
+  output: SMLayerOutput;
+  /** BoneMask id for animation layers. Empty / absent = full body. Ignored for flag/mode. */
+  mask?: string;
+  /** Animation layer override priority (higher = on top). Ignored for flag/mode. Default 0. */
+  priority?: number;
+  /** Initial state id. Must be a key of `states`. */
+  initial: string;
+  /** All states in this layer, keyed by state id. */
+  states: Record<string, SMState>;
+  /** Transition rules. */
+  transitions: SMTransition[];
+}
+
+/**
+ * A Character State Machine definition.
+ *
+ * Authored as JSON in `data/state_machines/{id}.json` and registered on
+ * ContentService.stateMachines. Each actor prefab references one via
+ * `stateMachineId`; the runtime maintains per-actor layer state and projects
+ * animation-typed layers into AnimationLayer[] for rendering.
+ *
+ * The CSM is the shared mode-tracking layer for every actor (player, NPC,
+ * mob, critter, animal). Animation is one consumer; gameplay systems also
+ * read CSM nodes to gate behavior (block mitigation, swing admissibility,
+ * crouch-speed scaling, etc.).
+ */
+export interface StateMachineDef {
+  id: string;
+  layers: SMLayer[];
+}
+
 // ---- biomes ----
 
 /**

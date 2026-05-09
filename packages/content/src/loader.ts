@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef } from "./types.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
@@ -49,7 +49,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, animLibraryArchetypes,
+    biomesRaw, zonesRaw, stateMachinesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -64,6 +64,7 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
     readJsonDir(dataDir, "zones"),
+    readJsonDir(dataDir, "state_machines").catch(() => []),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -137,6 +138,10 @@ async function loadContentStoreInternal(
 
   for (const raw of zonesRaw as ZoneDef[]) {
     store.registerZone(raw);
+  }
+
+  for (const raw of stateMachinesRaw as StateMachineDef[]) {
+    store.registerStateMachine(raw);
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
