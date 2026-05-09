@@ -1,5 +1,5 @@
 {
-  "id": "zombie_attack",
+  "id": "zombie_scratch",
   "loop": false,
   "tracks": {
     "torso_lower": [
@@ -5316,5 +5316,5 @@
     ]
   },
   "_source": "quaternius:UAL2:Zombie_Scratch",
-  "durationSeconds": 1.4333333333333333
+  "durationSeconds": 1.792
 }

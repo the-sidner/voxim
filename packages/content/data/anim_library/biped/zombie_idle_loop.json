@@ -1,5 +1,5 @@
 {
-  "id": "zombie_idle",
+  "id": "zombie_idle_loop",
   "loop": true,
   "tracks": {
     "torso_lower": [
@@ -3972,5 +3972,5 @@
     ]
   },
   "_source": "quaternius:UAL2:Zombie_Idle_Loop",
-  "durationSeconds": 1.0666666666666667
+  "durationSeconds": 1.333
 }

@@ -1,5 +1,5 @@
 {
-  "id": "zombie_death",
+  "id": "hit_knockback",
   "loop": false,
   "tracks": {
     "torso_lower": [
@@ -2532,5 +2532,5 @@
     ]
   },
   "_source": "quaternius:UAL2:Hit_Knockback",
-  "durationSeconds": 0.6666666666666666
+  "durationSeconds": 0.833
 }

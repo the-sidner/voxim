@@ -1,7 +1,7 @@
 {
   "id": "human_base",
   "version": 2,
-  "skeletonId": "human",
+  "skeletonId": "biped",
   "nodes": [],
   "subObjects": [
     {

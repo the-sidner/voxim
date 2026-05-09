@@ -23,7 +23,7 @@ const INPUT: preact.JSX.CSSProperties = {
 const BTN: preact.JSX.CSSProperties = { ...INPUT, cursor: "pointer", padding: "4px 12px" };
 
 export function MixPanel({ content }: Props) {
-  const [skeletonId, setSkeletonId] = useState<string>("human");
+  const [skeletonId, setSkeletonId] = useState<string>("biped");
   const [kind, setKind] = useState<Kind>("additive");
   const [id, setId] = useState<string>("");
   const [base, setBase] = useState<string>("");

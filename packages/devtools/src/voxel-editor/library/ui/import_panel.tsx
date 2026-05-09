@@ -33,7 +33,7 @@ export function ImportPanel({ content }: Props) {
   const [preset, setPreset] = useState<Preset>("quaternius");
   const [presetData, setPresetData] = useState<BoneMapPreset | null>(null);
   const [animIdx, setAnimIdx] = useState<number>(0);
-  const [skeleton, setSkeleton] = useState<string>("human");
+  const [skeleton, setSkeleton] = useState<string>("biped");
   const [clipId, setClipId] = useState<string>("");
   const [loop, setLoop] = useState<boolean>(true);
   const [fps, setFps] = useState<number>(30);

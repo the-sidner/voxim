@@ -2,9 +2,9 @@
   "id": "rotten_knight",
   "modelId": "rotten_knight",
   "animationSlots": {
-    "idle":  "zombie_idle",
-    "walk":  "zombie_walk",
-    "death": "zombie_death"
+    "idle":  "idle_shield_loop",
+    "walk":  "walk_carry_loop",
+    "death": "hit_knockback"
   },
   "components": {
     "npc": {

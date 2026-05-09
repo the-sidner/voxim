@@ -2,9 +2,9 @@
   "id": "drowner",
   "modelId": "drowner",
   "animationSlots": {
-    "idle":  "zombie_idle",
-    "walk":  "zombie_walk",
-    "death": "zombie_death"
+    "idle":  "zombie_idle_loop",
+    "walk":  "zombie_walk_fwd_loop",
+    "death": "hit_knockback"
   },
   "components": {
     "npc": {
