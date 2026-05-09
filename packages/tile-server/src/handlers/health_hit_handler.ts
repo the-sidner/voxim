@@ -165,16 +165,14 @@ export class HealthHitHandler implements HitHandler {
     // Blocked hits don't trigger reaction (CSM stays in `block`).
     if (!isBlocking && damage > 0) {
       this.tickEvents.fire(ctx.targetId, "event.hit");
-      // Direction relative to the target's facing — dot product sign tells us
-      // whether the attacker was in front of or behind the target at the
-      // rewound tick.
-      const attackerDirX = Math.cos(incomingAngle);
-      const attackerDirY = Math.sin(incomingAngle);
+      // Direction from the TARGET TO THE ATTACKER. dot > 0 with target's
+      // forward axis means the attacker is in the half-space the target is
+      // looking at = hit came from the front.
+      const targetToAttackerX = ctx.attackerX - ctx.targetX;
+      const targetToAttackerY = ctx.attackerY - ctx.targetY;
       const targetForwardX = Math.cos(ctx.targetSnapshotFacing);
       const targetForwardY = Math.sin(ctx.targetSnapshotFacing);
-      const dot = attackerDirX * targetForwardX + attackerDirY * targetForwardY;
-      // Note: incomingAngle points from target TO attacker, so a dot > 0 with
-      // target-forward means attacker is in front of target → hit from front.
+      const dot = targetToAttackerX * targetForwardX + targetToAttackerY * targetForwardY;
       if (dot >= 0) this.tickEvents.fire(ctx.targetId, "event.hit.from_front");
       else          this.tickEvents.fire(ctx.targetId, "event.hit.from_back");
       if (damage >= HEAVY_HIT_DAMAGE_THRESHOLD) {
