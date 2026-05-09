@@ -56,7 +56,18 @@ export class AnimationSystem implements System {
       if (!compiled) continue;
 
       const layerStates: SMRuntimeState = csm.layerStates as SMRuntimeState;
-      const slotMap = world.get(entityId, AnimationSlots)?.slots ?? {};
+      const baseSlots = world.get(entityId, AnimationSlots)?.slots ?? {};
+      // During a swing, override `weapon.swing_clip` with the active weapon
+      // action's clipId so the animation matches the equipped weapon, not
+      // the actor-prefab default. SwingContext is present iff csm.combat is
+      // in a swing.* state, which is exactly when the slot resolves.
+      const swing = world.get(entityId, SwingContext);
+      const swingClip = swing
+        ? this.content.weaponActions.get(swing.weaponActionId)?.clipId
+        : undefined;
+      const slotMap = swingClip
+        ? { ...baseSlots, "weapon.swing_clip": swingClip }
+        : baseSlots;
       const speed = velocityMagnitude(world, entityId);
       const prev  = world.get(entityId, AnimationState);
       const prevTime = getTimeByClip(prev);
@@ -101,10 +112,8 @@ export class AnimationSystem implements System {
         });
       }
 
-      // weaponActionId/ticksIntoAction still drive client weapon trail/IK
-      // until step 6 retires the IK swing-path. Read from SwingContext if a
-      // swing is in progress (csm.combat in swing.*); empty otherwise.
-      const swing = world.get(entityId, SwingContext);
+      // weaponActionId/ticksIntoAction still drive the client weapon trail
+      // until that path is rewritten to sample the FK blade endpoints.
       const combatNode = layerStates["combat"]?.node ?? "";
       const inSwing = combatNode.startsWith("swing.");
       const weaponActionId  = inSwing && swing ? swing.weaponActionId : "";

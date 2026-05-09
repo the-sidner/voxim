@@ -23,9 +23,15 @@
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
-import type { ContentService, DerivedItemStats, SwingableData, WeaponActionDef } from "@voxim/content";
+import type {
+  ContentService, DerivedItemStats, SwingableData, WeaponActionDef,
+  AnimationLayer, AnimationClip, BoneMask, BoneDef, SkeletonDef,
+} from "@voxim/content";
 import { pickWeaponAction } from "../components/item_behaviours.ts";
-import { evaluateSwingPath, deriveTip, localToWorld, segSegDistSq } from "@voxim/content";
+import {
+  localToWorld, segSegDistSq,
+  evaluateAnimationLayers, solveSkeleton, applyQuat,
+} from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, Facing, Velocity, InputState, Stamina, Lifetime, ModelRef } from "../components/game.ts";
@@ -175,27 +181,32 @@ export class ActionSystem implements System {
     rewindTick: number,
     ticksInPhase: number,
   ): HitRecord[] {
-    if (!action.swingPath) return sc.hitEntities;
+    if (!action.clipId || !action.blade) {
+      log.warn("melee action %s missing clipId/blade — cannot resolve hits", action.id);
+      return sc.hitEntities;
+    }
 
     const weaponPrefabId2 = sc.weaponPrefabId || null;
     const weaponStats = weaponPrefabId2 ? this.content.deriveItemStats(weaponPrefabId2, [], sc.weaponQuality) : unarmed;
 
-    const weaponPrefab = weaponPrefabId2 ? this.content.prefabs.get(weaponPrefabId2) : null;
-    const weaponAabb = weaponPrefab?.modelId
-      ? this.content.getModelAabb(weaponPrefab.modelId)
-      : null;
-    const entityScale = world.get(entityId, ModelRef)?.scaleX ?? 0.35;
-    const combat = this.content.getGameConfig().combat;
-    const bladeLength = weaponAabb ? weaponAabb.maxZ * entityScale : combat.unarmedBladeLength;
-    const bladeRadius = weaponAabb
-      ? Math.min(weaponAabb.maxX - weaponAabb.minX, weaponAabb.maxY - weaponAabb.minY) / 2 * entityScale
-      : combat.unarmedBladeRadius;
+    const modelRef = world.get(entityId, ModelRef);
+    if (!modelRef) return sc.hitEntities;
+    const skeleton = this.content.getSkeletonForModel(modelRef.modelId);
+    if (!skeleton) return sc.hitEntities;
 
+    const clipIndex = this.content.getClipIndex(skeleton.id);
+    const maskIndex = this.content.getMaskIndex(skeleton.id);
+    const boneIndex = this.content.getBoneIndex(skeleton.id);
+    const entityScale = modelRef.scaleX;
+    const morphValues = modelRef.morphValues;
+    const handBone = action.holdHand ?? "hand_r";
+    const bladeRadius = action.blade.radius;
+
+    // Clip times for the swing's prev and curr ticks. windupTicks ↔ tStart of
+    // active phase in clip-time units. Each tick advances the clip by 1/total.
     const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
-    const globalTickPrev = action.windupTicks + ticksInPhase - 1;
-    const globalTickCurr = action.windupTicks + ticksInPhase;
-    const tPrev = Math.max(0, globalTickPrev / totalTicks);
-    const tCurr = globalTickCurr / totalTicks;
+    const tCurr = Math.min((action.windupTicks + ticksInPhase) / totalTicks, 1);
+    const tPrev = Math.max((action.windupTicks + ticksInPhase - 1) / totalTicks, 0);
 
     let snap = this.stateHistory.getAt(rewindTick);
     if (!snap) {
@@ -213,19 +224,28 @@ export class ActionSystem implements System {
     const az = attackerSnap?.z ?? (world.get(entityId, Position)?.z ?? 0);
     const inputState = world.get(entityId, InputState);
     const attackFacing = attackerSnap?.facing ?? inputState?.facing ?? 0;
-
     const attackerOrigin: Vec3 = { x: ax, y: ay, z: az };
 
-    const posePrev = evaluateSwingPath(action.swingPath.keyframes, tPrev);
-    const poseCurr = evaluateSwingPath(action.swingPath.keyframes, tCurr);
+    const bladeCurr = computeBladeWorld(
+      action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone,
+      skeleton, clipIndex, maskIndex, boneIndex, tCurr, entityScale, morphValues,
+      attackerOrigin, attackFacing,
+    );
+    const bladePrev = computeBladeWorld(
+      action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone,
+      skeleton, clipIndex, maskIndex, boneIndex, tPrev, entityScale, morphValues,
+      attackerOrigin, attackFacing,
+    );
+    if (!bladeCurr || !bladePrev) return sc.hitEntities;
 
-    const tipLocalPrev = deriveTip(posePrev.hilt, posePrev.bladeDir, bladeLength);
-    const tipLocalCurr = deriveTip(poseCurr.hilt, poseCurr.bladeDir, bladeLength);
-
-    const hiltPrev = localToWorld(posePrev.hilt.fwd, posePrev.hilt.right, posePrev.hilt.up, attackerOrigin, attackFacing);
-    const tipPrev  = localToWorld(tipLocalPrev.fwd,  tipLocalPrev.right,  tipLocalPrev.up,  attackerOrigin, attackFacing);
-    const hiltCurr = localToWorld(poseCurr.hilt.fwd, poseCurr.hilt.right, poseCurr.hilt.up, attackerOrigin, attackFacing);
-    const tipCurr  = localToWorld(tipLocalCurr.fwd,  tipLocalCurr.right,  tipLocalCurr.up,  attackerOrigin, attackFacing);
+    // Effective blade reach for broad-phase culling — distance from attacker
+    // origin to the current tip, plus the capsule radius and a small margin.
+    const tipDist = Math.sqrt(
+      (bladeCurr.tip.x - ax) ** 2 +
+      (bladeCurr.tip.y - ay) ** 2 +
+      (bladeCurr.tip.z - az) ** 2,
+    );
+    const broadReach = tipDist + bladeRadius + 0.5;
 
     const newHitEntities: HitRecord[] = [...sc.hitEntities];
 
@@ -236,7 +256,7 @@ export class ActionSystem implements System {
 
       const bdx = target.x - ax, bdy = target.y - ay, bdz = (target.z ?? 0) - az;
       const broadDist = Math.sqrt(bdx * bdx + bdy * bdy + bdz * bdz);
-      if (broadDist > bladeLength + 0.5) continue;
+      if (broadDist > broadReach) continue;
 
       const hitbox = world.get(target.entityId, Hitbox);
       if (!hitbox || hitbox.parts.length === 0) continue;
@@ -249,7 +269,7 @@ export class ActionSystem implements System {
         targetPos,
         targetFacing,
         bladeRadius,
-        [{ from: hiltPrev, to: tipPrev }, { from: hiltCurr, to: tipCurr }],
+        [{ from: bladePrev.base, to: bladePrev.tip }, { from: bladeCurr.base, to: bladeCurr.tip }],
       );
 
       if (!hit) {
@@ -257,8 +277,8 @@ export class ActionSystem implements System {
           const pf = localToWorld(p.fromFwd, p.fromRight, p.fromUp, targetPos, targetFacing);
           const pt = localToWorld(p.toFwd, p.toRight, p.toUp, targetPos, targetFacing);
           const d = Math.min(
-            segSegDistSq(hiltCurr, tipCurr, pf, pt),
-            segSegDistSq(hiltPrev, tipPrev, pf, pt),
+            segSegDistSq(bladeCurr.base, bladeCurr.tip, pf, pt),
+            segSegDistSq(bladePrev.base, bladePrev.tip, pf, pt),
           );
           return `${p.id}:${Math.sqrt(d).toFixed(2)}(r=${(bladeRadius + p.radius).toFixed(2)})`;
         });
@@ -322,17 +342,7 @@ export class ActionSystem implements System {
     const combatCfg = this.content.getGameConfig().combat;
     const worldCfg = this.content.getGameConfig().world;
 
-    let localMuzzle: { fwd: number; right: number; up: number };
-    if (action.projectile.spawnOffset) {
-      localMuzzle = action.projectile.spawnOffset;
-    } else if (action.swingPath?.keyframes.length) {
-      const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
-      const tActive = totalTicks > 0 ? action.windupTicks / totalTicks : 0;
-      const pose = evaluateSwingPath(action.swingPath.keyframes, tActive);
-      localMuzzle = pose.hilt;
-    } else {
-      localMuzzle = combatCfg.projectileDefaults.spawnOffset;
-    }
+    const localMuzzle = action.projectile.spawnOffset ?? combatCfg.projectileDefaults.spawnOffset;
 
     const attackerOrigin = { x: pos.x, y: pos.y, z: pos.z };
     const spawn = localToWorld(localMuzzle.fwd, localMuzzle.right, localMuzzle.up, attackerOrigin, facing);
@@ -397,4 +407,68 @@ function combatNode(world: World, entityId: string): string {
 
 function isSwingingNode(node: string): boolean {
   return node === "swing.windup" || node === "swing.active" || node === "swing.winddown";
+}
+
+/**
+ * Compute world-space blade endpoints (base, tip) from a hand-bone-local
+ * blade definition + an animation clip sampled at `clipTime`.
+ *
+ * Pipeline per call:
+ *   1. evaluateAnimationLayers → bone Euler rotations (solver space)
+ *   2. solveSkeleton → bone world transforms (entity-local solver space)
+ *   3. Look up holdHand transform; rotate+offset blade.baseLocal/tipLocal
+ *   4. Convert solver (x=right, y=up, z=-fwd) → entity-local (right, up, fwd)
+ *   5. localToWorld with attacker origin + facing
+ *
+ * Used for the prev and curr ticks of an active-phase swing so the capsule
+ * sweep covers the actual hand path through the clip — no parametric
+ * swingPath, no IK overlay.
+ */
+function computeBladeWorld(
+  clipId: string,
+  baseLocal: readonly [number, number, number],
+  tipLocal: readonly [number, number, number],
+  handBone: string,
+  skeleton: SkeletonDef,
+  clipIndex: ReadonlyMap<string, AnimationClip>,
+  maskIndex: ReadonlyMap<string, BoneMask>,
+  boneIndex: ReadonlyMap<string, BoneDef>,
+  clipTime: number,
+  entityScale: number,
+  morphValues: Record<string, number> | undefined,
+  attackerOrigin: Vec3,
+  attackFacing: number,
+): { base: Vec3; tip: Vec3 } | null {
+  const layers: AnimationLayer[] = [{
+    clipId,
+    maskId: "",
+    time: clipTime,
+    weight: 1,
+    blend: "override",
+    speedScale: 1,
+  }];
+  const rotations = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, layers);
+  const transforms = solveSkeleton(skeleton, boneIndex, rotations, entityScale, morphValues);
+
+  const hand = transforms.get(handBone);
+  if (!hand) return null;
+
+  // Rotate hand-local blade endpoints into entity-local solver space, then
+  // offset by hand position. baseLocal/tipLocal scale with the entity scale
+  // because they're authored in voxel-rest units (matching bone restX/Y/Z).
+  const baseRot = applyQuat(
+    { x: baseLocal[0] * entityScale, y: baseLocal[1] * entityScale, z: baseLocal[2] * entityScale },
+    hand.rot,
+  );
+  const tipRot = applyQuat(
+    { x: tipLocal[0] * entityScale, y: tipLocal[1] * entityScale, z: tipLocal[2] * entityScale },
+    hand.rot,
+  );
+  const baseSolver = { x: hand.pos.x + baseRot.x, y: hand.pos.y + baseRot.y, z: hand.pos.z + baseRot.z };
+  const tipSolver  = { x: hand.pos.x + tipRot.x,  y: hand.pos.y + tipRot.y,  z: hand.pos.z + tipRot.z  };
+
+  // Solver space → entity-local (fwd, right, up). solver: x=right, y=up, z=-fwd.
+  const base = localToWorld(-baseSolver.z, baseSolver.x, baseSolver.y, attackerOrigin, attackFacing);
+  const tip  = localToWorld(-tipSolver.z,  tipSolver.x,  tipSolver.y,  attackerOrigin, attackFacing);
+  return { base, tip };
 }

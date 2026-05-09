@@ -3,49 +3,11 @@
   "windupTicks": 2,
   "activeTicks": 2,
   "winddownTicks": 3,
-  "animationStyle": "thrust",
-  "staminaCost": 12,
-  "swingPath": {
-    "keyframes": [
-      {
-        "t": 0,
-        "hiltFwd": 0.25,
-        "hiltRight": 0.28,
-        "hiltUp": 1,
-        "bladeFwd": 0.995,
-        "bladeRight": 0.0995,
-        "bladeUp": 0
-      },
-      {
-        "t": 0.231,
-        "hiltFwd": 0.15,
-        "hiltRight": 0.28,
-        "hiltUp": 1,
-        "bladeFwd": 0.995,
-        "bladeRight": 0.0995,
-        "bladeUp": 0
-      },
-      {
-        "t": 0.538,
-        "hiltFwd": 0.5,
-        "hiltRight": 0.22,
-        "hiltUp": 1,
-        "bladeFwd": 1,
-        "bladeRight": 0,
-        "bladeUp": 0
-      },
-      {
-        "t": 1,
-        "hiltFwd": 0.25,
-        "hiltRight": 0.28,
-        "hiltUp": 1,
-        "bladeFwd": 0.995,
-        "bladeRight": 0.0995,
-        "bladeUp": 0
-      }
-    ]
+  "clipId": "stabbing",
+  "blade": {
+    "baseLocal": [0, 0, 0],
+    "tipLocal":  [0, 0, -3.0],
+    "radius":    0.04
   },
-  "ikChainIds": [
-    "right_arm"
-  ]
+  "staminaCost": 12
 }

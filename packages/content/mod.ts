@@ -69,6 +69,7 @@ export type {
   ZoneClassifyRule,
   BehaviorTreeSpec,
   WeaponActionDef,
+  WeaponBladeDef,
   SwingKeyframe,
   WeaponSwingPath,
   IKChainDef,

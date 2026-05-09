@@ -481,16 +481,38 @@ export interface ProjectileActionConfig {
 }
 
 /**
+ * Blade endpoints in hand-bone-local solver space. Hit detection (server)
+ * transforms these by the holding-hand's world matrix at the swing's curr
+ * and prev tick clip times, then sweeps a capsule between the four points.
+ *
+ * Solver space: x=right, y=up, z=-fwd. baseLocal is typically near (0,0,0)
+ * — where the blade meets the hand — and tipLocal extends along the
+ * blade-axis direction the rest pose's hand "points" in.
+ */
+export interface WeaponBladeDef {
+  /** Hand-local point where the blade meets the hand. */
+  baseLocal: [number, number, number];
+  /** Hand-local point at the blade tip. */
+  tipLocal: [number, number, number];
+  /** Capsule radius in world units. */
+  radius: number;
+}
+
+/**
  * Physics definition for one weapon archetype (melee or ranged).
- * Drives the three-phase swing (windup → active → winddown), swing path geometry,
- * animation style tag, and base stamina cost.
+ * Drives the three-phase swing (windup → active → winddown), the swing
+ * animation clip, and the blade-capsule geometry attached to the holding
+ * hand.
  *
- * For melee: swingPath hilt keyframes are the single source of truth:
- *   - Server: swept capsule hit detection (blade geometry derived from weapon model AABB)
- *   - Client: IK arm animation tracks hilt via skeleton ikChains
- *   - Client: trail ribbon from derived tip position
+ * For melee: the SM combat layer plays `clipId`; on each active tick,
+ * ActionSystem evaluates the clip on the attacker's skeleton, reads the
+ * holding hand's world transform, and sweeps a capsule between
+ * `blade.baseLocal` → `blade.tipLocal` at this tick and last tick. Same
+ * lag-comp rewind mechanism as before — just with a clip-driven blade
+ * path instead of a parametric swingPath.
  *
- * For ranged: projectile config drives spawn on first active tick; no blade sweep.
+ * For ranged: `projectile` config drives spawn on first active tick; no
+ * blade sweep.
  *
  * Weapons reference this by id via the Swingable component (`weaponActionId` field).
  */
@@ -502,22 +524,46 @@ export interface WeaponActionDef {
   activeTicks: number;
   /** Ticks of recovery after the active phase before the action is complete. */
   winddownTicks: number;
-  /** Tag used by the client to look up this weapon action for animation + trail rendering. */
-  animationStyle: string;
+  /**
+   * Animation clip id played by the CSM combat layer during this swing.
+   * Looked up in the entity's skeleton archetype's animation library.
+   * Optional for now — actions without a clipId fall back to the
+   * actor-prefab `weapon.swing_clip` slot during the transition window.
+   */
+  clipId?: string;
+  /**
+   * Blade geometry in hand-bone-local solver space. Required for melee
+   * actions; absent for ranged. Hit detection transforms these endpoints
+   * by the holding hand's world matrix each active tick.
+   */
+  blade?: WeaponBladeDef;
+  /**
+   * Bone the weapon (or attack-anchor for bites/claws) is attached to.
+   * Hit detection reads this bone's world transform each active tick.
+   * Default "hand_r". Use any bone id from the actor's skeleton; e.g.
+   * "head" for a biter, "foot_r" for a kicker.
+   */
+  holdHand?: string;
   /** Flat stamina deducted when the action is initiated (before skill costs). */
   staminaCost: number;
   /** "melee" (default when absent) or "ranged". */
   actionType?: "melee" | "ranged";
-  /** Hilt path + blade direction through entity-local space. Required for melee, absent for ranged. */
-  swingPath?: WeaponSwingPath;
   /** Projectile spawn parameters. Required for ranged, absent for melee. */
   projectile?: ProjectileActionConfig;
   /**
-   * IK chain IDs (from the skeleton's ikChains) to activate during this action.
-   * The skeleton owns bone names and pole hints; this list just selects which chains fire.
-   * e.g. ["right_arm"] for a one-handed slash, ["right_arm", "left_arm"] for overhead.
+   * @deprecated Legacy entity-local hilt path. The server no longer reads
+   * this — clip-driven hand FK supersedes it. Still consumed by the client
+   * weapon-trail ribbon until the trail is rewritten to sample the FK
+   * blade endpoints directly. Will be retired once the client trail
+   * migration lands.
    */
-  ikChainIds?: string[];
+  swingPath?: WeaponSwingPath;
+  /**
+   * @deprecated Animation tag used by the IK-driven arm path that retired
+   * in T-182 step 6. Kept on the type only because old JSONs still carry
+   * it; the loader ignores extra keys.
+   */
+  animationStyle?: string;
 }
 
 // ---- body part volumes ----

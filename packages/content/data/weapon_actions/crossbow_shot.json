@@ -4,7 +4,7 @@
   "windupTicks": 30,
   "activeTicks": 1,
   "winddownTicks": 25,
-  "animationStyle": "crossbow_draw",
+  "clipId": "standing_aim_recoil",
   "staminaCost": 5,
   "projectile": {
     "speed": 28,

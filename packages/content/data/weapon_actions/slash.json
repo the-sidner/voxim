@@ -3,49 +3,11 @@
   "windupTicks": 2,
   "activeTicks": 2,
   "winddownTicks": 4,
-  "animationStyle": "slash",
-  "staminaCost": 10,
-  "swingPath": {
-    "keyframes": [
-      {
-        "t": 0,
-        "hiltFwd": 0.3,
-        "hiltRight": 0.3,
-        "hiltUp": 0.95,
-        "bladeFwd": 0.1414,
-        "bladeRight": 0.9899,
-        "bladeUp": 0
-      },
-      {
-        "t": 0.267,
-        "hiltFwd": 0.4,
-        "hiltRight": 0.35,
-        "hiltUp": 0.9,
-        "bladeFwd": 0.7958,
-        "bladeRight": 0.6048,
-        "bladeUp": 0.0318
-      },
-      {
-        "t": 0.533,
-        "hiltFwd": 0.45,
-        "hiltRight": -0.25,
-        "hiltUp": 0.85,
-        "bladeFwd": 0.7526,
-        "bladeRight": -0.6585,
-        "bladeUp": 0
-      },
-      {
-        "t": 1,
-        "hiltFwd": 0.3,
-        "hiltRight": -0.25,
-        "hiltUp": 0.8,
-        "bladeFwd": 0.4041,
-        "bladeRight": -0.9091,
-        "bladeUp": -0.101
-      }
-    ]
+  "clipId": "great_sword_slash",
+  "blade": {
+    "baseLocal": [0, 0, 0],
+    "tipLocal":  [0, 0, -2.5],
+    "radius":    0.05
   },
-  "ikChainIds": [
-    "right_arm"
-  ]
+  "staminaCost": 10
 }
