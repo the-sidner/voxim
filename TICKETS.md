@@ -3484,7 +3484,7 @@ biped library; both creatures animate from the shared library; no
 `_skeleton` field anywhere; clip-splice code path gone.
 
 ### T-179 · Canonical biped skeleton + full UAL2 clip suite
-Effort: M   Status: done
+Effort: M   Status: done   Commit: 9cb79df
 
 Author `data/skeletons/biped.json` from the UAL2 bind directly: 17 bones
 using UAL bone names (pelvis, spine_01/02/03, neck_01, Head, clavicle_l/r,
