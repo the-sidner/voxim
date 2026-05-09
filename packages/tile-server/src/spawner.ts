@@ -33,6 +33,7 @@ import {
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
 import { CharacterStateMachine } from "./components/character_state_machine.ts";
+import { compileStateMachine, initialSMState } from "@voxim/content";
 import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
@@ -313,13 +314,16 @@ export function spawnPrefab(
   }
 
   // CSM: actor prefabs declaring a stateMachineId get the runtime component
-  // installed with empty layerStates. CharacterStateMachineSystem seeds
-  // initial nodes from the SM def on the first tick — keeps the spawner
-  // free of SM-def lookups.
+  // installed with seeded initial layer states so AnimationSystem on the
+  // first tick sees a populated CSM (otherwise it'd see `{}` due to
+  // deferred world.set semantics from CharacterStateMachineSystem and emit
+  // a one-tick rest-pose AnimationState).
   if (prefab.stateMachineId) {
+    const def = content.stateMachines.get(prefab.stateMachineId);
+    const layerStates = def ? initialSMState(compileStateMachine(def)) : {};
     world.write(id, CharacterStateMachine, {
       stateMachineId: prefab.stateMachineId,
-      layerStates: {},
+      layerStates,
     });
   }
 
