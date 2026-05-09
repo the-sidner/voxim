@@ -1,7 +1,8 @@
 {
   "id": "player",
   "extends": "_playable_character",
-  "modelId": "human_base",
+  "modelId": "biped_skeletal",
+  "modelScale": 1.2,
   "components": {
     "player": {
       "startingInventory": [

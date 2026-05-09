@@ -1,0 +1,13 @@
+{
+  "_comment": "Generic bone-segment debug model. A 1×4×1 column of voxels along the model's +Y axis, intended to be attached to a bone and stretched/scaled per-segment by biped_skeletal. Mixamo bones have local +Y aligned with the bone direction (toward the child), so this column visually fills the bone when attached with no extra rotation.",
+  "id": "bone_segment",
+  "version": 1,
+  "nodes": [
+    { "x": 0, "y": 0, "z": 0, "materialId": 105 },
+    { "x": 0, "y": 1, "z": 0, "materialId": 105 },
+    { "x": 0, "y": 2, "z": 0, "materialId": 105 },
+    { "x": 0, "y": 3, "z": 0, "materialId": 105 }
+  ],
+  "subObjects": [],
+  "materials": [105]
+}
