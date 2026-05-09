@@ -24,7 +24,7 @@ import {
 } from "@voxim/content";
 import { ACTION_BLOCK, ACTION_DODGE, ACTION_CROUCH, ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4, ACTION_USE_SKILL, ACTION_JUMP, ACTION_CONSUME, hasAction } from "@voxim/protocol";
 import type { System, EventEmitter } from "../system.ts";
-import { Velocity, Health, InputState } from "../components/game.ts";
+import { Velocity, Health, InputState, Facing } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
 import { CharacterStateMachine } from "../components/character_state_machine.ts";
 import { SwingContext } from "../components/swing_context.ts";
@@ -137,11 +137,21 @@ export function buildSMScope(
 ): Record<string, SMScopeValue> {
   const scope: Record<string, SMScopeValue> = {};
 
-  // Velocity → magnitude. Direction left at 0,0 unless we need it later.
+  // Velocity → magnitude + character-relative components. vel.forward and
+  // vel.strafe let the SM pick directional locomotion clips (walk forward
+  // vs back, left vs right strafe) instead of a single omni-direction walk.
   const vel = world.get(entityId, Velocity);
   const vx = vel?.x ?? 0;
   const vy = vel?.y ?? 0;
   scope["vel.mag"] = Math.sqrt(vx * vx + vy * vy);
+
+  const facingAngle = world.get(entityId, Facing)?.angle ?? 0;
+  const fwdX = Math.cos(facingAngle);
+  const fwdY = Math.sin(facingAngle);
+  // forward = vel · facing
+  scope["vel.forward"] = vx * fwdX + vy * fwdY;
+  // strafe = vel · right; right is facing rotated -90°: (fwdY, -fwdX)
+  scope["vel.strafe"]  = vx * fwdY - vy * fwdX;
 
   // Health.
   const health = world.get(entityId, Health);

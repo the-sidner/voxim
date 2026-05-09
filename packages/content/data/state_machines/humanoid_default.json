@@ -27,15 +27,38 @@
             "csm.posture == crouched": { "clip": "$crouch_idle" }
           }
         },
-        "walk": {
-          "clip": "$walk",
+        "walk_forward": {
+          "clip": "$walk_forward",
           "loop": true,
           "speedScale": "velocity",
           "paramOverrides": {
-            "csm.posture == crouched": { "clip": "$crouch_walk" }
+            "csm.posture == crouched": { "clip": "$crouch_walk_forward" }
           }
         },
-        "run":      { "clip": "$run",      "loop": true, "speedScale": "velocity" },
+        "walk_backward": {
+          "clip": "$walk_backward",
+          "loop": true,
+          "speedScale": "velocity",
+          "paramOverrides": {
+            "csm.posture == crouched": { "clip": "$crouch_walk_backward" }
+          }
+        },
+        "strafe_left": {
+          "clip": "$strafe_left",
+          "loop": true,
+          "speedScale": "velocity",
+          "paramOverrides": {
+            "csm.posture == crouched": { "clip": "$crouch_strafe_left" }
+          }
+        },
+        "strafe_right": {
+          "clip": "$strafe_right",
+          "loop": true,
+          "speedScale": "velocity",
+          "paramOverrides": {
+            "csm.posture == crouched": { "clip": "$crouch_strafe_right" }
+          }
+        },
         "roll":     { "clip": "$roll",     "loop": false, "duration": 0.6, "rotateRoot": "velocity.dir" },
         "airborne": { "clip": "$airborne", "loop": true }
       },
@@ -44,8 +67,10 @@
         { "from": "airborne", "to": "idle", "when": "event.landed" },
         { "to": "roll",          "when": "input.dodge && state.elapsed > 0.05", "priority": 10 },
         { "from": "roll", "to": "idle", "when": "state.elapsed >= state.duration" },
-        { "to": "run",           "when": "vel.mag > 4 && csm.posture != crouched" },
-        { "to": "walk",          "when": "vel.mag > 0.5" },
+        { "to": "walk_forward",  "when": "vel.forward > 0.5" },
+        { "to": "walk_backward", "when": "vel.forward < -0.5" },
+        { "to": "strafe_right",  "when": "vel.strafe > 0.5" },
+        { "to": "strafe_left",   "when": "vel.strafe < -0.5" },
         { "to": "idle",          "when": "vel.mag < 0.2" }
       ]
     },
