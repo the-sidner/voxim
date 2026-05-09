@@ -39,7 +39,7 @@ import { InstancePool, type InstanceSlot } from "./instance_pool.ts";
 import { buildSubModelGeo } from "./voxel_geo.ts";
 import { getVoxelTexture } from "./material_textures.ts";
 import { canopyFade } from "./canopy_fade.ts";
-import { evaluatePose, evaluateWeaponSlice, buildDriveContext, applyIKChains } from "./skeleton_evaluator.ts";
+import { evaluatePose, evaluateWeaponSlice } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
@@ -1193,11 +1193,10 @@ export class VoximRenderer {
         // Elapsed fractional ticks since last server update — used for 60fps extrapolation.
         const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
 
-        // IK post-pass: build drive context (hilt position etc.) then solve arm chains.
-        if (skeleton?.ikChains?.length && weaponAction?.ikChainIds?.length) {
-          const driveCtx = buildDriveContext(anim, this.weaponActionsMap, elapsed, mesh.bladeDimensions?.length);
-          applyIKChains(mesh, skeleton, weaponAction.ikChainIds, driveCtx);
-        }
+        // T-182 step 6: the IK-during-swing arm post-pass is gone — swings now
+        // come from the CSM combat layer's clip-driven animation, so the arms
+        // are part of the FK pose like every other bone. No per-weapon arm
+        // override is needed at render time.
 
         // Compute normalised action time t for attachment and trail positioning.
         const totalTicks = weaponAction
