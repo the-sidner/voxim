@@ -200,7 +200,7 @@ export class VoximGame {
     // ids. Subsequent reconnects pick up server-side content edits for free.
     const blob = this.connection.bootstrapBlob();
     if (blob) {
-      this.contentService = BootstrapSource.load(blob);
+      this.contentService = await BootstrapSource.load(blob);
       setContentService(this.contentService);
       this.content.setBootstrapService(this.contentService);
       console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons, ${this.contentService.animationLibraries.size} animation libraries`);
@@ -638,7 +638,7 @@ export class VoximGame {
       // tile-specific overrides). Picks up server restarts for free.
       const blob = conn.bootstrapBlob();
       if (blob) {
-        this.contentService = BootstrapSource.load(blob);
+        this.contentService = await BootstrapSource.load(blob);
         setContentService(this.contentService);
         this.content?.setBootstrapService(this.contentService);
         console.log(`[Game] content service re-hydrated for new tile`);

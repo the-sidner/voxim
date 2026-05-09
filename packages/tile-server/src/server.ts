@@ -283,8 +283,8 @@ export class TileServer {
     // Pre-encode the bootstrap blob once — every joining client gets a copy
     // after TileJoinAck. Encoding here means a single allocation per server
     // process; the same Uint8Array reference is sent to every session.
-    this.contentBlob = encodeBootstrap(content);
-    console.log(`[TileServer] content bootstrap blob: ${(this.contentBlob.length / 1024).toFixed(1)} KB`);
+    this.contentBlob = await encodeBootstrap(content);
+    console.log(`[TileServer] content bootstrap blob: ${(this.contentBlob.length / 1024).toFixed(1)} KB (gzipped)`);
 
     // Effect handler registries — apply/tick/compose are plug-in points for
     // SkillSystem and BuffSystem. Built-in effects are registered here; every

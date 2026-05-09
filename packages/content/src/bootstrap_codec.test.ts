@@ -11,8 +11,8 @@ import { encodeBootstrap, decodeBootstrap, BOOTSTRAP_VERSION } from "./bootstrap
 
 Deno.test("bootstrap codec round-trips every registry", async () => {
   const src = await JsonSource.load();
-  const blob = encodeBootstrap(src);
-  const dst = decodeBootstrap(blob);
+  const blob = await encodeBootstrap(src);
+  const dst = await decodeBootstrap(blob);
 
   // Registry-wise count parity
   assertEquals(dst.materials.size,           src.materials.size);
@@ -38,8 +38,8 @@ Deno.test("bootstrap codec round-trips every registry", async () => {
 
 Deno.test("bootstrap codec preserves item content (sample probe)", async () => {
   const src = await JsonSource.load();
-  const blob = encodeBootstrap(src);
-  const dst = decodeBootstrap(blob);
+  const blob = await encodeBootstrap(src);
+  const dst = await decodeBootstrap(blob);
 
   // Probe the canonical biped skeleton + its archetype tag (T-179 / T-178)
   const biped = dst.skeletons.getOrThrow("biped");
@@ -59,10 +59,10 @@ Deno.test("bootstrap codec preserves item content (sample probe)", async () => {
   assertEquals(typeof dst.getGameConfig().player.inventoryCapacity, "number");
 });
 
-Deno.test("bootstrap codec rejects bad magic / wrong version", () => {
+Deno.test("bootstrap codec rejects bad magic / wrong version", async () => {
   const garbage = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0, 0, 0, 0, 0, 0, 0, 0]);
   let threw = false;
-  try { decodeBootstrap(garbage); } catch (e) {
+  try { await decodeBootstrap(garbage); } catch (e) {
     threw = true;
     if (!(e as Error).message.includes("bad magic")) throw e;
   }
@@ -75,7 +75,7 @@ Deno.test("bootstrap codec rejects bad magic / wrong version", () => {
   view.setUint32(4, BOOTSTRAP_VERSION + 99, true);
   view.setUint32(8, 0, true);
   threw = false;
-  try { decodeBootstrap(wrongVer); } catch (e) {
+  try { await decodeBootstrap(wrongVer); } catch (e) {
     threw = true;
     if (!(e as Error).message.includes("version")) throw e;
   }
@@ -84,10 +84,10 @@ Deno.test("bootstrap codec rejects bad magic / wrong version", () => {
 
 Deno.test("bootstrap codec rejects truncated body", async () => {
   const src = await JsonSource.load();
-  const blob = encodeBootstrap(src);
+  const blob = await encodeBootstrap(src);
   const truncated = blob.slice(0, blob.length - 100);
   let threw = false;
-  try { decodeBootstrap(truncated); } catch (e) {
+  try { await decodeBootstrap(truncated); } catch (e) {
     threw = true;
     if (!(e as Error).message.includes("truncated")) throw e;
   }

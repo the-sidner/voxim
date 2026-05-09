@@ -30,7 +30,7 @@ import type {
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 1;
+export const BOOTSTRAP_VERSION = 2;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -55,12 +55,61 @@ interface ContentBootstrap {
 }
 
 /**
+ * gzip a Uint8Array via Web Streams CompressionStream (available in both
+ * Deno and modern browsers). Returns the compressed bytes.
+ */
+async function gzip(input: Uint8Array): Promise<Uint8Array> {
+  const cs = new CompressionStream("gzip");
+  const writer = cs.writable.getWriter();
+  // deno-lint-ignore no-explicit-any
+  writer.write(input as any);
+  writer.close();
+  const out: Uint8Array[] = [];
+  const reader = cs.readable.getReader();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (value) out.push(value);
+  }
+  let total = 0;
+  for (const c of out) total += c.length;
+  const merged = new Uint8Array(total);
+  let off = 0;
+  for (const c of out) { merged.set(c, off); off += c.length; }
+  return merged;
+}
+
+async function gunzip(input: Uint8Array): Promise<Uint8Array> {
+  const ds = new DecompressionStream("gzip");
+  const writer = ds.writable.getWriter();
+  // deno-lint-ignore no-explicit-any
+  writer.write(input as any);
+  writer.close();
+  const out: Uint8Array[] = [];
+  const reader = ds.readable.getReader();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (value) out.push(value);
+  }
+  let total = 0;
+  for (const c of out) total += c.length;
+  const merged = new Uint8Array(total);
+  let off = 0;
+  for (const c of out) { merged.set(c, off); off += c.length; }
+  return merged;
+}
+
+/**
  * Encode a ContentService into a transport-ready blob.
  *
  * Iterates each registry once, captures the singleton config, JSON-encodes,
- * and prepends the magic + version + length frame.
+ * gzips, and prepends the magic + version + length frame. The body is
+ * gzipped because at scale (350+ clips with dense keyframes) the raw JSON
+ * runs 20-30 MB; gzip cuts it to ~3-5 MB which fits comfortably in a single
+ * WT handshake send.
  */
-export function encodeBootstrap(service: ContentService): Uint8Array {
+export async function encodeBootstrap(service: ContentService): Promise<Uint8Array> {
   const body: ContentBootstrap = {
     materials:           [...service.materials.values()],
     models:              [...service.models.values()],
@@ -82,12 +131,14 @@ export function encodeBootstrap(service: ContentService): Uint8Array {
 
   const json = JSON.stringify(body);
   const jsonBytes = new TextEncoder().encode(json);
-  const out = new Uint8Array(12 + jsonBytes.length);
+  const compressed = await gzip(jsonBytes);
+  const out = new Uint8Array(12 + compressed.length);
   const view = new DataView(out.buffer);
   view.setUint32(0, MAGIC, true);
   view.setUint32(4, BOOTSTRAP_VERSION, true);
-  view.setUint32(8, jsonBytes.length, true);
-  out.set(jsonBytes, 12);
+  // bodyLength == compressed bytes length. Decoder gunzips the body.
+  view.setUint32(8, compressed.length, true);
+  out.set(compressed, 12);
   return out;
 }
 
@@ -99,7 +150,7 @@ export function encodeBootstrap(service: ContentService): Uint8Array {
  * Throws on magic mismatch (caught at the call site by the network layer)
  * or version mismatch (caller should reload after a fresh handshake).
  */
-export function decodeBootstrap(blob: Uint8Array): ContentService {
+export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService> {
   if (blob.length < 12) {
     throw new Error(`bootstrap_codec: blob too short (${blob.length} bytes)`);
   }
@@ -118,7 +169,8 @@ export function decodeBootstrap(blob: Uint8Array): ContentService {
   if (blob.length < 12 + len) {
     throw new Error(`bootstrap_codec: truncated body (claimed ${len} bytes, blob has ${blob.length - 12})`);
   }
-  const jsonBytes = new Uint8Array(blob.buffer, blob.byteOffset + 12, len);
+  const compressedBytes = new Uint8Array(blob.buffer, blob.byteOffset + 12, len);
+  const jsonBytes = await gunzip(compressedBytes);
   const body = JSON.parse(new TextDecoder().decode(jsonBytes)) as ContentBootstrap;
 
   const store = new StaticContentStore();
@@ -147,7 +199,7 @@ export function decodeBootstrap(blob: Uint8Array): ContentService {
  * `load()` shape so callers don't care which source built the content.
  */
 export class BootstrapSource {
-  static load(blob: Uint8Array): ContentService {
+  static load(blob: Uint8Array): Promise<ContentService> {
     return decodeBootstrap(blob);
   }
 }

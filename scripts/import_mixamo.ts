@@ -137,17 +137,46 @@ async function convertAnim(
 
 console.log(`[import_mixamo] input=${INPUT} output=${OUTPUT} map=${MAP} fps=${FPS}${DRY ? " (DRY RUN)" : ""}`);
 
-let inputFiles: string[] = [];
-try {
-  for await (const e of Deno.readDir(INPUT)) {
-    if (e.isFile && e.name.toLowerCase().endsWith(".fbx")) inputFiles.push(e.name);
+// Extract any .zip packs under INPUT into INPUT/_extracted/{pack}/. Idempotent
+// — skips packs already extracted. Mixamo "Pack" downloads are zips of FBX.
+async function extractZips(root: string): Promise<void> {
+  for await (const e of Deno.readDir(root)) {
+    if (!e.isFile || !e.name.toLowerCase().endsWith(".zip")) continue;
+    const stem = e.name.replace(/\.zip$/i, "").replace(/[\s\-\.]+/g, "_").toLowerCase();
+    const dst = `${root}/_extracted/${stem}`;
+    try { await Deno.stat(dst); continue; } catch { /* not extracted yet */ }
+    await Deno.mkdir(dst, { recursive: true });
+    console.log(`  unzip "${e.name}" → _extracted/${stem}/`);
+    const cmd = new Deno.Command("unzip", {
+      args: ["-q", `${root}/${e.name}`, "-d", dst],
+      stderr: "inherit",
+    });
+    if ((await cmd.output()).code !== 0) {
+      console.error(`  unzip failed for ${e.name}`);
+    }
   }
+}
+
+// Recursive .fbx walk. Returns full paths.
+async function collectFbx(dir: string, out: string[]): Promise<void> {
+  for await (const e of Deno.readDir(dir)) {
+    const full = `${dir}/${e.name}`;
+    if (e.isDirectory) await collectFbx(full, out);
+    else if (e.isFile && e.name.toLowerCase().endsWith(".fbx")) out.push(full);
+  }
+}
+
+let inputPaths: string[] = [];
+try {
+  await extractZips(INPUT);
+  await collectFbx(INPUT, inputPaths);
 } catch (err) {
   console.error(`[import_mixamo] cannot read input dir: ${(err as Error).message}`);
   console.error(`[import_mixamo] hint: download Mixamo FBX exports into ${INPUT}/`);
   Deno.exit(1);
 }
-inputFiles.sort();
+inputPaths.sort();
+const inputFiles = inputPaths;
 
 if (inputFiles.length === 0) {
   console.log(`[import_mixamo] no .fbx files in ${INPUT}/`);
@@ -159,7 +188,8 @@ const fbx2gltf = DRY ? "" : await ensureFbx2gltf();
 const tmpGlb = "/tmp/mixamo_import.glb";
 
 let imported = 0, skipped = 0, failed = 0;
-for (const fname of inputFiles) {
+for (const fpath of inputFiles) {
+  const fname = fpath.split("/").pop()!;
   const clipId = clipIdFromFilename(fname);
   const loop = shouldLoop(fname);
   const outPath = `${OUTPUT}/${clipId}.json`;
@@ -177,7 +207,7 @@ for (const fname of inputFiles) {
   if (DRY) { imported++; continue; }
 
   try {
-    await fbxToGlb(fbx2gltf, `${INPUT}/${fname}`, tmpGlb);
+    await fbxToGlb(fbx2gltf, fpath, tmpGlb);
     const clip = await convertAnim(tmpGlb, MAP, clipId, loop, FPS);
     if (!clip) { failed++; continue; }
 
