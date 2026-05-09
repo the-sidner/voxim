@@ -8,17 +8,15 @@
  *   3. Resample rotation tracks at a fixed timestep (slerp between source
  *      keyframes).  Translation/scale channels are ignored — our format has
  *      no translation tracks; locomotion comes from the entity's velocity.
- *   4. Retarget to identity rest: emit `R = A * B^-1` per frame — the rotation
- *      in parent-local frame from source's bind to source's animated. Applied
- *      to a target with identity rest, this reproduces the source's animation
- *      direction (small approximation when source/target binds differ in
- *      orientation, exact when they match).
- *      Quaternion → Euler XYZ (radians).
- *   5. Apply per-bone rest-pose delta (radians, additive) for cosmetic tuning.
- *
- * When a target skeleton declares its own bind via `BoneDef.restRotX/Y/Z`
- * matching the source's bind (T-179 work), the retargeting becomes exact
- * (post-multiply cancels source bind, restRot reapplies target bind).
+ *   4. Convert each per-bone quaternion `A` directly to Euler XYZ (radians).
+ *      No retargeting math — when our biped's bone tree, positions, and bind
+ *      rotations match the source rig (extracted via `scripts/extract_biped.ts`),
+ *      the source's parent-local quaternion at every frame IS the bone's
+ *      parent-local rotation we want. Applying a delta (`R = A * B^-1`) would
+ *      double-correct for the bind we already encoded as restRot.
+ *   5. Apply per-bone rest-pose delta (radians, additive) for cosmetic tuning
+ *      — only useful when the bone map's source rig differs slightly from
+ *      what the biped expects (Quaternius A-pose-vs-T-pose nudges, etc.).
  *
  * Usage:
  *   deno run -A scripts/convert_anim.ts <input.glb> <library> \
@@ -30,7 +28,7 @@
  * skeleton JSON's "clips" array.
  */
 
-import { NodeIO } from "npm:@gltf-transform/core@4.2";
+import { NodeIO, Node } from "npm:@gltf-transform/core@4.2";
 import { Euler, Quaternion } from "npm:three@0.167.0";
 
 interface BoneMap {
@@ -97,17 +95,68 @@ if (animations.length === 0) {
   Deno.exit(1);
 }
 
+// Build the source scene tree once — we walk it to discover which Mixamo
+// bones collapse onto the same biped target (e.g. LeftShoulder + LeftArm →
+// upper_arm_l). For each target with multiple mapped sources, we compose
+// their per-frame quaternions in tree-order so the target's parent-local
+// rotation accounts for every step in the chain.
+const nodeByName = new Map<string, Node>();
+const parentOf   = new Map<Node, Node | null>();
+for (const root of doc.getRoot().listScenes()[0]?.listChildren() ?? []) {
+  walkScene(root, null);
+}
+function walkScene(node: Node, parent: Node | null) {
+  nodeByName.set(node.getName(), node);
+  parentOf.set(node, parent);
+  for (const child of node.listChildren()) walkScene(child, node);
+}
+
+// Build target → chain (root-to-leaf source order). For a target with one
+// mapped source, the chain is just that source. For a target with multiple,
+// the chain walks from the deepest source up while every ancestor also maps
+// to the same target — collapsed chain ends when the parent maps elsewhere.
+const chainsPerTarget = new Map<string, string[]>();
+{
+  const sourcesPerTarget = new Map<string, string[]>();
+  for (const [src, tgt] of Object.entries(map.bones)) {
+    const list = sourcesPerTarget.get(tgt) ?? [];
+    list.push(src);
+    sourcesPerTarget.set(tgt, list);
+  }
+  for (const [target, sources] of sourcesPerTarget) {
+    // Find the deepest source in the GLB tree. That's the chain's leaf.
+    let leaf: string | null = null;
+    let leafDepth = -1;
+    for (const src of sources) {
+      const node = nodeByName.get(src);
+      if (!node) continue;
+      let depth = 0;
+      let cur: Node | null | undefined = parentOf.get(node);
+      while (cur) { depth++; cur = parentOf.get(cur); }
+      if (depth > leafDepth) { leafDepth = depth; leaf = src; }
+    }
+    if (!leaf) continue;
+    // Walk up from leaf, including ancestors that also map to this target.
+    const sourceSet = new Set(sources);
+    const chain: string[] = [];
+    let cur: Node | null | undefined = nodeByName.get(leaf);
+    while (cur && sourceSet.has(cur.getName())) {
+      chain.unshift(cur.getName());
+      cur = parentOf.get(cur);
+    }
+    chainsPerTarget.set(target, chain);
+  }
+}
+
 const clips: ClipOutput[] = [];
 for (const anim of animations) {
   const animName = anim.getName() || "anim_unnamed";
   if (wantedClip && animName !== wantedClip) continue;
 
-  // Collect rotation channels per source bone.
+  // Collect rotation channels per *source* bone (one per Mixamo node).
   type SourceTrack = {
     times: number[];
     quats: [number, number, number, number][];
-    /** Source node's bind-pose rotation, captured for the retarget transform. */
-    bind: [number, number, number, number];
   };
   const sourceTracks = new Map<string, SourceTrack>();
   let maxTime = 0;
@@ -117,8 +166,7 @@ for (const anim of animations) {
     const node = channel.getTargetNode();
     if (!node) continue;
     const sourceName = node.getName();
-    const targetName = map.bones[sourceName];
-    if (!targetName) continue;
+    if (!map.bones[sourceName]) continue;
 
     const sampler = channel.getSampler();
     if (!sampler) continue;
@@ -134,14 +182,7 @@ for (const anim of animations) {
       quats.push([flat[i * 4], flat[i * 4 + 1], flat[i * 4 + 2], flat[i * 4 + 3]]);
       if (times[i] > maxTime) maxTime = times[i];
     }
-    const nodeBind = node.getRotation() as [number, number, number, number] | undefined;
-    const bind: [number, number, number, number] = nodeBind ?? [0, 0, 0, 1];
-    // If the same target bone appears twice (e.g. multiple source bones map
-    // to the same target), the later channel wins. Warn and overwrite.
-    if (sourceTracks.has(targetName)) {
-      console.error(`warning: ${sourceName} → ${targetName} overwrites earlier channel`);
-    }
-    sourceTracks.set(targetName, { times, quats, bind });
+    sourceTracks.set(sourceName, { times, quats });
   }
 
   if (sourceTracks.size === 0) {
@@ -158,26 +199,38 @@ for (const anim of animations) {
   const numSamples = Math.max(2, Math.round(maxTime * fps) + 1);
   const tracks: Record<string, ClipKeyframe[]> = {};
   const tmpQuat = new Quaternion();
+  const tmpAcc  = new Quaternion();
   const tmpEuler = new Euler();
 
-  const tmpBindInv = new Quaternion();
-  const tmpRetarget = new Quaternion();
-  for (const [boneName, src] of sourceTracks) {
-    const restDelta = map.restDeltas?.[boneName] ?? [0, 0, 0];
-    // R = A * B^-1 — post-multiply by inverse bind.  Pre-multiply (B^-1 * A)
-    // also produces a rotation of the same magnitude but expresses it in
-    // bind-local axes; visually fine for symmetric bipeds close to T-pose,
-    // but breaks for asymmetric or non-identity bind chains. Post-multiply
-    // is the correct retargeting transform for identity-rest targets.
-    tmpBindInv.set(src.bind[0], src.bind[1], src.bind[2], src.bind[3]).invert();
+  for (const [target, chain] of chainsPerTarget) {
+    const restDelta = map.restDeltas?.[target] ?? [0, 0, 0];
     const out: ClipKeyframe[] = [];
+    // For each chain bone, look up its bind quat (used as constant when no
+    // animation channel exists for that bone) and animation track if any.
+    const chainData = chain.map((src) => {
+      const node = nodeByName.get(src);
+      const bind = node ? node.getRotation() as [number, number, number, number] : [0, 0, 0, 1] as [number, number, number, number];
+      const track = sourceTracks.get(src) ?? null;
+      return { src, bind, track };
+    });
     for (let i = 0; i < numSamples; i++) {
       const tNorm = i / (numSamples - 1);
       const tSec = tNorm * maxTime;
-      const q = sampleQuat(src.times, src.quats, tSec);
-      tmpQuat.set(q[0], q[1], q[2], q[3]);
-      tmpRetarget.multiplyQuaternions(tmpQuat, tmpBindInv);
-      tmpEuler.setFromQuaternion(tmpRetarget, "XYZ");
+      // Compose chain quats in tree order: outer (closer to root) ×
+      // ... × inner (target). This produces the parent-local rotation of
+      // our biped's collapsed bone — equivalent to Mixamo's recursive FK
+      // through the collapsed sub-tree.
+      tmpAcc.set(0, 0, 0, 1);
+      for (const cd of chainData) {
+        if (cd.track) {
+          const q = sampleQuat(cd.track.times, cd.track.quats, tSec);
+          tmpQuat.set(q[0], q[1], q[2], q[3]);
+        } else {
+          tmpQuat.set(cd.bind[0], cd.bind[1], cd.bind[2], cd.bind[3]);
+        }
+        tmpAcc.multiply(tmpQuat);
+      }
+      tmpEuler.setFromQuaternion(tmpAcc, "XYZ");
       out.push({
         time: round(tNorm, 4),
         rotX: round(tmpEuler.x + restDelta[0], 4),
@@ -185,7 +238,12 @@ for (const anim of animations) {
         rotZ: round(tmpEuler.z + restDelta[2], 4),
       });
     }
-    tracks[boneName] = out;
+    // Skip emitting tracks for targets whose chain had no animation at all
+    // (nothing in the chain has a track). Otherwise the output bloats with
+    // constant-bind tracks for static bones.
+    if (chainData.some((cd) => cd.track !== null)) {
+      tracks[target] = out;
+    }
   }
 
   clips.push({

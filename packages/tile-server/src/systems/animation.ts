@@ -41,6 +41,16 @@ const log = createLogger("AnimationSystem");
 
 const TICK_DT = 1 / 20;
 
+/**
+ * DEBUG: when true, AnimationSystem emits empty AnimationLayer[] for every
+ * entity, so the skeleton FK (server HitboxSystem + client renderer) falls
+ * through to the rest pose. Use this to verify that the biped's bind /
+ * voxel-rest orientation is correct before diagnosing animation issues.
+ *
+ * Revert to `false` after the visual check.
+ */
+const DEBUG_FORCE_REST_POSE = false;
+
 export class AnimationSystem implements System {
   /** Runs after CSM ticks. */
   readonly dependsOn = ["CharacterStateMachineSystem", "ActionSystem"];
@@ -83,6 +93,12 @@ export class AnimationSystem implements System {
     compiled: CompiledStateMachine,
     walkSpeedRef: number,
   ): void {
+    if (DEBUG_FORCE_REST_POSE) {
+      const prev = world.get(entityId, AnimationState);
+      const next: AnimationStateData = { layers: [], weaponActionId: "", ticksIntoAction: 0 };
+      if (!animStatesEqual(prev, next)) world.set(entityId, AnimationState, next);
+      return;
+    }
 
       const layerStates: SMRuntimeState = csm.layerStates as SMRuntimeState;
       const baseSlots = world.get(entityId, AnimationSlots)?.slots ?? {};
