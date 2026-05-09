@@ -3,11 +3,13 @@
   "archetype": "biped",
   "bones": [
     {
+      "_comment": "restRotY = π reconciles two conflicting forward-direction conventions: the renderer's mesh.group rotation formula (-facing.angle - π/2) effectively assumes the character's authored forward is entity -Y, but Mixamo's bind orientation after our axis swap puts forward at entity +Y. Without this 180° spin at root, every bone-driven body would face exactly opposite of where the engine thinks it's facing. The spin cascades through the bone hierarchy because root has no clip track, so its rotation is never overwritten.",
       "id": "root",
       "parent": null,
       "restX": 0,
       "restY": 0,
-      "restZ": 0
+      "restZ": 0,
+      "restRotY": 3.14159265
     },
     {
       "id": "torso_lower",
