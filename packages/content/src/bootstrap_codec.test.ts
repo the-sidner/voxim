@@ -41,13 +41,15 @@ Deno.test("bootstrap codec preserves item content (sample probe)", async () => {
   const blob = encodeBootstrap(src);
   const dst = decodeBootstrap(blob);
 
-  // Probe a few items we know exist: a creature with rest rotations
-  const drowner = dst.skeletons.getOrThrow("drowner");
-  assertEquals(drowner.bones.length, src.skeletons.getOrThrow("drowner").bones.length);
-  // restRotX on torso_lower (UAL bind) should round-trip exactly.
-  const tlSrc = src.skeletons.getOrThrow("drowner").bones.find((b) => b.id === "torso_lower")!;
-  const tlDst = drowner.bones.find((b) => b.id === "torso_lower")!;
-  assertEquals(tlDst.restRotX, tlSrc.restRotX);
+  // Probe the canonical biped skeleton + its archetype tag (T-179 / T-178)
+  const biped = dst.skeletons.getOrThrow("biped");
+  assertEquals(biped.bones.length, src.skeletons.getOrThrow("biped").bones.length);
+  assertEquals(biped.archetype, "biped");
+
+  // Per-prefab morphValues survive the codec (T-180)
+  const drownerPrefab = dst.prefabs.getOrThrow("drowner");
+  assertEquals(drownerPrefab.morphValues?.armLength, 1.4);
+  assertEquals(drownerPrefab.morphValues?.headSize, 1.1);
 
   // Tag indexing rebuilt on hydrate
   const metals = dst.materials.byTag("metal").map((m) => m.name).sort();

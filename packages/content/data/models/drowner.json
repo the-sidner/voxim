@@ -1,7 +1,7 @@
 {
   "id": "drowner",
   "version": 1,
-  "skeletonId": "drowner",
+  "skeletonId": "biped",
   "hitbox": {
     "minX": -1.5,
     "minY": -1.5,

@@ -152,6 +152,16 @@ export interface ModelRefData {
    * Example: { "blade": "iron", "grip": "oak" }
    */
   materialBindings?: Record<string, string>;
+  /**
+   * Per-instance morph param overrides (T-180). Set at spawn from
+   * `prefab.morphValues`; takes precedence over the seed-randomized values
+   * computed by `resolveMorphParams`. Lets a single canonical skeleton
+   * (the biped archetype) carry many distinct creatures by varying
+   * proportions: drowner gets longer arms, rotten knight gets a giant
+   * right arm, human gets defaults. Networked so server and client morph
+   * identically.
+   */
+  morphValues?: Record<string, number>;
 }
 
 // ---- item system ----
@@ -788,6 +798,16 @@ export interface Prefab {
    * here fall through to the slot name itself as the clip id (back-compat).
    */
   animationSlots?: Record<string, string>;
+  /**
+   * Per-prefab morph param overrides (T-180). At spawn, the spawner copies
+   * these values onto `ModelRefData.morphValues` so server and client both
+   * see the same morphs over the wire. Keys must match
+   * `SkeletonDef.morphParams[].id`; unknown keys are ignored. Lets one
+   * canonical skeleton (e.g. the biped archetype) drive every humanoid:
+   * drowner sets `armLength: 1.4`, rotten knight sets `rightArmScale: 1.5`,
+   * human leaves defaults.
+   */
+  morphValues?: Record<string, number>;
   /**
    * Generic category. Recipes match inputs by category (e.g. "wood",
    * "cordage", "ingot"). Loose filter — no central schema, just convention.

@@ -227,6 +227,10 @@ function installVisualShell(
     modelId: prefab.modelId,
     scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
     seed,
+    // T-180: per-prefab morph param overrides travel with the entity so
+    // server and client morph identically. Empty / undefined when the
+    // prefab declares no overrides.
+    morphValues: prefab.morphValues,
   });
 
   if ("hitbox" in prefab.components) return;

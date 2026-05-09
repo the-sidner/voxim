@@ -3506,7 +3506,7 @@ plays distinct walk vs. run vs. attack from library clips; AnimationSlots
 mappings resolve cleanly.
 
 ### T-180 · Migrate creatures to biped via morphs (retire one-off skeletons)
-Effort: M   Status: todo
+Effort: M   Status: done
 
 Drowner, rotten_knight, human, bandit, archer, villager all migrate to
 `skeletonId: "biped"`. Per-prefab morph values express proportions:

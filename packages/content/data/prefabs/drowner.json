@@ -6,6 +6,14 @@
     "walk":  "zombie_walk_fwd_loop",
     "death": "hit_knockback"
   },
+  "morphValues": {
+    "armLength":     1.4,
+    "legLength":     0.85,
+    "torsoHeight":   0.95,
+    "shoulderWidth": 0.85,
+    "headSize":      1.1,
+    "hipWidth":      0.9
+  },
   "components": {
     "npc": {
       "npcType": "drowner"

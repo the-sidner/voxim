@@ -168,6 +168,12 @@ export interface EntityMeshGroup {
    */
   modelScale: number;
   /**
+   * Per-instance morph param overrides from ModelRef.morphValues (T-180).
+   * Drives `resolveMorphParams` so the same morphs apply on client + server.
+   * Undefined when the prefab declares no overrides — random fill applies.
+   */
+  modelMorphs?: Record<string, number>;
+  /**
    * Floating name label sprite parented to the group. Null when the entity
    * has no Name component / an empty name. Maintained by syncNameLabel each
    * tick the entity state advances.

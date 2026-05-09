@@ -6,6 +6,12 @@
     "walk":  "walk_carry_loop",
     "death": "hit_knockback"
   },
+  "morphValues": {
+    "torsoHeight":   1.1,
+    "shoulderWidth": 1.15,
+    "rightArmScale": 1.5,
+    "leftArmScale":  0.9
+  },
   "components": {
     "npc": {
       "npcType": "rotten_knight"

@@ -493,13 +493,25 @@ export function resolveSubObjects(subObjects: SubObjectRef[], seed: number): Res
 export function resolveMorphParams(
   skeleton: import("./types.ts").SkeletonDef,
   seed: number,
+  overrides?: Record<string, number>,
 ): Record<string, number> {
-  if (!skeleton.morphParams?.length) return {};
+  if (!skeleton.morphParams?.length) return overrides ? { ...overrides } : {};
   // XOR with a magic constant to produce a different PRNG stream from resolveSubObjects.
   const rand = makePrng((seed ^ 0xA3C5E7F9) >>> 0);
   const result: Record<string, number> = {};
   for (const param of skeleton.morphParams) {
-    result[param.id] = param.min + rand() * (param.max - param.min);
+    // Per-instance overrides (T-180) take precedence over the seed-randomized
+    // value. Unknown override keys are accepted silently — they fall through
+    // when the skeleton doesn't declare a matching morph param.
+    if (overrides && param.id in overrides) {
+      result[param.id] = overrides[param.id];
+      // Still consume one PRNG value so absent overrides downstream stay
+      // deterministic — re-seeded streams must produce identical sequences
+      // regardless of which params the prefab overrides.
+      rand();
+    } else {
+      result[param.id] = param.min + rand() * (param.max - param.min);
+    }
   }
   return result;
 }

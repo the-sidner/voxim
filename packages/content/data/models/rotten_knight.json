@@ -1,7 +1,7 @@
 {
   "id": "rotten_knight",
   "version": 1,
-  "skeletonId": "rotten_knight",
+  "skeletonId": "biped",
   "hitbox": {
     "minX": -2.5,
     "minY": -1.5,

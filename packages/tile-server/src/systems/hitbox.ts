@@ -70,7 +70,7 @@ export class HitboxSystem implements System {
         : REST_POSE;
 
       // Resolve morph params once — same seed as client, deterministic.
-      const morphParams = resolveMorphParams(skeleton, modelRef.seed);
+      const morphParams = resolveMorphParams(skeleton, modelRef.seed, modelRef.morphValues);
 
       // FK solve → bone world transforms.
       const boneTransforms = solveSkeleton(skeleton, boneIndex, poseRotations, modelRef.scaleX, morphParams, transformMap);

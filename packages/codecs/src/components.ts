@@ -377,9 +377,14 @@ export const counterReadyCodec: Serialiser<CounterReadyData> = {
 };
 
 // ---- ModelRef ---------------------------------------------------------------
-// { modelId: string, scaleX: f32, scaleY: f32, scaleZ: f32, seed: u32 }
+// { modelId: string, scaleX/Y/Z: f32, seed: u32, morphValues: u8 count + (str,f32)... }
 // Note: ModelRefData also has optional materialBindings — not transmitted over the wire
 // (server never needs to round-trip that field).
+//
+// `morphValues` (T-180) — prefab-prescribed morph param overrides. Travels
+// with the entity so server and client morph identically. Empty map (count=0)
+// is the common case; only creatures with prefab-level proportion overrides
+// pay the bytes (a few key/value pairs).
 
 export const modelRefCodec: Serialiser<ModelRefData> = {
   encode(v: ModelRefData): Uint8Array {
@@ -389,17 +394,27 @@ export const modelRefCodec: Serialiser<ModelRefData> = {
     w.writeF32(v.scaleY);
     w.writeF32(v.scaleZ);
     w.writeU32(v.seed);
+    const entries = v.morphValues ? Object.entries(v.morphValues) : [];
+    w.writeU8(entries.length);
+    for (const [k, val] of entries) { w.writeStr(k); w.writeF32(val); }
     return w.toBytes();
   },
   decode(bytes: Uint8Array): ModelRefData {
     const r = new WireReader(bytes);
-    return {
+    const out: ModelRefData = {
       modelId: r.readStr(),
       scaleX: r.readF32(),
       scaleY: r.readF32(),
       scaleZ: r.readF32(),
       seed: r.readU32(),
     };
+    const morphCount = r.readU8();
+    if (morphCount > 0) {
+      const morphValues: Record<string, number> = {};
+      for (let i = 0; i < morphCount; i++) morphValues[r.readStr()] = r.readF32();
+      out.morphValues = morphValues;
+    }
+    return out;
   },
 };
 

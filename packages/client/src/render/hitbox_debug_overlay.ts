@@ -178,7 +178,7 @@ export class HitboxDebugOverlay implements ManagedOverlay {
     const seen = new Set<string>();
 
     for (const [entityId, mesh] of ctx.entityMeshes) {
-      const { modelId, skeletonId, animationState, modelSeed, modelScale } = mesh;
+      const { modelId, skeletonId, animationState, modelSeed, modelScale, modelMorphs } = mesh;
       if (!modelId || !skeletonId || modelScale === 0) continue;
 
       const skeleton = ctx.content.getSkeletonSync(skeletonId);
@@ -194,7 +194,7 @@ export class HitboxDebugOverlay implements ManagedOverlay {
         ? evaluateAnimationLayers(skeleton, clipIndex, maskIndex, animationState.layers)
         : REST_POSE;
 
-      const morphParams   = resolveMorphParams(skeleton, modelSeed);
+      const morphParams   = resolveMorphParams(skeleton, modelSeed, modelMorphs);
       const boneTransforms = solveSkeleton(skeleton, boneIndex, poseRotations, modelScale, morphParams);
       const parts          = applyHitboxTemplate(template, boneTransforms);
       if (parts.length === 0) continue;

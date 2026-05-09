@@ -644,8 +644,9 @@ export class VoximRenderer {
           // holds real geometry instead of the placeholder.
           this.hoverOutline?.notifyEntityRebuilt(entityId);
           this.interactionSystem?.refreshEntityShape(entityId);
-          capture.modelSeed  = modelRef.seed  ?? 0;
-          capture.modelScale = modelRef.scaleX ?? 0;
+          capture.modelSeed   = modelRef.seed  ?? 0;
+          capture.modelScale  = modelRef.scaleX ?? 0;
+          capture.modelMorphs = modelRef.morphValues;
           this._skeletonOverlay.trackEntity(entityId, capture, skeleton);
 
           // Record each sub-object's transform so armor anchors can be placed
