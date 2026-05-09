@@ -17,7 +17,6 @@
     {
       "id": "locomotion",
       "output": "animation",
-      "mask": "lower_body",
       "priority": 0,
       "initial": "idle",
       "states": {
@@ -57,7 +56,7 @@
       "priority": 1,
       "initial": "idle",
       "states": {
-        "idle":           { "clip": "$combat_idle",      "loop": true },
+        "idle":           { "clip": null },
         "swing.windup":   { "clip": "$weapon.swing_clip", "loop": false, "duration": "$action.windup_seconds" },
         "swing.active":   { "clip": "$weapon.swing_clip", "loop": false, "duration": "$action.active_seconds" },
         "swing.winddown": { "clip": "$weapon.swing_clip", "loop": false, "duration": "$action.winddown_seconds" },

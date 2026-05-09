@@ -17,7 +17,6 @@
     {
       "id": "locomotion",
       "output": "animation",
-      "mask": "lower_body",
       "priority": 0,
       "initial": "idle",
       "states": {

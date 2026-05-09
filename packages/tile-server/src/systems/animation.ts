@@ -112,14 +112,23 @@ export class AnimationSystem implements System {
         });
       }
 
-      // weaponActionId/ticksIntoAction still drive the client weapon trail
-      // until that path is rewritten to sample the FK blade endpoints.
+      // weaponActionId/ticksIntoAction drive the client weapon-trail and
+      // attachment positioning. ticksIntoAction is CUMULATIVE across the
+      // three swing phases (windup → active → winddown) — the renderer's
+      // active-window check (`ticks in [windupTicks, windupTicks+activeTicks)`)
+      // expects that. CSM combat.elapsed alone resets on each phase
+      // transition, so we add the prior phases' tick budgets here.
       const combatNode = layerStates["combat"]?.node ?? "";
       const inSwing = combatNode.startsWith("swing.");
       const weaponActionId  = inSwing && swing ? swing.weaponActionId : "";
-      const ticksIntoAction = inSwing
-        ? Math.round((layerStates["combat"]?.elapsed ?? 0) / TICK_DT)
-        : 0;
+      const action = inSwing && swing ? this.content.weaponActions.get(swing.weaponActionId) : undefined;
+      let ticksIntoAction = 0;
+      if (inSwing && action) {
+        const phaseTicks = Math.round((layerStates["combat"]?.elapsed ?? 0) / TICK_DT);
+        if (combatNode === "swing.windup")        ticksIntoAction = phaseTicks;
+        else if (combatNode === "swing.active")   ticksIntoAction = action.windupTicks + phaseTicks;
+        else if (combatNode === "swing.winddown") ticksIntoAction = action.windupTicks + action.activeTicks + phaseTicks;
+      }
 
       const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
       if (!animStatesEqual(prev, next)) {
