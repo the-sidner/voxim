@@ -3554,7 +3554,7 @@ tree; adding "skittish" or "patrol" archetypes is a content-only change
 with no code edits.
 
 ### T-182 · State machine runtime + animation state machines as data
-Effort: M   Status: todo
+Effort: M   Status: todo   Plan: ANIMATION_SM_PLAN.md
 
 State machine concepts (currently buried in animation slot indirection plus
 ad-hoc velocity-checks in `animation.ts`) move to `@voxim/content` as a
