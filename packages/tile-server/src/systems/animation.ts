@@ -107,6 +107,15 @@ export class AnimationSystem implements System {
       const baseScope: Record<string, SMScopeValue> = { ...buildCsmVars(layerStates) };
 
       const layers: AnimationLayer[] = [];
+      // Total swing duration in seconds — used to scale the swing clip's
+      // playback so it covers exactly windup→active→winddown when the three
+      // states share the same clipId (prevTime keyed by clip persists across
+      // SM transitions, so a constant speedScale = 1/totalSec maps the
+      // whole clip across the whole swing).
+      const swingTotalSec = swing
+        ? this.swingTotalSeconds(swing.weaponActionId)
+        : 0;
+
       for (const compiledLayer of compiled.layers) {
         if (compiledLayer.raw.output !== "animation") continue;
 
@@ -119,8 +128,8 @@ export class AnimationSystem implements System {
         const clipId = resolveClipId(eff.clip, slotMap);
         if (!clipId) continue;
 
-        const speedScale = eff.speedScale ?? 1;
         const speedReference = eff.speedReference ?? walkSpeedRef;
+        const speedScale = resolveSpeedScale(eff, compiledLayer.raw.id, lstate.node, swingTotalSec);
 
         const time = computeClipTime(
           prevTime.get(clipId) ?? 0,
@@ -164,6 +173,12 @@ export class AnimationSystem implements System {
         world.set(entityId, AnimationState, next);
       }
   }
+
+  private swingTotalSeconds(weaponActionId: string): number {
+    const action = this.content.weaponActions.get(weaponActionId);
+    if (!action) return 0;
+    return (action.windupTicks + action.activeTicks + action.winddownTicks) * TICK_DT;
+  }
 }
 
 // ---- helpers ----
@@ -185,6 +200,47 @@ function resolveClipId(clipRef: string, slotMap: Record<string, string>): string
     return slotMap[slotName] ?? "";
   }
   return clipRef;
+}
+
+/**
+ * Decide how fast a clip advances per tick.
+ *
+ * Loops and explicit numeric speedScale pass through unchanged. The auto-fit
+ * cases:
+ *
+ *   - Combat swing states (`swing.windup` / `swing.active` / `swing.winddown`):
+ *     three SM states share one clipId, with prevTime[clipId] persisting
+ *     across the transitions. Setting speedScale = 1/totalSwingSeconds maps
+ *     the clip's 0→1 range across the entire swing.
+ *
+ *   - Other non-loop states with a numeric duration (roll, hit_front, death,
+ *     etc.): speedScale = 1/duration so the clip plays exactly once across
+ *     the state's lifetime.
+ *
+ * Without these, a one-shot clip would only advance at the default 1 cycle/sec
+ * cadence — usually slower than the SM state's duration, freezing the pose
+ * mid-motion.
+ */
+function resolveSpeedScale(
+  state: SMState,
+  layerId: string,
+  nodeId: string,
+  swingTotalSec: number,
+): number | "velocity" {
+  if (state.speedScale !== undefined) {
+    if (typeof state.speedScale === "number" || state.speedScale === "velocity") {
+      return state.speedScale;
+    }
+  }
+  // Combat layer's swing states: scale to the total swing duration.
+  if (layerId === "combat" && nodeId.startsWith("swing.") && swingTotalSec > 0 && !state.loop) {
+    return 1 / swingTotalSec;
+  }
+  // Other one-shot states with a numeric duration: auto-fit.
+  if (!state.loop && typeof state.duration === "number" && state.duration > 0) {
+    return 1 / state.duration;
+  }
+  return 1;
 }
 
 function computeClipTime(
