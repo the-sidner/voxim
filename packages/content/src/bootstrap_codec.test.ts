@@ -28,6 +28,7 @@ Deno.test("bootstrap codec round-trips every registry", async () => {
   assertEquals(dst.weaponActions.size,       src.weaponActions.size);
   assertEquals(dst.verbs.size,               src.verbs.size);
   assertEquals(dst.animationLibraries.size,  src.animationLibraries.size);
+  assertEquals(dst.stateMachines.size,       src.stateMachines.size);
 
   // Libraries: clip ids per archetype must match exactly.
   for (const lib of src.animationLibraries.values()) {

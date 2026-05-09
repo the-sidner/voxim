@@ -1,5 +1,6 @@
 {
   "id": "archer",
+  "extends": "_playable_character",
   "modelId": "human_base",
   "components": {
     "npc": {

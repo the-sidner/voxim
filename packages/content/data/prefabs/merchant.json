@@ -1,6 +1,8 @@
 {
   "id": "merchant",
+  "extends": "_playable_character",
   "modelId": "human_base",
+  "stateMachineId": "humanoid_passive",
   "components": {
     "npc": {
       "npcType": "merchant"

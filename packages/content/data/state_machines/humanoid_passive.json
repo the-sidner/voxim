@@ -1,0 +1,58 @@
+{
+  "id": "humanoid_passive",
+  "layers": [
+    {
+      "id": "posture",
+      "output": "flag",
+      "initial": "upright",
+      "states": {
+        "upright":  {},
+        "crouched": {}
+      },
+      "transitions": [
+        { "from": "upright",  "to": "crouched", "when": "input.crouch" },
+        { "from": "crouched", "to": "upright",  "when": "!input.crouch" }
+      ]
+    },
+    {
+      "id": "locomotion",
+      "output": "animation",
+      "mask": "lower_body",
+      "priority": 0,
+      "initial": "idle",
+      "states": {
+        "idle": {
+          "clip": "$idle",
+          "loop": true,
+          "paramOverrides": {
+            "csm.posture == crouched": { "clip": "$crouch_idle" }
+          }
+        },
+        "walk": {
+          "clip": "$walk",
+          "loop": true,
+          "paramOverrides": {
+            "csm.posture == crouched": { "clip": "$crouch_walk" }
+          }
+        }
+      },
+      "transitions": [
+        { "to": "walk", "when": "vel.mag > 0.2" },
+        { "to": "idle", "when": "vel.mag < 0.1" }
+      ]
+    },
+    {
+      "id": "reaction",
+      "output": "animation",
+      "priority": 10,
+      "initial": "none",
+      "states": {
+        "none":  { "clip": null },
+        "death": { "clip": "$death", "loop": false, "duration": 1.5 }
+      },
+      "transitions": [
+        { "to": "death", "when": "health.current <= 0" }
+      ]
+    }
+  ]
+}

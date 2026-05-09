@@ -1,10 +1,17 @@
 {
   "id": "rotten_knight",
+  "extends": "_playable_character",
   "modelId": "rotten_knight",
   "animationSlots": {
-    "idle":  "idle_shield_loop",
-    "walk":  "walk_carry_loop",
-    "death": "hit_knockback"
+    "idle":              "sword_and_shield_idle",
+    "walk":              "sword_and_shield_walk",
+    "run":               "sword_and_shield_run",
+    "combat_idle":       "sword_and_shield_idle",
+    "weapon.swing_clip": "sword_and_shield_attack",
+    "weapon.block_clip": "sword_and_shield_block",
+    "hit_front":         "standing_react_small_from_front",
+    "hit_back":          "standing_react_large_from_right",
+    "death":             "sword_and_shield_death"
   },
   "morphValues": {
     "torsoHeight":   1.1,

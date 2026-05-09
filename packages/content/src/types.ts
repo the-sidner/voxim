@@ -906,6 +906,13 @@ export interface Prefab {
    */
   animationSlots?: Record<string, string>;
   /**
+   * Character State Machine driving this actor's mode (locomotion, combat,
+   * posture, reaction). References a `StateMachineDef.id` on
+   * ContentService.stateMachines. Inherited from parent prefab via `extends`
+   * unless overridden. Absent for non-actor prefabs (props, items, blueprints).
+   */
+  stateMachineId?: string;
+  /**
    * Per-prefab morph param overrides (T-180). At spawn, the spawner copies
    * these values onto `ModelRefData.morphValues` so server and client both
    * see the same morphs over the wire. Keys must match

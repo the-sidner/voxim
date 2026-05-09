@@ -296,14 +296,24 @@ export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
       const mergedStats = self.stats === undefined && parent.stats === undefined
         ? undefined
         : { ...(parent.stats ?? {}), ...(self.stats ?? {}) };
+      // animationSlots and morphValues shallow-merge by key; child wins per slot.
+      const mergedSlots = self.animationSlots === undefined && parent.animationSlots === undefined
+        ? undefined
+        : { ...(parent.animationSlots ?? {}), ...(self.animationSlots ?? {}) };
+      const mergedMorph = self.morphValues === undefined && parent.morphValues === undefined
+        ? undefined
+        : { ...(parent.morphValues ?? {}), ...(self.morphValues ?? {}) };
       effective = {
         id: self.id,
         ...(self.extends !== undefined && { extends: self.extends }),
-        modelId:    self.modelId    ?? parent.modelId,
-        modelScale: self.modelScale ?? parent.modelScale,
-        category:   self.category   ?? parent.category,
+        modelId:        self.modelId        ?? parent.modelId,
+        modelScale:     self.modelScale     ?? parent.modelScale,
+        category:       self.category       ?? parent.category,
+        stateMachineId: self.stateMachineId ?? parent.stateMachineId,
         ...(mergedTags  !== undefined && { tags:  mergedTags  }),
         ...(mergedStats !== undefined && { stats: mergedStats }),
+        ...(mergedSlots !== undefined && { animationSlots: mergedSlots }),
+        ...(mergedMorph !== undefined && { morphValues: mergedMorph }),
         components: mergeComponents(parent.components, self.components),
       };
     } else {

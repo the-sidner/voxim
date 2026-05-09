@@ -1,10 +1,16 @@
 {
   "id": "drowner",
+  "extends": "_playable_character",
   "modelId": "drowner",
   "animationSlots": {
-    "idle":  "zombie_idle_loop",
-    "walk":  "zombie_walk_fwd_loop",
-    "death": "hit_knockback"
+    "idle":              "zombie_idle_loop",
+    "walk":              "zombie_walk_fwd_loop",
+    "run":               "zombie_walk_fwd_loop",
+    "combat_idle":       "zombie_idle_loop",
+    "weapon.swing_clip": "zombie_attack",
+    "hit_front":         "zombie_reaction_hit",
+    "hit_back":          "standing_react_large_from_right",
+    "death":             "zombie_dying"
   },
   "morphValues": {
     "armLength":     1.4,

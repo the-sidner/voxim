@@ -1,0 +1,102 @@
+{
+  "id": "humanoid_default",
+  "layers": [
+    {
+      "id": "posture",
+      "output": "flag",
+      "initial": "upright",
+      "states": {
+        "upright":  {},
+        "crouched": {}
+      },
+      "transitions": [
+        { "from": "upright",  "to": "crouched", "when": "input.crouch" },
+        { "from": "crouched", "to": "upright",  "when": "!input.crouch" }
+      ]
+    },
+    {
+      "id": "locomotion",
+      "output": "animation",
+      "mask": "lower_body",
+      "priority": 0,
+      "initial": "idle",
+      "states": {
+        "idle": {
+          "clip": "$idle",
+          "loop": true,
+          "paramOverrides": {
+            "csm.posture == crouched": { "clip": "$crouch_idle" }
+          }
+        },
+        "walk": {
+          "clip": "$walk",
+          "loop": true,
+          "paramOverrides": {
+            "csm.posture == crouched": { "clip": "$crouch_walk" }
+          }
+        },
+        "run":      { "clip": "$run",      "loop": true },
+        "roll":     { "clip": "$roll",     "loop": false, "duration": 0.6, "rotateRoot": "velocity.dir" },
+        "airborne": { "clip": "$airborne", "loop": true }
+      },
+      "transitions": [
+        { "to": "airborne",      "when": "event.left_ground", "priority": 5 },
+        { "from": "airborne", "to": "idle", "when": "event.landed" },
+        { "to": "roll",          "when": "input.dodge && state.elapsed > 0.05", "priority": 10 },
+        { "from": "roll", "to": "idle", "when": "state.elapsed >= state.duration" },
+        { "to": "run",           "when": "vel.mag > 4 && csm.posture != crouched" },
+        { "to": "walk",          "when": "vel.mag > 0.5" },
+        { "to": "idle",          "when": "vel.mag < 0.2" }
+      ]
+    },
+    {
+      "id": "combat",
+      "output": "animation",
+      "mask": "upper_body",
+      "priority": 1,
+      "initial": "idle",
+      "states": {
+        "idle":           { "clip": "$combat_idle",      "loop": true },
+        "swing.windup":   { "clip": "$weapon.swing_clip", "loop": false, "duration": 0.3 },
+        "swing.active":   { "clip": "$weapon.swing_clip", "loop": false, "duration": 0.4 },
+        "swing.winddown": { "clip": "$weapon.swing_clip", "loop": false, "duration": 0.4 },
+        "block":          { "clip": "$weapon.block_clip", "loop": true },
+        "aim":            { "clip": "$weapon.aim_clip",   "loop": true },
+        "shoot":          { "clip": "$weapon.shoot_clip", "loop": false, "duration": 0.4 }
+      },
+      "transitions": [
+        { "from": "idle",            "to": "swing.windup",   "when": "event.swing_started", "priority": 50 },
+        { "from": "swing.windup",    "to": "swing.active",   "when": "state.elapsed >= state.duration" },
+        { "from": "swing.active",    "to": "swing.winddown", "when": "state.elapsed >= state.duration" },
+        { "from": "swing.winddown",  "to": "idle",           "when": "state.elapsed >= state.duration" },
+        { "from": "idle",  "to": "block", "when": "input.block && weapon.has_block" },
+        { "from": "block", "to": "idle",  "when": "!input.block" },
+        { "from": "idle",  "to": "aim",   "when": "input.aim && weapon.has_aim" },
+        { "from": "aim",   "to": "shoot", "when": "event.shoot_fired" },
+        { "from": "shoot", "to": "aim",   "when": "state.elapsed >= state.duration && input.aim" },
+        { "from": "shoot", "to": "idle",  "when": "state.elapsed >= state.duration && !input.aim" },
+        { "from": "aim",   "to": "idle",  "when": "!input.aim" }
+      ]
+    },
+    {
+      "id": "reaction",
+      "output": "animation",
+      "priority": 10,
+      "initial": "none",
+      "states": {
+        "none":      { "clip": null },
+        "hit_front": { "clip": "$hit_front", "loop": false, "duration": 0.5 },
+        "hit_back":  { "clip": "$hit_back",  "loop": false, "duration": 0.5 },
+        "knockback": { "clip": "$knockback", "loop": false, "duration": 0.7 },
+        "death":     { "clip": "$death",     "loop": false, "duration": 1.5 }
+      },
+      "transitions": [
+        { "to": "death",     "when": "health.current <= 0",    "priority": 100 },
+        { "to": "knockback", "when": "event.hit.heavy",        "priority": 50 },
+        { "to": "hit_front", "when": "event.hit.from_front" },
+        { "to": "hit_back",  "when": "event.hit.from_back" },
+        { "from": ["hit_front", "hit_back", "knockback"], "to": "none", "when": "state.elapsed >= state.duration" }
+      ]
+    }
+  ]
+}
