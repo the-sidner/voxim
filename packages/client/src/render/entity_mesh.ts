@@ -466,6 +466,16 @@ export function upgradeToSkeletonModel(
       rz * scale.z,  // model z = up → Three.js y
       ry * scale.y,
     );
+    // Bind rotation from the skeleton def — same convention as clip
+    // rotations (Euler XYZ in solver/three.js axes: x=right, y=up, z=back).
+    // Without this, every bone sits at identity rotation and the whole
+    // rig collapses into a stacked-blocks pose; clips that don't animate
+    // a particular bone leave it at this rest until they do.
+    bg.rotation.set(
+      bone.restRotX ?? 0,
+      bone.restRotY ?? 0,
+      bone.restRotZ ?? 0,
+    );
     const parentGroup = bone.parent !== null
       ? (boneGroups.get(bone.parent) ?? mesh.group)
       : mesh.group;
