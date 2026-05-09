@@ -1,5 +1,5 @@
 import type { World, Registry, EntityId } from "@voxim/engine";
-import { ACTION_BLOCK, hasAction, TileEvents } from "@voxim/protocol";
+import { TileEvents } from "@voxim/protocol";
 import type { ContentService } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
@@ -17,7 +17,16 @@ import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 import type { OutgoingDamageHook, IncomingDamageHook } from "../effects/damage_hook.ts";
+import { TickEventBuffer } from "../tick_events.ts";
 import { createLogger } from "../logger.ts";
+
+/**
+ * Damage threshold above which a hit fires `event.hit.heavy` on the target,
+ * driving the CSM reaction layer into `knockback` instead of hit_front /
+ * hit_back. Pulled out as a constant so it lives in one place; should move
+ * to GameConfig if more knobs accumulate around heavy-hit semantics.
+ */
+const HEAVY_HIT_DAMAGE_THRESHOLD = 20;
 
 const log = createLogger("HealthHitHandler");
 
@@ -41,6 +50,7 @@ export class HealthHitHandler implements HitHandler {
     private readonly deaths: DeathRequestPort,
     private readonly outgoingHooks: Registry<OutgoingDamageHook>,
     private readonly incomingHooks: Registry<IncomingDamageHook>,
+    private readonly tickEvents: TickEventBuffer,
   ) {}
 
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
@@ -61,11 +71,16 @@ export class HealthHitHandler implements HitHandler {
     if (world.has(ctx.targetId, IFrameActive)) return;
 
     // ── Block / parry ─────────────────────────────────────────────────────────
+    // Block status comes from the lag-compensated CSM combat node — what mode
+    // the target was in at the rewound tick. The SM resolved input + weapon
+    // capability + valid context into the answer; damage handler reads the
+    // resolution rather than re-deriving from raw input bits.
     const defenderStamina = world.get(ctx.targetId, Stamina);
     const stamGated = defenderStamina?.exhausted ?? false;
     const incomingAngle = Math.atan2(ctx.targetY - ctx.attackerY, ctx.targetX - ctx.attackerX);
+    const targetCombatNode = ctx.targetSnapshotCsmNodes?.combat ?? "";
     const isBlocking = !stamGated &&
-      hasAction(ctx.targetSnapshotActions, ACTION_BLOCK) &&
+      targetCombatNode === "block" &&
       angleDiff(incomingAngle, ctx.targetSnapshotFacing) <= combatCfg.blockArcHalfRadians;
 
     const blockHeldTicks = world.get(ctx.targetId, BlockHeld)?.ticks ?? 0;
@@ -143,6 +158,29 @@ export class HealthHitHandler implements HitHandler {
       hitY: ctx.hitY,
       hitZ: ctx.hitZ,
     });
+
+    // ── CSM hit-reaction events ──────────────────────────────────────────────
+    // Fire one-tick event flags on the target so its CSM reaction layer
+    // transitions to hit_front / hit_back / knockback / death this next tick.
+    // Blocked hits don't trigger reaction (CSM stays in `block`).
+    if (!isBlocking && damage > 0) {
+      this.tickEvents.fire(ctx.targetId, "event.hit");
+      // Direction relative to the target's facing — dot product sign tells us
+      // whether the attacker was in front of or behind the target at the
+      // rewound tick.
+      const attackerDirX = Math.cos(incomingAngle);
+      const attackerDirY = Math.sin(incomingAngle);
+      const targetForwardX = Math.cos(ctx.targetSnapshotFacing);
+      const targetForwardY = Math.sin(ctx.targetSnapshotFacing);
+      const dot = attackerDirX * targetForwardX + attackerDirY * targetForwardY;
+      // Note: incomingAngle points from target TO attacker, so a dot > 0 with
+      // target-forward means attacker is in front of target → hit from front.
+      if (dot >= 0) this.tickEvents.fire(ctx.targetId, "event.hit.from_front");
+      else          this.tickEvents.fire(ctx.targetId, "event.hit.from_back");
+      if (damage >= HEAVY_HIT_DAMAGE_THRESHOLD) {
+        this.tickEvents.fire(ctx.targetId, "event.hit.heavy");
+      }
+    }
 
     // ── Skill on hit ("strike" verb) ──────────────────────────────────────────
     // Publish-only: SkillSystem subscribes to StrikeLanded on the real bus and

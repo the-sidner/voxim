@@ -280,6 +280,7 @@ export class ActionSystem implements System {
         bodyPart: hitBodyPart,
         targetSnapshotFacing: target.facing ?? 0,
         targetSnapshotActions: target.actions,
+        targetSnapshotCsmNodes: target.csmLayerNodes,
         attackerX: ax,
         attackerY: ay,
         targetX: target.x,

@@ -19,6 +19,14 @@ export interface HitContext {
   targetSnapshotFacing: number;
   /** Lag-compensated action bitfield of the target (for block detection). */
   targetSnapshotActions: number;
+  /**
+   * Lag-compensated CSM layer nodes for the target — `csm.combat.node` at the
+   * rewound tick is the authoritative answer to "was the target blocking
+   * when this hit landed." Damage handlers route through this map rather
+   * than the current-tick CSM. Empty / absent when the target has no CSM
+   * (resource nodes, props).
+   */
+  targetSnapshotCsmNodes?: Record<string, string>;
   /** Lag-compensated world position of the attacker. */
   attackerX: number;
   attackerY: number;

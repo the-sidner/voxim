@@ -43,6 +43,7 @@ import { spawnPrefab } from "./spawner.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState, Name } from "./components/game.ts";
+import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
@@ -380,16 +381,16 @@ export class TileServer {
       });
     }
 
+    // One-tick event channel from gameplay systems → CSM. Cleared at the end
+    // of CharacterStateMachineSystem.run each tick.
+    const tickEvents = new TickEventBuffer();
+
     const hitHandlers = [
-      new HealthHitHandler(content, deathSystem, effects.outgoingDamage, effects.incomingDamage),
+      new HealthHitHandler(content, deathSystem, effects.outgoingDamage, effects.incomingDamage, tickEvents),
       new ResourceNodeHitHandler(content),
       new BlueprintHitHandler(),
       new WorkstationHitHandler(content, recipeSteps),
     ];
-
-    // One-tick event channel from gameplay systems → CSM. Cleared at the end
-    // of CharacterStateMachineSystem.run each tick.
-    const tickEvents = new TickEventBuffer();
 
     // System pipeline, declared in reading order. Real ordering constraints
     // live on each system as `dependsOn` (e.g. PhysicsSystem.dependsOn =
@@ -771,12 +772,21 @@ export class TileServer {
       const vel = this.world.get(entityId, Velocity);
       const fac = this.world.get(entityId, Facing);
       const is  = this.world.get(entityId, InputState);
+      const csm = this.world.get(entityId, CharacterStateMachine);
+      let csmLayerNodes: Record<string, string> | undefined;
+      if (csm) {
+        csmLayerNodes = {};
+        for (const [layerId, st] of Object.entries(csm.layerStates)) {
+          csmLayerNodes[layerId] = st.node;
+        }
+      }
       snapEntities.push({
         entityId,
         x: position.x, y: position.y, z: position.z,
         facing: fac?.angle ?? 0,
         velocityX: vel?.x ?? 0, velocityY: vel?.y ?? 0, velocityZ: vel?.z ?? 0,
         actions: is?.actions ?? 0,
+        csmLayerNodes,
       });
     }
     this.stateHistory.push({ serverTick, timestamp: Date.now(), entities: snapEntities });
