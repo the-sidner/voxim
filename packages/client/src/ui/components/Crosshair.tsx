@@ -1,12 +1,23 @@
+/**
+ * Crosshair — Dreamborn does not bloom or pulse the centre dot.  A single
+ * ember pixel inside a bone-faint hairline ring.  The world below must
+ * read through it.
+ */
 export function Crosshair() {
   return (
     <div style={{
-      position: "absolute", left: "50%", top: "50%",
-      width: "6px", height: "6px",
-      marginLeft: "-3px", marginTop: "-3px",
-      borderRadius: "50%",
-      background: "rgba(255,255,255,0.85)",
-      boxShadow: "0 0 0 1.5px rgba(0,0,0,0.5)",
-    }} />
+      position: "fixed", left: "50%", top: "50%",
+      width: "8px", height: "8px",
+      marginLeft: "-4px", marginTop: "-4px",
+      border: "1px solid var(--bone-faint)",
+      pointerEvents: "none",
+    }}>
+      <div style={{
+        position: "absolute", left: "50%", top: "50%",
+        width: "2px", height: "2px",
+        marginLeft: "-1px", marginTop: "-1px",
+        background: "var(--ember)",
+      }} />
+    </div>
   );
 }

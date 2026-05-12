@@ -1,15 +1,26 @@
 import { computed } from "@preact/signals";
 import { useRef, useEffect, useState } from "preact/hooks";
-import { uiState } from "../ui_store.ts";
-import { usePanel } from "../use_panel.ts";
+import { uiState, closePanel } from "../ui_store.ts";
 import { dragSystem } from "../drag_system.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { ItemStack } from "../ui_store.ts";
+import { Pane, Slot } from "./primitives.tsx";
 
 const equipment = computed(() => uiState.value.equipment);
 
-function EquipSlot({ label, item, slot, onAction }: {
-  label: string;
+// Equipment slot runes. The empty cell shows the rune at low contrast so the
+// player knows what goes where without a popup.
+const SLOT_RUNE: Record<string, string> = {
+  head:    "ʘ",
+  chest:   "✦",
+  legs:    "⫿",
+  feet:    "⩙",
+  weapon:  "†",
+  offHand: "○",
+  back:    "⌇",
+};
+
+function EquipSlot({ item, slot, onAction }: {
   item: ItemStack | null;
   slot: string;
   onAction: (a: UIAction) => void;
@@ -34,57 +45,73 @@ function EquipSlot({ label, item, slot, onAction }: {
       dragSystem.unregisterZone(zoneId);
       setDropHighlight(false);
     };
-  }, [slot]);  // re-register only if slot name changes (it never does in practice)
+  }, [slot]);
 
   const handleMouseDown = (e: MouseEvent) => {
     if (!item) return;
-    // Drag from equipment slot. If dropped outside any valid zone, dispatch unequip.
     dragSystem.startDrag(item, "equipment", 0, e.currentTarget as HTMLElement, () => {
       onAction({ type: "unequip", slot });
     });
   };
 
-  const isHighlighted = dropHighlight && uiState.value.drag?.sourceKind === "inventory";
+  const highlight = dropHighlight && uiState.value.drag?.sourceKind === "inventory";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--gap-xs)" }}>
-      <span style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>{label}</span>
-      <div
-        ref={slotRef}
-        class={`slot interactive ${item ? "" : "slot--empty"}`}
-        style={isHighlighted ? { outline: "2px solid var(--col-accent)", outlineOffset: "2px" } : undefined}
-        title={item?.displayName ?? label}
-        onMouseDown={handleMouseDown}
-        onClick={() => item && !uiState.value.drag && onAction({ type: "unequip", slot })}
-      >
-        {/* TODO: render item icon from modelTemplateId */}
-        {item && (
-          <span style={{ fontSize: "var(--text-xs)" }}>
-            {item.displayName.slice(0, 4)}
-          </span>
-        )}
-      </div>
-    </div>
+    <Slot
+      elRef={slotRef}
+      empty={!item}
+      dragover={highlight}
+      title={item?.displayName ?? slot}
+      onMouseDown={handleMouseDown}
+      onClick={() => item && !uiState.value.drag && onAction({ type: "unequip", slot })}
+    >
+      {item
+        ? <span class="slot-glyph">{item.displayName.slice(0, 1).toUpperCase()}</span>
+        : <span class="slot-glyph" style={{ color: "var(--bone-ghost)" }}>{SLOT_RUNE[slot] ?? "·"}</span>
+      }
+    </Slot>
   );
 }
 
+// Body-doll geometry — slots laid out around the silhouette.
+const DOLL_LAYOUT: Record<string, { row: number; col: number }> = {
+  head:    { row: 1, col: 2 },
+  back:    { row: 2, col: 1 },
+  chest:   { row: 2, col: 2 },
+  weapon:  { row: 2, col: 3 },
+  legs:    { row: 3, col: 2 },
+  offHand: { row: 3, col: 3 },
+  feet:    { row: 4, col: 2 },
+};
+
 export function EquipmentPanel({ onAction }: { onAction: (a: UIAction) => void }) {
   const eq = equipment.value;
-  const { panelProps, titleProps } = usePanel({ defaultX: 20, defaultY: 80 });
+  if (!eq) return null;
 
   return (
-    <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "180px" }}>
-      <div class="panel__title" {...titleProps}>Equipment</div>
-      {/* TODO: character silhouette with slot positions */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "var(--gap-sm)" }}>
-        <EquipSlot label="Head"    item={eq?.head    ?? null} slot="head"    onAction={onAction} />
-        <EquipSlot label="Chest"   item={eq?.chest   ?? null} slot="chest"   onAction={onAction} />
-        <EquipSlot label="Legs"    item={eq?.legs    ?? null} slot="legs"    onAction={onAction} />
-        <EquipSlot label="Feet"    item={eq?.feet    ?? null} slot="feet"    onAction={onAction} />
-        <EquipSlot label="Weapon"  item={eq?.weapon  ?? null} slot="weapon"  onAction={onAction} />
-        <EquipSlot label="Off"     item={eq?.offHand ?? null} slot="offHand" onAction={onAction} />
-        <EquipSlot label="Back"    item={eq?.back    ?? null} slot="back"    onAction={onAction} />
+    <Pane
+      title="Worn"
+      defaultX={20} defaultY={80}
+      onClose={() => closePanel("equipment")}
+      style={{ width: "200px" }}
+    >
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "var(--cell) var(--cell) var(--cell)",
+        gridAutoRows: "var(--cell)",
+        gap: "var(--s-2)",
+        justifyContent: "center",
+      }}>
+        {Object.entries(DOLL_LAYOUT).map(([slot, { row, col }]) => (
+          <div key={slot} style={{ gridRow: row, gridColumn: col }}>
+            <EquipSlot
+              item={(eq as Record<string, ItemStack | null | undefined>)[slot] ?? null}
+              slot={slot}
+              onAction={onAction}
+            />
+          </div>
+        ))}
       </div>
-    </div>
+    </Pane>
   );
 }

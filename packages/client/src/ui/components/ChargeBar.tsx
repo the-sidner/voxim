@@ -19,8 +19,6 @@ const HEAVY_THRESHOLD_MS = 200;
 const lmb = computed(() => holdState.value.lmb);
 
 export function ChargeBar() {
-  // Use a tick signal to re-render every animation frame while charging —
-  // HoldState only changes on press/release, but the bar fill is time-driven.
   const [now, setNow] = useState(() => performance.now());
   useSignalEffect(() => {
     if (!lmb.value) return;
@@ -38,25 +36,25 @@ export function ChargeBar() {
   const heavy    = elapsed >= HEAVY_THRESHOLD_MS;
 
   return (
-    <div style={{
-      position: "fixed",
-      left:   `${held.canvasX - 24}px`,
-      top:    `${held.canvasY + 18}px`,
-      width:  "48px",
-      height: "6px",
-      background: "rgba(20, 16, 10, 0.6)",
-      border: "1px solid rgba(200, 180, 120, 0.4)",
-      borderRadius: "3px",
-      pointerEvents: "none",
-      zIndex: "var(--z-tooltip)",
-      overflow: "hidden",
-    }}>
-      <div style={{
-        width:      `${fraction * 100}%`,
-        height:     "100%",
-        background: heavy ? "var(--col-accent)" : "var(--col-text-dim)",
-        transition: "background 80ms ease-out",
-      }} />
+    <div
+      class="bar-track"
+      style={{
+        position: "fixed",
+        left:   `${held.canvasX - 24}px`,
+        top:    `${held.canvasY + 18}px`,
+        width:  "48px",
+        height: "6px",
+        pointerEvents: "none",
+        zIndex: "var(--z-tooltip)",
+      }}
+    >
+      <div
+        class="bar-fill"
+        style={{
+          width:      `${fraction * 100}%`,
+          background: heavy ? "var(--ember)" : "var(--bone-faint)",
+        }}
+      />
     </div>
   );
 }

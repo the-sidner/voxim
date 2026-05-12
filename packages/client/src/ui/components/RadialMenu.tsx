@@ -10,6 +10,9 @@
  *   1. InputController fires onBuildOpenMenu after 300 ms hold → patchUI({ radialMenu })
  *   2. This component renders; global mouseup listener waits for RMB release
  *   3. On release: if hoveredId is set → select_blueprint + close, else just close
+ *
+ * Visuals: pressed-metal sectors arranged on a 80-px circle. Hover lifts the
+ * border to ember and adds an ember-glow ring. No rounded corners.
  */
 import { useEffect, useRef, useState } from "preact/hooks";
 import { computed } from "@preact/signals";
@@ -24,8 +27,8 @@ const STRUCTURE_OPTIONS: { id: string; label: string }[] = [
   { id: "dirt_ramp",  label: "Ramp"        },
 ];
 
-const RADIUS    = 80;   // px from centre to sector midpoint
-const ITEM_SIZE = 60;   // px — bounding box of each sector label
+const RADIUS    = 84;
+const ITEM_SIZE = 64;
 
 const radialMenu = computed(() => uiState.value.radialMenu);
 
@@ -33,14 +36,11 @@ export function RadialMenu({ onAction }: { onAction: (a: UIAction) => void }) {
   const menu = radialMenu.value;
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  // Keep a ref so the mouseup closure always reads the latest hovered item
-  // without needing to re-register the listener on every hover change.
   const hoveredRef = useRef<string | null>(null);
   hoveredRef.current = hoveredId;
 
   useEffect(() => {
     if (!menu) return;
-    // Reset hover each time the menu opens
     setHoveredId(null);
     hoveredRef.current = null;
 
@@ -58,28 +58,25 @@ export function RadialMenu({ onAction }: { onAction: (a: UIAction) => void }) {
       if (e.key === "Escape") patchUI({ radialMenu: null });
     };
 
-    window.addEventListener("mouseup",  onMouseUp);
-    window.addEventListener("keydown",  onKey);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("mouseup",  onMouseUp);
-      window.removeEventListener("keydown",  onKey);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("keydown", onKey);
     };
-  }, [menu]);  // only re-register when menu opens/closes
+  }, [menu]);
 
   if (!menu) return null;
 
   const count = STRUCTURE_OPTIONS.length;
 
   return (
-    // Backdrop: pointer-events none so canvas still receives mousemove for facing.
-    // Only the sector divs have pointer-events.
-    <div style={{ position: "fixed", inset: 0, zIndex: 300, pointerEvents: "none" }}>
-
+    <div style={{ position: "fixed", inset: 0, zIndex: "var(--z-modal)", pointerEvents: "none" }}>
       {STRUCTURE_OPTIONS.map((opt, i) => {
         const angle = (2 * Math.PI * i) / count - Math.PI / 2;
         const cx    = menu.x + Math.cos(angle) * RADIUS;
         const cy    = menu.y + Math.sin(angle) * RADIUS;
-        const isHovered = hoveredId === opt.id;
+        const on    = hoveredId === opt.id;
 
         return (
           <div
@@ -98,17 +95,20 @@ export function RadialMenu({ onAction }: { onAction: (a: UIAction) => void }) {
               textAlign:      "center",
               whiteSpace:     "pre-line",
               pointerEvents:  "all",
-              background:     isHovered ? "rgba(180,140,60,0.95)" : "rgba(30,25,20,0.88)",
-              border:         isHovered ? "2px solid #e8c860" : "2px solid rgba(200,180,120,0.35)",
-              borderRadius:   "8px",
-              color:          isHovered ? "#fff" : "#bbb",
-              fontSize:       "11px",
-              fontFamily:     "sans-serif",
-              lineHeight:     "1.3",
-              padding:        "4px",
+              background:     on
+                ? "linear-gradient(180deg, var(--ember-warm), var(--ember-deep))"
+                : "linear-gradient(180deg, var(--moss-hov), var(--moss))",
+              border:         `1px solid ${on ? "var(--ember)" : "var(--line-strong)"}`,
+              boxShadow: on
+                ? "var(--inset-raise), 0 0 18px var(--ember-glow)"
+                : "var(--inset-raise), 0 4px 12px rgba(0,0,0,0.5)",
+              color:          on ? "var(--bone-hi)" : "var(--bone)",
+              fontFamily:     "var(--font-body)",
+              fontSize:       "var(--fs-small)",
+              lineHeight:     1.25,
+              padding:        "var(--s-1)",
               userSelect:     "none",
-              transition:     "background 80ms, border-color 80ms, color 80ms",
-              boxShadow:      isHovered ? "0 0 10px rgba(232,200,96,0.55)" : "0 2px 6px rgba(0,0,0,0.5)",
+              transition:     "background 80ms var(--ease-grim), border-color 80ms var(--ease-grim), color 80ms var(--ease-grim), box-shadow 80ms var(--ease-grim)",
             }}
           >
             {opt.label}
@@ -116,17 +116,23 @@ export function RadialMenu({ onAction }: { onAction: (a: UIAction) => void }) {
         );
       })}
 
-      {/* Centre dot */}
+      {/* Centre — single ember pixel inside a hairline ring */}
       <div style={{
-        position:      "fixed",
-        left:          menu.x - 5,
-        top:           menu.y - 5,
-        width:         10,
-        height:        10,
-        borderRadius:  "50%",
-        background:    "rgba(232,200,96,0.85)",
+        position: "fixed",
+        left:     menu.x - 4,
+        top:      menu.y - 4,
+        width:    8,
+        height:   8,
+        border:   "1px solid var(--bone-faint)",
         pointerEvents: "none",
-      }} />
+      }}>
+        <div style={{
+          position: "absolute", left: "50%", top: "50%",
+          width: 2, height: 2,
+          marginLeft: -1, marginTop: -1,
+          background: "var(--ember)",
+        }} />
+      </div>
     </div>
   );
 }

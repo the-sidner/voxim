@@ -1,4 +1,5 @@
 import type { UIAction } from "../ui_actions.ts";
+import { Btn } from "./primitives.tsx";
 
 export function DeathScreen({ onAction }: { onAction: (a: UIAction) => void }) {
   return (
@@ -6,28 +7,20 @@ export function DeathScreen({ onAction }: { onAction: (a: UIAction) => void }) {
       class="interactive"
       style={{
         position: "fixed", inset: "0",
-        background: "rgba(0,0,0,0.72)",
+        background: "rgba(7, 6, 3, 0.78)",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
+        gap: "var(--s-7)",
         zIndex: "var(--z-modal)",
       }}
     >
-      <div style={{
-        fontSize: "var(--text-xl)",
-        color: "var(--col-danger)",
-        letterSpacing: "0.2em",
-        marginBottom: "var(--gap-xl)",
-        textTransform: "uppercase",
-      }}>
+      <div class="ds-display" style={{ color: "var(--rot)", textTransform: "uppercase", letterSpacing: "0.24em" }}>
         You Died
       </div>
       {/* TODO: show death stats (damage taken, kill source, time survived) */}
-      <button
-        class="btn btn--primary interactive"
-        onClick={() => onAction({ type: "respawn" })}
-      >
+      <Btn kind="primary" onClick={() => onAction({ type: "respawn" })}>
         Respawn
-      </button>
+      </Btn>
     </div>
   );
 }

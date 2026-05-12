@@ -1,11 +1,11 @@
 import { computed } from "@preact/signals";
-import { uiState, patchUI } from "../ui_store.ts";
-import { usePanel } from "../use_panel.ts";
+import { uiState, patchUI, closePanel } from "../ui_store.ts";
 import { dragSystem } from "../drag_system.ts";
 import { clientWorld } from "../client_world_ref.ts";
 import { contentService } from "../content_ref.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { ContextMenuAction, ItemStack } from "../ui_store.ts";
+import { Pane, Slot, Kbd } from "./primitives.tsx";
 
 const inventory = computed(() => uiState.value.inventory);
 
@@ -21,6 +21,12 @@ const deployablePrefabs = computed<ReadonlySet<string>>(() => {
   }
   return out;
 });
+
+// First letter of the item, displayed inside the cell. Replace with proper
+// rune / SVG glyph dictionary once content lands per-prefab icons.
+function glyphFor(item: ItemStack): string {
+  return item.displayName.slice(0, 1).toUpperCase();
+}
 
 function ItemSlotCell({ item, index, onAction }: {
   item: ItemStack | null;
@@ -49,8 +55,8 @@ function ItemSlotCell({ item, index, onAction }: {
   };
 
   return (
-    <div
-      class={`slot interactive ${item ? "" : "slot--empty"}`}
+    <Slot
+      empty={!item}
       title={item?.displayName ?? ""}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
@@ -72,32 +78,44 @@ function ItemSlotCell({ item, index, onAction }: {
       }}
       onMouseLeave={() => patchUI({ tooltip: null })}
     >
-      {/* TODO: render item icon */}
-      {item && (
-        <span style={{ fontSize: "var(--text-xs)", textAlign: "center", wordBreak: "break-all" }}>
-          {item.displayName.slice(0, 4)}
-          {item.quantity > 1 && (
-            <sup style={{ color: "var(--col-accent)", fontSize: "8px" }}>{item.quantity}</sup>
-          )}
-        </span>
+      {item && <span class="slot-glyph">{glyphFor(item)}</span>}
+      {item && item.quantity > 1 && (
+        <span class="slot-qty">{item.quantity}</span>
       )}
-    </div>
+    </Slot>
   );
 }
 
 export function InventoryPanel({ onAction }: { onAction: (a: UIAction) => void }) {
   const inv = inventory.value;
   if (!inv) return null;
-  const { panelProps, titleProps } = usePanel({ defaultX: 220, defaultY: 80 });
 
   return (
-    <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "220px" }}>
-      <div class="panel__title" {...titleProps}>Inventory</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gap-xs)" }}>
+    <Pane
+      title="Burden"
+      defaultX={220} defaultY={80}
+      onClose={() => closePanel("inventory")}
+      style={{ width: "320px" }}
+      foot={
+        <>
+          <span><Kbd>I</Kbd>burden</span>
+          <span class="num">{inv.slots.filter((s) => s).length} / {inv.slots.length}</span>
+        </>
+      }
+    >
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(8, var(--cell))",
+        gap: "1px",
+        background: "var(--line)",
+        padding: "1px",
+        border: "1px solid var(--line-strong)",
+        justifyContent: "center",
+      }}>
         {inv.slots.map((item, i) => (
           <ItemSlotCell key={i} item={item} index={i} onAction={onAction} />
         ))}
       </div>
-    </div>
+    </Pane>
   );
 }

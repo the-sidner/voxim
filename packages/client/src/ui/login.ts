@@ -101,7 +101,7 @@ const STYLES = `
   align-items: center;
   justify-content: center;
   background: var(--col-bg, #16130e);
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-body, 'Manrope', system-ui, sans-serif);
   color: var(--col-text, #d4c9a8);
   z-index: 100;
   /* Mounted inside #ui which sets pointer-events:none; opt back in here. */
@@ -110,7 +110,7 @@ const STYLES = `
 .login-card {
   background: var(--col-bg-raised, #1f1b14);
   border: 1px solid var(--col-border, #3d3428);
-  border-radius: 8px;
+  border-radius: 0;
   padding: 32px;
   width: 360px;
   display: flex;
@@ -152,7 +152,7 @@ const STYLES = `
   padding: 8px;
   background: var(--col-bg, #16130e);
   border: 1px solid var(--col-border, #3d3428);
-  border-radius: 4px;
+  border-radius: 0;
   color: var(--col-text, #d4c9a8);
   font-size: 14px;
 }
@@ -164,7 +164,7 @@ const STYLES = `
   padding: 10px;
   background: var(--col-accent, #c8953a);
   border: none;
-  border-radius: 4px;
+  border-radius: 0;
   color: var(--col-bg, #16130e);
   font-weight: 600;
   font-size: 14px;

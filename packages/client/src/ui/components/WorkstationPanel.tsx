@@ -16,22 +16,15 @@
 import { computed } from "@preact/signals";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { uiState, closePanel, type ItemStack, type WorkstationBufferSlotView, type WorkstationPanelState } from "../ui_store.ts";
-import { usePanel } from "../use_panel.ts";
 import { dragSystem } from "../drag_system.ts";
 import type { Recipe } from "@voxim/content";
 import { contentService } from "../content_ref.ts";
 import type { UIAction } from "../ui_actions.ts";
+import { Pane, Slot, Section } from "./primitives.tsx";
 
 const workstation = computed(() => uiState.value.workstation);
 
 // ---- recipe matching ------------------------------------------------------
-//
-// Mirrors the server's tryAssignRoles: each role claims a single buffer slot
-// (more-specific roles first), inputs accept either an exact `itemType` or
-// any prefab in `category` whose tags satisfy the filter. Prefab lookup goes
-// through the bootstrap-delivered ContentService (T-177 phase 3); the
-// federated `prefabs` registry already has O(1) get-by-id, so no separate
-// module-load index is needed.
 
 type RecipeInput = Recipe["inputs"][number];
 
@@ -121,7 +114,6 @@ function BufferSlotCell({
     return () => { dragSystem.unregisterZone(zoneId); setDrop(false); };
   }, [index]);
 
-  // Source: drag from the buffer back into inventory. Drop-outside fires take.
   const handleMouseDown = (e: MouseEvent) => {
     if (!slot) return;
     const id = slotPrefab(slot);
@@ -136,24 +128,20 @@ function BufferSlotCell({
   };
 
   const highlight = drop && uiState.value.drag?.sourceKind === "inventory";
-
   const id = slot ? slotPrefab(slot) : "";
   const qty = slot ? slotQty(slot) : 0;
+
   return (
-    <div
-      ref={elRef}
-      class={`slot interactive ${slot ? "" : "slot--empty"}`}
-      style={highlight ? { outline: "2px solid var(--col-accent)", outlineOffset: "2px" } : undefined}
+    <Slot
+      elRef={elRef}
+      empty={!slot}
+      dragover={highlight}
       title={id}
       onMouseDown={handleMouseDown}
     >
-      {slot && (
-        <span style={{ fontSize: "var(--text-xs)", textAlign: "center" }}>
-          {id.slice(0, 4)}
-          <sup style={{ color: "var(--col-accent)", fontSize: "8px" }}>{qty}</sup>
-        </span>
-      )}
-    </div>
+      {slot && <span class="slot-glyph">{id.slice(0, 1).toUpperCase()}</span>}
+      {slot && qty > 1 && <span class="slot-qty">{qty}</span>}
+    </Slot>
   );
 }
 
@@ -161,49 +149,63 @@ function BufferSlotCell({
 
 export function WorkstationPanel({ onAction }: { onAction: (a: UIAction) => void }) {
   const ws = workstation.value;
-  const { panelProps, titleProps } = usePanel({ defaultX: 460, defaultY: 80 });
   if (!ws) return null;
 
   const matches = findMatchingRecipes(ws);
   const slots: (WorkstationBufferSlotView | null)[] = [...ws.slots];
   while (slots.length < ws.capacity) slots.push(null);
 
+  const cols = Math.min(4, ws.capacity);
+
   return (
-    <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "260px" }}>
-      <div class="panel__title" {...titleProps}>
-        {ws.stationType}
-        <button
-          class="interactive"
-          style={{ float: "right", background: "transparent", border: "none", color: "var(--col-text-dim)", cursor: "pointer" }}
-          onClick={() => closePanel("workstation")}
-        >×</button>
-      </div>
+    <Pane
+      title={ws.stationType}
+      defaultX={460} defaultY={80}
+      onClose={() => closePanel("workstation")}
+      style={{ width: "320px" }}
+    >
+      <Section title="Buffer">
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${cols}, var(--cell))`,
+          gap: "1px",
+          background: "var(--line)",
+          padding: "1px",
+          border: "1px solid var(--line-strong)",
+          justifyContent: "start",
+        }}>
+          {slots.map((slot, i) => (
+            <BufferSlotCell key={i} slot={slot} index={i} onAction={onAction} />
+          ))}
+        </div>
+      </Section>
 
-      {/* Buffer slot grid — drag inventory items here to load, drag away to take. */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${Math.min(4, ws.capacity)}, 1fr)`,
-        gap: "var(--gap-xs)",
-        marginBottom: "var(--gap-sm)",
-      }}>
-        {slots.map((slot, i) => (
-          <BufferSlotCell key={i} slot={slot} index={i} onAction={onAction} />
-        ))}
-      </div>
-
-      {/* Active recipe progress (time-step only). */}
       {ws.activeRecipeId && ws.progressTicks !== null && (
-        <div style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)", marginBottom: "var(--gap-xs)" }}>
-          Crafting: {ws.activeRecipeId} ({ws.progressTicks}t remaining)
+        <div style={{
+          fontSize: "var(--fs-eyebrow)",
+          letterSpacing: "var(--ls-eyebrow)",
+          textTransform: "uppercase",
+          color: "var(--ember-hi)",
+          fontFamily: "var(--font-mono)",
+        }}>
+          Crafting: {ws.activeRecipeId} <span class="num">({ws.progressTicks}t)</span>
         </div>
       )}
 
-      {/* Matched recipes — derived from buffer contents, not preselected. */}
-      <div style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>
+      <Section title="Recipes" hint={`${matches.length}`}>
         {matches.length === 0
-          ? "No matching recipe."
-          : `Matches (${matches.length}): ${matches.map((r) => r.id).join(", ")}`}
-      </div>
-    </div>
+          ? <span style={{ color: "var(--bone-faint)", fontSize: "var(--fs-body)" }}>No matching recipe.</span>
+          : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-1)" }}>
+              {matches.map((r) => (
+                <div key={r.id} style={{ color: "var(--bone)", fontSize: "var(--fs-body)" }}>
+                  {r.id}
+                </div>
+              ))}
+            </div>
+          )
+        }
+      </Section>
+    </Pane>
   );
 }

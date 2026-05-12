@@ -12,33 +12,24 @@
  */
 import { debugOverlays, debugItemList } from "../debug_store.ts";
 import { uiState, openPanel, closePanel } from "../ui_store.ts";
-import { usePanel } from "../use_panel.ts";
 import type { UIAction } from "../ui_actions.ts";
 import type { DebugLayer } from "../debug_store.ts";
 import { captureEnabled, capturePaused, captureSignal } from "../network_capture.ts";
+import { clientWorld, localPlayerId } from "../client_world_ref.ts";
 import { computed, signal } from "@preact/signals";
+import { Pane, Section, Btn } from "./primitives.tsx";
 
 const INPUT_STYLE = {
-  background: "var(--col-bg-panel)",
-  border: "1px solid var(--col-border)",
-  color: "var(--col-text)",
-  borderRadius: "3px",
+  background: "var(--peat-solid)",
+  border: "1px solid var(--line)",
+  color: "var(--bone)",
   padding: "2px 6px",
-  fontSize: "var(--text-xs)",
+  fontSize: "var(--fs-small)",
+  fontFamily: "var(--font-mono)",
+  boxShadow: "var(--inset-well)",
 } as const;
 
 const networkOpen = computed(() => uiState.value.openPanels.has("network"));
-
-// ── Sub-section wrapper ────────────────────────────────────────────────────────
-
-function Section({ title, children }: { title: string; children: preact.ComponentChildren }) {
-  return (
-    <div style={{ marginBottom: "var(--gap-md)" }}>
-      <div class="panel__title">{title}</div>
-      {children}
-    </div>
-  );
-}
 
 // ── Toggle row ─────────────────────────────────────────────────────────────────
 
@@ -53,27 +44,21 @@ function ToggleRow({ label, on, onToggle, hint }: {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "var(--gap-xs) 0",
-      borderBottom: "1px solid var(--col-border)",
-      fontSize: "var(--text-sm)",
+      padding: "var(--s-1) 0",
+      borderBottom: "1px solid var(--line)",
+      fontSize: "var(--fs-body)",
     }}>
       <div>
         <span>{label}</span>
-        {hint && <span style={{ color: "var(--col-text-dim)", fontSize: "var(--text-xs)", marginLeft: "var(--gap-xs)" }}>{hint}</span>}
+        {hint && <span style={{ color: "var(--bone-faint)", fontSize: "var(--fs-eyebrow)", marginLeft: "var(--s-2)" }}>{hint}</span>}
       </div>
-      <button
-        class="btn interactive"
+      <Btn
+        active={on}
         onClick={onToggle}
-        style={{
-          minWidth: "52px",
-          padding: "2px 8px",
-          fontSize: "var(--text-xs)",
-          borderColor: on ? "var(--col-accent)" : "var(--col-border)",
-          color: on ? "var(--col-accent)" : "var(--col-text-dim)",
-        }}
+        style={{ minWidth: "52px", padding: "2px 8px", fontSize: "var(--fs-eyebrow)" }}
       >
         {on ? "ON" : "OFF"}
-      </button>
+      </Btn>
     </div>
   );
 }
@@ -82,15 +67,18 @@ function ToggleRow({ label, on, onToggle, hint }: {
 
 export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
   const overlays = debugOverlays.value;
-  const { panelProps, titleProps } = usePanel({ defaultX: 20, defaultY: 80 });
 
   function toggle(layer: DebugLayer) {
     onAction({ type: "debug_toggle", layer });
   }
 
   return (
-    <div class="panel interactive" {...panelProps} style={{ ...panelProps.style, width: "260px", maxHeight: "80vh", overflowY: "auto" }}>
-      <div class="panel__title" {...titleProps}>Debug</div>
+    <Pane
+      title="Debug"
+      defaultX={20} defaultY={80}
+      onClose={() => closePanel("debug")}
+      style={{ width: "300px", maxHeight: "80vh", overflowY: "auto" }}
+    >
 
       {/* ── Post-processing ───────────────────────────────────────────────── */}
       <Section title="Post-processing">
@@ -162,6 +150,9 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
         />
       </Section>
 
+      {/* ── Character state machine ──────────────────────────────────────── */}
+      <CSMSection />
+
       {/* ── Network inspector ─────────────────────────────────────────────── */}
       <Section title="Network">
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--gap-xs)" }}>
@@ -200,13 +191,73 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
 
       {/* ── Set stat ──────────────────────────────────────────────────────── */}
       <SetStatSection onAction={onAction} />
-    </div>
+    </Pane>
   );
 }
 
 // ── Shared action props type ──────────────────────────────────────────────────
 
 type ActionProps = { onAction: (a: UIAction) => void };
+
+// ── Character state machine section ───────────────────────────────────────────
+//
+// Live readout of the local player's CSM: one line per layer showing the
+// active node and how long we've been there. Re-reads every signal tick so
+// it follows transitions in real time.
+
+function CSMSection() {
+  const world = clientWorld.value;
+  const id = localPlayerId.value;
+  const entity = world && id ? world.get(id) : undefined;
+  const csm = entity?.characterStateMachine;
+  const anim = entity?.animationState;
+  const chain = entity?.swingChain;
+
+  if (!csm || Object.keys(csm.layerStates).length === 0) {
+    return (
+      <Section title="State machine">
+        <div style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>(no state machine)</div>
+      </Section>
+    );
+  }
+
+  const layers = Object.entries(csm.layerStates);
+  return (
+    <Section title="State machine">
+      <div style={{ fontSize: "var(--text-xs)", fontFamily: "monospace" }}>
+        <div style={{ color: "var(--col-text-dim)", marginBottom: "var(--gap-xs)" }}>
+          sm: {csm.stateMachineId}
+        </div>
+        {layers.map(([layerId, st]) => (
+          <div key={layerId} style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "var(--col-text-dim)" }}>{layerId}</span>
+            <span>
+              <span style={{ color: "var(--col-accent)" }}>{st.node}</span>
+              <span style={{ color: "var(--col-text-dim)", marginLeft: "var(--gap-xs)" }}>
+                {st.elapsed.toFixed(2)}s
+              </span>
+            </span>
+          </div>
+        ))}
+        <div style={{ marginTop: "var(--gap-xs)", display: "flex", justifyContent: "space-between" }}>
+          <span style={{ color: "var(--col-text-dim)" }}>chain idx</span>
+          <span style={{ color: chain ? "var(--col-accent)" : "var(--col-text-dim)" }}>
+            {chain ? chain.index : "—"}
+          </span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <span style={{ color: "var(--col-text-dim)" }}>action</span>
+          <span style={{ color: "var(--col-accent)" }}>{anim?.weaponActionId || "—"}</span>
+        </div>
+        {anim && anim.layers.length > 0 && (
+          <div style={{ marginTop: "var(--gap-xs)", color: "var(--col-text-dim)" }}>
+            playing: {anim.layers.map((l) => l.clipId || "—").join(" + ")}
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
 
 // ── Give item section ─────────────────────────────────────────────────────────
 

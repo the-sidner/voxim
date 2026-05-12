@@ -1,31 +1,24 @@
 import type { UIAction } from "../ui_actions.ts";
+import { closePanel } from "../ui_store.ts";
+import { Pane, Section } from "./primitives.tsx";
 
 // TODO: read keybindings from a signal populated by InputController
 
 export function SettingsPanel({ onAction: _onAction }: { onAction: (a: UIAction) => void }) {
   return (
-    <div
-      class="panel interactive"
-      style={{
-        position: "absolute", top: "50%", left: "50%",
-        transform: "translate(-50%, -50%)",
-        zIndex: "var(--z-modal)",
-        width: "320px",
-      }}
+    <Pane
+      title="Settings"
+      defaultX={window.innerWidth / 2 - 180}
+      defaultY={window.innerHeight / 2 - 200}
+      onClose={() => closePanel("settings")}
+      style={{ width: "360px", zIndex: "var(--z-modal)" }}
     >
-      <div class="panel__title">Settings</div>
-
-      <div class="panel__title" style={{ marginTop: "var(--gap-sm)" }}>Keybindings</div>
-      {/* TODO: iterate keybinding map from InputController and render rebindable rows */}
-      <div style={{ fontSize: "var(--text-sm)", color: "var(--col-text-dim)" }}>
-        (keybinding list — not yet implemented)
-      </div>
-
-      <div class="panel__title" style={{ marginTop: "var(--gap-sm)" }}>Graphics</div>
-      {/* TODO: render quality / resolution controls */}
-      <div style={{ fontSize: "var(--text-sm)", color: "var(--col-text-dim)" }}>
-        (graphics options — not yet implemented)
-      </div>
-    </div>
+      <Section title="Keybindings">
+        <div class="flavour">(keybinding list — not yet implemented)</div>
+      </Section>
+      <Section title="Graphics">
+        <div class="flavour">(graphics options — not yet implemented)</div>
+      </Section>
+    </Pane>
   );
 }

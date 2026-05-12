@@ -12,37 +12,23 @@ export function ContextMenu({ onAction: _onAction }: { onAction: (a: UIAction) =
 
   return (
     <>
-      {/* Invisible backdrop to catch outside clicks */}
+      {/* Invisible backdrop catches outside clicks. */}
       <div
         class="interactive"
         style={{ position: "fixed", inset: "0", zIndex: "calc(var(--z-context) - 1)" }}
         onClick={close}
       />
       <div
-        class="panel interactive"
-        style={{
-          position: "fixed",
-          left: `${menu.screenX}px`,
-          top:  `${menu.screenY}px`,
-          zIndex: "var(--z-context)",
-          minWidth: "140px",
-          padding: "var(--gap-xs)",
-        }}
+        class="ctxmenu interactive"
+        style={{ left: `${menu.screenX}px`, top: `${menu.screenY}px` }}
       >
         {menu.actions.map((action, i) => (
           <div
             key={i}
-            class="interactive"
-            style={{
-              padding: "var(--gap-xs) var(--gap-sm)",
-              cursor: "pointer",
-              borderRadius: "var(--radius-sm)",
-              color: action.danger ? "var(--col-danger)" : "var(--col-text)",
-              fontSize: "var(--text-sm)",
-            }}
+            class={`item interactive ${action.danger ? "danger" : ""}`}
             onClick={() => { action.onSelect(); close(); }}
           >
-            {action.label}
+            <span>{action.label}</span>
           </div>
         ))}
       </div>

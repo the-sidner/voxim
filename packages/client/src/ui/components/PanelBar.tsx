@@ -1,5 +1,6 @@
 import { uiState, openPanel, closePanel } from "../ui_store.ts";
 import type { PanelId } from "../ui_store.ts";
+import { Btn, Kbd } from "./primitives.tsx";
 
 interface PanelBtn {
   id: PanelId;
@@ -8,10 +9,10 @@ interface PanelBtn {
 }
 
 const BUTTONS: PanelBtn[] = [
-  { id: "inventory",  label: "Inv",  key: "I" },
-  { id: "equipment",  label: "Eqp",  key: "E" },
-  { id: "stats",      label: "Sts",  key: "C" },
-  { id: "debug",      label: "Dbg",  key: "`" },
+  { id: "inventory",  label: "Inventory", key: "I" },
+  { id: "equipment",  label: "Equipment", key: "E" },
+  { id: "stats",      label: "Stats",     key: "C" },
+  { id: "debug",      label: "Debug",     key: "`" },
 ];
 
 export function PanelBar() {
@@ -19,22 +20,21 @@ export function PanelBar() {
 
   return (
     <div class="interactive" style={{
-      position: "fixed", top: "12px", right: "12px",
-      display: "flex", gap: "var(--gap-xs)",
+      position: "fixed", top: "var(--s-4)", left: "var(--s-4)",
+      display: "flex", gap: "var(--s-2)",
       zIndex: "var(--z-hud)",
     }}>
       {BUTTONS.map(({ id, label, key }) => {
         const active = panels.has(id);
         return (
-          <button
+          <Btn
             key={id}
-            class={`btn${active ? " btn--active" : ""}`}
+            active={active}
             title={`${label} [${key}]`}
             onClick={() => active ? closePanel(id) : openPanel(id)}
-            style={{ minWidth: "42px" }}
           >
-            {label}
-          </button>
+            <Kbd>{key}</Kbd>{label}
+          </Btn>
         );
       })}
     </div>

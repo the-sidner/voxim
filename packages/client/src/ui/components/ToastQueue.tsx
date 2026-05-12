@@ -6,16 +6,13 @@ const toasts = computed(() => uiState.value.toasts);
 export function ToastQueue() {
   return (
     <div style={{
-      position: "absolute", top: "var(--gap-lg)", right: "var(--gap-lg)",
-      display: "flex", flexDirection: "column", gap: "var(--gap-xs)",
+      position: "fixed", top: "var(--s-6)", left: "var(--s-6)",
+      display: "flex", flexDirection: "column", gap: "var(--s-2)",
       zIndex: "var(--z-toast)",
+      pointerEvents: "none",
     }}>
       {toasts.value.map((t) => (
-        <div
-          key={t.id}
-          class={`panel toast toast--${t.kind}`}
-          style={{ fontSize: "var(--text-sm)", padding: "var(--gap-xs) var(--gap-sm)" }}
-        >
+        <div key={t.id} class={`toast toast--${t.kind}`}>
           {t.text}
         </div>
       ))}

@@ -9,30 +9,21 @@ export function LoadingScreen() {
     <div
       style={{
         position: "fixed", inset: "0",
-        background: "var(--col-bg, #0a0a0a)",
+        background: "var(--peat-solid)",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         zIndex: "var(--z-modal)",
-        color: "var(--col-text-muted, #888)",
-        fontFamily: "inherit",
+        gap: "var(--s-7)",
       }}
     >
-      <div style={{ fontSize: "var(--text-xl)", marginBottom: "var(--gap-xl)", letterSpacing: "0.15em" }}>
+      <div class="ds-h2" style={{ color: "var(--bone)", letterSpacing: "0.06em" }}>
         {label}
       </div>
-      <div style={{
-        width: "240px", height: "4px",
-        background: "var(--col-surface-2, #222)",
-        borderRadius: "2px",
-        overflow: "hidden",
-      }}>
-        <div style={{
-          height: "100%",
-          width: `${pct}%`,
-          background: "var(--col-accent, #8af)",
-          borderRadius: "2px",
-          transition: "width 100ms linear",
-        }} />
+      <div class="bar-track" style={{ width: "240px", height: "4px" }}>
+        <div
+          class="bar-fill gain"
+          style={{ width: `${pct}%`, background: "var(--ember)" }}
+        />
       </div>
     </div>
   );

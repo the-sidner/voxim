@@ -14,100 +14,57 @@ import { uiState } from "../ui_store.ts";
 
 const stats = computed(() => uiState.value.hudStats);
 
-const ROW: Record<string, string> = {
-  display:        "flex",
-  justifyContent: "space-between",
-  alignItems:     "baseline",
-  gap:            "12px",
-  fontSize:       "12px",
-  lineHeight:     "1.3",
-};
-const LABEL: Record<string, string> = {
-  color:         "var(--col-text-muted, #9aa)",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-};
-const VALUE: Record<string, string> = {
-  color:      "var(--col-text, #ffeebb)",
-  fontFamily: "ui-monospace, monospace",
-  fontWeight: "600",
-};
+function Row({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--s-3)" }}>
+      <span style={{ color: "var(--bone-faint)", textTransform: "uppercase", letterSpacing: "var(--ls-eyebrow)" }}>
+        {label}
+      </span>
+      <span class="num" style={{ color: "var(--bone)" }}>{value}</span>
+    </div>
+  );
+}
+
+function Sep() {
+  return <div style={{ height: 1, background: "var(--line)", margin: "2px 0" }} />;
+}
 
 export function HudStats() {
   const s = stats.value;
   return (
-    <div style={{
+    <div class="hud-chrome" style={{
       position: "fixed",
-      top:      "12px",
-      right:    "220px",   // 12 (minimap right) + 200 (minimap width) + 8 gap
-      minWidth: "108px",
-      padding:  "6px 10px",
-      background:   "rgba(0, 0, 0, 0.55)",
-      border:       "1px solid rgba(220, 220, 220, 0.25)",
-      borderRadius: "4px",
-      zIndex:       "var(--z-hud)",
+      top:      "var(--s-4)",
+      right:    "192px",   /* minimap (172) + gap */
+      minWidth: "120px",
+      padding:  "var(--s-2) var(--s-4)",
+      zIndex:   "var(--z-hud)",
       pointerEvents: "none",
+      display:  "flex",
+      flexDirection: "column",
+      gap:      "1px",
+      fontFamily: "var(--font-mono)",
+      fontSize: "var(--fs-eyebrow)",
+      letterSpacing: "var(--ls-mono)",
     }}>
-      <div style={ROW}>
-        <span style={LABEL}>fps</span>
-        <span style={VALUE}>{s.fps || "—"}</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>online</span>
-        <span style={VALUE}>{s.onlineCount}</span>
-      </div>
-      <div style={{ ...ROW, marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(220,220,220,0.15)" }}>
-        <span style={LABEL}>frame</span>
-        <span style={VALUE}>{s.frameMs.toFixed(1)} ms</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>sk+ik</span>
-        <span style={VALUE}>{s.skMs.toFixed(1)} ms</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>trail</span>
-        <span style={VALUE}>{s.trailMs.toFixed(1)} ms</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>gl</span>
-        <span style={VALUE}>{s.glMs.toFixed(1)} ms</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>post</span>
-        <span style={VALUE}>{s.postMs.toFixed(1)} ms</span>
-      </div>
-      <div style={{ ...ROW, marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(220,220,220,0.15)" }}>
-        <span style={LABEL}>draws</span>
-        <span style={VALUE}>{s.drawCalls}</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>tris</span>
-        <span style={VALUE}>{(s.tris / 1000).toFixed(1)}k</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>entities</span>
-        <span style={VALUE}>{s.entities}</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>handles</span>
-        <span style={VALUE}>{s.handles}</span>
-      </div>
-      <div style={{ ...ROW, marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(220,220,220,0.15)" }}>
-        <span style={LABEL}>ping</span>
-        <span style={VALUE}>{s.pingMs > 0 ? `${s.pingMs} ms` : "—"}</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>lag</span>
-        <span style={VALUE}>{s.inputLag}</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>tick</span>
-        <span style={VALUE}>{s.tickHz.toFixed(1)} Hz</span>
-      </div>
-      <div style={ROW}>
-        <span style={LABEL}>down</span>
-        <span style={VALUE}>{s.kbpsIn.toFixed(0)} kb/s</span>
-      </div>
+      <Row label="fps"      value={s.fps || "—"} />
+      <Row label="online"   value={s.onlineCount} />
+      <Sep />
+      <Row label="frame"    value={`${s.frameMs.toFixed(1)} ms`} />
+      <Row label="sk+ik"    value={`${s.skMs.toFixed(1)} ms`} />
+      <Row label="trail"    value={`${s.trailMs.toFixed(1)} ms`} />
+      <Row label="gl"       value={`${s.glMs.toFixed(1)} ms`} />
+      <Row label="post"     value={`${s.postMs.toFixed(1)} ms`} />
+      <Sep />
+      <Row label="draws"    value={s.drawCalls} />
+      <Row label="tris"     value={`${(s.tris / 1000).toFixed(1)}k`} />
+      <Row label="entities" value={s.entities} />
+      <Row label="handles"  value={s.handles} />
+      <Sep />
+      <Row label="ping"     value={s.pingMs > 0 ? `${s.pingMs} ms` : "—"} />
+      <Row label="lag"      value={s.inputLag} />
+      <Row label="tick"     value={`${s.tickHz.toFixed(1)} Hz`} />
+      <Row label="down"     value={`${s.kbpsIn.toFixed(0)} kb/s`} />
     </div>
   );
 }

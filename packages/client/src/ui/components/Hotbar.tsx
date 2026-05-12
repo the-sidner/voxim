@@ -1,6 +1,7 @@
 import { computed } from "@preact/signals";
 import { uiState } from "../ui_store.ts";
 import type { UIAction } from "../ui_actions.ts";
+import { Slot } from "./primitives.tsx";
 
 const hotbar = computed(() => uiState.value.hotbar);
 
@@ -9,24 +10,29 @@ export function Hotbar({ onAction }: { onAction: (a: UIAction) => void }) {
   if (!hb) return null;
 
   return (
-    <div class="interactive" style={{
-      position: "fixed", bottom: "80px", left: "50%",
+    <div class="hotbar interactive" style={{
+      position: "fixed", bottom: "36px", left: "50%",
       transform: "translateX(-50%)",
-      display: "flex", gap: "var(--gap-xs)",
       zIndex: "var(--z-hud)",
     }}>
       {hb.slots.map((item, i) => (
-        <div
+        <Slot
           key={i}
-          class={`slot ${i === hb.activeIndex ? "slot--active" : ""} ${!item ? "slot--empty" : ""}`}
+          empty={!item}
+          active={i === hb.activeIndex}
           title={item?.displayName ?? ""}
           onClick={() => item && onAction({ type: "hotbar_use", hotbarSlot: i })}
         >
-          {/* TODO: render item icon */}
-          <span style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>
-            {i + 1}
-          </span>
-        </div>
+          <span class="slot-key">{i + 1}</span>
+          {item && (
+            <span class="slot-glyph">
+              {item.displayName.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+          {item && item.quantity > 1 && (
+            <span class="slot-qty">{item.quantity}</span>
+          )}
+        </Slot>
       ))}
     </div>
   );
