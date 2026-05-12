@@ -21,40 +21,22 @@
  * 0xFFFF for non-room pixels). Wire shape unchanged.
  */
 
+import type { Transformer } from "@voxim/levelgen";
 import { ROOM_ID_NONE } from "./room_detection.ts";
 import type { Junction } from "./junctions.ts";
 import type { Room } from "../types.ts";
 import type { GenParams } from "../../genparams.ts";
-
-export interface RoomsInput {
-  /** From network stage. Mutated in place by room growth. */
-  openMask: Uint8Array;
-  /** From noise stage. Read-only — drives the cost surface. */
-  noiseField: Float32Array;
-  /** From junctions stage. */
-  seeds: Junction[];
-  /** From network stage. Per-junction edge count. */
-  degrees: Uint8Array;
-  gridSize: number;
-  px2world: number;
-  tileSeed: number;
-  params: GenParams["room"];
-}
-
-export interface RoomsOutput {
-  openMask: Uint8Array;
-  chamberOf: Uint16Array;
-  chambers: Room[];
-}
+import type { NetworkState, RoomsState } from "./state.ts";
 
 const ROOMS_SUB_SEED = 0xC4A33500;
 
-export function runRooms(input: RoomsInput): RoomsOutput {
-  const { openMask, noiseField, seeds, degrees, gridSize, px2world, tileSeed, params } = input;
-  const N = gridSize * gridSize;
-  const chamberOf = new Uint16Array(N).fill(ROOM_ID_NONE);
+export const rooms: Transformer<NetworkState, RoomsState, GenParams["room"]> =
+  (state, seed, params) => {
+    const { openMask, noiseField, seeds, degrees, gridSize, px2world } = state;
+    const N = gridSize * gridSize;
+    const chamberOf = new Uint16Array(N).fill(ROOM_ID_NONE);
 
-  const rng = mulberry32(tileSeed ^ ROOMS_SUB_SEED);
+    const rng = mulberry32(seed ^ ROOMS_SUB_SEED);
 
   // ---- 1. Decide which junctions become rooms ----------------------------
   // Per-junction roll. Higher degree = higher chance. The roll happens
@@ -71,7 +53,7 @@ export function runRooms(input: RoomsInput): RoomsOutput {
   }
 
   if (picks.length === 0) {
-    return { openMask, chamberOf, chambers: [] };
+    return { ...state, chamberOf, chambers: [] };
   }
 
   // ---- 2. Priority-flood growth (round-robin among picks) ----------------
@@ -131,8 +113,8 @@ export function runRooms(input: RoomsInput): RoomsOutput {
     });
   }
 
-  return { openMask, chamberOf, chambers };
-}
+  return { ...state, chamberOf, chambers };
+};
 
 // ============================================================================
 // Helpers

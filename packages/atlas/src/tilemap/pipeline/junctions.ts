@@ -12,7 +12,10 @@
  * a background-grid acceleration (cells of side r/√2). Deterministic
  * via tile-seeded mulberry32 PRNG.
  */
+
+import type { Transformer } from "@voxim/levelgen";
 import type { GenParams } from "../../genparams.ts";
+import type { JunctionsState, NoiseState } from "./state.ts";
 
 export interface Junction {
   /** Pixel coords. */
@@ -20,25 +23,16 @@ export interface Junction {
   y: number;
 }
 
-export interface JunctionsInput {
-  gridSize: number;
-  tileSeed: number;
-  params: GenParams["room"];
-}
-
-export interface JunctionsOutput {
-  seeds: Junction[];
-}
-
 const JUNCTIONS_SUB_SEED = 0x10C73101;
 const POISSON_K = 30;
 
-export function runJunctions(input: JunctionsInput): JunctionsOutput {
-  const { gridSize, tileSeed, params } = input;
-  const rng = mulberry32(tileSeed ^ JUNCTIONS_SUB_SEED);
-  const seeds = poissonSeeds(gridSize, params.targetCount, params.minSeparation, rng);
-  return { seeds };
-}
+export const junctions: Transformer<NoiseState, JunctionsState, GenParams["room"]> =
+  (state, seed, params) => {
+    const { gridSize } = state;
+    const rng = mulberry32(seed ^ JUNCTIONS_SUB_SEED);
+    const seeds = poissonSeeds(gridSize, params.targetCount, params.minSeparation, rng);
+    return { ...state, seeds };
+  };
 
 /**
  * Bridson Poisson-disk sampling on a pixel grid. Returns up to `target`

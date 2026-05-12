@@ -1550,7 +1550,7 @@ follow noise-thin regions instead of cutting straight lines, and the four named 
 each give a distinct overall topology.
 
 ### T-203 · `@voxim/levelgen` — typed transformer pipeline package
-Effort: S   Status: in-progress
+Effort: S   Status: done   Commit: 808036a
 
 The tilemap pipeline in `packages/atlas/src/tilemap/pipeline/` is already a series of
 pure `runX(state, params, seed) → state` functions, but the contract is informal: each
@@ -1595,7 +1595,7 @@ mismatch, and shows `splitSeed` produces stable, well-distributed sub-seeds. No
 consumer migration in this ticket — that lands in T-204.
 
 ### T-204 · Migrate atlas tilemap pipeline to `@voxim/levelgen` Transformer interface
-Effort: M   Status: todo   Depends on: T-203
+Effort: M   Status: done   Commit: (pending)   Depends on: T-203
 
 The 9-stage tilemap pipeline (`noise_field → junctions → network → rooms →
 portal_placement → boundary_kinds → rivers → terrain → materials`) lives in

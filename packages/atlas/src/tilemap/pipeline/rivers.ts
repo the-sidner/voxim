@@ -17,32 +17,32 @@
  * tree vs. cliff happens in tile-server based on the kind tag.
  */
 
+import type { Transformer } from "@voxim/levelgen";
 import { BOUNDARY_KIND_WATER } from "./boundary_kinds.ts";
-import type { RiverEndpoint, RiverSegment } from "../../worldmap/types.ts";
+import type { RiverEndpoint } from "../../worldmap/types.ts";
+import type { GenParams } from "../../genparams.ts";
+import type { KindsState, RiversState } from "./state.ts";
 
-export interface RiversInput {
-  rivers: RiverSegment[];
-  openMask: Uint8Array; // mutated in place
-  kindOf:   Uint16Array; // mutated in place
-  gridSize: number;
-  tileSize: number;
-  /** Brush radius in pixels (river is ~2*r+1 px wide). */
-  widthPixels: number;
-}
+/**
+ * Rivers mutates `openMask` and `kindOf` in place and produces no new
+ * fields; returns the state unchanged (the arrays inside are mutated).
+ */
+export const rivers: Transformer<KindsState, RiversState, GenParams["river"]> =
+  (state, _seed, params) => {
+    const { openMask, kindOf, gridSize, tileSize, worldCell } = state;
+    if (worldCell.rivers.length === 0) return state;
+    const px2world = tileSize / gridSize;
+    const widthPixels = params.widthPixels;
 
-export function runRiverStamping(input: RiversInput): void {
-  const { rivers, openMask, kindOf, gridSize, tileSize, widthPixels } = input;
-  if (rivers.length === 0) return;
-  const px2world = tileSize / gridSize;
-
-  for (const seg of rivers) {
-    const a = endpointToPixel(seg.a, gridSize, px2world);
-    const b = endpointToPixel(seg.b, gridSize, px2world);
-    rasterLine(a.x, a.y, b.x, b.y, gridSize, (px, py) => {
-      brushDisk(px, py, widthPixels, gridSize, openMask, kindOf);
-    });
-  }
-}
+    for (const seg of worldCell.rivers) {
+      const a = endpointToPixel(seg.a, gridSize, px2world);
+      const b = endpointToPixel(seg.b, gridSize, px2world);
+      rasterLine(a.x, a.y, b.x, b.y, gridSize, (px, py) => {
+        brushDisk(px, py, widthPixels, gridSize, openMask, kindOf);
+      });
+    }
+    return state;
+  };
 
 function endpointToPixel(
   e: RiverEndpoint,

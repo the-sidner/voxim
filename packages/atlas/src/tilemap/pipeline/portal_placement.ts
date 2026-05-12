@@ -15,53 +15,27 @@
  * which connected component the gate landed in.
  */
 
+import type { Transformer } from "@voxim/levelgen";
 import { runRoomDetection } from "./room_detection.ts";
 import { carveSpline, makeWaypoints, clampPx } from "./bezier_carve.ts";
-import type { Junction } from "./junctions.ts";
-import type { Corridor, Portal, Room } from "../types.ts";
+import type { Corridor, Portal } from "../types.ts";
 import type { Edge, GateSpec } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
-
-export interface PortalPlacementInput {
-  /** From the rooms stage. Mutated in place by gate carves. */
-  openMask: Uint8Array;
-  /** From the junctions stage. Read-only — gate carves target nearest. */
-  seeds: Junction[];
-  gridSize: number;
-  px2world: number;
-  /** Tile size in world units (used to clamp gate offsets). */
-  tileSize: number;
-  /** Per-edge gate from the worldmap. null = no gate on that edge. */
-  gates: {
-    north: GateSpec | null;
-    east:  GateSpec | null;
-    south: GateSpec | null;
-    west:  GateSpec | null;
-  };
-  /** Carve tuning — same knobs the network stage uses. */
-  network: GenParams["network"];
-  tileSeed: number;
-}
-
-export interface PortalPlacementOutput {
-  /** Same buffer as input, with gate corridors carved. */
-  openMask: Uint8Array;
-  /** Re-derived room labelling (connected components after all carves). */
-  rooms: Room[];
-  roomOf: Uint16Array;
-  /** One portal per present gate. */
-  portals: Portal[];
-  /** Carved gate-corridor records (kind = "portal"). */
-  corridors: Corridor[];
-}
+import type { PortalsState, RoomsState } from "./state.ts";
 
 const PORTAL_SUB_SEED = 0xB0AA0001;
 const EDGES: readonly Edge[] = ["north", "east", "south", "west"];
 
-export function runPortalPlacement(input: PortalPlacementInput): PortalPlacementOutput {
-  const {
-    openMask, seeds, gridSize, px2world, tileSize, gates, network, tileSeed,
-  } = input;
+/**
+ * Carve tuning here is the `network` slice of GenParams (gates use the
+ * same brush as corridors). The transformer accepts that slice as its
+ * params. Gate definitions come from `state.worldCell.gates`.
+ */
+export const portalPlacement: Transformer<RoomsState, PortalsState, GenParams["network"]> =
+  (state, seed, network) => {
+    const {
+      openMask, seeds, gridSize, px2world, worldCell: { gates }, corridors: priorCorridors,
+    } = state;
 
   // Entry pixel per edge.
   const entries: Array<{ edge: Edge; gate: GateSpec; ex: number; ey: number }> = [];
@@ -80,7 +54,7 @@ export function runPortalPlacement(input: PortalPlacementInput): PortalPlacement
   }
 
   const corridors: Corridor[] = [];
-  const rng = mulberry32(tileSeed ^ PORTAL_SUB_SEED);
+  const rng = mulberry32(seed ^ PORTAL_SUB_SEED);
 
   for (const e of entries) {
     const halfWidth = sampleWidth(rng, network);
@@ -135,9 +109,15 @@ export function runPortalPlacement(input: PortalPlacementInput): PortalPlacement
     });
   }
 
-  void tileSize;
-  return { openMask, rooms: det.rooms, roomOf: det.roomOf, portals, corridors };
-}
+  return {
+    ...state,
+    openMask,
+    rooms:    det.rooms,
+    roomOf:   det.roomOf,
+    portals,
+    corridors: priorCorridors.concat(corridors),
+  };
+};
 
 function sampleWidth(rng: () => number, params: GenParams["network"]): number {
   const lo = Math.min(params.widthMin, params.widthMax);

@@ -21,6 +21,7 @@
  * own registry. Never reuse a retired id.
  */
 
+import type { Transformer } from "@voxim/levelgen";
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
@@ -30,6 +31,7 @@ import {
   BOUNDARY_KIND_GRASS_MOUND,
   BOUNDARY_KIND_WATER,
 } from "./boundary_kinds.ts";
+import type { MaterialsState, TerrainState } from "./state.ts";
 
 /**
  * Atlas's canonical material ids. Stable across versions; downstream
@@ -56,67 +58,51 @@ export const MATERIAL_SNOW   = 10;
  *  contained. */
 const ROOM_ID_NONE = 0xFFFF;
 
-export interface MaterialsInput {
-  biome: BiomeParams;
-  tileSeed: number;
-  gridSize: number;
-  params: GenParams["materials"];
-  /** From upstream stages — used to pick a darker fallback on closed pixels. */
-  openMask: Uint8Array;
-  kindOf:   Uint16Array;
-  /** Pre-network chamber id per pixel; ROOM_ID_NONE on corridors and closed pixels. */
-  chamberOf: Uint16Array;
-}
-
-export interface MaterialsOutput {
-  /** Length gridSize², row-major. Every entry is one of the MATERIAL_* ids. */
-  materials: Uint16Array;
-}
-
 const DETAIL_SUB_SEED  = 0x50005001;
 const SPREAD_SUB_SEED  = 0xC0FFEE17;
 const SPREAD_FREQUENCY = 0.18;  // higher freq than detailFrequency → small patches
 
-export function runMaterials(input: MaterialsInput): MaterialsOutput {
-  const { biome, tileSeed, gridSize, params, openMask, kindOf, chamberOf } = input;
-  const N = gridSize * gridSize;
-  const materials = new Uint16Array(N);
-  const fDetail = params.detailFrequency;
-  const fSpread = SPREAD_FREQUENCY;
+export const materials: Transformer<TerrainState, MaterialsState, GenParams["materials"]> =
+  (state, seed, params) => {
+    const { openMask, kindOf, chamberOf, gridSize, worldCell: { biome } } = state;
+    const N = gridSize * gridSize;
+    const materials = new Uint16Array(N);
+    const fDetail = params.detailFrequency;
+    const fSpread = SPREAD_FREQUENCY;
 
-  for (let py = 0; py < gridSize; py++) {
-    for (let px = 0; px < gridSize; px++) {
-      const idx = py * gridSize + px;
+    for (let py = 0; py < gridSize; py++) {
+      for (let px = 0; px < gridSize; px++) {
+        const idx = py * gridSize + px;
 
-      if (openMask[idx] === 0) {
-        // Closed pixel: kind-driven fallback so the wall reads on flat
-        // ground without needing a height step.
-        materials[idx] = pickClosedMaterial(kindOf[idx]);
-        continue;
+        if (openMask[idx] === 0) {
+          // Closed pixel: kind-driven fallback so the wall reads on flat
+          // ground without needing a height step.
+          materials[idx] = pickClosedMaterial(kindOf[idx]);
+          continue;
+        }
+
+        // Open pixel.
+        const isCorridor = chamberOf[idx] === ROOM_ID_NONE;
+        const detail = fbm(px * fDetail, py * fDetail, seed ^ DETAIL_SUB_SEED, 2);
+
+        if (isCorridor) {
+          // Carved trail: pick by surrounding biome so the path's material
+          // reads against its setting (dirt through forest, gravel through
+          // open / stony land, snow through cold).
+          materials[idx] = pickPathMaterial(biome, params);
+          continue;
+        }
+
+        // Chamber/room interior — biome decision + high-frequency spread
+        // noise so uniform colour breaks into believable patches.
+        const baseMat = pickMaterial(biome, detail, params);
+        const spread  = fbm(px * fSpread, py * fSpread, seed ^ SPREAD_SUB_SEED, 2);
+        materials[idx] = perturbWithSpread(baseMat, biome, spread);
       }
-
-      // Open pixel.
-      const isCorridor = chamberOf[idx] === ROOM_ID_NONE;
-      const detail = fbm(px * fDetail, py * fDetail, tileSeed ^ DETAIL_SUB_SEED, 2);
-
-      if (isCorridor) {
-        // Carved trail: pick by surrounding biome so the path's material
-        // reads against its setting (dirt through forest, gravel through
-        // open / stony land, snow through cold).
-        materials[idx] = pickPathMaterial(biome, params);
-        continue;
-      }
-
-      // Chamber/room interior — biome decision + high-frequency spread
-      // noise so uniform colour breaks into believable patches.
-      const baseMat = pickMaterial(biome, detail, params);
-      const spread  = fbm(px * fSpread, py * fSpread, tileSeed ^ SPREAD_SUB_SEED, 2);
-      materials[idx] = perturbWithSpread(baseMat, biome, spread);
     }
-  }
 
-  return { materials };
-}
+    return { ...state, materials };
+  };
 
 function pickMaterial(
   b: BiomeParams,

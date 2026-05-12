@@ -2,38 +2,45 @@
  * Tilemap orchestrator — runs the per-tile pipeline against one worldmap cell.
  *
  * Pipeline:
- *   1. NoiseField        — biome-driven fbm cost surface (Float32Array)
- *   2. Junctions         — Poisson-disk seeds (graph nodes only, no rooms)
- *   3. Network           — Delaunay + MST + braid + bezier carve seed→seed
- *                          + recursive branches → mutated openMask,
- *                          corridors[], per-junction degrees[]
- *   4. Rooms             — per junction, roll roomChance(degree); chosen
- *                          junctions grow noise-flooded disks → chamberOf,
- *                          chambers[]
- *   5. PortalPlacement   — bezier-carve gate→nearest-junction → portals[],
- *                          additional corridors[], re-labelled rooms/roomOf
- *   6. BoundaryKinds     — per-pixel kind tagging
- *   7. RiverStamping     — overlay water onto openMask + kindOf
- *   8. Terrain           — heightmap from openMask + kindOf
- *   9. Materials         — per-pixel material id
+ *   1. noiseField       — biome-driven fbm cost surface (Float32Array)
+ *   2. junctions        — Poisson-disk seeds (graph nodes only, no rooms)
+ *   3. network          — Delaunay + MST + braid + bezier carve seed→seed
+ *                         + recursive branches → openMask, corridors[],
+ *                         per-junction degrees[]
+ *   4. rooms            — per junction, roll roomChance(degree); chosen
+ *                         junctions grow noise-flooded disks → chamberOf,
+ *                         chambers[]
+ *   5. portalPlacement  — bezier-carve gate→nearest-junction → portals[],
+ *                         appends to corridors[], re-labels rooms/roomOf
+ *   6. boundaryKinds    — per-pixel kind tagging
+ *   7. rivers           — overlay water onto openMask + kindOf
+ *   8. terrain          — heightmap from openMask + kindOf
+ *   9. materials        — per-pixel material id
+ *
+ * Each stage is a `Transformer<TIn, TOut, TParams>` (@voxim/levelgen).
+ * `pipe()` composes them with type-aware narrowing: reordering or
+ * dropping a stage is a compile error because the next stage's TIn
+ * stops matching the prior TOut.
  *
  * Pure function: same (worldCell, tileSeed, options) always yields the
  * same TileInit.
  */
 
-import { runNoiseField } from "./pipeline/noise_field.ts";
-import { runJunctions } from "./pipeline/junctions.ts";
-import { runNetwork } from "./pipeline/network.ts";
-import { runRooms } from "./pipeline/rooms.ts";
-import { runPortalPlacement } from "./pipeline/portal_placement.ts";
-import { runTerrain } from "./pipeline/terrain.ts";
-import { runMaterials } from "./pipeline/materials.ts";
-import { runBoundaryKinds } from "./pipeline/boundary_kinds.ts";
-import { runRiverStamping } from "./pipeline/rivers.ts";
+import { pipe, type Stage, type Transformer } from "@voxim/levelgen";
+import { noiseField } from "./pipeline/noise_field.ts";
+import { junctions } from "./pipeline/junctions.ts";
+import { network } from "./pipeline/network.ts";
+import { rooms } from "./pipeline/rooms.ts";
+import { portalPlacement } from "./pipeline/portal_placement.ts";
+import { boundaryKinds } from "./pipeline/boundary_kinds.ts";
+import { rivers } from "./pipeline/rivers.ts";
+import { terrain } from "./pipeline/terrain.ts";
+import { materials } from "./pipeline/materials.ts";
 import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
+import type { PipelineBase, MaterialsState } from "./pipeline/state.ts";
 
 const DEFAULT_TILE_SIZE = 512;
 // One pixel = one world unit = one runtime voxel. Atlas runs the pipeline
@@ -50,6 +57,23 @@ export interface GenerateTileOptions {
   params?: GenParams;
 }
 
+/**
+ * Local binding helper. Each stage's transformer receives `tileSeed`
+ * verbatim and continues to combine it internally with its own
+ * `SUB_SEED` constant — byte-identical with the pre-T-204 pipeline.
+ * Migrating to `splitSeed(tileSeed, stageId)` (which would reroll every
+ * stage's RNG stream) is deliberate behaviour change and lives in a
+ * follow-up ticket. `bindStage()` from `@voxim/levelgen` is therefore
+ * not used here; this local `bind` passes `tileSeed` straight through.
+ */
+function bind<TIn, TOut, TParams>(
+  t: Transformer<TIn, TOut, TParams>,
+  params: TParams,
+  seed: number,
+): Stage<TIn, TOut> {
+  return (state) => t(state, seed, params);
+}
+
 export function generateTile(
   worldCell: WorldCellRecord,
   tileSeed: number,
@@ -60,113 +84,43 @@ export function generateTile(
   const params   = options.params   ?? DEFAULT_GEN_PARAMS;
   const px2world = tileSize / gridSize;
 
-  const noise = runNoiseField({
-    biome: worldCell.biome,
-    tileSeed,
-    gridSize,
-    params: params.noise,
-  });
+  const initial: PipelineBase = { worldCell, tileSize, gridSize, px2world };
 
-  const junctioned = runJunctions({
-    gridSize,
-    tileSeed,
-    params: params.room,
-  });
+  const pipeline: Stage<PipelineBase, MaterialsState> = pipe(
+    bind(noiseField,      params.noise,     tileSeed),
+    bind(junctions,       params.room,      tileSeed),
+    bind(network,         params.network,   tileSeed),
+    bind(rooms,           params.room,      tileSeed),
+    bind(portalPlacement, params.network,   tileSeed),
+    bind(boundaryKinds,   params.kinds,     tileSeed),
+    bind(rivers,          params.river,     tileSeed),
+    bind(terrain,         params.terrain,   tileSeed),
+    bind(materials,       params.materials, tileSeed),
+  );
 
-  const networked = runNetwork({
-    openMask: new Uint8Array(gridSize * gridSize), // start fully closed
-    seeds:    junctioned.seeds,
-    gridSize,
-    px2world,
-    tileSeed,
-    params:   params.network,
-  });
-
-  const roomed = runRooms({
-    openMask:   networked.openMask,
-    noiseField: noise.noiseField,
-    seeds:      junctioned.seeds,
-    degrees:    networked.degrees,
-    gridSize,
-    px2world,
-    tileSeed,
-    params:     params.room,
-  });
-
-  const placed = runPortalPlacement({
-    openMask: roomed.openMask,
-    seeds:    junctioned.seeds,
-    gridSize,
-    px2world,
-    tileSize,
-    gates:    worldCell.gates,
-    network:  params.network,
-    tileSeed,
-  });
-
-  // Kinds runs BEFORE terrain so the terrain stage can decide which
-  // closed pixels deserve the wall step (CLIFF) vs. which stay flat
-  // (VEGETATION / WATER / others — they're still impassable via the
-  // openMask collision path in tile-server's physics).
-  const kinds = runBoundaryKinds({
-    openMask: placed.openMask,
-    biome:    worldCell.biome,
-    tileSeed,
-    gridSize,
-    params:   params.kinds,
-  });
-
-  // Linear features stamp AFTER kinds (overrides kindOf to WATER) and
-  // BEFORE terrain (so river pixels register as non-CLIFF and stay flat).
-  // Mutates placed.openMask + kinds.kindOf in place.
-  runRiverStamping({
-    rivers:   worldCell.rivers,
-    openMask: placed.openMask,
-    kindOf:   kinds.kindOf,
-    gridSize,
-    tileSize,
-    widthPixels: params.river.widthPixels,
-  });
-
-  const terrain = runTerrain({
-    openMask: placed.openMask,
-    kindOf:   kinds.kindOf,
-    biome:    worldCell.biome,
-    tileSeed,
-    gridSize,
-    params:   params.terrain,
-  });
-
-  const mats = runMaterials({
-    biome: worldCell.biome,
-    tileSeed,
-    gridSize,
-    params: params.materials,
-    openMask:  placed.openMask,
-    kindOf:    kinds.kindOf,
-    chamberOf: roomed.chamberOf,
-  });
+  const s = pipeline(initial);
 
   return {
     cellX:    worldCell.cellX,
     cellY:    worldCell.cellY,
     tileSize,
     gridSize,
-    openMask: placed.openMask,
-    roomOf:   placed.roomOf,
-    rooms:    placed.rooms,
-    chamberOf: roomed.chamberOf,
-    chambers:  roomed.chambers,
-    corridors: networked.corridors.concat(placed.corridors),
-    portals:  placed.portals,
-    gateSummary: deriveGateSummary(placed.portals),
-    heightMap: terrain.heightMap,
-    materials: mats.materials,
-    kindOf:    kinds.kindOf,
+    openMask:   s.openMask,
+    roomOf:     s.roomOf,
+    rooms:      s.rooms,
+    chamberOf:  s.chamberOf,
+    chambers:   s.chambers,
+    corridors:  s.corridors,
+    portals:    s.portals,
+    gateSummary: deriveGateSummary(s.portals),
+    heightMap:  s.heightMap,
+    materials:  s.materials,
+    kindOf:     s.kindOf,
     boundaries: [],
     features:   [],
   };
 }
+
 
 // ---- wire encoding --------------------------------------------------------
 

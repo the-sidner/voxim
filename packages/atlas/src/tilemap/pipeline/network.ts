@@ -13,135 +13,105 @@
  *      with a brush whose half-width is sampled per edge from
  *      `[widthMin, widthMax]`.
  *   6. Recursive branch-paths off each main corridor (see `spawnBranches`).
- *   7. Re-flood `roomOf` so portal placement / gate summary see the
- *      merged connected components.
+ *
+ * Allocates the tile's `openMask` (default fully-closed) since this is the
+ * first stage that needs one, then mutates it through every carve.
  *
  * Returns `degrees[]` — one entry per junction, count of chosen edges
  * incident on that junction. The rooms stage uses it to decide which
  * junctions get rooms.
  */
 
-import { runRoomDetection } from "./room_detection.ts";
+import type { Transformer } from "@voxim/levelgen";
 import { carveSpline, makeWaypoints, samplePoint, sampleTangent } from "./bezier_carve.ts";
-import type { Corridor, Room } from "../types.ts";
-import type { Junction } from "./junctions.ts";
+import type { Corridor } from "../types.ts";
 import type { GenParams } from "../../genparams.ts";
-
-export interface NetworkInput {
-  /** From chambers stage. Mutated in place by carves. */
-  openMask: Uint8Array;
-  /** From junctions stage. Indexed by junction id (= position in array). */
-  seeds: Junction[];
-  gridSize: number;
-  px2world: number;
-  tileSeed: number;
-  params: GenParams["network"];
-}
-
-export interface NetworkOutput {
-  /** Same buffer as input, with corridors carved. */
-  openMask: Uint8Array;
-  /** Connected-component labelling after carves. Used by gate summary. */
-  rooms: Room[];
-  roomOf: Uint16Array;
-  /** Carved corridor records, one per chosen edge + each branch. */
-  corridors: Corridor[];
-  /**
-   * Per-junction edge count from the chosen network (MST + braids; does
-   * NOT count branch-paths since branches don't terminate at junctions).
-   * Indexed by junction id. Length == seeds.length.
-   */
-  degrees: Uint8Array;
-}
+import type { JunctionsState, NetworkState } from "./state.ts";
 
 const NETWORK_SUB_SEED = 0x4e570001;
 
-export function runNetwork(input: NetworkInput): NetworkOutput {
-  const { openMask, seeds, gridSize, px2world, tileSeed, params } = input;
+export const network: Transformer<JunctionsState, NetworkState, GenParams["network"]> =
+  (state, seed, params) => {
+    const { seeds, gridSize } = state;
+    const openMask = new Uint8Array(gridSize * gridSize);
 
-  // 0–1 junctions → no edges to carve. Re-flood and return.
-  if (seeds.length < 2) {
-    const det = runRoomDetection({ openMask, gridSize, px2world });
-    return {
-      openMask, rooms: det.rooms, roomOf: det.roomOf, corridors: [],
-      degrees: new Uint8Array(seeds.length),
+    // 0–1 junctions → no edges to carve.
+    if (seeds.length < 2) {
+      return { ...state, openMask, corridors: [], degrees: new Uint8Array(seeds.length) };
+    }
+
+    // ---- 1. Delaunay over junction positions ---------------------------------
+    const pts: Array<{ x: number; y: number }> = seeds.map(s => ({ x: s.x, y: s.y }));
+    const tris = delaunay(pts);
+
+    // ---- 2. Edges (deduped, length-capped) -----------------------------------
+    type Edge = { a: number; b: number; len: number };
+    const seen = new Set<number>();
+    const edges: Edge[] = [];
+    const maxLen = params.maxEdgeLength;
+    const pushEdge = (i: number, j: number) => {
+      const a = i < j ? i : j;
+      const b = i < j ? j : i;
+      const key = a * pts.length + b;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const dx = pts[a].x - pts[b].x;
+      const dy = pts[a].y - pts[b].y;
+      const len = Math.hypot(dx, dy);
+      if (len > maxLen) return;
+      edges.push({ a, b, len });
     };
-  }
+    for (const t of tris) {
+      pushEdge(t[0], t[1]);
+      pushEdge(t[1], t[2]);
+      pushEdge(t[2], t[0]);
+    }
+    edges.sort((p, q) => p.len - q.len);
 
-  // ---- 1. Delaunay over junction positions -------------------------------
-  const pts: Array<{ x: number; y: number }> = seeds.map(s => ({ x: s.x, y: s.y }));
-  const tris = delaunay(pts);
+    // ---- 3. MST + 4. Braid ---------------------------------------------------
+    const uf = new UnionFind(pts.length);
+    const tree:   Edge[] = [];
+    const extras: Edge[] = [];
+    for (const e of edges) {
+      if (uf.union(e.a, e.b)) tree.push(e);
+      else extras.push(e);
+    }
+    const rng = mulberry32(seed ^ NETWORK_SUB_SEED);
+    const braids: Edge[] = [];
+    for (const e of extras) {
+      if (rng() < params.loopRate) braids.push(e);
+    }
 
-  // ---- 2. Edges (deduped, length-capped) ---------------------------------
-  type Edge = { a: number; b: number; len: number };
-  const seen = new Set<number>();
-  const edges: Edge[] = [];
-  const maxLen = params.maxEdgeLength;
-  const pushEdge = (i: number, j: number) => {
-    const a = i < j ? i : j;
-    const b = i < j ? j : i;
-    const key = a * pts.length + b;
-    if (seen.has(key)) return;
-    seen.add(key);
-    const dx = pts[a].x - pts[b].x;
-    const dy = pts[a].y - pts[b].y;
-    const len = Math.hypot(dx, dy);
-    if (len > maxLen) return;
-    edges.push({ a, b, len });
+    // ---- 5. Carve segmented spline + accumulate degrees ----------------------
+    const corridors: Corridor[] = [];
+    const degrees   = new Uint8Array(seeds.length);
+    const chosen = tree.concat(braids);
+    for (const e of chosen) {
+      const a = pts[e.a];
+      const b = pts[e.b];
+      degrees[e.a]++;
+      degrees[e.b]++;
+      const halfWidth = sampleWidth(rng, params);
+      const margin = halfWidth + 2;
+      const waypoints = makeWaypoints(
+        a, b, params.segments, params.curvature, margin, gridSize, rng,
+      );
+      const corridor = carveSpline({
+        waypoints,
+        halfWidth,
+        samplesPerSegment: params.bezierSamples,
+        kind: "network",
+        openMask,
+        gridSize,
+      });
+      corridors.push(corridor);
+      // ---- 6. Recursive branch-paths off this corridor -----------------------
+      const parentLen = Math.hypot(b.x - a.x, b.y - a.y);
+      spawnBranches(corridor, parentLen, 0, params, gridSize, openMask, rng, corridors);
+    }
+
+    return { ...state, openMask, corridors, degrees };
   };
-  for (const t of tris) {
-    pushEdge(t[0], t[1]);
-    pushEdge(t[1], t[2]);
-    pushEdge(t[2], t[0]);
-  }
-  edges.sort((p, q) => p.len - q.len);
-
-  // ---- 3. MST + 4. Braid -------------------------------------------------
-  const uf = new UnionFind(pts.length);
-  const tree:   Edge[] = [];
-  const extras: Edge[] = [];
-  for (const e of edges) {
-    if (uf.union(e.a, e.b)) tree.push(e);
-    else extras.push(e);
-  }
-  const rng = mulberry32(tileSeed ^ NETWORK_SUB_SEED);
-  const braids: Edge[] = [];
-  for (const e of extras) {
-    if (rng() < params.loopRate) braids.push(e);
-  }
-
-  // ---- 5. Carve segmented spline + accumulate degrees --------------------
-  const corridors: Corridor[] = [];
-  const degrees   = new Uint8Array(seeds.length);
-  const chosen = tree.concat(braids);
-  for (const e of chosen) {
-    const a = pts[e.a];
-    const b = pts[e.b];
-    degrees[e.a]++;
-    degrees[e.b]++;
-    const halfWidth = sampleWidth(rng, params);
-    const margin = halfWidth + 2;
-    const waypoints = makeWaypoints(
-      a, b, params.segments, params.curvature, margin, gridSize, rng,
-    );
-    const corridor = carveSpline({
-      waypoints,
-      halfWidth,
-      samplesPerSegment: params.bezierSamples,
-      kind: "network",
-      openMask,
-      gridSize,
-    });
-    corridors.push(corridor);
-    // ---- 6. Recursive branch-paths off this corridor ---------------------
-    const parentLen = Math.hypot(b.x - a.x, b.y - a.y);
-    spawnBranches(corridor, parentLen, 0, params, gridSize, openMask, rng, corridors);
-  }
-
-  // ---- 7. Re-flood labels ------------------------------------------------
-  const det = runRoomDetection({ openMask, gridSize, px2world });
-  return { openMask, rooms: det.rooms, roomOf: det.roomOf, corridors, degrees };
-}
 
 function sampleWidth(rng: () => number, params: GenParams["network"]): number {
   const lo = Math.min(params.widthMin, params.widthMax);
@@ -290,25 +260,18 @@ function spawnBranches(
   out: Corridor[],
 ): void {
   if (depth >= params.branchMaxDepth) return;
-  // Each level rolls the chance independently — a corridor can spawn 0
-  // branches, sometimes more than one (we make 2 attempts so a "long"
-  // corridor visibly forks).
   for (let attempt = 0; attempt < 2; attempt++) {
     if (rng() >= params.branchRate) continue;
     const t = 0.2 + rng() * 0.6;
     const start = samplePoint(parent.waypoints, t);
     const tang  = sampleTangent(parent.waypoints, t);
-    // Perpendicular (rotate tangent +90°), then jitter the angle ±45°
-    // so branches aren't strictly perpendicular.
     let nx = -tang.y;
     let ny =  tang.x;
-    // 50/50 sign — half the branches go to the other side of the parent.
     if (rng() < 0.5) { nx = -nx; ny = -ny; }
     const angleJitter = (rng() - 0.5) * Math.PI * 0.5;
     const cos = Math.cos(angleJitter), sin = Math.sin(angleJitter);
     const dirX = nx * cos - ny * sin;
     const dirY = nx * sin + ny * cos;
-    // Length scales down each recursion level.
     const branchLen = parentLen * params.branchLengthFraction * (0.7 + rng() * 0.6);
     const halfWidth = sampleWidth(rng, params);
     const margin = halfWidth + 2;
@@ -327,7 +290,6 @@ function spawnBranches(
       gridSize,
     });
     out.push(branch);
-    // Recurse: this branch is the parent for the next level.
     const branchActualLen = Math.hypot(endX - start.x, endY - start.y);
     spawnBranches(branch, branchActualLen, depth + 1, params, gridSize, openMask, rng, out);
   }

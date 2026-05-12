@@ -29,16 +29,14 @@ export { generateTile, tileInitToWire, tileInitFromWire } from "./src/tilemap/ge
 export type { GenerateTileOptions } from "./src/tilemap/generate.ts";
 export type { Room, Portal, TileInit, TileInitWire } from "./src/tilemap/types.ts";
 export { deriveGateSummary, reachable, nibbleAt, NO_GATE } from "./src/tilemap/summary.ts";
-export { runTerrain, WALL_HEIGHT } from "./src/tilemap/pipeline/terrain.ts";
+export { WALL_HEIGHT } from "./src/tilemap/pipeline/terrain.ts";
 export {
-  runMaterials,
   MATERIAL_NONE, MATERIAL_GRASS, MATERIAL_DIRT,
   MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS,
   MATERIAL_PATH, MATERIAL_SNOW,
 } from "./src/tilemap/pipeline/materials.ts";
 export {
-  runBoundaryKinds,
   BOUNDARY_KIND_OPEN, BOUNDARY_KIND_STONE,
   BOUNDARY_KIND_FOREST, BOUNDARY_KIND_WATER,
   BOUNDARY_KIND_GRASS_MOUND,

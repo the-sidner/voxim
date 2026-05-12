@@ -28,6 +28,9 @@
  * Pure function: same (openMask, biome, tileSeed) → same kindOf array.
  */
 
+import type { Transformer } from "@voxim/levelgen";
+import type { KindsState, PortalsState } from "./state.ts";
+
 import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
@@ -46,41 +49,29 @@ export const BOUNDARY_KIND_WATER       = 3;
 export const BOUNDARY_KIND_GRASS_MOUND = 4;
 // Room left in the id space for future kinds (rubble, scree, hedge, …).
 
-export interface BoundaryKindsInput {
-  openMask: Uint8Array;
-  biome: BiomeParams;
-  tileSeed: number;
-  gridSize: number;
-  params: GenParams["kinds"];
-}
-
-export interface BoundaryKindsOutput {
-  /** Length gridSize², row-major. Open pixels = 0; closed pixels = a kind id. */
-  kindOf: Uint16Array;
-}
-
 const KIND_SUB_SEED = 0x60006001;
 
-export function runBoundaryKinds(input: BoundaryKindsInput): BoundaryKindsOutput {
-  const { openMask, biome, tileSeed, gridSize, params } = input;
-  const N = gridSize * gridSize;
-  const kindOf = new Uint16Array(N);
-  const f = params.detailFrequency;
+export const boundaryKinds: Transformer<PortalsState, KindsState, GenParams["kinds"]> =
+  (state, seed, params) => {
+    const { openMask, gridSize, worldCell: { biome } } = state;
+    const N = gridSize * gridSize;
+    const kindOf = new Uint16Array(N);
+    const f = params.detailFrequency;
 
-  for (let py = 0; py < gridSize; py++) {
-    for (let px = 0; px < gridSize; px++) {
-      const idx = py * gridSize + px;
-      if (openMask[idx] === 1) {
-        kindOf[idx] = BOUNDARY_KIND_OPEN;
-        continue;
+    for (let py = 0; py < gridSize; py++) {
+      for (let px = 0; px < gridSize; px++) {
+        const idx = py * gridSize + px;
+        if (openMask[idx] === 1) {
+          kindOf[idx] = BOUNDARY_KIND_OPEN;
+          continue;
+        }
+        const detail = fbm(px * f, py * f, seed ^ KIND_SUB_SEED, 2);
+        kindOf[idx] = pickKind(biome, detail, params);
       }
-      const detail = fbm(px * f, py * f, tileSeed ^ KIND_SUB_SEED, 2);
-      kindOf[idx] = pickKind(biome, detail, params);
     }
-  }
 
-  return { kindOf };
-}
+    return { ...state, kindOf };
+  };
 
 function pickKind(
   b: BiomeParams,
