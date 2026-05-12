@@ -1297,6 +1297,25 @@ export interface GameConfig {
       /** For projectiles with gravity, multiplies speed to seed an upward arc. */
       arcFactor: number;
     };
+    /**
+     * Poise — the staggering resource (T-197). Damage reduces poise; when
+     * poise hits zero the actor staggers (CSM reaction layer transitions to
+     * `stagger.light` or `stagger.heavy` based on how much the breaking hit
+     * overshot remaining poise) and poise resets to max with a brief
+     * regen-disabled window before recovery starts.
+     */
+    poise: {
+      /** Max poise — also the starting value. */
+      max: number;
+      /** Regen per second, applied while regen isn't suppressed. */
+      regenPerSec: number;
+      /** No-regen window in seconds after a stagger break, so the actor can't
+       * immediately recover and avoid follow-up staggers. */
+      regenDisabledSecondsAfterBreak: number;
+      /** Damage overshoot (damage − remaining_poise) at break time that
+       * separates `stagger.light` from `stagger.heavy`. >= this → heavy. */
+      heavyTierDamageOvershoot: number;
+    };
   };
   dodge: {
     staminaCost: number;

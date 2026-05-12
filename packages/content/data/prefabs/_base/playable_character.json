@@ -1,14 +1,24 @@
 {
   "id": "_playable_character",
   "stateMachineId": "humanoid_default",
+  "morphRanges": {
+    "armLength":      { "min": 0.92, "max": 1.10 },
+    "legLength":      { "min": 0.92, "max": 1.10 },
+    "torsoHeight":    { "min": 0.95, "max": 1.08 },
+    "shoulderWidth":  { "min": 0.90, "max": 1.15 },
+    "hipWidth":       { "min": 0.92, "max": 1.12 },
+    "headSize":       { "min": 0.95, "max": 1.05 }
+  },
   "animationSlots": {
     "idle":             "idle",
     "walk_forward":     "walking",
     "walk_backward":    "walking_backwards",
     "strafe_left":      "left_strafe_walking",
     "strafe_right":     "right_strafe_walking",
-    "roll":             "sprinting_forward_roll",
+    "sidestep":         "esquiva_1",
+    "jump":             "standing_jump",
     "airborne":         "jump",
+    "landing":          "standing_land_to_standing_idle",
     "crouch_idle":      "crouch_idle",
     "crouch_walk_forward":  "crouch_walk_forward",
     "crouch_walk_backward": "crouch_walk_back",
@@ -21,7 +31,8 @@
     "weapon.shoot_clip": "standing_aim_recoil",
     "hit_front":        "standing_react_small_from_front",
     "hit_back":         "standing_react_small_from_back",
-    "knockback":        "great_sword_impact",
+    "stagger_light":    "standing_react_small_from_front",
+    "stagger_heavy":    "great_sword_impact",
     "death":            "defeated"
   },
   "components": {}

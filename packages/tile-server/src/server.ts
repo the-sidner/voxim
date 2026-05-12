@@ -74,6 +74,7 @@ import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { BuffSystem } from "./systems/buff.ts";
+import { PoiseSystem } from "./systems/poise.ts";
 import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
 import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
@@ -422,6 +423,7 @@ export class TileServer {
       new CorruptionSystem(content, deathSystem),
       new EncumbranceSystem(content),
       new BuffSystem(effects.tick, effects.compose, deathSystem),
+      new PoiseSystem(content),
       new PhysicsSystem(content, tickEvents),
       new FogOfWarSystem(),
       new CharacterStateMachineSystem(content, tickEvents),

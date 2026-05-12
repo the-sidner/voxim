@@ -41,9 +41,13 @@ import {
   IFrameActive,
   BlockHeld,
   DodgeCooldown,
+  Poise,
 } from "./components/combat.ts";
 import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { SwingContext } from "./components/swing_context.ts";
+import { SwingChain } from "./components/swing_chain.ts";
+import { Maneuver } from "./components/maneuver.ts";
+import { ManeuverLoadout } from "./components/maneuver_loadout.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
@@ -157,6 +161,14 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   CounterReady,
   GateLink,
   Name,
+  // CSM (T-182): networked so the client debug overlay can show the active
+  // SM node per layer. Payload is small (~10 bytes per layer) and only
+  // re-sent when nodes change.
+  CharacterStateMachine,
+  // SwingChain (T-188): networked so the client can predict combo step
+  // light/heavy variants at press / release without waiting for the
+  // server's AnimationState delta.
+  SwingChain,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
@@ -174,13 +186,26 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ...NETWORKED_DEFS,
   // ── Server-only defs (networked: false) ──────────────────────────────────
   Hitbox,
-  // CSM (T-182): mode tracking + swing payload, both server-only.
-  CharacterStateMachine,
+  // CSM swing payload (server-only). The CSM component itself is networked
+  // and listed above; SwingContext is the per-state gameplay payload.
   SwingContext,
+  // Maneuver runtime payload (T-185). Server-only — AnimationSystem reads
+  // it to inject the per-hand clip into the in_maneuver SM state, hit
+  // handlers read activeHitTags. The maneuver's effect on the wire is
+  // already captured by AnimationState's clipId field, so the client never
+  // needs to decode the Maneuver payload itself.
+  Maneuver,
+  // Per-actor binding of skill slots (ACTION_SKILL_1..4) to ManeuverDef
+  // ids. Server-only — the client just sends the action bit; resolution
+  // happens in ActionSystem.
+  ManeuverLoadout,
   // Combat counters — server-only because the client doesn't act on them.
   IFrameActive,
   BlockHeld,
   DodgeCooldown,
+  // Poise (T-197) — staggering resource. Server-only; the client renders
+  // stagger via CSM reaction-layer animation, not a poise bar.
+  Poise,
   Hearth,
   JobBoard,
   AssignedJobBoard,

@@ -27,14 +27,20 @@
     "projectileDefaults": {
       "spawnOffset": { "fwd": 0.6, "right": 0.0, "up": 1.4 },
       "arcFactor": 0.08
+    },
+    "poise": {
+      "max": 50,
+      "regenPerSec": 12,
+      "regenDisabledSecondsAfterBreak": 0.5,
+      "heavyTierDamageOvershoot": 25
     }
   },
   "dodge": {
-    "staminaCost": 20,
-    "iFrameTicks": 8,
-    "rollTicks": 14,
-    "cooldownTicks": 30,
-    "speed": 10.0,
+    "staminaCost": 15,
+    "iFrameTicks": 5,
+    "sidestepTicks": 5,
+    "cooldownTicks": 15,
+    "speed": 12.0,
     "parryWindowTicks": 8,
     "staggerTicks": 20
   },

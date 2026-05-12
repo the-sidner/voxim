@@ -250,7 +250,20 @@ and offending token. The validator runs in the existing
 `compileStateMachine` path so cost is paid once per boot.
 
 ### T-195 · DerivedStats component + StatAggregationSystem
-Effort: M   Status: todo
+Effort: M   Status: deferred-into-T-197
+
+The ticket assumed no stat-aggregation existed. The codebase already has
+the right framework (ActiveEffects + BuffSystem + EffectComposeHandler +
+SpeedModifier as the composed output, EncumbrancePenalty as the base layer
+— see [buff.ts](packages/tile-server/src/systems/buff.ts) /
+[effect_handler.ts](packages/tile-server/src/effects/effect_handler.ts)),
+just shaped one-stat-at-a-time. The unification into a single DerivedStats
+component only earns its keep when a second stat needs to fold — at which
+point the rename (`SpeedModifier` → `DerivedStats`, generalise
+`EffectContribution`) lands as one diff with its motivating consumer.
+
+T-197 will be that diff: when poiseRegen needs a home it triggers the
+DerivedStats collapse.
 
 There is no home for continuous stat aggregation today. Encumbrance
 exists as a one-off system that mutates movement speed; nothing else

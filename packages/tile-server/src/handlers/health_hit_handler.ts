@@ -9,8 +9,10 @@ import {
   CounterReady,
   IFrameActive,
   BlockHeld,
+  Poise,
 } from "../components/combat.ts";
 import { SwingContext } from "../components/swing_context.ts";
+import { Maneuver } from "../components/maneuver.ts";
 import { Equipment } from "../components/equipment.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
@@ -20,15 +22,10 @@ import type { OutgoingDamageHook, IncomingDamageHook } from "../effects/damage_h
 import { TickEventBuffer } from "../tick_events.ts";
 import { createLogger } from "../logger.ts";
 
-/**
- * Damage threshold above which a hit fires `event.hit.heavy` on the target,
- * driving the CSM reaction layer into `knockback` instead of hit_front /
- * hit_back. Pulled out as a constant so it lives in one place; should move
- * to GameConfig if more knobs accumulate around heavy-hit semantics.
- */
-const HEAVY_HIT_DAMAGE_THRESHOLD = 20;
-
 const log = createLogger("HealthHitHandler");
+
+/** Server tick rate — matches the 20 Hz loop. */
+const TICKS_PER_SECOND = 20;
 
 /**
  * Handles hits on entities that have a Health component.
@@ -78,7 +75,7 @@ export class HealthHitHandler implements HitHandler {
     const defenderStamina = world.get(ctx.targetId, Stamina);
     const stamGated = defenderStamina?.exhausted ?? false;
     const incomingAngle = Math.atan2(ctx.targetY - ctx.attackerY, ctx.targetX - ctx.attackerX);
-    const targetCombatNode = ctx.targetSnapshotCsmNodes?.combat ?? "";
+    const targetCombatNode = ctx.targetSnapshotCsmNodes?.right_hand ?? "";
     const isBlocking = !stamGated &&
       targetCombatNode === "block" &&
       angleDiff(incomingAngle, ctx.targetSnapshotFacing) <= combatCfg.blockArcHalfRadians;
@@ -161,8 +158,8 @@ export class HealthHitHandler implements HitHandler {
 
     // ── CSM hit-reaction events ──────────────────────────────────────────────
     // Fire one-tick event flags on the target so its CSM reaction layer
-    // transitions to hit_front / hit_back / knockback / death this next tick.
-    // Blocked hits don't trigger reaction (CSM stays in `block`).
+    // transitions to hit_front / hit_back / stagger.{tier} / death this next
+    // tick. Blocked hits don't trigger reaction (CSM stays in `block`).
     if (!isBlocking && damage > 0) {
       this.tickEvents.fire(ctx.targetId, "event.hit");
       // Direction from the TARGET TO THE ATTACKER. dot > 0 with target's
@@ -175,8 +172,47 @@ export class HealthHitHandler implements HitHandler {
       const dot = targetToAttackerX * targetForwardX + targetToAttackerY * targetForwardY;
       if (dot >= 0) this.tickEvents.fire(ctx.targetId, "event.hit.from_front");
       else          this.tickEvents.fire(ctx.targetId, "event.hit.from_back");
-      if (damage >= HEAVY_HIT_DAMAGE_THRESHOLD) {
-        this.tickEvents.fire(ctx.targetId, "event.hit.heavy");
+
+      // ── Poise / stagger (T-197) ────────────────────────────────────────────
+      // Damage reduces poise. When poise breaks, the breaking hit's overshoot
+      // (damage past remaining poise) picks the tier: small overshoot →
+      // stagger.light, large → stagger.heavy. Poise resets to max with a
+      // brief regen-disabled window so the actor can't immediately recover
+      // before a follow-up hit lands.
+      const poise = world.get(ctx.targetId, Poise);
+      if (poise) {
+        const next = poise.current - damage;
+        if (next <= 0) {
+          const overshoot = -next;
+          const poiseCfg = this.content.getGameConfig().combat.poise;
+          const heavy = overshoot >= poiseCfg.heavyTierDamageOvershoot;
+          const disableTicks = Math.round(poiseCfg.regenDisabledSecondsAfterBreak * TICKS_PER_SECOND);
+          world.set(ctx.targetId, Poise, {
+            current: poise.max,
+            max: poise.max,
+            regenDisabledTicks: disableTicks,
+          });
+          this.tickEvents.fire(
+            ctx.targetId,
+            heavy ? "event.stagger.heavy" : "event.stagger.light",
+          );
+        } else {
+          world.set(ctx.targetId, Poise, { ...poise, current: next });
+        }
+      }
+    }
+
+    // ── Maneuver hit-effect tags (T-185 placeholder) ─────────────────────────
+    // ManeuverScheduler keeps Maneuver.activeHitTags up to date with whatever
+    // the def's hitEffects track has live at the current elapsed. Hit handler
+    // iterates and applies. Today this is just a log line — the richer effect
+    // resolver (status stacks, durations, propagation) replaces this loop
+    // when that lands; the data shape (tag + magnitude) is the survivor.
+    const attackerManeuver = world.get(ctx.attackerId, Maneuver);
+    if (attackerManeuver && attackerManeuver.activeHitTags.length > 0 && !isBlocking) {
+      for (const fx of attackerManeuver.activeHitTags) {
+        log.info("maneuver-hit-tag attacker=%s target=%s tag=%s mag=%.2f",
+          ctx.attackerId, ctx.targetId, fx.tag, fx.magnitude);
       }
     }
 

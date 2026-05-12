@@ -42,7 +42,9 @@ import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
+import { Poise } from "./components/combat.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
+import { ManeuverLoadout } from "./components/maneuver_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { Stats } from "./components/instance.ts";
@@ -114,6 +116,8 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
   world.write(id, SpeedModifier, { multiplier: 1.0 });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
+  const poiseCfg = content.getGameConfig().combat.poise;
+  world.write(id, Poise, { current: poiseCfg.max, max: poiseCfg.max, regenDisabledTicks: 0 });
   world.write(id, Heritage, heritage);
 
   const capacity = content.getGameConfig().player.inventoryCapacity;
@@ -135,6 +139,19 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
     LoreLoadout, ActiveEffects, CraftingQueue, AnimationState,
     FogState,
   );
+
+  // Default maneuver loadout demoing the four authored maneuver shapes:
+  //   1. quick_stab    — fast poke, low stamina, interruptible
+  //   2. kick_combo    — committed two-window combo
+  //   3. leap_strike   — gap-closing dash + heavy hit
+  //   4. whirlwind     — wide-arc finisher, locked through to the recovery
+  // Other authored maneuvers (double_strike, shield_bash, prayer) exist as
+  // content but aren't bound by default. Future inventory-UI work lets the
+  // player rebind slots; for now everyone spawns with this set so the
+  // maneuver pipeline can be exercised across input → motion → trail.
+  world.write(id, ManeuverLoadout, {
+    slots: ["quick_stab", "kick_combo", "leap_strike", "whirlwind"],
+  });
 };
 
 /** NPC: NpcTemplate-driven stats + NpcTag + survival defaults. */
@@ -147,6 +164,8 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
   writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
   world.write(id, SpeedModifier, { multiplier: speedMultiplier });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
+  const poiseCfg = content.getGameConfig().combat.poise;
+  world.write(id, Poise, { current: poiseCfg.max, max: poiseCfg.max, regenDisabledTicks: 0 });
   const npcDisplayName = overrides.instanceName ?? template?.displayName ?? data.npcType;
   world.write(id, NpcTag, {
     npcType: data.npcType,
@@ -225,14 +244,17 @@ function installVisualShell(
   if (!prefab.modelId) return;
   const defaultScale = content.getGameConfig().world.defaultEntityScale;
   const entityScale = defaultScale * (prefab.modelScale ?? 1);
+  // T-190: sample per-entity morphs from prefab.morphRanges so every PC
+  // gets slightly different proportions while staying deterministic per
+  // entity (same seed → same body across reload / respawn). Explicit
+  // prefab.morphValues entries win per-key — they're authored overrides,
+  // not variation.
+  const morphValues = sampleMorphValues(prefab, seed);
   world.write(id, ModelRef, {
     modelId: prefab.modelId,
     scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
     seed,
-    // T-180: per-prefab morph param overrides travel with the entity so
-    // server and client morph identically. Empty / undefined when the
-    // prefab declares no overrides.
-    morphValues: prefab.morphValues,
+    morphValues,
   });
 
   if ("hitbox" in prefab.components) return;
@@ -246,6 +268,62 @@ function installVisualShell(
   const template = content.getHitboxTemplate(prefab.modelId, seed, entityScale);
   const parts = applyHitboxTemplate(template, new Map());
   world.write(id, Hitbox, { derive: false, parts });
+}
+
+/**
+ * Sample a per-entity morph value dict from prefab.morphRanges (T-190).
+ *
+ * Determinism: the same seed yields the same body every time, so a
+ * respawned/reloaded entity looks identical. Each morph key gets its own
+ * sub-seed from `mix32(seed, hash32(key))`, so adding a new morph to a
+ * prefab doesn't shift the others.
+ *
+ * prefab.morphValues entries win per-key — they're explicit author
+ * overrides, not variation. Range-only keys get sampled; keys present in
+ * both `morphValues` and `morphRanges` keep the authored value.
+ */
+function sampleMorphValues(prefab: Prefab, seed: number): Record<string, number> | undefined {
+  const overrides = prefab.morphValues;
+  const ranges = prefab.morphRanges;
+  if (!overrides && !ranges) return undefined;
+
+  const out: Record<string, number> = { ...(overrides ?? {}) };
+  if (ranges) {
+    for (const key of Object.keys(ranges).sort()) {
+      if (key in out) continue; // explicit value wins
+      const { min, max } = ranges[key];
+      if (max <= min) { out[key] = min; continue; }
+      const r = unitRandom(mix32(seed, hash32(key)));
+      out[key] = min + r * (max - min);
+    }
+  }
+  return out;
+}
+
+/** FNV-1a 32-bit hash on a UTF-8 string. Cheap, deterministic, no deps. */
+function hash32(s: string): number {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** Mix two 32-bit seeds into one via xorshift; reused per morph key. */
+function mix32(a: number, b: number): number {
+  let x = (a ^ b) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0;
+  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0;
+  return (x ^ (x >>> 16)) >>> 0;
+}
+
+/** [0, 1) from a 32-bit seed via mulberry32 one-step. */
+function unitRandom(seed: number): number {
+  let t = (seed + 0x6D2B79F5) >>> 0;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return (((t ^ (t >>> 14)) >>> 0) % 0xffffff) / 0xffffff;
 }
 
 // ---- spawnPrefab ----
@@ -296,7 +374,11 @@ export function spawnPrefab(
   const x = overrides.x ?? 256;
   const y = overrides.y ?? 256;
   const z = overrides.z ?? 4.0;
-  const seed = overrides.seed ?? 0;
+  // Default seed derives from the entity UUID — gives every spawn a
+  // different but deterministic body (per T-190 morph sampling). Caller
+  // can override (player spawns pass heritage-derived seeds so a dynasty
+  // looks consistent across deaths).
+  const seed = overrides.seed ?? hash32(id);
 
   world.create(id);
   world.write(id, Position, { x, y, z });
