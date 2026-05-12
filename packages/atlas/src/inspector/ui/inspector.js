@@ -33,11 +33,31 @@ let world = null;         // { world, cells } from GET /world
 let summaries = null;     // Map<"x,y", number>
 let worldBbox = null;
 let tile = null;          // { tileId, cellX, cellY, payload, world } from GET /tile/x/y
-let tileLayer = "rooms";  // "rooms" | "height" | "materials" | "kinds"
 let defaults = null;      // GenParams from GET /genparams/defaults
 let presets = null;       // Record<key, {name, description, params}> from /genparams/presets
 let formParams = null;    // GenParams currently in the form (matches input values)
 let formMeta = { name: "", seed: 1, width: 2, height: 2 };
+
+// ---- pipeline / inspector trace state (T-205) ---------------------------
+let stageMeta   = null;       // [{id, label, paramsKey}] from /pipeline/stages
+let pipelineRun = null;       // { trace, intermediates (decoded), final, params, seed, cacheSize }
+let viewStage   = "materials";// which stage's intermediate state drives the primary canvas view
+let activePreset = null;      // preset key in use, or null = world's saved params
+
+// Stage id → which existing canvas renderer to dispatch to. The
+// renderer uses `intermediateState(stageId)` instead of `tile.payload`
+// so it draws the snapshot of that stage's output, not the final tile.
+const STAGE_VIEWER = {
+  noiseField:      "noise",
+  junctions:       "junctions",
+  network:         "openMask",
+  rooms:           "rooms",
+  portalPlacement: "rooms",
+  boundaryKinds:   "kinds",
+  rivers:          "kinds",
+  terrain:         "height",
+  materials:       "materials",
+};
 
 const NO_GATE = 0xF;
 const EDGE_NIBBLE = { north: 0, east: 1, south: 2, west: 3 };
@@ -198,9 +218,10 @@ canvas.addEventListener("click", onCanvasClick);
 bootstrap();
 
 async function bootstrap() {
-  [defaults, presets] = await Promise.all([
+  [defaults, presets, stageMeta] = await Promise.all([
     fetch("genparams/defaults").then(r => r.json()).then(r => r.defaults),
     fetch("genparams/presets").then(r => r.json()).then(r => r.presets),
+    fetch("pipeline/stages").then(r => r.json()).then(r => r.stages),
   ]);
   await loadActiveWorld();
   renderBakeForm();
@@ -239,9 +260,48 @@ async function loadActiveWorld() {
 }
 
 function route() {
-  const m = location.hash.match(/^#tile\/(-?\d+)\/(-?\d+)$/);
-  if (m) loadTile(parseInt(m[1]), parseInt(m[2]));
-  else { view = "world"; setCrumbs({ label: "World" }); renderContextWorld(); resize(); drawWorld(); }
+  // Hash format: #tile/x/y?preset=name&stage=materials&seed=42
+  // Query is parsed into the inspector's pipeline state on entry; flipping
+  // any of those values re-writes the hash so the URL is the source of truth.
+  const m = location.hash.match(/^#tile\/(-?\d+)\/(-?\d+)(?:\?(.*))?$/);
+  if (m) {
+    const cellX = parseInt(m[1]);
+    const cellY = parseInt(m[2]);
+    const q = new URLSearchParams(m[3] ?? "");
+    const preset = q.get("preset");
+    const stage  = q.get("stage");
+    const seedQ  = q.get("seed");
+    if (preset !== null) activePreset = preset || null;
+    if (stage  !== null) viewStage    = stage  || "materials";
+    const seedOverride = seedQ !== null && seedQ !== "" ? parseInt(seedQ) : undefined;
+    loadTile(cellX, cellY, { seedOverride });
+  } else {
+    view = "world";
+    setCrumbs({ label: "World" });
+    renderContextWorld();
+    resize();
+    drawWorld();
+  }
+}
+
+/**
+ * Rewrite the URL hash to reflect current pipeline-state choices. Triggers
+ * a `hashchange`, but `route()` is idempotent on the same state — we
+ * suppress reload via a sentinel.
+ */
+let _hashSuppress = false;
+function setHashState(extra = {}) {
+  if (view !== "tile" || !pipelineRun) return;
+  const q = new URLSearchParams();
+  if (activePreset) q.set("preset", activePreset);
+  if (viewStage && viewStage !== "materials") q.set("stage", viewStage);
+  if (extra.seed !== undefined && extra.seed !== null) q.set("seed", String(extra.seed));
+  const s = q.toString();
+  const newHash = `#tile/${pipelineRun.cellX}/${pipelineRun.cellY}${s ? "?" + s : ""}`;
+  if (location.hash === newHash) return;
+  _hashSuppress = true;
+  history.replaceState(null, "", newHash);
+  _hashSuppress = false;
 }
 
 function setCrumbs(...parts) {
@@ -592,20 +652,72 @@ function drawConnectivityFor(c, layout) {
 
 // ---- tile view -----------------------------------------------------------
 
-async function loadTile(cellX, cellY) {
+async function loadTile(cellX, cellY, opts = {}) {
   view = "tile";
   meta.textContent = `loading tile (${cellX},${cellY})…`;
-  const res = await fetch(`tile/${cellX}/${cellY}`);
+  // The pipeline endpoint is the inspector's primary tile fetch: it
+  // returns final state + trace + intermediates in one round-trip and
+  // keeps the per-tile cache warm so subsequent param tweaks are fast.
+  const body = {};
+  if (activePreset && presets[activePreset]) body.params = presets[activePreset].params;
+  if (opts.seedOverride !== undefined)       body.seedOverride = opts.seedOverride;
+  const res = await fetch(`tile/${cellX}/${cellY}/pipeline`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
     meta.textContent = await res.text();
     return;
   }
-  tile = await res.json();
-  meta.textContent = `tile ${tile.tileId} · seed ${tile.seed} · ${tile.payload.chambers.length} chambers · ${(tile.payload.corridors ?? []).length} corridors · ${tile.payload.rooms.length} components · ${tile.payload.portals.length} portals`;
+  const run = await res.json();
+  // Decode intermediates into typed arrays so the canvas renderers can
+  // read them directly.
+  pipelineRun = {
+    cellX, cellY,
+    trace:    run.trace,
+    intermediates: Object.fromEntries(
+      Object.entries(run.intermediates).map(([k, v]) => [k, decodeStateWire(v)]),
+    ),
+    final:    run.final,
+    params:   run.params,
+    seed:     run.seed,
+    cacheSize: run.cacheSize,
+  };
+  // The final tile (TileInitWire) feeds the existing render path for
+  // anything the trace panel doesn't override; keep `tile` populated for
+  // those code paths (centroids, gate summary, etc.).
+  tile = { tileId: run.tileId, cellX, cellY, seed: run.seed, world: run.world, payload: run.final };
+  const totalMs = pipelineRun.trace.reduce((s, t) => s + t.durationMs, 0).toFixed(0);
+  const hits = pipelineRun.trace.filter(t => t.cacheHit).length;
+  meta.textContent =
+    `tile ${tile.tileId} · seed ${tile.seed} · ${totalMs}ms (${hits}/${pipelineRun.trace.length} cache hits)` +
+    ` · ${tile.payload.chambers.length} chambers · ${(tile.payload.corridors ?? []).length} corridors`;
   setCrumbs({ label: "World", href: "#world" }, { label: `Tile (${cellX},${cellY})` });
   renderContextTile(cellX, cellY);
   resize();
   drawTile();
+  setHashState({ seed: opts.seedOverride });
+}
+
+/**
+ * Decode an encoded-state wire object: { fieldName: { __ta, b64 } | JSON }
+ * → { fieldName: TypedArray | JSON value }.
+ */
+function decodeStateWire(payload) {
+  const out = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (v && typeof v === "object" && "__ta" in v && "b64" in v) {
+      const bytes = bytesFromB64(v.b64);
+      if      (v.__ta === "u8")  out[k] = bytes;
+      else if (v.__ta === "u16") out[k] = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+      else if (v.__ta === "f32") out[k] = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+      else out[k] = v;
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
 }
 
 function renderContextTile(cellX, cellY) {
@@ -613,18 +725,27 @@ function renderContextTile(cellX, cellY) {
   const portalsHtml = p.portals.map((p) =>
     `<dt>portal ${p.edge}</dt><dd>room ${p.roomId}</dd>`
   ).join("");
+  const presetOptions = ["", ...Object.keys(presets ?? {})].map((k) => {
+    const label = k === "" ? "(world default)" : (presets[k]?.name ?? k);
+    const sel = (activePreset ?? "") === k ? " selected" : "";
+    return `<option value="${escape(k)}"${sel}>${escape(label)}</option>`;
+  }).join("");
+
   aside.innerHTML = `
     <section>
       <button class="full" id="back">← world</button>
     </section>
     <section>
-      <h2>Layer</h2>
-      <div class="btn-row" style="flex-wrap:wrap">
-        <button data-layer="rooms"     class="flex">rooms</button>
-        <button data-layer="height"    class="flex">height</button>
-        <button data-layer="materials" class="flex">materials</button>
-        <button data-layer="kinds"     class="flex">kinds</button>
-      </div>
+      <h2>Preset</h2>
+      <select id="preset-select" class="full">${presetOptions}</select>
+    </section>
+    ${renderTracePanel()}
+    <section>
+      <h2>Stage actions</h2>
+      <button class="full" id="dump-stage">Dump “${escape(stageLabel(viewStage))}” state</button>
+      <label class="full" style="display:block;margin-top:6px;font-size:11px;color:var(--text-dim)">Resume from dump:
+        <input type="file" accept="application/json" id="load-stage" />
+      </label>
     </section>
     <section>
       <button class="full" id="tregen">Regenerate this tile</button>
@@ -633,12 +754,14 @@ function renderContextTile(cellX, cellY) {
       <h2>Tile</h2>
       <dl>
         <dt>cell</dt><dd>(${cellX}, ${cellY})</dd>
+        <dt>seed</dt><dd>${pipelineRun?.seed ?? p.seed ?? "—"}</dd>
         <dt>tile size</dt><dd>${p.tileSize}u</dd>
         <dt>grid</dt><dd>${p.gridSize}² (${(p.tileSize/p.gridSize).toFixed(1)}u/px)</dd>
         <dt>chambers</dt><dd>${p.chambers.length}</dd>
         <dt>corridors</dt><dd>${(p.corridors ?? []).length}</dd>
         <dt>components</dt><dd>${p.rooms.length}</dd>
         <dt>portals</dt><dd>${p.portals.length}</dd>
+        <dt>cache</dt><dd>${pipelineRun?.cacheSize ?? 0} entries</dd>
         ${portalsHtml}
       </dl>
     </section>
@@ -646,19 +769,145 @@ function renderContextTile(cellX, cellY) {
   aside.querySelector("#back").addEventListener("click", () => { location.hash = "#world"; });
   aside.querySelector("#tregen").addEventListener("click", async () => {
     meta.textContent = "regenerating tile…";
+    // Force a fresh DB row by hitting /regen first, then re-run pipeline.
     await fetch(`tile/${cellX}/${cellY}/regen`, { method: "POST" });
     await loadTile(cellX, cellY);
   });
-  for (const btn of aside.querySelectorAll("[data-layer]")) {
-    const layer = btn.dataset.layer;
-    btn.style.borderColor = tileLayer === layer ? "var(--accent)" : "var(--border)";
-    btn.style.color       = tileLayer === layer ? "var(--accent)" : "var(--text)";
-    btn.addEventListener("click", () => {
-      tileLayer = layer;
+  aside.querySelector("#preset-select").addEventListener("change", (e) => {
+    activePreset = e.target.value || null;
+    loadTile(cellX, cellY);
+  });
+  aside.querySelector("#dump-stage").addEventListener("click", () => dumpStage(viewStage));
+  aside.querySelector("#load-stage").addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if (file) loadStageFromFile(file, cellX, cellY);
+  });
+  // Wire view-this-stage radios in the trace panel.
+  for (const radio of aside.querySelectorAll("[data-view-stage]")) {
+    radio.addEventListener("change", () => {
+      viewStage = radio.value;
+      // Re-render so the dump-button label updates and the radio reflects.
       renderContextTile(cellX, cellY);
       drawTile();
+      setHashState();
     });
   }
+}
+
+function stageLabel(id) {
+  return stageMeta?.find(s => s.id === id)?.label ?? id;
+}
+
+function renderTracePanel() {
+  if (!pipelineRun || !stageMeta) return "";
+  const rows = stageMeta.map((s, i) => {
+    const t = pipelineRun.trace[i];
+    const ms = (t?.durationMs ?? 0).toFixed(1);
+    const hash = (t?.outputHash ?? 0).toString(16).padStart(8, "0").slice(0, 8);
+    const hit  = t?.cacheHit ? "●" : "○";
+    const hitTitle = t?.cacheHit ? "cache hit" : "cache miss";
+    const checked  = viewStage === s.id ? " checked" : "";
+    return `
+      <tr>
+        <td style="padding:2px 4px"><input type="radio" name="view-stage" data-view-stage value="${escape(s.id)}"${checked}></td>
+        <td style="padding:2px 4px">${escape(s.label)}</td>
+        <td style="padding:2px 4px;text-align:right;font-variant-numeric:tabular-nums">${ms}ms</td>
+        <td style="padding:2px 4px;color:${t?.cacheHit ? "var(--accent)" : "var(--text-dim)"};text-align:center" title="${hitTitle}">${hit}</td>
+        <td style="padding:2px 4px;font-family:monospace;font-size:10px;color:var(--text-dim)">${hash}</td>
+      </tr>`;
+  }).join("");
+  return `
+    <section>
+      <h2>Pipeline trace</h2>
+      <table style="border-collapse:collapse;font-size:11px;width:100%">
+        <thead>
+          <tr style="color:var(--text-dim);text-align:left">
+            <th></th><th>stage</th><th style="text-align:right">ms</th><th>hit</th><th>hash</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>`;
+}
+
+function dumpStage(stageId) {
+  const intermediate = pipelineRun?.intermediates?.[stageId];
+  if (!intermediate) { toast("error", `no state for stage ${stageId}`); return; }
+  // Re-encode typed arrays for portable JSON.
+  const payload = {
+    stageId,
+    cellX:  pipelineRun.cellX,
+    cellY:  pipelineRun.cellY,
+    seed:   pipelineRun.seed,
+    params: pipelineRun.params,
+    state:  encodeStateForWire(intermediate),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `stage-${stageId}-${pipelineRun.cellX}-${pipelineRun.cellY}-${pipelineRun.seed}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("ok", `dumped ${stageLabel(stageId)} state`);
+}
+
+function encodeStateForWire(state) {
+  const out = {};
+  for (const [k, v] of Object.entries(state)) {
+    if (v instanceof Uint8Array)        out[k] = { __ta: "u8",  b64: b64Of(v) };
+    else if (v instanceof Uint16Array)  out[k] = { __ta: "u16", b64: b64Of(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) };
+    else if (v instanceof Float32Array) out[k] = { __ta: "f32", b64: b64Of(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) };
+    else out[k] = v;
+  }
+  return out;
+}
+
+function b64Of(bytes) {
+  let s = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    s += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  return btoa(s);
+}
+
+async function loadStageFromFile(file, cellX, cellY) {
+  const text = await file.text();
+  let payload;
+  try { payload = JSON.parse(text); }
+  catch (e) { toast("error", `invalid JSON: ${e.message}`); return; }
+  if (!payload.stageId || !payload.state) {
+    toast("error", "missing stageId or state in dump");
+    return;
+  }
+  meta.textContent = `resuming from ${payload.stageId}…`;
+  const res = await fetch(`tile/${cellX}/${cellY}/pipeline`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      params: payload.params,
+      seedOverride: payload.seed,
+      resumeFromStage: payload.stageId,
+      seedState: payload.state,
+    }),
+  });
+  if (!res.ok) { toast("error", await res.text()); return; }
+  const run = await res.json();
+  pipelineRun = {
+    cellX, cellY,
+    trace: run.trace,
+    intermediates: Object.fromEntries(
+      Object.entries(run.intermediates).map(([k, v]) => [k, decodeStateWire(v)]),
+    ),
+    final: run.final,
+    params: run.params,
+    seed: run.seed,
+    cacheSize: run.cacheSize,
+  };
+  tile = { tileId: run.tileId, cellX, cellY, seed: run.seed, world: run.world, payload: run.final };
+  toast("ok", `resumed from ${payload.stageId}`);
+  renderContextTile(cellX, cellY);
+  drawTile();
 }
 
 function renderSummarySection(summary) {
@@ -711,21 +960,52 @@ function tileLayout() {
   return { px, originX, originY, g };
 }
 
+/**
+ * Build a unified view-data object for the active `viewStage`.
+ * Pulls from the decoded intermediate snapshot, augmented with the
+ * tile's grid/tile dimensions (which never change per pipeline run).
+ * Fields that don't exist yet at this stage are `undefined`; renderers
+ * defend against that and just skip the affected overlays.
+ */
+function viewData() {
+  if (!pipelineRun?.intermediates) return null;
+  const s = pipelineRun.intermediates[viewStage] ?? {};
+  return {
+    openMask:   s.openMask,
+    kindOf:     s.kindOf,
+    heightMap:  s.heightMap,
+    materials:  s.materials,
+    chamberOf:  s.chamberOf,
+    chambers:   s.chambers   ?? [],
+    corridors:  s.corridors  ?? [],
+    portals:    s.portals    ?? [],
+    seeds:      s.seeds      ?? [],
+    noiseField: s.noiseField,
+    gridSize:   tile.payload.gridSize,
+    tileSize:   tile.payload.tileSize,
+  };
+}
+
 function drawTile() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   const layout = tileLayout(); if (!layout) return;
-  if (tileLayer === "rooms")     drawTileRooms(layout);
-  else if (tileLayer === "height")    drawTileHeight(layout);
-  else if (tileLayer === "materials") drawTileMaterials(layout);
-  else if (tileLayer === "kinds")     drawTileKinds(layout);
+  const vd = viewData(); if (!vd) return;
+  const viewer = STAGE_VIEWER[viewStage] ?? "materials";
+  if      (viewer === "rooms")     drawTileRooms(layout, vd);
+  else if (viewer === "height")    drawTileHeight(layout, vd);
+  else if (viewer === "materials") drawTileMaterials(layout, vd);
+  else if (viewer === "kinds")     drawTileKinds(layout, vd);
+  else if (viewer === "noise")     drawTileNoise(layout, vd);
+  else if (viewer === "junctions") drawTileJunctions(layout, vd);
+  else if (viewer === "openMask")  drawTileOpenMask(layout, vd);
 
-  // portals on top regardless of layer
+  // Portal dots float on top of every view that has them assigned.
   ctx.fillStyle = "#fff";
   ctx.strokeStyle = "#000";
   ctx.lineWidth = 1;
   const { px, originX, originY } = layout;
   const dotR = Math.max(3, Math.round(px * 0.6));
-  for (const p of tile.payload.portals) {
+  for (const p of vd.portals) {
     const cx = originX + p.pixelX * px + px / 2;
     const cy = originY + p.pixelY * px + px / 2;
     ctx.beginPath();
@@ -735,15 +1015,15 @@ function drawTile() {
   }
 }
 
-function drawTileRooms({ px, originX, originY, g }) {
+function drawTileRooms({ px, originX, originY, g }, vd) {
   // Three-tone view of the room network:
   //   - closed pixels   → dark grey (the maze walls)
   //   - chamber pixels  → bright per-chamber colour
   //   - corridor pixels → light grey (open in openMask but not in any chamber)
   // Plus overlays: chamber centroids (black dots) and bezier centerlines
   // for each carved corridor (so the network reads as drawn paths).
-  const openMask  = bytesFromB64(tile.payload.openMaskB64);
-  const chamberOf = u16FromB64(tile.payload.chamberOfB64);
+  const openMask  = vd.openMask  ?? new Uint8Array(g * g);
+  const chamberOf = vd.chamberOf ?? new Uint16Array(g * g).fill(0xFFFF);
   rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
     if (openMask[idx] === 0) {
       buf[p] = 0x1a; buf[p+1] = 0x1c; buf[p+2] = 0x21; buf[p+3] = 0xff;
@@ -757,7 +1037,7 @@ function drawTileRooms({ px, originX, originY, g }) {
   // reads even when brush stamps blur into chamber colours. Same
   // formula as bezier_carve.ts: each segment becomes a cubic bezier
   // with control points derived from neighbouring waypoints.
-  for (const c of (tile.payload.corridors ?? [])) {
+  for (const c of (vd.corridors ?? [])) {
     const w = c.waypoints ?? [];
     if (w.length < 2) continue;
     ctx.strokeStyle = c.kind === "portal" ? "#ffffff" : "#103848";
@@ -797,9 +1077,9 @@ function drawTileRooms({ px, originX, originY, g }) {
   }
   // Chamber centroids — small black dots so even tiny chambers read.
   ctx.fillStyle = "#000";
-  for (const r of tile.payload.chambers) {
-    const cxPx = originX + (r.cx / tile.payload.tileSize) * (g * px);
-    const cyPx = originY + (r.cy / tile.payload.tileSize) * (g * px);
+  for (const r of vd.chambers) {
+    const cxPx = originX + (r.cx / vd.tileSize) * (g * px);
+    const cyPx = originY + (r.cy / vd.tileSize) * (g * px);
     ctx.beginPath();
     ctx.arc(cxPx, cyPx, Math.max(1.5, px * 0.4), 0, Math.PI * 2);
     ctx.fill();
@@ -813,8 +1093,8 @@ const roomColours = [
   "#f5a586","#a5f586","#86a5f5","#f586cb","#86f5b6","#d6f586",
 ];
 
-function drawTileHeight({ px, originX, originY, g }) {
-  const heightMap = f32FromB64(tile.payload.heightMapB64);
+function drawTileHeight({ px, originX, originY, g }, vd) {
+  const heightMap = vd.heightMap ?? new Float32Array(g * g);
   let min = Infinity, max = -Infinity;
   for (let i = 0; i < heightMap.length; i++) {
     if (heightMap[i] < min) min = heightMap[i];
@@ -834,9 +1114,9 @@ const MATERIAL_COLOURS = {
   0: "#222", 1: "#5a8b3f", 2: "#7a5a3a", 3: "#7a7a7a", 4: "#d8c878", 5: "#3070b8",
 };
 
-function drawTileMaterials({ px, originX, originY, g }) {
-  const materials = u16FromB64(tile.payload.materialsB64);
-  const openMask  = bytesFromB64(tile.payload.openMaskB64);
+function drawTileMaterials({ px, originX, originY, g }, vd) {
+  const materials = vd.materials ?? new Uint16Array(g * g);
+  const openMask  = vd.openMask  ?? new Uint8Array(g * g).fill(1);
   rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
     const base = MATERIAL_RGB[materials[idx]] ?? FALLBACK_RGB;
     const dim = openMask[idx] === 0 ? 0.55 : 1.0;
@@ -854,11 +1134,60 @@ const KIND_COLOURS = {
   0: "#dadada", 1: "#7a7a7a", 2: "#2a5a2a", 3: "#3070b8", 4: "#7ac74a",
 };
 
-function drawTileKinds({ px, originX, originY, g }) {
-  const kindOf = u16FromB64(tile.payload.kindOfB64);
+function drawTileKinds({ px, originX, originY, g }, vd) {
+  const kindOf = vd.kindOf ?? new Uint16Array(g * g);
   rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
     const c = KIND_RGB[kindOf[idx]] ?? FALLBACK_RGB;
     buf[p] = c[0]; buf[p+1] = c[1]; buf[p+2] = c[2]; buf[p+3] = 0xff;
+  });
+}
+
+// ---- new intermediate-stage drawers (T-205) -----------------------------
+
+function drawTileNoise({ px, originX, originY, g }, vd) {
+  const nf = vd.noiseField;
+  if (!nf) return;
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < nf.length; i++) {
+    if (nf[i] < min) min = nf[i];
+    if (nf[i] > max) max = nf[i];
+  }
+  const range = Math.max(1e-6, max - min);
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
+    const t = (nf[idx] - min) / range;
+    const v = Math.round(t * 255);
+    buf[p] = v; buf[p+1] = v; buf[p+2] = v; buf[p+3] = 0xff;
+  });
+}
+
+function drawTileJunctions({ px, originX, originY, g }, vd) {
+  // No openMask yet at the junctions stage — paint a uniform dark
+  // backdrop and stamp each Poisson seed as a bright dot.
+  rasterLayer({ px, originX, originY, g }, (_idx, buf, p) => {
+    buf[p] = 0x18; buf[p+1] = 0x1b; buf[p+2] = 0x22; buf[p+3] = 0xff;
+  });
+  ctx.fillStyle   = "#f5d976";
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth   = 1;
+  for (const s of vd.seeds) {
+    const cx = originX + s.x * px + px / 2;
+    const cy = originY + s.y * px + px / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(2, px * 0.5), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+function drawTileOpenMask({ px, originX, originY, g }, vd) {
+  // Used for the post-network view: openMask exists, chamberOf doesn't.
+  const openMask = vd.openMask ?? new Uint8Array(g * g);
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
+    const o = openMask[idx] === 1;
+    buf[p]   = o ? 0xc0 : 0x1a;
+    buf[p+1] = o ? 0xc4 : 0x1c;
+    buf[p+2] = o ? 0xcc : 0x21;
+    buf[p+3] = 0xff;
   });
 }
 
@@ -933,8 +1262,6 @@ function bytesFromB64(b64) {
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
   return out;
 }
-function u16FromB64(b64) { const b = bytesFromB64(b64); return new Uint16Array(b.buffer, b.byteOffset, b.byteLength / 2); }
-function f32FromB64(b64) { const b = bytesFromB64(b64); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4); }
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 function escape(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }

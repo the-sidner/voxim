@@ -27,6 +27,16 @@
 import { serveDir } from "@std/http/file-server";
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
 import { generateTile, tileInitToWire } from "./tilemap/generate.ts";
+import {
+  decodeState,
+  encodeState,
+  runInstrumented,
+  TileCache,
+  type StageTrace,
+} from "./tilemap/instrumented_runner.ts";
+import { ORDERED_STAGES, type StageId } from "./tilemap/pipeline/stages.ts";
+import { deriveGateSummary } from "./tilemap/summary.ts";
+import type { TileInit } from "./tilemap/types.ts";
 import { bakeWorld, tileSeedFor } from "./bake.ts";
 import type { WorldCellRecord } from "./worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, PRESETS, mergeGenParams, type DeepPartialGenParams, type GenParams } from "./genparams.ts";
@@ -129,6 +139,17 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
     return jsonOk({ presets: PRESETS });
   }
 
+  // Stage metadata for the inspector trace panel (T-205): id, label,
+  // and which GenParams slice each stage consumes. Stable as long as
+  // the pipeline shape is stable.
+  if (req.method === "GET" && url.pathname === "/pipeline/stages") {
+    return jsonOk({
+      stages: ORDERED_STAGES.map((s) => ({
+        id: s.id, label: s.label, paramsKey: s.paramsKey,
+      })),
+    });
+  }
+
   if (req.method === "POST" && url.pathname === "/world/restart") {
     const targets = cfg.restartTargets ?? [];
     const results: Array<{ target: string; ok: boolean; error?: string }> = [];
@@ -172,6 +193,17 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
     if (!active) return notFound("no active world");
     await cfg.tilesRepo.delete(active.id, tileIdFor(cx, cy));
     return await getOrGenerateTile(cfg, cx, cy);
+  }
+
+  // POST /tile/:cellX/:cellY/pipeline — instrumented run for the inspector.
+  // Body (all optional): { params?: DeepPartialGenParams, seedOverride?: number,
+  //                        resumeFromStage?: StageId, seedState?: encoded state,
+  //                        intermediates?: boolean (default true) }
+  // Returns: { tileId, cellX, cellY, world, trace, final (TileInitWire),
+  //            intermediates: Record<StageId, encoded state>, cacheSize }
+  const tilePipe = url.pathname.match(/^\/tile\/(-?\d+)\/(-?\d+)\/pipeline$/);
+  if (req.method === "POST" && tilePipe) {
+    return await runTilePipeline(cfg, parseInt(tilePipe[1]), parseInt(tilePipe[2]), req);
   }
 
   if (req.method === "OPTIONS") {
@@ -259,6 +291,129 @@ function readQueryNumber(url: URL, key: string, fallback: number): number {
   if (v === null) return fallback;
   const n = parseInt(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+// ---- inspector pipeline runner -------------------------------------------
+
+/**
+ * Per-tile in-memory caches keyed by `${worldId}:${cellX}_${cellY}`. The
+ * inspector keeps one cache alive per open tile so consecutive
+ * `/pipeline` calls reuse upstream stage outputs. There is no eviction
+ * — the process is small and an open inspector at most has a handful of
+ * tiles in play; restart the server to clear all caches.
+ */
+const TILE_CACHES = new Map<string, TileCache>();
+
+function cacheKeyFor(worldId: string, cellX: number, cellY: number): string {
+  return `${worldId}:${cellX}_${cellY}`;
+}
+
+async function runTilePipeline(
+  cfg: AtlasServerConfig,
+  cellX: number,
+  cellY: number,
+  req: Request,
+): Promise<Response> {
+  const active = await cfg.worldsRepo.getLatest();
+  if (!active) return notFound("no active world");
+  const cells = await cfg.cellsRepo.load(active.id);
+  if (!cells) return notFound("no cells in active world");
+  const cellRow = cells.cells.find((c) => c.cellX === cellX && c.cellY === cellY);
+  if (!cellRow) return notFound(`cell ${cellX},${cellY} not in active world`);
+
+  let body: {
+    params?: DeepPartialGenParams;
+    seedOverride?: number;
+    resumeFromStage?: StageId;
+    seedState?: unknown;
+    intermediates?: boolean;
+  } = {};
+  if (req.headers.get("content-type")?.includes("application/json")) {
+    try { body = await req.json(); } catch { /* ignore */ }
+  }
+
+  const worldSeed = Number(active.seed);
+  const tileSeed  = body.seedOverride ?? tileSeedFor(worldSeed, cellX, cellY);
+  // Merge body params over the world's persisted params so an inspector
+  // edit can tweak a single field without re-sending the full GenParams.
+  const worldParams: GenParams = mergeGenParams(active.params as unknown as DeepPartialGenParams);
+  const params: GenParams = body.params
+    ? mergeGenParams({ ...worldParams as unknown as DeepPartialGenParams, ...body.params })
+    : worldParams;
+
+  const cacheKey = cacheKeyFor(active.id, cellX, cellY);
+  let cache = TILE_CACHES.get(cacheKey);
+  if (!cache) {
+    cache = new TileCache();
+    TILE_CACHES.set(cacheKey, cache);
+  }
+
+  const cell: WorldCellRecord = {
+    cellX:  cellRow.cellX,
+    cellY:  cellRow.cellY,
+    biome:  cellRow.biome  as unknown as WorldCellRecord["biome"],
+    gates:  cellRow.gates  as unknown as WorldCellRecord["gates"],
+    rivers: cellRow.rivers as unknown as WorldCellRecord["rivers"],
+  };
+
+  const result = runInstrumented({
+    worldCell: cell,
+    tileSeed,
+    params,
+    cache,
+    resumeFromStage: body.resumeFromStage,
+    seedState: body.seedState !== undefined ? decodeState(body.seedState) : undefined,
+  });
+
+  // Encode the final tile (re-uses tileInitToWire by constructing a
+  // TileInit shape from the materials-stage final state) and every
+  // intermediate state into wire form. Trace passes through as-is.
+  const intermediates = body.intermediates === false
+    ? {}
+    : Object.fromEntries(
+        Object.entries(result.intermediates).map(([k, v]) => [k, encodeState(v)]),
+      );
+
+  // For the "final" view, the inspector can reuse the existing tile
+  // render path that consumes TileInitWire — so we emit that too.
+  const tile = generateTileInitFromFinal(result.final, cellX, cellY);
+
+  return jsonOk({
+    tileId: tileIdFor(cellX, cellY),
+    cellX, cellY,
+    seed:   tileSeed,
+    world:  worldToWire(active),
+    params, // effective params after merge (for inspector form sync)
+    trace:  result.trace satisfies StageTrace[],
+    final:  tileInitToWire(tile),
+    intermediates,
+    cacheSize: cache.size,
+  });
+}
+
+function generateTileInitFromFinal(
+  final: ReturnType<typeof runInstrumented>["final"],
+  cellX: number,
+  cellY: number,
+): TileInit {
+  return {
+    cellX, cellY,
+    tileSize:  final.tileSize,
+    gridSize:  final.gridSize,
+    openMask:  final.openMask,
+    roomOf:    final.roomOf,
+    rooms:     final.rooms,
+    chamberOf: final.chamberOf,
+    chambers:  final.chambers,
+    corridors: final.corridors,
+    portals:   final.portals,
+    gateSummary: deriveGateSummary(final.portals),
+    heightMap: final.heightMap,
+    materials: final.materials,
+    kindOf:    final.kindOf,
+    boundaries: [],
+    features:   [],
+  };
 }
 
 async function getOrGenerateTile(
