@@ -1595,7 +1595,7 @@ mismatch, and shows `splitSeed` produces stable, well-distributed sub-seeds. No
 consumer migration in this ticket — that lands in T-204.
 
 ### T-204 · Migrate atlas tilemap pipeline to `@voxim/levelgen` Transformer interface
-Effort: M   Status: done   Commit: (pending)   Depends on: T-203
+Effort: M   Status: done   Commit: e28f283   Depends on: T-203
 
 The 9-stage tilemap pipeline (`noise_field → junctions → network → rooms →
 portal_placement → boundary_kinds → rivers → terrain → materials`) lives in
