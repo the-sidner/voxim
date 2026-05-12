@@ -1,0 +1,41 @@
+{
+  "id":          "wolf_den",
+  "schema":      1,
+  "displayName": "Wolf Den",
+
+  "type": "encounter",
+  "activity": {
+    "spawnTable":         "wolf_pack_medium",
+    "spawnTriggerRadius": 8,
+    "minClearKills":      "all",
+    "regenAfterTicks":    null
+  },
+
+  "fit": {
+    "preferredTopology": ["pocket", "deadend"],
+    "minArea":           200,
+    "maxArea":           600,
+    "enclosure":         { "min": 0.4, "max": 1.0 },
+    "requiredBiome":     ["forest", "hills"]
+  },
+
+  "gate": { "kind": "open" },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["bone", "predator", "wolf"],
+      "flavorTags": ["primal", "savage", "feral"],
+      "visualHint": "ivory"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_wolf_pack_drift", "chance": 0.3 },
+      { "kind": "stack", "id": "wolf_pelt",            "qty":    2          },
+      { "kind": "stack", "id": "raw_meat",             "qty":    1, "chance": 0.6 }
+    ]
+  },
+
+  "tags":         ["bone", "predator", "wolf", "primal", "wilderness"],
+  "difficulty":   2,
+  "quotaWeight":  1.0,
+  "roles":        ["entry", "midchain", "optional"]
+}

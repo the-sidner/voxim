@@ -1,0 +1,46 @@
+{
+  "id":          "ancient_arena",
+  "schema":      1,
+  "displayName": "Ancient Arena",
+
+  "type": "bossfight",
+  "activity": {
+    "bossNpcId": "stone_construct",
+    "arenaRules": {
+      "lockEntry":     true,
+      "phaseTriggers": [0.66, 0.33],
+      "addsTable":     "construct_motes"
+    }
+  },
+
+  "fit": {
+    "preferredTopology": ["plaza", "arena"],
+    "minArea":           800,
+    "maxArea":           4000,
+    "enclosure":         { "min": 0.0, "max": 0.6 },
+    "requiredKind":      ["stone", "grass_mound"]
+  },
+
+  "gate": {
+    "kind":         "multi",
+    "count":        2,
+    "flavorAccept": ["bone", "stone", "primal", "ancient", "ritual"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["regal", "ancient", "stone"],
+      "flavorTags": ["solemn", "weathered", "monumental"],
+      "visualHint": "obsidian"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_construct_origin",     "chance": 0.8 },
+      { "kind": "stack", "id": "ancient_alloy_fragment",    "qty":    3   }
+    ]
+  },
+
+  "tags":         ["regal", "ancient", "stone", "boss", "monumental"],
+  "difficulty":   5,
+  "quotaWeight":  0.25,
+  "roles":        ["terminal"]
+}

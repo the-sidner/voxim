@@ -1628,7 +1628,7 @@ packages/atlas/mod.ts` passes, `generate.ts` is a one-screen `pipe(...)` composi
 and every old `runX` is either renamed/replaced or deleted.
 
 ### T-205 · Atlas inspector — pipeline trace, layer toggles, transformer-swap UI
-Effort: M   Status: todo   Depends on: T-204
+Effort: M   Status: done   Commit: be3725f   Depends on: T-204
 
 With T-204 the pipeline is a list of typed Transformers each producing a snapshottable
 state. Build the inspector affordances that turn that into a real procedural-generation
@@ -1665,6 +1665,169 @@ with all 9 stages, clicking each stage swaps the primary view to that stage's ou
 slider tweaks confirm sub-50ms repaints for late-stage edits via the cache-hit
 indicator, dumping and reloading an intermediate state round-trips byte-identical, and
 the URL captures the active preset + seed.
+
+### T-206 · POI content schema — TypeScript types + valibot validation + loader
+Effort: S   Status: todo
+
+The POI schema is designed and three example POIs ship in
+`packages/content/data/pois/` (`wolf_den`, `ancient_arena`, `glyph_puzzle`),
+with the full design in `packages/content/data/pois/SCHEMA.md`. This ticket
+wires the schema into the content package so authoring errors fail loudly at
+load time and the generator (T-209) has typed access to POIs.
+
+- Add `PoiDef` and supporting types to `packages/content/src/types.ts`,
+  matching SCHEMA.md exactly. The `activity` field is a discriminated union
+  keyed on `type`; `gate` is a discriminated union keyed on `kind`.
+- Add a valibot schema in the same module (or a sibling file) for runtime
+  validation. The loader must reject unknown `type`/`gate.kind`/`role`
+  values, out-of-range `difficulty`, and POIs whose `gate` declares
+  `flavorAccept` while `kind` is `"open"`.
+- Extend `JsonSource.load()` to scan `data/pois/` and produce a
+  `ContentRegistry<PoiDef>`. SCHEMA.md is ignored (md files filtered out at
+  the loader, same pattern other categories already use).
+- `ContentService` gains `getPoi(id)`, `listPois()`, `findPoisByRole(role)`,
+  `findPoisByTag(tag)`. The last two return arrays; the matcher in T-209
+  will use them heavily.
+- Tests in `packages/content/src/`: load the three example files, assert
+  shape; assert that a deliberately broken POI (unknown `type`) rejects;
+  assert that SCHEMA.md's examples stay in sync with what the loader
+  accepts (parse-and-compare the json blocks if practical, else load the
+  three example files which double as living docs).
+
+Done when: `deno check` clean across affected packages, `deno test`
+green on the new POI tests, atlas + tile-server still load without
+warnings, adding a fourth POI file is purely a file drop.
+
+### T-207 · Author POI roster covering type + theme space
+Effort: M   Status: todo   Depends on: T-206
+
+Three POI examples are not enough to make the generator (T-209) produce
+varied tiles. The roster needs to cover every POI `type` with at least 2-3
+variants, and the theme vocabulary must form **bridging chains** — for
+every accept-themes-set declared by some POI's gate, at least one other
+POI's `reward.trinketTheme.themes` must intersect it. Without bridges,
+the constraint solver runs out of valid keys and resorts to retry-spam.
+
+Target: ~15 authored POI definitions covering:
+
+- 3-4 `encounter` (wolf_den is one; add e.g. `bandit_camp`, `bog_drowner_pool`,
+  `corrupted_glade`)
+- 2-3 `bossfight` (ancient_arena is one; add e.g. `hollow_root`, `tideborn_serpent`)
+- 2-3 `wave` (e.g. `forgotten_garrison`, `cursed_quarry`)
+- 2-3 `puzzle` (glyph_puzzle is one; add e.g. `mirror_atrium`, `tideflow_locks`)
+- 1-2 `action` (e.g. `ancient_chalice`, `signal_pyre`)
+- 1-2 `exploration` (e.g. `cairn_marker`, `weeping_statue`)
+
+Theme vocabulary v1 (every accept must be drop-reachable from some POI):
+`bone`, `stone`, `primal`, `ancient`, `ritual`, `arcane`, `glyph`, `regal`,
+`mystic`, `verdant`, `rotten`, `tidal`, `cursed`, `martial`.
+
+Ship a small validator script (`scripts/check_poi_bridges.ts`) that loads
+the roster and asserts every gate's `flavorAccept` is reachable from at
+least one POI's `themes`. Run it in CI / pre-commit.
+
+Done when: 15+ POI files exist, the bridge-check passes, atlas tiles bake
+without retry-saturation warnings (T-209 logs retry counts).
+
+### T-208 · AnnotatedZoneGraph + topology-annotation transformer
+Effort: M   Status: todo
+
+The current pipeline produces `chamberOf` (per-pixel chamber id) and
+`rooms` (connected-component records after carving), but downstream stages
+that want to *reason about zones* — POI matcher in T-209, surface modulation,
+spawn rules — have to re-derive structure from raw pixel state every time.
+Lift that derivation into a first-class artifact.
+
+New `Transformer<MaterialsState, AnnotatedZoneState, ZoneParams>` running
+after `materials` (last stage in the run, so it sees all final state):
+
+```typescript
+interface AnnotatedZone {
+  id:        ZoneId;
+  pixels:    Uint32Array;    // indices into the grid; cheap to iterate
+  area:      number;
+  centroid:  { x: number; y: number };
+  aspectRatio: number;       // 1.0 = round, → 0 elongated
+  enclosure:  number;        // 0..1: how surrounded by closed pixels
+  topologyRole: ZoneRole;    // "plaza" | "pocket" | "deadend" | "corridor" | "crossroads" | "lobby" | "arena"
+  kindHistogram: Record<KindId, number>;  // for kind-filtered POI matching
+  neighbors: ZoneId[];       // adjacency in the corridor graph
+  isEntry:   boolean;        // touches a portal
+}
+interface AnnotatedZoneState extends MaterialsState {
+  zoneGraph: { zones: AnnotatedZone[]; byPixel: Uint16Array };
+}
+```
+
+Role assignment is rule-based on (degree, area, aspectRatio, enclosure):
+- `arena`     — area > 1500
+- `plaza`     — degree ≥ 3, aspectRatio > 0.6, area > 400
+- `crossroads`— degree ≥ 3, area < 400
+- `lobby`     — degree == 2, area > 250
+- `corridor`  — degree == 2, area ≤ 250, aspectRatio < 0.4
+- `pocket`    — degree == 1, area > 150
+- `deadend`   — degree == 1, area ≤ 150
+
+Atlas inspector: add a new view-stage (T-205's view-this-stage radio
+naturally extends) that colorises zones by role. Use it to eyeball
+classification before T-209 consumes it.
+
+Done when: every tile produces a `zoneGraph` with topology roles; inspector
+renders the zone-role layer; a snapshot test asserts byte-identity for
+representative tiles (same gate as T-204).
+
+### T-209 · POI matcher + dependency-DAG solver
+Effort: L   Status: todo   Depends on: T-206, T-207, T-208
+
+The Tier-6 generator. Consumes `AnnotatedZoneGraph` (T-208) + the POI
+roster (T-207), produces a `TileNarrative` (`PoiInstance[]`,
+`TrinketInstance[]`, `dagShape`, entry + terminal sets) per the contract in
+SCHEMA.md § 8.
+
+Phases inside the transformer:
+
+1. **Candidate scoring** — for every (zone, POI-def) pair, compute a fit
+   score from `fit` constraints. Hard rejects (`requiredBiome` mismatch,
+   area out of bounds, `requiredKind` empty intersection) drop to 0;
+   soft mismatches (preferred topology absent) reduce the score but
+   don't eliminate.
+2. **Selection** — pick N POIs (N depends on tile difficulty tier;
+   3-7 typical) under constraints: at least one POI with `entry` role,
+   exactly one with `terminal` role if dagShape requires one, no two
+   POIs in the same zone, world-wide quota weights respected.
+3. **DAG wiring** — assign keys/locks. For each non-entry POI, find an
+   upstream POI whose `reward.trinketTheme.themes` intersects this POI's
+   `gate.flavorAccept`. For `multi` gates, find `count` distinct upstream
+   POIs. Acyclicity + reachability checked at end; failure → bump retry
+   sub-seed and reset.
+4. **Trinket naming** — procedural display name from source themes + dest
+   flavorTags + sourcePoi.displayName per SCHEMA.md § 6.
+
+Determinism gate: all phases consume sub-seeds derived from
+`splitSeed(tileSeed, "poi_phaseN_retryM")` (T-203 utility). Retry count
+becomes part of the tile save so reload reproduces. Bounded retry: max 16
+attempts, then fall back to a degraded DAG (linear chain through best-fit
+POIs only, no flavour matching) and log a warning.
+
+Auxiliary content categories this needs (separate tickets if scope creeps;
+inline as stubs otherwise):
+- `packages/content/data/spawn_tables/` — referenced by `encounter`/`wave`
+  POI activities
+- `packages/content/data/puzzles/` — referenced by `puzzle` POI activities
+
+For v1 these can ship as 2-3 stub entries each, just enough to bake a
+working tile. Full content authoring is a follow-up.
+
+Atlas inspector: render the DAG as an overlay on the zone-role view.
+Nodes = POI instances at their zone centroids; edges = trinket dependencies;
+edge labels = trinket display names. Add a "Quest path" toggle that
+highlights one entry→terminal traversal.
+
+Done when: a baked tile carries a non-empty `TileNarrative` with at least
+one entry + one terminal; the bridge-check from T-207 means no retry
+saturation in 100 sample bakes; the DAG renders in atlas; ten random
+tile bakes show at least three distinct dagShapes (linear / branching /
+diamond / lattice mix); save+reload reproduces the DAG byte-identical.
 
 ---
 

@@ -1,0 +1,43 @@
+{
+  "id":          "glyph_puzzle",
+  "schema":      1,
+  "displayName": "Glyph Shrine",
+
+  "type": "puzzle",
+  "activity": {
+    "puzzleId":        "lever_sequence",
+    "params":          { "length": 5, "showHints": true },
+    "failurePenalty":  "reset"
+  },
+
+  "fit": {
+    "preferredTopology": ["pocket", "lobby"],
+    "minArea":           300,
+    "maxArea":           900,
+    "enclosure":         { "min": 0.5, "max": 1.0 },
+    "requiredKind":      ["stone", "forest"]
+  },
+
+  "gate": {
+    "kind":         "item",
+    "trinketRef":   null,
+    "flavorAccept": ["arcane", "ritual", "glyph", "ancient"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["arcane", "ritual", "glyph"],
+      "flavorTags": ["mystic", "whispered", "etched"],
+      "visualHint": "luminous_quartz"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_glyph_codex_page", "chance": 1.0 },
+      { "kind": "stack", "id": "arcane_dust",           "qty":    1   }
+    ]
+  },
+
+  "tags":         ["arcane", "ritual", "glyph", "ancient", "mystic"],
+  "difficulty":   3,
+  "quotaWeight":  0.7,
+  "roles":        ["midchain", "optional"]
+}
