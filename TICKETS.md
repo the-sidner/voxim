@@ -137,7 +137,7 @@ outside the retired-slot comment and migration notes; combat still produces
 correct stagger, counter, i-frame, block-timing, and dodge-cooldown behaviour.
 
 ### T-192 · CSM declarative scope registry
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: cdd67ae
 
 `CharacterStateMachineSystem.buildSMScope` is today a ~100-line monolith
 of hardcoded reads (`vel.*`, `health.*`, `input.*`, `action.*`,
@@ -168,7 +168,7 @@ preserved for now (validation added in T-194). Refactor replaces, no
 shim: `buildSMScope`'s old body is deleted, not @deprecated.
 
 ### T-193 · CSM layer roles + state tags
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: cdd67ae
 
 The CSM today has informal layer semantics — `posture`, `locomotion`,
 `right_hand`, `reaction` carry meaning only by convention. Gameplay
@@ -226,7 +226,7 @@ system code changes; SwingContext lifecycle works without the
 removal-vs-write ordering hack.
 
 ### T-194 · CSM compile-time validation
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: cdd67ae
 
 Builds on T-192 + T-193. At server boot, the SM compiler should reject
 malformed defs loudly instead of silently mis-behaving.
