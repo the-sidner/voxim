@@ -348,7 +348,7 @@ transitions posture to stunned and locks input (via T-193 `locks-input`
 tag); stacking same buff respects `stackBehaviour`.
 
 ### T-197 · Poise + stagger pipeline
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: cd693a0
 
 Stagger today comes from parry only (T-003). The combat design needs
 generalised stagger from heavy hits + poise depletion, with severity
