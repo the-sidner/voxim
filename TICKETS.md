@@ -408,7 +408,7 @@ contact location; the HitEvent on the wire carries part data; no
 hardcoded multipliers — values live in content.
 
 ### T-199 · WeaponActionDef root motion
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 154f25a
 
 Slashes should give a small forward push so attacking feels weighty
 (per combat design). Today swings are purely in-place; movement comes
