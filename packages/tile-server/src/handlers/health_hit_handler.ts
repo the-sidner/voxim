@@ -128,8 +128,14 @@ export class HealthHitHandler implements HitHandler {
       : 0;
 
     const blockMult = isBlocking ? combatCfg.blockDamageMultiplier : 1.0;
+    // T-198: part multipliers — attacker.{tip|mid|haft} × victim.{partId}.
+    // Unknown parts fall through to 1.0 so a newly-authored hitbox part
+    // doesn't silently break combat tuning.
+    const pm = combatCfg.partMultipliers;
+    const attackerPartMult = pm.attacker[ctx.attackerPart] ?? 1.0;
+    const victimPartMult   = pm.victim[ctx.bodyPart] ?? 1.0;
     const baseDamage = ctx.weaponStats.damage ?? 0;
-    let damage = baseDamage * damageMult * blockMult * (1 - armorReduction);
+    let damage = baseDamage * damageMult * blockMult * attackerPartMult * victimPartMult * (1 - armorReduction);
 
     // ── Incoming damage hooks (shield absorption, etc.) ───────────────────────
     const targetEffects = world.get(ctx.targetId, ActiveEffects);

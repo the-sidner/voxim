@@ -97,7 +97,7 @@ export { deriveHitboxTemplate, applyHitboxTemplate } from "./src/hitbox_derive.t
 
 // ---- sweep math (shared server + client) ----
 export type { Vec3 } from "./src/sweep_math.ts";
-export { localToWorld, segSegDistSq, segSegContactPoint } from "./src/sweep_math.ts";
+export { localToWorld, segSegDistSq, segSegContactPoint, segSegContactInfo } from "./src/sweep_math.ts";
 
 // ---- IK solver (shared server + client) ----
 export type { BoneRotation, Quat } from "./src/ik_solver.ts";

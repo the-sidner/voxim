@@ -144,6 +144,10 @@ export class ProjectileSystem implements System {
           targetId: candidateId,
           weaponStats,
           bodyPart: hitBodyPart,
+          // Projectiles always strike with their point — the "tip" attacker
+          // part conceptually matches an arrowhead / bolt-tip impact and
+          // picks up the tip damage multiplier from game_config.
+          attackerPart: "tip",
           // Projectiles use current world state — no lag rewind needed
           targetSnapshotFacing: targetFacing,
           targetSnapshotActions: targetActions,
@@ -157,7 +161,11 @@ export class ProjectileSystem implements System {
           parryAllowed: false,
         };
 
-        events.publish(TileEvents.HitSpark, { x: newPos.x, y: newPos.y, z: newPos.z });
+        events.publish(TileEvents.HitSpark, {
+          x: newPos.x, y: newPos.y, z: newPos.z,
+          attackerPart: "tip",
+          victimPart: hitBodyPart,
+        });
 
         for (const handler of this.handlers) {
           handler.onHit(world, events, ctx);

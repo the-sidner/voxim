@@ -439,15 +439,26 @@ export class ActionSystem implements System {
 
       const hitBodyPart = hit.partId;
       const hitContact = hit.contact;
+      // T-198: classify which segment of the blade landed the hit from the
+      // contact's parameter along the blade. baseLocal → tipLocal, so
+      // t ≈ 0 = haft, t ≈ 1 = tip. Thirds give an authorable 3-way split.
+      const attackerPart =
+        hit.attackerT < 1 / 3 ? "haft" :
+        hit.attackerT < 2 / 3 ? "mid"  :
+                                "tip";
       newHitEntities.push({ entityId: target.entityId, bodyPart: hitBodyPart });
 
-      events.publish(TileEvents.HitSpark, { x: hitContact.x, y: hitContact.y, z: hitContact.z });
+      events.publish(TileEvents.HitSpark, {
+        x: hitContact.x, y: hitContact.y, z: hitContact.z,
+        attackerPart, victimPart: hitBodyPart,
+      });
 
       const ctx: HitContext = {
         attackerId: entityId,
         targetId: target.entityId,
         weaponStats,
         bodyPart: hitBodyPart,
+        attackerPart,
         targetSnapshotFacing: target.facing ?? 0,
         targetSnapshotActions: target.actions,
         targetSnapshotCsmNodes: target.csmLayerNodes,
@@ -460,8 +471,8 @@ export class ActionSystem implements System {
         hitZ: hitContact.z,
         parryAllowed: true,
       };
-      log.info("dispatching hit: attacker=%s target=%s bodyPart=%s weapon=%s",
-        entityId, target.entityId, hitBodyPart, ctx.weaponStats.toolType ?? "weapon");
+      log.info("dispatching hit: attacker=%s target=%s bodyPart=%s attackerPart=%s weapon=%s",
+        entityId, target.entityId, hitBodyPart, attackerPart, ctx.weaponStats.toolType ?? "weapon");
       for (const handler of this.handlers) {
         handler.onHit(world, events, ctx);
       }

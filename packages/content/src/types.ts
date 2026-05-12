@@ -1327,6 +1327,16 @@ export interface GameConfig {
        * separates `stagger.light` from `stagger.heavy`. >= this → heavy. */
       heavyTierDamageOvershoot: number;
     };
+    /**
+     * Per-part damage multipliers (T-198). The hit handler multiplies the
+     * base damage by attacker.{tip|mid|haft} × victim.{partId}. Unknown
+     * part names fall back to 1.0 so authoring new hitbox parts doesn't
+     * silently break existing damage math.
+     */
+    partMultipliers: {
+      attacker: { tip: number; mid: number; haft: number };
+      victim:   Record<string, number>;
+    };
   };
   dodge: {
     staminaCost: number;

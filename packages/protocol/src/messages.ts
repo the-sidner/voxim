@@ -215,6 +215,10 @@ export interface HitSparkEvent {
   x: number;
   y: number;
   z: number;
+  /** Which segment of the attacker's weapon landed: "tip" | "mid" | "haft". */
+  attackerPart: string;
+  /** Which victim body part was struck: e.g. "head", "torso". */
+  victimPart: string;
 }
 
 export interface DamageDealtEvent {

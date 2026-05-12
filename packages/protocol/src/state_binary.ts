@@ -32,7 +32,7 @@
  *   TradeCompleted    uuid buyerId, uuid traderId, str itemType, u16 quantity, i32 coinDelta
  *   LoreExternalised  uuid entityId, str fragmentId
  *   LoreInternalised  uuid entityId, str fragmentId
- *   HitSpark          f32 x, f32 y, f32 z
+ *   HitSpark          f32 x, f32 y, f32 z, str attackerPart, str victimPart
  */
 
 import type { Serialiser } from "@voxim/engine";
@@ -177,6 +177,8 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeF32(ev.x);
       w.writeF32(ev.y);
       w.writeF32(ev.z);
+      w.writeStr(ev.attackerPart);
+      w.writeStr(ev.victimPart);
       break;
     case "BuildingMaterialsConsumed":
       w.writeU8(EventType.BuildingMaterialsConsumed);
@@ -269,7 +271,12 @@ function decodeEvent(r: WireReader): GameEvent {
     case EventType.LoreInternalised:
       return { type: "LoreInternalised", entityId: r.readUuid(), fragmentId: r.readStr() };
     case EventType.HitSpark:
-      return { type: "HitSpark", x: r.readF32(), y: r.readF32(), z: r.readF32() };
+      return {
+        type: "HitSpark",
+        x: r.readF32(), y: r.readF32(), z: r.readF32(),
+        attackerPart: r.readStr(),
+        victimPart: r.readStr(),
+      };
     case EventType.BuildingMaterialsConsumed: {
       const builderId = r.readUuid();
       const structureType = r.readStr();

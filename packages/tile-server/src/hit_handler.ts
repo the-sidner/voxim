@@ -15,16 +15,22 @@ export interface HitContext {
   weaponStats: DerivedItemStats;
   /** Which body part was struck — e.g. "head", "torso", "trunk". */
   bodyPart: string;
+  /**
+   * Which part of the attacker's weapon landed the hit — "tip", "mid", or
+   * "haft", derived from the contact point's parameter along the blade
+   * segment. Drives the attacker-side damage multiplier (tip > haft).
+   */
+  attackerPart: "tip" | "mid" | "haft";
   /** Lag-compensated facing of the target at time of hit (for block/parry arc). */
   targetSnapshotFacing: number;
   /** Lag-compensated action bitfield of the target (for block detection). */
   targetSnapshotActions: number;
   /**
-   * Lag-compensated CSM layer nodes for the target — `csm.combat.node` at the
-   * rewound tick is the authoritative answer to "was the target blocking
-   * when this hit landed." Damage handlers route through this map rather
-   * than the current-tick CSM. Empty / absent when the target has no CSM
-   * (resource nodes, props).
+   * Lag-compensated CSM layer nodes for the target — `csm.right_hand.node`
+   * at the rewound tick is the authoritative answer to "was the target
+   * blocking when this hit landed." Damage handlers route through this map
+   * rather than the current-tick CSM. Empty / absent when the target has no
+   * CSM (resource nodes, props).
    */
   targetSnapshotCsmNodes?: Record<string, string>;
   /** Lag-compensated world position of the attacker. */

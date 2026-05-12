@@ -33,6 +33,10 @@
       "regenPerSec": 12,
       "regenDisabledSecondsAfterBreak": 0.5,
       "heavyTierDamageOvershoot": 25
+    },
+    "partMultipliers": {
+      "attacker": { "tip": 1.25, "mid": 1.0, "haft": 0.6 },
+      "victim":   { "head": 1.75, "torso_upper": 1.0, "torso_mid": 1.0, "torso_lower": 1.0 }
     }
   },
   "dodge": {

@@ -9,7 +9,7 @@
  * both, and a new weapon archetype (thrown, hitscan, channelled AoE) doesn't
  * spawn a third copy.
  */
-import { localToWorld, segSegDistSq, segSegContactPoint } from "@voxim/content";
+import { localToWorld, segSegDistSq, segSegContactInfo } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { HitboxData } from "@voxim/codecs";
 
@@ -22,6 +22,13 @@ export interface HitboxIntersection {
   partId: string;
   /** World-space contact point between the striking segment and the hit part. */
   contact: Vec3;
+  /**
+   * Parameter (0..1) along the blade segment at the closest-approach point.
+   * 0 = at the segment's `from` (haft), 1 = at `to` (tip). Used by callers
+   * to classify the attacker-side hit part. For multi-segment sweeps this
+   * is the parameter on the segment that actually intersected.
+   */
+  attackerT: number;
 }
 
 /**
@@ -51,9 +58,11 @@ export function testHitboxIntersection(
     for (const seg of segments) {
       const distSq = segSegDistSq(seg.from, seg.to, partFrom, partTo);
       if (distSq <= combinedRadiusSq) {
+        const info = segSegContactInfo(seg.from, seg.to, partFrom, partTo);
         return {
           partId: part.id,
-          contact: segSegContactPoint(seg.from, seg.to, partFrom, partTo),
+          contact: info.contact,
+          attackerT: info.s,
         };
       }
     }

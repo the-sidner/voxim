@@ -48,8 +48,13 @@ export class EventRouter {
       push({ type: "EntityDied", entityId: p.entityId, killerId: p.killerId });
     });
 
-    bus.subscribe(TileEvents.HitSpark, (p: { x: number; y: number; z: number }) => {
-      push({ type: "HitSpark", x: p.x, y: p.y, z: p.z });
+    bus.subscribe(TileEvents.HitSpark, (p: { x: number; y: number; z: number; attackerPart: string; victimPart: string }) => {
+      push({
+        type: "HitSpark",
+        x: p.x, y: p.y, z: p.z,
+        attackerPart: p.attackerPart,
+        victimPart: p.victimPart,
+      });
     });
 
     bus.subscribe(TileEvents.DamageDealt, (p: {
