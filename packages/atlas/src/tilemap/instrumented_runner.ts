@@ -259,6 +259,10 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
     case "materials":
       h ^= fnv1aBytes(viewOf(s.materials as Uint16Array));
       break;
+    case "zoneGraph":
+      h ^= fnv1aBytes(viewOf(s.zoneOf as Uint16Array));
+      h ^= fnv1aString(JSON.stringify(s.zones));
+      break;
   }
   return h >>> 0;
 }

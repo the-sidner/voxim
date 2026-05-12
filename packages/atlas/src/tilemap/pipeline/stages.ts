@@ -22,11 +22,12 @@ import { boundaryKinds } from "./boundary_kinds.ts";
 import { rivers } from "./rivers.ts";
 import { terrain } from "./terrain.ts";
 import { materials } from "./materials.ts";
+import { zoneGraph } from "./zone_graph.ts";
 import type { GenParams } from "../../genparams.ts";
 
 export type StageId =
   | "noiseField" | "junctions" | "network" | "rooms" | "portalPlacement"
-  | "boundaryKinds" | "rivers" | "terrain" | "materials";
+  | "boundaryKinds" | "rivers" | "terrain" | "materials" | "zoneGraph";
 
 export interface StageMeta {
   id: StageId;
@@ -48,4 +49,5 @@ export const ORDERED_STAGES: ReadonlyArray<StageMeta> = [
   { id: "rivers",          transformer: rivers          as Transformer<unknown, unknown, unknown>, paramsKey: "river",     label: "Rivers" },
   { id: "terrain",         transformer: terrain         as Transformer<unknown, unknown, unknown>, paramsKey: "terrain",   label: "Terrain" },
   { id: "materials",       transformer: materials       as Transformer<unknown, unknown, unknown>, paramsKey: "materials", label: "Materials" },
+  { id: "zoneGraph",       transformer: zoneGraph       as Transformer<unknown, unknown, unknown>, paramsKey: "zoneGraph", label: "Zone graph" },
 ];

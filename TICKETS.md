@@ -1730,7 +1730,7 @@ Done when: 15+ POI files exist, the bridge-check passes, atlas tiles bake
 without retry-saturation warnings (T-209 logs retry counts).
 
 ### T-208 · AnnotatedZoneGraph + topology-annotation transformer
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: (pending)
 
 The current pipeline produces `chamberOf` (per-pixel chamber id) and
 `rooms` (connected-component records after carving), but downstream stages

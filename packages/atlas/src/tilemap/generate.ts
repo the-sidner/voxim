@@ -36,11 +36,12 @@ import { boundaryKinds } from "./pipeline/boundary_kinds.ts";
 import { rivers } from "./pipeline/rivers.ts";
 import { terrain } from "./pipeline/terrain.ts";
 import { materials } from "./pipeline/materials.ts";
+import { zoneGraph } from "./pipeline/zone_graph.ts";
 import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
-import type { PipelineBase, MaterialsState } from "./pipeline/state.ts";
+import type { PipelineBase, AnnotatedZoneState } from "./pipeline/state.ts";
 
 const DEFAULT_TILE_SIZE = 512;
 // One pixel = one world unit = one runtime voxel. Atlas runs the pipeline
@@ -86,7 +87,7 @@ export function generateTile(
 
   const initial: PipelineBase = { worldCell, tileSize, gridSize, px2world };
 
-  const pipeline: Stage<PipelineBase, MaterialsState> = pipe(
+  const pipeline: Stage<PipelineBase, AnnotatedZoneState> = pipe(
     bind(noiseField,      params.noise,     tileSeed),
     bind(junctions,       params.room,      tileSeed),
     bind(network,         params.network,   tileSeed),
@@ -96,6 +97,7 @@ export function generateTile(
     bind(rivers,          params.river,     tileSeed),
     bind(terrain,         params.terrain,   tileSeed),
     bind(materials,       params.materials, tileSeed),
+    bind(zoneGraph,       params.zoneGraph, tileSeed),
   );
 
   const s = pipeline(initial);

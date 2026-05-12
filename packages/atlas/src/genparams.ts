@@ -219,6 +219,31 @@ export interface GenParams {
      */
     forestDensityStride: number;
   };
+
+  /**
+   * Topology-role classification thresholds for the AnnotatedZoneGraph
+   * (T-208). Each rule is a hard threshold the role-assigner consults
+   * in declaration order — first match wins. Defaults match the
+   * canonical "forest maze" tile shape; tune up for sparser tiles
+   * (raise pocket/lobby area mins) or down for denser ones.
+   */
+  zoneGraph: {
+    /** area > this → "arena" (high-stakes setpiece) */
+    arenaAreaMin: number;
+    /** degree ≥ 3 + aspectRatio > X + area > Y → "plaza" */
+    plazaAreaMin: number;
+    plazaAspectRatioMin: number;
+    /** degree ≥ 3 + area ≤ this → "crossroads" (path junction, small) */
+    crossroadsAreaMax: number;
+    /** degree == 2 + area > this → "lobby" (mid-chamber on a corridor) */
+    lobbyAreaMin: number;
+    /** degree == 2 + area ≤ X + aspectRatio < Y → "corridor" */
+    corridorAreaMax: number;
+    corridorAspectRatioMax: number;
+    /** degree == 1 + area > this → "pocket" (worth visiting cul-de-sac) */
+    pocketAreaMin: number;
+    /** Everything else with degree ≤ 1 → "deadend". */
+  };
 }
 
 /**
@@ -313,6 +338,16 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
      * Read at boot from the world's persisted params.
      */
     forestDensityStride: 6,
+  },
+  zoneGraph: {
+    arenaAreaMin:           1500,
+    plazaAreaMin:           400,
+    plazaAspectRatioMin:    0.6,
+    crossroadsAreaMax:      400,
+    lobbyAreaMin:           250,
+    corridorAreaMax:        250,
+    corridorAspectRatioMax: 0.4,
+    pocketAreaMin:          150,
   },
 };
 
@@ -448,6 +483,7 @@ function cloneParams(p: GenParams): GenParams {
     network:   { ...p.network },
     materials: { ...p.materials },
     kinds:     { ...p.kinds },
+    zoneGraph: { ...p.zoneGraph },
   };
 }
 

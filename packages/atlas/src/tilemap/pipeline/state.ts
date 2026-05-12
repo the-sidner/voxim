@@ -22,6 +22,7 @@
 import type { WorldCellRecord } from "../../worldmap/types.ts";
 import type { Junction } from "./junctions.ts";
 import type { Corridor, Portal, Room } from "../types.ts";
+import type { ZoneRole } from "@voxim/content";
 
 export interface PipelineBase {
   worldCell: WorldCellRecord;
@@ -73,4 +74,56 @@ export interface TerrainState extends RiversState {
 
 export interface MaterialsState extends TerrainState {
   materials: Uint16Array;
+}
+
+/**
+ * One zone in the AnnotatedZoneGraph (T-208). A zone is a connected
+ * component of open pixels — either a chamber (with a `chamberOf` tag)
+ * or a corridor segment (open pixels with no chamber tag, flooded as
+ * its own component). Adjacency in the zone graph mirrors which zones
+ * physically touch through open pixels.
+ *
+ * The Tier-6 generator (T-209) consumes this to match POI candidates
+ * to zones by `fit.preferredTopology`, `fit.minArea/maxArea`, etc.
+ */
+export interface AnnotatedZone {
+  id: number;
+  /** Pixel count of the zone. */
+  area: number;
+  /** Mean pixel position in grid coords. */
+  centroid: { x: number; y: number };
+  /** Axis-aligned bounding box in grid coords. */
+  bbox: { minX: number; minY: number; maxX: number; maxY: number };
+  /** min(bbox.w, bbox.h) / max(bbox.w, bbox.h). 1.0 = square; → 0 elongated. */
+  aspectRatio: number;
+  /**
+   * Fraction of the zone's boundary pixels that touch *closed* pixels
+   * (vs. other zones). 0.0 = open plaza connected on all sides,
+   * 1.0 = fully sealed cave.
+   */
+  enclosure: number;
+  /** Topology role assigned by the rule-based classifier. */
+  topologyRole: ZoneRole;
+  /**
+   * Counts of neighbouring closed-pixel kinds (kindOf values) on this
+   * zone's boundary. Used by POI `fit.requiredKind` matching — a zone
+   * surrounded by stone walls matches "stone"-requiring POIs.
+   */
+  kindHistogram: Record<number, number>;
+  /** Ids of zones adjacent through open-pixel-to-open-pixel transitions. */
+  neighbors: number[];
+  /** True if any portal pixel lies inside this zone (gate entry zone). */
+  isEntry: boolean;
+  /** True for corridor-derived zones; false for chamber-derived zones. */
+  isCorridor: boolean;
+}
+
+/** Sentinel for `zoneOf` — closed pixels and any non-tracked open pixels. */
+export const ZONE_ID_NONE = 0xFFFF;
+
+export interface AnnotatedZoneState extends MaterialsState {
+  /** Per-pixel zone id; 0xFFFF for closed pixels. Length = gridSize². */
+  zoneOf: Uint16Array;
+  /** Indexed by zone id; gaps are possible if some ids were skipped. */
+  zones: AnnotatedZone[];
 }

@@ -57,6 +57,19 @@ const STAGE_VIEWER = {
   rivers:          "kinds",
   terrain:         "height",
   materials:       "materials",
+  zoneGraph:       "zones",
+};
+
+// Topology-role palette (T-208). Bright + saturated so role boundaries
+// pop against the dark closed-pixel backdrop.
+const ZONE_ROLE_COLOURS = {
+  arena:      "#ffffff",
+  plaza:      "#f5d976",
+  crossroads: "#f59f76",
+  lobby:      "#c47ef5",
+  corridor:   "#7eb6f5",
+  pocket:     "#7edb8b",
+  deadend:    "#f57676",
 };
 
 const NO_GATE = 0xF;
@@ -981,6 +994,8 @@ function viewData() {
     portals:    s.portals    ?? [],
     seeds:      s.seeds      ?? [],
     noiseField: s.noiseField,
+    zoneOf:     s.zoneOf,
+    zones:      s.zones      ?? [],
     gridSize:   tile.payload.gridSize,
     tileSize:   tile.payload.tileSize,
   };
@@ -998,6 +1013,7 @@ function drawTile() {
   else if (viewer === "noise")     drawTileNoise(layout, vd);
   else if (viewer === "junctions") drawTileJunctions(layout, vd);
   else if (viewer === "openMask")  drawTileOpenMask(layout, vd);
+  else if (viewer === "zones")     drawTileZones(layout, vd);
 
   // Portal dots float on top of every view that has them assigned.
   ctx.fillStyle = "#fff";
@@ -1191,6 +1207,63 @@ function drawTileOpenMask({ px, originX, originY, g }, vd) {
   });
 }
 
+function drawTileZones({ px, originX, originY, g }, vd) {
+  // Colourise each open pixel by its zone's topologyRole. Closed pixels
+  // stay dark so the role-coloured plates pop out as the playable
+  // shape. Centroid + role label rendered as overlay text per zone.
+  const zoneOf = vd.zoneOf;
+  if (!zoneOf) return;
+  const roleByZoneId = new Map();
+  for (const z of vd.zones) roleByZoneId.set(z.id, z.topologyRole);
+
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
+    const zid = zoneOf[idx];
+    if (zid === 0xFFFF) {
+      buf[p] = 0x1a; buf[p+1] = 0x1c; buf[p+2] = 0x21; buf[p+3] = 0xff;
+      return;
+    }
+    const role = roleByZoneId.get(zid);
+    const rgb = ZONE_ROLE_RGB[role] ?? FALLBACK_RGB;
+    buf[p] = rgb[0]; buf[p+1] = rgb[1]; buf[p+2] = rgb[2]; buf[p+3] = 0xff;
+  });
+
+  // Overlay: zone id + role label at each centroid. Skip very small
+  // zones (deadends) so the labels don't crowd.
+  ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const z of vd.zones) {
+    if (z.area < 80) continue;
+    const cxPx = originX + z.centroid.x * px + px / 2;
+    const cyPx = originY + z.centroid.y * px + px / 2;
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(cxPx - 28, cyPx - 7, 56, 14);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`#${z.id} ${z.topologyRole}`, cxPx, cyPx);
+  }
+
+  // Adjacency: thin lines between centroids of neighbouring zones.
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 0.8;
+  const byId = new Map();
+  for (const z of vd.zones) byId.set(z.id, z);
+  for (const z of vd.zones) {
+    const ax = originX + z.centroid.x * px + px / 2;
+    const ay = originY + z.centroid.y * px + px / 2;
+    for (const nid of z.neighbors) {
+      if (nid <= z.id) continue;  // draw each edge once
+      const n = byId.get(nid);
+      if (!n) continue;
+      const bx = originX + n.centroid.x * px + px / 2;
+      const by = originY + n.centroid.y * px + px / 2;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+  }
+}
+
 // Pre-parsed RGB tables — avoids hexToRGB on every pixel and lets the
 // per-pixel layer functions write directly into the ImageData buffer.
 function hexToRGB(hex) {
@@ -1205,6 +1278,9 @@ const MATERIAL_RGB = Object.fromEntries(
 );
 const KIND_RGB = Object.fromEntries(
   Object.entries(KIND_COLOURS).map(([k, v]) => [k, hexToRGB(v)]),
+);
+const ZONE_ROLE_RGB = Object.fromEntries(
+  Object.entries(ZONE_ROLE_COLOURS).map(([k, v]) => [k, hexToRGB(v)]),
 );
 const CORRIDOR_RGB = [0x9a, 0x9a, 0xa3];
 const FALLBACK_RGB = [0x44, 0x44, 0x44];
