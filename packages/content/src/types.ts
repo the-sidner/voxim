@@ -250,22 +250,38 @@ export type EquipSlot = "weapon" | "offHand" | "head" | "chest" | "legs" | "feet
 // can share the types without creating a circular dependency.
 
 export interface EquippableData { slot: EquipSlot; }
+
 /**
- * One swing variant the weapon can fire. The server walks the array in order
- * and picks the first whose [chargeMin, chargeMax] window contains the
- * player's `chargeMs` at release. Implicit defaults: chargeMin=0,
- * chargeMax=65535. A weapon with one entry always picks it (charge ignored
- * for action selection — but the action handler may still read chargeMs to
- * scale its own effects, e.g. bow projectile speed).
+ * One step in a weapon's combo chain — Vermintide-style. A press of the
+ * attack button advances the chain by one step and fires either the
+ * `light` or `heavy` action depending on how long the windup was held.
+ *
+ * Holding past `SwingableData.heavyChargeMs` flips the release into the
+ * heavy variant; a quick tap takes the light variant. Each weapon
+ * authors its own chain — sword: horizontal → diagonal → thrust →
+ * heavy_overhead, axe: chop → cleave, etc.
  */
-export interface SwingableActionEntry {
-  actionId: string;
-  chargeMin?: number;
-  chargeMax?: number;
+export interface SwingChainEntry {
+  /** WeaponActionDef id played for a tap-release at this chain step. */
+  light: string;
+  /** WeaponActionDef id played for a hold-past-threshold release. */
+  heavy: string;
 }
 
 export interface SwingableData {
-  actions: SwingableActionEntry[];
+  /**
+   * Combo chain. Each press advances index by 1 (mod length). Chain
+   * resets when the actor reaches idle without a queued press, on
+   * block, on stagger, on death, or when a maneuver starts.
+   */
+  chain: SwingChainEntry[];
+  /**
+   * Windup elapsed in ms above which release fires the entry's heavy
+   * variant. Below threshold → light. Per-weapon: a heavy axe wants a
+   * long charge (~600 ms) to feel committed; a quick dagger wants a
+   * short one (~150 ms).
+   */
+  heavyChargeMs: number;
   /**
    * Base damage per hit when the weapon connects. Optional to keep
    * non-damaging swingables (placeholders, debug items) representable.
@@ -518,6 +534,84 @@ export interface WeaponActionDef {
   projectile?: ProjectileActionConfig;
 }
 
+// ---- maneuvers (T-185) ----------------------------------------------------
+//
+// A *maneuver* is an authored, scheduled sequence of events spanning the
+// per-hand SM layers, locomotion, and on-hit effects. Generalisation of
+// WeaponActionDef: weapon swings are degenerate single-track maneuvers.
+//
+// A maneuver definition is a fixed-length timeline (`duration` seconds)
+// with several track types. The runtime ManeuverScheduler advances elapsed
+// each tick and emits whatever each track schedules at the current time:
+//
+//   tracks.right_hand[]  — { t, clip }      changes the SM's right_hand
+//                                            in_maneuver clip at time t.
+//   tracks.left_hand[]   — { t, clip }      same, left_hand layer.
+//   tracks.locomotion[]  — { t, kind, ... } applies a locomotion impulse
+//                                            (currently only "dash" forward).
+//   tracks.hitEffects[]  — { tag, fromT, toT?, magnitude } stamps a tag
+//                                            onto the entity's active hit
+//                                            tag list while elapsed is in
+//                                            range; hit handlers iterate
+//                                            and apply the effect.
+//
+// `interruptWindows[]` declares time ranges during which specific input
+// actions cancel the maneuver early (typed by name: "dodge", "block", …).
+// An empty array means committed-through.
+
+export interface ManeuverHandTrack {
+  /** Time (s) into the maneuver this clip begins on the per-hand layer. */
+  t: number;
+  /** Clip id (or "$slot" reference) to play. Empty string clears the layer. */
+  clip: string;
+}
+
+export interface ManeuverLocomotionTrack {
+  t: number;
+  /** "dash" — instantaneous forward impulse held for `duration` seconds. */
+  kind: "dash";
+  /** Forward distance covered over `duration` (m). */
+  forward: number;
+  duration: number;
+}
+
+export interface ManeuverHitEffect {
+  /** Tag passed to hit handlers; the effect resolver maps tags to outcomes. */
+  tag: string;
+  fromT: number;
+  toT?: number;          // omitted = active until maneuver ends
+  magnitude: number;
+}
+
+export interface ManeuverInterruptWindow {
+  fromT: number;
+  toT: number;
+  /** Action names that cancel: "dodge", "block", "jump", … */
+  by: string[];
+}
+
+export interface ManeuverRequirements {
+  /** Stamina deducted on initiation. */
+  stamina?: number;
+  /** True ⇒ entity must have a weapon equipped in the main hand. */
+  rightWeapon?: boolean;
+  /** True ⇒ entity must have an off-hand item equipped. */
+  leftWeapon?: boolean;
+}
+
+export interface ManeuverDef {
+  id: string;
+  duration: number;
+  interruptWindows: ManeuverInterruptWindow[];
+  tracks: {
+    right_hand: ManeuverHandTrack[];
+    left_hand:  ManeuverHandTrack[];
+    locomotion: ManeuverLocomotionTrack[];
+    hitEffects: ManeuverHitEffect[];
+  };
+  requirements: ManeuverRequirements;
+}
+
 // ---- body part volumes ----
 
 /**
@@ -561,6 +655,31 @@ export interface VerbDef {
  *                 produces no external output.
  */
 export type SMLayerOutput = "animation" | "flag" | "mode";
+
+/**
+ * Semantic role a layer plays in the actor's behaviour. Orthogonal to
+ * `SMLayerOutput` (which describes the projection target).
+ *
+ *   "base-locomotion" — the default body motion (idle / walk / strafe / jump).
+ *                       At most one per SM.
+ *   "action"          — a committed action sequence: swings, casts, channels,
+ *                       throws. Action layers are the natural host of payload
+ *                       components (SwingContext etc.) and are gated by
+ *                       ActionSystem for input admissibility.
+ *   "reaction"        — overlays driven by external events: stagger, hit
+ *                       react, death. Highest authority over the body.
+ *   "posture"         — slow-changing body mode (upright / crouched / prone).
+ *   "flag"            — pure cross-layer signalling; no external semantics.
+ *
+ * Used by validation (T-194) and by systems that act on layer category
+ * rather than layer id.
+ */
+export type SMLayerKind =
+  | "base-locomotion"
+  | "action"
+  | "reaction"
+  | "posture"
+  | "flag";
 
 /**
  * One state in a CSM layer.
@@ -619,6 +738,32 @@ export interface SMState {
    * swaps the clip when crouched without authoring a separate state.
    */
   paramOverrides?: Record<string, Partial<SMState>>;
+  /**
+   * Author-declared tags that expose state semantics to gameplay systems.
+   * Replaces string-prefix matching on state names ("swing.windup",
+   * "swing.active", ...) with declared categories.
+   *
+   * Standard vocabulary:
+   *   - "action"               — state is part of a committed action; payload
+   *                              components are bound to this category
+   *   - "carries_swing_context"— SwingContext payload exists while in this state
+   *   - "active_hitbox"        — hit-detection systems should run this tick
+   *   - "chain_queueable"      — holding the action input during this state
+   *                              queues the next chain step (post-windup phases)
+   *   - "locks_input"          — PhysicsSystem zeros movement input here
+   *                              (stunned, frozen, sleeping, dead)
+   *   - "locks_facing"         — facing input ignored (committed swings)
+   *   - "i_frame"              — hit handlers skip this entity as a target
+   *
+   * Tag identifiers are snake_case (no hyphens) so they tokenise as valid
+   * DSL identifiers — transitions can read e.g. `csm.right_hand.action`,
+   * `csm.right_hand.active_hitbox` as booleans.
+   *
+   * The set of distinct tags used by any state in a layer is exposed as
+   * scope booleans on every tick: `csm.<layer>.<tag>` is true iff the
+   * current node carries that tag.
+   */
+  tags?: string[];
 }
 
 /**
@@ -648,6 +793,8 @@ export interface SMTransition {
 export interface SMLayer {
   /** Unique within the SM. e.g. "locomotion", "combat", "reaction", "posture". */
   id: string;
+  /** Semantic role — see {@link SMLayerKind}. Required. */
+  kind: SMLayerKind;
   output: SMLayerOutput;
   /** BoneMask id for animation layers. Empty / absent = full body. Ignored for flag/mode. */
   mask?: string;
@@ -944,6 +1091,19 @@ export interface Prefab {
    */
   morphValues?: Record<string, number>;
   /**
+   * Per-prefab morph variation ranges (T-190). At spawn, the spawner
+   * samples a value from each `[min, max]` window using a per-entity
+   * deterministic RNG and writes the result onto `ModelRefData.morphValues`
+   * — so every PC instance of a prefab has slightly different proportions,
+   * but a given entity respawns/reloads with the same body. Per-prefab
+   * `morphValues` (above) still wins per-key (those are explicit overrides;
+   * a value AND a range on the same key uses the value).
+   *
+   * Keys must match `SkeletonDef.morphParams[].id`. Inherited from parent
+   * prefab via `extends`, shallow-merged per key.
+   */
+  morphRanges?: Record<string, { min: number; max: number }>;
+  /**
    * Generic category. Recipes match inputs by category (e.g. "wood",
    * "cordage", "ingot"). Loose filter — no central schema, just convention.
    */
@@ -1141,7 +1301,7 @@ export interface GameConfig {
   dodge: {
     staminaCost: number;
     iFrameTicks: number;
-    rollTicks: number;
+    sidestepTicks: number;
     cooldownTicks: number;
     speed: number;
     parryWindowTicks: number;

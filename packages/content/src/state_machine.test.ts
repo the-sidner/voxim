@@ -11,6 +11,8 @@ import {
   smTickAll,
   buildCsmVars,
   effectiveState,
+  validateStateMachineScope,
+  collectSlotRefs,
 } from "./state_machine.ts";
 import type { StateMachineDef } from "./types.ts";
 
@@ -125,6 +127,7 @@ function tinyLocomotionSM(): StateMachineDef {
     layers: [
       {
         id: "posture",
+        kind: "posture",
         output: "flag",
         initial: "upright",
         states: { upright: {}, crouched: {} },
@@ -135,6 +138,7 @@ function tinyLocomotionSM(): StateMachineDef {
       },
       {
         id: "locomotion",
+        kind: "base-locomotion",
         output: "animation",
         mask: "lower_body",
         initial: "idle",
@@ -162,7 +166,7 @@ Deno.test("state machine: compile validates initial and transition targets", () 
       compileStateMachine({
         id: "bad",
         layers: [{
-          id: "x", output: "flag", initial: "ghost", states: { real: {} }, transitions: [],
+          id: "x", kind: "flag", output: "flag", initial: "ghost", states: { real: {} }, transitions: [],
         }],
       }),
     Error,
@@ -174,7 +178,7 @@ Deno.test("state machine: compile validates initial and transition targets", () 
       compileStateMachine({
         id: "bad",
         layers: [{
-          id: "x", output: "flag", initial: "real", states: { real: {} },
+          id: "x", kind: "flag", output: "flag", initial: "real", states: { real: {} },
           transitions: [{ to: "ghost", when: "true" }],
         }],
       }),
@@ -187,7 +191,7 @@ Deno.test("state machine: compile validates initial and transition targets", () 
       compileStateMachine({
         id: "bad",
         layers: [{
-          id: "x", output: "flag", initial: "real", states: { real: {} },
+          id: "x", kind: "flag", output: "flag", initial: "real", states: { real: {} },
           transitions: [{ from: "ghost", to: "real", when: "true" }],
         }],
       }),
@@ -279,7 +283,7 @@ Deno.test("state machine: paramOverrides swap effective fields", () => {
     id: "ov",
     layers: [
       {
-        id: "posture", output: "flag", initial: "upright",
+        id: "posture", kind: "posture", output: "flag", initial: "upright",
         states: { upright: {}, crouched: {} },
         transitions: [
           { to: "crouched", when: "input.crouch" },
@@ -287,7 +291,7 @@ Deno.test("state machine: paramOverrides swap effective fields", () => {
         ],
       },
       {
-        id: "locomotion", output: "animation", initial: "idle",
+        id: "locomotion", kind: "base-locomotion", output: "animation", initial: "idle",
         states: {
           idle: {
             clip: "$idle", loop: true,
@@ -303,10 +307,10 @@ Deno.test("state machine: paramOverrides swap effective fields", () => {
 
   const layer = csm.layers[1];
   // upright → base clip
-  const a = effectiveState(layer, "idle", { ...buildCsmVars({ posture: { node: "upright", elapsed: 0 } }) });
+  const a = effectiveState(layer, "idle", { ...buildCsmVars(csm, { posture: { node: "upright", elapsed: 0 } }) });
   assertEquals(a.clip, "$idle");
   // crouched → override clip
-  const b = effectiveState(layer, "idle", { ...buildCsmVars({ posture: { node: "crouched", elapsed: 0 } }) });
+  const b = effectiveState(layer, "idle", { ...buildCsmVars(csm, { posture: { node: "crouched", elapsed: 0 } }) });
   assertEquals(b.clip, "$crouch_idle");
 });
 
@@ -330,7 +334,7 @@ Deno.test("state machine: from as array allows-list", () => {
   const csm = compileStateMachine({
     id: "arr",
     layers: [{
-      id: "x", output: "flag", initial: "a",
+      id: "x", kind: "flag", output: "flag", initial: "a",
       states: { a: {}, b: {}, c: {} },
       transitions: [
         { from: ["a", "b"], to: "c", when: "input.go" },
@@ -344,4 +348,156 @@ Deno.test("state machine: from as array allows-list", () => {
   // From c → c is excluded by transition `from`, so nothing fires.
   ({ next: s } = smTickAll(csm, s, { "input.go": true }, 0.01));
   assertEquals(s.x.node, "c");
+});
+
+// ============================================================================
+// T-194 — compile-time validation
+// ============================================================================
+
+Deno.test("T-194: compile rejects csm.<unknown_layer> reference", () => {
+  assertThrows(
+    () =>
+      compileStateMachine({
+        id: "bad",
+        layers: [{
+          id: "locomotion", kind: "base-locomotion", output: "animation", initial: "idle",
+          states: { idle: { clip: "$idle" } },
+          // typo: "postur" instead of "posture" — no such layer
+          transitions: [{ to: "idle", when: "csm.postur == crouched" }],
+        }],
+      }),
+    Error,
+    "csm.postur but no such layer exists",
+  );
+});
+
+Deno.test("T-194: compile rejects csm.<layer>.<unknown_tag> reference", () => {
+  assertThrows(
+    () =>
+      compileStateMachine({
+        id: "bad",
+        layers: [
+          {
+            id: "right_hand", kind: "action", output: "animation", initial: "idle",
+            states: {
+              idle: { clip: null },
+              swing: { clip: "$weapon", tags: ["action"] },
+            },
+            transitions: [{ from: "idle", to: "swing", when: "true" }],
+          },
+          {
+            id: "x", kind: "flag", output: "flag", initial: "a",
+            states: { a: {}, b: {} },
+            // typo: "actoin" vs "action"
+            transitions: [{ from: "a", to: "b", when: "csm.right_hand.actoin" }],
+          },
+        ],
+      }),
+    Error,
+    "csm.right_hand.actoin but no state in layer 'right_hand' declares the 'actoin' tag",
+  );
+});
+
+Deno.test("T-194: csm.<layer>.<declared_tag> compiles cleanly", () => {
+  // Smoke test the positive path.
+  const csm = compileStateMachine({
+    id: "ok",
+    layers: [
+      {
+        id: "right_hand", kind: "action", output: "animation", initial: "idle",
+        states: {
+          idle: { clip: null },
+          swing: { clip: "$weapon", tags: ["action", "active_hitbox"] },
+        },
+        transitions: [{ from: "idle", to: "swing", when: "true" }],
+      },
+      {
+        id: "x", kind: "flag", output: "flag", initial: "a",
+        states: { a: {}, b: {} },
+        transitions: [{ from: "a", to: "b", when: "csm.right_hand.active_hitbox" }],
+      },
+    ],
+  });
+  assertEquals(csm.id, "ok");
+});
+
+Deno.test("T-194: validateStateMachineScope rejects unknown scope var", () => {
+  const csm = compileStateMachine({
+    id: "scope",
+    layers: [{
+      id: "x", kind: "flag", output: "flag", initial: "a",
+      states: { a: {}, b: {} },
+      // typo: "healt" vs "health"
+      transitions: [{ from: "a", to: "b", when: "healt.current < 10" }],
+    }],
+  });
+  const known = new Set(["health.current", "health.max", "vel.mag"]);
+  assertThrows(
+    () => validateStateMachineScope(csm, known),
+    Error,
+    "unknown scope variable",
+  );
+});
+
+Deno.test("T-194: validateStateMachineScope ignores csm.* and state.*", () => {
+  const csm = compileStateMachine({
+    id: "ok",
+    layers: [
+      { id: "p", kind: "posture", output: "flag", initial: "up", states: { up: {}, dn: {} }, transitions: [] },
+      {
+        id: "x", kind: "flag", output: "flag", initial: "a",
+        states: { a: { duration: 1 }, b: {} },
+        transitions: [
+          { from: "a", to: "b", when: "state.elapsed >= state.duration && csm.p == up" },
+        ],
+      },
+    ],
+  });
+  // No `known` vars — but state.* and csm.* are built-in, so this should pass.
+  validateStateMachineScope(csm, new Set());
+});
+
+Deno.test("T-194: validateStateMachineScope catches typos in duration $-refs", () => {
+  // Duration strings like "$action.active_seconds" are scope lookups too.
+  const csm = compileStateMachine({
+    id: "dur",
+    layers: [{
+      id: "x", kind: "action", output: "animation", initial: "idle",
+      states: {
+        idle: { clip: null },
+        // typo: actoin vs action
+        active: { clip: "$weapon", duration: "$actoin.active_seconds" },
+      },
+      transitions: [{ from: "idle", to: "active", when: "true" }],
+    }],
+  });
+  const known = new Set([
+    "action.windup_seconds", "action.active_seconds", "action.winddown_seconds",
+  ]);
+  assertThrows(
+    () => validateStateMachineScope(csm, known),
+    Error,
+    "actoin.active_seconds",
+  );
+});
+
+Deno.test("T-194: collectSlotRefs returns every $slotName used in clips + paramOverrides", () => {
+  const def: StateMachineDef = {
+    id: "slots",
+    layers: [{
+      id: "loc", kind: "base-locomotion", output: "animation", initial: "idle",
+      states: {
+        idle: {
+          clip: "$idle",
+          paramOverrides: { "csm.p == crouched": { clip: "$crouch_idle" } },
+        },
+        walk: { clip: "$walk_forward" },
+        // raw clip (no $) is not a slot ref
+        custom: { clip: "explicit_clip_id" },
+      },
+      transitions: [],
+    }],
+  };
+  const slots = collectSlotRefs(def);
+  assertEquals([...slots].sort(), ["crouch_idle", "idle", "walk_forward"]);
 });

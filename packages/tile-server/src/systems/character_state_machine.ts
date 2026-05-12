@@ -2,17 +2,22 @@
  * CharacterStateMachineSystem — ticks every actor's CSM each frame.
  *
  * Runs early in the tick (after physics writes velocity, after NpcAi writes
- * input). Builds a per-entity SMScope from observable component state plus
- * any one-tick events the TickEventBuffer holds, advances the SM by `dt`,
- * and writes the new layer states back. Transition events surface so payload
- * components (SwingContext, future CastContext, etc.) can be cleaned up when
- * their host CSM state exits.
+ * input). Builds a per-entity SMScope by asking every registered
+ * SMScopeContributor for its variables, advances the SM by `dt`, and writes
+ * the new layer states back.
  *
  * The SM is the authoritative source of truth for "what mode is this actor
- * in." Damage handlers read csm.combat for block, ActionSystem reads it to
- * gate new swings, AnimationSystem projects animation-typed layers to
- * AnimationLayer[]. This system runs first so all of those see the
- * resolved nodes for this tick.
+ * in." Damage handlers, ActionSystem, AnimationSystem all read csm.* to gate
+ * behaviour. This system runs first so all of those see the resolved nodes
+ * for this tick.
+ *
+ * Payload components like SwingContext are owned by the system that installs
+ * them (ActionSystem in that case). The CSM never reaches into payload
+ * components — it is a pure state machine.
+ *
+ * Scope variable additions go in `../sm_scope/` — one file per namespace —
+ * not in this file. T-192 made this contributor-driven; T-194 will add
+ * compile-time validation cross-checking contributors against transitions.
  */
 
 import type { World, EntityId } from "@voxim/engine";
@@ -21,20 +26,17 @@ import {
   compileStateMachine,
   smTickAll,
   initialSMState,
+  validateStateMachineScope,
+  collectSlotRefs,
 } from "@voxim/content";
-import { ACTION_BLOCK, ACTION_DODGE, ACTION_CROUCH, ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4, ACTION_USE_SKILL, ACTION_JUMP, ACTION_CONSUME, hasAction } from "@voxim/protocol";
 import type { System, EventEmitter } from "../system.ts";
-import { Velocity, Health, InputState, Facing } from "../components/game.ts";
-import { Equipment } from "../components/equipment.ts";
 import { CharacterStateMachine } from "../components/character_state_machine.ts";
-import { SwingContext } from "../components/swing_context.ts";
 import { TickEventBuffer } from "../tick_events.ts";
 import { createLogger } from "../logger.ts";
+import type { SMScopeContributor, SMScopeContext } from "../sm_scope/index.ts";
+import { DEFAULT_SM_SCOPE_CONTRIBUTORS, collectKnownScopeVars } from "../sm_scope/index.ts";
 
 const log = createLogger("CharacterStateMachineSystem");
-
-/** 20 Hz server tick — one tick = 0.05 seconds. */
-const SECONDS_PER_TICK = 1 / 20;
 
 /** Server tick rate in seconds (20 Hz). */
 const TICK_DT_SECONDS = 1 / 20;
@@ -51,17 +53,50 @@ export class CharacterStateMachineSystem implements System {
   /** Per-SM-id: rate-limit "skipped due to error" log spam to one per id. */
   private loggedFailures = new Set<string>();
 
+  private readonly contributors: readonly SMScopeContributor[];
+
   constructor(
     private readonly content: ContentService,
     private readonly tickEvents: TickEventBuffer,
+    contributors: readonly SMScopeContributor[] = DEFAULT_SM_SCOPE_CONTRIBUTORS,
   ) {
+    this.contributors = contributors;
+    const knownVars = collectKnownScopeVars(contributors);
+
     for (const def of content.stateMachines.values()) {
+      let compiled: CompiledStateMachine;
       try {
-        this.compiledCache.set(def.id, compileStateMachine(def));
+        compiled = compileStateMachine(def);
       } catch (err) {
         log.error("failed to compile state machine '%s': %s", def.id, (err as Error).message);
         throw err;
       }
+
+      // T-194: cross-check transition scope refs against registered
+      // contributor outputs. Catches typos like `healt.current` at boot.
+      validateStateMachineScope(compiled, knownVars);
+
+      // T-194: every prefab that uses this SM must declare animationSlots
+      // satisfying every $slot the SM references. Catches `$walk_forwrd`
+      // typos in the SM and missing slot entries in the prefab.
+      const slotRefs = collectSlotRefs(def);
+      if (slotRefs.size > 0) {
+        for (const prefab of content.prefabs.values()) {
+          if (prefab.stateMachineId !== def.id) continue;
+          const slots = prefab.animationSlots ?? {};
+          const missing: string[] = [];
+          for (const slot of slotRefs) {
+            if (!(slot in slots)) missing.push(slot);
+          }
+          if (missing.length > 0) {
+            throw new Error(
+              `prefab '${prefab.id}' uses state machine '${def.id}' but is missing animationSlots for: ${missing.sort().join(", ")}`,
+            );
+          }
+        }
+      }
+
+      this.compiledCache.set(def.id, compiled);
     }
   }
 
@@ -99,122 +134,24 @@ export class CharacterStateMachineSystem implements System {
     // First tick after spawn: layerStates may be empty. Seed from def.
     const seeded = Object.keys(prev).length === 0 ? initialSMState(compiled) : prev;
 
-    const scope = buildSMScope(world, entityId, this.tickEvents, this.content);
-
-    const { next, fired } = smTickAll(compiled, seeded, scope, TICK_DT_SECONDS);
-
-    // Transition-event handling: payload components bound to a state are
-    // removed when the CSM exits that state.
-    for (const f of fired) {
-      if (f.layer === "combat" && isSwingNode(f.from) && !isSwingNode(f.to)) {
-        if (world.has(entityId, SwingContext)) world.remove(entityId, SwingContext);
-      }
-    }
+    const scope = this.buildScope(world, entityId);
+    const { next } = smTickAll(compiled, seeded, scope, TICK_DT_SECONDS);
 
     world.set(entityId, CharacterStateMachine, {
       stateMachineId: csm.stateMachineId,
       layerStates: next,
     });
   }
-}
 
-function isSwingNode(node: string): boolean {
-  return node === "swing.windup" || node === "swing.active" || node === "swing.winddown";
-}
-
-/**
- * Build the SMScope for one entity. Reads observable components plus any
- * one-tick events fired this tick. Variables that aren't derivable default to
- * the SM's "off" value (0 / false) so undefined-variable errors don't trip
- * during gameplay; the only hard requirement is that compiled expressions
- * parse cleanly at content-load.
- */
-export function buildSMScope(
-  world: World,
-  entityId: EntityId,
-  tickEvents: TickEventBuffer,
-  content: ContentService,
-): Record<string, SMScopeValue> {
-  const scope: Record<string, SMScopeValue> = {};
-
-  // Velocity → magnitude + character-relative components. vel.forward and
-  // vel.strafe let the SM pick directional locomotion clips (walk forward
-  // vs back, left vs right strafe) instead of a single omni-direction walk.
-  const vel = world.get(entityId, Velocity);
-  const vx = vel?.x ?? 0;
-  const vy = vel?.y ?? 0;
-  scope["vel.mag"] = Math.sqrt(vx * vx + vy * vy);
-
-  const facingAngle = world.get(entityId, Facing)?.angle ?? 0;
-  const fwdX = Math.cos(facingAngle);
-  const fwdY = Math.sin(facingAngle);
-  // forward = vel · facing
-  scope["vel.forward"] = vx * fwdX + vy * fwdY;
-  // strafe = vel · right; right is facing rotated -90°: (fwdY, -fwdX)
-  scope["vel.strafe"]  = vx * fwdY - vy * fwdX;
-
-  // Health.
-  const health = world.get(entityId, Health);
-  scope["health.current"] = health?.current ?? 0;
-  scope["health.max"] = health?.max ?? 0;
-  scope["health.frac"] = health && health.max > 0 ? health.current / health.max : 0;
-
-  // Input bits exposed as named bools.
-  const input = world.get(entityId, InputState);
-  const a = input?.actions ?? 0;
-  scope["input.use_skill"] = hasAction(a, ACTION_USE_SKILL);
-  scope["input.block"]     = hasAction(a, ACTION_BLOCK);
-  scope["input.jump"]      = hasAction(a, ACTION_JUMP);
-  scope["input.dodge"]     = hasAction(a, ACTION_DODGE);
-  scope["input.crouch"]    = hasAction(a, ACTION_CROUCH);
-  scope["input.consume"]   = hasAction(a, ACTION_CONSUME);
-  scope["input.skill_1"]   = hasAction(a, ACTION_SKILL_1);
-  scope["input.skill_2"]   = hasAction(a, ACTION_SKILL_2);
-  scope["input.skill_3"]   = hasAction(a, ACTION_SKILL_3);
-  scope["input.skill_4"]   = hasAction(a, ACTION_SKILL_4);
-  // "input.aim" is a useful semantic alias even though there's no dedicated
-  // ACTION_AIM bit yet — wire it as false until the action exists.
-  scope["input.aim"] = false;
-
-  // Active-swing context exposes the equipped weapon action's tick budget so
-  // the SM's swing.* state durations can come from the weapon (per-weapon
-  // timing) rather than being hardcoded in JSON.
-  const swing = world.get(entityId, SwingContext);
-  if (swing) {
-    const action = content.weaponActions.get(swing.weaponActionId);
-    if (action) {
-      scope["action.windup_seconds"]   = action.windupTicks   * SECONDS_PER_TICK;
-      scope["action.active_seconds"]   = action.activeTicks   * SECONDS_PER_TICK;
-      scope["action.winddown_seconds"] = action.winddownTicks * SECONDS_PER_TICK;
-    }
+  private buildScope(world: World, entityId: EntityId): Record<string, SMScopeValue> {
+    const scope: Record<string, SMScopeValue> = {};
+    const ctx: SMScopeContext = {
+      world,
+      entityId,
+      content: this.content,
+      tickEvents: this.tickEvents,
+    };
+    for (const c of this.contributors) c.contribute(ctx, scope);
+    return scope;
   }
-  if (!("action.windup_seconds"   in scope)) scope["action.windup_seconds"]   = 0;
-  if (!("action.active_seconds"   in scope)) scope["action.active_seconds"]   = 0;
-  if (!("action.winddown_seconds" in scope)) scope["action.winddown_seconds"] = 0;
-
-  // Equipment-derived weapon flags. Future weapons declare aim/block tags on
-  // their prefab; for now we infer from presence of an equipped weapon and
-  // its prefab id (block requires a shield/two-handed weapon — currently
-  // there's no canonical capability flag, so default both to true so
-  // transitions don't lock out).
-  const eq = world.get(entityId, Equipment);
-  scope["equipped.weapon"] = eq?.weapon ? true : false;
-  scope["weapon.has_block"] = eq?.weapon ? true : false;
-  scope["weapon.has_aim"]   = false;
-
-  // One-tick events fired by other systems this frame.
-  for (const ev of tickEvents.get(entityId)) {
-    scope[ev] = true;
-  }
-  // Defaults for known event vars so transitions referencing them don't
-  // throw on the first tick that hasn't seen the event.
-  for (const ev of [
-    "event.swing_started", "event.shoot_fired",
-    "event.left_ground", "event.landed",
-    "event.hit", "event.hit.heavy", "event.hit.from_front", "event.hit.from_back",
-  ]) {
-    if (!(ev in scope)) scope[ev] = false;
-  }
-
-  return scope;
 }

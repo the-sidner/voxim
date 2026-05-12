@@ -59,12 +59,21 @@ interface CompiledOverride {
 interface CompiledState {
   raw: SMState;
   overrides: CompiledOverride[];
+  /** Frozen tag set; empty when the author declared no tags. */
+  tags: ReadonlySet<string>;
 }
 
 interface CompiledLayer {
   raw: SMLayer;
   states: Map<string, CompiledState>;
   transitions: CompiledTransition[];
+  /**
+   * Union of every tag declared by any state in this layer. Used to drive
+   * scope-variable emission: each entry becomes a `csm.<layer>.<tag>`
+   * boolean every tick. Authoring a transition that references a tag this
+   * layer never produces is an authoring bug surfaced by T-194.
+   */
+  layerTags: ReadonlySet<string>;
 }
 
 export interface CompiledStateMachine {
@@ -72,6 +81,93 @@ export interface CompiledStateMachine {
   layers: CompiledLayer[];
   /** All variable names referenced by any transition or override expression. */
   referencedVars: ReadonlySet<string>;
+}
+
+/**
+ * True iff `node` carries `tag` in the given compiled layer. O(layers).
+ */
+export function stateHasTag(
+  compiled: CompiledStateMachine,
+  layerId: string,
+  node: string,
+  tag: string,
+): boolean {
+  const layer = compiled.layers.find((l) => l.raw.id === layerId);
+  if (!layer) return false;
+  const s = layer.states.get(node);
+  return s ? s.tags.has(tag) : false;
+}
+
+/**
+ * Tag-membership lookup from a raw SM def (no compile required). Cheap enough
+ * for per-tick reads — gameplay systems that don't already hold a
+ * CompiledStateMachine use this with the ContentService-registered def.
+ */
+export function defStateHasTag(
+  def: StateMachineDef,
+  layerId: string,
+  node: string,
+  tag: string,
+): boolean {
+  const layer = def.layers.find((l) => l.id === layerId);
+  if (!layer) return false;
+  const s = layer.states[node];
+  return !!s?.tags?.includes(tag);
+}
+
+// ---- T-194 validators ------------------------------------------------------
+
+/**
+ * Throw if any transition references a scope variable absent from `knownVars`.
+ *
+ * The two built-in namespaces — `csm.*` (cross-layer reads, validated in
+ * `compileStateMachine`) and `state.*` (per-layer self-reads built by the
+ * tick runner) — are skipped.
+ *
+ * Run at server boot from the system that owns the contributor list.
+ * Catches typos like `healt.current` (missing 'h') before the actor's first
+ * tick — without this the misspelled var would silently default to 0 and
+ * the transition would never fire.
+ */
+export function validateStateMachineScope(
+  compiled: CompiledStateMachine,
+  knownVars: ReadonlySet<string>,
+): void {
+  const missing = new Set<string>();
+  for (const v of compiled.referencedVars) {
+    if (v.startsWith("csm.")) continue;
+    if (v.startsWith("state.")) continue;
+    if (!knownVars.has(v)) missing.add(v);
+  }
+  if (missing.size > 0) {
+    const list = [...missing].sort().join(", ");
+    throw new Error(
+      `state machine '${compiled.id}': transition references unknown scope variable(s): ${list}. Add a contributor that emits them, or fix the typo.`,
+    );
+  }
+}
+
+/**
+ * Collect every `$slotName` clip reference in the SM def — used for prefab
+ * cross-validation: a prefab carrying this SM's `stateMachineId` must
+ * declare `animationSlots[slotName]` for every slot returned here.
+ *
+ * Includes refs from `paramOverrides` (e.g. crouch-variant clip slot).
+ */
+export function collectSlotRefs(def: StateMachineDef): ReadonlySet<string> {
+  const out = new Set<string>();
+  const collect = (clip: string | null | undefined): void => {
+    if (typeof clip === "string" && clip.startsWith("$")) out.add(clip.slice(1));
+  };
+  for (const layer of def.layers) {
+    for (const state of Object.values(layer.states)) {
+      collect(state.clip);
+      if (state.paramOverrides) {
+        for (const patch of Object.values(state.paramOverrides)) collect(patch.clip);
+      }
+    }
+  }
+  return out;
 }
 
 // ---- runtime state --------------------------------------------------------
@@ -107,16 +203,34 @@ export function compileStateMachine(def: StateMachineDef): CompiledStateMachine 
     }
 
     const states = new Map<string, CompiledState>();
+    const layerTagsMut = new Set<string>();
     for (const [stateId, raw] of Object.entries(layer.states)) {
       const overrides: CompiledOverride[] = [];
       if (raw.paramOverrides) {
         for (const [condSrc, patch] of Object.entries(raw.paramOverrides)) {
           const cond = parseSMExpr(condSrc);
           for (const v of cond.vars) referencedVars.add(v);
+          // duration $-ref inside a paramOverride patch is also a scope read.
+          if (typeof patch.duration === "string" && patch.duration.startsWith("$")) {
+            referencedVars.add(patch.duration.slice(1));
+          }
           overrides.push({ cond, patch });
         }
       }
-      states.set(stateId, { raw, overrides });
+      // Top-level duration $-ref → scope var read at tick time via resolveDuration.
+      if (typeof raw.duration === "string" && raw.duration.startsWith("$")) {
+        referencedVars.add(raw.duration.slice(1));
+      }
+      const tags = new Set<string>(raw.tags ?? []);
+      for (const t of tags) {
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t)) {
+          throw new Error(
+            `state machine '${def.id}': layer '${layer.id}' state '${stateId}' tag '${t}' is not a valid identifier (use snake_case, no hyphens)`,
+          );
+        }
+        layerTagsMut.add(t);
+      }
+      states.set(stateId, { raw, overrides, tags });
     }
 
     const transitions: CompiledTransition[] = [];
@@ -144,7 +258,33 @@ export function compileStateMachine(def: StateMachineDef): CompiledStateMachine 
       return a.declIndex - b.declIndex;
     });
 
-    layers.push({ raw: layer, states, transitions });
+    layers.push({ raw: layer, states, transitions, layerTags: layerTagsMut });
+  }
+
+  // ── csm.* reference validation (T-194) ────────────────────────────────────
+  // Every csm.<layer> reference must resolve to a real layer. The tagged form
+  // csm.<layer>.<tag> must additionally name a tag declared on some state in
+  // that layer — else the bool is permanently false and the typo silently
+  // masks broken transitions.
+  const layerById = new Map<string, CompiledLayer>();
+  for (const l of layers) layerById.set(l.raw.id, l);
+  for (const v of referencedVars) {
+    if (!v.startsWith("csm.")) continue;
+    const rest = v.slice(4);
+    const dot = rest.indexOf(".");
+    const layerId = dot < 0 ? rest : rest.slice(0, dot);
+    const tagId = dot < 0 ? "" : rest.slice(dot + 1);
+    const layer = layerById.get(layerId);
+    if (!layer) {
+      throw new Error(
+        `state machine '${def.id}': transition references csm.${layerId} but no such layer exists`,
+      );
+    }
+    if (tagId && !layer.layerTags.has(tagId)) {
+      throw new Error(
+        `state machine '${def.id}': transition references csm.${layerId}.${tagId} but no state in layer '${layerId}' declares the '${tagId}' tag`,
+      );
+    }
   }
 
   return { id: def.id, layers, referencedVars };
@@ -220,7 +360,7 @@ export function smTickAll(
   // Snapshot prior layer nodes for cross-layer reads. Every layer evaluates
   // its transitions against the SAME csm.* values (the start-of-tick view),
   // so layer order in JSON doesn't matter for correctness.
-  const csmVars = buildCsmVars(prev);
+  const csmVars = buildCsmVars(compiled, prev);
   const baseScope: Record<string, SMScopeValue> = { ...scope, ...csmVars };
 
   const next: SMRuntimeState = {};
@@ -261,11 +401,29 @@ export function smTickAll(
   return { next, fired };
 }
 
-/** Build cross-layer `csm.<layer>` variables from a runtime state. */
-export function buildCsmVars(state: SMRuntimeState): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [layerId, ls] of Object.entries(state)) {
-    out[`csm.${layerId}`] = ls.node;
+/**
+ * Build cross-layer scope variables from a runtime state.
+ *
+ * Emits two kinds of entry per layer:
+ *   - `csm.<layer>` → current node name (string)
+ *   - `csm.<layer>.<tag>` → true iff current node carries `tag`. One entry
+ *     per distinct tag declared on any state in the layer, so transitions
+ *     can reference them without throwing on the "not currently tagged" tick.
+ */
+export function buildCsmVars(
+  compiled: CompiledStateMachine,
+  state: SMRuntimeState,
+): Record<string, string | boolean> {
+  const out: Record<string, string | boolean> = {};
+  for (const layer of compiled.layers) {
+    const layerId = layer.raw.id;
+    const ls = state[layerId];
+    const node = ls?.node ?? layer.raw.initial;
+    out[`csm.${layerId}`] = node;
+    const stateTags = layer.states.get(node)?.tags ?? new Set<string>();
+    for (const tag of layer.layerTags) {
+      out[`csm.${layerId}.${tag}`] = stateTags.has(tag);
+    }
   }
   return out;
 }

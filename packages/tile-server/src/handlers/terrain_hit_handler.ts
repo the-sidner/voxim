@@ -12,6 +12,7 @@
 import type { World } from "@voxim/engine";
 import { Heightmap, MaterialGrid, CHUNK_SIZE, snapHeight } from "@voxim/world";
 import type { ContentService } from "@voxim/content";
+import { defStateHasTag } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
 import { SwingContext } from "../components/swing_context.ts";
@@ -36,11 +37,13 @@ export class TerrainDigSystem implements System {
     const digReach = cfg.digReach;
 
     for (const { entityId, swingContext: _, position } of world.query(SwingContext, Position)) {
-      // Fire only on the first tick of the active phase (CSM elapsed=0 right
-      // after windup→active transition; non-zero on subsequent ticks).
+      // Fire only on the first tick of the active-hitbox phase (elapsed=0
+      // right after the transition into the tagged state).
       const csm = world.get(entityId, CharacterStateMachine);
-      const combat = csm?.layerStates["combat"];
-      if (!combat || combat.node !== "swing.active" || combat.elapsed !== 0) continue;
+      const combat = csm?.layerStates["right_hand"];
+      if (!combat || combat.elapsed !== 0) continue;
+      const smDef = this.content.stateMachines.get(csm!.stateMachineId);
+      if (!smDef || !defStateHasTag(smDef, "right_hand", combat.node, "active_hitbox")) continue;
 
       const equip = world.get(entityId, Equipment);
       if (!equip?.weapon) continue;

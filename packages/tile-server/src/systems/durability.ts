@@ -4,16 +4,18 @@
  *
  * Fires on the first tick of the active swing phase (same gate used by
  * TerrainDigSystem and ActionSystem) so each swing costs exactly one durability
- * point regardless of how many targets it hits. With the CSM (T-182) the gate
- * is `csm.combat.node == "swing.active"` AND `csm.combat.elapsed == 0` —
- * elapsed is reset to 0 on every transition so the first frame of the active
- * state is the only one where this is true.
+ * point regardless of how many targets it hits. The gate is the SM state tag
+ * `active_hitbox` (declared on swing.active in humanoid_default.json) AND
+ * `csm.right_hand.elapsed == 0` — elapsed is reset to 0 on every transition so
+ * the first frame of the tagged state is the only one where this is true.
  *
  * When remaining reaches 0 the item entity is destroyed. The dangling ref in
  * the owner's Equipment.weapon slot is cleared on the next tick by
  * StaleSlotCleanupSystem — equipment/inventory code never sees a dead ref.
  */
 import type { World, EntityId } from "@voxim/engine";
+import type { ContentService } from "@voxim/content";
+import { defStateHasTag } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { SwingContext } from "../components/swing_context.ts";
 import { CharacterStateMachine } from "../components/character_state_machine.ts";
@@ -27,11 +29,15 @@ const log = createLogger("DurabilitySystem");
 export class DurabilitySystem implements System {
   readonly dependsOn = ["ActionSystem"];
 
+  constructor(private readonly content: ContentService) {}
+
   run(world: World, _events: EventEmitter, _dt: number): void {
     for (const { entityId, swingContext: _ } of world.query(SwingContext)) {
       const csm = world.get(entityId, CharacterStateMachine);
-      const combat = csm?.layerStates["combat"];
-      if (!combat || combat.node !== "swing.active" || combat.elapsed !== 0) continue;
+      const combat = csm?.layerStates["right_hand"];
+      if (!combat || combat.elapsed !== 0) continue;
+      const smDef = this.content.stateMachines.get(csm!.stateMachineId);
+      if (!smDef || !defStateHasTag(smDef, "right_hand", combat.node, "active_hitbox")) continue;
 
       const equip = world.get(entityId, Equipment);
       if (!equip?.weapon) continue;

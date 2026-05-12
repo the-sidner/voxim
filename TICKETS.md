@@ -136,6 +136,289 @@ Done when: `grep -r "CombatState\|combatState" packages/` returns zero hits
 outside the retired-slot comment and migration notes; combat still produces
 correct stagger, counter, i-frame, block-timing, and dodge-cooldown behaviour.
 
+### T-192 · CSM declarative scope registry
+Effort: M   Status: todo
+
+`CharacterStateMachineSystem.buildSMScope` is today a ~100-line monolith
+of hardcoded reads (`vel.*`, `health.*`, `input.*`, `action.*`,
+`physics.*`, `weapon.*`, `event.*`). Adding a new variable for an SM
+transition to read requires editing that function. Missing variables
+silently default to `0`/`false`, masking typos in transition DSL.
+
+Replace with a `SMScopeContributor` registry: each contributor declares
+`{ namespace: string, extract(world, eid, ctx): Record<string, number|boolean|string> }`.
+`buildSMScope` becomes a loop over registered contributors. Move every
+existing scope group out of `buildSMScope` and into its own contributor
+file under `packages/tile-server/src/sm_scope/` (one per namespace —
+`velocity.ts`, `health.ts`, `input.ts`, `action.ts`, `physics.ts`,
+`equipment.ts`, `events.ts`).
+
+The TickEventBuffer one-tick-event channel survives unchanged; events
+become just one contributor.
+
+`weapon.has_block = true` / `weapon.has_aim = false` placeholder constants
+go away — derive from the equipped weapon prefab's components instead, or
+delete the variables entirely (decide per-variable as part of this work).
+
+Done when: all transitions in `humanoid_default.json` still resolve
+correctly; `buildSMScope` is under 30 lines and contains no hardcoded
+variable names; adding a new SM-readable variable is a one-file drop in
+`sm_scope/`; the silent-default behaviour for missing variables is
+preserved for now (validation added in T-194). Refactor replaces, no
+shim: `buildSMScope`'s old body is deleted, not @deprecated.
+
+### T-193 · CSM layer roles + state tags
+Effort: M   Status: todo
+
+The CSM today has informal layer semantics — `posture`, `locomotion`,
+`right_hand`, `reaction` carry meaning only by convention. Gameplay
+systems (ActionSystem, durability handler, terrain hit handler) match
+state names by string prefix (`csm.right_hand.node.startsWith("swing")`)
+to detect "is currently swinging." `SwingContext` lifecycle in
+`CharacterStateMachineSystem.isSwingNode` hardcodes the same prefix.
+New action types (cast, channel, throw, maneuver) would either reuse
+the `swing.*` names dishonestly or scatter new hardcoded checks.
+
+Two parts:
+
+**Layer roles.** `SMLayer` gains `kind: "base-locomotion" | "action" |
+"reaction" | "posture" | "flag"`. The role formalises layer semantics
+and is used by validation (T-194) and by systems that want to act on
+layer category rather than layer id (e.g. "all action layers can install
+a payload component on enter, remove on exit").
+
+**State tags.** `SMState` gains `tags?: string[]`. Tags are arbitrary
+strings the SM author declares to expose state semantics to gameplay
+systems. Standard tags introduced in this ticket:
+  - `"action"` — state is part of a committed-action sequence (any
+    swing phase, future cast/channel phases)
+  - `"active-hitbox"` — hit detection should run this tick (replaces
+    the `swing.active` name match in terrain_hit_handler + durability)
+  - `"interruptible-by-block"`, `"interruptible-by-dodge"` — transition
+    guards key off these (cleans up `swing.windup → idle on input.block`)
+  - `"locks-input"` — PhysicsSystem zeros movement input while in this
+    state (stunned, frozen, sleeping, dead)
+  - `"locks-facing"` — PhysicsSystem ignores facing input (committed
+    swings)
+  - `"i-frame"` — hit handlers skip this entity as a target
+
+Tags are queryable in DSL (`csm.right_hand.hasTag("action")`) and via
+runtime API (`csm.layerHasTag(eid, "right_hand", "active-hitbox")`).
+The compiled-SM struct precomputes the tag set per state for O(1) reads.
+
+**Payload component lifecycle.** Action-role layers can declare
+`onEnter: { component: "swing_context" }` per state group. The CSM
+system installs/removes the named payload component automatically when
+entering/leaving tagged states. The current `SwingContext` removal
+special-case in `CharacterStateMachineSystem` (the `queued`-guard
+ordering hack) gets a real home: payload lifecycle is system-managed,
+not hand-tracked at every transition site.
+
+Migrate `humanoid_default.json`'s swing.* states to carry `tags: ["action",
+"active-hitbox"]` etc. Update ActionSystem, durability system, terrain
+hit handler to read tags instead of state-name prefixes. The string
+`startsWith("swing")` should not appear in any system after this lands.
+
+Done when: no system code references SM state names as strings (only
+tags + layer kind); a new action type can be authored by dropping a
+ManeuverDef-like file + adding states with the right tags, with zero
+system code changes; SwingContext lifecycle works without the
+removal-vs-write ordering hack.
+
+### T-194 · CSM compile-time validation
+Effort: S   Status: todo
+
+Builds on T-192 + T-193. At server boot, the SM compiler should reject
+malformed defs loudly instead of silently mis-behaving.
+
+Checks:
+- Every `csm.<layer>` reference in a transition / paramOverride
+  resolves to a real layer.
+- Every scope variable referenced in any transition is registered by
+  some `SMScopeContributor` (T-192).
+- Every `$slot` clip reference is satisfied by `animationSlots` on
+  every prefab that selects this SM.
+- Every `from` state in a transition exists in the layer.
+- Every `to` state in a transition exists in the layer.
+- Tags referenced by `hasTag(...)` in DSL belong to a known tag set
+  (warn-only, not hard-fail — author-extensible).
+
+Done when: introducing a typo in `humanoid_default.json` (e.g.
+`healt.current`, or `csm.postur == crouched`, or `$walk_forwrd`) fails
+server boot with a precise error message naming the file, layer, state,
+and offending token. The validator runs in the existing
+`compileStateMachine` path so cost is paid once per boot.
+
+### T-195 · DerivedStats component + StatAggregationSystem
+Effort: M   Status: todo
+
+There is no home for continuous stat aggregation today. Encumbrance
+exists as a one-off system that mutates movement speed; nothing else
+composes. A planned slow-debuff, a poison damage-over-time, a
+movement-speed buff, equipment-derived swing-speed scalar, all need a
+common fold point.
+
+Add:
+- `DerivedStats` component (networked — client reads moveSpeed for
+  prediction, sees swingSpeed for animation pacing). Fields are flat
+  scalars: `moveSpeed`, `swingSpeed`, `damageResist`, `staggerResist`,
+  `poiseRegen`, `stamRegen`. Start with this set; extend as new buffs
+  land.
+- `StatAggregationSystem` runs early in the tick (before PhysicsSystem
+  and ActionSystem). For each actor, fold:
+    base stats from prefab.components.derivedStatsBase
+      ↓ multiplied/added by equipment-derived modifiers
+      ↓ multiplied/added by active Buffs (T-196) modifiers
+      → DerivedStats
+  Composition rule per stat is declared on the stat (multiplicative for
+  resists, additive-with-clamp for speeds, etc.) — defined once in
+  `packages/content/src/derived_stats.ts`, not per-call-site.
+
+Subsume `EncumbranceSystem` into this: encumbrance becomes a modifier
+contributor, not a parallel pipeline. Refactor replaces, no shim — the
+`Encumbrance` component goes away and its data folds into prefab
+weight + DerivedStats.moveSpeed.
+
+PhysicsSystem reads `DerivedStats.moveSpeed`. ActionSystem reads
+`DerivedStats.swingSpeed` to scale swing phase durations (replaces
+direct equipment lookup). Hit handlers read `DerivedStats.damageResist`.
+
+Done when: a prefab declares `derivedStatsBase: { moveSpeed: 4.0,
+swingSpeed: 1.0, ... }`; equipping a heavy weapon multiplies swingSpeed
+by 0.8; PhysicsSystem uses the folded value; the Encumbrance component
+is deleted; rebuilds happen each tick (cheap — O(active buffs + equipped
+slots)).
+
+### T-196 · Buffs component + BuffSystem (continuous + discrete channels)
+Effort: M   Status: todo
+
+Status effects (slow, poison, stunned, frozen, sleeping, bleed, blessed,
+cursed) don't have a home. Each future system would otherwise reinvent
+its own timer + apply + expire path.
+
+`Buffs` component holds a flat array of active buffs:
+```
+{ defId: BuffDefId, appliedTick: u32, durationTicks: u32, stacks: u8, sourceEid?: u32 }
+```
+
+`BuffDef` lives in `data/buffs/{id}.json` (one file per buff):
+```
+{
+  id, displayName, icon,
+  durationSeconds, maxStacks, stackBehaviour: "refresh"|"extend"|"add",
+  modifiers: [ { stat: "moveSpeed", op: "mul", value: 0.7 } ],
+  perTick: [ { kind: "damage", amount: 2 } ],
+  onApply:  { event?: "event.stunned" },
+  onExpire: { event?: "event.unstunned" }
+}
+```
+
+`BuffSystem` runs before StatAggregationSystem each tick:
+- Decrement buff timers; expire and fire `onExpire` event when zero.
+- Apply `perTick` effects (damage, heal, drain stamina).
+- On expire, mark Buffs dirty so StatAggregationSystem re-folds.
+
+Two output channels:
+- **Continuous**: `modifiers[]` consumed by StatAggregationSystem
+  (T-195) on each tick's fold.
+- **Discrete**: `onApply.event` / `onExpire.event` written into
+  TickEventBuffer → consumed by CSM scope contributor (T-192). This
+  is how a "stunned" buff drives the CSM's posture layer into
+  `posture.stunned` and back out.
+
+Authoring a new status effect = drop a `BuffDef` JSON + ensure the SM
+has a matching state if the buff is meant to drive one. No code change.
+
+Done when: applying a sample `buff_slow` from a damage hook reduces
+moveSpeed by 30% for 5s and expires cleanly; applying `buff_stunned`
+transitions posture to stunned and locks input (via T-193 `locks-input`
+tag); stacking same buff respects `stackBehaviour`.
+
+### T-197 · Poise + stagger pipeline
+Effort: S   Status: todo
+
+Stagger today comes from parry only (T-003). The combat design needs
+generalised stagger from heavy hits + poise depletion, with severity
+tiers (light vs heavy) driving different reaction animations.
+
+Add:
+- `Poise` component: `{ current: f32, max: f32, regenPerSec: f32 }`.
+  `regenPerSec` reads from `DerivedStats.poiseRegen` (T-195) at use
+  time; the component holds only the instantaneous value.
+- Damage-resolution hook (in hit handlers): reduce victim Poise by hit
+  weight (declared on WeaponActionDef or scaled by damage). When Poise
+  ≤ 0, fire `event.stagger { tier }` where tier comes from how far the
+  hit overshot the threshold (light vs heavy), then reset Poise to max
+  with a brief regen-disabled window.
+- CSM reaction layer (in `humanoid_default.json`) gains
+  `stagger.light` / `stagger.heavy` states with data-driven durations;
+  transitions key off `event.stagger`'s tier field.
+- Per-actor base Poise via `derivedStatsBase` (T-195); heavy armour
+  contributes via the same modifier path.
+
+The existing `event.hit.heavy` + `knockback` state is the prototype;
+this ticket generalises it. Refactor replaces: `event.hit.heavy` goes
+away, replaced by `event.stagger { tier: "heavy" }`.
+
+Done when: hitting an NPC three times rapidly with a heavy weapon
+depletes its poise and triggers `stagger.heavy`; a single heavy hit
+against a low-poise actor goes straight to stagger; poise regenerates
+over time when not under pressure; the tier field cleanly selects
+`stagger.light` vs `stagger.heavy` clips.
+
+### T-198 · Hit-part metadata + richer hit-event payload
+Effort: S   Status: todo
+
+To support the combat design's "what got hit, with what part, in what
+phase" — needed for headshot multipliers, hit-spark placement, future
+limb-targeting, and a simple aiming layer — the swingPath and hit
+events need to carry that data end-to-end.
+
+- `SwingPathKeyframe` gains optional `hitPart: "tip" | "mid" | "haft" |
+  "pommel"` (string, author-extensible). Range between keyframes
+  inherits the earlier keyframe's tag.
+- Victim-side: `Hitbox` components on actors / NPCs declare named
+  parts (`head`, `torso`, `left_arm`, ...). The capsule-vs-actor sweep
+  in ActionSystem picks the closest part to the contact point.
+- The fired `HitEvent` (currently `{ attacker, victim, damage, ... }`)
+  gains `attackerPart`, `victimPart`, `phase` ("active" today, room for
+  more later).
+- Damage-resolution in hit handlers uses `attackerPart`/`victimPart`
+  for multipliers (tip > pommel; head > torso) — values from
+  `game_config.json` or per-weapon-action override.
+- Client receives the richer event for hit-spark placement (renders at
+  the victimPart's bone position instead of a generic chest-center).
+
+Done when: hitting an NPC's head with a sword tip deals more damage
+than hitting its torso with the haft; client hit-sparks render at the
+contact location; the HitEvent on the wire carries part data; no
+hardcoded multipliers — values live in content.
+
+### T-199 · WeaponActionDef root motion
+Effort: S   Status: todo
+
+Slashes should give a small forward push so attacking feels weighty
+(per combat design). Today swings are purely in-place; movement comes
+from input only.
+
+`WeaponActionDef` gains optional `rootMotion`:
+```
+"rootMotion": {
+  "forwardImpulse": 2.5,
+  "phase": "active",
+  "duration": 0.12
+}
+```
+
+ActionSystem on phase entry adds the impulse to Velocity, scaled by
+`DerivedStats.moveSpeed` (T-195) so a slowed character pushes
+proportionally less. Capped/decayed over the declared duration; doesn't
+fight player input but biases it.
+
+Done when: a sample slash on the iron sword carries the character ~0.3m
+forward during its active window; the push is suppressed under a slow
+debuff; declaring rootMotion: null preserves the in-place behaviour.
+
 ---
 
 ## Networking & Client Prediction
@@ -3575,37 +3858,607 @@ Done when: animation transitions resolve via SM tick (not hardcoded velocity
 comparisons); two NPCs sharing an SM share behavior; per-prefab SM override
 is one JSON field flip.
 
-### T-183 · Procedural generator framework + loot / names / POIs
+### T-183 · Unified generator framework
 Effort: L   Status: todo
 
-Generic procedural-generation runtime in `@voxim/content`. Engine ships a
-small set of named algorithms registered by id:
+One concept and one entry point for everything procedural — voxel
+geometry, loot tables, name generators, POI layouts, stat curves,
+templated text. Algorithms are TypeScript code; generators are data
+declarations that pick an algorithm and supply its params. Sharp split
+keeps each layer testable in isolation.
 
-  weighted_draw  picks from a weighted list (loot, spawn weights)
-  markov         Markov-chain sampling (names from phoneme tables)
-  grammar        L-system / context-free expansion (POI / settlement layouts)
+Entry point:
+  content.invoke<I, O>(generatorId: string, input: I): O
+
+Algorithm registry (under packages/content/src/generators/algorithms/):
+  voxel_shape    primitive volumes → ModelDefinition.nodes[]
+                 (box / cylinder / sphere / capsule / cone / disc / …)
+  voxel_compose  union / subtract / overlay multiple voxel outputs
+  voxel_distort  twist / noise / taper post-pass
+  voxel_recipe   morph-parameterised body part for T-186 Layer 2
+  weighted_draw  loot tables, spawn weights
+  markov         name generation from phoneme tables
+  grammar        L-system / CFG for POI / settlement layouts
   template       placeholder substitution (quest / dialogue text)
-  curve          piecewise-linear evaluator (stat scaling, difficulty curves)
+  curve          piecewise-linear evaluator for stat scaling
 
-Each generator declaration in content names an algorithm + params:
+Generator declarations (in content):
+  data/generators/voxel/{id}.json    VoxelGeneratorDef
+  data/generators/loot/{id}.json     LootTableDef
+  data/generators/names/{id}.json    NameGeneratorDef
+  data/generators/poi/{id}.json      PoiTemplateDef
+  data/generators/curves/{id}.json   CurveDef
 
-  data/generators/loot/{id}.json   LootTableDef    (uses weighted_draw)
-  data/generators/names/{id}.json  NameGeneratorDef (uses markov)
-  data/generators/poi/{id}.json    PoiTemplateDef   (uses grammar)
+Each declaration: `{ id, algorithm, params }`. The algorithm registry
+provides typed param schemas; the loader validates against them at
+content-load and fails fast on bad params. Adding a new algorithm is
+purely additive (register implementation + paramSchema → drop
+declarations using it).
 
-Engine entry point: `content.invoke<I, O>(generatorId, input): O` — routes
-to the algorithm based on the declaration's `algorithm` field.
+Determinism: every invoke accepts an explicit seed; same seed + same
+params + same algorithm version → same output. Used for per-entity
+body morphs (T-190), per-spawn loot, per-character names, etc.
 
-First migrations:
-  - `poi_placer`'s hardcoded room shape → `PoiTemplateDef` (grammar)
-  - new loot tables for wolf / drowner / rotten_knight corpses
-  - one name generator per culture (NPCs currently share their type as name)
+Voxel editor (T-191b) consumes the framework directly — every
+sub-object in the tree can be a generator invocation with sliders for
+its declared params, live re-baking on param change.
 
-Done when: poi_placer reads its room shape from data; killing a wolf drops
-items from a generator-driven loot table; spawned NPCs receive names from a
-generator. Adding a new generator type (e.g. dialogue templates) is purely
-additive — register the algorithm in @voxim/content, drop declarations in
-data/generators/.
+First non-voxel migrations:
+  - poi_placer's hardcoded room shape → grammar
+  - corpse loot tables (wolf / drowner / rotten_knight) → weighted_draw
+  - one name generator per culture → markov
+
+Done when: poi_placer reads room shape from data; wolves drop loot
+from a generator; spawned NPCs get generated names; voxel editor
+spawns procedural sub-objects via the same registry; adding a new
+algorithm is one file in algorithms/ + zero changes elsewhere.
+
+### T-191 · Devtools rebuild
+Effort: L   Status: todo
+
+Scrap the current voxel-editor and build a coherent two-tool suite:
+voxel/model designer + animation editor. Hard separation between data
+tooling (Layer A — operates on raw ModelDefinition / SkeletonDef /
+AnimationClip JSON, zero game-content imports) and game-content
+overlays (Layer B — loads ContentService, lets you preview the
+artifact in a game-like scene with prefab equipment / state machines /
+maneuvers).
+
+Lives next to atlas as a single served Deno+esbuild+Preact app with
+two top-level routes (/voxel, /anim) sharing a common shell.
+
+The old packages/devtools/voxel-editor retires at the end (T-191z).
+
+Phasing → sub-tickets T-191a..e + T-191z.
+
+### T-191a · Devtools shell + 3D viewport + asset browser + file IO
+Effort: M   Status: done
+
+Foundation for all later phases. No game-content awareness.
+
+  shell/        common framework — top-bar route switcher, multi-pane
+                layout, theme.
+  3d viewport   Three.js scene primitives wrapped in a Preact
+                component: orbit/pan/zoom camera, grid, ground plane,
+                lighting rig, gizmos (translate/rotate/scale handles),
+                framing controls.
+  asset browser file tree under packages/content/data/ with type
+                filters; reads JSON, edits in-place via shared file-IO
+                helpers that write back to the same bind-mounted
+                source tree.
+  file IO       read/write/list endpoints on the dev server so the
+                tool can persist edits directly to disk.
+
+Done when: starting the devtools shows an empty viewport with the
+asset browser populated from data/, clicking a JSON file opens it as
+text (preview placeholder for the editor that'll replace it), and
+saving the file from the tool round-trips to disk.
+
+### T-191b · Voxel editor — Layer A (scene tree, voxels, sub-objects)
+Effort: M   Status: in-progress
+
+v1 delivered: file pick → load + render model in viewport (instanced
+voxels by material), scene tree (model + voxels-by-count + sub-object
+rows), inspector with material remap palette and sub-object identity /
+transform / boneId editors, add/remove sub-object actions, Save → write
+back to models/<id>.json.
+
+v2 deferred (will land iteratively):
+  - 3D translate/rotate/scale gizmos in the viewport for sub-objects
+  - interactive voxel painting (click to add, shift-click remove)
+  - generator-node spawning (waits on T-183)
+  - bone-attachment preview when editing a sub-object's boneId
+
+The model-as-Godot-scene-tree editor. Operates purely on
+ModelDefinition; zero prefab / weapon-action knowledge.
+
+UI:
+  scene tree    left pane, hierarchical: voxel block | sub-object
+                | generator-node (T-183). Selection drives the
+                viewport gizmo.
+  viewport      3D model + gizmo handles for selected node's
+                transform, voxel-cell paint mode with material
+                picker.
+  materials     palette pinned to right, sourced from
+                data/materials/.
+  inspector     bottom pane — selected node's properties (position,
+                rotation, scale, material, sub-object reference,
+                generator id + params).
+
+Save writes the ModelDefinition back to data/models/{id}.json.
+Generators (when T-183 lands) appear as a node type that bakes its
+voxels at save time; until then, only authored voxel blocks and
+sub-object references are available.
+
+Done when: opens any data/models/*.json, lets you place / move /
+edit voxel cells and sub-objects, saves back to the same file, and
+the result loads cleanly into the game client.
+
+### T-191c · Animation editor — Layer A (clip player + skeleton view)
+Effort: M   Status: in-progress
+
+v1 delivered: pick a SkeletonDef from skeletons/, get a clip list for
+its archetype, click a clip → loads it and plays on the rendered bone
+skeleton. Timeline scrubber + play/pause/loop/speed controls.
+Inspector shows per-bone keyframe count + flags clips that reference
+bones not in the loaded skeleton.
+
+Skeleton view renders one cylinder per parent→child bone + joint
+spheres, with restRot + restPos in bone-local frame matching the
+engine's FK pipeline. Clip sampling reuses shortest-arc Euler
+interpolation (same math as engine animation_eval.ts) — a deliberate
+local copy keeps Layer A free of game-content imports.
+
+v2 deferred:
+  - multi-layer playback (locomotion + combat etc.) with masks
+  - mesh model toggle (render biped_skeletal or another voxel model
+    bound to the same skeleton, alongside the bone overlay)
+  - keyframe edit (drag a keyframe time, edit per-bone Euler at
+    selected time, insert new keyframe)
+
+Pure animation tooling — load any SkeletonDef + clips from the same
+archetype, play them on the skeleton, no game content required.
+
+UI:
+  skeleton view 3D bone overlay on the selected skeleton (bones
+                rendered as cylinders + joint dots), optional voxel
+                model from data/models/* bound to the same
+                skeletonId.
+  clip browser  list of clips in the archetype's library; preview
+                clip metadata (duration, looped, bone tracks).
+  player        play / pause / scrub / loop / speed; multi-layer
+                playback (locomotion + combat etc.) with per-layer
+                mask + weight + blend mode controls, mirroring
+                AnimationLayer in the engine.
+  timeline      shows keyframe density per bone, layer overlays.
+
+Done when: pick a skeleton + a clip, see it play on the bones; swap
+the bound voxel model and watch the same clip animate the new
+geometry; stack two layers with masks and observe the composed pose.
+
+### T-191d · Devtools Layer B — game-content overlays
+Effort: M   Status: done
+
+v1 delivered: animation editor gains two Layer-B side tabs alongside
+the existing Clip inspector.
+
+  Equipment — lists prefabs that declare an `equippable` component
+  bucketed by slot. Pick one for weapon (hand_r) or off-hand (hand_l)
+  and the studio attaches its voxel model to that bone, using the
+  weapon's primary swingable.chain[0].light → WeaponActionDef.blade
+  (baseLocal / tipLocal) for the same FK-driven attachment math the
+  game renderer uses. Bottom-anchor offset + modelScale match too.
+  Authors see in-engine attachment fidelity in the studio.
+
+  SM driver — pick a state machine from `state_machines/`, compile +
+  tick at 20Hz via the engine's compileStateMachine / smTickAll,
+  toggle input bits (use_skill / block / jump / dodge / crouch / aim
+  / skill_1..2) and fire one-tick events (swing_started / shoot_fired
+  / left_ground / landed / hit / hit.heavy / hit.from_front /
+  hit.from_back / maneuver_started / maneuver_ended). Live readout
+  of layer node + elapsed. When the SM-driver tab is active, the
+  studio routes pose updates through the SM: highest-priority
+  animation-output layer's current clip is resolved against the
+  base playable_character slot map and sampled to drive the
+  skeleton.
+
+  Content-loader shell (`shell/content_loader.ts`) provides the Layer-B
+  HTTP-fetch helpers (prefab tree walk, weapon action / SM / maneuver
+  by id). Pure data — no @voxim/content imports beyond the
+  compile/tick functions, which are themselves data-only evaluators.
+
+v2 deferred:
+  - maneuver picker tab (fire a ManeuverDef, watch the timeline)
+  - scene-preview overlay for the voxel editor (ground + lighting +
+    optional skeleton + weapon-in-hand)
+  - weapon trail rendering in the SM driver path (replicates the
+    engine's trail recording for clip authors)
+
+Add the game-content shell on top of A. Both editors gain a "scene
+preview" mode that loads ContentService (same path JsonSource does)
+and treats the artifact as if it were in-game.
+
+Voxel editor preview: spawn the model on a small scene (ground plane
++ lighting + optional skeleton + optional weapon-in-hand attachment
+via a prefab picker), orbit camera, screenshot button.
+
+Animation editor preview: full actor sandbox.
+  equipment   drag-drop items from a prefab browser into weapon /
+              off-hand / armor slots; visible attachments respond.
+  state-machine driver
+              buttons for every input bit + event flag the actor's
+              SM reads; live readout of layer states + elapsed.
+  maneuver    fire any ManeuverDef and watch the timeline tick
+              (clip changes per hand, locomotion impulses, hit-tag
+              windows).
+
+Done when: dropping an iron_sword onto a sandbox actor shows the
+weapon attached and animated through every clip in the library; the
+SM driver can take the actor through swing.windup → stop → active →
+winddown by toggling input.use_skill; firing double_strike plays
+the maneuver visibly end-to-end.
+
+### T-191e · Weapon sweep debugger + per-clip attachment overrides
+Effort: M   Status: todo
+
+Deepest piece. Sits inside the animation editor.
+
+Per-frame visualisation of a WeaponActionDef's attachment math:
+  - swingPath keyframes as a 3D curve in hand-local space.
+  - interpolated tip position at scrubbed t.
+  - projected world-space blade capsule per tick of the active
+    window.
+  - hand bone matrix vs forearm-blended matrix side-by-side, so we
+    can compare smoothing strategies (multi-frame averaging,
+    forearm/hand weighted blend, authored override) and pick what
+    looks right per clip.
+
+Per-clip attachment override system:
+  data/clip_overrides/{clipId}.json — optional override for
+  baseLocal/tipLocal/holdHand applied when this clip is played.
+  Engine's evaluateBladeWorld falls back to the override map before
+  the weapon action's default. The animation editor lets you
+  manipulate the attachment gizmo at any frame and save it.
+
+Blocked on: T-191c (skeleton + clip player). Also waiting on user's
+weapon-smoothing investigation before locking in the smoothing
+algorithm.
+
+Done when: pick any sword+slash combo, scrub the swing, see the
+blade match what's drawn in-engine; if the hand wobbles, save an
+override frame-by-frame and the game client renders the corrected
+attachment.
+
+### T-191z · Retire old voxel-editor
+Effort: S   Status: todo
+
+After T-191b reaches feature parity (cell placement + sub-object
+placement + material picker + save round-trip), delete
+packages/devtools/src/voxel-editor/ wholesale. No shim, no
+deprecation marker — refactors replace.
+
+Done when: old voxel-editor directory is gone, devtools serves only
+the new app, build still green.
+
+### T-184 · Per-hand combat layers in CSM
+Effort: S   Status: done
+
+Replace the single `combat` SM layer (mask: upper_body) with two arm-masked
+layers (`right_hand`, mask: right_arm; `left_hand`, mask: left_arm). Add
+`right_arm` / `left_arm` bone masks on biped.json. Right-hand layer carries
+all existing combat states (idle, swing.windup/active/winddown, block, aim,
+shoot); swing.* states override mask to upper_body so two-handed swings
+still engage the torso. Left-hand layer ships with `idle` only — it is the
+landing pad for off-hand maneuvers (T-185) that come next. Server code that
+read csm.combat.{node,elapsed} is renamed to csm.right_hand.{node,elapsed}
+across action.ts, animation.ts, durability.ts, terrain_hit_handler.ts,
+health_hit_handler.ts, and the bench. No backwards-compat shim — combat
+layer is gone.
+
+### T-185 · Maneuver system (composable per-hand actions)
+Effort: L   Status: in-progress
+
+First cut delivered:
+  - ManeuverDef type + content registry + JsonSource loader + bootstrap codec
+    bumped to v5; sample `data/maneuvers/double_strike.json` ships.
+  - Server: Maneuver server-only component (carries elapsed + resolved per-hand
+    clipId + activeHitTags), ManeuverSchedulerSystem advances the timeline,
+    selects active per-hand clips, applies `dash` locomotion impulses, and
+    refreshes activeHitTags each tick.
+  - SM: `right_hand` and `left_hand` layers gain an `in_maneuver` state with
+    null clip; entering on `event.maneuver_started`, exiting on
+    `event.maneuver_ended`, both fired by ManeuverScheduler / ActionSystem.
+  - AnimationSystem injects Maneuver.{rightClipId,leftClipId} into the
+    layer projection when the SM node is `in_maneuver` — the SM stays
+    generic, the maneuver def drives the actual per-hand clip.
+  - ActionSystem first-cut binding: ACTION_SKILL_1 fires `double_strike` if
+    available; stamina-gated; locked out by Staggered / mid-swing / already
+    in a maneuver.
+  - HealthHitHandler reads attacker's Maneuver.activeHitTags on a successful
+    hit and logs each tag (placeholder for the future effect resolver).
+  - Interrupt windows enforced: ManeuverScheduler scans active windows each
+    tick, checks input bits against the window's `by` list (dodge/block/
+    jump/swing → ACTION_DODGE/_BLOCK/_JUMP/_USE_SKILL), and fires
+    event.maneuver_ended early when a matching bit is held.
+  - DodgeSystem skips input.dodge while a Maneuver is present — the
+    scheduler owns dodge during a maneuver, converting it into an interrupt
+    when the active window allows. Prevents dodging out of a committed
+    move and avoids double-handling.
+  - ManeuverLoadout server-only component (slots[4] of ManeuverDef ids)
+    decouples skill-bit → maneuver. ActionSystem reads the loadout for the
+    actor; ACTION_SKILL_1..4 → slots[0..3]. Player spawns with
+    [double_strike, shield_bash, "", ""].
+  - Second sample `shield_bash.json`: 0.6s, off-hand-only, 0.45-0.6
+    interrupt window, stun tag, 15 stamina.
+  - Maneuver blade trail bridge: AnimationSystem during `in_maneuver`
+    populates `weaponActionId` from the equipped weapon's primary
+    swingable action, and sets `ticksIntoAction` into the active window
+    when `Maneuver.activeHitTags.length > 0`. Renderer's existing trail
+    + blade-attachment paths now work for maneuvers without renderer
+    changes — the FK-driven `evaluateBladeWorld` (already used by swings)
+    handles the maneuver's animated arm pose because clips drive the
+    hand bone matrix.
+  - Sample maneuver catalogue (5 authored): `double_strike`,
+    `shield_bash`, `whirlwind`, `leap_strike`, `quick_stab`,
+    `kick_combo`, `prayer`. Each demonstrates a different shape — fast
+    poke / committed combo / gap-closer / wide arc / off-hand bash /
+    self-buff ritual — to exercise dual-hand tracks, locomotion dashes,
+    multi-window hit effects, and varied interrupt-window patterns.
+    Player default loadout is `[quick_stab, kick_combo, leap_strike,
+    whirlwind]`.
+
+Swing chargeable windup (T-185 follow-on, partly delivered):
+  - SM right_hand layer's swing flow is now four-phase:
+    `windup` (loops while ACTION_USE_SKILL held, max 5s, exits to idle
+    on input.block) → `stop` (0.08s release pause) → `active` →
+    `winddown`. `swing.windup → idle` on `input.block` (priority 100)
+    cancels uncommitted swings; `!input.use_skill` (priority 60)
+    releases the held charge into `swing.stop`; the original duration
+    auto-fire still serves as a max-charge fallback.
+  - isSwingNode / isSwingingNode helpers and AnimationSystem's
+    cumulative ticksIntoAction calculation extended to recognise
+    `swing.stop` as part of the swing window.
+
+Still TODO under T-185:
+  - Charge-on-release variant pickup (re-pick weaponActionId from
+    accumulated windup elapsed at the moment swing.windup → swing.stop
+    fires; today the variant is still picked at press time).
+  - Real on-hit effect resolver behind the tag list (current
+    HealthHitHandler logs them).
+  - Per-PC loadout rebinding UI.
+
+### T-190 · Per-character body variation (morphRanges)
+Effort: S   Status: done
+
+Every PC spawn now samples a unique body shape from per-prefab
+`morphRanges` windows, so no two characters of the same prefab look (or
+move) identical — but a given entity respawns/reloads identical because
+the sample is deterministic per entity UUID.
+
+Schema:
+  Prefab.morphRanges?: Record<string, {min, max}>
+  Inherits + shallow-merges through `extends` like morphValues.
+
+Spawn:
+  installVisualShell calls sampleMorphValues(prefab, seed) to mix
+  explicit prefab.morphValues (authored overrides — win per key) with
+  seeded samples from morphRanges. Result writes onto
+  ModelRef.morphValues, already networked, so client and server see
+  identical bodies.
+  Per-key sub-seed = mix32(seed, hash32(key)) so adding a new morph
+  doesn't shift previously sampled keys.
+  Default seed = hash32(entityId) — UUID is server-persistent so
+  reloaded NPCs look the same. Player spawns can override with a
+  heritage-derived seed for cross-death continuity.
+
+Layer 1 voxel scaling (T-186):
+  entity_mesh.ts now multiplies each sub-object's voxel subScale by the
+  parent bone's morph scale on the same axis. Stretching `armLength`
+  by 1.1× now lengthens BOTH the elbow→wrist bone offset AND the
+  visible forearm chunk in lockstep — no more visible joint gaps at
+  morph extremes. Ground-clearance calculation reads the same morphed
+  subScale so feet stay planted.
+
+Authored ranges on `_playable_character` (~±10%):
+  armLength 0.92–1.10, legLength 0.92–1.10, torsoHeight 0.95–1.08,
+  shoulderWidth 0.90–1.15, hipWidth 0.92–1.12, headSize 0.95–1.05.
+  Every PC inherits these unless they declare their own. Drowner +
+  rotten_knight keep their explicit morphValues (asymmetric anchors)
+  and inherit the ranges, so they get variation within those anchors.
+
+Property: zero new data flow. Spawner reads existing morphRanges →
+samples → writes existing ModelRef.morphValues. Wire format unchanged.
+Renderer reads same field. Whole feature is "spawner sample + Layer 1
+voxel-scaling extension". Layer 2 (procedural body recipes) remains
+open under T-186.
+
+### T-186 · Procedural character body generator (skeleton + voxel mesh)
+Effort: L   Status: in-progress
+
+**Layer 1 delivered as part of T-190.** Sub-object voxel chunks now
+stretch alongside bones via the existing morphParams table. Remaining
+under this ticket: Layer 2 (procedural body-part recipes) — replace
+authored body voxel positions with a recipe-driven voxelizer that fills
+each part's volume from morph-parameterised dimensions at spawn. Adds
+mass-distribution variety (thick thighs, broad shoulders, narrow waist)
+that uniform per-axis scaling can't express.
+
+Single-source-of-truth body shaper: per-character morph values (already
+on ModelRef) drive BOTH skeletal proportions AND voxel geometry. A "long
+legs" parameter stretches the leg bones AND elongates the leg voxel
+chunks together, so the skeleton joint sits at the visible end of the
+limb at every value of the slider.
+
+Two layers:
+
+  Layer 1 — sub-object voxel scaling alongside bone scaling:
+    biped.json `morphParams` already lists which bones each morph
+    affects + a `restAxis`. entity_mesh.ts applies these via boneScale
+    {X,Y,Z} to bone rest offsets. Extend the same pass to scale any
+    voxel sub-objects parented to those bones along the same axis.
+    Adds ~30 lines, no schema changes. Covers: limb length, torso
+    height, head size, hip width — anything that maps cleanly to
+    "scale the bone segment + the visible chunk by the same factor".
+
+  Layer 2 — procedural part recipes (replaces authored body voxels):
+    biped voxel body becomes a recipe declaration instead of authored
+    voxel positions. Each part declares a shape generator with morph-
+    parameterised dimensions, e.g.
+      { part: "torso_upper", shape: "tapered_box",
+        length: "$torsoHeight",
+        widthTop: "$shoulderWidth * 0.6",
+        widthBot: "$hipWidth * 0.5", taper: "$torso_taper" }
+    A voxelizer in @voxim/content fills each volume at spawn, keyed by
+    the per-character morph values. Required when proportions need to
+    affect body MASS distribution, not just length — e.g. "broad
+    shoulders + narrow waist", "thick thighs", limb taper, asymmetric
+    builds — things that uniform per-axis scaling can't express.
+
+Auxiliary work:
+  - Posture-overlay layer: small additive AnimationLayer composed from
+    slider values (backlean, slump, alert) — pure rotation offsets on
+    a few torso/neck bones, runs alongside whatever Mixamo clip plays
+    on the override layer. Mixamo motion stays intact; the base pose
+    nudges by the slider amount.
+  - Character-creator UI: live sliders mutate ModelRef.morphValues
+    in-editor, baked to per-character permanent values on commit. Use
+    only in the creator screen — for live characters morphs are
+    immutable identity.
+  - Foot IK pass when limbs scale far from authored proportions, so
+    feet stay planted on terrain at extreme heights. ik_solver.ts
+    exists; just needs wiring into the FK pipeline.
+
+Property of this design: hit detection self-consistent at any morph.
+blade.baseLocal/tipLocal are hand-bone-local; longer arms genuinely
+reach further because the hand bone's world position is further out.
+No retargeting maths needed.
+
+Done when: the character creator screen exposes ~6 sliders that
+visibly reshape the character (height, leg length, arm length,
+shoulder width, hip width, head size); a saved character spawns into
+the world at exactly those proportions; Mixamo animations play on
+every body type without artifact; hits land at the new reach.
+
+### T-188 · Vermintide-style combo chains + heavy/light variant
+Effort: M   Status: done
+
+Each weapon carries an authored sequence of attacks that play out as the
+player chains LMB presses together. Press during windup of swing N to
+queue swing N+1. No grace window after winddown — let the swing finish
+with no held input and the chain is gone, next press starts at index 0.
+Block at any time also resets the chain. Hold LMB through the windup
+past the weapon's heavy-charge threshold and the queued attack fires
+its heavy variant instead of its light variant; release short → light.
+
+Schema migration (replaces, not accretes):
+  swingable.actions[]  → REMOVED
+  swingable.chain      → ChainEntry[] with { light, heavy }
+                         actionIds. Chain index wraps at end.
+  swingable.heavyChargeMs → number, threshold (windup elapsed) above
+                            which release fires heavy variant.
+
+New server-only SwingChain component { index } — present iff the actor
+is in a chain. Removed when chain breaks (winddown→idle without queue,
+block, stagger, death, maneuver start).
+
+ActionSystem changes:
+  - On press with no SwingContext: install SwingChain{index:0} + start.
+  - During active/winddown: if input.use_skill still held → mark
+    SwingContext.queued.
+  - On swing.windup→swing.stop fired: read csm.right_hand.elapsed,
+    pick chain[index].heavy if elapsed >= heavyChargeMs/1000 else
+    chain[index].light. Update SwingContext.weaponActionId — the new
+    action's tick budgets drive swing.active and swing.winddown
+    durations via existing $action.* scope vars.
+  - On swing.winddown→idle fired: if queued, advance SwingChain.index
+    (mod chain.length), reinstall SwingContext, refire
+    event.swing_started; else remove SwingChain.
+  - On any block firing: remove SwingChain.
+
+Done when: pressing LMB three times rapidly with the iron sword plays
+three different slashes in sequence; tap-tap-hold plays light, light,
+heavy as the third; a momentary block during the second swing's
+winddown resets so the next press fires slash[0] again.
+
+### T-189 · Sidestep replaces roll
+Effort: S   Status: done
+
+Drop the dodge roll outright (Rolling component + sprinting_forward_roll
+clip + dodge.roll SM state retire — refactors replace, no shim). New
+Sidestep server-only component { ticksRemaining, vx, vy } — direction
+from movement input at press time, default to facing-back if no
+movement. Locomotion SM gains `sidestep` state replacing `roll`. Clip:
+`esquiva_1` for one direction + mirrored variant for the other (or one
+clip applied bidirectionally; the actual translation comes from the
+velocity impulse, the clip provides body language).
+
+Tuning: shorter than current roll (~0.25 s vs 0.7 s), shorter cooldown,
+keeps i-frames during the ~half-duration that elapses inside Sidestep.
+No rotation lock-in — character keeps facing the cursor through the
+dash. dodge.staminaCost in game_config drops accordingly.
+
+Done when: pressing dodge while moving left does a short left-hop with
+a visible body lean; without movement, the actor hops backward; total
+travel distance and i-frame coverage feel like Vermintide-class
+sidestep, not Dark-Souls roll. The roll clip + Rolling component are
+deleted, not deprecated.
+
+### T-187 · Runtime dual-slot equip for hand items
+Effort: S   Status: todo
+
+Today `EquippableData.slot` is a single `EquipSlot`. Weapons declare
+`slot: "weapon"`, so EquipmentSystem can only ever route a sword into
+the main-hand slot — picking up a second sword from inventory cannot
+fill the off-hand. Spawn-time bypasses this (the spawner writes
+startingEquipment directly without slot validation, which is how the
+default dual-wielding player already works), but the inventory→equip
+flow doesn't.
+
+Path: change `slot: EquipSlot` to `slots: EquipSlot[]` (single-item
+arrays for everything that exists today; weapons declare `["weapon",
+"offHand"]`). EquipmentSystem iterates the list and equips into the
+first empty slot, with an optional client-supplied target slot to
+disambiguate. Migrate every existing prefab + the codec + the typed
+schema in one diff (rule: refactors replace, no shim). Done when
+picking up a second sword and equipping it lands it in the off-hand
+visually + on the wire, and unequipping main-hand then re-equipping
+that sword routes it correctly.
+
+A *maneuver* is the authored unit for any committed action (slash, stab,
+shield-bash, prayer, throw, multi-step combo). Generalises the existing
+WeaponActionDef so PCs and NPCs share authoring.
+
+Shape:
+  data/maneuvers/{id}.json — ManeuverDef
+    duration                  — total locked window
+    interruptWindows[]        — { fromT, toT, by: ["dodge","block",…] }
+    tracks.left_hand[]        — { t, clip } scheduled events on left_hand layer
+    tracks.right_hand[]       — same, right_hand layer
+    tracks.locomotion[]       — { t, kind: "dash", forward, duration }
+    tracks.hitEffects[]       — { tag, fromT, magnitude } — see notes below
+    requirements              — stamina, weapon slot constraints
+
+Runtime:
+  - ActionSystem on input → install Maneuver payload component, validate
+    requirements, fire event.maneuver_started.
+  - CSM transitions right_hand (or both) to a generic `in_maneuver` state
+    that locks until duration elapses or an interrupt window grants exit.
+  - New ManeuverScheduler system advances Maneuver.elapsed each tick and
+    emits events as tracks cross: SM scope variables for clip per hand,
+    locomotion impulses to PhysicsSystem, hit-tag updates on Maneuver.
+  - Hit handlers read Maneuver.hitTags (active for current elapsed) and
+    apply on-hit effects.
+
+hitEffects (effects layer): start with simple inline tags applied on hit.
+Mark this as a placeholder — a richer effect system (status stacks,
+duration, propagation) will replace this and is intentionally out of scope
+for the first cut. The Maneuver-scheduler-emits-tags pattern survives the
+later effect-system rework; only the resolver behind the tag changes.
+
+Done when: a sample two-step `double_strike` maneuver lives in data,
+firing it locks the player for its duration, plays a left-arm clip then a
+right-arm clip with a forward dash, and applies a "bleed" tag on hit. Both
+PC and an NPC can be authored to use the same ManeuverDef.
 
 ---
 

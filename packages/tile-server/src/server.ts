@@ -30,7 +30,7 @@ import { GatewayLink } from "./gateway_link.ts";
 
 // Bits that represent held keys — use latest-wins rather than OR across the tick.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
-import type { BinaryComponentDelta, BinaryStateMessage, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
+import type { BinaryComponentDelta, BinaryStateMessage, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
 import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
 import { ClientSession } from "./session.ts";
@@ -57,6 +57,7 @@ import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionSystem } from "./systems/action.ts";
 import { CharacterStateMachineSystem } from "./systems/character_state_machine.ts";
+import { ManeuverSchedulerSystem } from "./systems/maneuver_scheduler.ts";
 import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
@@ -421,9 +422,10 @@ export class TileServer {
       new CorruptionSystem(content, deathSystem),
       new EncumbranceSystem(content),
       new BuffSystem(effects.tick, effects.compose, deathSystem),
-      new PhysicsSystem(content),
+      new PhysicsSystem(content, tickEvents),
       new FogOfWarSystem(),
       new CharacterStateMachineSystem(content, tickEvents),
+      new ManeuverSchedulerSystem(content, tickEvents),
       new DodgeSystem(content),
       skill,
       new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers, tickEvents),
@@ -432,7 +434,7 @@ export class TileServer {
       new TerrainDigSystem(content),
       new TraderSystem(content),
       new DynastySystem(content),
-      new DurabilitySystem(),
+      new DurabilitySystem(content),
       new AnimationSystem(content),
       new HitboxSystem(content),
       new DebugCommandSystem(content, config.devMode ?? false),
@@ -1167,11 +1169,25 @@ export class TileServer {
     // Send ack with canonical playerId
     const ack: TileJoinAck = { type: "joined", playerId };
     await jWriter.write(encodeFrame(ack));
-    // Then the content bootstrap blob (T-177) as a length-framed binary
-    // payload on the same join stream. Client reads the ack JSON, then
-    // reads this blob, then closes — half-duplex, single stream, no
-    // separate request/response.
-    await jWriter.write(encodeFrame(this.contentBlob));
+    // Then the content bootstrap blob (T-177) — chunked into frames so
+    // a single frame never exceeds MAX_FRAME_PAYLOAD_BYTES regardless of
+    // total content size. Header announces chunk count + total bytes;
+    // client reassembles in order.
+    const blob = this.contentBlob;
+    if (!blob || blob.length === 0) {
+      throw new Error("content bootstrap blob not built — handleSession ran before init finished");
+    }
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MiB — well under the 16 MiB frame cap
+    const chunks = Math.ceil(blob.length / CHUNK_SIZE);
+    const header: BootstrapHeader = { type: "bootstrap", totalBytes: blob.length, chunks };
+    console.log(`[TileServer] sending bootstrap to ${playerId.slice(0, 8)}: ${(blob.length / 1024).toFixed(1)} KB in ${chunks} chunk(s)`);
+    await jWriter.write(encodeFrame(header));
+    for (let i = 0; i < chunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, blob.length);
+      await jWriter.write(encodeFrame(blob.subarray(start, end)));
+    }
+    console.log(`[TileServer] bootstrap sent to ${playerId.slice(0, 8)}`);
     // Fire-and-forget — don't block on the client consuming the stream FIN.
     // Awaiting close() here caused an 80% failure rate: the tick loop could fire
     // between the await and createUnidirectionalStream(), registering no session

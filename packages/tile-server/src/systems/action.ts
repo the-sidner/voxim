@@ -3,40 +3,45 @@
  *
  * Owns swing initiation, active-phase hit detection (lag-compensated capsule
  * sweep), and projectile spawning for ranged actions. Phase progression is
- * driven by the CSM combat layer (swing.windup → swing.active → swing.winddown
- * → idle), not by ActionSystem itself.
+ * driven by the CSM right_hand layer (swing.windup → swing.active →
+ * swing.winddown → idle), not by ActionSystem itself.
  *
  * The mode/payload split (T-182):
- *   - csm.combat.node = "swing.windup" / "swing.active" / "swing.winddown" /
- *     "idle" — the authoritative phase. Read by AnimationSystem (animation),
- *     by damage handlers (block check), by ActionSystem (gating + dispatch).
+ *   - csm.right_hand.node = "swing.windup" / "swing.active" /
+ *     "swing.winddown" / "idle" — the authoritative phase. Read by
+ *     AnimationSystem (animation), by damage handlers (block check), by
+ *     ActionSystem (gating + dispatch).
  *   - SwingContext (this entity's payload component) — weaponActionId,
  *     hitEntities dedup set, rewindTick, weapon prefab + quality. Present
- *     iff csm.combat is in any swing.* state.
+ *     iff csm.right_hand is in any swing.* state.
  *
  * What used to be SkillInProgress is now this split. Phase-tick counters
- * are derived from `csm.combat.elapsed * tickRateHz`. Hit handlers,
+ * are derived from `csm.right_hand.elapsed * tickRateHz`. Hit handlers,
  * durability, etc. read SwingContext for the gameplay payload.
  *
  * Single code path for players and NPCs. No isNpc branches.
  */
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
-import { ACTION_USE_SKILL, hasAction, TileEvents } from "@voxim/protocol";
+import { ACTION_USE_SKILL, ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4, ACTION_BLOCK, hasAction, TileEvents } from "@voxim/protocol";
 import type {
   ContentService, DerivedItemStats, SwingableData, WeaponActionDef,
   AnimationLayer, AnimationClip, BoneMask, BoneDef, SkeletonDef,
 } from "@voxim/content";
-import { pickWeaponAction } from "../components/item_behaviours.ts";
+import { pickChainAction } from "../components/item_behaviours.ts";
 import {
   localToWorld, segSegDistSq,
   evaluateAnimationLayers, solveSkeleton, applyQuat,
+  defStateHasTag,
 } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, Facing, Velocity, InputState, Stamina, Lifetime, ModelRef } from "../components/game.ts";
 import { Staggered } from "../components/combat.ts";
 import { SwingContext, type SwingContextData, type HitRecord } from "../components/swing_context.ts";
+import { SwingChain } from "../components/swing_chain.ts";
+import { Maneuver } from "../components/maneuver.ts";
+import { ManeuverLoadout } from "../components/maneuver_loadout.ts";
 import { CharacterStateMachine } from "../components/character_state_machine.ts";
 import { Equipment } from "../components/equipment.ts";
 import { QualityStamped } from "../components/instance.ts";
@@ -56,12 +61,21 @@ const SECONDS_PER_TICK = 1 / 20;
 
 export class ActionSystem implements System {
   /**
-   * Reads csm.combat.node (set by CharacterStateMachineSystem) for phase
+   * Reads csm.right_hand.node (set by CharacterStateMachineSystem) for phase
    * detection, and InputState (NpcAi writes via world.write()).
    */
   readonly dependsOn = ["NpcAiSystem", "CharacterStateMachineSystem"];
 
   private serverTick = 0;
+
+  /**
+   * Per-entity windup-elapsed snapshot (ms). Refreshed each tick the
+   * actor is in `swing.windup`; read at `swing.stop` to decide light vs
+   * heavy variant (release < swingable.heavyChargeMs → light, else
+   * heavy). Cleared after the variant pick. Server-authoritative — we
+   * don't trust the client's chargeMs for this gate.
+   */
+  private windupChargeMs = new Map<string, number>();
 
   constructor(
     private readonly stateHistory: StateHistoryBuffer,
@@ -86,51 +100,161 @@ export class ActionSystem implements System {
       staminaCostPerSwing: combatCfg.unarmed.staminaCostPerSwing,
     };
 
-    // ── 1. Initiate new swings ────────────────────────────────────────────────
+    // ── 0. Initiate maneuvers from skill-slot bits (T-185) ────────────────────
+    // ACTION_SKILL_1..4 → ManeuverLoadout.slots[0..3]. Whichever slot the
+    // pressed bit selects names the ManeuverDef. First slot pressed wins
+    // (priority by index) so simultaneous bits don't double-fire.
+    const SKILL_BITS: [number, number][] = [
+      [ACTION_SKILL_1, 0],
+      [ACTION_SKILL_2, 1],
+      [ACTION_SKILL_3, 2],
+      [ACTION_SKILL_4, 3],
+    ];
     for (const { entityId, inputState } of world.query(InputState)) {
-      if (!hasAction(inputState.actions, ACTION_USE_SKILL)) continue;
-      // Already swinging? CSM combat node tells us.
-      if (isSwingingNode(combatNode(world, entityId))) continue;
+      if (world.has(entityId, Maneuver)) continue;
+      if (rightHandHasTag(world, this.content, entityId, "carries_swing_context")) continue;
       if (world.has(entityId, Staggered)) continue;
 
-      const equipment = world.get(entityId, Equipment);
-      const weaponSlot = equipment?.weapon ?? null;
-      const weaponPrefabId = weaponSlot?.prefabId ?? null;
-      const weaponId = weaponSlot?.entityId ?? null;
-      const weaponQuality = weaponId ? world.get(weaponId as EntityId, QualityStamped)?.quality ?? 1 : 1;
-      const weaponStats = weaponPrefabId ? this.content.deriveItemStats(weaponPrefabId, [], weaponQuality) : unarmed;
+      const loadout = world.get(entityId, ManeuverLoadout);
+      if (!loadout) continue;
 
-      const staminaCost = weaponStats.staminaCostPerSwing ?? unarmed.staminaCostPerSwing!;
+      let pickedId = "";
+      for (const [bit, slot] of SKILL_BITS) {
+        if (!hasAction(inputState.actions, bit)) continue;
+        const id = loadout.slots[slot];
+        if (id) { pickedId = id; break; }
+      }
+      if (!pickedId) continue;
+
+      const def = this.content.maneuvers.get(pickedId);
+      if (!def) continue;
       const stamina = world.get(entityId, Stamina);
-      deductStamina(world, entityId, stamina, staminaCost);
+      const cost = def.requirements.stamina ?? 0;
+      if (cost > 0 && !deductStamina(world, entityId, stamina, cost)) continue;
 
-      const loreLoadout = world.get(entityId, LoreLoadout);
-      const strikeSlot = loreLoadout?.skills.findIndex((s) => s?.verb === "strike") ?? -1;
-
-      const swingable = weaponPrefabId
-        ? this.content.prefabs.get(weaponPrefabId)?.components["swingable"] as SwingableData | undefined
-        : undefined;
-      const picked = swingable ? pickWeaponAction(swingable, inputState.chargeMs ?? 0) : null;
-      const weaponActionId = picked?.actionId ?? unarmedActionId;
-
-      // Install SwingContext payload, fire event for the SM. CSM transitions
-      // combat → swing.windup next tick.
-      world.write(entityId, SwingContext, {
-        weaponActionId,
-        rewindTick: -1,
-        hitEntities: [],
-        pendingSkillVerb: strikeSlot >= 0 ? `strike:${strikeSlot}` : "",
-        weaponPrefabId: weaponPrefabId ?? "",
-        weaponQuality,
+      world.write(entityId, Maneuver, {
+        maneuverId: def.id,
+        elapsed: 0,
+        rightClipId: "",
+        leftClipId: "",
+        activeHitTags: [],
       });
-      this.tickEvents.fire(entityId, "event.swing_started");
+      this.tickEvents.fire(entityId, "event.maneuver_started");
+      log.info("maneuver start: entity=%s id=%s", entityId, def.id);
+    }
 
-      log.info("swing start: entity=%s weapon=%s action=%s charge=%dms stamina=%f",
-        entityId, weaponPrefabId ?? "unarmed", weaponActionId, inputState.chargeMs ?? 0, stamina?.current ?? 0);
+    // ── 1. Initiate new swings (chain step 0) ────────────────────────────────
+    // Fires only when the actor is in idle with NO existing SwingContext
+    // or SwingChain. The chain-advance pass below (1c) handles "swing N
+    // → swing N+1" via SwingContext.queued, so the press loop doesn't
+    // need to re-initiate during a chain. Once chain ends naturally
+    // (winddown→idle without queue) or is wiped by block, this loop
+    // picks up the next press fresh from chain index 0.
+    for (const { entityId, inputState } of world.query(InputState)) {
+      if (!hasAction(inputState.actions, ACTION_USE_SKILL)) continue;
+      if (world.has(entityId, Maneuver)) continue;
+      if (rightHandHasTag(world, this.content, entityId, "carries_swing_context")) continue;
+      if (world.has(entityId, Staggered)) continue;
+      // Mid-chain hand-off frames: SwingContext is the chain's tracker.
+      // Skip — pass 1c continues the chain.
+      if (world.has(entityId, SwingContext)) continue;
+      // Defensive: SwingChain without SwingContext is an inconsistent
+      // state (chain ended last tick, residual cleanup). Wipe and start
+      // fresh.
+      if (world.has(entityId, SwingChain)) world.remove(entityId, SwingChain);
+
+      this.startChainSwing(world, entityId, 0);
+    }
+
+    // ── 1b. Track queue intent during the swing ──────────────────────────────
+    // The chain only continues if the actor presses LMB at some point
+    // during the previous swing's stop/active/winddown phases. swing.windup
+    // is excluded because the windup already implies "you're starting to
+    // hit something" — holding through it is the variant-pick gesture
+    // (light vs heavy), not a queue. Once one tick observes the bit held
+    // in any of {stop, active, winddown}, the queue flag sticks for the
+    // rest of the swing.
+    for (const { entityId, swingContext: sc, inputState } of world.query(SwingContext, InputState)) {
+      const queueable = rightHandHasTag(world, this.content, entityId, "chain_queueable");
+      if (queueable && hasAction(inputState.actions, ACTION_USE_SKILL)) {
+        if (!sc.queued) world.set(entityId, SwingContext, { ...sc, queued: true });
+      }
+    }
+
+    // ── 1c. On winddown→idle: advance chain or end it ────────────────────────
+    // After the right_hand layer leaves its action states, SwingContext is
+    // still alive (the CSM is a pure state machine — payload-component
+    // lifecycle is owned by the system that authored the payload, i.e.
+    // here). This pass is the one place that decides whether to chain
+    // forward (overwrite SC with the next step) or end the chain
+    // (remove SC + SwingChain).
+    for (const { entityId, swingContext: sc } of world.query(SwingContext)) {
+      // Still inside any action state → no decision to make this tick.
+      if (rightHandHasTag(world, this.content, entityId, "carries_swing_context")) continue;
+      if (sc.queued && this.canChainHere(world, entityId)) {
+        const chainIdx = (world.get(entityId, SwingChain)?.index ?? 0) + 1;
+        world.set(entityId, SwingChain, { index: chainIdx });
+        // startChainSwing uses world.write() — installs the next SC immediately.
+        this.startChainSwing(world, entityId, chainIdx);
+      } else {
+        if (world.has(entityId, SwingChain)) world.remove(entityId, SwingChain);
+        world.remove(entityId, SwingContext);
+      }
+    }
+
+    // ── 1d. Windup charge tracking + variant pick at release ─────────────────
+    // While the actor is in swing.windup, snapshot the SM elapsed (ms) so
+    // we have it at the moment of release. The CSM transitions
+    // swing.windup → swing.stop the tick `!input.use_skill` becomes true
+    // (priority 60); at that point csm.right_hand.elapsed has already
+    // been reset to 0, so we read our snapshot from windupChargeMs to
+    // pick the variant.
+    for (const { entityId, swingContext: sc } of world.query(SwingContext)) {
+      const csm = world.get(entityId, CharacterStateMachine);
+      const lstate = csm?.layerStates["right_hand"];
+      if (!lstate) continue;
+
+      if (lstate.node === "swing.windup") {
+        this.windupChargeMs.set(entityId, lstate.elapsed * 1000);
+      } else if (lstate.node === "swing.stop") {
+        const ms = this.windupChargeMs.get(entityId);
+        if (ms !== undefined) {
+          // First tick of swing.stop — pick the chain variant for this
+          // step. Held past heavyChargeMs flips to the heavy action;
+          // otherwise stay on the light action installed at chain start.
+          const chainIdx = world.get(entityId, SwingChain)?.index ?? 0;
+          const swingable = sc.weaponPrefabId
+            ? this.content.prefabs.get(sc.weaponPrefabId)?.components["swingable"] as SwingableData | undefined
+            : undefined;
+          if (swingable && swingable.chain.length > 0) {
+            const newAction = pickChainAction(swingable, chainIdx, ms / 1000);
+            if (newAction && newAction !== sc.weaponActionId) {
+              world.set(entityId, SwingContext, { ...sc, weaponActionId: newAction });
+              log.debug("variant pick: entity=%s chain=%d charge=%dms action=%s",
+                entityId, chainIdx, Math.round(ms), newAction);
+            }
+          }
+          this.windupChargeMs.delete(entityId);
+        }
+      } else {
+        this.windupChargeMs.delete(entityId);
+      }
+    }
+
+    // ── 1e. Block resets the chain ───────────────────────────────────────────
+    // Vermintide-style: even a millisecond block restarts the sequence.
+    // Wipe SwingChain whenever input.block is held, regardless of whether
+    // the actor is mid-swing. The CSM's swing.windup→idle on input.block
+    // transition cancels an uncommitted swing in flight; this loop
+    // additionally guarantees the chain index resets so the next press
+    // starts at chain[0].
+    for (const { entityId, inputState } of world.query(InputState)) {
+      if (!hasAction(inputState.actions, ACTION_BLOCK)) continue;
+      if (world.has(entityId, SwingChain)) world.remove(entityId, SwingChain);
     }
 
     // ── 2. Active-phase hit / projectile dispatch ────────────────────────────
-    // Read csm.combat.node to detect active phase. Hit handling and projectile
+    // Read csm.right_hand.node to detect active phase. Hit handling and projectile
     // spawn fire only during swing.active. Phase advancement itself is owned
     // by the CSM (state.elapsed >= state.duration transitions); ActionSystem
     // just observes and dispatches.
@@ -138,12 +262,11 @@ export class ActionSystem implements System {
       const action = this.content.weaponActions.get(sc.weaponActionId);
       if (!action) continue;
 
-      const node = combatNode(world, entityId);
-      if (node !== "swing.active") continue;
+      if (!rightHandHasTag(world, this.content, entityId, "active_hitbox")) continue;
 
       // Sub-tick within active phase, derived from the CSM elapsed.
       const csm = world.get(entityId, CharacterStateMachine);
-      const elapsed = csm?.layerStates["combat"]?.elapsed ?? 0;
+      const elapsed = csm?.layerStates["right_hand"]?.elapsed ?? 0;
       const ticksInPhase = Math.round(elapsed / SECONDS_PER_TICK);
 
       if ((action.actionType ?? "melee") === "ranged") {
@@ -378,6 +501,77 @@ export class ActionSystem implements System {
       projId, entityId, weaponPrefabId3 ?? "unarmed", speed, facing);
   }
 
+  /**
+   * Start a swing at the given chain index. Picks the action id from the
+   * weapon's chain (light variant by default — heavy is decided when
+   * windup release fires; see startCharge / variant-pick path elsewhere).
+   * Installs SwingContext + SwingChain, fires event.swing_started, deducts
+   * stamina, and logs.
+   */
+  private startChainSwing(world: World, entityId: EntityId, chainIndex: number): void {
+    const gameCfg = this.content.getGameConfig();
+    const combatCfg = gameCfg.combat;
+    const unarmedActionId = combatCfg.unarmedWeaponAction ?? "unarmed";
+    const unarmed: DerivedItemStats = {
+      weight: combatCfg.unarmed.weight,
+      damage: combatCfg.unarmed.damage,
+      staminaCostPerSwing: combatCfg.unarmed.staminaCostPerSwing,
+    };
+
+    const equipment = world.get(entityId, Equipment);
+    const weaponSlot = equipment?.weapon ?? null;
+    const weaponPrefabId = weaponSlot?.prefabId ?? null;
+    const weaponId = weaponSlot?.entityId ?? null;
+    const weaponQuality = weaponId ? world.get(weaponId as EntityId, QualityStamped)?.quality ?? 1 : 1;
+    const weaponStats = weaponPrefabId ? this.content.deriveItemStats(weaponPrefabId, [], weaponQuality) : unarmed;
+    const swingable = weaponPrefabId
+      ? this.content.prefabs.get(weaponPrefabId)?.components["swingable"] as SwingableData | undefined
+      : undefined;
+
+    const staminaCost = weaponStats.staminaCostPerSwing ?? unarmed.staminaCostPerSwing!;
+    const stamina = world.get(entityId, Stamina);
+    deductStamina(world, entityId, stamina, staminaCost);
+
+    const loreLoadout = world.get(entityId, LoreLoadout);
+    const strikeSlot = loreLoadout?.skills.findIndex((s) => s?.verb === "strike") ?? -1;
+
+    // Initial action id = chain[index].light (variant pick on release
+    // promotes to heavy if the player held past heavyChargeMs). When no
+    // swingable / empty chain, fall back to the unarmed action.
+    let weaponActionId = unarmedActionId;
+    if (swingable && swingable.chain.length > 0) {
+      weaponActionId = pickChainAction(swingable, chainIndex, 0) ?? unarmedActionId;
+    }
+
+    world.write(entityId, SwingContext, {
+      weaponActionId,
+      rewindTick: -1,
+      hitEntities: [],
+      pendingSkillVerb: strikeSlot >= 0 ? `strike:${strikeSlot}` : "",
+      weaponPrefabId: weaponPrefabId ?? "",
+      weaponQuality,
+      queued: false,
+    });
+    world.write(entityId, SwingChain, { index: chainIndex });
+    this.tickEvents.fire(entityId, "event.swing_started");
+
+    log.info("swing start: entity=%s weapon=%s chain=%d action=%s stamina=%f",
+      entityId, weaponPrefabId ?? "unarmed", chainIndex, weaponActionId, stamina?.current ?? 0);
+  }
+
+  /**
+   * Allow the queued chain step to fire? Returns false if the actor is
+   * staggered, dead, or otherwise gating-prevented from continuing. Block
+   * cancellation is handled separately (the SM's input.block→idle
+   * transition runs before this, and the chain-end branch above wipes
+   * SwingChain when SwingContext.queued is false — which it will be on
+   * a block-canceled swing because the windup→idle path skips active and
+   * winddown entirely so queued never gets set).
+   */
+  private canChainHere(world: World, entityId: EntityId): boolean {
+    return !world.has(entityId, Staggered) && !world.has(entityId, Maneuver);
+  }
+
   private buildCurrentSnapshot(world: World): TickSnapshot {
     const entities: EntitySnapshot[] = [];
     for (const { entityId, position } of world.query(Position)) {
@@ -400,13 +594,19 @@ export class ActionSystem implements System {
   }
 }
 
-function combatNode(world: World, entityId: string): string {
+/**
+ * Tag-based check for "is the actor's right_hand layer currently inside any
+ * action state (swing.windup / stop / active / winddown today, future cast /
+ * channel / throw later)." Replaces string-prefix matching on the node name.
+ */
+function rightHandHasTag(world: World, content: ContentService, entityId: string, tag: string): boolean {
   const csm = world.get(entityId, CharacterStateMachine);
-  return csm?.layerStates["combat"]?.node ?? "idle";
-}
-
-function isSwingingNode(node: string): boolean {
-  return node === "swing.windup" || node === "swing.active" || node === "swing.winddown";
+  if (!csm) return false;
+  const node = csm.layerStates["right_hand"]?.node;
+  if (!node) return false;
+  const def = content.stateMachines.get(csm.stateMachineId);
+  if (!def) return false;
+  return defStateHasTag(def, "right_hand", node, tag);
 }
 
 /**
