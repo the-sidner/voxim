@@ -74,9 +74,10 @@ export function AssetBrowser({
     <div style={{
       height: "100%",
       overflowY: "auto",
-      fontSize: "12px",
+      fontSize: "var(--fs-small)",
+      fontFamily: "var(--font-mono)",
       lineHeight: "1.4",
-      padding: "8px 4px",
+      padding: "var(--s-3) var(--s-1)",
     }}>
       {roots.map((n) => (
         <NodeRow key={n.path} node={n} depth={0} picked={picked} onToggle={toggle} />
@@ -98,23 +99,23 @@ function NodeRow({
   return (
     <>
       <div
+        class={`dt-tree-row ${pickedHere ? "is-selected" : ""}`}
         onClick={() => onToggle(node)}
         style={{
-          cursor: "pointer",
           paddingLeft: `${depth * 14 + 6}px`,
-          background: pickedHere ? "#2a3a55" : undefined,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}
-        onMouseOver={(e) => { if (!pickedHere) (e.currentTarget as HTMLElement).style.background = "#26262c"; }}
-        onMouseOut={(e)  => { if (!pickedHere) (e.currentTarget as HTMLElement).style.background = ""; }}
       >
-        <span style={{ color: node.kind === "directory" ? "#a6a6c0" : "#88aaff", marginRight: 4 }}>
+        <span style={{
+          color: node.kind === "directory" ? "var(--bone-faint)" : "var(--aether-dim)",
+          marginRight: 4,
+        }}>
           {icon}
         </span>
         <span style={{
-          color: node.kind === "directory" ? "#cfd0e0" : "#9fcfff",
+          color: node.kind === "directory" ? "var(--bone)" : "var(--aether-hi)",
         }}>
           {node.kind === "file" ? stripExt(node.name) : node.name}
         </span>

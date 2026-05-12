@@ -28,14 +28,7 @@ export function Layout({
       minHeight: 0,
     }}>
       {topBar && (
-        <div style={{
-          flex: "0 0 36px",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 12px",
-          borderBottom: "1px solid #2a2a30",
-          background: "#16161a",
-        }}>
+        <div class="dt-topbar" style={{ minHeight: 36, alignItems: "center", padding: "0 var(--s-4)" }}>
           {topBar}
         </div>
       )}
@@ -47,8 +40,8 @@ export function Layout({
         {left !== undefined && (
           <div style={{
             flex: "0 0 240px",
-            borderRight: "1px solid #2a2a30",
-            background: "#1d1d22",
+            borderRight: "1px solid var(--line-strong)",
+            background: "linear-gradient(180deg, var(--moss), var(--bog))",
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
@@ -66,8 +59,8 @@ export function Layout({
         {right !== undefined && (
           <div style={{
             flex: "0 0 280px",
-            borderLeft: "1px solid #2a2a30",
-            background: "#1d1d22",
+            borderLeft: "1px solid var(--line-strong)",
+            background: "linear-gradient(180deg, var(--moss-hov), var(--moss))",
             overflow: "auto",
           }}>
             {right}

@@ -261,51 +261,39 @@ export function App({ content }: Props) {
 
   const mode = editorMode.value;
 
-  const TAB: preact.JSX.CSSProperties = {
-    padding: "5px 14px", border: "none", cursor: "pointer",
-    fontFamily: "monospace", fontSize: 12, borderRadius: 0,
-    borderBottom: "2px solid transparent",
-  };
-  const TAB_ACTIVE: preact.JSX.CSSProperties = {
-    ...TAB, color: "#4a9c3f", borderBottomColor: "#4a9c3f", background: "transparent",
-  };
-  const TAB_INACTIVE: preact.JSX.CSSProperties = {
-    ...TAB, color: "#666", background: "transparent",
-  };
-
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
 
       {/* ── Top bar ── */}
-      <div style={{ display: "flex", alignItems: "center", background: "#1a1a1a", borderBottom: "1px solid #333", flexShrink: 0 }}>
-        <span style={{ padding: "6px 12px", color: "#4a9c3f", fontWeight: "bold", fontSize: 13 }}>VOXIM EDITOR</span>
+      <div class="dt-topbar">
+        <span class="dt-brand">Voxim · Editor</span>
 
         {/* Mode tabs */}
         <button
-          style={mode === "voxel" ? TAB_ACTIVE : TAB_INACTIVE}
+          class={`dt-tab ${mode === "voxel" ? "is-active" : ""}`}
           onClick={() => { editorMode.value = "voxel"; }}
         >Voxel</button>
         <button
-          style={mode === "animate" ? TAB_ACTIVE : TAB_INACTIVE}
+          class={`dt-tab ${mode === "animate" ? "is-active" : ""}`}
           onClick={() => { editorMode.value = "animate"; }}
         >Animate</button>
         <button
-          style={mode === "library" ? TAB_ACTIVE : TAB_INACTIVE}
+          class={`dt-tab ${mode === "library" ? "is-active" : ""}`}
           onClick={() => { editorMode.value = "library"; }}
         >Library</button>
 
         {/* Mode-specific toolbar content */}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
           {mode === "voxel" && <Toolbar />}
           {mode === "animate" && <PlaybackPanel />}
         </div>
 
         {mode === "voxel" && (
-          <button onClick={() => setShowImport(true)} style={{
-            margin: "0 8px", padding: "4px 10px", background: "#2a2a2a",
-            border: "1px solid #555", color: "#aaa", cursor: "pointer",
-            borderRadius: 3, fontSize: 11, fontFamily: "monospace",
-          }}>Import</button>
+          <button
+            class="btn sm"
+            style={{ margin: "auto var(--s-3) auto var(--s-3)" }}
+            onClick={() => setShowImport(true)}
+          >Import</button>
         )}
       </div>
 
@@ -324,11 +312,7 @@ export function App({ content }: Props) {
 
           {/* Right sidebar */}
           {mode === "voxel" && (
-            <div style={{
-              width: 220, flexShrink: 0, background: "#1e1e1e",
-              borderLeft: "1px solid #333", overflowY: "auto",
-              display: "flex", flexDirection: "column",
-            }}>
+            <div class="dt-sidebar">
               <MaterialPanel materials={materials} />
               <ModelPanel skeletons={skeletons} />
               <SubObjectPanel />
@@ -345,7 +329,11 @@ export function App({ content }: Props) {
 
         {/* Timeline (animate mode only, below viewport) */}
         {mode === "animate" && (
-          <div style={{ flexShrink: 0, maxHeight: "35%", overflowY: "auto", borderTop: "1px solid #333" }}>
+          <div style={{
+            flexShrink: 0, maxHeight: "35%", overflowY: "auto",
+            borderTop: "1px solid var(--line-strong)",
+            background: "var(--moss)",
+          }}>
             <TimelinePanel />
           </div>
         )}

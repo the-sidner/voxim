@@ -16,11 +16,7 @@ interface Props { content: BrowserContentStore; }
 
 type Kind = "additive" | "crossfade" | "phase_shift";
 
-const INPUT: preact.JSX.CSSProperties = {
-  background: "#2a2a2a", border: "1px solid #444", color: "#ddd",
-  fontFamily: "monospace", fontSize: 11, padding: "3px 6px", borderRadius: 3,
-};
-const BTN: preact.JSX.CSSProperties = { ...INPUT, cursor: "pointer", padding: "4px 12px" };
+// Inputs inherit Dreamborn styling from devtools.css.
 
 export function MixPanel({ content }: Props) {
   const [skeletonId, setSkeletonId] = useState<string>("biped");
@@ -88,28 +84,28 @@ export function MixPanel({ content }: Props) {
 
   return (
     <div>
-      <h3 style={{ margin: "0 0 8px", fontSize: 12, color: "#aaa" }}>Mix into a compound clip</h3>
-      <p style={{ color: "#777", fontSize: 11, margin: "0 0 12px" }}>
+      <h3 class="eyebrow" style={{ margin: "0 0 var(--s-3)" }}>Mix into a compound clip</h3>
+      <p class="flavour" style={{ margin: "0 0 var(--s-4)" }}>
         Compound clips are recipes; they get baked into plain clips at server content-load.
         Restart the tile server to see the result in-engine.
       </p>
 
       <Row label="Target skeleton">
-        <select value={skeletonId} onChange={(e) => setSkeletonId((e.target as HTMLSelectElement).value)} style={INPUT}>
+        <select value={skeletonId} onChange={(e) => setSkeletonId((e.target as HTMLSelectElement).value)} >
           {skeletons.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
         </select>
       </Row>
 
       <Row label="New clip id">
         <input value={id} onInput={(e) => setId((e.target as HTMLInputElement).value)}
-          placeholder="walk_proud" style={{ ...INPUT, width: 260 }} />
-        <span style={{ color: "#666", marginLeft: 6 }}>
+          placeholder="walk_proud" style={{ width: 260 }} />
+        <span class="flavour" style={{ marginLeft: 6 }}>
           (use slot name like "walk" to override the skeleton)
         </span>
       </Row>
 
       <Row label="Mix kind">
-        <select value={kind} onChange={(e) => setKind((e.target as HTMLSelectElement).value as Kind)} style={INPUT}>
+        <select value={kind} onChange={(e) => setKind((e.target as HTMLSelectElement).value as Kind)} >
           <option value="additive">additive (base + overlay)</option>
           <option value="crossfade">crossfade (lerp from → to)</option>
           <option value="phase_shift">phase shift (offset source)</option>
@@ -125,7 +121,7 @@ export function MixPanel({ content }: Props) {
             <ClipPicker clips={availableClips} value={overlay} onChange={setOverlay} />
           </Row>
           <Row label="Mask (optional)">
-            <select value={mask} onChange={(e) => setMask((e.target as HTMLSelectElement).value)} style={INPUT}>
+            <select value={mask} onChange={(e) => setMask((e.target as HTMLSelectElement).value)} >
               <option value="">— full body —</option>
               {masks.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
             </select>
@@ -134,7 +130,7 @@ export function MixPanel({ content }: Props) {
             <input type="range" min={0} max={1} step={0.05} value={weight}
               onInput={(e) => setWeight(parseFloat((e.target as HTMLInputElement).value))}
               style={{ width: 200 }} />
-            <span style={{ color: "#aaa", marginLeft: 6 }}>{weight.toFixed(2)}</span>
+            <span class="num text-dim" style={{ marginLeft: 6 }}>{weight.toFixed(2)}</span>
           </Row>
         </>
       )}
@@ -151,7 +147,7 @@ export function MixPanel({ content }: Props) {
             <input type="range" min={0} max={1} step={0.05} value={weight}
               onInput={(e) => setWeight(parseFloat((e.target as HTMLInputElement).value))}
               style={{ width: 200 }} />
-            <span style={{ color: "#aaa", marginLeft: 6 }}>{weight.toFixed(2)}</span>
+            <span class="num text-dim" style={{ marginLeft: 6 }}>{weight.toFixed(2)}</span>
           </Row>
         </>
       )}
@@ -165,7 +161,7 @@ export function MixPanel({ content }: Props) {
             <input type="range" min={0} max={1} step={0.05} value={offset}
               onInput={(e) => setOffset(parseFloat((e.target as HTMLInputElement).value))}
               style={{ width: 200 }} />
-            <span style={{ color: "#aaa", marginLeft: 6 }}>{offset.toFixed(2)}</span>
+            <span class="num text-dim" style={{ marginLeft: 6 }}>{offset.toFixed(2)}</span>
           </Row>
         </>
       )}
@@ -175,7 +171,7 @@ export function MixPanel({ content }: Props) {
       </Row>
 
       <div style={{ marginTop: 14 }}>
-        <button style={BTN} onClick={doSave}>Save compound clip</button>
+        <button class="btn primary" onClick={doSave}>Save compound clip</button>
       </div>
     </div>
   );
@@ -185,7 +181,7 @@ function ClipPicker({ clips, value, onChange }: {
   clips: AnimationClip[]; value: string; onChange: (v: string) => void;
 }) {
   return (
-    <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)} style={INPUT}>
+    <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)} >
       <option value="">— pick —</option>
       {clips.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}
     </select>
@@ -195,7 +191,7 @@ function ClipPicker({ clips, value, onChange }: {
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) {
   return (
     <div style={{ display: "flex", alignItems: "center", marginBottom: 8, gap: 8 }}>
-      <label style={{ width: 160, color: "#888", fontSize: 11 }}>{label}</label>
+      <label class="eyebrow" style={{ width: 160 }}>{label}</label>
       {children}
     </div>
   );

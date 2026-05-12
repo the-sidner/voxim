@@ -19,13 +19,7 @@ interface Props { content: BrowserContentStore; }
 const PRESETS = ["quaternius", "mixamo", "cmu", "cesiumman"] as const;
 type Preset = typeof PRESETS[number];
 
-const INPUT: preact.JSX.CSSProperties = {
-  background: "#2a2a2a", border: "1px solid #444", color: "#ddd",
-  fontFamily: "monospace", fontSize: 11, padding: "3px 6px", borderRadius: 3,
-};
-const BTN: preact.JSX.CSSProperties = {
-  ...INPUT, cursor: "pointer", padding: "4px 12px",
-};
+// Form inputs inherit Dreamborn styling from devtools.css; no per-field overrides.
 
 export function ImportPanel({ content }: Props) {
   const [summary, setSummary] = useState<GLBSummary | null>(null);
@@ -110,17 +104,17 @@ export function ImportPanel({ content }: Props) {
 
   return (
     <div>
-      <h3 style={{ margin: "0 0 8px", fontSize: 12, color: "#aaa" }}>Import a GLB animation</h3>
+      <h3 class="eyebrow" style={{ margin: "0 0 var(--s-3)" }}>Import a GLB animation</h3>
 
       <Row label="GLB file">
-        <input type="file" accept=".glb,.gltf" onChange={onFile} style={INPUT} />
-        {fileName && <span style={{ color: "#aaa", marginLeft: 6 }}>{fileName}</span>}
+        <input type="file" accept=".glb,.gltf" onChange={onFile} />
+        {fileName && <span class="text-dim" style={{ marginLeft: 6 }}>{fileName}</span>}
       </Row>
 
       {summary && (
         <>
           <Row label="Animation">
-            <select value={animIdx} onChange={(e) => setAnimIdx(parseInt((e.target as HTMLSelectElement).value))} style={INPUT}>
+            <select value={animIdx} onChange={(e) => setAnimIdx(parseInt((e.target as HTMLSelectElement).value))}>
               {summary.animations.map((a, i) => (
                 <option key={i} value={i}>
                   {a.name} — {a.durationSec.toFixed(2)}s, {a.trackedBones.length} bones
@@ -130,13 +124,13 @@ export function ImportPanel({ content }: Props) {
           </Row>
 
           <Row label="Source library">
-            <select value={preset} onChange={(e) => setPreset((e.target as HTMLSelectElement).value as Preset)} style={INPUT}>
+            <select value={preset} onChange={(e) => setPreset((e.target as HTMLSelectElement).value as Preset)}>
               {PRESETS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </Row>
 
           <Row label="Target skeleton">
-            <select value={skeleton} onChange={(e) => setSkeleton((e.target as HTMLSelectElement).value)} style={INPUT}>
+            <select value={skeleton} onChange={(e) => setSkeleton((e.target as HTMLSelectElement).value)}>
               {skeletons.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
             </select>
           </Row>
@@ -146,9 +140,9 @@ export function ImportPanel({ content }: Props) {
               value={clipId}
               onInput={(e) => setClipId((e.target as HTMLInputElement).value)}
               placeholder="walk"
-              style={{ ...INPUT, width: 260 }}
+              style={{ width: 260 }}
             />
-            <span style={{ color: "#666", marginLeft: 6 }}>
+            <span class="flavour" style={{ marginLeft: 6 }}>
               (use slot name like "walk" / "idle" to override the skeleton's inline clip)
             </span>
           </Row>
@@ -157,7 +151,7 @@ export function ImportPanel({ content }: Props) {
             <input
               type="number" value={fps} min={10} max={60}
               onInput={(e) => setFps(parseInt((e.target as HTMLInputElement).value))}
-              style={{ ...INPUT, width: 60 }}
+              style={{ width: 72 }}
             />
           </Row>
 
@@ -165,31 +159,30 @@ export function ImportPanel({ content }: Props) {
             <input type="checkbox" checked={loop} onChange={(e) => setLoop((e.target as HTMLInputElement).checked)} />
           </Row>
 
-          {/* Bone-map preview */}
-          <details style={{ marginTop: 12, color: "#aaa" }}>
+          <details style={{ marginTop: 12, color: "var(--bone-dim)" }}>
             <summary style={{ cursor: "pointer", padding: 4 }}>
-              Bone map: {matchedBones.length} matched, {unmappedBones.length} unmapped (will be dropped)
+              Bone map: <span class="num">{matchedBones.length}</span> matched, <span class="num">{unmappedBones.length}</span> unmapped (will be dropped)
             </summary>
             <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ color: "#8c8", marginBottom: 4 }}>matched ({matchedBones.length})</div>
+                <div class="eyebrow text-ok" style={{ marginBottom: 4 }}>matched ({matchedBones.length})</div>
                 {matchedBones.map((m) => (
-                  <div key={m.src} style={{ fontSize: 10 }}>
-                    <span style={{ color: "#aaa" }}>{m.src}</span> → <span style={{ color: "#cda" }}>{m.tgt}</span>
+                  <div key={m.src} style={{ fontSize: 10, fontFamily: "var(--font-mono)" }}>
+                    <span class="text-dim">{m.src}</span> → <span style={{ color: "var(--lichen-hi)" }}>{m.tgt}</span>
                   </div>
                 ))}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ color: "#888", marginBottom: 4 }}>dropped ({unmappedBones.length})</div>
+                <div class="eyebrow" style={{ marginBottom: 4 }}>dropped ({unmappedBones.length})</div>
                 {unmappedBones.map((b) => (
-                  <div key={b} style={{ fontSize: 10, color: "#777" }}>{b}</div>
+                  <div key={b} style={{ fontSize: 10, color: "var(--bone-faint)", fontFamily: "var(--font-mono)" }}>{b}</div>
                 ))}
               </div>
             </div>
           </details>
 
           <div style={{ marginTop: 14 }}>
-            <button style={BTN} onClick={doImport} disabled={!clipId.trim()}>
+            <button class="btn primary" onClick={doImport} disabled={!clipId.trim()}>
               Save to library
             </button>
           </div>
@@ -202,7 +195,7 @@ export function ImportPanel({ content }: Props) {
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) {
   return (
     <div style={{ display: "flex", alignItems: "center", marginBottom: 8, gap: 8 }}>
-      <label style={{ width: 130, color: "#888", fontSize: 11 }}>{label}</label>
+      <label class="eyebrow" style={{ width: 130 }}>{label}</label>
       {children}
     </div>
   );

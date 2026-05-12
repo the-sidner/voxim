@@ -1,0 +1,365 @@
+/* ────────────────────────────────────────────────────────────────
+   Devtools composition layer.
+
+   theme.css supplies the Dreamborn tokens + primitives (.btn, .pane,
+   .slot, .bar, .well, .tooltip, etc.). This file adds the small set
+   of compositions specific to the voxel-editor / studio surfaces:
+   tab bar, shells, sidebar columns, data-tree pills.
+
+   Same rules as the client: no border-radius, no backdrop-filter,
+   pressed-metal recipe via --inset-raise, ember as the single accent.
+   ──────────────────────────────────────────────────────────── */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bog);
+  color: var(--bone);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bog);
+  color: var(--bone);
+}
+
+/* The devtools live outside the #ui pointer-events:none wrapper, so the
+   theme.css primitive selectors (`#ui .btn`, etc.) don't apply. Re-export
+   the ones we need scoped to the #app shell so devtools code can use the
+   same class names. */
+
+#app * { box-sizing: border-box; }
+#app ::selection { background: var(--ember); color: var(--peat-solid); }
+
+#app .mono, #app [data-mono] {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  letter-spacing: var(--ls-mono);
+}
+
+/* ── Semantic type (devtools scope) ─────────────────────────── */
+
+#app .eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--bone-faint);
+}
+#app .label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--bone-dim);
+}
+#app .flavour {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--bone-faint);
+}
+
+/* ── Button (scoped) — same recipe as #ui .btn ──────────────── */
+
+#app .btn {
+  font-family: var(--font-body);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  color: var(--bone);
+  padding: 4px 10px;
+  background: linear-gradient(180deg, var(--moss-hi), var(--moss));
+  border: var(--hair) solid var(--line-strong);
+  box-shadow: var(--inset-raise);
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition:
+    border-color var(--t-hover) var(--ease-grim),
+    background   var(--t-hover) var(--ease-grim),
+    color        var(--t-hover) var(--ease-grim);
+}
+#app .btn:hover {
+  border-color: var(--lichen);
+  background: linear-gradient(180deg, var(--moss-hov), var(--moss-hi));
+  color: var(--bone-hi);
+}
+#app .btn:active { transform: translateY(0.5px); box-shadow: var(--sh-press); }
+#app .btn:focus-visible { outline: 1px solid var(--ember); outline-offset: 1px; }
+#app .btn[disabled] { color: var(--bone-ghost); cursor: default; background: var(--moss); }
+
+#app .btn.is-active,
+#app .btn--active {
+  border-color: var(--ember-dim);
+  color: var(--ember-hi);
+  background: linear-gradient(180deg, var(--moss-hov), var(--moss));
+}
+#app .btn.primary,
+#app .btn--primary {
+  color: var(--bone-hi);
+  border-color: var(--ember-dim);
+  background: linear-gradient(180deg, var(--ember-warm), var(--ember-deep));
+}
+#app .btn.primary:hover,
+#app .btn--primary:hover {
+  background: linear-gradient(180deg, var(--ember-hi), var(--ember-warm));
+  border-color: var(--ember);
+  box-shadow: var(--inset-raise), 0 0 14px var(--ember-glow);
+}
+#app .btn.ghost,
+#app .btn--ghost {
+  background: transparent; border-color: var(--line); color: var(--bone-dim);
+  box-shadow: none;
+}
+#app .btn.ghost:hover,
+#app .btn--ghost:hover { border-color: var(--lichen); color: var(--bone); }
+#app .btn.danger,
+#app .btn--danger { border-color: var(--line-strong); color: var(--bone-dim); }
+#app .btn.danger:hover,
+#app .btn--danger:hover { border-color: var(--rot); color: var(--rot); }
+
+/* Compact variants — toolbars use these */
+#app .btn.xs { padding: 2px 6px; font-size: var(--fs-eyebrow); }
+#app .btn.sm { padding: 3px 8px; font-size: var(--fs-eyebrow); }
+
+#app .kbd {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-mono);
+  color: var(--bone-dim);
+  background: var(--moss);
+  border: var(--hair) solid var(--line-strong);
+  padding: 1px 4px;
+  margin-right: var(--s-2);
+}
+
+/* ── Fields: text/number inputs, selects, textareas ────────── */
+
+#app input[type="text"],
+#app input[type="number"],
+#app input[type="search"],
+#app input[type="file"],
+#app select,
+#app textarea,
+#app .well {
+  background: var(--peat-solid);
+  border: var(--hair) solid var(--line);
+  box-shadow: var(--inset-well);
+  color: var(--bone);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  padding: 3px 6px;
+  outline: none;
+  transition: border-color var(--t-hover) var(--ease-grim);
+}
+#app input:focus, #app select:focus, #app textarea:focus, #app .well:focus-visible {
+  border-color: var(--ember-dim);
+  outline: 1px solid var(--ember);
+  outline-offset: 1px;
+}
+#app input[type="checkbox"],
+#app input[type="radio"] { accent-color: var(--ember); }
+#app input[type="range"] { accent-color: var(--ember); }
+
+/* ── Shell: topbar + sidebar + section ───────────────────────── */
+
+#app .dt-topbar {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, var(--moss-hi), var(--moss));
+  border-bottom: var(--hair) solid var(--line-strong);
+  box-shadow: var(--inset-raise);
+  min-height: 32px;
+}
+
+#app .dt-brand {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--s-5);
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--fs-h3);
+  color: var(--ember);
+  letter-spacing: 0.02em;
+  border-right: var(--hair) solid var(--line);
+}
+
+#app .dt-tab {
+  padding: 0 var(--s-5);
+  background: transparent;
+  border: none;
+  border-right: var(--hair) solid var(--line);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--bone-faint);
+  display: flex;
+  align-items: center;
+  position: relative;
+  transition: color var(--t-hover) var(--ease-grim), background var(--t-hover) var(--ease-grim);
+}
+#app .dt-tab:hover { color: var(--bone); background: var(--moss-hov); }
+#app .dt-tab.is-active {
+  color: var(--ember);
+  background: var(--moss);
+}
+#app .dt-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: var(--ember);
+}
+
+#app .dt-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, var(--moss), var(--bog));
+  border-left: var(--hair) solid var(--line-strong);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#app .dt-section {
+  padding: var(--s-3) var(--s-4);
+  border-bottom: var(--hair) solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+#app .dt-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--bone-dim);
+}
+
+#app .dt-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 0 var(--s-2);
+}
+
+/* ── Data-tree pills (library inspect) ──────────────────────── */
+
+#app .dt-pill {
+  display: inline-block;
+  margin-left: var(--s-2);
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--ls-mono);
+  background: var(--moss-hi);
+  border: var(--hair) solid var(--line);
+  color: var(--bone-dim);
+}
+#app .dt-pill--ref     { color: var(--aether-hi); border-color: var(--aether-deep); }
+#app .dt-pill--ok      { color: var(--lichen-hi); border-color: var(--bile-dim); }
+#app .dt-pill--warn    { color: var(--ember-hi); border-color: var(--ember-deep); }
+#app .dt-pill--ember   { color: var(--ember-hi); border-color: var(--ember-deep); }
+#app .dt-pill--rot     { color: var(--rot); border-color: var(--rot-deep); }
+
+/* Tree row */
+#app .dt-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 2px var(--s-3);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--bone-dim);
+  border-left: 2px solid transparent;
+  transition: background var(--t-hover) var(--ease-grim), color var(--t-hover) var(--ease-grim);
+}
+#app .dt-tree-row:hover { color: var(--bone); background: var(--moss-hov); }
+#app .dt-tree-row.is-selected {
+  color: var(--bone-hi);
+  background: var(--moss-hov);
+  border-left-color: var(--ember);
+}
+
+/* ── Slot (swatch / mini-cell) ────────────────────────────── */
+
+#app .dt-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color var(--t-hover) var(--ease-grim), background var(--t-hover) var(--ease-grim);
+}
+#app .dt-swatch:hover { background: var(--moss-hov); border-color: var(--line); }
+#app .dt-swatch.is-active {
+  border-color: var(--ember);
+  background: var(--moss-hi);
+  box-shadow: 0 0 8px var(--ember-glow);
+}
+#app .dt-swatch .name {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--bone-faint);
+  max-width: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────── */
+
+#app ::-webkit-scrollbar { width: 8px; height: 8px; }
+#app ::-webkit-scrollbar-track { background: var(--bog); }
+#app ::-webkit-scrollbar-thumb {
+  background: var(--moss-hi);
+  border: 1px solid var(--line);
+}
+#app ::-webkit-scrollbar-thumb:hover { background: var(--bark); }
+
+/* ── Pane / well variants reused inside devtools ─────────────── */
+
+#app .dt-pane {
+  background: linear-gradient(180deg, var(--moss-hov), var(--moss));
+  border: var(--hair) solid var(--line-strong);
+  box-shadow: var(--inset-raise);
+}
+
+#app .dt-pane-header {
+  padding: var(--s-2) var(--s-4);
+  border-bottom: var(--hair) solid var(--line);
+  background: linear-gradient(180deg, var(--moss-hi), var(--moss));
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--bone-dim);
+}
+
+/* Status text colours */
+#app .text-warn    { color: var(--ember-hi); }
+#app .text-danger  { color: var(--rot); }
+#app .text-ok      { color: var(--lichen-hi); }
+#app .text-info    { color: var(--aether); }
+#app .text-dim     { color: var(--bone-faint); }

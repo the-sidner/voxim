@@ -17,19 +17,25 @@ interface Props { content: BrowserContentStore; }
 
 const ROW: preact.JSX.CSSProperties = {
   padding: "1px 4px", cursor: "pointer", whiteSpace: "nowrap",
-  fontSize: 11, fontFamily: "monospace", lineHeight: "16px",
+  fontSize: 11, fontFamily: "var(--font-mono)", lineHeight: "16px",
   userSelect: "none",
+  letterSpacing: "var(--ls-mono)",
 };
 
+const PILL_BASE: preact.JSX.CSSProperties = {
+  marginLeft: 6, padding: "0 5px", fontSize: 9,
+  fontFamily: "var(--font-mono)",
+  border: "1px solid var(--line)",
+  background: "var(--moss-hi)",
+};
 const PILL_BLUE: preact.JSX.CSSProperties = {
-  marginLeft: 6, padding: "0 5px", background: "#234", color: "#9bd",
-  borderRadius: 7, fontSize: 9,
+  ...PILL_BASE, color: "var(--aether-hi)", borderColor: "var(--aether-deep)",
 };
 const PILL_GREEN: preact.JSX.CSSProperties = {
-  ...PILL_BLUE, background: "#243", color: "#9d9",
+  ...PILL_BASE, color: "var(--lichen-hi)", borderColor: "var(--bile-dim)",
 };
 const PILL_AMBER: preact.JSX.CSSProperties = {
-  ...PILL_BLUE, background: "#432", color: "#dc8",
+  ...PILL_BASE, color: "var(--ember-hi)", borderColor: "var(--ember-deep)",
 };
 
 export function DataTree({ content }: Props) {
@@ -91,18 +97,17 @@ export function DataTree({ content }: Props) {
     const indent = opts.indent ?? 0;
     return (
       <div
+        class={`dt-tree-row ${isSel(id) ? "is-selected" : ""}`}
         style={{
           ...ROW,
           paddingLeft: 4 + indent * 14,
-          background: isSel(id) ? "#2c4a6c" : "transparent",
-          color: isSel(id) ? "#cde" : "#bbb",
         }}
         onClick={() => { opts.onClick?.(); select(id); }}
       >
         {opts.expandable !== undefined && (
           <span
             onClick={(e) => { e.stopPropagation(); toggle(id); }}
-            style={{ display: "inline-block", width: 12, color: "#666" }}
+            style={{ display: "inline-block", width: 12, color: "var(--bone-faint)" }}
           >{isOpen(id) ? "▾" : "▸"}</span>
         )}
         <span>{label}</span>
@@ -114,7 +119,8 @@ export function DataTree({ content }: Props) {
   return (
     <div style={{
       width: 240, flexShrink: 0, height: "100%", overflowY: "auto",
-      background: "#181818", borderRight: "1px solid #2a2a2a",
+      background: "linear-gradient(180deg, var(--moss), var(--bog))",
+      borderRight: "1px solid var(--line-strong)",
     }}>
       {/* ── Skeletons ── */}
       {row("section:skeletons", `Skeletons (${skeletons.length})`, {

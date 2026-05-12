@@ -3,15 +3,6 @@
  */
 import { editingClip, scrubTime, isPlaying, selectedBoneId } from "../anim_state.ts";
 
-const BTN: preact.JSX.CSSProperties = {
-  background: "#2a2a2a", border: "1px solid #555", color: "#ccc",
-  cursor: "pointer", borderRadius: 2, fontSize: 12, padding: "3px 10px",
-  fontFamily: "monospace",
-};
-const BTN_ACTIVE: preact.JSX.CSSProperties = {
-  ...BTN, background: "#4a7c3f", borderColor: "#6aac5f",
-};
-
 export function PlaybackPanel() {
   const clip = editingClip.value;
   const t = scrubTime.value;
@@ -21,12 +12,12 @@ export function PlaybackPanel() {
 
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 8,
-      padding: "4px 8px", background: "#1e1e1e", borderBottom: "1px solid #333",
-      flexShrink: 0,
+      display: "flex", alignItems: "center", gap: "var(--s-3)",
+      padding: "var(--s-2) var(--s-3)",
+      flex: 1,
     }}>
       <button
-        style={playing ? BTN_ACTIVE : BTN}
+        class={`btn sm ${playing ? "primary" : ""}`}
         onClick={() => { isPlaying.value = !playing; }}
       >
         {playing ? "⏸ Pause" : "▶ Play"}
@@ -40,15 +31,15 @@ export function PlaybackPanel() {
           isPlaying.value = false;
           scrubTime.value = parseFloat((e.target as HTMLInputElement).value);
         }}
-        style={{ flex: 1, accentColor: "#4a7c3f" }}
+        style={{ flex: 1 }}
       />
 
-      <span style={{ fontSize: 11, color: "#888", fontFamily: "monospace", minWidth: 80, textAlign: "right" }}>
+      <span class="num text-dim" style={{ minWidth: 90, textAlign: "right" }}>
         {currentSec}s / {dur.toFixed(2)}s
       </span>
 
       {selectedBoneId.value && (
-        <span style={{ fontSize: 11, color: "#4a9c3f", fontFamily: "monospace" }}>
+        <span class="num" style={{ color: "var(--ember-hi)" }}>
           [{selectedBoneId.value}]
         </span>
       )}

@@ -7,18 +7,11 @@
 import type { MaterialDef, SkeletonDef } from "@voxim/content";
 import {
   selectedVoxelKey, selectedSubObject,
-  voxels, activeMaterial, subObjects,
+  voxels, subObjects,
   updateSubObjectTransform, updateSubObject,
-  voxelKey, parseKey, pushUndo,
+  parseKey, pushUndo,
   type VoxelPatch,
 } from "../state.ts";
-
-const INPUT: preact.JSX.CSSProperties = {
-  background: "#2a2a2a", border: "1px solid #444", color: "#ddd",
-  fontFamily: "monospace", fontSize: 11, padding: "2px 4px", borderRadius: 2, width: "100%",
-};
-const NUM: preact.JSX.CSSProperties = { ...INPUT, width: "100%" };
-const LABEL: preact.JSX.CSSProperties = { color: "#555", fontSize: 10, marginBottom: 1 };
 
 interface Props {
   materials: MaterialDef[];
@@ -28,6 +21,15 @@ interface Props {
 
 function hexColor(n: number): string {
   return `#${n.toString(16).padStart(6, "0")}`;
+}
+
+function Field({ label, children }: { label: string; children: preact.ComponentChildren }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <span class="eyebrow">{label}</span>
+      {children}
+    </label>
+  );
 }
 
 function VoxelSelection({ materials }: { materials: MaterialDef[] }) {
@@ -48,8 +50,10 @@ function VoxelSelection({ materials }: { materials: MaterialDef[] }) {
   const [x, y, z] = parseKey(key);
 
   return (
-    <div style={{ padding: 8 }}>
-      <div style={{ fontSize: 11, color: "#888", fontWeight: "bold", marginBottom: 6 }}>VOXEL ({x},{y},{z})</div>
+    <div class="dt-section">
+      <div class="dt-section-header">
+        Voxel <span class="num text-dim">({x},{y},{z})</span>
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
         {materials.map((m) => (
           <div
@@ -57,9 +61,10 @@ function VoxelSelection({ materials }: { materials: MaterialDef[] }) {
             title={m.name}
             onClick={() => repaint(m.id)}
             style={{
-              width: 20, height: 20, borderRadius: 2, cursor: "pointer",
+              width: 20, height: 20, cursor: "pointer",
               background: hexColor(m.color),
-              border: currentMatId === m.id ? "2px solid #fff" : "2px solid transparent",
+              border: currentMatId === m.id ? "2px solid var(--ember)" : "2px solid var(--line)",
+              boxShadow: currentMatId === m.id ? "0 0 6px var(--ember-glow)" : "none",
               flexShrink: 0,
             }}
           />
@@ -81,73 +86,67 @@ function SubObjectSelection({ modelIds, skeletons }: { modelIds: readonly string
   const isPool = !!(sub.pool && sub.pool.length > 0);
 
   return (
-    <div style={{ padding: 8 }}>
-      <div style={{ fontSize: 11, color: "#888", fontWeight: "bold", marginBottom: 6 }}>
-        SUBOBJECT #{idx} — {isPool ? `pool[${sub.pool!.length}]` : (sub.modelId || "—")}
+    <div class="dt-section">
+      <div class="dt-section-header">
+        <span>SubObject #{idx}</span>
+        <span class="text-dim">{isPool ? `pool[${sub.pool!.length}]` : (sub.modelId || "—")}</span>
       </div>
 
-      {/* Model picker */}
-      <div style={LABEL}>Model</div>
-      <select style={{ ...INPUT, marginBottom: 6 }}
-        value={sub.modelId ?? ""}
-        onChange={(e) => updateSubObject(idx, { modelId: (e.target as HTMLSelectElement).value, pool: undefined })}>
-        <option value="">— none —</option>
-        {modelIds.map((id) => <option key={id} value={id}>{id}</option>)}
-      </select>
+      <Field label="Model">
+        <select
+          value={sub.modelId ?? ""}
+          onChange={(e) => updateSubObject(idx, { modelId: (e.target as HTMLSelectElement).value, pool: undefined })}>
+          <option value="">— none —</option>
+          {modelIds.map((id) => <option key={id} value={id}>{id}</option>)}
+        </select>
+      </Field>
 
-      {/* Position */}
-      <div style={{ fontSize: 10, color: "#666", marginBottom: 4 }}>Position</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, marginBottom: 6 }}>
+      <span class="eyebrow">Position</span>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3 }}>
         {(["x", "y", "z"] as const).map((k) => (
-          <label key={k} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <span style={LABEL}>{k}</span>
-            <input type="number" step={1} style={NUM}
+          <Field key={k} label={k}>
+            <input type="number" step={1}
               value={sub.transform[k]}
               onInput={(e) => updateSubObjectTransform(idx, k, parseFloat((e.target as HTMLInputElement).value) || 0)}
             />
-          </label>
+          </Field>
         ))}
       </div>
 
-      {/* Rotation */}
-      <div style={{ fontSize: 10, color: "#666", marginBottom: 4 }}>Rotation (deg)</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, marginBottom: 6 }}>
+      <span class="eyebrow">Rotation (deg)</span>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3 }}>
         {(["rotX", "rotY", "rotZ"] as const).map((k) => (
-          <label key={k} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <span style={LABEL}>{k.slice(3)}</span>
-            <input type="number" step={5} style={NUM}
+          <Field key={k} label={k.slice(3)}>
+            <input type="number" step={5}
               value={sub.transform[k]}
               onInput={(e) => updateSubObjectTransform(idx, k, parseFloat((e.target as HTMLInputElement).value) || 0)}
             />
-          </label>
+          </Field>
         ))}
       </div>
 
-      {/* Scale */}
-      <div style={{ fontSize: 10, color: "#666", marginBottom: 4 }}>Scale</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, marginBottom: 6 }}>
+      <span class="eyebrow">Scale</span>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3 }}>
         {(["scaleX", "scaleY", "scaleZ"] as const).map((k) => (
-          <label key={k} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <span style={LABEL}>{k.slice(5)}</span>
-            <input type="number" step={0.1} min={0.01} style={NUM}
+          <Field key={k} label={k.slice(5)}>
+            <input type="number" step={0.1} min={0.01}
               value={sub.transform[k]}
               onInput={(e) => updateSubObjectTransform(idx, k, parseFloat((e.target as HTMLInputElement).value) || 1)}
             />
-          </label>
+          </Field>
         ))}
       </div>
 
-      {/* Bone attachment */}
-      <div style={LABEL}>Bone</div>
-      <select style={{ ...INPUT, marginBottom: 4 }}
-        value={sub.boneId ?? ""}
-        onChange={(e) => updateSubObject(idx, { boneId: (e.target as HTMLSelectElement).value || undefined })}>
-        <option value="">— none —</option>
-        {boneIds.map((b) => <option key={b} value={b}>{b}</option>)}
-      </select>
+      <Field label="Bone">
+        <select
+          value={sub.boneId ?? ""}
+          onChange={(e) => updateSubObject(idx, { boneId: (e.target as HTMLSelectElement).value || undefined })}>
+          <option value="">— none —</option>
+          {boneIds.map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
+      </Field>
 
-      {/* hitbox flag */}
-      <label style={{ display: "flex", gap: 6, alignItems: "center", color: "#aaa", fontSize: 11 }}>
+      <label style={{ display: "flex", gap: "var(--s-2)", alignItems: "center", color: "var(--bone-dim)", fontSize: "var(--fs-small)" }}>
         <input type="checkbox" checked={sub.hitbox !== false}
           onChange={(e) => updateSubObject(idx, { hitbox: (e.target as HTMLInputElement).checked ? undefined : false as const })}
         />
@@ -161,21 +160,7 @@ export function SelectionPanel({ materials, modelIds, skeletons }: Props) {
   const voxSel = selectedVoxelKey.value;
   const subSel = selectedSubObject.value;
 
-  if (voxSel !== null) {
-    return (
-      <div style={{ borderTop: "1px solid #333", background: "#1a2a1a" }}>
-        <VoxelSelection materials={materials} />
-      </div>
-    );
-  }
-
-  if (subSel !== null) {
-    return (
-      <div style={{ borderTop: "1px solid #333", background: "#1a1a2a" }}>
-        <SubObjectSelection modelIds={modelIds} skeletons={skeletons} />
-      </div>
-    );
-  }
-
+  if (voxSel !== null) return <VoxelSelection materials={materials} />;
+  if (subSel !== null) return <SubObjectSelection modelIds={modelIds} skeletons={skeletons} />;
   return null;
 }

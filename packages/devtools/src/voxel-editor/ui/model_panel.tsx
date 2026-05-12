@@ -4,33 +4,38 @@ import { modelId, modelVersion, skeletonId } from "../state.ts";
 
 interface Props { skeletons: SkeletonDef[]; }
 
-const LABEL: preact.JSX.CSSProperties = { color: "#888", fontSize: 11, marginBottom: 2 };
-const INPUT: preact.JSX.CSSProperties = {
-  background: "#2a2a2a", border: "1px solid #444", color: "#ddd",
-  fontFamily: "monospace", fontSize: 12, padding: "2px 5px", borderRadius: 3, width: "100%",
-};
-const NUM: preact.JSX.CSSProperties = { ...INPUT, width: 52 };
+function Field({ label, children }: { label: string; children: preact.ComponentChildren }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span class="eyebrow">{label}</span>
+      {children}
+    </label>
+  );
+}
 
 export function ModelPanel({ skeletons }: Props) {
   return (
-    <div style={{ padding: 8, borderTop: "1px solid #333" }}>
-      <div style={{ fontSize: 11, color: "#888", marginBottom: 6, fontWeight: "bold" }}>MODEL</div>
+    <div class="dt-section">
+      <div class="dt-section-header">Model</div>
 
-      <div style={LABEL}>ID</div>
-      <input style={{ ...INPUT, marginBottom: 6 }} value={modelId.value}
-        onInput={(e) => { modelId.value = (e.target as HTMLInputElement).value; }} />
+      <Field label="ID">
+        <input value={modelId.value}
+          onInput={(e) => { modelId.value = (e.target as HTMLInputElement).value; }} />
+      </Field>
 
-      <div style={LABEL}>Version</div>
-      <input style={{ ...NUM, marginBottom: 6 }} type="number" value={modelVersion.value}
-        onInput={(e) => { modelVersion.value = parseInt((e.target as HTMLInputElement).value) || 1; }} />
+      <Field label="Version">
+        <input type="number" style={{ width: 64 }} value={modelVersion.value}
+          onInput={(e) => { modelVersion.value = parseInt((e.target as HTMLInputElement).value) || 1; }} />
+      </Field>
 
-      <div style={LABEL}>Skeleton</div>
-      <select style={INPUT}
-        value={skeletonId.value ?? ""}
-        onChange={(e) => { skeletonId.value = (e.target as HTMLSelectElement).value || null; }}>
-        <option value="">— none —</option>
-        {skeletons.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
-      </select>
+      <Field label="Skeleton">
+        <select
+          value={skeletonId.value ?? ""}
+          onChange={(e) => { skeletonId.value = (e.target as HTMLSelectElement).value || null; }}>
+          <option value="">— none —</option>
+          {skeletons.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
+        </select>
+      </Field>
     </div>
   );
 }

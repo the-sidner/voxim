@@ -45,17 +45,29 @@ function drawTimeline(
 
   ctx.clearRect(0, 0, W, H);
 
+  // Canvas palette — Dreamborn equivalents (these are baked here because
+  // canvas API doesn't read CSS custom properties).
+  const COL_MOSS     = "#13120b";
+  const COL_MOSS_HI  = "#191811";
+  const COL_MOSS_HOV = "#1e1d15";
+  const COL_LINE     = "#1c1c14";
+  const COL_BONE_F   = "#645f4d";
+  const COL_BONE_D   = "#a39d80";
+  const COL_EMBER    = "#d97826";
+  const COL_EMBER_HI = "#ee9748";
+  const COL_AETHER_D = "#5d7682";
+
   // Scrub header background
-  ctx.fillStyle = "#1a1a1a";
+  ctx.fillStyle = COL_MOSS;
   ctx.fillRect(0, 0, W, HEAD_H);
 
   // Time ticks (0%, 25%, 50%, 75%, 100%)
   for (let i = 0; i <= 4; i++) {
     const x = PAD + (i / 4) * trackW;
-    ctx.fillStyle = "#555";
+    ctx.fillStyle = COL_BONE_F;
     ctx.fillRect(x, 0, 1, HEAD_H);
-    ctx.fillStyle = "#666";
-    ctx.font = "9px monospace";
+    ctx.fillStyle = COL_BONE_D;
+    ctx.font = "9px 'IBM Plex Mono', ui-monospace, monospace";
     ctx.textAlign = "center";
     ctx.fillText(`${i * 25}%`, x, HEAD_H - 3);
   }
@@ -67,15 +79,15 @@ function drawTimeline(
     const isSel = bone.id === selBoneId;
 
     // Row background
-    ctx.fillStyle = isSel ? "#1e2b1e" : (ri % 2 === 0 ? "#202020" : "#1c1c1c");
+    ctx.fillStyle = isSel ? COL_MOSS_HOV : (ri % 2 === 0 ? COL_MOSS_HI : COL_MOSS);
     ctx.fillRect(0, y, W, ROW_H);
 
     // Row separator
-    ctx.fillStyle = "#2a2a2a";
+    ctx.fillStyle = COL_LINE;
     ctx.fillRect(0, y + ROW_H - 1, W, 1);
 
     // Track line
-    ctx.fillStyle = "#333";
+    ctx.fillStyle = COL_LINE;
     ctx.fillRect(PAD, y + ROW_H / 2 - 0.5, trackW, 1);
 
     // Keyframes
@@ -90,8 +102,8 @@ function drawTimeline(
         ctx.save();
         ctx.translate(kx, ky);
         ctx.rotate(Math.PI / 4);
-        ctx.fillStyle = isKfSel ? "#ffcc44" : (isSel ? "#88cc66" : "#5588aa");
-        ctx.strokeStyle = isKfSel ? "#ffee88" : "#334455";
+        ctx.fillStyle = isKfSel ? COL_EMBER : (isSel ? COL_EMBER_HI : COL_AETHER_D);
+        ctx.strokeStyle = isKfSel ? COL_EMBER_HI : COL_MOSS;
         ctx.lineWidth = 1;
         ctx.fillRect(-DIAMOND, -DIAMOND, DIAMOND * 2, DIAMOND * 2);
         ctx.strokeRect(-DIAMOND, -DIAMOND, DIAMOND * 2, DIAMOND * 2);
@@ -102,11 +114,11 @@ function drawTimeline(
 
   // Scrub cursor (drawn last, on top)
   const sx = PAD + scrub * trackW;
-  ctx.fillStyle = "#cc4444";
+  ctx.fillStyle = COL_EMBER;
   ctx.fillRect(sx - 1, 0, 2, H);
 
   // Scrub head triangle
-  ctx.fillStyle = "#ee5555";
+  ctx.fillStyle = COL_EMBER_HI;
   ctx.beginPath();
   ctx.moveTo(sx, HEAD_H);
   ctx.lineTo(sx - 6, 2);
@@ -176,7 +188,7 @@ export function TimelinePanel() {
   }, [sk, clip, scrub, selBoneId, selKfIdx]);
 
   if (!sk) return (
-    <div style={{ padding: 8, borderTop: "1px solid #333", color: "#555", fontSize: 11 }}>
+    <div class="dt-section flavour">
       No skeleton loaded.
     </div>
   );
@@ -255,21 +267,23 @@ export function TimelinePanel() {
   }
 
   return (
-    <div style={{ borderTop: "1px solid #333", background: "#1a1a1a", overflow: "auto" }}>
-      <div style={{ display: "flex", alignItems: "center", padding: "4px 8px", gap: 8, background: "#1e1e1e", borderBottom: "1px solid #2a2a2a" }}>
-        <span style={{ fontSize: 11, color: "#888", fontWeight: "bold" }}>TIMELINE</span>
-        <span style={{ fontSize: 10, color: "#555" }}>
+    <div style={{ background: "var(--moss)", overflow: "auto" }}>
+      <div class="dt-pane-header" style={{ display: "flex", alignItems: "center", gap: "var(--s-3)" }}>
+        <span>Timeline</span>
+        <span class="text-dim" style={{ fontSize: 10, textTransform: "none", letterSpacing: 0 }}>
           {clip ? `${clip.id} · ${Object.keys(clip.tracks).length} tracks` : "No clip selected"}
         </span>
-        <span style={{ fontSize: 10, color: "#555", marginLeft: "auto" }}>dbl-click to add keyframe</span>
+        <span class="text-dim" style={{ fontSize: 10, marginLeft: "auto", textTransform: "none", letterSpacing: 0 }}>
+          dbl-click to add keyframe
+        </span>
       </div>
       <div style={{ display: "flex", overflow: "auto" }}>
         {/* Bone name column */}
         <div style={{
           width: LABEL_W, flexShrink: 0,
-          background: "#1a1a1a",
-          borderRight: "1px solid #2a2a2a",
-          paddingTop: HEAD_H, // align with header
+          background: "var(--moss)",
+          borderRight: "1px solid var(--line)",
+          paddingTop: HEAD_H,
         }}>
           {bones.map((bone, ri) => {
             const isSel = bone.id === selBoneId;
@@ -280,11 +294,14 @@ export function TimelinePanel() {
                 onClick={() => { selectedBoneId.value = bone.id; selectedKeyframeIdx.value = null; }}
                 style={{
                   height: ROW_H, display: "flex", alignItems: "center",
-                  padding: "0 8px", fontSize: 10, fontFamily: "monospace",
+                  padding: "0 var(--s-3)", fontSize: 10,
+                  fontFamily: "var(--font-mono)",
                   cursor: "pointer",
-                  background: isSel ? "#1e2b1e" : (ri % 2 === 0 ? "#202020" : "#1c1c1c"),
-                  color: hasKeys ? (isSel ? "#aec" : "#888") : (isSel ? "#68a" : "#444"),
-                  borderBottom: "1px solid #2a2a2a",
+                  background: isSel ? "var(--moss-hov)" : (ri % 2 === 0 ? "var(--moss-hi)" : "var(--moss)"),
+                  color: hasKeys
+                    ? (isSel ? "var(--ember-hi)" : "var(--bone-dim)")
+                    : (isSel ? "var(--aether-dim)" : "var(--bone-ghost)"),
+                  borderBottom: "1px solid var(--line)",
                   boxSizing: "border-box",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}

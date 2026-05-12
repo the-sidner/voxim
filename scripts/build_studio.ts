@@ -27,5 +27,18 @@ await esbuild.build({
   jsxImportSource: "preact",
 });
 
+// HTML entry + theme.css + devtools.css mirror what build_voxel_editor.ts does.
+// Building studio alone still produces a working dist/.
+const htmlSrc  = new URL("packages/devtools/src/studio/index.html", root).pathname;
+const themeSrc = new URL("packages/client/src/ui/theme.css", root).pathname;
+const dtCssSrc = new URL("packages/devtools/src/devtools.css", root).pathname;
+const htmlDst  = new URL("packages/devtools/dist/studio.html", root).pathname;
+const themeDst = new URL("packages/devtools/dist/theme.css", root).pathname;
+const dtCssDst = new URL("packages/devtools/dist/devtools.css", root).pathname;
+await Deno.copyFile(htmlSrc,  htmlDst);
+await Deno.copyFile(themeSrc, themeDst);
+await Deno.copyFile(dtCssSrc, dtCssDst);
+
 await esbuild.stop();
 console.log("[build] packages/devtools/dist/studio.js written");
+console.log("[build] packages/devtools/dist/{studio.html,theme.css,devtools.css} copied");

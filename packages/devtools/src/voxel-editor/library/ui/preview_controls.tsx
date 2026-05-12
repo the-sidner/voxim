@@ -17,12 +17,14 @@ import {
 
 interface Props { content: BrowserContentStore; }
 
-const INPUT: preact.JSX.CSSProperties = {
-  background: "#2a2a2a", border: "1px solid #444", color: "#ddd",
-  fontFamily: "monospace", fontSize: 11, padding: "3px 6px", borderRadius: 3,
+const LABEL: preact.JSX.CSSProperties = {
+  color: "var(--bone-faint)",
+  fontSize: "var(--fs-eyebrow)",
+  letterSpacing: "var(--ls-eyebrow)",
+  textTransform: "uppercase",
+  fontFamily: "var(--font-mono)",
+  marginRight: 6,
 };
-const BTN: preact.JSX.CSSProperties = { ...INPUT, cursor: "pointer", padding: "4px 10px" };
-const LABEL: preact.JSX.CSSProperties = { color: "#888", fontSize: 10, marginRight: 6 };
 
 const LOCOMOTIONS: Locomotion[] = ["idle", "walk", "crouch", "crouch_walk"];
 
@@ -67,13 +69,18 @@ export function PreviewControls({ content }: Props) {
 
   return (
     <div style={{
-      flexShrink: 0, padding: "8px 10px", background: "#1a1a1a",
-      borderTop: "1px solid #2a2a2a", color: "#ccc", fontFamily: "monospace",
-      fontSize: 11, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center",
+      flexShrink: 0,
+      padding: "var(--s-3) var(--s-4)",
+      background: "linear-gradient(180deg, var(--moss-hi), var(--moss))",
+      borderTop: "1px solid var(--line-strong)",
+      color: "var(--bone)",
+      fontFamily: "var(--font-body)",
+      fontSize: "var(--fs-small)",
+      display: "flex", flexWrap: "wrap", gap: "var(--s-4)", alignItems: "center",
     }}>
       <div>
         <span style={LABEL}>Prefab</span>
-        <select value={prefabId ?? ""} style={INPUT}
+        <select value={prefabId ?? ""}
           onChange={(e) => previewPrefabId.value = (e.target as HTMLSelectElement).value || null}>
           <option value="">— pick —</option>
           {skeletalPrefabs.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
@@ -82,7 +89,7 @@ export function PreviewControls({ content }: Props) {
 
       <div>
         <span style={LABEL}>Held</span>
-        <select value={weaponId ?? ""} style={INPUT}
+        <select value={weaponId ?? ""}
           onChange={(e) => previewWeaponPrefabId.value = (e.target as HTMLSelectElement).value || null}>
           <option value="">— none —</option>
           {weaponPrefabs.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
@@ -97,12 +104,8 @@ export function PreviewControls({ content }: Props) {
           return (
             <button
               key={name}
-              style={{
-                ...BTN,
-                background: isActive ? "#2c4a6c" : "#2a2a2a",
-                color: isActive ? "#cde" : "#aaa",
-                marginRight: 4,
-              }}
+              class={`btn xs ${isActive ? "is-active" : ""}`}
+              style={{ marginRight: 4 }}
               title={`Plays clip "${resolved}"`}
               onClick={() => previewLocomotion.value = name}
             >{name}</button>
@@ -110,16 +113,16 @@ export function PreviewControls({ content }: Props) {
         })}
       </div>
 
-      <div>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--s-2)" }}>
         <span style={LABEL}>Speed</span>
         <input type="range" min={0} max={3} step={0.05} value={speed}
           onInput={(e) => previewSpeed.value = parseFloat((e.target as HTMLInputElement).value)}
           style={{ width: 120 }} />
-        <span style={{ marginLeft: 6, color: "#aaa" }}>{speed.toFixed(2)}×</span>
+        <span class="num text-dim">{speed.toFixed(2)}×</span>
       </div>
 
       <div>
-        <button style={BTN} onClick={() => previewPlaying.value = !playing}>
+        <button class="btn sm" onClick={() => previewPlaying.value = !playing}>
           {playing ? "❚❚ Pause" : "▶ Play"}
         </button>
       </div>
@@ -130,12 +133,13 @@ export function PreviewControls({ content }: Props) {
           {swingableActions.map((a) => (
             <button
               key={a.actionId}
-              style={{ ...BTN, marginRight: 4, background: swing?.weaponActionId === a.actionId ? "#3a4a2a" : "#2a2a2a" }}
+              class={`btn xs ${swing?.weaponActionId === a.actionId ? "is-active" : ""}`}
+              style={{ marginRight: 4 }}
               onClick={() => triggerSwing(a.actionId)}
             >▸ {a.actionId}</button>
           ))}
           {swing && (
-            <span style={{ marginLeft: 8, color: "#9d9", fontSize: 10 }}>
+            <span class="num" style={{ marginLeft: 8, color: "var(--lichen-hi)", fontSize: 10 }}>
               swinging — t={swing.ticksIntoAction.toFixed(1)}/{swing.totalTicks}
             </span>
           )}

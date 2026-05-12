@@ -19,7 +19,6 @@ function Swatch({ mat }: { mat: MaterialDef }) {
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
-    // Try to get procedural texture via offscreen canvas copy
     const tex = getVoxelTexture(mat.id, mat.color);
     if (tex && tex.image instanceof HTMLCanvasElement) {
       const ctx = cv.getContext("2d")!;
@@ -33,33 +32,21 @@ function Swatch({ mat }: { mat: MaterialDef }) {
 
   return (
     <div
+      class={`dt-swatch ${active ? "is-active" : ""}`}
       title={`${mat.name} (id=${mat.id})`}
       onClick={() => { activeMaterial.value = mat.id; }}
-      style={{
-        cursor: "pointer",
-        border: active ? "2px solid #fff" : "2px solid transparent",
-        borderRadius: 3,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 2,
-        padding: 2,
-        background: active ? "#333" : "transparent",
-      }}
     >
       <canvas ref={canvasRef} width={32} height={32} style={{ display: "block", imageRendering: "pixelated" }} />
-      <span style={{ fontSize: 9, color: "#aaa", maxWidth: 36, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {mat.name}
-      </span>
+      <span class="name">{mat.name}</span>
     </div>
   );
 }
 
 export function MaterialPanel({ materials }: Props) {
   return (
-    <div style={{ padding: 8, overflow: "auto", flex: 1 }}>
-      <div style={{ fontSize: 11, color: "#888", marginBottom: 6, fontWeight: "bold" }}>MATERIALS</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+    <div class="dt-section" style={{ overflow: "auto" }}>
+      <div class="dt-section-header">Materials</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--s-1)" }}>
         {materials.map((m) => <Swatch key={m.id} mat={m} />)}
       </div>
     </div>

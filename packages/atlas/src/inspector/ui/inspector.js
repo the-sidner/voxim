@@ -265,8 +265,7 @@ function renderBakeForm() {
   html.push(`<section>
     <h2>Preset</h2>
     <div class="row" style="gap:6px">
-      <select id="preset" class="full"
-        style="background:#0e0f12;color:var(--text);border:1px solid var(--border);padding:3px 6px;font:inherit;border-radius:3px;flex:1;">
+      <select id="preset" class="full" style="flex:1;">
         <option value="">— pick —</option>
         ${presetOpts}
       </select>

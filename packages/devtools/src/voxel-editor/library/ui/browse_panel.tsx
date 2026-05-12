@@ -10,17 +10,24 @@ import { deleteLibraryClip } from "../lib_api.ts";
 
 interface Props { content: BrowserContentStore; }
 
-const ROW: preact.JSX.CSSProperties = {
-  display: "flex", padding: "3px 6px", borderBottom: "1px solid #222",
-  fontFamily: "monospace", fontSize: 11, alignItems: "center", gap: 8,
-};
 const PILL: preact.JSX.CSSProperties = {
-  padding: "1px 6px", background: "#333", color: "#aaa", borderRadius: 8, fontSize: 10,
+  padding: "1px 6px",
+  background: "var(--moss-hi)",
+  border: "1px solid var(--line)",
+  color: "var(--bone-dim)",
+  fontSize: 10,
+  fontFamily: "var(--font-mono)",
 };
-const BTN: preact.JSX.CSSProperties = {
-  padding: "1px 6px", background: "#2a2a2a", border: "1px solid #555",
-  color: "#aaa", cursor: "pointer", borderRadius: 3, fontSize: 10, fontFamily: "monospace",
-};
+
+function kindPill(kind: string): preact.JSX.CSSProperties {
+  switch (kind) {
+    case "plain":      return { ...PILL, color: "var(--aether-hi)", borderColor: "var(--aether-deep)" };
+    case "additive":   return { ...PILL, color: "var(--rot)",       borderColor: "var(--rot-deep)" };
+    case "crossfade":  return { ...PILL, color: "var(--ember-hi)",  borderColor: "var(--ember-deep)" };
+    case "phase_shift":return { ...PILL, color: "var(--lichen-hi)", borderColor: "var(--bile-dim)" };
+    default:           return PILL;
+  }
+}
 
 export function BrowsePanel({ content }: Props) {
   const lib = libraryClips.value;
@@ -35,12 +42,12 @@ export function BrowsePanel({ content }: Props) {
 
   return (
     <div>
-      <h3 style={{ margin: "0 0 8px", fontSize: 12, color: "#aaa" }}>
-        Library — {lib.length} clip{lib.length === 1 ? "" : "s"}
+      <h3 class="eyebrow" style={{ margin: "0 0 var(--s-3)" }}>
+        Library — <span class="num">{lib.length}</span> clip{lib.length === 1 ? "" : "s"}
       </h3>
 
       {lib.length === 0 && (
-        <div style={{ padding: 12, color: "#666", fontStyle: "italic" }}>
+        <div class="flavour" style={{ padding: 12 }}>
           Empty.  Use the Import GLB or Mix tabs to add clips.
         </div>
       )}
@@ -48,22 +55,20 @@ export function BrowsePanel({ content }: Props) {
       {lib.map((c) => {
         const isCompound = "_kind" in c;
         const kind = isCompound ? c._kind : "plain";
+        const isSel = selectedLibraryClipId.value === c.id;
         return (
           <div
             key={c.id}
-            style={{
-              ...ROW,
-              background: selectedLibraryClipId.value === c.id ? "#2a2a2a" : "transparent",
-              cursor: "pointer",
-            }}
+            class={`dt-tree-row ${isSel ? "is-selected" : ""}`}
+            style={{ gap: "var(--s-3)" }}
             onClick={() => selectedLibraryClipId.value = c.id}
           >
-            <span style={{ flex: 1, color: "#ddd" }}>{c.id}</span>
-            <span style={{ ...PILL, background: kindColor(kind) }}>{kind}</span>
-            <span style={{ ...PILL }}>{c._skeleton}</span>
-            {c._source && <span style={{ ...PILL, background: "#2a3a2a" }}>{c._source}</span>}
+            <span style={{ flex: 1, color: "var(--bone)" }}>{c.id}</span>
+            <span style={kindPill(kind)}>{kind}</span>
+            <span style={PILL}>{c._skeleton}</span>
+            {c._source && <span style={{ ...PILL, color: "var(--lichen-hi)" }}>{c._source}</span>}
             <button
-              style={BTN}
+              class="btn xs ghost danger"
               onClick={async (e) => {
                 e.stopPropagation();
                 if (!confirm(`Delete ${c.id}?`)) return;
@@ -80,26 +85,26 @@ export function BrowsePanel({ content }: Props) {
         );
       })}
 
-      <h3 style={{ margin: "20px 0 8px", fontSize: 12, color: "#aaa" }}>
+      <h3 class="eyebrow" style={{ margin: "var(--s-7) 0 var(--s-3)" }}>
         Inline clips per skeleton
       </h3>
       {skeletons.map((sk) => (
-        <div key={sk.id} style={{ marginBottom: 8 }}>
-          <div style={{ color: "#bbb", fontWeight: "bold", marginBottom: 2 }}>
+        <div key={sk.id} style={{ marginBottom: "var(--s-3)" }}>
+          <div style={{ color: "var(--bone-hi)", fontFamily: "var(--font-mono)", fontWeight: 600, marginBottom: 2 }}>
             {sk.id}
-            <span style={{ color: "#666", fontWeight: "normal", marginLeft: 8 }}>
+            <span class="text-dim" style={{ marginLeft: 8, fontWeight: "normal" }}>
               ({sk.clips?.length ?? 0} inline + library overrides applied at server load)
             </span>
           </div>
           {(sk.clips ?? []).map((c) => (
-            <div key={c.id} style={{ ...ROW, paddingLeft: 16 }}>
+            <div key={c.id} class="dt-tree-row" style={{ paddingLeft: 16, gap: "var(--s-3)" }}>
               <span style={{ flex: 1 }}>{c.id}</span>
-              <span style={{ ...PILL }}>{Object.keys(c.tracks).length} bones</span>
-              <span style={{ ...PILL }}>
-                {Object.values(c.tracks).reduce((s, t) => s + t.length, 0)} keys
+              <span style={PILL}><span class="num">{Object.keys(c.tracks).length}</span> bones</span>
+              <span style={PILL}>
+                <span class="num">{Object.values(c.tracks).reduce((s, t) => s + t.length, 0)}</span> keys
               </span>
               {libraryHasMatching(lib, c.id, sk.id) && (
-                <span style={{ ...PILL, background: "#3a2a1a", color: "#fc8" }}>
+                <span style={{ ...PILL, color: "var(--ember-hi)", borderColor: "var(--ember-deep)" }}>
                   overridden by library
                 </span>
               )}
@@ -113,14 +118,4 @@ export function BrowsePanel({ content }: Props) {
 
 function libraryHasMatching(lib: LibraryClipFile[], clipId: string, skId: string): boolean {
   return lib.some((c) => c.id === clipId && c._skeleton === skId);
-}
-
-function kindColor(kind: string): string {
-  switch (kind) {
-    case "plain":      return "#2a3a4a";
-    case "additive":   return "#3a2a4a";
-    case "crossfade":  return "#4a3a2a";
-    case "phase_shift":return "#2a4a3a";
-    default:           return "#333";
-  }
 }

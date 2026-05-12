@@ -47,7 +47,7 @@ export function EquipmentPanel({
 
   return (
     <div style={{ padding: 12, fontSize: 11 }}>
-      <div style={{ color: "#9fcfff", fontWeight: 600, marginBottom: 8 }}>Equipment</div>
+      <div style={{ color: "var(--aether-hi)", fontWeight: 600, marginBottom: 8 }}>Equipment</div>
 
       <SlotRow
         label="weapon (hand_r)"
@@ -68,7 +68,7 @@ export function EquipmentPanel({
         onPick={(p) => onEquip("offHand", p)}
       />
 
-      <div style={{ color: "#666", marginTop: 12, fontSize: 11, fontStyle: "italic" }}>
+      <div style={{ color: "var(--bone-faint)", marginTop: 12, fontSize: 11, fontStyle: "italic" }}>
         T-191d will also gain a state-machine driver + maneuver picker.
       </div>
     </div>
@@ -85,7 +85,7 @@ function SlotRow({
 }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ color: "#888", marginBottom: 4 }}>{label}</div>
+      <div style={{ color: "var(--bone-dim)", marginBottom: 4 }}>{label}</div>
       <select
         value={picked?.id ?? ""}
         onChange={(e) => {
@@ -95,10 +95,10 @@ function SlotRow({
           if (p) onPick(p);
         }}
         style={{
-          background: "#0e0e12",
-          border: "1px solid #2a2a30",
-          color: "#cfd0e0",
-          borderRadius: 3,
+          background: "var(--bog)",
+          border: "1px solid var(--line-strong)",
+          color: "var(--bone)",
+          borderRadius: 0,
           padding: "3px 6px",
           fontSize: 11,
           fontFamily: "inherit",

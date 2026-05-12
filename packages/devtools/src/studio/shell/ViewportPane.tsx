@@ -32,7 +32,7 @@ export function ViewportPane({ onReady }: { onReady: (vp: Viewport) => void }) {
         width: "100%",
         height: "100%",
         position: "relative",
-        background: "#1a1a1e",
+        background: "var(--peat-solid)",
         overflow: "hidden",
       }}
     />

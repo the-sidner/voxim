@@ -90,7 +90,7 @@ function VoxelsInspector({
 
   return (
     <Box title="Voxels">
-      <div style={{ fontSize: 11, color: "#888", marginBottom: 6 }}>
+      <div style={{ fontSize: 11, color: "var(--bone-dim)", marginBottom: 6 }}>
         {def.nodes.length} cells across {rows.length} material{rows.length === 1 ? "" : "s"}
       </div>
       <div style={{
@@ -106,19 +106,19 @@ function VoxelsInspector({
               <div style={{
                 width: 14, height: 14,
                 background: `#${(m?.color ?? 0x888888).toString(16).padStart(6, "0")}`,
-                border: "1px solid #444",
-                borderRadius: 2,
+                border: "1px solid var(--line-strong)",
+                borderRadius: 0,
               }} />
-              <div style={{ color: "#cfd0e0", fontSize: 11 }}>
-                {m?.name ?? "?"} <span style={{ color: "#777" }}>(id {id})</span>
+              <div style={{ color: "var(--bone)", fontSize: 11 }}>
+                {m?.name ?? "?"} <span style={{ color: "var(--bone-faint)" }}>(id {id})</span>
               </div>
-              <div style={{ color: "#aaa", fontSize: 11 }}>{count}</div>
+              <div style={{ color: "var(--bone-dim)", fontSize: 11 }}>{count}</div>
               <RemapButton current={id} materials={materials} onRemap={(to) => remap(id, to)} />
             </>
           );
         })}
       </div>
-      <div style={{ color: "#666", marginTop: 10, fontSize: 11, fontStyle: "italic" }}>
+      <div style={{ color: "var(--bone-faint)", marginTop: 10, fontSize: 11, fontStyle: "italic" }}>
         Interactive voxel painting + add/remove arrives in T-191b v2.
       </div>
     </Box>
@@ -200,7 +200,7 @@ function SubInspector({ def, index, onChange }: {
         />
       </Field>
 
-      <div style={{ marginTop: 10, color: "#aaa", fontSize: 11, fontWeight: 600 }}>Transform</div>
+      <div style={{ marginTop: 10, color: "var(--bone-dim)", fontSize: 11, fontWeight: 600 }}>Transform</div>
       <Vec3Field label="position" v={[sub.transform.x, sub.transform.y, sub.transform.z]}
         onChange={([x, y, z]) => updateTransform({ x, y, z })} />
       <Vec3Field label="rotation (rad)" v={[sub.transform.rotX, sub.transform.rotY, sub.transform.rotZ]}
@@ -209,8 +209,8 @@ function SubInspector({ def, index, onChange }: {
         onChange={([scaleX, scaleY, scaleZ]) => updateTransform({ scaleX, scaleY, scaleZ })} step={0.05} />
 
       <button onClick={remove} style={{
-        marginTop: 14, padding: "5px 10px", background: "#552020", color: "#fff",
-        border: "1px solid #884040", borderRadius: 3, cursor: "pointer", fontSize: 11,
+        marginTop: 14, padding: "5px 10px", background: "var(--rot-deep)", color: "var(--bone-hi)",
+        border: "1px solid var(--rot)", borderRadius: 0, cursor: "pointer", fontSize: 11,
       }}>Remove sub-object</button>
     </Box>
   );
@@ -221,7 +221,7 @@ function SubInspector({ def, index, onChange }: {
 function Box({ title, children }: { title: string; children: preact.ComponentChildren }) {
   return (
     <div style={{ padding: 12 }}>
-      <div style={{ color: "#9fcfff", fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{title}</div>
+      <div style={{ color: "var(--aether-hi)", fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{title}</div>
       {children}
     </div>
   );
@@ -236,7 +236,7 @@ function Field({ label, children }: { label: string; children: preact.ComponentC
       alignItems: "center",
       marginBottom: 4,
     }}>
-      <div style={{ color: "#888", fontSize: 11 }}>{label}</div>
+      <div style={{ color: "var(--bone-dim)", fontSize: 11 }}>{label}</div>
       {children}
     </div>
   );
@@ -250,7 +250,7 @@ function Vec3Field({ label, v, onChange, step }: {
 }) {
   return (
     <div style={{ marginTop: 6 }}>
-      <div style={{ color: "#888", fontSize: 11, marginBottom: 3 }}>{label}</div>
+      <div style={{ color: "var(--bone-dim)", fontSize: 11, marginBottom: 3 }}>{label}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
         <NumberInput value={v[0]} step={step} onChange={(x) => onChange([x, v[1], v[2]])} />
         <NumberInput value={v[1]} step={step} onChange={(y) => onChange([v[0], y, v[2]])} />
@@ -261,10 +261,10 @@ function Vec3Field({ label, v, onChange, step }: {
 }
 
 const inputStyle = {
-  background: "#0e0e12",
-  border: "1px solid #2a2a30",
-  color: "#cfd0e0",
-  borderRadius: 3,
+  background: "var(--bog)",
+  border: "1px solid var(--line-strong)",
+  color: "var(--bone)",
+  borderRadius: 0,
   padding: "3px 6px",
   fontSize: 11,
   fontFamily: "inherit",
@@ -273,7 +273,7 @@ const inputStyle = {
 } as const;
 
 const readOnlyStyle = {
-  color: "#888",
+  color: "var(--bone-dim)",
   fontSize: 11,
   padding: "3px 0",
 } as const;

@@ -18,11 +18,7 @@ interface Props { content: BrowserContentStore; }
 
 const STANDARD_SLOTS = ["idle", "walk", "walk_limp", "crouch", "crouch_walk", "roll", "death"];
 
-const INPUT: preact.JSX.CSSProperties = {
-  background: "#2a2a2a", border: "1px solid #444", color: "#ddd",
-  fontFamily: "monospace", fontSize: 11, padding: "3px 6px", borderRadius: 3,
-};
-const BTN: preact.JSX.CSSProperties = { ...INPUT, cursor: "pointer", padding: "4px 12px" };
+// Fields inherit Dreamborn styling from devtools.css.
 
 export function AssignPanel({ content }: Props) {
   const [prefabId, setPrefabId] = useState<string>("");
@@ -106,10 +102,10 @@ export function AssignPanel({ content }: Props) {
 
   return (
     <div>
-      <h3 style={{ margin: "0 0 8px", fontSize: 12, color: "#aaa" }}>Assign clips to a prefab</h3>
+      <h3 class="eyebrow" style={{ margin: "0 0 var(--s-3)" }}>Assign clips to a prefab</h3>
 
       <Row label="Prefab">
-        <select value={prefabId} onChange={(e) => setPrefabId((e.target as HTMLSelectElement).value)} style={{ ...INPUT, width: 260 }}>
+        <select value={prefabId} onChange={(e) => setPrefabId((e.target as HTMLSelectElement).value)} style={{ width: 260 }}>
           <option value="">— pick —</option>
           {prefabsWithSkeleton.map((p) => (
             <option key={p.id} value={p.id}>{p.id} ({p.skeleton})</option>
@@ -119,15 +115,15 @@ export function AssignPanel({ content }: Props) {
 
       {prefab && skel && (
         <>
-          <p style={{ color: "#777", fontSize: 11, margin: "8px 0" }}>
-            Skeleton: <span style={{ color: "#aaa" }}>{skel.id}</span> —
-            {availableClips.length} clips available (inline + library).  Empty slot
-            value falls back to the slot name as the clip id.
+          <p class="flavour" style={{ margin: "var(--s-3) 0" }}>
+            Skeleton: <span class="text-info">{skel.id}</span> —
+            <span class="num">{availableClips.length}</span> clips available (inline + library).
+            Empty slot value falls back to the slot name as the clip id.
           </p>
 
           <table style={{ borderCollapse: "collapse", marginTop: 8 }}>
             <thead>
-              <tr style={{ color: "#888", fontSize: 10, textAlign: "left" }}>
+              <tr class="eyebrow" style={{ textAlign: "left" }}>
                 <th style={{ padding: "2px 8px" }}>Slot</th>
                 <th style={{ padding: "2px 8px" }}>Clip</th>
               </tr>
@@ -135,12 +131,11 @@ export function AssignPanel({ content }: Props) {
             <tbody>
               {allSlotNames.map((s) => (
                 <tr key={s}>
-                  <td style={{ padding: "2px 8px", color: "#bbb" }}>{s}</td>
+                  <td style={{ padding: "2px 8px", color: "var(--bone)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-small)" }}>{s}</td>
                   <td style={{ padding: "2px 8px" }}>
                     <select
                       value={slots[s] ?? ""}
                       onChange={(e) => setSlots({ ...slots, [s]: (e.target as HTMLSelectElement).value })}
-                      style={INPUT}
                     >
                       <option value="">— default ({s}) —</option>
                       {availableClips.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}
@@ -156,9 +151,9 @@ export function AssignPanel({ content }: Props) {
               value={extraSlot}
               onInput={(e) => setExtraSlot((e.target as HTMLInputElement).value)}
               placeholder="custom slot name"
-              style={{ ...INPUT, width: 180 }}
+              style={{ width: 180 }}
             />
-            <button style={BTN} onClick={() => {
+            <button class="btn sm" onClick={() => {
               const s = extraSlot.trim();
               if (!s || s in slots) return;
               setSlots({ ...slots, [s]: "" });
@@ -167,7 +162,7 @@ export function AssignPanel({ content }: Props) {
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <button style={BTN} onClick={doSave}>Save prefab</button>
+            <button class="btn primary" onClick={doSave}>Save prefab</button>
           </div>
         </>
       )}
@@ -193,7 +188,7 @@ function guessPrefabPath(prefabId: string): string {
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) {
   return (
     <div style={{ display: "flex", alignItems: "center", marginBottom: 8, gap: 8 }}>
-      <label style={{ width: 160, color: "#888", fontSize: 11 }}>{label}</label>
+      <label class="eyebrow" style={{ width: 160 }}>{label}</label>
       {children}
     </div>
   );

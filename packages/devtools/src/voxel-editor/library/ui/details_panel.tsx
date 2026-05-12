@@ -13,8 +13,14 @@ import { libraryClips } from "../lib_state.ts";
 interface Props { content: BrowserContentStore; }
 
 const HEADER: preact.JSX.CSSProperties = {
-  padding: "6px 10px", background: "#1f1f1f", borderBottom: "1px solid #2a2a2a",
-  fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5,
+  padding: "var(--s-2) var(--s-4)",
+  background: "linear-gradient(180deg, var(--moss-hi), var(--moss))",
+  borderBottom: "1px solid var(--line)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "var(--fs-eyebrow)",
+  color: "var(--bone-dim)",
+  textTransform: "uppercase",
+  letterSpacing: "var(--ls-eyebrow)",
 };
 
 export function DetailsPanel({ content }: Props) {
@@ -23,7 +29,7 @@ export function DetailsPanel({ content }: Props) {
     return (
       <div style={paneStyle()}>
         <div style={HEADER}>Details</div>
-        <div style={{ padding: 12, color: "#666", fontStyle: "italic", fontSize: 11 }}>
+        <div class="flavour" style={{ padding: 12 }}>
           Pick a node in the tree on the left.
         </div>
       </div>
@@ -143,13 +149,14 @@ export function DetailsPanel({ content }: Props) {
     <div style={paneStyle()}>
       <div style={HEADER}>{title}</div>
       {summary && (
-        <div style={{ padding: "8px 10px", borderBottom: "1px solid #2a2a2a" }}>
+        <div style={{ padding: "var(--s-3) var(--s-4)", borderBottom: "1px solid var(--line)" }}>
           {summary}
         </div>
       )}
       <pre style={{
-        margin: 0, padding: 10, fontSize: 10, fontFamily: "monospace",
-        color: "#aaa", overflow: "auto", whiteSpace: "pre-wrap",
+        margin: 0, padding: "var(--s-3)", fontSize: 10,
+        fontFamily: "var(--font-mono)",
+        color: "var(--bone-dim)", overflow: "auto", whiteSpace: "pre-wrap",
         wordBreak: "break-word",
       }}>{body ? JSON.stringify(body, null, 2) : "(not found)"}</pre>
     </div>
@@ -158,10 +165,13 @@ export function DetailsPanel({ content }: Props) {
 
 function KV({ pairs }: { pairs: [string, string][] }) {
   return (
-    <div style={{ fontSize: 11, lineHeight: "16px", color: "#aaa" }}>
+    <div style={{
+      fontSize: 11, lineHeight: "16px", color: "var(--bone-dim)",
+      fontFamily: "var(--font-mono)",
+    }}>
       {pairs.map(([k, v]) => (
         <div key={k}>
-          <span style={{ color: "#888", display: "inline-block", width: 110 }}>{k}</span>
+          <span style={{ color: "var(--bone-faint)", display: "inline-block", width: 110 }}>{k}</span>
           <span>{v}</span>
         </div>
       ))}
@@ -172,7 +182,10 @@ function KV({ pairs }: { pairs: [string, string][] }) {
 function paneStyle(): preact.JSX.CSSProperties {
   return {
     width: 320, flexShrink: 0, height: "100%", overflowY: "auto",
-    background: "#1a1a1a", borderLeft: "1px solid #2a2a2a", color: "#ddd",
-    fontFamily: "monospace", display: "flex", flexDirection: "column",
+    background: "linear-gradient(180deg, var(--moss-hov), var(--moss))",
+    borderLeft: "1px solid var(--line-strong)",
+    color: "var(--bone)",
+    fontFamily: "var(--font-body)",
+    display: "flex", flexDirection: "column",
   };
 }

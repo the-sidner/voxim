@@ -26,7 +26,7 @@ export function SceneTree({
 }) {
   if (!def) {
     return (
-      <div style={{ padding: 12, color: "#888", fontSize: 12 }}>
+      <div style={{ padding: 12, color: "var(--bone-dim)", fontSize: 12 }}>
         Pick a model file from the asset browser to start editing.
       </div>
     );
@@ -92,14 +92,14 @@ function Row({
         paddingLeft: `${depth * 14 + 6}px`,
         paddingTop: 2,
         paddingBottom: 2,
-        background: selected ? "#2a3a55" : undefined,
-        color: dim ? "#7a7a82" : (selected ? "#fff" : "#cfd0e0"),
+        background: selected ? "var(--moss-hov)" : undefined,
+        color: dim ? "var(--bone-faint)" : (selected ? "var(--bone-hi)" : "var(--bone)"),
         fontWeight: bold ? 600 : 400,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
       }}
-      onMouseOver={(e) => { if (!selected && !dim) (e.currentTarget as HTMLElement).style.background = "#26262c"; }}
+      onMouseOver={(e) => { if (!selected && !dim) (e.currentTarget as HTMLElement).style.background = "var(--moss-hov)"; }}
       onMouseOut={(e)  => { if (!selected) (e.currentTarget as HTMLElement).style.background = ""; }}
     >
       <span style={{
@@ -108,7 +108,7 @@ function Row({
         textOverflow: "ellipsis",
       }}>{label}</span>
       {hint && (
-        <span style={{ color: "#7a7a82", fontSize: 11, marginLeft: 8, flexShrink: 0 }}>{hint}</span>
+        <span style={{ color: "var(--bone-faint)", fontSize: 11, marginLeft: 8, flexShrink: 0 }}>{hint}</span>
       )}
     </div>
   );

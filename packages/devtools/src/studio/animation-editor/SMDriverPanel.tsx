@@ -132,7 +132,7 @@ export function SMDriverPanel({
 
   if (!def) {
     return (
-      <div style={{ padding: 12, color: "#888", fontSize: 11 }}>
+      <div style={{ padding: 12, color: "var(--bone-dim)", fontSize: 11 }}>
         Pick a state machine from <code>state_machines/</code> in the asset browser.
       </div>
     );
@@ -140,40 +140,40 @@ export function SMDriverPanel({
 
   return (
     <div style={{ padding: 12, fontSize: 11 }}>
-      <div style={{ color: "#9fcfff", fontWeight: 600, marginBottom: 8 }}>{def.id}</div>
+      <div style={{ color: "var(--aether-hi)", fontWeight: 600, marginBottom: 8 }}>{def.id}</div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        <button onClick={() => setRunning((r) => !r)} style={btn(running ? "#2a5a8a" : undefined)}>
+        <button onClick={() => setRunning((r) => !r)} style={btn(running ? "var(--ember-warm)" : undefined)}>
           {running ? "Pause" : "Run"}
         </button>
         <button onClick={reset} style={btn()}>Reset</button>
       </div>
 
-      <div style={{ color: "#888", marginBottom: 4 }}>Layer states</div>
+      <div style={{ color: "var(--bone-dim)", marginBottom: 4 }}>Layer states</div>
       <div style={{
         display: "grid",
         gridTemplateColumns: "1fr auto",
         gap: "1px 8px",
         marginBottom: 12,
-        background: "#0e0e12",
+        background: "var(--bog)",
         padding: "6px 8px",
-        borderRadius: 3,
+        borderRadius: 0,
       }}>
         {def.layers.map((layer) => {
           const s = state[layer.id];
           return (
             <>
-              <span style={{ color: "#cfd0e0" }}>{layer.id}</span>
-              <span style={{ color: "#88cc88" }}>
+              <span style={{ color: "var(--bone)" }}>{layer.id}</span>
+              <span style={{ color: "var(--lichen-hi)" }}>
                 {s?.node ?? layer.initial}
-                <span style={{ color: "#666", marginLeft: 6 }}>{s ? `${s.elapsed.toFixed(2)}s` : "0.00s"}</span>
+                <span style={{ color: "var(--bone-faint)", marginLeft: 6 }}>{s ? `${s.elapsed.toFixed(2)}s` : "0.00s"}</span>
               </span>
             </>
           );
         })}
       </div>
 
-      <div style={{ color: "#888", marginBottom: 4 }}>Inputs (held while pressed)</div>
+      <div style={{ color: "var(--bone-dim)", marginBottom: 4 }}>Inputs (held while pressed)</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
         {INPUT_KEYS.map((key) => (
           <button
@@ -184,7 +184,7 @@ export function SMDriverPanel({
         ))}
       </div>
 
-      <div style={{ color: "#888", marginBottom: 4 }}>Events (fire once → consumed next tick)</div>
+      <div style={{ color: "var(--bone-dim)", marginBottom: 4 }}>Events (fire once → consumed next tick)</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {EVENT_KEYS.map((key) => (
           <button
@@ -224,10 +224,10 @@ function buildScope(held: Set<string>, oneshot: Set<string>): Record<string, SMS
 function btn(bg?: string) {
   return {
     padding: "4px 10px",
-    background: bg ?? "#222226",
-    color: "#fff",
-    border: "1px solid #3a3a42",
-    borderRadius: 3,
+    background: bg ?? "var(--moss-hi)",
+    color: "var(--bone-hi)",
+    border: "1px solid var(--line-strong)",
+    borderRadius: 0,
     cursor: "pointer",
     fontSize: 11,
   } as const;
@@ -235,10 +235,10 @@ function btn(bg?: string) {
 function chip(active: boolean) {
   return {
     padding: "3px 8px",
-    background: active ? "#2a5a8a" : "#222226",
-    color: active ? "#fff" : "#aaa",
-    border: `1px solid ${active ? "#4080c0" : "#3a3a42"}`,
-    borderRadius: 3,
+    background: active ? "var(--ember-warm)" : "var(--moss-hi)",
+    color: active ? "var(--bone-hi)" : "var(--bone-dim)",
+    border: `1px solid ${active ? "var(--ember)" : "var(--line-strong)"}`,
+    borderRadius: 0,
     cursor: "pointer",
     fontSize: 10,
   } as const;

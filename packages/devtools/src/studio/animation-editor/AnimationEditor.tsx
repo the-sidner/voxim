@@ -333,23 +333,23 @@ export function AnimationEditor() {
     <Layout
       topBar={
         <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 16 }}>
-          <span style={{ color: "#aaa", fontSize: 12 }}>
+          <span style={{ color: "var(--bone-dim)", fontSize: 12 }}>
             {skeleton ? `${skeleton.id} (${skeleton.archetype})` : "(no skeleton)"}
           </span>
-          <span style={{ color: "#555" }}>/</span>
-          <span style={{ color: "#aaa", fontSize: 12 }}>
+          <span style={{ color: "var(--bone-ghost)" }}>/</span>
+          <span style={{ color: "var(--bone-dim)", fontSize: 12 }}>
             {clip ? `${clip.id} — ${tracksCount} tracks` : "(no clip)"}
           </span>
           <div style={{ flex: 1 }} />
-          <button onClick={() => setPlaying((p) => !p)} disabled={!clip} style={btn(playing ? "#2a5a8a" : undefined)}>
+          <button onClick={() => setPlaying((p) => !p)} disabled={!clip} style={btn(playing ? "var(--ember-warm)" : undefined)}>
             {playing ? "Pause" : "Play"}
           </button>
           <button onClick={() => setTime(0)} disabled={!clip} style={btn()}>⏮</button>
-          <label style={{ color: "#888", fontSize: 11 }}>
+          <label style={{ color: "var(--bone-dim)", fontSize: 11 }}>
             <input type="checkbox" checked={effectiveLoop}
               onChange={(e) => setLoopOverride((e.target as HTMLInputElement).checked)} /> loop
           </label>
-          <label style={{ color: "#888", fontSize: 11 }}>
+          <label style={{ color: "var(--bone-dim)", fontSize: 11 }}>
             speed
             <input type="number" value={speed} step={0.1} min={0.05} max={5}
               onInput={(e) => setSpeed(parseFloat((e.target as HTMLInputElement).value) || 1)}
@@ -359,12 +359,12 @@ export function AnimationEditor() {
       }
       left={
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-          <div style={{ flex: 1, overflowY: "auto", borderBottom: "1px solid #2a2a30" }}>
+          <div style={{ flex: 1, overflowY: "auto", borderBottom: "1px solid var(--line-strong)" }}>
             <AssetBrowser filter={ANIM_DIRS} onPickFile={onPickFile} />
           </div>
           {skeleton && (
             <div style={{ flex: 1, overflowY: "auto" }}>
-              <div style={{ padding: "6px 10px", color: "#888", fontSize: 11, borderBottom: "1px solid #2a2a30" }}>
+              <div style={{ padding: "6px 10px", color: "var(--bone-dim)", fontSize: 11, borderBottom: "1px solid var(--line-strong)" }}>
                 Clips ({clipList.length}) — {skeleton.archetype}
               </div>
               <div style={{ padding: "4px 0" }}>
@@ -375,11 +375,11 @@ export function AnimationEditor() {
                     style={{
                       cursor: "pointer",
                       padding: "2px 12px",
-                      color: clip?.id === id ? "#fff" : "#cfd0e0",
-                      background: clip?.id === id ? "#2a3a55" : undefined,
+                      color: clip?.id === id ? "var(--bone-hi)" : "var(--bone)",
+                      background: clip?.id === id ? "var(--moss-hov)" : undefined,
                       fontSize: 11,
                     }}
-                    onMouseOver={(e) => { if (clip?.id !== id) (e.currentTarget as HTMLElement).style.background = "#26262c"; }}
+                    onMouseOver={(e) => { if (clip?.id !== id) (e.currentTarget as HTMLElement).style.background = "var(--moss-hov)"; }}
                     onMouseOut={(e)  => { if (clip?.id !== id) (e.currentTarget as HTMLElement).style.background = ""; }}
                   >{id}</div>
                 ))}
@@ -399,12 +399,12 @@ export function AnimationEditor() {
             alignItems: "center",
             padding: "0 14px",
             gap: 10,
-            background: "#16161a",
-            borderTop: "1px solid #2a2a30",
-            color: "#aaa",
+            background: "var(--moss)",
+            borderTop: "1px solid var(--line-strong)",
+            color: "var(--bone-dim)",
             fontSize: 11,
           }}>
-            <span style={{ minWidth: 38, color: "#888" }}>{(time * 100).toFixed(1)}%</span>
+            <span style={{ minWidth: 38, color: "var(--bone-dim)" }}>{(time * 100).toFixed(1)}%</span>
             <input
               type="range"
               min={0}
@@ -415,7 +415,7 @@ export function AnimationEditor() {
               style={{ flex: 1 }}
               disabled={!clip}
             />
-            <span style={{ minWidth: 60, color: "#888" }}>
+            <span style={{ minWidth: 60, color: "var(--bone-dim)" }}>
               {clip?.durationSeconds ? `${clip.durationSeconds.toFixed(2)}s` : "—"}
             </span>
           </div>
@@ -444,15 +444,15 @@ function RightTabs({ current, onPick }: { current: RightTab; onPick: (t: RightTa
         cursor: "pointer",
         padding: "8px 14px",
         fontSize: 11,
-        color: current === id ? "#fff" : "#888",
-        background: current === id ? "#1d1d22" : "transparent",
-        borderRight: "1px solid #2a2a30",
-        borderBottom: current === id ? "1px solid #1d1d22" : "1px solid #2a2a30",
+        color: current === id ? "var(--bone-hi)" : "var(--bone-dim)",
+        background: current === id ? "var(--moss-hov)" : "transparent",
+        borderRight: "1px solid var(--line-strong)",
+        borderBottom: current === id ? "1px solid var(--moss-hov)" : "1px solid var(--line-strong)",
       }}
     >{label}</div>
   );
   return (
-    <div style={{ display: "flex", borderBottom: "1px solid #2a2a30", background: "#16161a" }}>
+    <div style={{ display: "flex", borderBottom: "1px solid var(--line-strong)", background: "var(--moss)" }}>
       {tab("clip",      "Clip")}
       {tab("equipment", "Equipment")}
       {tab("sm",        "SM driver")}
@@ -484,12 +484,12 @@ async function loadClipById(clipId: string, skeleton: Skeleton | null): Promise<
 
 function ClipInspector({ clip, skeleton }: { clip: Clip | null; skeleton: Skeleton | null }) {
   if (!skeleton) {
-    return <div style={{ padding: 12, color: "#888", fontSize: 12 }}>
+    return <div style={{ padding: 12, color: "var(--bone-dim)", fontSize: 12 }}>
       Pick a skeleton from <code>skeletons/</code> to start.
     </div>;
   }
   if (!clip) {
-    return <div style={{ padding: 12, color: "#888", fontSize: 12 }}>
+    return <div style={{ padding: 12, color: "var(--bone-dim)", fontSize: 12 }}>
       Pick a clip from the list on the left.
     </div>;
   }
@@ -499,27 +499,27 @@ function ClipInspector({ clip, skeleton }: { clip: Clip | null; skeleton: Skelet
 
   return (
     <div style={{ padding: 12, fontSize: 11 }}>
-      <div style={{ color: "#9fcfff", fontWeight: 600, marginBottom: 8 }}>Clip</div>
+      <div style={{ color: "var(--aether-hi)", fontWeight: 600, marginBottom: 8 }}>Clip</div>
       <Field label="id">{clip.id}</Field>
       <Field label="loop">{String(clip.loop)}</Field>
       <Field label="duration">{clip.durationSeconds ?? "—"}s</Field>
       <Field label="tracks">{tracks.length}</Field>
 
-      <div style={{ color: "#9fcfff", fontWeight: 600, margin: "14px 0 8px" }}>Per-bone keyframes</div>
+      <div style={{ color: "var(--aether-hi)", fontWeight: 600, margin: "14px 0 8px" }}>Per-bone keyframes</div>
       <div style={{
         display: "grid",
         gridTemplateColumns: "1fr auto",
         gap: "2px 8px",
-        color: "#cfd0e0",
+        color: "var(--bone)",
         maxHeight: 360,
         overflowY: "auto",
       }}>
         {tracks.map(({ bone, count }) => (
           <>
-            <span style={{ color: skeleton.bones.find((b) => b.id === bone) ? "#cfd0e0" : "#cc6666" }}>
+            <span style={{ color: skeleton.bones.find((b) => b.id === bone) ? "var(--bone)" : "var(--rot)" }}>
               {bone}
             </span>
-            <span style={{ color: "#888" }}>{count}</span>
+            <span style={{ color: "var(--bone-dim)" }}>{count}</span>
           </>
         ))}
       </div>
@@ -530,17 +530,17 @@ function ClipInspector({ clip, skeleton }: { clip: Clip | null; skeleton: Skelet
 function Field({ label, children }: { label: string; children: preact.ComponentChildren }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "70px 1fr", gap: 6, marginBottom: 2 }}>
-      <span style={{ color: "#888" }}>{label}</span>
-      <span style={{ color: "#cfd0e0" }}>{children}</span>
+      <span style={{ color: "var(--bone-dim)" }}>{label}</span>
+      <span style={{ color: "var(--bone)" }}>{children}</span>
     </div>
   );
 }
 
 const inputStyle = {
-  background: "#0e0e12",
-  border: "1px solid #2a2a30",
-  color: "#cfd0e0",
-  borderRadius: 3,
+  background: "var(--bog)",
+  border: "1px solid var(--line-strong)",
+  color: "var(--bone)",
+  borderRadius: 0,
   padding: "2px 4px",
   fontSize: 11,
   fontFamily: "inherit",
@@ -550,10 +550,10 @@ const inputStyle = {
 function btn(bg?: string) {
   return {
     padding: "4px 10px",
-    background: bg ?? "#222226",
-    color: "#fff",
-    border: "1px solid #3a3a42",
-    borderRadius: 3,
+    background: bg ?? "var(--moss-hi)",
+    color: "var(--bone-hi)",
+    border: "1px solid var(--line-strong)",
+    borderRadius: 0,
     cursor: "pointer",
     fontSize: 11,
   } as const;

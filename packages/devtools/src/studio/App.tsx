@@ -40,40 +40,16 @@ export function App() {
 
 function TopBar({ route, onPick }: { route: Route; onPick: (r: Route) => void }) {
   return (
-    <div style={{
-      flex: "0 0 40px",
-      display: "flex",
-      alignItems: "center",
-      padding: "0 14px",
-      gap: 14,
-      borderBottom: "1px solid #2a2a30",
-      background: "#101013",
-    }}>
-      <div style={{ fontWeight: 600, color: "#dcdce4", marginRight: 12 }}>Voxim Studio</div>
-      <TabButton active={route === "voxel"} onClick={() => onPick("voxel")}>Voxel</TabButton>
-      <TabButton active={route === "anim"}  onClick={() => onPick("anim")}>Animation</TabButton>
-    </div>
-  );
-}
-
-function TabButton({ active, onClick, children }: {
-  active: boolean;
-  onClick: () => void;
-  children: preact.ComponentChildren;
-}) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        cursor: "pointer",
-        padding: "6px 12px",
-        borderRadius: 4,
-        background: active ? "#2a3a55" : "transparent",
-        color: active ? "#fff" : "#aaa",
-        fontSize: 13,
-      }}
-    >
-      {children}
+    <div class="dt-topbar" style={{ minHeight: 40, alignItems: "center" }}>
+      <span class="dt-brand">Voxim · Studio</span>
+      <button
+        class={`dt-tab ${route === "voxel" ? "is-active" : ""}`}
+        onClick={() => onPick("voxel")}
+      >Voxel</button>
+      <button
+        class={`dt-tab ${route === "anim" ? "is-active" : ""}`}
+        onClick={() => onPick("anim")}
+      >Animation</button>
     </div>
   );
 }

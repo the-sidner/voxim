@@ -185,6 +185,16 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
     });
   }
 
+  // Dreamborn tokens + primitives are owned by the client package; atlas
+  // imports them as-is so palette/fonts/spacing stay in sync across every
+  // surface (game UI, voxel-editor, studio, inspector).
+  if (req.method === "GET" && url.pathname === "/theme.css") {
+    return await serveStatic(
+      new URL("../../../packages/client/src/ui/theme.css", import.meta.url).pathname,
+      "text/css",
+    );
+  }
+
   if (req.method === "GET") {
     const res = await serveDir(req, {
       fsRoot: new URL("./inspector/ui", import.meta.url).pathname,
@@ -228,6 +238,20 @@ function notFound(msg: string): Response {
     status: 404,
     headers: { "access-control-allow-origin": "*" },
   });
+}
+
+async function serveStatic(absPath: string, mime: string): Promise<Response> {
+  try {
+    const data = await Deno.readFile(absPath);
+    return new Response(data, {
+      headers: {
+        "content-type":  mime,
+        "cache-control": "no-cache, no-store, must-revalidate",
+      },
+    });
+  } catch {
+    return notFound(`missing ${absPath}`);
+  }
 }
 
 function readQueryNumber(url: URL, key: string, fallback: number): number {

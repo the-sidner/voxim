@@ -86,7 +86,7 @@ export function ManeuverPanel({
 
   return (
     <div style={{ padding: 12, fontSize: 11 }}>
-      <div style={{ color: "#9fcfff", fontWeight: 600, marginBottom: 8 }}>Maneuvers</div>
+      <div style={{ color: "var(--aether-hi)", fontWeight: 600, marginBottom: 8 }}>Maneuvers</div>
 
       <select
         value={picked?.id ?? ""}
@@ -98,8 +98,8 @@ export function ManeuverPanel({
           setElapsed(0);
         }}
         style={{
-          background: "#0e0e12", border: "1px solid #2a2a30", color: "#cfd0e0",
-          borderRadius: 3, padding: "3px 6px", fontSize: 11, width: "100%", marginBottom: 10,
+          background: "var(--bog)", border: "1px solid var(--line-strong)", color: "var(--bone)",
+          borderRadius: 0, padding: "3px 6px", fontSize: 11, width: "100%", marginBottom: 10,
           outline: "none",
         }}
       >
@@ -110,25 +110,25 @@ export function ManeuverPanel({
       {picked && (
         <>
           <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-            <button onClick={fire} disabled={firedAt !== null} style={btn(firedAt !== null ? "#252528" : "#2a5a8a")}>
+            <button onClick={fire} disabled={firedAt !== null} style={btn(firedAt !== null ? "var(--moss)" : "var(--ember-warm)")}>
               Fire ▶
             </button>
             <button onClick={stop} disabled={firedAt === null} style={btn()}>Stop</button>
-            <span style={{ marginLeft: "auto", color: "#888", alignSelf: "center" }}>
+            <span style={{ marginLeft: "auto", color: "var(--bone-dim)", alignSelf: "center" }}>
               {elapsed.toFixed(2)}s / {picked.duration.toFixed(2)}s
             </span>
           </div>
 
-          <TimelineRow label="right_hand" entries={picked.tracks.right_hand.map((e) => ({ t: e.t, label: e.clip }))} duration={picked.duration} elapsed={elapsed} color="#88ccff" />
-          <TimelineRow label="left_hand"  entries={picked.tracks.left_hand.map((e)  => ({ t: e.t, label: e.clip }))} duration={picked.duration} elapsed={elapsed} color="#ff88aa" />
-          <TimelineRow label="locomotion" entries={picked.tracks.locomotion.map((e) => ({ t: e.t, label: `${e.kind}+${(e.forward ?? 0).toFixed(1)}m`, span: e.duration }))} duration={picked.duration} elapsed={elapsed} color="#aacc88" />
-          <TimelineRow label="hitEffects" entries={picked.tracks.hitEffects.map((e) => ({ t: e.fromT, label: e.tag, span: (e.toT ?? picked.duration) - e.fromT }))} duration={picked.duration} elapsed={elapsed} color="#ffcc66" />
+          <TimelineRow label="right_hand" entries={picked.tracks.right_hand.map((e) => ({ t: e.t, label: e.clip }))} duration={picked.duration} elapsed={elapsed} color="var(--aether-hi)" />
+          <TimelineRow label="left_hand"  entries={picked.tracks.left_hand.map((e)  => ({ t: e.t, label: e.clip }))} duration={picked.duration} elapsed={elapsed} color="var(--rot)" />
+          <TimelineRow label="locomotion" entries={picked.tracks.locomotion.map((e) => ({ t: e.t, label: `${e.kind}+${(e.forward ?? 0).toFixed(1)}m`, span: e.duration }))} duration={picked.duration} elapsed={elapsed} color="var(--lichen-hi)" />
+          <TimelineRow label="hitEffects" entries={picked.tracks.hitEffects.map((e) => ({ t: e.fromT, label: e.tag, span: (e.toT ?? picked.duration) - e.fromT }))} duration={picked.duration} elapsed={elapsed} color="var(--ember-hi)" />
 
           {picked.interruptWindows.length > 0 && (
             <>
-              <div style={{ color: "#888", marginTop: 12, marginBottom: 4 }}>Interrupt windows</div>
+              <div style={{ color: "var(--bone-dim)", marginTop: 12, marginBottom: 4 }}>Interrupt windows</div>
               {picked.interruptWindows.map((w, i) => (
-                <div key={i} style={{ fontSize: 10, color: "#cfd0e0", marginBottom: 2 }}>
+                <div key={i} style={{ fontSize: 10, color: "var(--bone)", marginBottom: 2 }}>
                   {w.fromT.toFixed(2)}–{w.toT.toFixed(2)}s by [{w.by.join(", ")}]
                 </div>
               ))}
@@ -153,13 +153,13 @@ function TimelineRow({
 }) {
   return (
     <div style={{ marginBottom: 8 }}>
-      <div style={{ color: "#888", marginBottom: 2 }}>{label}</div>
+      <div style={{ color: "var(--bone-dim)", marginBottom: 2 }}>{label}</div>
       <div style={{
         position: "relative",
         height: 18,
-        background: "#0e0e12",
-        border: "1px solid #2a2a30",
-        borderRadius: 2,
+        background: "var(--bog)",
+        border: "1px solid var(--line-strong)",
+        borderRadius: 0,
         overflow: "hidden",
       }}>
         {entries.map((e, i) => {
@@ -174,7 +174,7 @@ function TimelineRow({
               background: color,
               opacity: 0.7,
               fontSize: 9,
-              color: "#101013",
+              color: "var(--peat-solid)",
               paddingLeft: 3,
               whiteSpace: "nowrap",
               overflow: "hidden",
@@ -186,7 +186,7 @@ function TimelineRow({
           left: `${(elapsed / duration) * 100}%`,
           top: 0, bottom: 0,
           width: 1,
-          background: "#fff",
+          background: "var(--bone-hi)",
         }} />
       </div>
     </div>
@@ -203,10 +203,10 @@ function pickActive(track: { t: number; clip: string }[], elapsed: number): stri
 function btn(bg?: string) {
   return {
     padding: "4px 10px",
-    background: bg ?? "#222226",
-    color: "#fff",
-    border: "1px solid #3a3a42",
-    borderRadius: 3,
+    background: bg ?? "var(--moss-hi)",
+    color: "var(--bone-hi)",
+    border: "1px solid var(--line-strong)",
+    borderRadius: 0,
     cursor: "pointer",
     fontSize: 11,
   } as const;

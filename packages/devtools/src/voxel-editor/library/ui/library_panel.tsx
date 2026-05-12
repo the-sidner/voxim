@@ -17,50 +17,47 @@ import type { BrowserContentStore } from "../../content_loader.ts";
 
 interface Props { content: BrowserContentStore; }
 
-const TAB: preact.JSX.CSSProperties = {
-  padding: "5px 12px", border: "none", cursor: "pointer",
-  fontFamily: "monospace", fontSize: 11, background: "transparent",
-  borderBottom: "2px solid transparent", color: "#666",
-};
-
 export function LibraryPanel({ content }: Props) {
   const sub = librarySubTab.value;
   const status = libraryStatus.value;
-  const tabStyle = (active: boolean): preact.JSX.CSSProperties => active
-    ? { ...TAB, color: "#4a9c3f", borderBottomColor: "#4a9c3f" }
-    : TAB;
 
   return (
     <div style={{
-      width: "100%", height: "100%", display: "flex", flexDirection: "column",
-      background: "#181818", color: "#ccc", fontFamily: "monospace", fontSize: 12,
+      width: "100%", height: "100%",
+      display: "flex", flexDirection: "column",
+      background: "var(--bog)",
     }}>
       {/* Sub-tab bar */}
-      <div style={{ display: "flex", background: "#1e1e1e", borderBottom: "1px solid #333", flexShrink: 0 }}>
-        <button style={tabStyle(sub === "inspect")} onClick={() => librarySubTab.value = "inspect"}>Inspect</button>
-        <button style={tabStyle(sub === "import")} onClick={() => librarySubTab.value = "import"}>Import GLB</button>
-        <button style={tabStyle(sub === "mix")}    onClick={() => librarySubTab.value = "mix"}>Mix</button>
-        <button style={tabStyle(sub === "assign")} onClick={() => librarySubTab.value = "assign"}>Assign to prefab</button>
+      <div style={{
+        display: "flex",
+        background: "linear-gradient(180deg, var(--moss-hi), var(--moss))",
+        borderBottom: "1px solid var(--line-strong)",
+        flexShrink: 0,
+      }}>
+        <button class={`dt-tab ${sub === "inspect" ? "is-active" : ""}`} onClick={() => librarySubTab.value = "inspect"}>Inspect</button>
+        <button class={`dt-tab ${sub === "import" ? "is-active" : ""}`}  onClick={() => librarySubTab.value = "import"}>Import GLB</button>
+        <button class={`dt-tab ${sub === "mix" ? "is-active" : ""}`}     onClick={() => librarySubTab.value = "mix"}>Mix</button>
+        <button class={`dt-tab ${sub === "assign" ? "is-active" : ""}`}  onClick={() => librarySubTab.value = "assign"}>Assign to prefab</button>
       </div>
 
-      {/* Status banner */}
       {status && (
         <div style={{
-          padding: "4px 10px",
-          background: status.kind === "err" ? "#3a1a1a" : status.kind === "ok" ? "#1a3a1a" : "#2a2a3a",
-          color: status.kind === "err" ? "#f88" : status.kind === "ok" ? "#8f8" : "#88f",
-          borderBottom: "1px solid #333",
+          padding: "var(--s-2) var(--s-4)",
+          background: status.kind === "err" ? "var(--rot-deep)" : status.kind === "ok" ? "var(--bile-dim)" : "var(--aether-deep)",
+          color:      status.kind === "err" ? "var(--rot)"      : status.kind === "ok" ? "var(--lichen-hi)" : "var(--aether-hi)",
+          borderBottom: "1px solid var(--line)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--fs-eyebrow)",
+          letterSpacing: "var(--ls-mono)",
         }}>{status.text}</div>
       )}
 
-      {/* Sub-panel — Inspect is full-bleed (it manages its own panes); the
-          other workflows are tighter forms with padding. */}
       {sub === "inspect" ? (
         <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
           <InspectPanel content={content} />
         </div>
       ) : (
-        <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
+        <div style={{ flex: 1, overflow: "auto", padding: "var(--s-4)" }}>
           {sub === "import" && <ImportPanel content={content} />}
           {sub === "mix"    && <MixPanel    content={content} />}
           {sub === "assign" && <AssignPanel content={content} />}

@@ -221,11 +221,11 @@ export function VoxelEditor() {
       />}
       left={
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-          <div style={{ flex: 1, overflowY: "auto", borderBottom: "1px solid #2a2a30" }}>
+          <div style={{ flex: 1, overflowY: "auto", borderBottom: "1px solid var(--line-strong)" }}>
             <AssetBrowser filter={FILTER_DIRS} onPickFile={setPickedPath} />
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
-            <div style={{ padding: "6px 10px", color: "#888", fontSize: 11, borderBottom: "1px solid #2a2a30" }}>
+            <div style={{ padding: "6px 10px", color: "var(--bone-dim)", fontSize: 11, borderBottom: "1px solid var(--line-strong)" }}>
               Scene
             </div>
             <SceneTree def={def} selection={selection} onSelect={setSelection} />
@@ -256,8 +256,8 @@ function EditorTopBar({ path, dirty, onSave, onAddSub, canEdit, mode, onModeChan
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 12 }}>
-      <span style={{ color: "#aaa", fontSize: 12 }}>
-        {path ?? "(no file)"} {dirty && <span style={{ color: "#ffcc77" }}>•</span>}
+      <span style={{ color: "var(--bone-dim)", fontSize: 12 }}>
+        {path ?? "(no file)"} {dirty && <span style={{ color: "var(--ember-hi)" }}>•</span>}
       </span>
       <div style={{ flex: 1 }} />
       <ModeToggle mode={mode} onPick={onModeChange} />
@@ -274,8 +274,8 @@ function ModeToggle({ mode, onPick }: { mode: Mode; onPick: (m: Mode) => void })
       style={{
         cursor: "pointer",
         padding: "4px 10px",
-        background: mode === id ? "#2a5a8a" : "transparent",
-        color: mode === id ? "#fff" : "#888",
+        background: mode === id ? "var(--ember-warm)" : "transparent",
+        color: mode === id ? "var(--bone-hi)" : "var(--bone-dim)",
         fontSize: 11,
       }}
     >{label}</div>
@@ -283,8 +283,8 @@ function ModeToggle({ mode, onPick }: { mode: Mode; onPick: (m: Mode) => void })
   return (
     <div style={{
       display: "flex",
-      border: "1px solid #3a3a42",
-      borderRadius: 3,
+      border: "1px solid var(--line-strong)",
+      borderRadius: 0,
       overflow: "hidden",
     }}>
       {opt("edit",    "Edit")}
@@ -305,10 +305,10 @@ function Button({ children, onClick, disabled, primary }: {
       onClick={onClick}
       style={{
         padding: "4px 10px",
-        background: disabled ? "#252528" : (primary ? "#2a5a8a" : "#222226"),
-        color: disabled ? "#666" : "#fff",
-        border: `1px solid ${disabled ? "#2a2a30" : (primary ? "#4080c0" : "#3a3a42")}`,
-        borderRadius: 3,
+        background: disabled ? "var(--moss)" : (primary ? "var(--ember-warm)" : "var(--moss-hi)"),
+        color: disabled ? "var(--bone-faint)" : "var(--bone-hi)",
+        border: `1px solid ${disabled ? "var(--line-strong)" : (primary ? "var(--ember)" : "var(--line-strong)")}`,
+        borderRadius: 0,
         cursor: disabled ? "default" : "pointer",
         fontSize: 11,
       }}

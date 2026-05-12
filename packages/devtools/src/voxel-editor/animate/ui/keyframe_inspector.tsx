@@ -10,16 +10,6 @@ import {
 const R2D = 180 / Math.PI;
 const D2R = Math.PI / 180;
 
-const LABEL: preact.JSX.CSSProperties = { color: "#888", fontSize: 11, minWidth: 20 };
-const INPUT: preact.JSX.CSSProperties = {
-  background: "#1e1e1e", border: "1px solid #444", color: "#ddd",
-  fontFamily: "monospace", fontSize: 11, padding: "2px 4px", borderRadius: 2, width: 64,
-};
-const BTN: preact.JSX.CSSProperties = {
-  background: "#2a2a2a", border: "1px solid #555", color: "#aaa",
-  cursor: "pointer", borderRadius: 2, fontSize: 11, padding: "2px 6px",
-};
-
 export function KeyframeInspector() {
   const clip = editingClip.value;
   const boneId = selectedBoneId.value;
@@ -29,47 +19,47 @@ export function KeyframeInspector() {
   const t = scrubTime.value;
 
   return (
-    <div style={{ padding: 8, borderTop: "1px solid #333" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span style={{ fontSize: 11, color: "#888", fontWeight: "bold" }}>KEYFRAME</span>
-        <div style={{ display: "flex", gap: 4 }}>
+    <div class="dt-section">
+      <div class="dt-section-header">
+        <span>Keyframe</span>
+        <div style={{ display: "flex", gap: "var(--s-1)" }}>
           {clip && boneId && (
-            <button style={BTN} onClick={() => addKeyframe(boneId, t)}>
-              + At {(t * 100).toFixed(0)}%
+            <button class="btn xs" onClick={() => addKeyframe(boneId, t)}>
+              + At <span class="num">{(t * 100).toFixed(0)}%</span>
             </button>
           )}
           {kf !== null && kfIdx !== null && boneId && (
-            <button style={{ ...BTN, color: "#c66" }} onClick={() => deleteKeyframe(boneId, kfIdx)}>✕</button>
+            <button class="btn xs ghost danger" onClick={() => deleteKeyframe(boneId, kfIdx)}>✕</button>
           )}
         </div>
       </div>
 
       {!boneId && (
-        <div style={{ color: "#555", fontSize: 11 }}>Select a bone in the viewport or timeline.</div>
+        <span class="flavour">Select a bone in the viewport or timeline.</span>
       )}
 
       {boneId && !kf && (
-        <div style={{ color: "#555", fontSize: 11 }}>
-          Bone: <span style={{ color: "#8bc" }}>{boneId}</span>
-          <br />{kfs.length} keyframe{kfs.length !== 1 ? "s" : ""}. Click + to add one at scrub time.
+        <div class="flavour">
+          Bone: <span class="num text-info">{boneId}</span>
+          <br /><span class="num">{kfs.length}</span> keyframe{kfs.length !== 1 ? "s" : ""}. Click + to add one at scrub time.
         </div>
       )}
 
       {boneId && kf !== null && kfIdx !== null && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ fontSize: 10, color: "#666" }}>
-            Bone: <span style={{ color: "#8bc" }}>{boneId}</span>
-            {" | "}#{kfIdx}/{kfs.length - 1}
-            {" | "}t={kf.time.toFixed(3)}
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-1)" }}>
+          <div class="eyebrow">
+            Bone: <span class="num text-info">{boneId}</span>
+            {" · "}#<span class="num">{kfIdx}</span>/{kfs.length - 1}
+            {" · t="}<span class="num">{kf.time.toFixed(3)}</span>
           </div>
 
           {(["rotX", "rotY", "rotZ"] as const).map((field) => (
-            <div key={field} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={LABEL}>{field.slice(-1)}</span>
+            <div key={field} style={{ display: "flex", alignItems: "center", gap: "var(--s-2)" }}>
+              <span class="eyebrow" style={{ minWidth: 16 }}>{field.slice(-1)}</span>
               <input
                 type="number"
                 step="1"
-                style={INPUT}
+                style={{ width: 72 }}
                 value={(kf[field] * R2D).toFixed(1)}
                 onBlur={(e) => {
                   const deg = parseFloat((e.target as HTMLInputElement).value);
@@ -77,8 +67,8 @@ export function KeyframeInspector() {
                 }}
                 onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
               />
-              <span style={{ fontSize: 10, color: "#555" }}>°</span>
-              <span style={{ fontSize: 10, color: "#444" }}>({kf[field].toFixed(3)} rad)</span>
+              <span class="text-dim" style={{ fontSize: 10 }}>°</span>
+              <span class="num text-dim" style={{ fontSize: 10 }}>({kf[field].toFixed(3)} rad)</span>
             </div>
           ))}
         </div>
