@@ -380,7 +380,7 @@ over time when not under pressure; the tier field cleanly selects
 `stagger.light` vs `stagger.heavy` clips.
 
 ### T-198 · Hit-part metadata + richer hit-event payload
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 996094f
 
 To support the combat design's "what got hit, with what part, in what
 phase" — needed for headshot multipliers, hit-spark placement, future
