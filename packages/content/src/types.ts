@@ -532,6 +532,17 @@ export interface WeaponActionDef {
   actionType?: "melee" | "ranged";
   /** Projectile spawn parameters. Required for ranged, absent for melee. */
   projectile?: ProjectileActionConfig;
+  /**
+   * Root-motion forward impulse applied while the named phase is active
+   * (T-199). The character is pushed forward along its facing direction at
+   * `forwardImpulse` world units / sec for the full duration of the phase.
+   * Suppressed proportionally by SpeedModifier so slows / encumbrance reduce
+   * the carry. Absent / null → no push, swing is in-place.
+   */
+  rootMotion?: {
+    forwardImpulse: number;
+    phase: "windup" | "active" | "winddown";
+  };
 }
 
 // ---- maneuvers (T-185) ----------------------------------------------------

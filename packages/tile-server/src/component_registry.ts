@@ -42,6 +42,7 @@ import {
   BlockHeld,
   DodgeCooldown,
   Poise,
+  ActionImpulse,
 } from "./components/combat.ts";
 import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { SwingContext } from "./components/swing_context.ts";
@@ -206,6 +207,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // Poise (T-197) — staggering resource. Server-only; the client renders
   // stagger via CSM reaction-layer animation, not a poise bar.
   Poise,
+  // ActionImpulse (T-199) — transient swing root-motion push. PhysicsSystem
+  // overrides movement direction + speed while present.
+  ActionImpulse,
   Hearth,
   JobBoard,
   AssignedJobBoard,

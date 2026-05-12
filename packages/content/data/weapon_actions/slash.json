@@ -9,5 +9,9 @@
     "tipLocal":  [0, 0, -2.5],
     "radius":    0.05
   },
-  "staminaCost": 10
+  "staminaCost": 10,
+  "rootMotion": {
+    "forwardImpulse": 4.0,
+    "phase": "active"
+  }
 }

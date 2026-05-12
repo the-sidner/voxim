@@ -37,7 +37,7 @@ import {
 import type { Vec3 } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position, Facing, Velocity, InputState, Stamina, Lifetime, ModelRef } from "../components/game.ts";
-import { Staggered } from "../components/combat.ts";
+import { Staggered, ActionImpulse } from "../components/combat.ts";
 import { SwingContext, type SwingContextData, type HitRecord } from "../components/swing_context.ts";
 import { SwingChain } from "../components/swing_chain.ts";
 import { Maneuver } from "../components/maneuver.ts";
@@ -251,6 +251,33 @@ export class ActionSystem implements System {
     for (const { entityId, inputState } of world.query(InputState)) {
       if (!hasAction(inputState.actions, ACTION_BLOCK)) continue;
       if (world.has(entityId, SwingChain)) world.remove(entityId, SwingChain);
+    }
+
+    // ── 1f. Root-motion impulse on phase entry (T-199) ───────────────────────
+    // When the SM enters the WeaponActionDef.rootMotion.phase state (matched
+    // by csm.right_hand.node === "swing." + phase AND elapsed === 0 — the
+    // first tick of that state), install an ActionImpulse with vx/vy baked
+    // from facing × forwardImpulse and ticksRemaining = the phase's tick
+    // budget. PhysicsSystem reads it as a Sidestep-style movement override.
+    for (const { entityId, swingContext: sc } of world.query(SwingContext)) {
+      const action = this.content.weaponActions.get(sc.weaponActionId);
+      if (!action?.rootMotion) continue;
+      const csm = world.get(entityId, CharacterStateMachine);
+      const lstate = csm?.layerStates["right_hand"];
+      if (!lstate) continue;
+      if (lstate.node !== `swing.${action.rootMotion.phase}`) continue;
+      if (lstate.elapsed !== 0) continue;
+      const facingAngle = world.get(entityId, Facing)?.angle ?? 0;
+      const speed = action.rootMotion.forwardImpulse;
+      const phaseTicks =
+        action.rootMotion.phase === "windup"   ? action.windupTicks   :
+        action.rootMotion.phase === "active"   ? action.activeTicks   :
+                                                 action.winddownTicks;
+      world.set(entityId, ActionImpulse, {
+        vx: Math.cos(facingAngle) * speed,
+        vy: Math.sin(facingAngle) * speed,
+        ticksRemaining: phaseTicks,
+      });
     }
 
     // ── 2. Active-phase hit / projectile dispatch ────────────────────────────

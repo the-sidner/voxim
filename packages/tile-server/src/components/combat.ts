@@ -205,3 +205,34 @@ export const Poise = defineComponent({
   codec: poiseCodec,
   default: (): PoiseData => ({ current: 50, max: 50, regenDisabledTicks: 0 }),
 });
+
+// ---- ActionImpulse (server-only) ------------------------------------------
+//
+// Root-motion forward push during a swing phase (T-199). ActionSystem
+// installs this on entry to the WeaponActionDef.rootMotion.phase state
+// with the impulse vector pre-baked from facing × forwardImpulse. While
+// it's present, PhysicsSystem overrides movement direction + maxGroundSpeed
+// (same pattern as Sidestep) so the actor carries forward through the
+// swing instead of stopping in place. Ticks down each frame; PhysicsSystem
+// removes it at zero.
+
+export interface ActionImpulseData {
+  /** World-space velocity vector pre-baked from facing × forwardImpulse. */
+  vx: number;
+  vy: number;
+  /** Ticks remaining of impulse. PhysicsSystem decrements + removes at 0. */
+  ticksRemaining: number;
+}
+
+const actionImpulseCodec: Serialiser<ActionImpulseData> = buildCodec<ActionImpulseData>({
+  vx:             { type: "f32" },
+  vy:             { type: "f32" },
+  ticksRemaining: { type: "i32" },
+});
+
+export const ActionImpulse = defineComponent({
+  name: "actionImpulse" as const,
+  networked: false,
+  codec: actionImpulseCodec,
+  default: (): ActionImpulseData => ({ vx: 0, vy: 0, ticksRemaining: 0 }),
+});
