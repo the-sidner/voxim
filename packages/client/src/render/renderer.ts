@@ -306,7 +306,8 @@ export class VoximRenderer {
    * Armor slots are bone-parented (see ARMOR_SLOTS) and need no entry here.
    */
   private static readonly SLOT_REST_BONE: Record<string, string> = {
-    off_hand: "hand_l",
+    main_hand: "hand_r",
+    off_hand:  "hand_l",
   };
 
   /**
@@ -1503,7 +1504,7 @@ export class VoximRenderer {
     mesh: EntityMeshGroup,
     slotId: string,
     prefabId: string | null,
-    entityScale: { x: number; y: number; z: number },
+    _entityScale: { x: number; y: number; z: number },
   ): void {
     const prefab  = prefabId ? this.itemPrefabMap.get(prefabId) : null;
     const modelId = prefab?.modelId ?? null;
@@ -1513,10 +1514,22 @@ export class VoximRenderer {
 
     detachModelFromSlot(mesh, slotId);
     if (slotId === "main_hand") mesh.bladeDimensions = null;
+    const existingSlot = mesh.attachments.get(slotId);
+    if (existingSlot) existingSlot.bladeAttach = null;
     if (!modelId) return;
 
     const pendingSlot = ensureAttachment(mesh, slotId);
     pendingSlot.modelId = modelId;   // reserve to prevent races
+
+    // Held weapons size themselves in absolute world units via the prefab's
+    // own `modelScale` — independent of the holder's body scale. Using the
+    // entity's scale here made a sword inherit the player's 2.4× scale and
+    // come out 6× the size of the character (24 voxels × 2.4). The voxel
+    // anchor is parented to the bone and the bone is already positioned in
+    // world units by the body's entity scale, so the weapon doesn't need a
+    // second multiplication.
+    const weaponScale = prefab?.modelScale ?? 1.0;
+    const voxelScale = { x: weaponScale, y: weaponScale, z: weaponScale };
 
     this.content!.prefetchModel(modelId).then(() => {
       const currentSlot = mesh.attachments.get(slotId);
@@ -1529,21 +1542,57 @@ export class VoximRenderer {
         const m = this.content!.getMaterialSync(id);
         if (m) mats.set(id, m);
       }
-      attachModelToSlot(mesh, slotId, def, mats, entityScale);
 
-      // Cache blade dimensions from model AABB. Model Z axis = blade direction
-      // (voxel Z maps to Three.js Y for weapon rendering via the anchor quaternion).
+      // AABB scan in model coords. Model Z is the blade-axis (voxel-rendered
+      // → three.js Y). For hand slots we anchor the model's BOTTOM (minZ) at
+      // the hand bone so the pommel sits in the fist and the blade extends
+      // along the elbow→wrist axis. Authored sword origins are typically
+      // mid-grip, which puts half the model behind the wrist if anchored
+      // directly.
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (const n of def.nodes) {
+        if (n.x     < minX) minX = n.x;     if (n.x + 1 > maxX) maxX = n.x + 1;
+        if (n.y     < minY) minY = n.y;     if (n.y + 1 > maxY) maxY = n.y + 1;
+        if (n.z     < minZ) minZ = n.z;     if (n.z + 1 > maxZ) maxZ = n.z + 1;
+      }
+      // Voxel coord swap (entity_mesh.ts buildVoxelMesh): model (x,y,z) →
+      // three.js (x*sx, z*sz, y*sy). To shift the lowest model-Z voxel to
+      // three.js y=0, translate modelGroup by +(-minZ * sz) on three.js Y.
+      const anchorOffset = { x: 0, y: -minZ * weaponScale, z: 0 };
+      attachModelToSlot(mesh, slotId, def, mats, voxelScale, false, anchorOffset);
+
       if (slotId === "main_hand" && def.nodes.length > 0) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-        for (const n of def.nodes) {
-          if (n.x     < minX) minX = n.x;     if (n.x + 1 > maxX) maxX = n.x + 1;
-          if (n.y     < minY) minY = n.y;     if (n.y + 1 > maxY) maxY = n.y + 1;
-          if (n.z + 1 > maxZ) maxZ = n.z + 1;
-        }
-        const scale = entityScale.x;
+        // Trail/hit-volume dimensions come from the model AABB after the
+        // bottom-anchor shift: blade tip is at three.js y = (maxZ - minZ) *
+        // weaponScale measured from the anchor (the pommel).
         mesh.bladeDimensions = {
-          length:    maxZ * scale,
-          halfCross: Math.max(maxX - minX, maxY - minY) / 2 * scale,
+          length:    (maxZ - minZ) * weaponScale,
+          halfCross: Math.max(maxX - minX, maxY - minY) / 2 * weaponScale,
+        };
+      }
+      // Cache the item's primary swingable action blade endpoints onto the
+      // slot — used by updateAttachmentPositions for FK-driven hand
+      // attachment. holdBone is overridden by the SLOT (main → hand_r,
+      // off → hand_l) regardless of the action's authored holdHand,
+      // because the same weapon prefab can sit in either hand and we
+      // attach to whichever hand is actually equipping.
+      const swingable = (prefab?.components?.["swingable"] as
+        | { chain?: { light: string; heavy: string }[] }
+        | undefined);
+      const primaryActionId = swingable?.chain?.[0]?.light;
+      const primaryAction = primaryActionId
+        ? this.weaponActionsMap.get(primaryActionId)
+        : undefined;
+      const slotHoldBone = VoximRenderer.SLOT_REST_BONE[slotId]
+        ?? primaryAction?.holdHand
+        ?? "hand_r";
+      const newSlot = mesh.attachments.get(slotId);
+      if (newSlot && primaryAction?.blade) {
+        newSlot.bladeAttach = {
+          base: [primaryAction.blade.baseLocal[0], primaryAction.blade.baseLocal[1], primaryAction.blade.baseLocal[2]],
+          tip:  [primaryAction.blade.tipLocal[0],  primaryAction.blade.tipLocal[1],  primaryAction.blade.tipLocal[2]],
+          holdBone: slotHoldBone,
         };
       }
     }).catch(() => {
@@ -1633,48 +1682,41 @@ export class VoximRenderer {
       // the Three.js scene hierarchy — no per-frame work needed.
       if (slot.boneParented) continue;
 
-      if (slotId === "main_hand") {
-        // FK-driven anchor: read the holding-hand bone's world transform and
-        // place the weapon's hilt at blade.baseLocal, oriented so its +Y axis
-        // points at blade.tipLocal. Same blade authoring as server hit
-        // detection — visuals and hitbox track the same hand-local segment.
-        const blade = weaponAction?.blade;
-        const holdBone = weaponAction?.holdHand ?? "hand_r";
-        const bw = blade ? evaluateBladeWorld(mesh, blade, holdBone) : null;
-        if (anim?.weaponActionId && bw) {
-          // Convert world-space endpoints into mesh.group-local for the anchor.
+      // Hand slots: blade-anchored attachment when the equipped item has
+      // swingable blade data on the slot; otherwise generic rest-bone
+      // follow (for shields, lanterns, anything without a blade).
+      const isHandSlot = slotId === "main_hand" || slotId === "off_hand";
+      if (isHandSlot && slot.bladeAttach) {
+        // Active-swing weapon action wins for the main hand (the only hand
+        // that swings today); otherwise use the cached rest blade-attach.
+        const swingBlade = slotId === "main_hand" ? weaponAction?.blade : undefined;
+        const swingHoldBone = swingBlade
+          ? (weaponAction?.holdHand ?? slot.bladeAttach.holdBone)
+          : slot.bladeAttach.holdBone;
+        const bwSwing = swingBlade ? evaluateBladeWorld(mesh, swingBlade, swingHoldBone) : null;
+        const useSwing = !!(slotId === "main_hand" && anim?.weaponActionId && bwSwing);
+
+        let bw = useSwing ? bwSwing : null;
+        if (!bw) {
+          bw = evaluateBladeWorld(
+            mesh,
+            { baseLocal: slot.bladeAttach.base, tipLocal: slot.bladeAttach.tip, radius: 0 },
+            slot.bladeAttach.holdBone,
+          );
+        }
+
+        if (bw) {
           mesh.group.worldToLocal(_attachTmp.copy(bw.base));
           slot.anchor.position.copy(_attachTmp);
           mesh.group.worldToLocal(_bladeTip.copy(bw.tip));
           _attachTmp.subVectors(_bladeTip, slot.anchor.position).normalize();
           slot.anchor.quaternion.setFromUnitVectors(_bladeUp, _attachTmp);
-        } else {
-          // At rest: position at the hand, orient blade along the forearm axis
-          // (lower_arm_r → hand_r) using setFromUnitVectors — same approach as
-          // the swing path, so the weapon always hangs along the arm regardless
-          // of animation pose. Copying the bone quaternion doesn't encode a
-          // meaningful blade direction and produces wrong orientations.
-          const handBone  = mesh.boneGroups?.get("hand_r");
-          const elbowBone = mesh.boneGroups?.get("lower_arm_r");
-          if (handBone) {
-            handBone.getWorldPosition(_attachTmp);
-            mesh.group.worldToLocal(_attachTmp);
-            slot.anchor.position.copy(_attachTmp);
-
-            if (elbowBone) {
-              elbowBone.getWorldPosition(_bladeTip);
-              mesh.group.worldToLocal(_bladeTip);
-              // Direction from elbow to wrist = arm axis = natural blade axis at rest.
-              _attachTmp.sub(_bladeTip).normalize();
-              if (_attachTmp.lengthSq() > 0.001) {
-                slot.anchor.quaternion.setFromUnitVectors(_bladeUp, _attachTmp);
-              }
-            }
-          }
         }
       } else {
-        // Generic rest-bone follow — copies both position AND rotation so held
-        // items (e.g. off-hand shield) animate naturally with the limb.
+        // Generic rest-bone follow — copies both position AND rotation so
+        // held items (a shield in the off-hand, a torch in some other
+        // slot) animate naturally with the limb. Used for any slot
+        // without bladeAttach.
         const restBoneId = VoximRenderer.SLOT_REST_BONE[slotId];
         if (restBoneId) {
           const bone = mesh.boneGroups?.get(restBoneId);

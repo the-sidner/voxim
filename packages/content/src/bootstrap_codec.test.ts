@@ -30,10 +30,31 @@ Deno.test("bootstrap codec round-trips every registry", async () => {
   assertEquals(dst.animationLibraries.size,  src.animationLibraries.size);
   assertEquals(dst.stateMachines.size,       src.stateMachines.size);
 
-  // Libraries: clip ids per archetype must match exactly.
+  // Libraries: clip ids per archetype must match exactly, and the binary
+  // anim codec must round-trip every track + keyframe (f32 precision).
   for (const lib of src.animationLibraries.values()) {
     const dstLib = dst.animationLibraries.getOrThrow(lib.id);
     assertEquals(Object.keys(dstLib.clips).sort(), Object.keys(lib.clips).sort());
+    for (const [clipId, srcClip] of Object.entries(lib.clips)) {
+      const dstClip = dstLib.clips[clipId];
+      assertEquals(dstClip.loop, srcClip.loop);
+      assertEquals(dstClip.durationSeconds, srcClip.durationSeconds);
+      assertEquals(Object.keys(dstClip.tracks).sort(), Object.keys(srcClip.tracks).sort());
+      for (const [boneId, srcFrames] of Object.entries(srcClip.tracks)) {
+        const dstFrames = dstClip.tracks[boneId];
+        assertEquals(dstFrames.length, srcFrames.length);
+        // Spot-check first/last keyframe at f32 tolerance.
+        const tol = 1e-6;
+        for (const idx of [0, srcFrames.length - 1]) {
+          if (idx < 0) continue;
+          const s = srcFrames[idx], d = dstFrames[idx];
+          if (Math.abs(s.time - d.time) > tol) throw new Error(`time drift in ${lib.id}/${clipId}/${boneId}[${idx}]`);
+          if (Math.abs(s.rotX - d.rotX) > tol) throw new Error(`rotX drift in ${lib.id}/${clipId}/${boneId}[${idx}]`);
+          if (Math.abs(s.rotY - d.rotY) > tol) throw new Error(`rotY drift in ${lib.id}/${clipId}/${boneId}[${idx}]`);
+          if (Math.abs(s.rotZ - d.rotZ) > tol) throw new Error(`rotZ drift in ${lib.id}/${clipId}/${boneId}[${idx}]`);
+        }
+      }
+    }
   }
 });
 
@@ -61,7 +82,9 @@ Deno.test("bootstrap codec preserves item content (sample probe)", async () => {
 });
 
 Deno.test("bootstrap codec rejects bad magic / wrong version", async () => {
-  const garbage = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0, 0, 0, 0, 0, 0, 0, 0]);
+  // Minimum envelope is 16 bytes: magic + version + jsonLen(=0) + animLen(=0).
+  const garbage = new Uint8Array(16);
+  new DataView(garbage.buffer).setUint32(0, 0xdeadbeef, true);
   let threw = false;
   try { await decodeBootstrap(garbage); } catch (e) {
     threw = true;
@@ -70,11 +93,12 @@ Deno.test("bootstrap codec rejects bad magic / wrong version", async () => {
   assertEquals(threw, true);
 
   // Correct magic, wrong version
-  const wrongVer = new Uint8Array(12);
+  const wrongVer = new Uint8Array(16);
   const view = new DataView(wrongVer.buffer);
   view.setUint32(0, 0x564f5842, true);
   view.setUint32(4, BOOTSTRAP_VERSION + 99, true);
-  view.setUint32(8, 0, true);
+  view.setUint32(8, 0, true);   // jsonLen
+  view.setUint32(12, 0, true);  // animLen
   threw = false;
   try { await decodeBootstrap(wrongVer); } catch (e) {
     threw = true;

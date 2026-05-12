@@ -1,0 +1,13 @@
+{
+  "id": "heavy_overhead",
+  "windupTicks": 5,
+  "activeTicks": 3,
+  "winddownTicks": 8,
+  "clipId": "standing_melee_attack_downward",
+  "blade": {
+    "baseLocal": [0, 0, 0],
+    "tipLocal":  [0, 0, -2.5],
+    "radius":    0.06
+  },
+  "staminaCost": 18
+}

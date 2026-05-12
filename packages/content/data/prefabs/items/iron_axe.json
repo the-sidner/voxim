@@ -1,17 +1,19 @@
 {
   "id": "iron_axe",
   "modelId": "model_axe_basic",
-  "modelScale": 0.5,
+  "modelScale": 0.18,
   "components": {
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
-      "actions": [
+      "chain": [
         {
-          "actionId": "slash"
+          "light": "slash",
+          "heavy": "overhead"
         }
       ],
+      "heavyChargeMs": 350,
       "damage": 22
     },
     "tool": {

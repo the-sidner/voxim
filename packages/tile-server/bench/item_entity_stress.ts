@@ -100,7 +100,7 @@ function benchDurabilityPath(world: World): number {
   let hits = 0;
   for (const { entityId, swingContext: _ } of world.query(SwingContext)) {
     const csm = world.get(entityId, CharacterStateMachine);
-    const combat = csm?.layerStates["combat"];
+    const combat = csm?.layerStates["right_hand"];
     if (!combat || combat.node !== "swing.active" || combat.elapsed !== 0) continue;
     const equip = world.get(entityId, Equipment);
     if (!equip?.weapon) continue;

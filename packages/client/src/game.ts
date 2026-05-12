@@ -20,6 +20,7 @@ import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { FogOfWar } from "./state/fog_of_war.ts";
 import { VoximRenderer } from "./render/renderer.ts";
+import { SwingPredictor } from "./render/swing_predictor.ts";
 import { BuildGhostRenderer } from "./render/build_ghost.ts";
 import { HoverOutlineRenderer } from "./render/hover_outline.ts";
 import { ForestPropsRenderer } from "./render/forest_props.ts";
@@ -30,7 +31,7 @@ import { makeWorkstationHandler, resourceNodeHandler, makeGroundItemHandler } fr
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
-import { setClientWorld } from "./ui/client_world_ref.ts";
+import { setClientWorld, setLocalPlayerId } from "./ui/client_world_ref.ts";
 import { setContentService } from "./ui/content_ref.ts";
 import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
@@ -131,6 +132,8 @@ export class VoximGame {
    * fall off when their seq is acked or eclipsed.
    */
   private readonly inputSentAt = new Map<number, number>();
+  /** Combo-chain prediction for the local player. Stateless across server ticks; carries only the press-hold timer. */
+  private readonly swingPredictor = new SwingPredictor();
   /** Smoothed RTT in ms (EMA, α = 0.2). 0 until the first ack arrives. */
   private smoothedPingMs = 0;
   /** Latest `ackInputSeq` from the server; used to compute input lag. */
@@ -209,6 +212,7 @@ export class VoximGame {
     }
     this.renderer = new VoximRenderer(canvas);
     this.renderer.setLocalPlayer(this.playerId!);
+    setLocalPlayerId(this.playerId!);
     this.renderer.setContentCache(this.content);
     // Renderer-facing weapon actions + item prefabs sourced from the
     // bootstrap-delivered ContentService (T-177 phase 3).  Items are
@@ -633,6 +637,7 @@ export class VoximGame {
       );
       this.playerId = assignedId;
       this.renderer?.setLocalPlayer(this.playerId);
+      setLocalPlayerId(this.playerId);
       // Re-hydrate ContentService from the new tile-server's blob — content
       // could have changed across the boundary (different version, different
       // tile-specific overrides). Picks up server restarts for free.
@@ -710,14 +715,34 @@ export class VoximGame {
       // acked.  The Map is pruned on lookup so it stays small even if
       // some inputs are dropped on the unreliable datagram channel.
       this.inputSentAt.set(datagram.seq, datagram.timestamp);
-      if (hasAction(datagram.actions, ACTION_USE_SKILL)) {
-        // Use the last server-confirmed attack params so the prediction matches the
-        // real weapon. Falls back to "slash" defaults if no confirmed state yet.
-        const lastAnim = this.playerId ? this.world.get(this.playerId)?.animationState : null;
-        // Use last confirmed weapon action for prediction; fall back to unarmed.
-        const weaponActionId = lastAnim?.weaponActionId || "unarmed";
-        this.renderer?.forceLocalAnimation(weaponActionId);
-        // Arc is shown on DamageDealt confirmation, not on input prediction.
+      // Combo-chain swing prediction (T-188): pick the weapon action the
+      // server is about to fire by combining the networked SwingChain.index
+      // with the equipped weapon's swingable.chain and the local press-hold
+      // timer (heavy variant if held past swingable.heavyChargeMs). Feeds
+      // forceLocalAnimation so the trail / blade-attach catches up at press
+      // time instead of waiting RTT/2 for the next AnimationState delta.
+      // The predictor runs every frame, not just on press, so the heavy
+      // promotion crosses correctly when held past the threshold.
+      {
+        const pressed = hasAction(datagram.actions, ACTION_USE_SKILL);
+        const player = this.playerId ? this.world.get(this.playerId) : undefined;
+        const weaponPrefabId = player?.equipment?.weapon?.prefabId;
+        const prefab = weaponPrefabId
+          ? this.contentService?.prefabs.get(weaponPrefabId)
+          : undefined;
+        const swingable = prefab?.components?.["swingable"] as
+          | { chain: { light: string; heavy: string }[]; heavyChargeMs: number }
+          | undefined;
+        // SwingChain isn't sent via "component removed" deltas — when the
+        // server-side chain ends, the cached index lingers. Treat the
+        // cached index as authoritative only while csm.right_hand is in
+        // a swing state; collapse to 0 when idle (the only chain-step the
+        // press-from-idle path produces).
+        const handNode = player?.characterStateMachine?.layerStates["right_hand"]?.node ?? "idle";
+        const cachedIndex = player?.swingChain?.index ?? 0;
+        const chainIndex = handNode === "idle" ? 0 : cachedIndex;
+        const predicted = this.swingPredictor.predict(pressed, swingable ?? null, chainIndex, performance.now());
+        if (predicted) this.renderer?.forceLocalAnimation(predicted);
       }
 
       // Step predictor with this frame's input

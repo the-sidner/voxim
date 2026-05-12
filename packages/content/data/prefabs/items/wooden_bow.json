@@ -1,17 +1,19 @@
 {
   "id": "wooden_bow",
   "modelId": "model_bow_basic",
-  "modelScale": 0.33,
+  "modelScale": 0.13,
   "components": {
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
-      "actions": [
+      "chain": [
         {
-          "actionId": "bow_shot"
+          "light": "bow_shot",
+          "heavy": "bow_shot"
         }
-      ]
+      ],
+      "heavyChargeMs": 350
     },
     "weight": {
       "baseWeight": 1

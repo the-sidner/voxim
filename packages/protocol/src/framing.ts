@@ -20,9 +20,20 @@ const dec = new TextDecoder();
  */
 export const MAX_FRAME_PAYLOAD_BYTES = 16 * 1024 * 1024;
 
-/** Encode a JSON value as a length-prefixed frame. */
+/**
+ * Encode a length-prefixed frame.
+ *
+ * Uint8Array inputs are passed through verbatim as the payload — the framing
+ * layer is binary-clean. Anything else is JSON.stringify'd to UTF-8.
+ *
+ * Without this branch, a Uint8Array blob would be stringified as
+ * `{"0":12,"1":234,...}` and inflate ~14× — exactly the failure mode that
+ * blew the bootstrap frame past MAX_FRAME_PAYLOAD_BYTES.
+ */
 export function encodeFrame(value: unknown): Uint8Array {
-  const payload = enc.encode(JSON.stringify(value));
+  const payload = value instanceof Uint8Array
+    ? value
+    : enc.encode(JSON.stringify(value));
   const out = new Uint8Array(4 + payload.byteLength);
   new DataView(out.buffer).setUint32(0, payload.byteLength, true);
   out.set(payload, 4);

@@ -1,0 +1,13 @@
+{
+  "id": "slash_horizontal",
+  "windupTicks": 2,
+  "activeTicks": 2,
+  "winddownTicks": 4,
+  "clipId": "standing_melee_attack_horizontal",
+  "blade": {
+    "baseLocal": [0, 0, 0],
+    "tipLocal":  [0, 0, -2.5],
+    "radius":    0.05
+  },
+  "staminaCost": 10
+}

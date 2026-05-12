@@ -1,7 +1,7 @@
 {
   "id": "bandit",
   "extends": "_playable_character",
-  "modelId": "human_base",
+  "modelId": "biped_skeletal",
   "components": {
     "npc": {
       "npcType": "bandit"

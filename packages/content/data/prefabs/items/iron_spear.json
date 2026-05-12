@@ -1,17 +1,19 @@
 {
   "id": "iron_spear",
   "modelId": "model_spear",
-  "modelScale": 0.25,
+  "modelScale": 0.1,
   "components": {
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
-      "actions": [
+      "chain": [
         {
-          "actionId": "thrust"
+          "light": "thrust",
+          "heavy": "overhead"
         }
       ],
+      "heavyChargeMs": 350,
       "damage": 20
     },
     "weight": {

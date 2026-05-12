@@ -1,8 +1,7 @@
 {
   "id": "merchant",
   "extends": "_playable_character",
-  "modelId": "human_base",
-  "stateMachineId": "humanoid_passive",
+  "modelId": "biped_skeletal",
   "components": {
     "npc": {
       "npcType": "merchant"

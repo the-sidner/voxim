@@ -18,6 +18,8 @@ import {
   statsCodec, provenanceCodec,
   gateLinkCodec,
   nameCodec,
+  characterStateMachineCodec,
+  swingChainCodec,
 } from "@voxim/codecs";
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
@@ -29,6 +31,8 @@ import type {
   StatsData, ProvenanceData,
   GateLinkData,
   NameData,
+  CharacterStateMachineData,
+  SwingChainData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
@@ -77,6 +81,8 @@ export interface EntityState {
   corruptionExposure?: CorruptionExposureState;
   gateLink?: GateLinkData;
   name?: NameData;
+  characterStateMachine?: CharacterStateMachineData;
+  swingChain?: SwingChainData;
   /** Raw bytes for components the client doesn't decode eagerly, keyed by component name. */
   raw: Map<string, Uint8Array>;
   /** Per-component version counters (component type ID → version). Stale deltas are discarded. */
@@ -293,6 +299,12 @@ export class ClientWorld {
         break;
       case ComponentType.name:
         entity.name = nameCodec.decode(data);
+        break;
+      case ComponentType.characterStateMachine:
+        entity.characterStateMachine = characterStateMachineCodec.decode(data);
+        break;
+      case ComponentType.swingChain:
+        entity.swingChain = swingChainCodec.decode(data);
         break;
       default: {
         const name = COMPONENT_TYPE_TO_NAME.get(typeId);

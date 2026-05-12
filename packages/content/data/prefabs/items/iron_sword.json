@@ -1,22 +1,19 @@
 {
   "id": "iron_sword",
   "modelId": "model_sword_basic",
-  "modelScale": 0.25,
+  "modelScale": 0.10,
   "components": {
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
-      "actions": [
-        {
-          "actionId": "slash",
-          "chargeMax": 200
-        },
-        {
-          "actionId": "overhead",
-          "chargeMin": 200
-        }
+      "chain": [
+        { "light": "slash_inward",   "heavy": "heavy_overhead" },
+        { "light": "slash_outward",  "heavy": "heavy_overhead" },
+        { "light": "thrust",         "heavy": "heavy_360" },
+        { "light": "slash_backhand", "heavy": "heavy_360" }
       ],
+      "heavyChargeMs": 250,
       "damage": 25
     },
     "weight": {

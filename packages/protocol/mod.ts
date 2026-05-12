@@ -131,6 +131,7 @@ export type {
   GatewayHeartbeatResponse,
   TileJoinRequest,
   TileJoinAck,
+  BootstrapHeader,
   TileHandoffRequest,
   TileHandoffAck,
   ServiceHandshake,

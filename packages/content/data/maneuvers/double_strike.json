@@ -1,0 +1,22 @@
+{
+  "id": "double_strike",
+  "duration": 1.2,
+  "interruptWindows": [],
+  "tracks": {
+    "right_hand": [
+      { "t": 0.6, "clip": "great_sword_slash" }
+    ],
+    "left_hand": [
+      { "t": 0.0, "clip": "great_sword_slash" }
+    ],
+    "locomotion": [
+      { "t": 0.0, "kind": "dash", "forward": 1.5, "duration": 0.5 }
+    ],
+    "hitEffects": [
+      { "tag": "bleed", "fromT": 0.0, "magnitude": 1.0 }
+    ]
+  },
+  "requirements": {
+    "stamina": 30
+  }
+}

@@ -15,7 +15,7 @@ import { WireReader, WireWriter } from "@voxim/codecs";
 import * as v from "valibot";
 import type {
   EquipSlot, ItemSlotDef, StatContribution,
-  EquippableData, SwingableData, SwingableActionEntry, ToolData, DeployableData, PlaceableData,
+  EquippableData, SwingableData, SwingChainEntry, ToolData, DeployableData, PlaceableData,
   EdibleData, IlluminatorData, ArmorData, MaterialSourceData,
   ComposedData, StackableData, WeightData,
 } from "@voxim/content";
@@ -81,11 +81,11 @@ export const Equippable = defineComponent({
 // ---------------------------------------------------------------------------
 
 const swingableSchema = v.object({
-  actions: v.array(v.object({
-    actionId:  v.string(),
-    chargeMin: v.optional(v.number()),
-    chargeMax: v.optional(v.number()),
+  chain: v.array(v.object({
+    light: v.string(),
+    heavy: v.string(),
   })),
+  heavyChargeMs: v.number(),
   damage: v.optional(v.number()),
 });
 
@@ -96,12 +96,12 @@ export const Swingable = defineComponent({
   codec: {
     encode(v: SwingableData): Uint8Array {
       const w = new WireWriter();
-      w.writeU8(v.actions.length);
-      for (const a of v.actions) {
-        w.writeStr(a.actionId);
-        w.writeI32(a.chargeMin ?? 0);
-        w.writeI32(a.chargeMax ?? 0xFFFF);
+      w.writeU8(v.chain.length);
+      for (const c of v.chain) {
+        w.writeStr(c.light);
+        w.writeStr(c.heavy);
       }
+      w.writeU16(v.heavyChargeMs);
       // Optional base damage — presence byte then f32. Absent damage
       // round-trips as undefined so callers can distinguish "no damage
       // declared" from "explicit zero" if they ever care.
@@ -116,34 +116,34 @@ export const Swingable = defineComponent({
     decode(b: Uint8Array): SwingableData {
       const r = new WireReader(b);
       const count = r.readU8();
-      const actions: SwingableActionEntry[] = [];
+      const chain: SwingChainEntry[] = [];
       for (let i = 0; i < count; i++) {
-        actions.push({
-          actionId:  r.readStr(),
-          chargeMin: r.readI32(),
-          chargeMax: r.readI32(),
-        });
+        chain.push({ light: r.readStr(), heavy: r.readStr() });
       }
+      const heavyChargeMs = r.readU16();
       const hasDamage = r.readU8();
-      if (hasDamage) return { actions, damage: r.readF32() };
-      return { actions };
+      if (hasDamage) return { chain, heavyChargeMs, damage: r.readF32() };
+      return { chain, heavyChargeMs };
     },
   },
-  default: (): SwingableData => ({ actions: [] }),
+  default: (): SwingableData => ({ chain: [], heavyChargeMs: 250 }),
 });
 
 /**
- * Resolve which action a weapon fires for a given chargeMs. Walks the array
- * in declaration order and returns the first entry whose [chargeMin, chargeMax]
- * contains `chargeMs`. Defaults: chargeMin=0, chargeMax=65535.
+ * Pick the WeaponActionDef id at chain index for a given charge time.
+ * elapsed >= heavyChargeMs/1000 → entry.heavy; else entry.light. Index
+ * is taken modulo chain length so wrapping past the end is the
+ * caller's responsibility's signalling, not data corruption.
  */
-export function pickWeaponAction(swingable: SwingableData, chargeMs: number): SwingableActionEntry | null {
-  for (const a of swingable.actions) {
-    const lo = a.chargeMin ?? 0;
-    const hi = a.chargeMax ?? 0xFFFF;
-    if (chargeMs >= lo && chargeMs <= hi) return a;
-  }
-  return null;
+export function pickChainAction(
+  swingable: SwingableData,
+  chainIndex: number,
+  windupElapsedSec: number,
+): string | null {
+  const len = swingable.chain.length;
+  if (len === 0) return null;
+  const entry = swingable.chain[chainIndex % len];
+  return windupElapsedSec * 1000 >= swingable.heavyChargeMs ? entry.heavy : entry.light;
 }
 
 // ---------------------------------------------------------------------------

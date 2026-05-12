@@ -14,7 +14,7 @@ import type { LibraryClipFile } from "@voxim/content";
 export const libraryClips = signal<LibraryClipFile[]>([]);
 
 /** Which sub-workflow is open in the Library tab. */
-export const librarySubTab = signal<"browse" | "import" | "mix" | "assign">("browse");
+export const librarySubTab = signal<"inspect" | "import" | "mix" | "assign">("inspect");
 
 /** Currently selected clip id in the Browse panel, for inspection. */
 export const selectedLibraryClipId = signal<string | null>(null);

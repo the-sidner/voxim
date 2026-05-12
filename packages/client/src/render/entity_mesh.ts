@@ -98,6 +98,16 @@ export interface AttachmentSlot {
    * propagates the bone's world transform automatically.
    */
   boneParented: boolean;
+  /**
+   * Hand-bone-local attachment data when this slot holds a blade-bearing
+   * item (a weapon with a swingable component). Null for shields,
+   * lanterns, or any other held thing without a blade. When present, the
+   * per-frame anchor positioning runs the base/tip points through the
+   * named bone's matrixWorld — same math the swing path uses — so the
+   * weapon sits in the fist consistently across rest, swing, and
+   * maneuver. Set per-slot so each hand can hold a different blade.
+   */
+  bladeAttach: { base: [number, number, number]; tip: [number, number, number]; holdBone: string } | null;
 }
 
 export interface EntityMeshGroup {
@@ -157,6 +167,13 @@ export interface EntityMeshGroup {
    */
   bladeDimensions: { length: number; halfCross: number } | null;
   /**
+   * Top-of-head Y in entity-local (mesh.group) coords — used to anchor
+   * the floating name label above the head regardless of character
+   * size or morph proportions. Set when the skeleton model is built;
+   * 0 for non-skeletal entities (the label falls back to LABEL_HEIGHT).
+   */
+  headHeightWorld: number;
+  /**
    * Procedural seed from ModelRef — set when the skeleton model is built.
    * Used by the hitbox debug overlay to derive bone-local capsule templates
    * with the same PRNG sequence as the server.
@@ -213,6 +230,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     posBuffer: [],
     groundOffsetWorld: 0,
     bladeDimensions: null,
+    headHeightWorld: 0,
     modelSeed: 0,
     modelScale: 0,
     nameLabel: null,
@@ -511,10 +529,19 @@ export function upgradeToSkeletonModel(
     );
     parent.add(subGroup);
 
+    // T-186 Layer 1: scale the sub-object's voxels along the same axes as
+    // the parent bone's morph scale. Without this, stretching a bone (say
+    // armLength 1.2× on lower_arm_r) just moves the wrist joint further
+    // out and leaves the visible forearm chunk floating at the original
+    // length. Multiply subScale by the bone's morph factor per axis so the
+    // body chunk stretches in lockstep with the segment between joints.
+    // Sub-objects parented to mesh.group (sub.boneId is null) get factor
+    // 1.0 — they aren't part of the morphed skeleton.
+    const subBoneId = sub.boneId ?? "";
     const subScale = {
-      x: scale.x * sub.transform.scaleX,
-      y: scale.y * sub.transform.scaleY,
-      z: scale.z * sub.transform.scaleZ,
+      x: scale.x * sub.transform.scaleX * (boneScaleX.get(subBoneId) ?? 1.0),
+      y: scale.y * sub.transform.scaleY * (boneScaleY.get(subBoneId) ?? 1.0),
+      z: scale.z * sub.transform.scaleZ * (boneScaleZ.get(subBoneId) ?? 1.0),
     };
     for (const node of subDef.nodes) {
       const vox = buildVoxelMesh(node, materials, subScale);
@@ -556,7 +583,11 @@ export function upgradeToSkeletonModel(
       if (!sub.boneId) continue;
       const boneY = boneWorldY.get(sub.boneId) ?? 0;
       const subOffsetY = sub.transform.z * scale.z;
-      const subScaleZ = scale.z * sub.transform.scaleZ;
+      // Match the sub-object voxel stretch used in the build pass above so
+      // the ground-clearance calculation accounts for morph-stretched body
+      // chunks — without this, a leg-lengthened character's foot voxel
+      // sits lower than groundOffsetWorld accounts for, and feet clip terrain.
+      const subScaleZ = scale.z * sub.transform.scaleZ * (boneScaleZ.get(sub.boneId) ?? 1.0);
       const subDef = subModelDefs.get(sub.modelId);
       if (!subDef) continue;
       for (const node of subDef.nodes) {
@@ -566,6 +597,17 @@ export function upgradeToSkeletonModel(
       }
     }
     mesh.groundOffsetWorld = Math.max(0, -minVoxelY);
+
+    // Head-top in entity-local coords, used to anchor the floating name
+    // label above any character regardless of overall size or per-instance
+    // morph (taller characters → higher label). Walks the bone chain to
+    // find the topmost bone (typically "head") then adds an estimated
+    // head-voxel half-height. boneWorldY values are already morphed.
+    let maxBoneY = 0;
+    for (const y of boneWorldY.values()) if (y > maxBoneY) maxBoneY = y;
+    // 0.5 world units of clearance for the head voxels themselves + a
+    // small gap before the label sprite sits.
+    mesh.headHeightWorld = maxBoneY + 0.5 * scale.z + mesh.groundOffsetWorld;
   }
 }
 
@@ -614,6 +656,13 @@ export function syncNameLabel(mesh: EntityMeshGroup, state: EntityState): void {
   } else {
     mesh.nameLabel = makeNameSprite(next);
     mesh.group.add(mesh.nameLabel);
+  }
+  // Anchor the label above the head. For skeletal characters this uses
+  // the morph-aware head-top computed at model build time; for the
+  // placeholder fallback (and any non-skeletal entity) the sprite's
+  // built-in default position is left in place.
+  if (mesh.headHeightWorld > 0) {
+    mesh.nameLabel.position.y = mesh.headHeightWorld + 0.3;
   }
 }
 
@@ -677,7 +726,7 @@ export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): Attachm
     const anchor = new THREE.Group();
     anchor.name = `attachment:${slotId}`;
     mesh.group.add(anchor);
-    slot = { anchor, modelId: null, boneParented: false };
+    slot = { anchor, modelId: null, boneParented: false, bladeAttach: null };
     mesh.attachments.set(slotId, slot);
   }
   return slot;
@@ -718,7 +767,7 @@ export function ensureBoneAttachment(
     // when building the armor model voxels at the correct scale.
     anchor.userData.armorSubScale = subScale;
     boneGroup.add(anchor);
-    slot = { anchor, modelId: null, boneParented: true };
+    slot = { anchor, modelId: null, boneParented: true, bladeAttach: null };
     mesh.attachments.set(slotId, slot);
   }
   return slot;
@@ -740,6 +789,14 @@ export function attachModelToSlot(
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
   onTop = false,
+  /**
+   * Optional translation applied to the inner modelGroup after voxel
+   * placement. Used by hand slots to put the weapon's pommel (model AABB
+   * bottom) AT the hand bone instead of the model's authored origin —
+   * authored origins commonly sit mid-grip, which makes the weapon look
+   * "attached in the middle" with half hanging off the back of the wrist.
+   */
+  anchorOffset?: { x: number; y: number; z: number },
 ): void {
   const slot = ensureAttachment(mesh, slotId);
   detachModelFromSlot(mesh, slotId);   // clear previous model first
@@ -749,6 +806,7 @@ export function attachModelToSlot(
   for (const node of modelDef.nodes) {
     modelGroup.add(buildVoxelMesh(node, materials, scale, onTop));
   }
+  if (anchorOffset) modelGroup.position.set(anchorOffset.x, anchorOffset.y, anchorOffset.z);
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
 }

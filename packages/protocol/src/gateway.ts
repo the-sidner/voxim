@@ -117,6 +117,20 @@ export interface TileJoinAck {
   playerId: string;
 }
 
+/**
+ * Sent on the join stream after `TileJoinAck` to announce the chunked
+ * content bootstrap blob. The client then reads `chunks` binary frames
+ * and concatenates them in order. Chunking keeps every individual frame
+ * under MAX_FRAME_PAYLOAD_BYTES regardless of how large content grows.
+ */
+export interface BootstrapHeader {
+  type: "bootstrap";
+  /** Total bytes of the reassembled blob — used for client-side allocation + sanity check. */
+  totalBytes: number;
+  /** Number of binary chunk frames following this header. */
+  chunks: number;
+}
+
 // ---- gateway → tile server (tile transition handoff) ----
 // Stub: interface defined, not needed for the single-tile vertical slice.
 

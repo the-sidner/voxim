@@ -1,17 +1,19 @@
 {
   "id": "iron_pickaxe",
   "modelId": "pickaxe",
-  "modelScale": 0.5,
+  "modelScale": 0.18,
   "components": {
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
-      "actions": [
+      "chain": [
         {
-          "actionId": "overhead"
+          "light": "overhead",
+          "heavy": "overhead"
         }
       ],
+      "heavyChargeMs": 350,
       "damage": 16
     },
     "tool": {

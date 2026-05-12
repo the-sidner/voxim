@@ -44,7 +44,8 @@
         }
       ],
       "startingEquipment": {
-        "weapon": "stone_axe"
+        "weapon":  "stone_axe",
+        "offHand": "iron_sword"
       }
     }
   }

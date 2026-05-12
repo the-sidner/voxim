@@ -1,6 +1,7 @@
 {
   "id": "villager",
-  "modelId": "human_base",
+  "extends": "_playable_character",
+  "modelId": "biped_skeletal",
   "components": {
     "npc": {
       "npcType": "villager"

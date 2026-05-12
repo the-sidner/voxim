@@ -1,0 +1,13 @@
+{
+  "id": "heavy_360",
+  "windupTicks": 6,
+  "activeTicks": 4,
+  "winddownTicks": 8,
+  "clipId": "standing_melee_attack_360_high",
+  "blade": {
+    "baseLocal": [0, 0, 0],
+    "tipLocal":  [0, 0, -2.5],
+    "radius":    0.07
+  },
+  "staminaCost": 22
+}

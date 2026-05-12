@@ -9,7 +9,7 @@
  *   4. Client sends input as unreliable datagrams.
  */
 import type {
-  MovementDatagram, CommandDatagram, BinaryStateMessage, TileJoinRequest, TileJoinAck,
+  MovementDatagram, CommandDatagram, BinaryStateMessage, BootstrapHeader, TileJoinRequest, TileJoinAck,
   WorldSnapshot, ContentRequest, ContentResponse,
 } from "@voxim/protocol";
 import {
@@ -108,14 +108,30 @@ export class TileConnection {
     }
     console.log(`[TileConn] joined, server-assigned playerId=${ack.playerId.slice(0, 8)}`);
 
-    // Bootstrap blob (T-177) — full ContentService serialized.
-    const blob = await frameReader.readPayload();
-    if (!blob) {
+    // Bootstrap blob (T-177) — chunked. Read header announcing chunk count
+    // + total size, then concatenate that many binary frames in order.
+    const header = await frameReader.readJson() as BootstrapHeader | null;
+    if (!header || header.type !== "bootstrap") {
       jReader.releaseLock();
-      throw new Error("Tile server handshake missing content bootstrap blob");
+      throw new Error("Tile server handshake missing bootstrap header");
+    }
+    const blob = new Uint8Array(header.totalBytes);
+    let off = 0;
+    for (let i = 0; i < header.chunks; i++) {
+      const chunk = await frameReader.readPayload();
+      if (!chunk) {
+        jReader.releaseLock();
+        throw new Error(`Tile server bootstrap stream ended at chunk ${i}/${header.chunks}`);
+      }
+      blob.set(chunk, off);
+      off += chunk.byteLength;
+    }
+    if (off !== header.totalBytes) {
+      jReader.releaseLock();
+      throw new Error(`Tile server bootstrap size mismatch: expected ${header.totalBytes}, got ${off}`);
     }
     this._bootstrapBlob = blob;
-    console.log(`[TileConn] bootstrap blob: ${(blob.length / 1024).toFixed(1)} KB`);
+    console.log(`[TileConn] bootstrap blob: ${(blob.length / 1024).toFixed(1)} KB across ${header.chunks} chunk(s)`);
     jReader.releaseLock();
 
     // --- datagram writer for input (C→S) ---

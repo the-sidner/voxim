@@ -1,0 +1,27 @@
+{
+  "_comment": "Off-hand kick into right-hand sword combo — two distinct hit windows. The kick disrupts the target's stance for the follow-up slash. Dual-window committed move.",
+  "id": "kick_combo",
+  "duration": 1.5,
+  "interruptWindows": [
+    { "fromT": 1.3, "toT": 1.5, "by": ["dodge", "block"] }
+  ],
+  "tracks": {
+    "right_hand": [
+      { "t": 0.6, "clip": "stable_sword_outward_slash" }
+    ],
+    "left_hand": [
+      { "t": 0.0, "clip": "standing_melee_kick" }
+    ],
+    "locomotion": [
+      { "t": 0.0, "kind": "dash", "forward": 0.8, "duration": 0.4 }
+    ],
+    "hitEffects": [
+      { "tag": "stagger", "fromT": 0.2, "toT": 0.5, "magnitude": 0.7 },
+      { "tag": "slash",   "fromT": 0.85, "toT": 1.2, "magnitude": 1.4 }
+    ]
+  },
+  "requirements": {
+    "stamina": 25,
+    "rightWeapon": true
+  }
+}

@@ -9,7 +9,7 @@
  * Sub-panels each live in their own file so this stays a thin router.
  */
 import { librarySubTab, libraryStatus } from "../lib_state.ts";
-import { BrowsePanel } from "./browse_panel.tsx";
+import { InspectPanel } from "./inspect_panel.tsx";
 import { ImportPanel } from "./import_panel.tsx";
 import { MixPanel } from "./mix_panel.tsx";
 import { AssignPanel } from "./assign_panel.tsx";
@@ -37,7 +37,7 @@ export function LibraryPanel({ content }: Props) {
     }}>
       {/* Sub-tab bar */}
       <div style={{ display: "flex", background: "#1e1e1e", borderBottom: "1px solid #333", flexShrink: 0 }}>
-        <button style={tabStyle(sub === "browse")} onClick={() => librarySubTab.value = "browse"}>Browse</button>
+        <button style={tabStyle(sub === "inspect")} onClick={() => librarySubTab.value = "inspect"}>Inspect</button>
         <button style={tabStyle(sub === "import")} onClick={() => librarySubTab.value = "import"}>Import GLB</button>
         <button style={tabStyle(sub === "mix")}    onClick={() => librarySubTab.value = "mix"}>Mix</button>
         <button style={tabStyle(sub === "assign")} onClick={() => librarySubTab.value = "assign"}>Assign to prefab</button>
@@ -53,13 +53,19 @@ export function LibraryPanel({ content }: Props) {
         }}>{status.text}</div>
       )}
 
-      {/* Sub-panel */}
-      <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
-        {sub === "browse" && <BrowsePanel content={content} />}
-        {sub === "import" && <ImportPanel content={content} />}
-        {sub === "mix"    && <MixPanel    content={content} />}
-        {sub === "assign" && <AssignPanel content={content} />}
-      </div>
+      {/* Sub-panel — Inspect is full-bleed (it manages its own panes); the
+          other workflows are tighter forms with padding. */}
+      {sub === "inspect" ? (
+        <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+          <InspectPanel content={content} />
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
+          {sub === "import" && <ImportPanel content={content} />}
+          {sub === "mix"    && <MixPanel    content={content} />}
+          {sub === "assign" && <AssignPanel content={content} />}
+        </div>
+      )}
     </div>
   );
 }

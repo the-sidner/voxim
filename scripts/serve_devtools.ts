@@ -92,12 +92,29 @@ async function collectAllJson(dir: string, out: unknown[]): Promise<void> {
 
 /**
  * Whitelist of subdirectories the devtool may write into.
- * - anim_library/ — imported / mixed animation clips and compound recipes
- * - prefabs/      — devtool's Assign workflow rewrites a prefab's
- *                   animationSlots field; full file replacement so don't
- *                   hand-edit a prefab while the devtool has it loaded
+ * - anim_library/    — imported / mixed animation clips and compound recipes
+ * - prefabs/         — Assign workflow rewrites a prefab's animationSlots
+ *                      field; full file replacement so don't hand-edit a
+ *                      prefab while the devtool has it loaded
+ * - models/          — new studio voxel editor authors ModelDefinition JSON
+ * - clip_overrides/  — new studio animation editor stores per-clip
+ *                      attachment-override JSON (T-191e)
+ * - generators/      — generator declarations (T-183) authored in the
+ *                      voxel editor when spawning procedural sub-objects
+ * - skeletons/       — skeleton bone/mask tweaks from the animation editor
+ * - state_machines/  — SM authoring from the animation editor
+ * - maneuvers/       — maneuver-track edits from the animation editor
  */
-const WRITABLE_PREFIXES = ["anim_library/", "prefabs/"];
+const WRITABLE_PREFIXES = [
+  "anim_library/",
+  "prefabs/",
+  "models/",
+  "clip_overrides/",
+  "generators/",
+  "skeletons/",
+  "state_machines/",
+  "maneuvers/",
+];
 
 function isWritablePath(file: string): boolean {
   // Reject any traversal; require the path to be inside one of WRITABLE_PREFIXES.
@@ -144,6 +161,42 @@ Deno.serve({ port: 8888 }, async (req) => {
     } catch (err) {
       return new Response(`Delete failed: ${(err as Error).message}`, { status: 400 });
     }
+  }
+
+  // Directory listing for the studio asset browser. Returns the immediate
+  // children of `data/<dir>` as `{ name, kind: "file" | "directory" }` so
+  // the tree UI can walk lazily without aggregating large JSON arrays.
+  if (req.method === "GET" && pathname.startsWith("/content-list/")) {
+    const sub = pathname.slice("/content-list/".length);
+    if (sub.includes("..") || sub.startsWith("/")) {
+      return new Response("bad path", { status: 400 });
+    }
+    const dir = sub === "" ? contentDir : `${contentDir}${sub}`;
+    try {
+      const entries: { name: string; kind: "file" | "directory" }[] = [];
+      for await (const e of Deno.readDir(dir)) {
+        if (e.isFile && !e.name.endsWith(".json")) continue;
+        entries.push({
+          name: e.name,
+          kind: e.isDirectory ? "directory" : "file",
+        });
+      }
+      entries.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+        return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+      });
+      return new Response(JSON.stringify(entries), {
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch {
+      return new Response("[]", { headers: { "Content-Type": "application/json" } });
+    }
+  }
+
+  // Studio (T-191) — new devtools shell at /studio. Old voxel-editor stays
+  // at / until parity (T-191z retires it).
+  if (pathname === "/studio" || pathname === "/studio/" || pathname === "/studio.html") {
+    return serveFile(`${distDir}studio.html`);
   }
 
   if (pathname === "/" || pathname === "/index.html") {

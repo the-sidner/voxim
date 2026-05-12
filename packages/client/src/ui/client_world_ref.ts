@@ -16,3 +16,13 @@ export const clientWorld = signal<ClientWorld | null>(null);
 export function setClientWorld(world: ClientWorld | null): void {
   clientWorld.value = world;
 }
+
+/**
+ * Local-player entity ID, set on join handshake. UI components key the local
+ * player's per-entity components (CSM, animation state, …) by this ID.
+ */
+export const localPlayerId = signal<string | null>(null);
+
+export function setLocalPlayerId(id: string | null): void {
+  localPlayerId.value = id;
+}

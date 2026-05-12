@@ -1,18 +1,20 @@
 {
   "id": "stone_pickaxe",
   "modelId": "model_pickaxe_stone",
-  "modelScale": 0.5,
+  "modelScale": 0.18,
   "components": {
     "stackable": {},
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
-      "actions": [
+      "chain": [
         {
-          "actionId": "overhead"
+          "light": "overhead",
+          "heavy": "overhead"
         }
       ],
+      "heavyChargeMs": 350,
       "damage": 9
     },
     "tool": {

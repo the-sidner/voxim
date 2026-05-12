@@ -1,0 +1,25 @@
+{
+  "_comment": "Fast piercing thrust. Short duration, low stamina, interruptible early. Designed for poke-and-retreat play and chaining into other moves.",
+  "id": "quick_stab",
+  "duration": 0.5,
+  "interruptWindows": [
+    { "fromT": 0.0, "toT": 0.1, "by": ["block", "dodge"] },
+    { "fromT": 0.35, "toT": 0.5, "by": ["dodge", "block", "swing"] }
+  ],
+  "tracks": {
+    "right_hand": [
+      { "t": 0.0, "clip": "stabbing" }
+    ],
+    "left_hand": [],
+    "locomotion": [
+      { "t": 0.05, "kind": "dash", "forward": 0.7, "duration": 0.2 }
+    ],
+    "hitEffects": [
+      { "tag": "pierce", "fromT": 0.15, "toT": 0.35, "magnitude": 1.2 }
+    ]
+  },
+  "requirements": {
+    "stamina": 10,
+    "rightWeapon": true
+  }
+}

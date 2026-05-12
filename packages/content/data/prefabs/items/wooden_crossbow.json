@@ -1,17 +1,19 @@
 {
   "id": "wooden_crossbow",
   "modelId": "model_crossbow_basic",
-  "modelScale": 0.33,
+  "modelScale": 0.13,
   "components": {
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
-      "actions": [
+      "chain": [
         {
-          "actionId": "crossbow_shot"
+          "light": "crossbow_shot",
+          "heavy": "crossbow_shot"
         }
-      ]
+      ],
+      "heavyChargeMs": 350
     },
     "weight": {
       "baseWeight": 3

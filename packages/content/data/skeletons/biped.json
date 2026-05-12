@@ -181,6 +181,22 @@
         "lower_leg_r",
         "foot_r"
       ]
+    },
+    {
+      "id": "right_arm",
+      "boneIds": [
+        "upper_arm_r",
+        "lower_arm_r",
+        "hand_r"
+      ]
+    },
+    {
+      "id": "left_arm",
+      "boneIds": [
+        "upper_arm_l",
+        "lower_arm_l",
+        "hand_l"
+      ]
     }
   ],
   "ikChains": [

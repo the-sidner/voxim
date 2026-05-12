@@ -53,6 +53,8 @@ export const ComponentType = {
   openMask:           42,
   kindGrid:           43,
   name:               44,
+  characterStateMachine: 45,
+  swingChain: 46,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

@@ -1,23 +1,25 @@
 {
   "id": "rotten_knight",
   "extends": "_playable_character",
-  "modelId": "rotten_knight",
+  "modelId": "biped_skeletal",
   "animationSlots": {
-    "idle":              "sword_and_shield_idle",
-    "walk":              "sword_and_shield_walk",
-    "run":               "sword_and_shield_run",
-    "combat_idle":       "sword_and_shield_idle",
+    "idle": "sword_and_shield_idle",
+    "walk_forward": "sword_and_shield_walk",
+    "walk_backward": "sword_and_shield_walk",
+    "strafe_left": "sword_and_shield_strafe",
+    "strafe_right": "sword_and_shield_strafe",
+    "combat_idle": "sword_and_shield_idle",
     "weapon.swing_clip": "sword_and_shield_attack",
     "weapon.block_clip": "sword_and_shield_block",
-    "hit_front":         "standing_react_small_from_front",
-    "hit_back":          "standing_react_large_from_right",
-    "death":             "sword_and_shield_death"
+    "hit_front": "standing_react_small_from_front",
+    "hit_back": "standing_react_large_from_right",
+    "death": "sword_and_shield_death"
   },
   "morphValues": {
-    "torsoHeight":   1.1,
+    "torsoHeight": 1.1,
     "shoulderWidth": 1.15,
     "rightArmScale": 1.5,
-    "leftArmScale":  0.9
+    "leftArmScale": 0.9
   },
   "components": {
     "npc": {

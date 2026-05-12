@@ -1,24 +1,26 @@
 {
   "id": "drowner",
   "extends": "_playable_character",
-  "modelId": "drowner",
+  "modelId": "biped_skeletal",
   "animationSlots": {
-    "idle":              "zombie_idle_loop",
-    "walk":              "zombie_walk_fwd_loop",
-    "run":               "zombie_walk_fwd_loop",
-    "combat_idle":       "zombie_idle_loop",
+    "idle": "zombie_idle",
+    "walk_forward": "zombie_walk",
+    "walk_backward": "zombie_walk",
+    "strafe_left": "zombie_walk",
+    "strafe_right": "zombie_walk",
+    "combat_idle": "zombie_idle",
     "weapon.swing_clip": "zombie_attack",
-    "hit_front":         "zombie_reaction_hit",
-    "hit_back":          "standing_react_large_from_right",
-    "death":             "zombie_dying"
+    "hit_front": "zombie_reaction_hit",
+    "hit_back": "standing_react_large_from_right",
+    "death": "zombie_dying"
   },
   "morphValues": {
-    "armLength":     1.4,
-    "legLength":     0.85,
-    "torsoHeight":   0.95,
+    "armLength": 1.4,
+    "legLength": 0.85,
+    "torsoHeight": 0.95,
     "shoulderWidth": 0.85,
-    "headSize":      1.1,
-    "hipWidth":      0.9
+    "headSize": 1.1,
+    "hipWidth": 0.9
   },
   "components": {
     "npc": {

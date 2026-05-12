@@ -19,6 +19,8 @@ export type {
   DurabilityData, InscribedData, QualityStampedData,
   GateEdge, GateLinkData,
   NameData,
+  CharacterStateMachineData,
+  SwingChainData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
@@ -41,6 +43,8 @@ export {
   durabilityCodec, inscribedCodec, qualityStampedCodec,
   gateLinkCodec,
   nameCodec,
+  characterStateMachineCodec,
+  swingChainCodec,
   WIRE_LIMITS,
 } from "./src/components.ts";
 

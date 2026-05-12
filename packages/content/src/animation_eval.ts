@@ -67,9 +67,18 @@ export function evaluateAnimationLayers(
   const result: Map<string, BoneRotation> = out ?? new Map();
   if (out) out.clear();
 
-  // Initialize every bone to rest pose (zero Euler rotation).
+  // Seed every bone with its rest rotation. Bones that no layer's clip
+  // animates (e.g. root) must end up here at rest, not at identity — the
+  // skeleton def's restRotX/Y/Z encodes bind orientation (root π spin to
+  // align Mixamo +Z forward with the renderer's expected forward axis).
+  // Without this seed, a clip lacking a "root" track would sample ZERO_ROT
+  // and overwrite the bind, leaving the whole rig facing 180° wrong.
   for (const bone of skeleton.bones) {
-    result.set(bone.id, { x: 0, y: 0, z: 0 });
+    result.set(bone.id, {
+      x: bone.restRotX ?? 0,
+      y: bone.restRotY ?? 0,
+      z: bone.restRotZ ?? 0,
+    });
   }
 
   for (const layer of layers) {
@@ -92,9 +101,12 @@ export function evaluateAnimationLayers(
       // Skip bones not covered by this layer's mask.
       if (maskedBones !== null && !maskedBones.has(bone.id)) continue;
 
-      // Sample this clip for the bone at normalized time t.
+      // Bones the clip doesn't animate retain their current accumulated value
+      // (rest pose for the bottom-most layer, prior layer for stacked ones) —
+      // a missing track is "no opinion", not "force to zero".
       const track = clip.tracks[bone.id];
-      const clipRot = track ? sampleTrack(track, t) : ZERO_ROT;
+      if (!track) continue;
+      const clipRot = sampleTrack(track, t);
 
       const cur = result.get(bone.id)!;
 
@@ -105,11 +117,13 @@ export function evaluateAnimationLayers(
           z: cur.z + clipRot.z * w,
         });
       } else {
-        // override: lerp from current accumulated pose to this layer's pose
+        // override: lerp from current accumulated pose to this layer's pose,
+        // using shortest-arc per component so blends near ±π don't snap
+        // through identity.
         result.set(bone.id, {
-          x: cur.x + (clipRot.x - cur.x) * w,
-          y: cur.y + (clipRot.y - cur.y) * w,
-          z: cur.z + (clipRot.z - cur.z) * w,
+          x: cur.x + shortestArcDelta(cur.x, clipRot.x) * w,
+          y: cur.y + shortestArcDelta(cur.y, clipRot.y) * w,
+          z: cur.z + shortestArcDelta(cur.z, clipRot.z) * w,
         });
       }
     }
@@ -152,9 +166,22 @@ export function sampleTrack(track: AnimationKeyframe[], t: number): BoneRotation
   const span = b.time - a.time;
   const alpha = span > 1e-9 ? (tc - a.time) / span : 0;
 
+  // Shortest-arc per Euler component: a value of 3.13 → -3.13 represents a
+  // continuous tiny rotation through π, but a naive lerp would sweep through
+  // 0 — that's the "bones fly off for one frame" artifact during transitions
+  // and at clip boundaries. Wrapping the delta into [-π, π] picks the short
+  // way around per component.
   return {
-    x: a.rotX + (b.rotX - a.rotX) * alpha,
-    y: a.rotY + (b.rotY - a.rotY) * alpha,
-    z: a.rotZ + (b.rotZ - a.rotZ) * alpha,
+    x: a.rotX + shortestArcDelta(a.rotX, b.rotX) * alpha,
+    y: a.rotY + shortestArcDelta(a.rotY, b.rotY) * alpha,
+    z: a.rotZ + shortestArcDelta(a.rotZ, b.rotZ) * alpha,
   };
+}
+
+const TWO_PI = Math.PI * 2;
+function shortestArcDelta(a: number, b: number): number {
+  let d = (b - a) % TWO_PI;
+  if (d > Math.PI) d -= TWO_PI;
+  else if (d < -Math.PI) d += TWO_PI;
+  return d;
 }

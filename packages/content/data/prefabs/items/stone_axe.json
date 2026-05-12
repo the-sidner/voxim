@@ -1,18 +1,19 @@
 {
   "id": "stone_axe",
   "modelId": "model_axe_stone",
-  "modelScale": 0.5,
+  "modelScale": 0.18,
   "components": {
     "stackable": {},
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
-      "actions": [
-        {
-          "actionId": "slash"
-        }
+      "chain": [
+        { "light": "slash_horizontal", "heavy": "heavy_overhead" },
+        { "light": "slash_backhand",   "heavy": "heavy_overhead" },
+        { "light": "slash_inward",     "heavy": "heavy_360" }
       ],
+      "heavyChargeMs": 350,
       "damage": 12
     },
     "tool": {

@@ -1,0 +1,230 @@
+{
+  "id": "carrying_idle",
+  "loop": true,
+  "tracks": {
+    "torso_lower": [
+      {
+        "time": 0,
+        "rotX": -0.18,
+        "rotY": 0.0484,
+        "rotZ": 0.0112
+      },
+      {
+        "time": 1,
+        "rotX": -0.18,
+        "rotY": 0.0484,
+        "rotZ": 0.0112
+      }
+    ],
+    "torso_mid": [
+      {
+        "time": 0,
+        "rotX": -0.05,
+        "rotY": -0.0067,
+        "rotZ": -0.0079
+      },
+      {
+        "time": 1,
+        "rotX": -0.05,
+        "rotY": -0.0067,
+        "rotZ": -0.0079
+      }
+    ],
+    "torso_upper": [
+      {
+        "time": 0,
+        "rotX": -0.0096,
+        "rotY": -0.0071,
+        "rotZ": -0.005
+      },
+      {
+        "time": 1,
+        "rotX": -0.0096,
+        "rotY": -0.0071,
+        "rotZ": -0.005
+      }
+    ],
+    "head": [
+      {
+        "time": 0,
+        "rotX": -0.0663,
+        "rotY": 0.0275,
+        "rotZ": 0.0001
+      },
+      {
+        "time": 1,
+        "rotX": -0.0663,
+        "rotY": 0.0275,
+        "rotZ": 0.0001
+      }
+    ],
+    "upper_arm_l": [
+      {
+        "time": 0,
+        "rotX": 2.2917,
+        "rotY": -0.7459,
+        "rotZ": -0.2437
+      },
+      {
+        "time": 1,
+        "rotX": 2.2917,
+        "rotY": -0.7459,
+        "rotZ": -0.2437
+      }
+    ],
+    "lower_arm_l": [
+      {
+        "time": 0,
+        "rotX": 0.0403,
+        "rotY": 0.0441,
+        "rotZ": 1.45
+      },
+      {
+        "time": 1,
+        "rotX": 0.0403,
+        "rotY": 0.0441,
+        "rotZ": 1.45
+      }
+    ],
+    "hand_l": [
+      {
+        "time": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 1,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "upper_arm_r": [
+      {
+        "time": 0,
+        "rotX": 2.5767,
+        "rotY": 0.9631,
+        "rotZ": 0.0403
+      },
+      {
+        "time": 1,
+        "rotX": 2.5767,
+        "rotY": 0.9631,
+        "rotZ": 0.0403
+      }
+    ],
+    "lower_arm_r": [
+      {
+        "time": 0,
+        "rotX": 0.0418,
+        "rotY": -0.0539,
+        "rotZ": -1.45
+      },
+      {
+        "time": 1,
+        "rotX": 0.0418,
+        "rotY": -0.0539,
+        "rotZ": -1.45
+      }
+    ],
+    "hand_r": [
+      {
+        "time": 0,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      },
+      {
+        "time": 1,
+        "rotX": 0,
+        "rotY": 0,
+        "rotZ": 0
+      }
+    ],
+    "upper_leg_l": [
+      {
+        "time": 0,
+        "rotX": -0.1381,
+        "rotY": -0.0722,
+        "rotZ": -2.9783
+      },
+      {
+        "time": 1,
+        "rotX": -0.1381,
+        "rotY": -0.0722,
+        "rotZ": -2.9783
+      }
+    ],
+    "lower_leg_l": [
+      {
+        "time": 0,
+        "rotX": -2.0414,
+        "rotY": -0.1449,
+        "rotZ": -0.0832
+      },
+      {
+        "time": 1,
+        "rotX": -2.0414,
+        "rotY": -0.1449,
+        "rotZ": -0.0832
+      }
+    ],
+    "foot_l": [
+      {
+        "time": 0,
+        "rotX": 1.3107,
+        "rotY": 0.0145,
+        "rotZ": -0.1034
+      },
+      {
+        "time": 1,
+        "rotX": 1.3107,
+        "rotY": 0.0145,
+        "rotZ": -0.1034
+      }
+    ],
+    "upper_leg_r": [
+      {
+        "time": 0,
+        "rotX": -0.0764,
+        "rotY": -0.0132,
+        "rotZ": 2.9392
+      },
+      {
+        "time": 1,
+        "rotX": -0.0764,
+        "rotY": -0.0132,
+        "rotZ": 2.9392
+      }
+    ],
+    "lower_leg_r": [
+      {
+        "time": 0,
+        "rotX": -2.0223,
+        "rotY": 0.1539,
+        "rotZ": 0.0982
+      },
+      {
+        "time": 1,
+        "rotX": -2.0223,
+        "rotY": 0.1539,
+        "rotZ": 0.0982
+      }
+    ],
+    "foot_r": [
+      {
+        "time": 0,
+        "rotX": 1.3347,
+        "rotY": -0.0939,
+        "rotZ": 0.07
+      },
+      {
+        "time": 1,
+        "rotX": 1.3347,
+        "rotY": -0.0939,
+        "rotZ": 0.07
+      }
+    ]
+  }
+}
