@@ -303,7 +303,17 @@ is deleted; rebuilds happen each tick (cheap — O(active buffs + equipped
 slots)).
 
 ### T-196 · Buffs component + BuffSystem (continuous + discrete channels)
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: cbb88af
+
+The original ticket scope (new Buffs component, new BuffSystem) was
+already covered by the existing ActiveEffects / BuffSystem framework.
+What landed in this commit is the missing authoring + discrete-event
+half: `data/buffs/*.json` declarative defs, the `applyBuffById` helper
+to apply them from gameplay code, boot-time validation that every
+BuffDef.effectStat resolves, and an `onApplyEvent` channel that pushes
+into TickEventBuffer for the CSM to react to. Stacking / onExpire are
+intentionally out of scope until a buff with stack semantics or expire
+behaviour needs them.
 
 Status effects (slow, poison, stunned, frozen, sleeping, bleed, blessed,
 cursed) don't have a home. Each future system would otherwise reinvent
