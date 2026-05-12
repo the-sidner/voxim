@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef, ManeuverDef, BuffDef } from "./types.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
@@ -49,7 +49,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, stateMachinesRaw, animLibraryArchetypes,
+    biomesRaw, zonesRaw, stateMachinesRaw, maneuversRaw, buffsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -65,6 +65,8 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "biomes"),
     readJsonDir(dataDir, "zones"),
     readJsonDir(dataDir, "state_machines").catch(() => []),
+    readJsonDir(dataDir, "maneuvers").catch(() => []),
+    readJsonDir(dataDir, "buffs").catch(() => []),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -142,6 +144,14 @@ async function loadContentStoreInternal(
 
   for (const raw of stateMachinesRaw as StateMachineDef[]) {
     store.registerStateMachine(raw);
+  }
+
+  for (const raw of maneuversRaw as ManeuverDef[]) {
+    store.registerManeuver(raw);
+  }
+
+  for (const raw of buffsRaw as BuffDef[]) {
+    store.registerBuff(raw);
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
@@ -303,6 +313,9 @@ export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
       const mergedMorph = self.morphValues === undefined && parent.morphValues === undefined
         ? undefined
         : { ...(parent.morphValues ?? {}), ...(self.morphValues ?? {}) };
+      const mergedMorphRanges = self.morphRanges === undefined && parent.morphRanges === undefined
+        ? undefined
+        : { ...(parent.morphRanges ?? {}), ...(self.morphRanges ?? {}) };
       effective = {
         id: self.id,
         ...(self.extends !== undefined && { extends: self.extends }),
@@ -314,6 +327,7 @@ export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
         ...(mergedStats !== undefined && { stats: mergedStats }),
         ...(mergedSlots !== undefined && { animationSlots: mergedSlots }),
         ...(mergedMorph !== undefined && { morphValues: mergedMorph }),
+        ...(mergedMorphRanges !== undefined && { morphRanges: mergedMorphRanges }),
         components: mergeComponents(parent.components, self.components),
       };
     } else {

@@ -39,6 +39,7 @@ export type {
   IncomingDamageHook,
   IncomingDamageContext,
 } from "./damage_hook.ts";
+export { applyBuffById } from "./apply_buff.ts";
 
 export interface EffectRegistries {
   readonly apply: Registry<EffectApplyHandler>;

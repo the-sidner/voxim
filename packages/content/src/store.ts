@@ -50,6 +50,8 @@ import type {
   WeaponActionDef,
   VerbDef,
   StateMachineDef,
+  ManeuverDef,
+  BuffDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
@@ -89,6 +91,21 @@ export interface ContentService {
    * gameplay systems also read CSM nodes for mode gating.
    */
   readonly stateMachines: ContentRegistryReadonly<StateMachineDef>;
+  /**
+   * Maneuvers keyed by id (T-185). Composable per-hand actions — see
+   * ManeuverDef. ActionSystem looks up by id when input dispatches a skill
+   * slot, ManeuverScheduler advances the timeline.
+   */
+  readonly maneuvers: ContentRegistryReadonly<ManeuverDef>;
+  /**
+   * Buffs keyed by id (T-196). Declarative status-effect definitions loaded
+   * from `data/buffs/*.json`. `applyBuffById` in tile-server reads the def
+   * and dispatches to the registered EffectApplyHandler matching
+   * `def.effectStat`. Onboard authoring path for buffs that don't need
+   * custom code — adding a new slow / poison / heal-over-time is a file
+   * drop, no handler changes.
+   */
+  readonly buffs: ContentRegistryReadonly<BuffDef>;
 
   // ---- specialized lookups ----
   /** Resolve a material by its numeric MaterialId (the wire/storage key). */
@@ -191,6 +208,14 @@ export class StaticContentStore implements ContentService {
     kind: "stateMachine",
     idOf: (sm) => sm.id,
   });
+  public readonly maneuvers = new ContentRegistry<ManeuverDef>({
+    kind: "maneuver",
+    idOf: (m) => m.id,
+  });
+  public readonly buffs = new ContentRegistry<BuffDef>({
+    kind: "buff",
+    idOf: (b) => b.id,
+  });
 
   // ---- secondary indices ----
   private materialsByNumericId = new Map<MaterialId, MaterialDef>();
@@ -291,6 +316,14 @@ export class StaticContentStore implements ContentService {
 
   registerStateMachine(sm: StateMachineDef): void {
     this.stateMachines.register(sm);
+  }
+
+  registerManeuver(def: ManeuverDef): void {
+    this.maneuvers.register(def);
+  }
+
+  registerBuff(def: BuffDef): void {
+    this.buffs.register(def);
   }
 
   setGameConfig(config: GameConfig): void {

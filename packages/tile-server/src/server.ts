@@ -307,6 +307,18 @@ export class TileServer {
       }
     }
 
+    // T-196: BuffDef content cross-check — every `effectStat` referenced
+    // from `data/buffs/*.json` must also resolve to a registered apply
+    // handler so the runtime can dispatch.
+    for (const buff of content.buffs.values()) {
+      if (!effects.apply.has(buff.effectStat)) {
+        throw new Error(
+          `BuffDef "${buff.id}" references effectStat "${buff.effectStat}" ` +
+          `but no apply handler is registered. Registered: [${effects.apply.ids().join(", ")}]`
+        );
+      }
+    }
+
     // DeathSystem owns the single RequestDeath queue — systems with health-loss
     // kill paths publish here instead of calling world.destroy directly.
     // Hook registry is empty for now; later populated with drop-table, heir-spawn,

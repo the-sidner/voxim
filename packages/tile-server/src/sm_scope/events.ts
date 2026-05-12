@@ -22,6 +22,7 @@ const KNOWN_EVENTS = [
   "event.hit.from_back",
   "event.stagger.light",
   "event.stagger.heavy",
+  "event.stunned",
   "event.maneuver_started",
   "event.maneuver_ended",
 ] as const;

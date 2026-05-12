@@ -80,6 +80,7 @@ export type {
   SMLayer,
   StateMachineDef,
   ManeuverDef,
+  BuffDef,
   ManeuverHandTrack,
   ManeuverLocomotionTrack,
   ManeuverHitEffect,

@@ -4,42 +4,43 @@
  *
  * Wire format:
  *
- *   uint32 LE  version           — bump when schema changes (currently 1)
- *   uint32 LE  bodyLength        — bytes of UTF-8 JSON that follow
- *   bytes      bodyJson          — JSON.stringify of the ContentBootstrap envelope
+ *   uint32 LE  magic VOXB (0x564f5842)
+ *   uint32 LE  version            — bump when schema changes
+ *   uint32 LE  jsonGzippedLength
+ *   bytes      jsonGzipped        — gzipped JSON of everything except animation libraries
+ *   uint32 LE  animBinaryLength
+ *   bytes      animBinary         — packed binary AnimationLibrary[] (see anim_codec.ts)
  *
- * The body holds every registry's contents as plain JS objects plus the
- * singleton config. JSON keeps the implementation simple at the cost of
- * ~2x bytes vs a tagged binary encoding; the full content blob is
- * expected to land in the 1-5 MB compressed range, well under what a
- * single WT-stream send can handle.
+ * Animation libraries are split out because their dense f32 keyframe tracks
+ * dominate the payload: encoding 350+ clips as JSON inflates each f32 to a
+ * 7-char string and gzip can't dedupe noisy float text, blowing the 16 MiB
+ * frame cap. The packed binary form is ~5× smaller before any compression.
  *
- * On the server: build the blob once at startup, send to every joining
- * client immediately after TileJoinAck. On the client: decode → hydrate
- * a StaticContentStore → expose as ContentService. No round-trips needed
- * for individual lookups.
+ * Property: tile-server pre-builds the blob once at startup and sends it on
+ * the join stream right after TileJoinAck. The client decodes and hydrates
+ * a StaticContentStore — no per-lookup round-trips.
  */
 
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
+import { encodeAnimationLibraries, decodeAnimationLibraries } from "./anim_codec.ts";
 import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
-  AnimationLibrary, StateMachineDef,
+  StateMachineDef, ManeuverDef, BuffDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 3;
+export const BOOTSTRAP_VERSION = 6;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
 
-interface ContentBootstrap {
+interface ContentBootstrapJson {
   materials:           MaterialDef[];
   models:              ModelDefinition[];
   skeletons:           SkeletonDef[];
-  animationLibraries:  AnimationLibrary[];
   prefabs:             Prefab[];
   recipes:             Recipe[];
   npcTemplates:        NpcTemplate[];
@@ -51,14 +52,12 @@ interface ContentBootstrap {
   verbs:               VerbDef[];
   conceptVerbEntries:  ConceptVerbEntry[];
   stateMachines:       StateMachineDef[];
+  maneuvers:           ManeuverDef[];
+  buffs:               BuffDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
 }
 
-/**
- * gzip a Uint8Array via Web Streams CompressionStream (available in both
- * Deno and modern browsers). Returns the compressed bytes.
- */
 async function gzip(input: Uint8Array): Promise<Uint8Array> {
   const cs = new CompressionStream("gzip");
   const writer = cs.writable.getWriter();
@@ -104,18 +103,15 @@ async function gunzip(input: Uint8Array): Promise<Uint8Array> {
 /**
  * Encode a ContentService into a transport-ready blob.
  *
- * Iterates each registry once, captures the singleton config, JSON-encodes,
- * gzips, and prepends the magic + version + length frame. The body is
- * gzipped because at scale (350+ clips with dense keyframes) the raw JSON
- * runs 20-30 MB; gzip cuts it to ~3-5 MB which fits comfortably in a single
- * WT handshake send.
+ * Animation libraries are packed binary; everything else round-trips as gzipped
+ * JSON. The two pieces are concatenated with length prefixes inside the magic
+ * + version envelope.
  */
 export async function encodeBootstrap(service: ContentService): Promise<Uint8Array> {
-  const body: ContentBootstrap = {
+  const jsonBody: ContentBootstrapJson = {
     materials:           [...service.materials.values()],
     models:              [...service.models.values()],
     skeletons:           [...service.skeletons.values()],
-    animationLibraries:  [...service.animationLibraries.values()],
     prefabs:             [...service.prefabs.values()],
     recipes:             [...service.recipes.values()],
     npcTemplates:        [...service.npcTemplates.values()],
@@ -127,37 +123,42 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     verbs:               [...service.verbs.values()],
     conceptVerbEntries:  [...service.getAllConceptVerbEntries()],
     stateMachines:       [...service.stateMachines.values()],
+    maneuvers:           [...service.maneuvers.values()],
+    buffs:               [...service.buffs.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
   };
 
-  const json = JSON.stringify(body);
-  const jsonBytes = new TextEncoder().encode(json);
-  const compressed = await gzip(jsonBytes);
-  const out = new Uint8Array(12 + compressed.length);
+  const jsonBytes = new TextEncoder().encode(JSON.stringify(jsonBody));
+  const jsonGzipped = await gzip(jsonBytes);
+
+  const animBinary = encodeAnimationLibraries([...service.animationLibraries.values()]);
+
+  const out = new Uint8Array(4 + 4 + 4 + jsonGzipped.length + 4 + animBinary.length);
   const view = new DataView(out.buffer);
-  view.setUint32(0, MAGIC, true);
-  view.setUint32(4, BOOTSTRAP_VERSION, true);
-  // bodyLength == compressed bytes length. Decoder gunzips the body.
-  view.setUint32(8, compressed.length, true);
-  out.set(compressed, 12);
+  let off = 0;
+  view.setUint32(off, MAGIC, true);                 off += 4;
+  view.setUint32(off, BOOTSTRAP_VERSION, true);     off += 4;
+  view.setUint32(off, jsonGzipped.length, true);    off += 4;
+  out.set(jsonGzipped, off);                        off += jsonGzipped.length;
+  view.setUint32(off, animBinary.length, true);     off += 4;
+  out.set(animBinary, off);
   return out;
 }
 
 /**
  * Decode a blob produced by `encodeBootstrap` and hydrate a fresh
- * StaticContentStore. Returns it typed as ContentService — consumers don't
- * need to know it's the in-memory implementation.
+ * StaticContentStore.
  *
  * Throws on magic mismatch (caught at the call site by the network layer)
  * or version mismatch (caller should reload after a fresh handshake).
  */
 export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService> {
-  if (blob.length < 12) {
+  if (blob.length < 16) {
     throw new Error(`bootstrap_codec: blob too short (${blob.length} bytes)`);
   }
-  // Use a DataView aligned to the blob's actual byte offset — Uint8Array
-  // sub-slices share the underlying buffer at non-zero offsets.
+  // Sub-slices share the underlying buffer at non-zero offsets, so anchor the
+  // DataView to the blob's actual byte offset.
   const view = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
   const magic = view.getUint32(0, true);
   if (magic !== MAGIC) {
@@ -167,19 +168,30 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   if (version !== BOOTSTRAP_VERSION) {
     throw new Error(`bootstrap_codec: version ${version}, expected ${BOOTSTRAP_VERSION}`);
   }
-  const len = view.getUint32(8, true);
-  if (blob.length < 12 + len) {
-    throw new Error(`bootstrap_codec: truncated body (claimed ${len} bytes, blob has ${blob.length - 12})`);
+
+  const jsonLen = view.getUint32(8, true);
+  const jsonStart = 12;
+  if (blob.length < jsonStart + jsonLen + 4) {
+    throw new Error(`bootstrap_codec: truncated json body (claimed ${jsonLen} bytes)`);
   }
-  const compressedBytes = new Uint8Array(blob.buffer, blob.byteOffset + 12, len);
-  const jsonBytes = await gunzip(compressedBytes);
-  const body = JSON.parse(new TextDecoder().decode(jsonBytes)) as ContentBootstrap;
+  const jsonGzipped = new Uint8Array(blob.buffer, blob.byteOffset + jsonStart, jsonLen);
+  const jsonBytes = await gunzip(jsonGzipped);
+  const body = JSON.parse(new TextDecoder().decode(jsonBytes)) as ContentBootstrapJson;
+
+  const animLenOff = jsonStart + jsonLen;
+  const animLen = view.getUint32(animLenOff, true);
+  const animStart = animLenOff + 4;
+  if (blob.length < animStart + animLen) {
+    throw new Error(`bootstrap_codec: truncated anim section (claimed ${animLen} bytes)`);
+  }
+  const animBinary = new Uint8Array(blob.buffer, blob.byteOffset + animStart, animLen);
+  const animationLibraries = decodeAnimationLibraries(animBinary);
 
   const store = new StaticContentStore();
   for (const m of body.materials)            store.registerMaterial(m);
   for (const m of body.models)               store.registerModel(m);
   for (const s of body.skeletons)            store.registerSkeleton(s);
-  for (const lib of body.animationLibraries) store.registerAnimationLibrary(lib);
+  for (const lib of animationLibraries)      store.registerAnimationLibrary(lib);
   for (const p of body.prefabs)              store.registerPrefab(p);
   for (const r of body.recipes)              store.registerRecipe(r);
   for (const n of body.npcTemplates)         store.registerNpcTemplate(n);
@@ -191,6 +203,12 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const v of body.verbs)                store.registerVerbDef(v);
   for (const e of body.conceptVerbEntries)   store.registerConceptVerbEntry(e);
   for (const sm of body.stateMachines)       store.registerStateMachine(sm);
+  if (body.maneuvers) {
+    for (const m of body.maneuvers)          store.registerManeuver(m);
+  }
+  if (body.buffs) {
+    for (const b of body.buffs)              store.registerBuff(b);
+  }
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
 
