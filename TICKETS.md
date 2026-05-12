@@ -1549,6 +1549,123 @@ clearly interwoven layout (multiple paths between most room pairs), corridors vi
 follow noise-thin regions instead of cutting straight lines, and the four named presets
 each give a distinct overall topology.
 
+### T-203 · `@voxim/levelgen` — typed transformer pipeline package
+Effort: S   Status: in-progress
+
+The tilemap pipeline in `packages/atlas/src/tilemap/pipeline/` is already a series of
+pure `runX(state, params, seed) → state` functions, but the contract is informal: each
+stage invents its own signature, the orchestrator in `generate.ts` threads state by
+hand, and there is no place for cross-cutting concerns (tracing, memoization, seed
+splitting, pluggable implementations). As level generation grows (yin-yang macro mask,
+wilderness segmentation, POI dependency DAG, content fill — see T-204, T-205, and the
+broader level-design notes), this needs to be a real abstraction.
+
+Create a new package `@voxim/levelgen` that holds only the infrastructure — no
+algorithms. It is the contract every level-gen stage in the project (atlas, tile-server,
+future tools) speaks.
+
+Surface:
+- `Transformer<TIn, TOut, TParams>` — `(state: TIn, seed: number, params: TParams) => TOut`.
+  Pure, deterministic, no I/O.
+- `pipe(a, b, c, …)` — type-aware composition. The TS compiler rejects a pipeline whose
+  intermediate types don't match. Returns a `Transformer<First.TIn, Last.TOut, …>`.
+- `splitSeed(globalSeed: number, stageId: string): number` — deterministic hash so each
+  stage runs on its own RNG stream. Changing late-stage params does not reroll early
+  stages. Implementation: stable string-hash (e.g. xxhash32 or FNV-1a) combined with the
+  global seed; must be portable and independent of JS engine ordering.
+- `Registry<TIn, TOut, TParams>` — keyed lookup of transformer implementations for one
+  stage. `register(id, transformer)`, `get(id)`. Enables pluggability (Voronoi vs.
+  WFC segmentation, etc.) without baking choices into the orchestrator.
+- `withTrace(transformer, sink)` — wrapper that publishes `{ stageId, inputHash,
+  outputHash, params, durationMs }` to a sink for inspector use. Production code uses
+  the bare transformer; Atlas wraps for instrumentation.
+- `memoize(transformer)` — keyed on `(inputHash, seed, paramsHash)`. Optional opt-in;
+  used by Atlas's inspector to keep "slider tweak → repaint" fast.
+
+Constraints:
+- Zero runtime dependencies beyond `@voxim/engine`'s utility surface (and only if
+  actually needed — prefer no deps).
+- Hashing utilities live here too, so atlas and tile-server agree byte-for-byte on
+  `(input, params) → hash`.
+- The package is consumed by both atlas and tile-server — no platform-specific code.
+
+Done when: `deno check` passes; `@voxim/levelgen` exports the surface above; a tiny
+internal smoke test composes two no-op transformers, verifies typed `pipe` rejects a
+mismatch, and shows `splitSeed` produces stable, well-distributed sub-seeds. No
+consumer migration in this ticket — that lands in T-204.
+
+### T-204 · Migrate atlas tilemap pipeline to `@voxim/levelgen` Transformer interface
+Effort: M   Status: todo   Depends on: T-203
+
+The 9-stage tilemap pipeline (`noise_field → junctions → network → rooms →
+portal_placement → boundary_kinds → rivers → terrain → materials`) lives in
+`packages/atlas/src/tilemap/pipeline/` with ad-hoc `runX` signatures and hand-threaded
+state in `generate.ts`. Lift it onto the Transformer contract from T-203.
+
+Per stage:
+- Define explicit `TIn` / `TOut` types (no more shared "TileState" grab-bag — each
+  stage names exactly what it consumes and what it produces).
+- Convert `runX` to `Transformer<TIn, TOut, TParams>` where `TParams` is the relevant
+  slice of `GenParams`.
+- Replace the per-stage `seed` argument with a `splitSeed(tileSeed, stageId)` call
+  inside the orchestrator. Stages must not see the global tile seed directly.
+- Replace `generate.ts`'s hand-threaded orchestration with one `pipe(...)` composition
+  parameterised by the `GenParams` object.
+
+Determinism gate (the bar for "done"):
+- Snapshot the current inspector output (openMask, chamberOf, kindOf, heightmap,
+  materials, gateSummary) for every named preset and a handful of representative seeds
+  before the refactor.
+- After the refactor, regenerate and assert **byte-identical** output. Any divergence
+  is a bug in the migration, not a freedom granted by the abstraction.
+- Snapshot test lives in `packages/atlas` and runs under `deno test`.
+
+Tile-server's call into atlas (if any — verify; otherwise this is purely an atlas-side
+refactor) updates in the same commit. No shims, no `runXLegacy`, no parallel paths.
+
+Done when: snapshot test green for every preset, `deno check
+packages/atlas/mod.ts` passes, `generate.ts` is a one-screen `pipe(...)` composition,
+and every old `runX` is either renamed/replaced or deleted.
+
+### T-205 · Atlas inspector — pipeline trace, layer toggles, transformer-swap UI
+Effort: M   Status: todo   Depends on: T-204
+
+With T-204 the pipeline is a list of typed Transformers each producing a snapshottable
+state. Build the inspector affordances that turn that into a real procedural-generation
+playground:
+
+- **Per-stage trace panel** — shows every stage in pipeline order with input/output
+  hashes, duration, and a "view output" radio. Selecting a stage renders that stage's
+  output as the inspector's primary view (instead of the final tile). Layer overlays
+  (gates, junctions, chambers, network edges) compose on top.
+- **Per-stage param editor** — each stage's `TParams` slice renders as labeled controls
+  derived from the existing `GenParams` knob-hints. Editing a param re-runs the
+  pipeline from that stage onward (earlier stages hit the memoization cache from T-203
+  and don't recompute).
+- **Memoized re-runs** — apply `memoize` to every stage. Goal: a slider tweak in the
+  late-stage `materials` params updates the view in under ~50 ms for a 512² tile.
+  Verify by instrumenting and showing the "cache hit / cache miss" per stage in the
+  trace panel.
+- **Pipeline-config picker** — surface a single dropdown that loads a named pipeline
+  config (transformer choice per stage, default params). v1 ships with the current
+  pipeline as the only choice and the four existing GenParams presets — the
+  *architecture* supports more, but populating alternative implementations is later
+  work. Picker selection is reflected in the URL so configs are shareable.
+- **State export/import** — a "dump state at stage N" button writes the
+  serialised `TOut` of any stage to a JSON file. Loading a dumped state into the
+  inspector skips upstream stages and renders from there. Foundation for bug repros
+  and CI fixtures.
+
+The "manual override" / hand-paint mode is explicitly **out of scope** — it would
+introduce a second source of truth and break determinism. Editing happens through
+procedural params only.
+
+Done when: opening Atlas on a freshly generated tile shows the trace panel populated
+with all 9 stages, clicking each stage swaps the primary view to that stage's output,
+slider tweaks confirm sub-50ms repaints for late-stage edits via the cache-hit
+indicator, dumping and reloading an intermediate state round-trips byte-identical, and
+the URL captures the active preset + seed.
+
 ---
 
 ## Rendering & Client
@@ -4482,6 +4599,52 @@ Done when: a sample two-step `double_strike` maneuver lives in data,
 firing it locks the player for its duration, plays a left-arm clip then a
 right-arm clip with a forward dash, and applies a "bleed" tag on hit. Both
 PC and an NPC can be authored to use the same ManeuverDef.
+
+### T-200 · Per-bone hitbox fallback for skeletal-viz models
+Effort: S   Status: done
+
+`biped_skeletal` (and any future skeletal-viz model) authors every
+bone_segment sub-object with `hitbox: false` — they're purely visual.
+`deriveHitboxTemplate` consequently produced zero parts for every PC
+that uses `biped_skeletal`, and the entity had no hittable volume.
+
+Add a skeleton-driven fallback inside `deriveHitboxTemplate`: when the
+sub-object loop yields nothing AND the model declares a `skeletonId`,
+emit one bone-local capsule per bone — origin → first-declared child's
+rest offset for non-terminals, fixed nub along bone-local +Y for
+terminals. Radius from a per-bone table (matching `build_skeletal.ts`),
+falling back to `DEFAULT_BONE_RADIUS` for unknown bones. The capsules
+are anchored to the parent bone, so live `applyHitboxTemplate` continues
+to wrap them in the bone's world transform every tick.
+
+`HitboxContentAdapter` gains an optional `getSkeleton(id)` — both
+adapter callsites (server `StaticContentStore`, client `ContentCache`)
+wire it through.
+
+### T-201 · Weapon trail fires only during swing.active
+Effort: XS   Status: done
+
+The 4-stage swing flow (windup → stop → active → winddown) mapped
+`ticksIntoAction` for the windup hold and stop pause into the renderer's
+[windupTicks, windupTicks+activeTicks) trail window, so the trail
+accumulated stationary slices before the blade ever moved. LMB swings
+looked broken; skill-fired maneuvers worked because the maneuver bridge
+only seeds ticksIntoAction inside the active window.
+
+Set ticksIntoAction = 0 during swing.windup and swing.stop (pre-active);
+keep cumulative values for swing.active and swing.winddown.
+`weaponActionId` still propagates so the weapon-attachment math (which
+keys off weaponActionId, not ticksIntoAction) stays aligned with the
+swing pose.
+
+### T-202 · Player + NPC scale tuning
+Effort: XS   Status: done
+
+Player `modelScale` was bumped to 2.4 during skeletal-viz testing; halve
+it (1.2) so the character matches the world scale. Author per-NPC
+`modelScale` to nudge the biped humanoids slightly above the player —
+archer/bandit/merchant/villager 1.4, drowner 1.35, rotten_knight 1.5,
+wolf 1.3. Existing morphRanges keep silhouette variation on top.
 
 ---
 

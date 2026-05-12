@@ -12,7 +12,8 @@
     "packages/ai-manager",
     "packages/atlas",
     "packages/db",
-    "packages/devtools"
+    "packages/devtools",
+    "packages/levelgen"
   ],
   "imports": {
     "valibot": "jsr:@valibot/valibot@^1.0.0",
