@@ -22,6 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef, ManeuverDef, BuffDef } from "./types.ts";
+import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
 /** Default data directory — packages/content/data/ relative to this file. */
@@ -49,7 +50,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, stateMachinesRaw, maneuversRaw, buffsRaw, animLibraryArchetypes,
+    biomesRaw, zonesRaw, poisRaw, stateMachinesRaw, maneuversRaw, buffsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -64,6 +65,7 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
     readJsonDir(dataDir, "zones"),
+    readJsonDir(dataDir, "pois").catch(() => []),
     readJsonDir(dataDir, "state_machines").catch(() => []),
     readJsonDir(dataDir, "maneuvers").catch(() => []),
     readJsonDir(dataDir, "buffs").catch(() => []),
@@ -140,6 +142,12 @@ async function loadContentStoreInternal(
 
   for (const raw of zonesRaw as ZoneDef[]) {
     store.registerZone(raw);
+  }
+
+  // POIs (T-206) are validated via valibot at load time — malformed
+  // authoring fails loud with the POI id + the offending field path.
+  for (const raw of poisRaw) {
+    store.registerPoi(parsePoiDef(raw));
   }
 
   for (const raw of stateMachinesRaw as StateMachineDef[]) {

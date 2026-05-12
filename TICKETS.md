@@ -1667,7 +1667,7 @@ indicator, dumping and reloading an intermediate state round-trips byte-identica
 the URL captures the active preset + seed.
 
 ### T-206 · POI content schema — TypeScript types + valibot validation + loader
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: (pending)
 
 The POI schema is designed and three example POIs ship in
 `packages/content/data/pois/` (`wolf_den`, `ancient_arena`, `glyph_puzzle`),

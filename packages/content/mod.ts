@@ -67,6 +67,27 @@ export type {
   BiomeMaterialRule,
   ZoneDef,
   ZoneClassifyRule,
+  PoiDef,
+  PoiType,
+  PoiRole,
+  ZoneRole,
+  PoiFit,
+  PoiGate,
+  PoiGateOpen,
+  PoiGateItem,
+  PoiGateMulti,
+  PoiGateChoice,
+  PoiReward,
+  PoiExtraDrop,
+  TrinketTheme,
+  PoiActivity,
+  PoiActivityEncounter,
+  PoiActivityBossfight,
+  PoiActivityWave,
+  PoiActivityWaveEntry,
+  PoiActivityPuzzle,
+  PoiActivityAction,
+  PoiActivityExploration,
   BehaviorTreeSpec,
   WeaponActionDef,
   WeaponBladeDef,
@@ -133,6 +154,9 @@ export { StaticContentStore, resolveSubObjects, resolveMorphParams } from "./src
 // registry after load.
 export type { ContentRegistryReadonly, ContentRegistryOptions, Tagged } from "./src/registry.ts";
 export { ContentRegistry } from "./src/registry.ts";
+
+// ---- POI schema validation (T-206) ----
+export { parsePoiDef } from "./src/poi_schema.ts";
 
 // ---- recipe graph (reverse index for crafting planner) ----
 export type { RecipeGraph } from "./src/recipe_graph.ts";

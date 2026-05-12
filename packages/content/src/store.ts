@@ -40,6 +40,8 @@ import type {
   BehaviorTreeSpec,
   BiomeDef,
   ZoneDef,
+  PoiDef,
+  PoiRole,
   LoreFragment,
   Prefab,
   ConceptVerbEntry,
@@ -76,6 +78,12 @@ export interface ContentService {
   readonly behaviorTrees:   ContentRegistryReadonly<BehaviorTreeSpec>;
   readonly biomes:          ContentRegistryReadonly<BiomeDef>;
   readonly zones:           ContentRegistryReadonly<ZoneDef>;
+  /**
+   * POI definitions (T-206). Authored as one JSON file per POI in
+   * `data/pois/`. Consumed by the Tier-6 generator (T-209) when weaving
+   * tiles into POI-dependency-DAGs.
+   */
+  readonly pois:            ContentRegistryReadonly<PoiDef>;
   readonly loreFragments:   ContentRegistryReadonly<LoreFragment>;
   readonly weaponActions:   ContentRegistryReadonly<WeaponActionDef>;
   readonly verbs:           ContentRegistryReadonly<VerbDef>;
@@ -129,6 +137,11 @@ export interface ContentService {
   getBiomesByPriority(): readonly BiomeDef[];
   /** Zones pre-sorted by ascending priority. */
   getZonesByPriority(): readonly ZoneDef[];
+
+  /** All POIs whose `roles` list includes the given DAG role. */
+  findPoisByRole(role: PoiRole): readonly PoiDef[];
+  /** All POIs whose `tags` list includes the given tag (case-sensitive). */
+  findPoisByTag(tag: string): readonly PoiDef[];
 
   // ---- derived caches ----
   deriveItemStats(prefabId: string, parts?: ItemPart[], quality?: number): DerivedItemStats;
@@ -188,6 +201,10 @@ export class StaticContentStore implements ContentService {
     kind: "zone",
     idOf: (z) => z.id,
   });
+  public readonly pois = new ContentRegistry<PoiDef>({
+    kind: "poi",
+    idOf: (p) => p.id,
+  });
   public readonly loreFragments = new ContentRegistry<LoreFragment>({
     kind: "loreFragment",
     idOf: (f) => f.id,
@@ -222,6 +239,9 @@ export class StaticContentStore implements ContentService {
   private conceptVerbEntries = new Map<string, ConceptVerbEntry>();
   private biomesByPrioritySorted: BiomeDef[] = [];
   private zonesByPrioritySorted: ZoneDef[] = [];
+  /** Lazy-built POI indices. `null` = needs rebuild after last register. */
+  private poisByRole: Map<PoiRole, PoiDef[]> | null = null;
+  private poisByTag:  Map<string,  PoiDef[]> | null = null;
   private categoryIndex: Map<string, Prefab[]> | null = null;
   private modelAabb = new Map<string, Hitbox>();
   /** Cached reverse index. Invalidated on registerRecipe/registerPrefab. */
@@ -286,6 +306,14 @@ export class StaticContentStore implements ContentService {
     this.zones.register(def);
     this.zonesByPrioritySorted.push(def);
     this.zonesByPrioritySorted.sort((a, b) => a.priority - b.priority);
+  }
+
+  registerPoi(def: PoiDef): void {
+    this.pois.register(def);
+    // Index by role + tag so the Tier-6 generator's queries are O(1) per
+    // lookup. Rebuilt lazily on first access (see findPoisByRole / Tag).
+    this.poisByRole = null;
+    this.poisByTag  = null;
   }
 
   registerPrefab(prefab: Prefab): void {
@@ -385,6 +413,33 @@ export class StaticContentStore implements ContentService {
     return this.zonesByPrioritySorted;
   }
 
+  findPoisByRole(role: PoiRole): readonly PoiDef[] {
+    if (!this.poisByRole) this.rebuildPoiIndices();
+    return this.poisByRole!.get(role) ?? [];
+  }
+
+  findPoisByTag(tag: string): readonly PoiDef[] {
+    if (!this.poisByTag) this.rebuildPoiIndices();
+    return this.poisByTag!.get(tag) ?? [];
+  }
+
+  private rebuildPoiIndices(): void {
+    this.poisByRole = new Map();
+    this.poisByTag  = new Map();
+    for (const poi of this.pois.values()) {
+      for (const role of poi.roles) {
+        const arr = this.poisByRole.get(role) ?? [];
+        arr.push(poi);
+        this.poisByRole.set(role, arr);
+      }
+      for (const tag of poi.tags) {
+        const arr = this.poisByTag.get(tag) ?? [];
+        arr.push(poi);
+        this.poisByTag.set(tag, arr);
+      }
+    }
+  }
+
   // ---- derived ----
 
   deriveItemStats(prefabId: string, _parts?: ItemPart[], quality = 1): DerivedItemStats {
@@ -446,6 +501,7 @@ export class StaticContentStore implements ContentService {
       const adapter: HitboxContentAdapter = {
         getModel: (id) => this.models.get(id) ?? null,
         getModelAabb: (id) => this.modelAabb.get(id) ?? null,
+        getSkeleton: (id) => this.skeletons.get(id) ?? null,
       };
       tmpl = deriveHitboxTemplate(modelId, seed, adapter, scale);
       this.hitboxTemplateCache.set(key, tmpl);

@@ -1784,3 +1784,212 @@ export interface AnimationStateData {
   /** Elapsed ticks since the current attack started. 0 when not attacking. */
   ticksIntoAction: number;
 }
+
+// =============================================================================
+// POIs (T-206) — Points of Interest
+//
+// A POI is a self-contained interactive activity on a tile (bossfight, wave
+// survival, puzzle, encounter, action prompt, exploration moment). Authored
+// in isolation as one JSON file per POI; the Tier-6 generator weaves them
+// into a dependency-DAG per tile, with the "questline" emerging from the
+// graph topology. See packages/content/data/pois/SCHEMA.md for the full
+// design rationale.
+// =============================================================================
+
+/** Closed set — adding a new POI type requires a runtime POI runner. */
+export type PoiType =
+  | "encounter"
+  | "bossfight"
+  | "wave"
+  | "puzzle"
+  | "action"
+  | "exploration";
+
+/** Topology role each zone in the AnnotatedZoneGraph (Tier 3, T-208) carries. */
+export type ZoneRole =
+  | "plaza"
+  | "pocket"
+  | "deadend"
+  | "corridor"
+  | "crossroads"
+  | "lobby"
+  | "arena";
+
+/** Where in the dependency DAG a POI may legally sit. */
+export type PoiRole = "entry" | "midchain" | "terminal" | "optional";
+
+// ---- activity (discriminated union on `type`) ----
+
+export interface PoiActivityEncounter {
+  spawnTable: string;
+  /** World-units. Player entering this radius triggers the spawn. */
+  spawnTriggerRadius: number;
+  /** "all" = clear every spawned enemy; number = clear that many. */
+  minClearKills: "all" | number;
+  /** Ticks before respawn; null = persistent until tile lifecycle reset. */
+  regenAfterTicks: number | null;
+}
+
+export interface PoiActivityBossfight {
+  bossNpcId: string;
+  arenaRules: {
+    /** Collapse entry on engage so the boss can't be skipped past. */
+    lockEntry: boolean;
+    /** HP fractions at which phase transitions fire (e.g. [0.66, 0.33]). */
+    phaseTriggers: number[];
+    /** Optional spawn table for adds during the fight. */
+    addsTable: string | null;
+  };
+}
+
+export interface PoiActivityWaveEntry {
+  spawn: string;
+  count: number;
+  /** Seconds after wave start; the first entry usually has interval 0. */
+  interval: number;
+}
+
+export interface PoiActivityWave {
+  waves: PoiActivityWaveEntry[];
+  interWaveSeconds: number;
+  /** Optional safe-zone radius in world-units; 0 = no safe zone. */
+  playerSafeZoneRadius: number;
+}
+
+export interface PoiActivityPuzzle {
+  puzzleId: string;
+  params: Record<string, unknown>;
+  failurePenalty: "reset" | "damage" | "none";
+}
+
+export interface PoiActivityAction {
+  interactionPrefab: string;
+  verb: string;
+  /** If true the POI completes on first use and does not respawn. */
+  consumable: boolean;
+  preconditionTags: string[];
+}
+
+export interface PoiActivityExploration {
+  triggerKind: "proximity" | "look-at" | "destroy-prop";
+  triggerRadius: number;
+  loreId: string;
+}
+
+/**
+ * Untagged union of activity shapes. The discriminator is the sibling
+ * `type` field on `PoiDef` itself (the JSON authoring shape doesn't repeat
+ * the tag inside `activity`); `PoiDef` is therefore a discriminated union
+ * on `type` that narrows `activity` accordingly.
+ */
+export type PoiActivity =
+  | PoiActivityEncounter
+  | PoiActivityBossfight
+  | PoiActivityWave
+  | PoiActivityPuzzle
+  | PoiActivityAction
+  | PoiActivityExploration;
+
+// ---- fit (spatial constraints) ----
+
+export interface PoiFit {
+  preferredTopology: ZoneRole[];
+  minArea: number;
+  maxArea: number;
+  enclosure?: { min?: number; max?: number };
+  /**
+   * If set, the chosen zone's kind histogram must include at least one of
+   * these kind tags (e.g. "stone", "forest"). Empty intersection = reject.
+   */
+  requiredKind?: string[];
+  /** If set, restrict matching to cells of these biomes. */
+  requiredBiome?: string[];
+}
+
+// ---- gate (discriminated union on `kind`) ----
+
+export interface PoiGateOpen { kind: "open" }
+export interface PoiGateItem {
+  kind: "item";
+  /**
+   * Filled in by the Tier-6 generator at tile-bake time. Authored value
+   * MUST be null — the POI definition does not bind to a specific
+   * upstream trinket; the generator wires that based on flavorAccept.
+   */
+  trinketRef: null;
+  /** Themes this gate accepts. Source POI must have at least one in common. */
+  flavorAccept: string[];
+}
+export interface PoiGateMulti {
+  kind: "multi";
+  /** Number of distinct upstream trinkets required. Each must theme-match. */
+  count: number;
+  flavorAccept: string[];
+}
+export interface PoiGateChoice {
+  kind: "choice";
+  /** Number of upstream trinkets required (typically 1; any subset accepted). */
+  count: number;
+  flavorAccept: string[];
+}
+export type PoiGate = PoiGateOpen | PoiGateItem | PoiGateMulti | PoiGateChoice;
+
+// ---- reward + trinket theming ----
+
+export interface TrinketTheme {
+  /** Theme nouns used for matching (e.g. "bone", "primal") + naming. */
+  themes: string[];
+  /** Adjectives for procedural display-name building. */
+  flavorTags: string[];
+  /** Material/colour hint for visual prefab generation. */
+  visualHint?: string;
+}
+
+export interface PoiExtraDrop {
+  kind: "lore" | "stack" | "unique";
+  /** Lore fragment id, prefab id, etc. — meaning depends on `kind`. */
+  id: string;
+  /** For stack drops; ignored for lore/unique. */
+  qty?: number;
+  /** 0..1 drop probability. Default 1.0 if absent. */
+  chance?: number;
+}
+
+export interface PoiReward {
+  trinketTheme: TrinketTheme;
+  extras: PoiExtraDrop[];
+}
+
+// ---- top-level (discriminated on `type`) ----
+
+interface PoiBase {
+  id: string;
+  /** Schema version. v1 currently; reject unknown future versions at load. */
+  schema: 1;
+  displayName: string;
+
+  fit: PoiFit;
+  gate: PoiGate;
+  reward: PoiReward;
+
+  /** Loose tags for trinket-theme matching + macro-level quotas. */
+  tags: string[];
+
+  /** 1..5; informs DAG-layer placement (terminals are usually 4-5). */
+  difficulty: number;
+  /** Macro quota weight — how often this POI may appear world-wide. */
+  quotaWeight: number;
+  /**
+   * Legal positions in the dependency DAG. `[]` disables the POI without
+   * deleting its file. A typical POI lists 2-3 roles.
+   */
+  roles: PoiRole[];
+}
+
+export type PoiDef =
+  | (PoiBase & { type: "encounter";   activity: PoiActivityEncounter })
+  | (PoiBase & { type: "bossfight";   activity: PoiActivityBossfight })
+  | (PoiBase & { type: "wave";        activity: PoiActivityWave })
+  | (PoiBase & { type: "puzzle";      activity: PoiActivityPuzzle })
+  | (PoiBase & { type: "action";      activity: PoiActivityAction })
+  | (PoiBase & { type: "exploration"; activity: PoiActivityExploration });
