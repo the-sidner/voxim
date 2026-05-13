@@ -49,6 +49,10 @@ import {
   ZONE_ID_NONE, type AnnotatedZone, type AnnotatedZoneState, type MaterialsState,
 } from "./state.ts";
 import { nameZone } from "./zone_namer.ts";
+import { WALL_HEIGHT } from "./terrain.ts";
+import type {
+  PathRegion, PlateauRegion, Region,
+} from "../level/types.ts";
 
 /**
  * Kinds that segment into wilderness zones. Water now included as
@@ -319,8 +323,98 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     }
     zones.sort((a, b) => a.id - b.id);
 
+    // T-214: write LevelDef regions in the same pass. Each AnnotatedZone
+    // maps to one PathRegion or PlateauRegion; PlateauRegion carries the
+    // gameplay-contract `jumpable: false` flag that the rasterizer will
+    // honour by tagging perimeter pixels in step 9 of the migration.
+    state.level.regions = zones.map(buildRegion);
+
+    // T-214: portals come from the prior portalPlacement stage as
+    // pixel anchors; resolve each to its host region now that regions
+    // exist. Portals whose anchor pixel sits in an un-zoned cell (e.g.
+    // a tile with no chambers carved) are dropped.
+    const regionIdByZoneId = new Map<number, string>();
+    for (const r of state.level.regions) regionIdByZoneId.set(r.zoneId, r.id);
+    state.level.edges.portals = state.portals
+      .map(p => buildPortalEdge(p, zoneOf, gridSize, regionIdByZoneId))
+      .filter((p): p is { id: string; hostRegion: string; edge: "north"|"east"|"south"|"west"; pixel: { x: number; y: number } } => p !== null);
+
     return { ...state, zoneOf, zones };
   };
+
+function buildPortalEdge(
+  p: { edge: "north"|"east"|"south"|"west"; pixelX: number; pixelY: number; roomId: number },
+  zoneOf: Uint16Array,
+  gridSize: number,
+  regionIdByZoneId: Map<number, string>,
+): { id: string; hostRegion: string; edge: "north"|"east"|"south"|"west"; pixel: { x: number; y: number } } | null {
+  const idx = p.pixelY * gridSize + p.pixelX;
+  const zid = zoneOf[idx];
+  if (zid === 0xFFFF) return null;
+  const host = regionIdByZoneId.get(zid);
+  if (!host) return null;
+  return {
+    id: `portal:${p.edge}:${p.pixelX},${p.pixelY}`,
+    hostRegion: host,
+    edge: p.edge,
+    pixel: { x: p.pixelX, y: p.pixelY },
+  };
+}
+
+/**
+ * Translate one AnnotatedZone into a LevelDef Region. Plateau regions
+ * carry the `jumpable: false` invariant and inherit their wall material
+ * from the dominant kind in their kindHistogram; path regions carry the
+ * isEntry flag for tile-gate detection downstream.
+ */
+function buildRegion(z: AnnotatedZone): Region {
+  if (z.traversal === "wilderness") {
+    const r: PlateauRegion = {
+      kind: "plateau",
+      id: `plateau:z${z.id}`,
+      zoneId: z.id,
+      area: z.area,
+      centroid: z.centroid,
+      bbox: z.bbox,
+      name: z.name,
+      topologyRole: z.topologyRole,
+      wallKind: classifyWallKind(z.kindHistogram),
+      wallStep: WALL_HEIGHT,
+      jumpable: false,
+    };
+    return r;
+  }
+  const r: PathRegion = {
+    kind: "path",
+    id: `path:z${z.id}`,
+    zoneId: z.id,
+    area: z.area,
+    centroid: z.centroid,
+    bbox: z.bbox,
+    name: z.name,
+    topologyRole: z.topologyRole,
+    isEntry: z.isEntry,
+  };
+  return r;
+}
+
+/**
+ * Decide a plateau's wall material from its kind histogram. We pick the
+ * majority closed-pixel kind; ties prefer the more "dungeon-feeling"
+ * one (stone > forest > grass > water).
+ */
+function classifyWallKind(hist: Record<number, number>): PlateauRegion["wallKind"] {
+  const stone  = hist[BOUNDARY_KIND_STONE]       ?? 0;
+  const forest = hist[BOUNDARY_KIND_FOREST]      ?? 0;
+  const grass  = hist[BOUNDARY_KIND_GRASS_MOUND] ?? 0;
+  const water  = hist[BOUNDARY_KIND_WATER]       ?? 0;
+  const max = Math.max(stone, forest, grass, water);
+  if (max === 0) return "stone";
+  if (stone  === max) return "stone";
+  if (forest === max) return "forest";
+  if (grass  === max) return "grass";
+  return "water";
+}
 
 // ---- flood helpers ---------------------------------------------------
 

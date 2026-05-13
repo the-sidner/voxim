@@ -39,6 +39,8 @@ import { materials } from "./pipeline/materials.ts";
 import { zoneGraph } from "./pipeline/zone_graph.ts";
 import { poiNetwork } from "./pipeline/poi_network.ts";
 import { deriveGateSummary } from "./summary.ts";
+import { emptyLevel } from "./level/types.ts";
+import { verifyLevelInvariants } from "./level/verify.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
@@ -97,6 +99,10 @@ export function generateTile(
   const initial: PipelineBase = {
     worldCell, tileSize, gridSize, px2world,
     content: options.content,
+    level: emptyLevel({
+      gridSize, tileSize, seed: tileSeed,
+      cellX: worldCell.cellX, cellY: worldCell.cellY,
+    }),
   };
 
   const pipeline: Stage<PipelineBase, PoiNetworkState> = pipe(
@@ -115,6 +121,11 @@ export function generateTile(
 
   const s = pipeline(initial);
 
+  // T-214 step 9: assert the LevelDef invariants the rest of the
+  // system relies on. Throws if a reducer accidentally leaks (e.g.
+  // opens a plateau pixel without a stair).
+  verifyLevelInvariants(s.level, s.openMask, s.zoneOf, s.gridSize);
+
   return {
     cellX:    worldCell.cellX,
     cellY:    worldCell.cellY,
@@ -132,15 +143,10 @@ export function generateTile(
     materials:  s.materials,
     kindOf:     s.kindOf,
     zoneOf:     s.zoneOf,
-    zones:      s.zones.map(z => ({
-      id:           z.id,
-      name:         z.name,
-      topologyRole: z.topologyRole,
-      traversal:    z.traversal,
-      area:         z.area,
-      centroid:     z.centroid,
-    })),
-    narrative:  s.narrative,
+    // T-214: state.level was seeded by emptyLevel() and progressively
+    // built by the stages (zoneGraph: regions + portals; poiNetwork:
+    // narrative + stairs). No final-pass absorber needed.
+    level:      s.level,
     boundaries: [],
     features:   [],
   };
@@ -167,8 +173,7 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     portals:  t.portals,
     gateSummary: t.gateSummary,
     zoneOfB64: bytesToBase64(new Uint8Array(t.zoneOf.buffer, t.zoneOf.byteOffset, t.zoneOf.byteLength)),
-    zones:    t.zones,
-    narrative: t.narrative,
+    level:     t.level,
     boundaries: t.boundaries,
     features:   t.features,
   };
@@ -229,8 +234,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     portals:  w.portals,
     gateSummary: w.gateSummary,
     zoneOf,
-    zones:    w.zones,
-    narrative: w.narrative,
+    level:     w.level,
     boundaries: w.boundaries,
     features:   w.features,
   };

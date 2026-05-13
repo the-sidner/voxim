@@ -133,6 +133,7 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
       worldsRepo: cfg.worldsRepo,
       cellsRepo:  cfg.cellsRepo,
       tilesRepo:  cfg.tilesRepo,
+      content:    cfg.content,
     }, { name, seed, width, height, ...(body.params && { params: body.params }) });
     return jsonOk({ baked: worldToWire(w) });
   }
@@ -386,7 +387,7 @@ async function runTilePipeline(
 
   // For the "final" view, the inspector can reuse the existing tile
   // render path that consumes TileInitWire — so we emit that too.
-  const tile = generateTileInitFromFinal(result.final, cellX, cellY);
+  const tile = generateTileInitFromFinal(result.final, cellX, cellY, tileSeed);
 
   return jsonOk({
     tileId: tileIdFor(cellX, cellY),
@@ -405,6 +406,7 @@ function generateTileInitFromFinal(
   final: ReturnType<typeof runInstrumented>["final"],
   cellX: number,
   cellY: number,
+  _tileSeed: number,
 ): TileInit {
   return {
     cellX, cellY,
@@ -422,15 +424,7 @@ function generateTileInitFromFinal(
     materials: final.materials,
     kindOf:    final.kindOf,
     zoneOf:    final.zoneOf,
-    zones:     final.zones.map(z => ({
-      id:           z.id,
-      name:         z.name,
-      topologyRole: z.topologyRole,
-      traversal:    z.traversal,
-      area:         z.area,
-      centroid:     z.centroid,
-    })),
-    narrative: final.narrative,
+    level:     final.level,
     boundaries: [],
     features:   [],
   };
@@ -469,7 +463,7 @@ async function getOrGenerateTile(
     gates:  cellRow.gates as unknown as WorldCellRecord["gates"],
     rivers: cellRow.rivers as unknown as WorldCellRecord["rivers"],
   };
-  const tile = generateTile(cell, tileSeed);
+  const tile = generateTile(cell, tileSeed, { content: cfg.content });
   const payload = tileInitToWire(tile) as unknown as Record<string, unknown>;
   await cfg.tilesRepo.put({
     worldId: active.id,

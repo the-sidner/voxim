@@ -23,6 +23,7 @@ import type { WorldCellRecord } from "../../worldmap/types.ts";
 import type { Junction } from "./junctions.ts";
 import type { Corridor, Portal, Room } from "../types.ts";
 import type { ContentService, ZoneRole } from "@voxim/content";
+import type { LevelDef } from "../level/types.ts";
 
 export interface PipelineBase {
   worldCell: WorldCellRecord;
@@ -36,6 +37,15 @@ export interface PipelineBase {
    * pipeline stays deterministic and snapshot-stable.
    */
   content?: ContentService;
+  /**
+   * LevelDef-in-progress (T-214). Starts empty in `generateTile` and is
+   * mutated by stages as they compute their slice — `zoneGraph` writes
+   * regions + portal edges, `poiNetwork` writes narrative + stair
+   * edges, etc. The final `state.level` IS the tile's LevelDef; no
+   * post-pass absorber needed. The inspector snapshots this per stage
+   * to power layered overlays.
+   */
+  level: LevelDef;
 }
 
 export interface NoiseState extends PipelineBase {
@@ -225,13 +235,14 @@ export interface StairInstance {
 
 /**
  * Tile-level narrative artifact — POIs placed, trinkets defined, DAG
- * structure as a derived shape. Output of T-209's transformer.
+ * structure as a derived shape. Internal scratch for the matcher in
+ * `poi_network.ts`; the stage's output writes directly to
+ * `state.level.narrative` / `state.level.edges.stairs`, so this type
+ * does not appear on the threaded pipeline state past T-214.
  */
 export interface TileNarrative {
   pois: PoiInstance[];
   trinkets: TrinketInstance[];
-  /** Stairs (T-210) — one per wilderness POI in `pois`. */
-  stairs: StairInstance[];
   dagShape: DagShape;
   entryPoiIds: string[];
   terminalPoiIds: string[];
@@ -241,6 +252,9 @@ export interface TileNarrative {
   retries: number;
 }
 
-export interface PoiNetworkState extends AnnotatedZoneState {
-  narrative: TileNarrative;
-}
+/**
+ * Marker state — same shape as `AnnotatedZoneState`. The `poiNetwork`
+ * stage's only effect is to mutate `state.level.narrative` +
+ * `state.level.edges.stairs`; no new pipeline-state fields are added.
+ */
+export type PoiNetworkState = AnnotatedZoneState;

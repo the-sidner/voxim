@@ -14,6 +14,7 @@
  */
 
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
+import type { ContentService } from "@voxim/content";
 import { generateWorldMap } from "./worldmap/generate.ts";
 import { generateTile, tileInitToWire } from "./tilemap/generate.ts";
 import {
@@ -41,6 +42,13 @@ export interface BakeDeps {
   worldsRepo: WorldsRepo;
   cellsRepo: AtlasWorldRepo;
   tilesRepo: AtlasTileInitRepo;
+  /**
+   * Optional content store. Passed to `generateTile` so the POI-network
+   * stage matches POIs against the real content registry instead of
+   * emitting an empty narrative. Bakes that omit it still succeed but
+   * produce tiles with no POIs / trinkets / stairs.
+   */
+  content?: ContentService;
 }
 
 export async function bakeWorld(deps: BakeDeps, input: BakeInput): Promise<WorldRow> {
@@ -78,7 +86,7 @@ export async function bakeWorld(deps: BakeDeps, input: BakeInput): Promise<World
   // immediately after restart with no convergence wait.
   for (const cell of wm.cells) {
     const tileSeed = tileSeedFor(input.seed, cell.cellX, cell.cellY);
-    const t = generateTile(cell, tileSeed, { params });
+    const t = generateTile(cell, tileSeed, { params, content: deps.content });
     await deps.tilesRepo.put({
       worldId: id,
       tileId:  `${cell.cellX}_${cell.cellY}`,

@@ -44,5 +44,15 @@ export {
 export { upsampleTile } from "./src/tilemap/upsample.ts";
 export { applyStairUnlock, markStairAnchor } from "./src/tilemap/stair_unlock.ts";
 export type { StairAnchor, StairUnlockOptions, StairMarkerOptions } from "./src/tilemap/stair_unlock.ts";
-export type { TileNarrativeWire } from "./src/tilemap/types.ts";
 export type { UpsampleOptions, UpsampleOutput } from "./src/tilemap/upsample.ts";
+
+// T-214: LevelDef IR — the semantic graph of a tile. Reducers (next
+// commits) will mutate it directly; today it's absorbingly built from
+// the legacy pipeline output.
+export type {
+  LevelDef, Region, PathRegion, PlateauRegion, RiverRegion,
+  StairEdge, PortalEdge, PoiPlacement, TrinketEdge,
+  RegionId, BBox, Point, NarrativeDag, Reducer,
+} from "./src/tilemap/level/types.ts";
+export { findRegion, findRegionByZoneId, emptyLevel } from "./src/tilemap/level/types.ts";
+export { verifyLevelInvariants } from "./src/tilemap/level/verify.ts";

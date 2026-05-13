@@ -38,6 +38,13 @@ const worldsRepo = new PgWorldsRepo(pool);
 const cellsRepo  = new PgAtlasWorldRepo(pool);
 const tilesRepo  = new PgAtlasTileInitRepo(pool);
 
+// Load the content store first — both the bootstrap bake and the bake
+// HTTP endpoint thread it into `generateTile` so the POI-network stage
+// populates real narratives (POIs + trinkets + stairs). Without content,
+// every tile bakes with an empty narrative.
+const content = await JsonSource.load();
+console.log(`[Atlas] loaded content: ${content.pois.size} POIs · ${content.zones.size} zones`);
+
 // Bootstrap a world only when none exist. Subsequent boots are no-ops
 // against the worlds table — atlas leaves authored worlds in place and
 // only adds new ones via the inspector's bake button.
@@ -48,7 +55,7 @@ if (!existing) {
     `${bootstrapWidth}×${bootstrapHeight} @ seed ${bootstrapSeed}`,
   );
   const w = await bakeWorld(
-    { worldsRepo, cellsRepo, tilesRepo },
+    { worldsRepo, cellsRepo, tilesRepo, content },
     { name: bootstrapName, seed: bootstrapSeed, width: bootstrapWidth, height: bootstrapHeight },
   );
   console.log(`[Atlas] bootstrap baked: id=${w.id} (${w.width}×${w.height})`);
@@ -58,12 +65,5 @@ if (!existing) {
     `seed ${existing.seed}, baked ${existing.bakedAt.toISOString()})`,
   );
 }
-
-// Load the content store once at boot so the inspector pipeline
-// endpoint (T-209) can run the POI matcher. Bake/regen paths don't
-// need it (POI matching is inspector-side for v1) but loading once
-// is cheap (~150 ms) and matches the tile-server's pattern.
-const content = await JsonSource.load();
-console.log(`[Atlas] loaded content: ${content.pois.size} POIs · ${content.zones.size} zones`);
 
 startAtlasServer({ port, worldsRepo, cellsRepo, tilesRepo, content });

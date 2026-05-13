@@ -1,11 +1,7 @@
 /**
- * T-209 determinism gates for the POI-network solver.
- *
- * The solver consumes the AnnotatedZoneGraph (T-208) and the POI roster
- * authored under `packages/content/data/pois/` (T-206). With only the
- * three checked-in example POIs the theme bridges are sparse and the
- * matcher may legitimately fall back to a degraded chain — that's fine
- * for the foundation; T-207 (15-POI roster) fills the bridge gaps.
+ * T-209 determinism gates for the POI-network solver. Ported to read
+ * from `state.level.narrative` in T-214 (the matcher's output now lives
+ * on LevelDef, not on a pipeline-state field).
  *
  * What this test pins down:
  *   1. Two runs with the same (cell, seed, content) → byte-identical
@@ -34,6 +30,10 @@ function cell(x: number, y: number) {
   return c;
 }
 
+function narrativeOf(state: PoiNetworkState) {
+  return state.level.narrative;
+}
+
 Deno.test("poiNetwork: identical inputs → byte-identical narrative", () => {
   const a = runInstrumented({
     worldCell: cell(1, 1), tileSeed: 1234,
@@ -46,8 +46,8 @@ Deno.test("poiNetwork: identical inputs → byte-identical narrative", () => {
     content,
   });
   assertEquals(
-    JSON.stringify((a.final as PoiNetworkState).narrative),
-    JSON.stringify((b.final as PoiNetworkState).narrative),
+    JSON.stringify(narrativeOf(a.final as PoiNetworkState)),
+    JSON.stringify(narrativeOf(b.final as PoiNetworkState)),
   );
 });
 
@@ -63,8 +63,8 @@ Deno.test("poiNetwork: different seeds → different narrative", () => {
     content,
   });
   assertNotEquals(
-    JSON.stringify((a.final as PoiNetworkState).narrative),
-    JSON.stringify((b.final as PoiNetworkState).narrative),
+    JSON.stringify(narrativeOf(a.final as PoiNetworkState)),
+    JSON.stringify(narrativeOf(b.final as PoiNetworkState)),
   );
 });
 
@@ -74,11 +74,11 @@ Deno.test("poiNetwork: no content → empty narrative (snapshot-safe)", () => {
     params: PRESETS.forest_maze.params,
     // no content
   });
-  const n = (r.final as PoiNetworkState).narrative;
+  const n = narrativeOf(r.final as PoiNetworkState);
   assertEquals(n.pois, []);
   assertEquals(n.trinkets, []);
-  assertEquals(n.entryPoiIds, []);
-  assertEquals(n.terminalPoiIds, []);
+  assertEquals(n.dag.entryPoiIds, []);
+  assertEquals(n.dag.terminalPoiIds, []);
 });
 
 Deno.test("poiNetwork: produced narrative is structurally valid", () => {
@@ -88,7 +88,7 @@ Deno.test("poiNetwork: produced narrative is structurally valid", () => {
       params: PRESETS.forest_maze.params,
       content,
     });
-    const n = (r.final as PoiNetworkState).narrative;
+    const n = narrativeOf(r.final as PoiNetworkState);
     // Some narrative must exist — degraded or not — when content is present.
     if (n.pois.length === 0) continue; // happens if scoring rejects every candidate (acceptable edge case)
 
@@ -109,7 +109,7 @@ Deno.test("poiNetwork: produced narrative is structurally valid", () => {
       }
     }
     // Every entry POI MUST have an open gate.
-    for (const eid of n.entryPoiIds) {
+    for (const eid of n.dag.entryPoiIds) {
       const poi = n.pois.find(p => p.id === eid);
       assert(poi, `entryPoiIds references missing poi ${eid}`);
       assertEquals(poi.gate.kind, "open", `entry poi ${eid} should have open gate`);
@@ -124,8 +124,8 @@ Deno.test("poiNetwork: trinket display names use real themes + source name", () 
       params: PRESETS.forest_maze.params,
       content,
     });
-    const n = (r.final as PoiNetworkState).narrative;
-    if (n.trinkets.length === 0 || n.degraded) continue;
+    const n = narrativeOf(r.final as PoiNetworkState);
+    if (n.trinkets.length === 0 || n.dag.degraded) continue;
     const t = n.trinkets[0];
     assert(t.displayName.length > 0, "trinket display name empty");
     assert(t.displayName.includes(" "), `expected multi-word display name, got "${t.displayName}"`);
@@ -137,11 +137,7 @@ Deno.test("poiNetwork: trinket display names use real themes + source name", () 
 Deno.test("poiNetwork: wider roster hits happy path on majority of bakes", () => {
   // With T-207's 15-POI roster (and bridge validator passing), random
   // tile bakes should usually solve cleanly without falling back. We
-  // sample 20 (cell, seed) tuples and require ≥40% non-degraded. This
-  // is loose by design — the matcher's tile-specific spatial fit can
-  // legitimately fail to place 4 POIs into 4 distinct zones on some
-  // unusually-small tiles. Stronger guarantee waits on a per-tile
-  // difficulty tier signal.
+  // sample 20 (cell, seed) tuples and require ≥40% non-degraded.
   let nonDegraded = 0;
   const total = 20;
   for (let i = 0; i < total; i++) {
@@ -150,13 +146,9 @@ Deno.test("poiNetwork: wider roster hits happy path on majority of bakes", () =>
       params: PRESETS.forest_maze.params,
       content,
     });
-    const n = (r.final as PoiNetworkState).narrative;
-    if (n.pois.length > 0 && !n.degraded) nonDegraded++;
+    const n = narrativeOf(r.final as PoiNetworkState);
+    if (n.pois.length > 0 && !n.dag.degraded) nonDegraded++;
   }
-  // Threshold restored to 0.40 after T-210's two-phase selection
-  // (entries-first, then fill) — the matcher now reliably picks enough
-  // path-zone entry POIs to cover wilderness gate flavors. Empirically
-  // 18-19/20 forest_maze tiles solve cleanly post-fix.
   assert(
     nonDegraded / total >= 0.4,
     `expected ≥40% non-degraded bakes, got ${nonDegraded}/${total}`,

@@ -26,6 +26,7 @@
 
 import { ORDERED_STAGES, type StageId } from "./pipeline/stages.ts";
 import type { PipelineBase, PoiNetworkState } from "./pipeline/state.ts";
+import { emptyLevel } from "./level/types.ts";
 import type { GenParams } from "../genparams.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import type { ContentService } from "@voxim/content";
@@ -122,6 +123,10 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
   const initial: PipelineBase = {
     worldCell: input.worldCell, tileSize, gridSize, px2world,
     content: input.content,
+    level: emptyLevel({
+      gridSize, tileSize, seed: input.tileSeed,
+      cellX: input.worldCell.cellX, cellY: input.worldCell.cellY,
+    }),
   };
 
   let state: unknown = initial;
@@ -271,10 +276,17 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
       break;
     case "zoneGraph":
       h ^= fnv1aBytes(viewOf(s.zoneOf as Uint16Array));
+      // T-214: regions live on state.level after zoneGraph; hash both
+      // the legacy `zones` (still used by poi_network) and the LevelDef
+      // regions so a divergence in either flags as a fixture diff.
       h ^= fnv1aString(JSON.stringify(s.zones));
+      h ^= fnv1aString(JSON.stringify((s.level as { regions: unknown }).regions));
       break;
     case "poiNetwork":
-      h ^= fnv1aString(JSON.stringify(s.narrative));
+      // T-214: narrative + stairs are now on state.level; their JSON
+      // shape is the canonical hash input for the matcher's output.
+      h ^= fnv1aString(JSON.stringify((s.level as { narrative: unknown }).narrative));
+      h ^= fnv1aString(JSON.stringify((s.level as { edges: { stairs: unknown } }).edges.stairs));
       break;
   }
   return h >>> 0;

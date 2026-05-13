@@ -77,6 +77,7 @@ import { BuffSystem } from "./systems/buff.ts";
 import { PoiseSystem } from "./systems/poise.ts";
 import { PoiSystem } from "./systems/poi.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
+import { placeStairs } from "./stair_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
 import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
@@ -492,28 +493,40 @@ export class TileServer {
     this.cellY = atlas.cellY;
     this.activeWorldId    = atlas.world.id;
     this.activeWorldBaked = atlas.world.bakedAt;
-    // T-211: keep zone data warm for the per-player zone tracker.
+    // T-211: keep region data warm for the per-player zone tracker.
+    // `zoneBuffer` is the per-pixel index; `zoneById` resolves a pixel's
+    // region from `LevelDef.regions[]`.
     this.zoneBuffer = atlas.zoneBuffer;
     this.zoneById.clear();
-    for (const z of atlas.zones) {
-      this.zoneById.set(z.id, {
-        id: z.id, name: z.name, topologyRole: z.topologyRole, traversal: z.traversal,
+    for (const r of atlas.level.regions) {
+      this.zoneById.set(r.zoneId, {
+        id: r.zoneId,
+        name: r.name,
+        topologyRole: r.kind === "river" ? "river" : r.topologyRole,
+        traversal: r.kind === "plateau" ? "wilderness" : "path",
       });
     }
+    const plateauCount = atlas.level.regions.filter(r => r.kind === "plateau").length;
     console.log(
-      `[TileServer] zone graph: ${atlas.zones.length} zones loaded ` +
-      `(${atlas.zones.filter(z => z.traversal === "wilderness").length} wilderness)`,
+      `[TileServer] level: ${atlas.level.regions.length} regions loaded ` +
+      `(${plateauCount} plateau)`,
     );
 
-    // T-212: place a runtime PoiTrigger at every narrative POI's zone
-    // centroid. PoiSystem picks these up tick-wise and fires the
+    // T-212: place a runtime PoiTrigger at every LevelDef POI's host
+    // region centroid. PoiSystem picks these up tick-wise and fires the
     // encounter/exploration/etc. activity on first player proximity.
     // Atlas centroids are in gridSize coords; placePoiTriggers scales
     // to tile-server's TILE_SIZE world-unit space.
-    if (atlas.narrative?.pois?.length) {
-      placePoiTriggers(
-        this.world, atlas.narrative.pois, atlas.zones,
-        content, TILE_SIZE, atlas.atlasGridSize,
+    if (atlas.level.narrative.pois.length) {
+      placePoiTriggers(this.world, atlas.level, content, TILE_SIZE);
+    }
+    // T-213 v2: spawn a visible stair prop at every LevelDef stair edge.
+    // The heightmap ramp + marker patch are already applied by
+    // loadTerrainFromAtlas; this gives the player something to actually see
+    // standing at the path/wilderness boundary.
+    if (atlas.level.edges.stairs.length) {
+      placeStairs(
+        this.world, content, atlas.level, atlas.heightBuffer, TILE_SIZE,
       );
     }
     console.log(

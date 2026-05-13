@@ -10,6 +10,7 @@
  */
 
 import type { Edge } from "../worldmap/types.ts";
+import type { LevelDef } from "./level/types.ts";
 
 /**
  * One connected open-pixel component at sample-grid resolution.
@@ -153,77 +154,24 @@ export interface TileInit {
    * zone is the player in?" in O(1) by pixel index.
    */
   zoneOf: Uint16Array;
-  /**
-   * Zone metadata aligned to ids referenced by `zoneOf`. Each entry
-   * carries the procedural name (T-211), topology role, traversal
-   * class, area, centroid, neighbours, etc.
-   */
-  zones: ZoneWire[];
 
   /**
-   * Tier-6 narrative (T-209) — the per-tile POI dependency-DAG +
-   * stairs. Tile-server consumes the POIs at runtime (T-212) and
-   * applies stair unlocks (T-213) to make wilderness plateaus
-   * physically walkable. Always present (may have empty arrays if
-   * the matcher was unable to populate it).
+   * LevelDef (T-214) — semantic graph of the tile: regions (path /
+   * plateau / river) carrying procedural names + topology roles, edges
+   * (stairs, portals), and the narrative overlay (POIs + trinkets +
+   * DAG). `zoneOf[pixelIdx]` resolves to a region via the region's
+   * `zoneId`. Today this is built absorbingly from the legacy pipeline
+   * fields; tomorrow each pipeline stage mutates it directly and the
+   * rasterizer derives `openMask` / `heightMap` / `materials` /
+   * `kindOf` / `zoneOf` from it.
    */
-  narrative: TileNarrativeWire;
+  level: LevelDef;
 
   // ---- placeholders for later phases ------------------------------
   /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
   boundaries: unknown[];
   /** Will be populated by phase 4 (feature kinds, e.g. hearth slot). */
   features: unknown[];
-}
-
-/**
- * Wire-shape for a single AnnotatedZone — strips internal accumulators
- * down to the fields the tile-server + client actually need to display.
- * Mirrors the relevant fields from pipeline/state.ts AnnotatedZone.
- */
-export interface ZoneWire {
-  id: number;
-  name: string;
-  topologyRole: string;
-  traversal: "path" | "wilderness";
-  area: number;
-  centroid: { x: number; y: number };
-}
-
-/**
- * Wire-shape for the per-tile narrative (T-209) — the dependency-DAG
- * over selected POIs, the stair instances that grant access to
- * wilderness plateaus, the trinkets that act as keys. All fields are
- * plain JSON; no typed-array payloads here.
- */
-export interface TileNarrativeWire {
-  pois: Array<{
-    id: string;
-    poiDefId: string;
-    zoneId: number;
-    gate: { kind: "open" | "item" | "multi" | "choice"; trinketRefs: string[] };
-    trinketId: string | null;
-    stairId: string | null;
-  }>;
-  trinkets: Array<{
-    id: string;
-    sourcePoi: string;
-    destPoi: string;
-    themes: string[];
-    displayName: string;
-  }>;
-  stairs: Array<{
-    id: string;
-    fromZoneId: number;
-    toZoneId: number;
-    anchorPixel: { x: number; y: number };
-    lockedBy: string | null;
-  }>;
-  dagShape: "linear" | "branching" | "diamond" | "lattice";
-  entryPoiIds: string[];
-  terminalPoiIds: string[];
-  degraded: boolean;
-  retries: number;
 }
 
 /**
@@ -252,9 +200,8 @@ export interface TileInitWire {
   gateSummary: number;
   /** Per-pixel zone id (T-211); Uint16 base64. */
   zoneOfB64: string;
-  zones: ZoneWire[];
-  /** Tier-6 narrative (T-209) — POI DAG + stairs + trinkets. */
-  narrative: TileNarrativeWire;
+  /** LevelDef (T-214) — semantic graph; JSON-friendly already. */
+  level: LevelDef;
   boundaries: unknown[];
   features: unknown[];
 }

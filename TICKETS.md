@@ -1988,18 +1988,24 @@ Effort: M   Status: in-progress   Commit: 867766f (v1)   Depends on: T-210
 **v1 landed**: `applyStairUnlock` helper + "found" stairs (lockedBy === null)
 apply at tile boot. Wilderness plateaus reachable from boot via lerped ramps.
 
+**v2 landed**: `placeStairs` spawns a visible voxel-staircase prop at every
+narrative stair anchor. Stone variant for "found" stairs (the heightmap ramp
+underneath makes them walkable); stone + iron-capped variant for "locked"
+stairs (no ramp, wilderness wall still blocks — the iron cap reads as the
+unlit gating cue). `Stair` server-only component carries `{stairId, toZoneId,
+fromZoneId, trinketId, anchorXY, unlocked}` so the future unlock pipeline
+has everything it needs to flip state at runtime.
+
 **Remaining (T-213b — next ticket-or-extension)**:
 - Runtime unlock: when a player consumes a trinket that matches a locked
-  stair's `lockedBy`, flip openMask + apply ramp + broadcast a Heightmap-Δ
-  + StairUnlocked event to AoI clients. Currently locked stairs stay closed
-  forever.
-- Stair prefab visual — atlas should emit a "stair" entity at each
-  anchor that the runtime spawns as a prop (stone steps for crag, root
-  stairs for grove, etc.). Currently the ramp is just terrain; no obvious
-  visual cue.
+  stair's `trinketId`, flip openMask + apply ramp + swap the entity's
+  ModelRef from `model_stair_locked` to `model_stair` + broadcast a
+  Heightmap-Δ + StairUnlocked event to AoI clients.
 - Client heightmap-delta application — applying a ramp at runtime requires
   the client to re-mesh those chunks. Pattern exists for building-system
   edits; reuse it.
+- Per-biome stair models (root stairs for grove, crag stones, …) — currently
+  one stone shape for every biome.
 
 T-210's stairs are currently only a *narrative* artifact — they
 declare gating in `TileNarrative.stairs[]` but the engine still
@@ -2076,9 +2082,72 @@ Out of scope:
   the gameplay layer; this ticket is purely the physics + visual
   realisation of stairs.
 
-Done when: an unlocked stair is walkable end-to-end; locked stairs
-block; heightmap/openMask deltas are deterministic; the player can
-climb up onto a wilderness plateau and walk around on it.
+### T-214 · LevelDef IR — declarative tile graph + reducer pipeline
+Effort: L   Status: done
+
+`LevelDef` is the authoritative semantic structure of a tile: a graph of
+`Region | StairEdge | PortalEdge | PoiPlacement | TrinketEdge` with
+explicit gameplay invariants (`PlateauRegion.jumpable: false`). Pipeline
+stages mutate `state.level` as they compute their slice; the final
+state's `level` IS the tile's LevelDef — no post-pass absorber.
+
+**Landed:**
+  - `LevelDef` types in `packages/atlas/src/tilemap/level/types.ts` —
+    JSON-friendly graph; `emptyLevel()` seeds the pipeline.
+  - `PipelineBase.level` threaded through every stage state. The
+    inspector's `instrumented_runner` captures `state.level` per stage,
+    giving a progressive-build snapshot the UI can layer-toggle.
+  - **`zoneGraph` reducer** writes `state.level.regions[]` (path /
+    plateau split with `jumpable: false` typed invariant) and
+    `state.level.edges.portals[]` (region-anchored).
+  - **`poiNetwork` reducer** writes `state.level.narrative.{pois,
+    trinkets, dag}` and `state.level.edges.stairs[]` directly.
+    Internal `TileNarrative`/`StairInstance` stay as solver scratch
+    but no longer escape to pipeline state.
+  - Wire format: `TileInitWire.{narrative, zones}` and `TileNarrativeWire`
+    deleted. `TileInit.level: LevelDef` is the single semantic carrier.
+  - Consumers migrated: `stair_spawner.ts` reads `level.edges.stairs`;
+    `poi_spawner.ts` reads `level.narrative.pois`; `atlas_terrain.ts`
+    marker/ramp painting reads `level.edges.stairs`; `server.ts`
+    `zoneById` built from `level.regions`; inspector POI/stair/DAG
+    rendering reads `level`.
+  - `buildLevelDef` absorbing translator deleted entirely — its work
+    moved into the reducer stages.
+  - `verifyLevelInvariants` (`packages/atlas/src/tilemap/level/verify.ts`)
+    runs at the end of `generateTile` and asserts: plateau pixels are
+    sealed at bake time (openMask=0 — stair unlocks happen post-bake
+    in tile-server); every region's zoneId touches `zoneOf`; every
+    stair edge resolves to real regions. Throws on violation.
+
+**Tests:**
+  - Snapshot determinism gate (`generate.snapshot.test.ts` +
+    `zone_graph.snapshot.test.ts` + `poi_network.snapshot.test.ts`) —
+    all byte-identical through the migration. `instrumented_runner`
+    hash folds in `state.level` content.
+  - `level/level.test.ts` — LevelDef invariants pass on real bakes
+    (region uniqueness, plateau jumpable: false, stair endpoints,
+    POI hosts, portals).
+  - `level/verify.test.ts` — invariant assertions catch the three
+    violation cases (unsealed plateau, dangling zoneId, missing stair
+    endpoint) plus positive + regression-canary cases.
+  - `stair_spawner.test.ts` — placeStairs operates on `LevelDef`
+    directly.
+
+**Out of scope (future work):**
+  - **Rasterizer** as the canonical buffer producer. Today the legacy
+    pipeline stages still produce per-pixel buffers as a side effect;
+    a dedicated `rasterize(level): buffers` would make LevelDef the
+    sole source of truth and the per-stage buffer mutations would
+    become rasterizer inputs. Step 9 of the original plan was scoped
+    down to invariant verification once it became clear `openMask`
+    already enforces the plateau-sealed contract; the rasterizer
+    refactor lives in a follow-up ticket.
+  - **Inspector UI** — substrate is in place (per-stage `state.level`
+    snapshots, layered fields), but the controls (layer toggles,
+    stage scrubber, live param/seed re-runs) need building out.
+  - **Region masks** — regions reference pixels via `zoneId` + the
+    `zoneOf` buffer; carrying explicit masks on each region (once
+    reducers own shape directly) is a future refinement.
 
 ---
 

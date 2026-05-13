@@ -1,12 +1,12 @@
 /**
- * POI runtime spawn helpers (T-212).
+ * POI runtime spawn helpers (T-212, ported to LevelDef in T-214).
  *
  * Two responsibilities:
  *
- *   1. `placePoiTriggers(world, narrative, zones, content, tileSize)` —
- *      called once at tile boot. For every narrative POI, creates a bare
- *      entity at the zone's centroid with `Position` + `PoiTrigger`.
- *      The PoiSystem picks these up tickwise.
+ *   1. `placePoiTriggers(world, level, content, tileSize)` — called once
+ *      at tile boot. For every `level.narrative.pois` entry, creates a
+ *      bare entity at the host region's centroid with `Position` +
+ *      `PoiTrigger`. The PoiSystem picks these up tickwise.
  *
  *   2. `resolveSpawnTable(spawnTableId)` — stub mapping from POI activity
  *      `spawnTable` ids to existing NPC template ids. The 17 authored
@@ -18,26 +18,12 @@
 
 import { newEntityId, type World } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
+import { findRegion, type LevelDef } from "@voxim/atlas";
 import { Position } from "./components/game.ts";
 import { PoiTrigger } from "./components/poi.ts";
 import { createLogger } from "./logger.ts";
 
 const log = createLogger("PoiSpawner");
-
-export interface NarrativePoiInstance {
-  id: string;
-  poiDefId: string;
-  zoneId: number;
-  gate: { kind: string; trinketRefs: string[] };
-  trinketId: string | null;
-  stairId: string | null;
-}
-
-export interface PoiZoneCentroid {
-  id: number;
-  centroid: { x: number; y: number };
-  traversal: "path" | "wilderness";
-}
 
 /**
  * Default trigger radius in world units when the POI def doesn't
@@ -47,35 +33,31 @@ export interface PoiZoneCentroid {
 const DEFAULT_TRIGGER_RADIUS = 6;
 
 /**
- * Place trigger markers at every narrative POI's zone centroid. Zones
- * with no matching centroid (sub-threshold or missing — shouldn't happen
+ * Place trigger markers at every `level.narrative.pois` entry's host
+ * region centroid. POIs referencing a missing region (shouldn't happen
  * in practice) get a warn and are skipped.
  *
- * Zone centroids from atlas are in **atlas grid coords** (gridSize²);
+ * Region centroids from atlas are in **atlas grid coords** (gridSize²);
  * we scale to tile-server's **world-unit space** (TILE_SIZE²) using the
  * supplied ratio.
  */
 export function placePoiTriggers(
   world: World,
-  pois: NarrativePoiInstance[],
-  zones: PoiZoneCentroid[],
+  level: LevelDef,
   _content: ContentService,
   tileSize: number,
-  atlasGridSize: number,
 ): number {
-  const scale = tileSize / atlasGridSize;
-  const zoneById = new Map<number, PoiZoneCentroid>();
-  for (const z of zones) zoneById.set(z.id, z);
+  const scale = tileSize / level.gridSize;
 
   let placed = 0;
-  for (const poi of pois) {
-    const z = zoneById.get(poi.zoneId);
-    if (!z) {
-      log.warn("POI %s references missing zone %d — skipped", poi.id, poi.zoneId);
+  for (const poi of level.narrative.pois) {
+    const host = findRegion(level, poi.hostRegion);
+    if (!host) {
+      log.warn("POI %s references missing region %s — skipped", poi.id, poi.hostRegion);
       continue;
     }
-    const wx = z.centroid.x * scale;
-    const wy = z.centroid.y * scale;
+    const wx = host.centroid.x * scale;
+    const wy = host.centroid.y * scale;
     const id = newEntityId();
     world.create(id);
     world.write(id, Position, { x: wx, y: wy, z: 0 });

@@ -86,6 +86,7 @@ import { GateLink } from "./components/gate.ts";
 import { Hearth } from "./components/hearth.ts";
 import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
 import { PoiTrigger } from "./components/poi.ts";
+import { Stair } from "./components/stair.ts";
 import { NpcJobQueue, NpcTag } from "./components/npcs.ts";
 import { ProjectileData } from "./components/projectile.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
@@ -218,6 +219,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // narrative POI's zone centroid; PoiSystem fires the activity on
   // first player proximity.
   PoiTrigger,
+  // Stair runtime marker (T-213). Server-only — placed at every narrative
+  // stair anchor; carries lock state for the future unlock pipeline.
+  Stair,
   NpcTag,
   NpcJobQueue,
   ProjectileData,

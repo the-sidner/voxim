@@ -1006,7 +1006,12 @@ function viewData() {
     noiseField: s.noiseField,
     zoneOf:     s.zoneOf,
     zones:      s.zones      ?? [],
-    narrative:  s.narrative ?? null,
+    // T-214: each intermediate state carries its own progressive
+    // `level`, so the inspector's overlays render whatever the LevelDef
+    // looks like *at this stage* — regions appear after zoneGraph,
+    // stair edges appear after poiNetwork, etc. Falls back to the
+    // baked tile payload when intermediates aren't available.
+    level:      s.level ?? tile.payload.level ?? null,
     gridSize:   tile.payload.gridSize,
     tileSize:   tile.payload.tileSize,
   };
@@ -1280,13 +1285,13 @@ function drawTileDag({ px, originX, originY, g }, vd) {
   // Paint the zone backdrop first (faint, role-coloured) so the DAG
   // reads on top of the tile's actual layout.
   const zoneOf = vd.zoneOf;
-  if (!zoneOf || !vd.narrative) {
+  if (!zoneOf || !vd.level) {
     // Fall back to plain materials view; render an "empty" indicator.
     drawTileMaterials({ px, originX, originY, g }, vd);
     ctx.fillStyle = "#fff";
     ctx.font = "16px ui-sans-serif, system-ui, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText("No narrative — content store missing or matcher failed.", originX + 16, originY + 28);
+    ctx.fillText("No LevelDef — content store missing or matcher failed.", originX + 16, originY + 28);
     return;
   }
 
@@ -1306,10 +1311,12 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     buf[p+3] = 0xff;
   });
 
-  // Look up centroid + role per POI via its zone.
-  const zoneById = new Map();
-  for (const z of vd.zones) zoneById.set(z.id, z);
-  const narrative = vd.narrative;
+  // Source of truth: LevelDef. Regions carry centroid; narrative carries
+  // POIs + trinkets + DAG metadata.
+  const level = vd.level;
+  const narrative = level.narrative;
+  const regionById = new Map();
+  for (const r of level.regions) regionById.set(r.id, r);
 
   // Edges first (under the nodes).
   ctx.strokeStyle = "rgba(255,255,255,0.55)";
@@ -1318,8 +1325,8 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     const src = narrative.pois.find(p => p.id === t.sourcePoi);
     const dst = narrative.pois.find(p => p.id === t.destPoi);
     if (!src || !dst) continue;
-    const a = zoneById.get(src.zoneId);
-    const b = zoneById.get(dst.zoneId);
+    const a = regionById.get(src.hostRegion);
+    const b = regionById.get(dst.hostRegion);
     if (!a || !b) continue;
     const ax = originX + a.centroid.x * px + px / 2;
     const ay = originY + a.centroid.y * px + px / 2;
@@ -1353,20 +1360,25 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     ctx.fillText(t.displayName.slice(0, 22), midx, midy);
   }
 
-  // Stairs (T-210) — small diamond markers at each stair's anchor pixel,
-  // with a short connecting line from path centroid → wilderness centroid.
-  // Locked stairs render solid red; open (found) stairs render hollow green.
-  if (Array.isArray(narrative.stairs)) {
-    for (const s of narrative.stairs) {
-      const fromZ = zoneById.get(s.fromZoneId);
-      const toZ   = zoneById.get(s.toZoneId);
-      if (!fromZ || !toZ) continue;
+  // Stairs (T-210, T-214) — small diamond markers at each stair edge's
+  // anchor pixel, with a short connecting line from anchor → plateau
+  // centroid. Locked edges render solid red; open (found) edges render
+  // hollow green. Source: `level.edges.stairs` — region ids resolve via
+  // `level.regions[]`.
+  const level = vd.level;
+  if (level && Array.isArray(level.edges?.stairs)) {
+    const regionById = new Map();
+    for (const r of level.regions) regionById.set(r.id, r);
+    for (const s of level.edges.stairs) {
+      const toRegion = regionById.get(s.to);
+      if (!toRegion) continue;
       const ax = originX + s.anchorPixel.x * px + px / 2;
       const ay = originY + s.anchorPixel.y * px + px / 2;
-      const tx = originX + toZ.centroid.x * px + px / 2;
-      const ty = originY + toZ.centroid.y * px + px / 2;
-      // Dashed line from anchor → wilderness centroid (the "climb").
-      ctx.strokeStyle = s.lockedBy ? "rgba(245,118,118,0.6)" : "rgba(126,219,139,0.6)";
+      const tx = originX + toRegion.centroid.x * px + px / 2;
+      const ty = originY + toRegion.centroid.y * px + px / 2;
+      const isLocked = s.locked !== null;
+      // Dashed line from anchor → plateau centroid (the "climb").
+      ctx.strokeStyle = isLocked ? "rgba(245,118,118,0.6)" : "rgba(126,219,139,0.6)";
       ctx.lineWidth   = 1.6;
       ctx.setLineDash([4, 3]);
       ctx.beginPath();
@@ -1378,8 +1390,8 @@ function drawTileDag({ px, originX, originY, g }, vd) {
       ctx.save();
       ctx.translate(ax, ay);
       ctx.rotate(Math.PI / 4);
-      ctx.fillStyle   = s.lockedBy ? "#f57676" : "#1a1c21";
-      ctx.strokeStyle = s.lockedBy ? "#f57676" : "#7edb8b";
+      ctx.fillStyle   = isLocked ? "#f57676" : "#1a1c21";
+      ctx.strokeStyle = isLocked ? "#f57676" : "#7edb8b";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.rect(-6, -6, 12, 12);
@@ -1392,13 +1404,13 @@ function drawTileDag({ px, originX, originY, g }, vd) {
   // Nodes — large coloured discs labelled with POI id + display name.
   // Entry POIs get a green border, terminals get a red border, wilderness
   // POIs get a thicker border so it's obvious they live on a plateau.
-  const entrySet    = new Set(narrative.entryPoiIds);
-  const terminalSet = new Set(narrative.terminalPoiIds);
+  const entrySet    = new Set(narrative.dag.entryPoiIds);
+  const terminalSet = new Set(narrative.dag.terminalPoiIds);
   for (const p of narrative.pois) {
-    const z = zoneById.get(p.zoneId);
-    if (!z) continue;
-    const cx = originX + z.centroid.x * px + px / 2;
-    const cy = originY + z.centroid.y * px + px / 2;
+    const host = regionById.get(p.hostRegion);
+    if (!host) continue;
+    const cx = originX + host.centroid.x * px + px / 2;
+    const cy = originY + host.centroid.y * px + px / 2;
     const r = 14;
     ctx.fillStyle = "#1a1c21";
     ctx.beginPath();
@@ -1417,20 +1429,22 @@ function drawTileDag({ px, originX, originY, g }, vd) {
   }
 
   // Status banner top-left: shape + retries + degraded flag + stair stats.
-  const stairsLocked   = (narrative.stairs ?? []).filter((s) => s.lockedBy).length;
-  const stairsUnlocked = (narrative.stairs ?? []).length - stairsLocked;
+  const stairEdges     = level.edges.stairs;
+  const stairsLocked   = stairEdges.filter((s) => s.locked !== null).length;
+  const stairsUnlocked = stairEdges.length - stairsLocked;
   ctx.fillStyle = "rgba(0,0,0,0.82)";
   ctx.fillRect(originX + 8, originY + 8, 240, 66);
   ctx.fillStyle = "#fff";
   ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  const status = narrative.degraded
-    ? `DAG: ${narrative.dagShape} · DEGRADED (retries ${narrative.retries})`
-    : `DAG: ${narrative.dagShape} · retries ${narrative.retries}`;
+  const dag = narrative.dag;
+  const status = dag.degraded
+    ? `DAG: ${dag.shape} · DEGRADED (retries ${dag.retries})`
+    : `DAG: ${dag.shape} · retries ${dag.retries}`;
   ctx.fillText(status, originX + 14, originY + 14);
   ctx.fillText(`${narrative.pois.length} POIs · ${narrative.trinkets.length} trinkets`, originX + 14, originY + 30);
-  ctx.fillText(`entries: ${narrative.entryPoiIds.length} · terminals: ${narrative.terminalPoiIds.length}`, originX + 14, originY + 44);
+  ctx.fillText(`entries: ${dag.entryPoiIds.length} · terminals: ${dag.terminalPoiIds.length}`, originX + 14, originY + 44);
   ctx.fillText(`stairs: ${stairsUnlocked} found, ${stairsLocked} locked`, originX + 14, originY + 58);
 }
 

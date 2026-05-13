@@ -44,33 +44,110 @@ import type {
   PoiInstance, PoiNetworkState, ResolvedGate,
   StairInstance, TileNarrative, TrinketInstance,
 } from "./state.ts";
+import type {
+  StairEdge, PoiPlacement, TrinketEdge, RegionId,
+} from "../level/types.ts";
 
 /**
- * Plain transformer — reads the ContentService off `state.content`
- * (threaded through PipelineBase). When `state.content` is undefined
- * the stage emits an empty narrative so snapshot tests that exercise
- * `generateTile` without a content store stay deterministic.
+ * Native LevelDef reducer (T-214). Reads the AnnotatedZone graph from
+ * the prior stage, runs the matcher to produce a TileNarrative + stair
+ * set, then writes the result *directly* into `state.level.narrative`
+ * and `state.level.edges.stairs`. Nothing about the narrative survives
+ * on the pipeline state past this stage — it's all on LevelDef.
+ *
+ * When `state.content` is undefined the stage leaves the empty
+ * `state.level.narrative` in place (initialized by `emptyLevel`); snapshot
+ * tests that exercise `generateTile` without a content store stay
+ * deterministic.
  */
 export const poiNetwork: Transformer<AnnotatedZoneState, PoiNetworkState, GenParams["poiNetwork"]> =
   (state, seed, params) => {
+    const regionIdByZoneId = new Map<number, RegionId>();
+    for (const r of state.level.regions) regionIdByZoneId.set(r.zoneId, r.id);
+
     if (!state.content) {
-      return { ...state, narrative: emptyNarrative() };
+      // emptyLevel already populated state.level.narrative with the
+      // right shape; leave it as-is so the stage is a no-op when no
+      // content store is available.
+      return state;
     }
-    const narrative = solveTileNarrative(state, seed, params, state.content);
-    return { ...state, narrative };
+
+    const { narrative, stairs } = solveTileNarrative(state, seed, params, state.content);
+    state.level.edges.stairs = stairs
+      .map(s => toStairEdge(s, regionIdByZoneId, state.zoneOf, state.gridSize))
+      .filter((s): s is StairEdge => s !== null);
+    state.level.narrative = {
+      pois: narrative.pois
+        .map(p => toPoiPlacement(p, regionIdByZoneId))
+        .filter((p): p is PoiPlacement => p !== null),
+      trinkets: narrative.trinkets.map(toTrinketEdge),
+      dag: {
+        shape: narrative.dagShape,
+        entryPoiIds: narrative.entryPoiIds,
+        terminalPoiIds: narrative.terminalPoiIds,
+        degraded: narrative.degraded,
+        retries: narrative.retries,
+      },
+    };
+    return state;
   };
 
-function emptyNarrative(): TileNarrative {
+function toStairEdge(
+  s: StairInstance,
+  regionIdByZoneId: Map<number, RegionId>,
+  zoneOf: Uint16Array,
+  gridSize: number,
+): StairEdge | null {
+  const from = regionIdByZoneId.get(s.fromZoneId);
+  const to   = regionIdByZoneId.get(s.toZoneId);
+  if (!from || !to) return null;
+  // Climb direction = whichever 4-neighbour of the anchor lies in `toZone`.
+  const idx = s.anchorPixel.y * gridSize + s.anchorPixel.x;
+  let dx = 0, dy = 0;
+  if (s.anchorPixel.x > 0            && zoneOf[idx - 1]        === s.toZoneId) { dx = -1; dy =  0; }
+  if (s.anchorPixel.x < gridSize - 1 && zoneOf[idx + 1]        === s.toZoneId) { dx =  1; dy =  0; }
+  if (s.anchorPixel.y > 0            && zoneOf[idx - gridSize] === s.toZoneId) { dx =  0; dy = -1; }
+  if (s.anchorPixel.y < gridSize - 1 && zoneOf[idx + gridSize] === s.toZoneId) { dx =  0; dy =  1; }
   return {
-    pois: [],
-    trinkets: [],
-    stairs: [],
-    dagShape: "linear",
-    entryPoiIds: [],
-    terminalPoiIds: [],
-    degraded: false,
-    retries: 0,
+    id: s.id,
+    from, to,
+    anchorPixel: s.anchorPixel,
+    climbDir: { dx, dy },
+    rampDepth: 4,
+    rampHalfWidth: 2,
+    locked: s.lockedBy ? { trinketId: s.lockedBy } : null,
   };
+}
+
+function toPoiPlacement(
+  p: PoiInstance,
+  regionIdByZoneId: Map<number, RegionId>,
+): PoiPlacement | null {
+  const host = regionIdByZoneId.get(p.zoneId);
+  if (!host) return null;
+  return {
+    id: p.id,
+    poiDefId: p.poiDefId,
+    hostRegion: host,
+    gate: p.gate,
+    dropsTrinket: p.trinketId,
+    stairEdge: p.stairId,
+  };
+}
+
+function toTrinketEdge(t: TrinketInstance): TrinketEdge {
+  return {
+    id: t.id,
+    sourcePoi: t.sourcePoi,
+    destPoi: t.destPoi,
+    themes: t.themes,
+    displayName: t.displayName,
+  };
+}
+
+interface SolverResult {
+  narrative: TileNarrative;
+  stairs: StairInstance[];
 }
 
 // ---------------------------------------------------------------------
@@ -82,7 +159,7 @@ function solveTileNarrative(
   tileSeed: number,
   params: GenParams["poiNetwork"],
   content: ContentService,
-): TileNarrative {
+): SolverResult {
   const allPois = [...content.pois.values()].filter(p => p.roles.length > 0);
   const biome = state.worldCell.biome;
   const stairContext: StairContext = {
@@ -108,17 +185,17 @@ function solveTileNarrative(
     if (!wired) continue;
 
     // Phase 4: trinket naming + stair materialization + emit
-    const narrative = buildNarrative(wired, retry, stairContext);
+    const { narrative, stairs } = buildNarrative(wired, retry, stairContext);
     // Phase 5: fill in "found" stairs for any wilderness zone the
     // matcher didn't assign a POI to. Every blob accessible from boot.
-    addFoundStairsForExposedWilderness(narrative, stairContext);
-    return narrative;
+    addFoundStairsForExposedWilderness(stairs, stairContext);
+    return { narrative, stairs };
   }
 
   // Retry budget exhausted — emit a degraded narrative built from the
   // best candidates regardless of bridge solvability.
   const degraded = emitDegraded(state.zones, allPois, biome, params, stairContext);
-  addFoundStairsForExposedWilderness(degraded, stairContext);
+  addFoundStairsForExposedWilderness(degraded.stairs, stairContext);
   return degraded;
 }
 
@@ -431,7 +508,7 @@ function buildNarrative(
   dag: WiredDag,
   retries: number,
   stairCtx: StairContext,
-): TileNarrative {
+): SolverResult {
   const poiInstanceId = (cand: ScoredCandidate) =>
     `${cand.poi.id}_z${cand.zone.id}`;
 
@@ -511,14 +588,16 @@ function buildNarrative(
   const terminalPoiIds = pois.filter(p => !outgoing.has(p.id)).map(p => p.id);
 
   return {
-    pois,
-    trinkets,
+    narrative: {
+      pois,
+      trinkets,
+      dagShape: classifyDagShape(pois, dag.edges, poiInstanceId),
+      entryPoiIds,
+      terminalPoiIds,
+      degraded: false,
+      retries,
+    },
     stairs,
-    dagShape: classifyDagShape(pois, dag.edges, poiInstanceId),
-    entryPoiIds,
-    terminalPoiIds,
-    degraded: false,
-    retries,
   };
 }
 
@@ -579,7 +658,7 @@ function emitDegraded(
   biome: { altitude: number; moisture: number; temperature: number; ruggedness: number },
   params: GenParams["poiNetwork"],
   _stairCtx: StairContext,
-): TileNarrative {
+): SolverResult {
   // Take the top-scored candidates regardless of theme bridge solvability;
   // wire them as a linear chain with synthetic trinkets that satisfy any
   // gate by ignoring flavor matching. Tile remains playable; just lacks
@@ -622,14 +701,16 @@ function emitDegraded(
     stairId: null,
   }));
   return {
-    pois: poisOut,
-    trinkets,
+    narrative: {
+      pois: poisOut,
+      trinkets,
+      dagShape: "linear",
+      entryPoiIds: poisOut.length > 0 ? [poisOut[0].id] : [],
+      terminalPoiIds: poisOut.length > 0 ? [poisOut[poisOut.length - 1].id] : [],
+      degraded: true,
+      retries: params.maxRetries,
+    },
     stairs: [],
-    dagShape: "linear",
-    entryPoiIds: poisOut.length > 0 ? [poisOut[0].id] : [],
-    terminalPoiIds: poisOut.length > 0 ? [poisOut[poisOut.length - 1].id] : [],
-    degraded: true,
-    retries: params.maxRetries,
   };
 }
 
@@ -726,14 +807,14 @@ function pickStairAnchor(
  * (POI-narrative ones) as the intended progression spine.
  *
  * Skips zones with no path-zone neighbour (no anchor possible).
- * Mutates `narrative.stairs` in place; returns the count added.
+ * Mutates `stairs` in place; returns the count added.
  */
 function addFoundStairsForExposedWilderness(
-  narrative: TileNarrative,
+  stairs: StairInstance[],
   ctx: StairContext,
 ): number {
   const covered = new Set<number>();
-  for (const s of narrative.stairs) covered.add(s.toZoneId);
+  for (const s of stairs) covered.add(s.toZoneId);
 
   let added = 0;
   for (const z of ctx.zones) {
@@ -748,7 +829,7 @@ function addFoundStairsForExposedWilderness(
       // be a legitimate anchor; skip rather than place a stair there.
       continue;
     }
-    narrative.stairs.push({
+    stairs.push({
       id: `stair_explore_z${z.id}`,
       fromZoneId: fromZone,
       toZoneId: z.id,
