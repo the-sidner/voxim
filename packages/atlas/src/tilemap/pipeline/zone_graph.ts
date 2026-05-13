@@ -1,30 +1,38 @@
 /**
- * Stage 10 — AnnotatedZoneGraph (T-208 + T-210).
+ * Stage 10 — AnnotatedZoneGraph (T-208 + T-210 + sector refactor).
  *
- * Partitions the tile's entire surface into **zones across two
- * traversal classes**:
+ * Partitions every pixel of the tile into exactly one **sector**:
  *
- *   PATH ZONES — open pixels (openMask = 1). Chambers + corridor
- *     segments. Default-walkable; this is the connective tissue of
- *     the tile.
+ *   PATH SECTORS (traversal: "path") — the connective tissue.
+ *     · CHAMBERS — `chamberOf`-tagged open pixels (rooms grown by
+ *       the rooms stage). One sector per chamber id.
+ *     · CROSSROADS — small disks painted around every network
+ *       junction of degree ≥ 3, over corridor pixels (junctions
+ *       inside chambers don't carve — the chamber wins).
+ *     · CORRIDOR SEGMENTS — remaining open pixels, flood-filled.
+ *       Naturally split at the crossroads disks, so a corridor
+ *       passing through three junctions becomes four segments.
  *
- *   WILDERNESS ZONES — closed-pixel blobs (openMask = 0) of a
- *     wilderness-eligible kind (STONE / FOREST / GRASS_MOUND).
- *     Elevated plateaus reachable only via stairs (T-210). The
- *     dominant boundary kind in the blob picks the topology role
- *     (crag / grove / thicket / hollow / outcrop). Water blobs
- *     stay outside the zone graph for v1 — no bridge mechanic yet.
+ *   WILDERNESS SECTORS (traversal: "wilderness") — closed-pixel
+ *     blobs of a wilderness-eligible kind (STONE / FOREST /
+ *     GRASS_MOUND). Reached only via stairs (T-210).
  *
- *   Adjacency:
- *     path↔path        — direct open-pixel-to-open-pixel
- *     path↔wilderness  — open-pixel-to-closed-pixel boundary
- *     wilderness↔wild  — never (always separated by path)
+ *   Every pixel maps to exactly one sector id — `zoneOf` is total
+ *   over open + wilderness-closed pixels. Water blobs and OPEN-kind
+ *   sentinels stay un-zoned (0xFFFF).
  *
- *   Per-zone metrics:
- *     area, centroid, bbox, aspectRatio, enclosure, kindHistogram
+ * Sectors are the working unit for everything downstream: the POI
+ * matcher (T-209), stair placement (T-210), zone naming (T-211),
+ * runtime POI triggers (T-212). No system below this stage thinks
+ * in pixels — it walks the sector graph.
  *
- *   Role assignment: rule-based per class. Path roles by topology
- *   (degree, area, aspect); wilderness roles by dominant kind + area.
+ * Role assignment per sector class:
+ *   chamber zone   → existing rules (plaza/lobby/pocket/arena/...)
+ *                    based on degree + area + aspect
+ *   crossroads zone→ always "crossroads" by construction
+ *   corridor seg.  → "corridor" if degree ≥ 2, "deadend" otherwise,
+ *                    "pocket" if it's a bulky degree-1 nub
+ *   wilderness     → by dominant boundary kind + area
  *
  * Deterministic by construction — no RNG used.
  */
@@ -47,18 +55,30 @@ const WILDERNESS_KINDS = new Set<number>([
   BOUNDARY_KIND_STONE, BOUNDARY_KIND_FOREST, BOUNDARY_KIND_GRASS_MOUND,
 ]);
 
+/**
+ * Disk radius (atlas pixels) used to carve a crossroads sector around
+ * each network junction of qualifying degree. Tuned so 3-way + 4-way
+ * intersections produce a visible, named "place" rather than getting
+ * absorbed into the surrounding corridor.
+ */
+const CROSSROADS_DISK_RADIUS = 3;
+const CROSSROADS_DEGREE_MIN  = 3;
+
 export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParams["zoneGraph"]> =
-  (state, seed, params) => {
+  (state, _stageSeed, params) => {
     const { openMask, chamberOf, kindOf, portals, gridSize } = state;
     const biome = state.worldCell.biome;
     const N = gridSize * gridSize;
 
-    // ---- 1. Segment open pixels into PATH zones ------------------------
-    // Chamber ids occupy the leading zone-id range; corridor flood-fill
-    // continues from there.
     const zoneOf = new Uint16Array(N).fill(ZONE_ID_NONE);
     const traversalOf: ("path" | "wilderness")[] = [];
+    // Tracks sector-construction-type so the role classifier can
+    // override defaults (crossroads-by-construction must be
+    // "crossroads" regardless of geometric measure).
+    const carvedAsCrossroads = new Set<number>();
+    const carvedAsCorridor   = new Set<number>();
 
+    // ---- 1. CHAMBER SECTORS — chamberOf-tagged open pixels ------------
     let maxChamberId = -1;
     for (let i = 0; i < N; i++) {
       if (openMask[i] !== 1) continue;
@@ -69,40 +89,83 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     }
     for (let z = 0; z <= maxChamberId; z++) traversalOf[z] = "path";
 
-    // Corridor flood-fill (open pixels with no chamber tag).
     let nextZoneId = maxChamberId + 1;
     const stack: number[] = [];
-    for (let seed = 0; seed < N; seed++) {
-      if (openMask[seed] !== 1) continue;
-      if (zoneOf[seed] !== ZONE_ID_NONE) continue;
+
+    // ---- 2. CROSSROADS SECTORS — disks around high-degree junctions ---
+    //         Painted BEFORE corridor flood so corridors naturally
+    //         split at the disks. Junctions inside chambers don't
+    //         carve — chamber sector wins.
+    if (state.seeds && state.degrees) {
+      for (let i = 0; i < state.seeds.length; i++) {
+        if (state.degrees[i] < CROSSROADS_DEGREE_MIN) continue;
+        const j = state.seeds[i];
+        const jx = j.x | 0;
+        const jy = j.y | 0;
+        if (jx < 0 || jy < 0 || jx >= gridSize || jy >= gridSize) continue;
+        const jIdx = jy * gridSize + jx;
+        // Only carve if the junction pixel itself lies on a corridor
+        // (open AND not a chamber AND not already a sector).
+        if (openMask[jIdx] !== 1) continue;
+        if (chamberOf[jIdx] !== ROOM_ID_NONE) continue;
+        if (zoneOf[jIdx] !== ZONE_ID_NONE) continue;
+
+        const zid = nextZoneId++;
+        traversalOf[zid] = "path";
+        carvedAsCrossroads.add(zid);
+        const R = CROSSROADS_DISK_RADIUS;
+        const R2 = R * R;
+        for (let dy = -R; dy <= R; dy++) {
+          const ny = jy + dy;
+          if (ny < 0 || ny >= gridSize) continue;
+          for (let dx = -R; dx <= R; dx++) {
+            if (dx * dx + dy * dy > R2) continue;
+            const nx = jx + dx;
+            if (nx < 0 || nx >= gridSize) continue;
+            const idx = ny * gridSize + nx;
+            // Only repaint corridor pixels — chambers keep their tag,
+            // and already-assigned pixels (e.g. another junction's
+            // disk if junctions cluster) keep their first owner.
+            if (openMask[idx] !== 1) continue;
+            if (chamberOf[idx] !== ROOM_ID_NONE) continue;
+            if (zoneOf[idx] !== ZONE_ID_NONE) continue;
+            zoneOf[idx] = zid;
+          }
+        }
+      }
+    }
+
+    // ---- 3. CORRIDOR SEGMENTS — remaining open pixels -----------------
+    //         Bounded by chambers + crossroads disks, so each chain
+    //         between junctions becomes its own sector.
+    for (let pixelIdx = 0; pixelIdx < N; pixelIdx++) {
+      if (openMask[pixelIdx] !== 1) continue;
+      if (zoneOf[pixelIdx] !== ZONE_ID_NONE) continue;
       const zid = nextZoneId++;
       traversalOf[zid] = "path";
-      zoneOf[seed] = zid;
-      stack.push(seed);
+      carvedAsCorridor.add(zid);
+      zoneOf[pixelIdx] = zid;
+      stack.push(pixelIdx);
       while (stack.length > 0) {
         const idx = stack.pop()!;
         const x = idx % gridSize;
         const y = (idx - x) / gridSize;
-        if (x > 0)            floodPath(idx - 1,        zid, zoneOf, openMask, chamberOf, stack);
-        if (x < gridSize - 1) floodPath(idx + 1,        zid, zoneOf, openMask, chamberOf, stack);
-        if (y > 0)            floodPath(idx - gridSize, zid, zoneOf, openMask, chamberOf, stack);
-        if (y < gridSize - 1) floodPath(idx + gridSize, zid, zoneOf, openMask, chamberOf, stack);
+        if (x > 0)            floodCorridor(idx - 1,        zid, zoneOf, openMask, chamberOf, stack);
+        if (x < gridSize - 1) floodCorridor(idx + 1,        zid, zoneOf, openMask, chamberOf, stack);
+        if (y > 0)            floodCorridor(idx - gridSize, zid, zoneOf, openMask, chamberOf, stack);
+        if (y < gridSize - 1) floodCorridor(idx + gridSize, zid, zoneOf, openMask, chamberOf, stack);
       }
     }
 
-    // ---- 2. Segment closed pixels into WILDERNESS zones (T-210) -------
-    // Only WILDERNESS_KINDS (stone / forest / grass mound) participate.
-    // Water and any other closed-kind stay zone-less so the matcher
-    // doesn't try to put POIs into rivers.
-    for (let seed = 0; seed < N; seed++) {
-      if (openMask[seed] !== 0) continue;
-      if (zoneOf[seed] !== ZONE_ID_NONE) continue;
-      if (!WILDERNESS_KINDS.has(kindOf[seed])) continue;
-
+    // ---- 4. WILDERNESS SECTORS — closed-pixel blobs -------------------
+    for (let pixelIdx = 0; pixelIdx < N; pixelIdx++) {
+      if (openMask[pixelIdx] !== 0) continue;
+      if (zoneOf[pixelIdx] !== ZONE_ID_NONE) continue;
+      if (!WILDERNESS_KINDS.has(kindOf[pixelIdx])) continue;
       const zid = nextZoneId++;
       traversalOf[zid] = "wilderness";
-      zoneOf[seed] = zid;
-      stack.push(seed);
+      zoneOf[pixelIdx] = zid;
+      stack.push(pixelIdx);
       while (stack.length > 0) {
         const idx = stack.pop()!;
         const x = idx % gridSize;
@@ -114,22 +177,14 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
       }
     }
 
-    // ---- 3. Allocate per-zone metric accumulators ---------------------
+    // ---- 5. Allocate per-sector accumulators --------------------------
     const zoneCount = nextZoneId;
     const zonesRaw: Array<MutableZone | undefined> = new Array(zoneCount);
     const adjSet: Set<number>[] = new Array(zoneCount);
     const oppositeBoundary = new Uint32Array(zoneCount);
     const totalBoundary    = new Uint32Array(zoneCount);
 
-    // ---- 4. Walk every zoned pixel; accumulate area, centroid, bbox,
-    //         adjacency, enclosure, kind histogram.
-    //
-    // For path zones: kindHistogram counts neighbouring closed-pixel
-    // kinds (what's around me). enclosure = closed-neighbour fraction.
-    //
-    // For wilderness zones: kindHistogram counts the zone's own pixels'
-    // kindOf (what am I made of). enclosure = open-neighbour fraction
-    // (how exposed my edges are to paths).
+    // ---- 6. Walk pixels, accumulate metrics + adjacency ---------------
     for (let idx = 0; idx < N; idx++) {
       const zid = zoneOf[idx];
       if (zid === ZONE_ID_NONE) continue;
@@ -137,7 +192,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
       const traversal = traversalOf[zid];
       let z = zonesRaw[zid];
       if (!z) {
-        z = makeMutableZone(zid, traversal);
+        z = makeMutableZone(zid, traversal, carvedAsCorridor.has(zid));
         zonesRaw[zid] = z;
         adjSet[zid] = new Set<number>();
       }
@@ -151,7 +206,6 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
       if (y < z.bbox.minY) z.bbox.minY = y;
       if (y > z.bbox.maxY) z.bbox.maxY = y;
 
-      // Wilderness zones histogram themselves.
       if (traversal === "wilderness") {
         const k = kindOf[idx];
         z.kindHistogram[k] = (z.kindHistogram[k] ?? 0) + 1;
@@ -173,7 +227,6 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         if (otherZ !== ZONE_ID_NONE && otherZ !== zid) {
           adjSet[zid].add(otherZ);
         }
-        // Path zones histogram their neighbouring closed pixels.
         if (traversal === "path" && openMask[nb] === 0) {
           const k = kindOf[nb];
           z.kindHistogram[k] = (z.kindHistogram[k] ?? 0) + 1;
@@ -181,7 +234,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
       }
     }
 
-    // ---- 5. Portal-touching zones are entries (paths only). -----------
+    // ---- 7. Portal-touching zones = entries ---------------------------
     for (const p of portals) {
       const idx = p.pixelY * gridSize + p.pixelX;
       const zid = zoneOf[idx];
@@ -190,7 +243,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
       }
     }
 
-    // ---- 6. Finalize per-zone metrics + role assignment ---------------
+    // ---- 8. Role assignment + final emit ------------------------------
     const zones: AnnotatedZone[] = [];
     for (let zid = 0; zid < zoneCount; zid++) {
       const z = zonesRaw[zid];
@@ -204,9 +257,18 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         ? 0
         : oppositeBoundary[zid] / totalBoundary[zid];
       const neighbors = [...adjSet[zid]].sort((a, b) => a - b);
-      const role = z.traversal === "path"
-        ? classifyPathRole(z.area, aspect, neighbors.length, params)
-        : classifyWildernessRole(z.area, z.kindHistogram);
+
+      let role: ZoneRole;
+      if (z.traversal === "wilderness") {
+        role = classifyWildernessRole(z.area, z.kindHistogram);
+      } else if (carvedAsCrossroads.has(zid)) {
+        role = "crossroads";
+      } else if (z.startedAsCorridor) {
+        role = classifyCorridorRole(z.area, aspect, neighbors.length, params);
+      } else {
+        // Chamber-derived: existing degree+area+aspect rules.
+        role = classifyChamberRole(z.area, aspect, neighbors.length, params);
+      }
 
       zones.push({
         id: zid,
@@ -219,9 +281,9 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         kindHistogram: z.kindHistogram,
         neighbors,
         isEntry: z.isEntry,
-        isCorridor: z.traversal === "path" && !z.startedAsChamber,
+        isCorridor: z.startedAsCorridor,
         traversal: z.traversal,
-        name: nameZone(seed, zid, z.area, role, z.traversal, biome),
+        name: nameZone(_stageSeed, zid, z.area, role, z.traversal, biome),
       });
     }
     zones.sort((a, b) => a.id - b.id);
@@ -231,7 +293,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
 
 // ---- flood helpers ---------------------------------------------------
 
-function floodPath(
+function floodCorridor(
   idx: number,
   zid: number,
   zoneOf: Uint16Array,
@@ -241,7 +303,7 @@ function floodPath(
 ): void {
   if (openMask[idx] !== 1) return;
   if (zoneOf[idx] !== ZONE_ID_NONE) return;
-  if (chamberOf[idx] !== ROOM_ID_NONE) return; // chamber pixel — already its own zone
+  if (chamberOf[idx] !== ROOM_ID_NONE) return;
   zoneOf[idx] = zid;
   stack.push(idx);
 }
@@ -256,7 +318,7 @@ function floodWilderness(
 ): void {
   if (openMask[idx] !== 0) return;
   if (zoneOf[idx] !== ZONE_ID_NONE) return;
-  if (!WILDERNESS_KINDS.has(kindOf[idx])) return; // water / OPEN stop the flood
+  if (!WILDERNESS_KINDS.has(kindOf[idx])) return;
   zoneOf[idx] = zid;
   stack.push(idx);
 }
@@ -272,11 +334,11 @@ interface MutableZone {
   kindHistogram: Record<number, number>;
   isEntry: boolean;
   traversal: "path" | "wilderness";
-  /** chamber-derived path zone? (drives `isCorridor` finalization) */
-  startedAsChamber: boolean;
+  /** True for corridor-flood sectors; false for chambers + crossroads + wilderness. */
+  startedAsCorridor: boolean;
 }
 
-function makeMutableZone(id: number, traversal: "path" | "wilderness"): MutableZone {
+function makeMutableZone(id: number, traversal: "path" | "wilderness", startedAsCorridor: boolean): MutableZone {
   return {
     id,
     area: 0,
@@ -286,13 +348,18 @@ function makeMutableZone(id: number, traversal: "path" | "wilderness"): MutableZ
     kindHistogram: {},
     isEntry: false,
     traversal,
-    startedAsChamber: false,
+    startedAsCorridor,
   };
 }
 
 // ---- role classifiers ------------------------------------------------
 
-function classifyPathRole(
+/**
+ * Chamber-derived path zones (the noise-flooded room blobs). Existing
+ * geometric rules — these sectors have variable shapes and the degree
+ * + area + aspect heuristic still picks the player-readable role.
+ */
+function classifyChamberRole(
   area: number,
   aspectRatio: number,
   degree: number,
@@ -308,17 +375,42 @@ function classifyPathRole(
 }
 
 /**
+ * Corridor-flood sectors are by construction the chains between
+ * junctions / chambers. Their degree tells us almost everything:
+ *
+ *   degree ≥ 2 — through-corridor between sectors. Role: "corridor".
+ *                Lobby override when the segment is unusually wide
+ *                (a "lobby" mid-section between two crossroads).
+ *   degree = 1 — terminus. "pocket" if substantial, "deadend" otherwise.
+ *   degree = 0 — isolated bubble (shouldn't happen but defend).
+ */
+function classifyCorridorRole(
+  area: number,
+  _aspect: number,
+  degree: number,
+  p: GenParams["zoneGraph"],
+): ZoneRole {
+  // Arena threshold applies regardless of derivation — a 60K-area
+  // path sector is an arena whether the rooms stage flagged it as a
+  // chamber or not (open_plains tiles have mostly corridor-derived
+  // big spaces because their roomChanceBase is low).
+  if (area > p.arenaAreaMin) return "arena";
+  if (degree === 0) return "deadend";
+  if (degree === 1) return area > p.pocketAreaMin ? "pocket" : "deadend";
+  if (area > p.lobbyAreaMin) return "lobby";
+  return "corridor";
+}
+
+/**
  * Wilderness zones are picked by their dominant pixel kind.
- * Tie-breaking: stone wins over forest wins over grass-mound — only
- * matters when a blob straddles kind boundaries (rare given how
- * boundary_kinds.ts paints them).
+ * Tie-breaking: stone > forest > grass.
  */
 function classifyWildernessRole(area: number, hist: Record<number, number>): ZoneRole {
   const stone   = hist[BOUNDARY_KIND_STONE]       ?? 0;
   const forest  = hist[BOUNDARY_KIND_FOREST]      ?? 0;
   const grass   = hist[BOUNDARY_KIND_GRASS_MOUND] ?? 0;
   const total   = stone + forest + grass;
-  if (total === 0) return "outcrop"; // fallback for empty histograms
+  if (total === 0) return "outcrop";
   const dominant = stone >= forest && stone >= grass ? "stone"
                  : forest >= grass ? "forest"
                  : "grass";
@@ -327,6 +419,6 @@ function classifyWildernessRole(area: number, hist: Record<number, number>): Zon
   return                          area > 300 ? "hollow" : "outcrop";
 }
 
-// (used to suppress an unused-var warning until terrain modulation lands)
+// (suppress unused-var warnings for kind ids referenced only in type checks)
 void BOUNDARY_KIND_OPEN;
 void BOUNDARY_KIND_WATER;

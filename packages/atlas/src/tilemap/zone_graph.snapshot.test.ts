@@ -81,16 +81,22 @@ async function captureZone(e: MatrixEntry): Promise<ZoneSnapshot> {
 // Captured pre-merge from the canonical role-classifier rules; any
 // future tweak to segmentation, role rules, or default thresholds is
 // an intentional fixture diff (re-run capture mode + paste).
-// T-211 + per-role thresholds (T-211 follow-up): zoneOf hashes
-// unchanged (segmentation identical); zonesJson updated because the
-// naming threshold dropped sub-sector names (micro-thickets and tiny
-// crags now return name="", only "distinct sectors" — rooms,
-// corridors, substantial wilderness — carry names).
+// Sector refactor: corridor flood is now split by junction disks
+// (degree ≥ 3 carved as their own crossroads sectors). Role histograms
+// shift dramatically — corridors become first-class sectors with their
+// own ids instead of getting absorbed into chamber-derived "deadend"
+// roles. fm_a went from 8 crossroads + 0 corridor to 9 crossroads +
+// 4 corridor; cliff_dungeon's massive deadend count (25) collapsed
+// to 3 as 47 actual corridor sectors emerged.
+//
+// zoneOf changed for fm_a + cd (the disk-paint phase creates new ids
+// in former corridor pixels); fm_b + op are unchanged because their
+// junction layouts happen to produce identical disk-painted regions.
 const EXPECTED: Record<string, { zoneOf: string; zonesJson: string }> = {
-  fm_a: { zoneOf: "d37c0b3b86f605a8", zonesJson: "d645e370ae6eff0e" },
-  fm_b: { zoneOf: "61c0ada3dea5f72d", zonesJson: "6b6b57cfe31f9fcf" },
-  op:   { zoneOf: "7ea21a5aa497044b", zonesJson: "7d777d557df046cf" },
-  cd:   { zoneOf: "19cf24deb42958bb", zonesJson: "64c6541859467d1c" },
+  fm_a: { zoneOf: "946f485bd0c62d54", zonesJson: "f34898585ebe7ba2" },
+  fm_b: { zoneOf: "61c0ada3dea5f72d", zonesJson: "eff5d5b98fe888ad" },
+  op:   { zoneOf: "7ea21a5aa497044b", zonesJson: "ecc8db14ef4c7e28" },
+  cd:   { zoneOf: "d606272b26278584", zonesJson: "5f5d0ed39428bc0c" },
 };
 
 Deno.test("zoneGraph: byte-identical output across pipeline matrix", async () => {
