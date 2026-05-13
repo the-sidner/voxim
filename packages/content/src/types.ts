@@ -1805,15 +1805,46 @@ export type PoiType =
   | "action"
   | "exploration";
 
-/** Topology role each zone in the AnnotatedZoneGraph (Tier 3, T-208) carries. */
+/**
+ * Topology role each zone in the AnnotatedZoneGraph (T-208) carries.
+ *
+ * Two traversal classes (T-210):
+ *
+ *   PATH roles — the default-walkable corridor/chamber network.
+ *     Players reach these through normal exploration.
+ *
+ *   WILDERNESS roles — elevated plateaus enclosed by paths. Players
+ *     reach these only by ascending a stair (T-210), which is gated
+ *     by a trinket from an upstream POI. Closed-pixel blobs.
+ *     The dominant boundary kind drives the specific role:
+ *       stone        → crag    (rocky outcrop)
+ *       forest large → grove
+ *       forest small → thicket
+ *       grass large  → hollow  (grassy bowl)
+ *       grass small  → outcrop
+ *       water        → morass  (reserved for v2; water blobs are not
+ *                                yet wilderness zones — bridge mechanic
+ *                                doesn't exist)
+ *
+ * A POI's `fit.traversal` field declares which class it occupies.
+ * Default = `"path"` for back-compat with the original 7 roles.
+ */
 export type ZoneRole =
+  // path roles
   | "plaza"
   | "pocket"
   | "deadend"
   | "corridor"
   | "crossroads"
   | "lobby"
-  | "arena";
+  | "arena"
+  // wilderness roles
+  | "crag"
+  | "grove"
+  | "thicket"
+  | "hollow"
+  | "outcrop"
+  | "morass";
 
 /** Where in the dependency DAG a POI may legally sit. */
 export type PoiRole = "entry" | "midchain" | "terminal" | "optional";
@@ -1904,6 +1935,18 @@ export interface PoiFit {
   requiredKind?: string[];
   /** If set, restrict matching to cells of these biomes. */
   requiredBiome?: string[];
+  /**
+   * Which zone-class this POI must occupy (T-210):
+   *   "path"       — default-walkable corridor / chamber zones
+   *   "wilderness" — elevated plateaus; require a stair-gated ascent
+   *                  (the matcher materializes a Stair when wiring)
+   *   "either"     — both legal
+   *
+   * Default `"path"` when absent. Wilderness POIs are typically destinations
+   * (bossfights, hidden shrines, secret encounters) — the "what the
+   * trinket unlocks", not the "where you find the trinket".
+   */
+  traversal?: "path" | "wilderness" | "either";
 }
 
 // ---- gate (discriminated union on `kind`) ----

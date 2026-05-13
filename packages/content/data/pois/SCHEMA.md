@@ -185,19 +185,22 @@ The generator matches POIs to zones from the **AnnotatedZoneGraph**
 (Tier 3 in the pipeline). `fit` declares what makes a zone *eligible* for
 this POI.
 
-| field               | type       | meaning                                                            |
-|---------------------|------------|--------------------------------------------------------------------|
-| `preferredTopology` | role[]     | zone topology tags this POI wants (see § 4.1)                      |
-| `minArea`           | number     | minimum zone area in tile pixels                                   |
-| `maxArea`           | number     | maximum                                                            |
-| `enclosure`         | {min,max}? | 0 = fully open plaza, 1 = sealed cave                              |
-| `requiredKind`      | KindTag[]? | restrict to zones whose boundary kind matches (forest, stone, …)   |
-| `requiredBiome`     | BiomeTag[]?| restrict to specific biome cells                                   |
+| field               | type        | meaning                                                            |
+|---------------------|-------------|--------------------------------------------------------------------|
+| `preferredTopology` | role[]      | zone topology tags this POI wants (see § 4.1)                      |
+| `minArea`           | number      | minimum zone area in tile pixels                                   |
+| `maxArea`           | number      | maximum                                                            |
+| `enclosure`         | {min,max}?  | 0 = fully open plaza, 1 = sealed cave                              |
+| `requiredKind`      | KindTag[]?  | restrict to zones whose boundary kind matches (forest, stone, …)   |
+| `requiredBiome`     | BiomeTag[]? | restrict to specific biome cells                                   |
+| `traversal`         | string?     | `"path"` (default) \| `"wilderness"` \| `"either"` — which zone-class this POI lives in. Wilderness POIs require a stair-gated ascent (T-210). |
 
 ### 4.1 Zone Topology Roles
 
-These are produced by Tier 2's topology-annotation transformer. A zone
-typically carries exactly one role.
+These are produced by the topology-annotation transformer (T-208) +
+the wilderness-class split (T-210). A zone carries exactly one role.
+
+**Path-class roles** (default-walkable corridor / chamber network):
 
 | role           | when assigned                                            |
 |----------------|----------------------------------------------------------|
@@ -209,9 +212,21 @@ typically carries exactly one role.
 | `lobby`        | medium chamber adjacent to a path with multiple exits    |
 | `arena`        | very large flat area                                     |
 
+**Wilderness-class roles** (elevated plateaus, stair-gated, T-210). The
+dominant boundary kind of the closed-pixel blob picks the specific role:
+
+| role        | when assigned                                                  |
+|-------------|----------------------------------------------------------------|
+| `crag`      | dominant kind = stone — rocky outcrop                          |
+| `grove`     | dominant kind = forest, area > 500 — large dense woodland      |
+| `thicket`   | dominant kind = forest, area ≤ 500 — small overgrown patch     |
+| `hollow`    | dominant kind = grass mound, area > 300 — broad grassy plateau |
+| `outcrop`   | dominant kind = grass mound, area ≤ 300 — small grassy mound   |
+| `morass`    | dominant kind = water — *reserved for v2; water blobs are not  yet wilderness zones (bridge mechanic doesn't exist).* |
+
 The generator scores `fit` as a soft constraint: closer-to-preferred is
 better; mismatches drop the score but don't outright reject (unless
-`minArea` / `requiredBiome` says otherwise — those are hard).
+`minArea` / `requiredBiome` / `traversal` says otherwise — those are hard).
 
 ---
 

@@ -14,10 +14,10 @@
   },
 
   "fit": {
-    "preferredTopology": ["arena", "plaza"],
-    "minArea":           600,
+    "preferredTopology": ["arena", "plaza", "hollow", "crag"],
+    "minArea":           400,
     "maxArea":           2400,
-    "enclosure":         { "min": 0.0, "max": 0.5 },
+    "traversal":         "either",
     "requiredBiome":     ["tundra", "mountains"]
   },
 

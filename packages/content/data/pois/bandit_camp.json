@@ -14,7 +14,8 @@
   "fit": {
     "preferredTopology": ["lobby", "pocket", "plaza"],
     "minArea":           250,
-    "maxArea":           900
+    "maxArea":           900,
+    "traversal":         "path"
   },
 
   "gate": { "kind": "open" },

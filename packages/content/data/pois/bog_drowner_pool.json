@@ -15,7 +15,8 @@
     "preferredTopology": ["pocket", "deadend"],
     "minArea":           150,
     "maxArea":           600,
-    "enclosure":         { "min": 0.5, "max": 1.0 },
+    "enclosure":         { "min": 0.4, "max": 1.0 },
+    "traversal":         "path",
     "requiredKind":      ["water", "forest"],
     "requiredBiome":     ["swamp", "shore"]
   },

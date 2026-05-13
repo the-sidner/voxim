@@ -11,11 +11,10 @@
   },
 
   "fit": {
-    "preferredTopology": ["lobby", "pocket"],
-    "minArea":           300,
+    "preferredTopology": ["crag", "outcrop"],
+    "minArea":           200,
     "maxArea":           1000,
-    "enclosure":         { "min": 0.6, "max": 1.0 },
-    "requiredKind":      ["stone"]
+    "traversal":         "wilderness"
   },
 
   "gate": {

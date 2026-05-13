@@ -12,11 +12,10 @@
   },
 
   "fit": {
-    "preferredTopology": ["plaza", "lobby", "arena"],
-    "minArea":           200,
-    "maxArea":           1200,
-    "enclosure":         { "min": 0.0, "max": 0.4 },
-    "requiredKind":      ["stone", "grass_mound"]
+    "preferredTopology": ["crag", "hollow", "outcrop"],
+    "minArea":           150,
+    "maxArea":           8000,
+    "traversal":         "wilderness"
   },
 
   "gate": { "kind": "open" },

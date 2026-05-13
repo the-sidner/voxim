@@ -61,9 +61,11 @@ const STAGE_VIEWER = {
   poiNetwork:      "dag",
 };
 
-// Topology-role palette (T-208). Bright + saturated so role boundaries
-// pop against the dark closed-pixel backdrop.
+// Topology-role palette. Path-class roles (T-208) get bright saturated
+// hues that pop on a dark backdrop. Wilderness roles (T-210) get muted
+// earth-tones so they read as "elevated, distinct from paths".
 const ZONE_ROLE_COLOURS = {
+  // path
   arena:      "#ffffff",
   plaza:      "#f5d976",
   crossroads: "#f59f76",
@@ -71,6 +73,13 @@ const ZONE_ROLE_COLOURS = {
   corridor:   "#7eb6f5",
   pocket:     "#7edb8b",
   deadend:    "#f57676",
+  // wilderness
+  crag:       "#6e6f76",  // weathered stone
+  grove:      "#3f5e3b",  // deep forest
+  thicket:    "#4f7548",  // bright thicket
+  hollow:     "#8d9a5d",  // grassy hollow
+  outcrop:    "#a8a87a",  // sparse mound
+  morass:     "#3a5466",  // marsh water (reserved)
 };
 
 const NO_GATE = 0xF;
@@ -1344,8 +1353,45 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     ctx.fillText(t.displayName.slice(0, 22), midx, midy);
   }
 
+  // Stairs (T-210) — small diamond markers at each stair's anchor pixel,
+  // with a short connecting line from path centroid → wilderness centroid.
+  // Locked stairs render solid red; open (found) stairs render hollow green.
+  if (Array.isArray(narrative.stairs)) {
+    for (const s of narrative.stairs) {
+      const fromZ = zoneById.get(s.fromZoneId);
+      const toZ   = zoneById.get(s.toZoneId);
+      if (!fromZ || !toZ) continue;
+      const ax = originX + s.anchorPixel.x * px + px / 2;
+      const ay = originY + s.anchorPixel.y * px + px / 2;
+      const tx = originX + toZ.centroid.x * px + px / 2;
+      const ty = originY + toZ.centroid.y * px + px / 2;
+      // Dashed line from anchor → wilderness centroid (the "climb").
+      ctx.strokeStyle = s.lockedBy ? "rgba(245,118,118,0.6)" : "rgba(126,219,139,0.6)";
+      ctx.lineWidth   = 1.6;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Diamond marker at the anchor.
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle   = s.lockedBy ? "#f57676" : "#1a1c21";
+      ctx.strokeStyle = s.lockedBy ? "#f57676" : "#7edb8b";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.rect(-6, -6, 12, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // Nodes — large coloured discs labelled with POI id + display name.
-  // Entry POIs get a green border, terminals get a red border.
+  // Entry POIs get a green border, terminals get a red border, wilderness
+  // POIs get a thicker border so it's obvious they live on a plateau.
   const entrySet    = new Set(narrative.entryPoiIds);
   const terminalSet = new Set(narrative.terminalPoiIds);
   for (const p of narrative.pois) {
@@ -1370,9 +1416,11 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     ctx.fillText(p.poiDefId, cx, cy + r + 4);
   }
 
-  // Status banner top-left: shape + retries + degraded flag.
-  ctx.fillStyle = "rgba(0,0,0,0.8)";
-  ctx.fillRect(originX + 8, originY + 8, 220, 50);
+  // Status banner top-left: shape + retries + degraded flag + stair stats.
+  const stairsLocked   = (narrative.stairs ?? []).filter((s) => s.lockedBy).length;
+  const stairsUnlocked = (narrative.stairs ?? []).length - stairsLocked;
+  ctx.fillStyle = "rgba(0,0,0,0.82)";
+  ctx.fillRect(originX + 8, originY + 8, 240, 66);
   ctx.fillStyle = "#fff";
   ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
   ctx.textAlign = "left";
@@ -1383,6 +1431,7 @@ function drawTileDag({ px, originX, originY, g }, vd) {
   ctx.fillText(status, originX + 14, originY + 14);
   ctx.fillText(`${narrative.pois.length} POIs · ${narrative.trinkets.length} trinkets`, originX + 14, originY + 30);
   ctx.fillText(`entries: ${narrative.entryPoiIds.length} · terminals: ${narrative.terminalPoiIds.length}`, originX + 14, originY + 44);
+  ctx.fillText(`stairs: ${stairsUnlocked} found, ${stairsLocked} locked`, originX + 14, originY + 58);
 }
 
 // Pre-parsed RGB tables — avoids hexToRGB on every pixel and lets the

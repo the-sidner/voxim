@@ -14,11 +14,10 @@
   },
 
   "fit": {
-    "preferredTopology": ["arena", "plaza"],
-    "minArea":           900,
-    "maxArea":           4000,
-    "enclosure":         { "min": 0.2, "max": 0.7 },
-    "requiredKind":      ["water"],
+    "preferredTopology": ["crag", "hollow"],
+    "minArea":           500,
+    "maxArea":           15000,
+    "traversal":         "wilderness",
     "requiredBiome":     ["shore", "swamp"]
   },
 

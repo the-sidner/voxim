@@ -12,10 +12,10 @@
   },
 
   "fit": {
-    "preferredTopology": ["plaza", "lobby"],
-    "minArea":           400,
-    "maxArea":           1400,
-    "enclosure":         { "min": 0.3, "max": 0.9 },
+    "preferredTopology": ["grove", "thicket"],
+    "minArea":           200,
+    "maxArea":           8000,
+    "traversal":         "wilderness",
     "requiredBiome":     ["forest", "hills"]
   },
 

@@ -1829,6 +1829,124 @@ saturation in 100 sample bakes; the DAG renders in atlas; ten random
 tile bakes show at least three distinct dagShapes (linear / branching /
 diamond / lattice mix); save+reload reproduces the DAG byte-identical.
 
+### T-210 · Wilderness zones + stairs — yin-yang dungeon model
+Effort: L   Status: done   Commit: (pending)   Depends on: T-208, T-209
+
+The original Tier-3/6 model treated only open pixels as the playable
+surface; closed pixels were uniform walls. Players walked through
+corridors and chambers; everything else was background. T-210 reframes
+the tile as a **two-class zone partition**:
+
+  PATH zones — open-pixel chambers + corridors. Default-walkable.
+    The connective tissue of the tile.
+  WILDERNESS zones — closed-pixel blobs (stone / forest / grass
+    mound). Elevated plateaus, walkable on their elevated top once
+    the player reaches them. Reached only via STAIRS — discrete
+    level-design objects gated by trinkets.
+
+Stairs are the materialisation of wilderness-POI gates. When the
+matcher selects a POI on a wilderness zone, it computes a stair anchor
+(path-pixel adjacent to that wilderness blob, nearest to the blob's
+centroid) and emits a `StairInstance` with `lockedBy` pointing at the
+upstream POI's trinket. Completing that upstream POI unlocks the stair
+and lets the player ascend.
+
+Scope:
+- `ZoneRole` enum extended with wilderness roles `crag` / `grove` /
+  `thicket` / `hollow` / `outcrop` / `morass` (last reserved for v2 —
+  water blobs aren't wilderness yet; bridge mechanic isn't built).
+- `AnnotatedZone.traversal: "path" | "wilderness"` first-class field.
+- `PoiFit.traversal: "path" | "wilderness" | "either"` filter. Default
+  `"path"` for back-compat.
+- New types `StairInstance` + `PoiInstance.stairId` in pipeline state.
+- `zoneGraph` transformer flood-fills closed pixels (excluding water)
+  into wilderness zones alongside the existing open-pixel segmentation.
+- Matcher gains a two-phase selection: phase A picks entries first
+  (min 2 when target ≥ 4) so the wire phase has thematic-coverage
+  options; phase B fills remaining slots. Wilderness POIs are rejected
+  if their zone has no adjacent path zone (no stair anchor possible).
+- POI roster re-tagged: bossfights / shrines / puzzles / waves /
+  exploration → wilderness; encounters / mechanical structures →
+  path; cairn_marker / frostshade_hunt → either.
+- Inspector palette gains earth-toned wilderness role colours;
+  drawTileDag overlays stairs as diamond markers with dashed climb
+  paths (red = locked, green outline = found / always-open).
+
+NOT in scope (deferred to follow-up):
+- Engine collision update so the player can actually walk onto an
+  unlocked wilderness plateau. Currently the heightmap still treats
+  wilderness pixels as wall-height (2u) and openMask still blocks.
+  The narrative declares the stair-and-zone gating; runtime
+  enforcement comes with T-212 (POI runtime).
+
+Done when: zone graph snapshot byte-identical for the new shape (4
+re-captured fixtures); 16 atlas tests green including 6 narrative
+structural-validity tests; bridge validator passes; inspector renders
+stairs + wilderness colours on the POI-network view; happy-path
+fraction ≥ 40% across 20 sample tile bakes.
+
+### T-211 · Zone names + client zoneOf transmission
+Effort: M   Status: todo   Depends on: T-210
+
+Procedurally name each zone (path or wilderness) from a combination of
+biome, topology role, dominant theme of nearby POIs, and an
+adjective-noun vocabulary. Examples:
+  forest + grove                  → "Whispering Grove"
+  swamp + morass (near rotten POI) → "Drowner's Mire"
+  stone + crag (near regal POI)   → "Brittlewatch Crag"
+  path + crossroads (near martial) → "Bandit's Crossroads"
+  path + plaza (near ritual)      → "Sacred Plaza"
+
+Wire the zone list (id + name + topologyRole + traversal) and the
+`zoneOf` typed array into `TileInit` so the client can look up the
+zone under the player's pixel and display a "you are in: X" caption.
+Bumps `BOOTSTRAP_VERSION`. Client tracks `currentZoneId` in a signal,
+renders a soft toast on transitions + a persistent caption.
+
+Done when: every zone has a procedural name; client shows "You are in
+the X" on entry; transitions fire only on actual zone-id changes
+(not every tick); save/reload preserves names byte-identical.
+
+### T-212 · POI runtime + wilderness-stair unlock
+Effort: L   Status: todo   Depends on: T-210, T-211
+
+Make POIs actually do something at runtime + make stairs actually
+gate movement. Tile-server reads `TileNarrative` on tile load, spawns
+per-POI runtime adapters:
+
+  encounter   → ProximityTrigger spawns SpawnTable on player entry
+  bossfight   → boss prefab + arenaRules (lockEntry collides path
+                zone until HP=0)
+  wave        → state-machine component, sequential spawns
+  action      → interactable prefab at the POI's zone centroid
+  exploration → one-shot lore-unlock trigger
+  puzzle      → reserves a new `packages/content/data/puzzles/`
+                content category (stub for v1; full puzzle
+                templates ship later)
+
+Stair runtime: stair entity at each `StairInstance.anchorPixel` with
+a `Lock` component referencing `lockedBy`. Player approaching an
+unlocked stair gets a "Climb" prompt; using it teleports the player
+2u up onto the wilderness plateau (collision-safe, no heightmap
+mutation in v1 — the elevation step stays as a visual hint).
+
+When the player completes a POI that drops a trinket the player's
+inventory gains the trinket. When any stair's `lockedBy` trinket is
+in inventory, the stair flips to unlocked + broadcasts a
+`StairUnlocked` event to all AoI clients.
+
+Tests:
+- dump/reload preserves stair-unlock state byte-identical
+- entering an unlocked stair places the player at the wilderness
+  centroid with proper Y elevation
+- locked stair refuses the climb prompt
+- POI completion → trinket inventory → stair unlock → climb → POI
+  completion (the full loop, in one integration test)
+
+Done when: a baked tile with the matcher's narrative is fully
+playable end-to-end: spawn → walk → fight encounter → get trinket →
+climb stair → fight boss → terminal trinket.
+
 ---
 
 ## Rendering & Client

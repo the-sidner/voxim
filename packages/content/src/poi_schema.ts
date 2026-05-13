@@ -22,8 +22,14 @@ import type { PoiDef } from "./types.ts";
 // ---- enums ----
 
 const POI_TYPES = ["encounter", "bossfight", "wave", "puzzle", "action", "exploration"] as const;
-const ZONE_ROLES = ["plaza", "pocket", "deadend", "corridor", "crossroads", "lobby", "arena"] as const;
+const ZONE_ROLES = [
+  // path
+  "plaza", "pocket", "deadend", "corridor", "crossroads", "lobby", "arena",
+  // wilderness (T-210)
+  "crag", "grove", "thicket", "hollow", "outcrop", "morass",
+] as const;
 const POI_ROLES  = ["entry", "midchain", "terminal", "optional"] as const;
+const TRAVERSAL_KINDS = ["path", "wilderness", "either"] as const;
 
 // ---- shared sub-schemas ----
 
@@ -39,6 +45,7 @@ const fitSchema = v.object({
   enclosure: v.optional(enclosureSchema),
   requiredKind: v.optional(v.array(v.string())),
   requiredBiome: v.optional(v.array(v.string())),
+  traversal: v.optional(v.picklist(TRAVERSAL_KINDS)),
 });
 
 const trinketThemeSchema = v.object({

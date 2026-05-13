@@ -81,11 +81,15 @@ async function captureZone(e: MatrixEntry): Promise<ZoneSnapshot> {
 // Captured pre-merge from the canonical role-classifier rules; any
 // future tweak to segmentation, role rules, or default thresholds is
 // an intentional fixture diff (re-run capture mode + paste).
+// T-210: re-captured after wilderness zone segmentation went live.
+// Wilderness blobs are now first-class zones, so the per-tile zone count
+// grows substantially (forest tiles now carry many thickets + groves;
+// cliff tiles carry hundreds of micro-crags between corridors).
 const EXPECTED: Record<string, { zoneOf: string; zonesJson: string }> = {
-  fm_a: { zoneOf: "2b5437734529e1a5", zonesJson: "4809c9c79d0fa2d1" },
-  fm_b: { zoneOf: "f294e2b8d1190898", zonesJson: "4f363ef2814556d8" },
-  op:   { zoneOf: "61e0026ac33a27e4", zonesJson: "479cd09dba673193" },
-  cd:   { zoneOf: "ed9389d61b2e0202", zonesJson: "eb54d622e0642388" },
+  fm_a: { zoneOf: "d37c0b3b86f605a8", zonesJson: "2388237199b5f691" },
+  fm_b: { zoneOf: "61c0ada3dea5f72d", zonesJson: "3e2ac84ca414dfde" },
+  op:   { zoneOf: "7ea21a5aa497044b", zonesJson: "bf8712ed2b70f5a1" },
+  cd:   { zoneOf: "19cf24deb42958bb", zonesJson: "227625fccaf07b9f" },
 };
 
 Deno.test("zoneGraph: byte-identical output across pipeline matrix", async () => {
@@ -125,15 +129,44 @@ Deno.test("zoneGraph: classifies a single big open region as 'arena'", () => {
   const r = runInstrumented({
     worldCell: cell(1, 1),
     tileSeed: 1001,
-    params: PRESETS.open_plains.params,  // plains have larger chambers
+    params: PRESETS.open_plains.params,
   });
-  const zones = (r.final as AnnotatedZoneState).zones;
-  // At least one large zone should exist in plains — assert that the
-  // largest zone exceeds the arena threshold and is classified accordingly.
-  const largest = zones.reduce((a, b) => a.area >= b.area ? a : b);
+  // Wilderness zones are usually the largest by area on plains tiles
+  // (one big forest/stone blob surrounds the playable space). The
+  // classifier rules for `arena` apply only to PATH zones, so filter
+  // before asserting.
+  const pathZones = (r.final as AnnotatedZoneState).zones
+    .filter(z => z.traversal === "path");
+  const largest = pathZones.reduce((a, b) => a.area >= b.area ? a : b);
   if (largest.area > PRESETS.open_plains.params.zoneGraph!.arenaAreaMin) {
     if (largest.topologyRole !== "arena") {
-      throw new Error(`largest zone area=${largest.area} should classify as arena, got ${largest.topologyRole}`);
+      throw new Error(`largest path zone area=${largest.area} should classify as arena, got ${largest.topologyRole}`);
+    }
+  }
+});
+
+Deno.test("zoneGraph: wilderness segmentation produces traversal=wilderness blobs", () => {
+  // Every preset should produce at least one wilderness zone. forest_maze
+  // tiles have many small thickets; cliff_dungeon tiles have many crags;
+  // open_plains tiles have a few large groves. Asserts the segmentation
+  // actually fires.
+  for (const e of MATRIX) {
+    const r = runInstrumented({
+      worldCell: cell(e.cellX, e.cellY),
+      tileSeed: e.tileSeed,
+      params: PRESETS[e.presetId].params,
+    });
+    const zones = (r.final as AnnotatedZoneState).zones;
+    const wilderness = zones.filter(z => z.traversal === "wilderness");
+    if (wilderness.length === 0) {
+      throw new Error(`[${e.label}] no wilderness zones produced`);
+    }
+    // All wilderness zones must have a wilderness-class role.
+    for (const w of wilderness) {
+      const wildernessRoles = new Set(["crag", "grove", "thicket", "hollow", "outcrop", "morass"]);
+      if (!wildernessRoles.has(w.topologyRole)) {
+        throw new Error(`[${e.label}] zone ${w.id} has traversal=wilderness but role=${w.topologyRole}`);
+      }
     }
   }
 });

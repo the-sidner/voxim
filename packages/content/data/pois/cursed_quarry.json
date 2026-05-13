@@ -15,11 +15,10 @@
   },
 
   "fit": {
-    "preferredTopology": ["arena", "plaza"],
-    "minArea":           600,
-    "maxArea":           2600,
-    "enclosure":         { "min": 0.2, "max": 0.7 },
-    "requiredKind":      ["stone"],
+    "preferredTopology": ["crag"],
+    "minArea":           300,
+    "maxArea":           10000,
+    "traversal":         "wilderness",
     "requiredBiome":     ["mountains", "hills"]
   },
 

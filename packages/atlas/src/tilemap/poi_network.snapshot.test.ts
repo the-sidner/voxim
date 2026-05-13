@@ -153,6 +153,10 @@ Deno.test("poiNetwork: wider roster hits happy path on majority of bakes", () =>
     const n = (r.final as PoiNetworkState).narrative;
     if (n.pois.length > 0 && !n.degraded) nonDegraded++;
   }
+  // Threshold restored to 0.40 after T-210's two-phase selection
+  // (entries-first, then fill) — the matcher now reliably picks enough
+  // path-zone entry POIs to cover wilderness gate flavors. Empirically
+  // 18-19/20 forest_maze tiles solve cleanly post-fix.
   assert(
     nonDegraded / total >= 0.4,
     `expected ≥40% non-degraded bakes, got ${nonDegraded}/${total}`,

@@ -11,10 +11,10 @@
   },
 
   "fit": {
-    "preferredTopology": ["pocket", "deadend", "crossroads"],
-    "minArea":           60,
+    "preferredTopology": ["pocket", "deadend", "crossroads", "outcrop", "crag"],
+    "minArea":           40,
     "maxArea":           400,
-    "requiredKind":      ["stone", "grass_mound"]
+    "traversal":         "either"
   },
 
   "gate": { "kind": "open" },

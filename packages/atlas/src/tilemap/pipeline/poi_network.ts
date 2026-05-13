@@ -42,7 +42,7 @@ import type { GenParams } from "../../genparams.ts";
 import type {
   AnnotatedZone, AnnotatedZoneState, DagShape,
   PoiInstance, PoiNetworkState, ResolvedGate,
-  TileNarrative, TrinketInstance,
+  StairInstance, TileNarrative, TrinketInstance,
 } from "./state.ts";
 
 /**
@@ -64,6 +64,7 @@ function emptyNarrative(): TileNarrative {
   return {
     pois: [],
     trinkets: [],
+    stairs: [],
     dagShape: "linear",
     entryPoiIds: [],
     terminalPoiIds: [],
@@ -84,6 +85,11 @@ function solveTileNarrative(
 ): TileNarrative {
   const allPois = [...content.pois.values()].filter(p => p.roles.length > 0);
   const biome = state.worldCell.biome;
+  const stairContext: StairContext = {
+    zones:    state.zones,
+    zoneOf:   state.zoneOf,
+    gridSize: state.gridSize,
+  };
 
   for (let retry = 0; retry < params.maxRetries; retry++) {
     const subSeed = splitSeed(tileSeed, `poiNetwork_retry${retry}`);
@@ -92,21 +98,29 @@ function solveTileNarrative(
     // Phase 1: candidate scoring
     const candidates = scoreCandidates(state.zones, allPois, biome, params);
 
-    // Phase 2: selection
-    const selected = selectPois(candidates, params.targetPoiCount, rng);
-    if (!selected) continue; // try again with a fresh seed
+    // Phase 2: selection — also rejects wilderness POIs whose zone has
+    // no adjacent path zone (a stair anchor needs a path-pixel to live on).
+    const selected = selectPois(candidates, params.targetPoiCount, rng, stairContext);
+    if (!selected) continue;
 
     // Phase 3: DAG wiring
     const wired = wireDag(selected, rng, params.maxWireSearchDepth);
     if (!wired) continue;
 
-    // Phase 4: trinket naming + emit
-    return buildNarrative(wired, retry);
+    // Phase 4: trinket naming + stair materialization + emit
+    return buildNarrative(wired, retry, stairContext);
   }
 
   // Retry budget exhausted — emit a degraded narrative built from the
   // best candidates regardless of bridge solvability.
-  return emitDegraded(state.zones, allPois, biome, params);
+  return emitDegraded(state.zones, allPois, biome, params, stairContext);
+}
+
+/** Bundled spatial data the wire + build phases need for stair anchoring. */
+interface StairContext {
+  zones: AnnotatedZone[];
+  zoneOf: Uint16Array;
+  gridSize: number;
 }
 
 // ---------------------------------------------------------------------
@@ -151,6 +165,15 @@ function fitScore(
   params: GenParams["poiNetwork"],
 ): number {
   // Hard rejects
+
+  // Traversal-class filter (T-210). Default is "path" when the POI
+  // doesn't declare a traversal — preserves back-compat for POIs
+  // authored before wilderness existed.
+  const wantedTraversal = poi.fit.traversal ?? "path";
+  if (wantedTraversal === "path"       && zone.traversal !== "path")       return 0;
+  if (wantedTraversal === "wilderness" && zone.traversal !== "wilderness") return 0;
+  // "either" passes through.
+
   if (zone.area < poi.fit.minArea) return 0;
   if (zone.area > poi.fit.maxArea) return 0;
 
@@ -227,47 +250,78 @@ function selectPois(
   candidates: ScoredCandidate[],
   target: number,
   rng: () => number,
+  stairCtx: StairContext,
 ): ScoredCandidate[] | null {
   if (candidates.length === 0) return null;
+
+  // Precompute the set of wilderness zone ids that have a usable stair
+  // anchor (i.e. at least one adjacent path-zone neighbour). Wilderness
+  // POIs whose zone is in this set are eligible; others are rejected.
+  const stairable = wildernessZonesWithPathNeighbor(stairCtx.zones);
 
   const chosen: ScoredCandidate[] = [];
   const usedZones = new Set<number>();
   const usedPois = new Set<string>();
-  let hasEntry = false;
-  let hasTerminal = false;
 
-  // Walk candidates in descending-score order; pick anything that maintains
-  // the uniqueness and role-coverage invariants. Once we have `target`
-  // POIs AND at least one entry AND at least one terminal, return.
+  // Aim for ~half of slots as entries (rounded up, min 2) when target ≥ 4.
+  // A richer pool of upstream theme sources is what makes wireDag succeed
+  // — single-entry tiles consistently fail because one POI's drop-tags
+  // rarely cover every gate's flavorAccept.
+  const minEntries = target >= 4 ? Math.max(2, Math.ceil(target / 2)) : 1;
+
+  // Phase A — pick entries first, walking the score-sorted list. Stop at
+  // minEntries OR when no more entry candidates remain.
   for (const c of candidates) {
-    if (chosen.length >= target && hasEntry && hasTerminal) break;
+    if (chosen.length >= minEntries) break;
+    if (!c.poi.roles.includes("entry")) continue;
     if (usedZones.has(c.zone.id)) continue;
     if (usedPois.has(c.poi.id)) continue;
-    // Role coverage: when we're close to the target without entry/terminal,
-    // be picky about what we accept.
-    const isEntry    = c.poi.roles.includes("entry");
+    if (c.zone.traversal === "wilderness" && !stairable.has(c.zone.id)) continue;
+    chosen.push(c);
+    usedZones.add(c.zone.id);
+    usedPois.add(c.poi.id);
+  }
+  if (chosen.length === 0) return null; // can't get into the tile
+
+  // Phase B — fill the remaining slots with the best-scored candidates,
+  // preferring at least one terminal if one is still available. We allow
+  // the loop to skip a non-terminal on the LAST slot when a terminal is
+  // still reachable downstream in the candidate list.
+  let hasTerminal = chosen.some(c => c.poi.roles.includes("terminal"));
+  for (const c of candidates) {
+    if (chosen.length >= target && hasTerminal) break;
+    if (usedZones.has(c.zone.id)) continue;
+    if (usedPois.has(c.poi.id)) continue;
+    if (c.zone.traversal === "wilderness" && !stairable.has(c.zone.id)) continue;
+
     const isTerminal = c.poi.roles.includes("terminal");
     const slotsLeft  = target - chosen.length;
-    if (!hasEntry    && slotsLeft <= 1 && !isEntry)    continue;
-    if (!hasTerminal && slotsLeft <= 1 && !isTerminal) continue;
+    if (!hasTerminal && slotsLeft <= 1 && !isTerminal &&
+        terminalStillAvailable(candidates, usedZones, usedPois)) continue;
 
-    // Tiny randomized perturbation to break ties when many candidates
-    // share the top score — keeps tile-to-tile output varied across
-    // distinct seeds while staying deterministic per seed.
     if (chosen.length >= target && (rng() < 0.5)) break;
 
     chosen.push(c);
     usedZones.add(c.zone.id);
     usedPois.add(c.poi.id);
-    if (isEntry)    hasEntry    = true;
     if (isTerminal) hasTerminal = true;
   }
 
-  if (chosen.length < 2) return null;       // can't even build a 2-node DAG
-  if (!hasEntry)         return null;       // can't get into the tile
-  // Terminal is preferred but not strictly required for v1; tiles without
-  // a terminal-eligible POI just don't have a "boss". Accept that.
+  if (chosen.length < 2) return null; // can't build even a 2-node DAG
   return chosen;
+}
+
+function terminalStillAvailable(
+  candidates: ScoredCandidate[],
+  usedZones: Set<number>,
+  usedPois: Set<string>,
+): boolean {
+  for (const c of candidates) {
+    if (usedZones.has(c.zone.id)) continue;
+    if (usedPois.has(c.poi.id)) continue;
+    if (c.poi.roles.includes("terminal")) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------
@@ -367,7 +421,11 @@ function shuffle<T>(arr: readonly T[], rng: () => number): T[] {
 // Phase 4 — trinket naming + narrative emission
 // ---------------------------------------------------------------------
 
-function buildNarrative(dag: WiredDag, retries: number): TileNarrative {
+function buildNarrative(
+  dag: WiredDag,
+  retries: number,
+  stairCtx: StairContext,
+): TileNarrative {
   const poiInstanceId = (cand: ScoredCandidate) =>
     `${cand.poi.id}_z${cand.zone.id}`;
 
@@ -396,9 +454,35 @@ function buildNarrative(dag: WiredDag, retries: number): TileNarrative {
     });
   }
 
-  // POI instances: every selected POI gets one. Drop one trinket per POI
-  // by picking the first outgoing edge (rest are extras for multi-gated
-  // dests — those reuse the SAME source trinket for now; v2 could vary).
+  // Stairs (T-210): one per wilderness-POI node. The stair's lockedBy
+  // points at the FIRST trinket that the wilderness POI's gate consumes
+  // — that trinket is the climb-up key. For wilderness POIs with an
+  // "open" gate (level-design hint), `lockedBy` stays null.
+  const stairs: StairInstance[] = [];
+  const stairByPoiId = new Map<string, string>();
+  for (const node of dag.nodes) {
+    if (node.zone.traversal !== "wilderness") continue;
+    const poiId = poiInstanceId(node);
+    const incomingEdges = dag.edges.filter(e => poiInstanceId(e.dest) === poiId);
+    const fromZone = pickStairPathZoneFor(node.zone, stairCtx);
+    if (fromZone === null) continue; // shouldn't happen post-selection filter
+    const anchor = pickStairAnchor(fromZone, node.zone.id, stairCtx);
+    const stairId = `stair_${poiId}`;
+    const lockedBy = incomingEdges.length > 0
+      ? `trinket_${poiInstanceId(incomingEdges[0].source)}_to_${poiId}`
+      : null;
+    stairs.push({
+      id: stairId,
+      fromZoneId: fromZone,
+      toZoneId:   node.zone.id,
+      anchorPixel: anchor,
+      lockedBy,
+    });
+    stairByPoiId.set(poiId, stairId);
+  }
+
+  // POI instances: every selected POI gets one. Wilderness POIs carry
+  // their stair id so the runtime can wire entry to the stair entity.
   const pois: PoiInstance[] = [];
   for (const node of dag.nodes) {
     const id = poiInstanceId(node);
@@ -413,6 +497,7 @@ function buildNarrative(dag: WiredDag, retries: number): TileNarrative {
       zoneId:   node.zone.id,
       gate: resolveGate(node, incoming, trinkets),
       trinketId,
+      stairId: stairByPoiId.get(id) ?? null,
     });
   }
 
@@ -422,6 +507,7 @@ function buildNarrative(dag: WiredDag, retries: number): TileNarrative {
   return {
     pois,
     trinkets,
+    stairs,
     dagShape: classifyDagShape(pois, dag.edges, poiInstanceId),
     entryPoiIds,
     terminalPoiIds,
@@ -486,6 +572,7 @@ function emitDegraded(
   pois: PoiDef[],
   biome: { altitude: number; moisture: number; temperature: number; ruggedness: number },
   params: GenParams["poiNetwork"],
+  _stairCtx: StairContext,
 ): TileNarrative {
   // Take the top-scored candidates regardless of theme bridge solvability;
   // wire them as a linear chain with synthetic trinkets that satisfy any
@@ -513,6 +600,9 @@ function emitDegraded(
       displayName: `Token of ${src.poi.displayName}`,
     });
   }
+  // Degraded mode still emits empty stairs[] — the degraded chain is
+  // path-only (we filter wilderness out earlier so we never produce a
+  // wilderness pick without a valid stair anchor).
   const poisOut: PoiInstance[] = chain.map((c, i) => ({
     id: poiInstanceId(c),
     poiDefId: c.poi.id,
@@ -523,16 +613,101 @@ function emitDegraded(
     trinketId: i < chain.length - 1
       ? `trinket_${poiInstanceId(c)}_to_${poiInstanceId(chain[i + 1])}`
       : null,
+    stairId: null,
   }));
   return {
     pois: poisOut,
     trinkets,
+    stairs: [],
     dagShape: "linear",
     entryPoiIds: poisOut.length > 0 ? [poisOut[0].id] : [],
     terminalPoiIds: poisOut.length > 0 ? [poisOut[poisOut.length - 1].id] : [],
     degraded: true,
     retries: params.maxRetries,
   };
+}
+
+// ---------------------------------------------------------------------
+// Stair anchoring (T-210)
+// ---------------------------------------------------------------------
+
+/**
+ * Set of wilderness zone ids that have at least one path-zone neighbour
+ * — a precondition for placing a stair onto them. Wilderness zones
+ * fully enclosed by other wilderness (rare given the tile structure)
+ * are excluded.
+ */
+function wildernessZonesWithPathNeighbor(zones: AnnotatedZone[]): Set<number> {
+  const byId = new Map<number, AnnotatedZone>();
+  for (const z of zones) byId.set(z.id, z);
+  const out = new Set<number>();
+  for (const z of zones) {
+    if (z.traversal !== "wilderness") continue;
+    for (const nid of z.neighbors) {
+      const n = byId.get(nid);
+      if (n && n.traversal === "path") { out.add(z.id); break; }
+    }
+  }
+  return out;
+}
+
+/**
+ * Pick which adjacent path zone hosts the stair. Algorithm: pick the
+ * path-zone neighbour with the largest area (most "room" to walk up to
+ * the stair). Stable tie-break by zone id.
+ */
+function pickStairPathZoneFor(
+  wilderness: AnnotatedZone,
+  ctx: StairContext,
+): number | null {
+  const byId = new Map<number, AnnotatedZone>();
+  for (const z of ctx.zones) byId.set(z.id, z);
+  let best: AnnotatedZone | null = null;
+  for (const nid of wilderness.neighbors) {
+    const n = byId.get(nid);
+    if (!n || n.traversal !== "path") continue;
+    if (!best || n.area > best.area || (n.area === best.area && n.id < best.id)) {
+      best = n;
+    }
+  }
+  return best?.id ?? null;
+}
+
+/**
+ * Pick the anchor pixel for the stair: a path-pixel in `fromZoneId`
+ * that shares an edge with a pixel in `wildZoneId`. Out of all
+ * candidates, pick the one geographically nearest to the wilderness
+ * zone's centroid (the "most natural" entrance). Stable tie-break by
+ * row-major index.
+ */
+function pickStairAnchor(
+  fromZoneId: number,
+  wildZoneId: number,
+  ctx: StairContext,
+): { x: number; y: number } {
+  const { zoneOf, gridSize } = ctx;
+  const wild = ctx.zones.find(z => z.id === wildZoneId);
+  if (!wild) return { x: 0, y: 0 };
+  let bestIdx = -1;
+  let bestDistSq = Infinity;
+  for (let idx = 0; idx < zoneOf.length; idx++) {
+    if (zoneOf[idx] !== fromZoneId) continue;
+    const x = idx % gridSize;
+    const y = (idx - x) / gridSize;
+    // Must touch wildZoneId on one of 4 neighbours.
+    let touches = false;
+    if (x > 0            && zoneOf[idx - 1]        === wildZoneId) touches = true;
+    if (x < gridSize - 1 && zoneOf[idx + 1]        === wildZoneId) touches = true;
+    if (y > 0            && zoneOf[idx - gridSize] === wildZoneId) touches = true;
+    if (y < gridSize - 1 && zoneOf[idx + gridSize] === wildZoneId) touches = true;
+    if (!touches) continue;
+    const dx = x - wild.centroid.x;
+    const dy = y - wild.centroid.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestDistSq) { bestDistSq = d2; bestIdx = idx; }
+  }
+  if (bestIdx < 0) return { x: 0, y: 0 };
+  return { x: bestIdx % gridSize, y: Math.floor(bestIdx / gridSize) };
 }
 
 // ---------------------------------------------------------------------

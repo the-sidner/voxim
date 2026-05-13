@@ -104,25 +104,38 @@ export interface AnnotatedZone {
   /** min(bbox.w, bbox.h) / max(bbox.w, bbox.h). 1.0 = square; → 0 elongated. */
   aspectRatio: number;
   /**
-   * Fraction of the zone's boundary pixels that touch *closed* pixels
-   * (vs. other zones). 0.0 = open plaza connected on all sides,
-   * 1.0 = fully sealed cave.
+   * Fraction of the zone's boundary pixels that touch the *opposite*
+   * traversal class (path zones touch closed pixels; wilderness zones
+   * touch open pixels). 0.0 = highly accessible; 1.0 = fully surrounded
+   * by the opposite class.
    */
   enclosure: number;
   /** Topology role assigned by the rule-based classifier. */
   topologyRole: ZoneRole;
   /**
-   * Counts of neighbouring closed-pixel kinds (kindOf values) on this
-   * zone's boundary. Used by POI `fit.requiredKind` matching — a zone
-   * surrounded by stone walls matches "stone"-requiring POIs.
+   * Counts of in-zone kindOf values (T-210). For path zones this is the
+   * histogram of neighbouring closed pixels — what kind of walls
+   * surround me. For wilderness zones this is the histogram of the
+   * zone's own pixels — what is this plateau made of.
    */
   kindHistogram: Record<number, number>;
-  /** Ids of zones adjacent through open-pixel-to-open-pixel transitions. */
+  /**
+   * Ids of zones adjacent through any boundary transition.
+   * Path↔Path: open-pixel-to-open-pixel.
+   * Path↔Wilderness: open-pixel-to-closed-pixel.
+   * Wilderness↔Wilderness: never adjacent (always separated by path).
+   */
   neighbors: number[];
   /** True if any portal pixel lies inside this zone (gate entry zone). */
   isEntry: boolean;
-  /** True for corridor-derived zones; false for chamber-derived zones. */
+  /** True for corridor-derived path zones; false otherwise. */
   isCorridor: boolean;
+  /**
+   * Zone class (T-210). `"path"` = default-walkable (open pixels);
+   * `"wilderness"` = elevated plateau (closed-pixel blob, reached via
+   * a stair-gated ascent).
+   */
+  traversal: "path" | "wilderness";
 }
 
 /** Sentinel for `zoneOf` — closed pixels and any non-tracked open pixels. */
@@ -172,6 +185,36 @@ export interface PoiInstance {
   gate: ResolvedGate;
   /** Trinket this POI drops on completion (null if it's a terminal with no downstream). */
   trinketId: string | null;
+  /**
+   * For POIs that live on a wilderness zone (T-210): the stair that
+   * grants access. The player must unlock this stair (by completing
+   * the POI that drops its key) before they can reach this POI.
+   * Path-traversal POIs have `stairId: null`.
+   */
+  stairId: string | null;
+}
+
+/**
+ * A Stair (T-210) — discrete level-design object that grants vertical
+ * access from a path zone onto an adjacent wilderness plateau. The
+ * matcher materializes one per wilderness POI it selects. The stair's
+ * lock is what gates access; completing the upstream POI that drops
+ * the lock's key trinket unlocks the stair and reveals the ramp.
+ */
+export interface StairInstance {
+  id: string;
+  /** Path-zone id the stair stands in. */
+  fromZoneId: number;
+  /** Wilderness-zone id the stair climbs to. */
+  toZoneId: number;
+  /** Grid-coords anchor pixel (a path-pixel touching the wilderness border). */
+  anchorPixel: { x: number; y: number };
+  /**
+   * Trinket required to unlock the stair. `null` = unlocked by default
+   * (a "found" stair, level-design hint visible from the start). The
+   * trinket id matches a `TrinketInstance.id` in the same tile.
+   */
+  lockedBy: string | null;
 }
 
 /**
@@ -181,6 +224,8 @@ export interface PoiInstance {
 export interface TileNarrative {
   pois: PoiInstance[];
   trinkets: TrinketInstance[];
+  /** Stairs (T-210) — one per wilderness POI in `pois`. */
+  stairs: StairInstance[];
   dagShape: DagShape;
   entryPoiIds: string[];
   terminalPoiIds: string[];

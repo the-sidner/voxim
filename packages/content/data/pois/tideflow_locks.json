@@ -14,7 +14,8 @@
     "preferredTopology": ["lobby", "corridor"],
     "minArea":           250,
     "maxArea":           900,
-    "enclosure":         { "min": 0.4, "max": 1.0 },
+    "enclosure":         { "min": 0.3, "max": 1.0 },
+    "traversal":         "path",
     "requiredKind":      ["water", "stone"]
   },
 
