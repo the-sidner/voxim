@@ -22,13 +22,20 @@
 import type { WorldCellRecord } from "../../worldmap/types.ts";
 import type { Junction } from "./junctions.ts";
 import type { Corridor, Portal, Room } from "../types.ts";
-import type { ZoneRole } from "@voxim/content";
+import type { ContentService, ZoneRole } from "@voxim/content";
 
 export interface PipelineBase {
   worldCell: WorldCellRecord;
   tileSize: number;
   gridSize: number;
   px2world: number;
+  /**
+   * Optional content store — required by the Tier-6 POI network stage
+   * (T-209) to look up POI definitions. Other stages ignore it. When
+   * absent, the POI stage emits an empty narrative so the rest of the
+   * pipeline stays deterministic and snapshot-stable.
+   */
+  content?: ContentService;
 }
 
 export interface NoiseState extends PipelineBase {
@@ -126,4 +133,63 @@ export interface AnnotatedZoneState extends MaterialsState {
   zoneOf: Uint16Array;
   /** Indexed by zone id; gaps are possible if some ids were skipped. */
   zones: AnnotatedZone[];
+}
+
+// ---- Tier 6 — POI network + dependency-DAG (T-209) -----------------
+
+export type DagShape = "linear" | "branching" | "diamond" | "lattice";
+
+/** Trinket — the edge token in the dependency DAG. */
+export interface TrinketInstance {
+  id: string;
+  /** PoiInstance id that drops this trinket on completion. */
+  sourcePoi: string;
+  /** PoiInstance id whose gate this trinket unlocks. */
+  destPoi: string;
+  /** Themes the trinket carries — intersection of source themes and dest accept. */
+  themes: string[];
+  /** Procedural display name, e.g. "Bone of the Savage Wolf Den". */
+  displayName: string;
+}
+
+/**
+ * Resolved gate — for `item`/`multi`/`choice` kinds, `trinketRefs` holds the
+ * specific trinket ids the destination POI requires. Empty for `open` gates.
+ */
+export interface ResolvedGate {
+  kind: "open" | "item" | "multi" | "choice";
+  trinketRefs: string[];
+}
+
+/** Bound POI in a tile — content def reference + spatial anchor + gate. */
+export interface PoiInstance {
+  id: string;
+  /** POI definition id (refs `packages/content/data/pois/{id}.json`). */
+  poiDefId: string;
+  /** Zone in the AnnotatedZoneGraph this POI occupies. */
+  zoneId: number;
+  /** Gate after wiring; trinketRefs is populated for non-open gates. */
+  gate: ResolvedGate;
+  /** Trinket this POI drops on completion (null if it's a terminal with no downstream). */
+  trinketId: string | null;
+}
+
+/**
+ * Tile-level narrative artifact — POIs placed, trinkets defined, DAG
+ * structure as a derived shape. Output of T-209's transformer.
+ */
+export interface TileNarrative {
+  pois: PoiInstance[];
+  trinkets: TrinketInstance[];
+  dagShape: DagShape;
+  entryPoiIds: string[];
+  terminalPoiIds: string[];
+  /** True if the matcher fell back to a degraded DAG (retry budget exhausted). */
+  degraded: boolean;
+  /** Number of solver retries the matcher consumed before settling. */
+  retries: number;
+}
+
+export interface PoiNetworkState extends AnnotatedZoneState {
+  narrative: TileNarrative;
 }

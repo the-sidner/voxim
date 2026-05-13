@@ -40,6 +40,7 @@ import type { TileInit } from "./tilemap/types.ts";
 import { bakeWorld, tileSeedFor } from "./bake.ts";
 import type { WorldCellRecord } from "./worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, PRESETS, mergeGenParams, type DeepPartialGenParams, type GenParams } from "./genparams.ts";
+import type { ContentService } from "@voxim/content";
 
 export interface AtlasServerConfig {
   port: number;
@@ -52,6 +53,14 @@ export interface AtlasServerConfig {
    * Empty list = restart endpoint is a no-op.
    */
   restartTargets?: string[];
+  /**
+   * Optional content store — when provided, the inspector pipeline
+   * endpoint runs the POI-network matcher (T-209) and the response
+   * carries a populated `narrative`. When absent, narrative is empty.
+   * The bake / regen paths don't need this (POI matching is
+   * inspector-side for v1).
+   */
+  content?: ContentService;
 }
 
 function tileIdFor(cellX: number, cellY: number): string {
@@ -361,6 +370,7 @@ async function runTilePipeline(
     tileSeed,
     params,
     cache,
+    content: cfg.content,
     resumeFromStage: body.resumeFromStage,
     seedState: body.seedState !== undefined ? decodeState(body.seedState) : undefined,
   });

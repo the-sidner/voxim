@@ -23,6 +23,7 @@ import {
   PgAtlasWorldRepo,
   PgWorldsRepo,
 } from "@voxim/db";
+import { JsonSource } from "@voxim/content";
 import { startAtlasServer } from "./mod.ts";
 import { bakeWorld } from "./src/bake.ts";
 
@@ -58,4 +59,11 @@ if (!existing) {
   );
 }
 
-startAtlasServer({ port, worldsRepo, cellsRepo, tilesRepo });
+// Load the content store once at boot so the inspector pipeline
+// endpoint (T-209) can run the POI matcher. Bake/regen paths don't
+// need it (POI matching is inspector-side for v1) but loading once
+// is cheap (~150 ms) and matches the tile-server's pattern.
+const content = await JsonSource.load();
+console.log(`[Atlas] loaded content: ${content.pois.size} POIs · ${content.zones.size} zones`);
+
+startAtlasServer({ port, worldsRepo, cellsRepo, tilesRepo, content });

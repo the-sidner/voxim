@@ -25,9 +25,10 @@
  */
 
 import { ORDERED_STAGES, type StageId } from "./pipeline/stages.ts";
-import type { PipelineBase, MaterialsState } from "./pipeline/state.ts";
+import type { PipelineBase, PoiNetworkState } from "./pipeline/state.ts";
 import type { GenParams } from "../genparams.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
+import type { ContentService } from "@voxim/content";
 
 const DEFAULT_TILE_SIZE = 512;
 const DEFAULT_GRID_SIZE = 512;
@@ -93,11 +94,17 @@ export interface InstrumentedRunInput {
   resumeFromStage?: StageId;
   /** Required if `resumeFromStage` is set; produced by `dumpStage()`. */
   seedState?: unknown;
+  /**
+   * Optional content store — threaded into PipelineBase so the
+   * Tier-6 POI network stage (T-209) can look up POI definitions.
+   * When absent, the POI stage emits an empty narrative.
+   */
+  content?: ContentService;
 }
 
 export interface InstrumentedRunOutput {
-  /** Final state after the materials stage. */
-  final: MaterialsState;
+  /** Final state after the full pipeline (POI network is the last stage). */
+  final: PoiNetworkState;
   /** One entry per stage actually run (or skipped, in resume mode). */
   trace: StageTrace[];
   /** Per-stage output snapshot. Keys = StageId; values = the stage's TOut. */
@@ -112,7 +119,10 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
   const trace: StageTrace[] = [];
   const intermediates = {} as Record<StageId, unknown>;
 
-  const initial: PipelineBase = { worldCell: input.worldCell, tileSize, gridSize, px2world };
+  const initial: PipelineBase = {
+    worldCell: input.worldCell, tileSize, gridSize, px2world,
+    content: input.content,
+  };
 
   let state: unknown = initial;
   let prevHash = 0;
@@ -166,7 +176,7 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
     prevHash = outputHash;
   }
 
-  return { final: state as MaterialsState, trace, intermediates };
+  return { final: state as PoiNetworkState, trace, intermediates };
 }
 
 // ---- hashing --------------------------------------------------------------
@@ -262,6 +272,9 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
     case "zoneGraph":
       h ^= fnv1aBytes(viewOf(s.zoneOf as Uint16Array));
       h ^= fnv1aString(JSON.stringify(s.zones));
+      break;
+    case "poiNetwork":
+      h ^= fnv1aString(JSON.stringify(s.narrative));
       break;
   }
   return h >>> 0;

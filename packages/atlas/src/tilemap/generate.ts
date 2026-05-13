@@ -37,11 +37,13 @@ import { rivers } from "./pipeline/rivers.ts";
 import { terrain } from "./pipeline/terrain.ts";
 import { materials } from "./pipeline/materials.ts";
 import { zoneGraph } from "./pipeline/zone_graph.ts";
+import { poiNetwork } from "./pipeline/poi_network.ts";
 import { deriveGateSummary } from "./summary.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
-import type { PipelineBase, AnnotatedZoneState } from "./pipeline/state.ts";
+import type { PipelineBase, PoiNetworkState } from "./pipeline/state.ts";
+import type { ContentService } from "@voxim/content";
 
 const DEFAULT_TILE_SIZE = 512;
 // One pixel = one world unit = one runtime voxel. Atlas runs the pipeline
@@ -56,6 +58,13 @@ export interface GenerateTileOptions {
   gridSize?: number;
   /** Worldgen tuning. Defaults from DEFAULT_GEN_PARAMS. */
   params?: GenParams;
+  /**
+   * Optional content store. When provided, the POI-network stage (T-209)
+   * runs the matcher against `content.pois.values()` and emits a populated
+   * narrative; when absent, narrative is empty. Tests + worldgen sanity
+   * checks that don't care about POIs can omit it.
+   */
+  content?: ContentService;
 }
 
 /**
@@ -85,19 +94,23 @@ export function generateTile(
   const params   = options.params   ?? DEFAULT_GEN_PARAMS;
   const px2world = tileSize / gridSize;
 
-  const initial: PipelineBase = { worldCell, tileSize, gridSize, px2world };
+  const initial: PipelineBase = {
+    worldCell, tileSize, gridSize, px2world,
+    content: options.content,
+  };
 
-  const pipeline: Stage<PipelineBase, AnnotatedZoneState> = pipe(
-    bind(noiseField,      params.noise,     tileSeed),
-    bind(junctions,       params.room,      tileSeed),
-    bind(network,         params.network,   tileSeed),
-    bind(rooms,           params.room,      tileSeed),
-    bind(portalPlacement, params.network,   tileSeed),
-    bind(boundaryKinds,   params.kinds,     tileSeed),
-    bind(rivers,          params.river,     tileSeed),
-    bind(terrain,         params.terrain,   tileSeed),
-    bind(materials,       params.materials, tileSeed),
-    bind(zoneGraph,       params.zoneGraph, tileSeed),
+  const pipeline: Stage<PipelineBase, PoiNetworkState> = pipe(
+    bind(noiseField,      params.noise,      tileSeed),
+    bind(junctions,       params.room,       tileSeed),
+    bind(network,         params.network,    tileSeed),
+    bind(rooms,           params.room,       tileSeed),
+    bind(portalPlacement, params.network,    tileSeed),
+    bind(boundaryKinds,   params.kinds,      tileSeed),
+    bind(rivers,          params.river,      tileSeed),
+    bind(terrain,         params.terrain,    tileSeed),
+    bind(materials,       params.materials,  tileSeed),
+    bind(zoneGraph,       params.zoneGraph,  tileSeed),
+    bind(poiNetwork,      params.poiNetwork, tileSeed),
   );
 
   const s = pipeline(initial);

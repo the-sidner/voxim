@@ -40,10 +40,10 @@ export function bindStage<TIn, TOut, TParams>(
   return (state) => transformer(state, seed, params);
 }
 
-// Type-aware composition. Overloads go up to 10 stages — the current atlas
-// tilemap pipeline has 9. Extend if more stages stack up. Each successive
-// overload chains TOut of stage N into TIn of stage N+1; mismatches are
-// compile errors at the pipe() call site.
+// Type-aware composition. Overloads go up to 12 stages — the current atlas
+// tilemap pipeline has 11 (T-209). Extend if more stages stack up. Each
+// successive overload chains TOut of stage N into TIn of stage N+1;
+// mismatches are compile errors at the pipe() call site.
 
 export function pipe<A, B>(a: Stage<A, B>): Stage<A, B>;
 export function pipe<A, B, C>(a: Stage<A, B>, b: Stage<B, C>): Stage<A, C>;
@@ -79,6 +79,16 @@ export function pipe<A, B, C, D, E, F, G, H, I, J, K>(
   e: Stage<E, F>, f: Stage<F, G>, g: Stage<G, H>, h: Stage<H, I>,
   i: Stage<I, J>, j: Stage<J, K>,
 ): Stage<A, K>;
+export function pipe<A, B, C, D, E, F, G, H, I, J, K, L>(
+  a: Stage<A, B>, b: Stage<B, C>, c: Stage<C, D>, d: Stage<D, E>,
+  e: Stage<E, F>, f: Stage<F, G>, g: Stage<G, H>, h: Stage<H, I>,
+  i: Stage<I, J>, j: Stage<J, K>, k: Stage<K, L>,
+): Stage<A, L>;
+export function pipe<A, B, C, D, E, F, G, H, I, J, K, L, M>(
+  a: Stage<A, B>, b: Stage<B, C>, c: Stage<C, D>, d: Stage<D, E>,
+  e: Stage<E, F>, f: Stage<F, G>, g: Stage<G, H>, h: Stage<H, I>,
+  i: Stage<I, J>, j: Stage<J, K>, k: Stage<K, L>, l: Stage<L, M>,
+): Stage<A, M>;
 export function pipe(...stages: Array<Stage<unknown, unknown>>): Stage<unknown, unknown> {
   return (input) => stages.reduce<unknown>((s, stage) => stage(s), input);
 }

@@ -58,6 +58,7 @@ const STAGE_VIEWER = {
   terrain:         "height",
   materials:       "materials",
   zoneGraph:       "zones",
+  poiNetwork:      "dag",
 };
 
 // Topology-role palette (T-208). Bright + saturated so role boundaries
@@ -996,6 +997,7 @@ function viewData() {
     noiseField: s.noiseField,
     zoneOf:     s.zoneOf,
     zones:      s.zones      ?? [],
+    narrative:  s.narrative ?? null,
     gridSize:   tile.payload.gridSize,
     tileSize:   tile.payload.tileSize,
   };
@@ -1014,6 +1016,7 @@ function drawTile() {
   else if (viewer === "junctions") drawTileJunctions(layout, vd);
   else if (viewer === "openMask")  drawTileOpenMask(layout, vd);
   else if (viewer === "zones")     drawTileZones(layout, vd);
+  else if (viewer === "dag")       drawTileDag(layout, vd);
 
   // Portal dots float on top of every view that has them assigned.
   ctx.fillStyle = "#fff";
@@ -1262,6 +1265,124 @@ function drawTileZones({ px, originX, originY, g }, vd) {
       ctx.stroke();
     }
   }
+}
+
+function drawTileDag({ px, originX, originY, g }, vd) {
+  // Paint the zone backdrop first (faint, role-coloured) so the DAG
+  // reads on top of the tile's actual layout.
+  const zoneOf = vd.zoneOf;
+  if (!zoneOf || !vd.narrative) {
+    // Fall back to plain materials view; render an "empty" indicator.
+    drawTileMaterials({ px, originX, originY, g }, vd);
+    ctx.fillStyle = "#fff";
+    ctx.font = "16px ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("No narrative — content store missing or matcher failed.", originX + 16, originY + 28);
+    return;
+  }
+
+  const roleByZoneId = new Map();
+  for (const z of vd.zones) roleByZoneId.set(z.id, z.topologyRole);
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
+    const zid = zoneOf[idx];
+    if (zid === 0xFFFF) {
+      buf[p] = 0x14; buf[p+1] = 0x16; buf[p+2] = 0x1a; buf[p+3] = 0xff;
+      return;
+    }
+    const rgb = ZONE_ROLE_RGB[roleByZoneId.get(zid)] ?? FALLBACK_RGB;
+    // Dim the backdrop so DAG annotations stand out.
+    buf[p] = Math.round(rgb[0] * 0.4);
+    buf[p+1] = Math.round(rgb[1] * 0.4);
+    buf[p+2] = Math.round(rgb[2] * 0.4);
+    buf[p+3] = 0xff;
+  });
+
+  // Look up centroid + role per POI via its zone.
+  const zoneById = new Map();
+  for (const z of vd.zones) zoneById.set(z.id, z);
+  const narrative = vd.narrative;
+
+  // Edges first (under the nodes).
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 1.6;
+  for (const t of narrative.trinkets) {
+    const src = narrative.pois.find(p => p.id === t.sourcePoi);
+    const dst = narrative.pois.find(p => p.id === t.destPoi);
+    if (!src || !dst) continue;
+    const a = zoneById.get(src.zoneId);
+    const b = zoneById.get(dst.zoneId);
+    if (!a || !b) continue;
+    const ax = originX + a.centroid.x * px + px / 2;
+    const ay = originY + a.centroid.y * px + px / 2;
+    const bx = originX + b.centroid.x * px + px / 2;
+    const by = originY + b.centroid.y * px + px / 2;
+    // Curved bezier so multiple parallel edges don't overlap.
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    const midx = (ax + bx) / 2;
+    const midy = (ay + by) / 2 - Math.abs(bx - ax) * 0.08;
+    ctx.quadraticCurveTo(midx, midy, bx, by);
+    ctx.stroke();
+    // Arrowhead at dest.
+    const angle = Math.atan2(by - midy, bx - midx);
+    const ar = 8;
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx - ar * Math.cos(angle - 0.35), by - ar * Math.sin(angle - 0.35));
+    ctx.lineTo(bx - ar * Math.cos(angle + 0.35), by - ar * Math.sin(angle + 0.35));
+    ctx.closePath();
+    ctx.fill();
+    // Trinket label at edge midpoint.
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    const labelW = Math.min(120, t.displayName.length * 5);
+    ctx.fillRect(midx - labelW / 2, midy - 7, labelW, 14);
+    ctx.fillStyle = "#fff";
+    ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(t.displayName.slice(0, 22), midx, midy);
+  }
+
+  // Nodes — large coloured discs labelled with POI id + display name.
+  // Entry POIs get a green border, terminals get a red border.
+  const entrySet    = new Set(narrative.entryPoiIds);
+  const terminalSet = new Set(narrative.terminalPoiIds);
+  for (const p of narrative.pois) {
+    const z = zoneById.get(p.zoneId);
+    if (!z) continue;
+    const cx = originX + z.centroid.x * px + px / 2;
+    const cy = originY + z.centroid.y * px + px / 2;
+    const r = 14;
+    ctx.fillStyle = "#1a1c21";
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = entrySet.has(p.id) ? "#7edb8b"
+                    : terminalSet.has(p.id) ? "#f57676"
+                    : "#fff";
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(p.poiDefId, cx, cy + r + 4);
+  }
+
+  // Status banner top-left: shape + retries + degraded flag.
+  ctx.fillStyle = "rgba(0,0,0,0.8)";
+  ctx.fillRect(originX + 8, originY + 8, 220, 50);
+  ctx.fillStyle = "#fff";
+  ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  const status = narrative.degraded
+    ? `DAG: ${narrative.dagShape} · DEGRADED (retries ${narrative.retries})`
+    : `DAG: ${narrative.dagShape} · retries ${narrative.retries}`;
+  ctx.fillText(status, originX + 14, originY + 14);
+  ctx.fillText(`${narrative.pois.length} POIs · ${narrative.trinkets.length} trinkets`, originX + 14, originY + 30);
+  ctx.fillText(`entries: ${narrative.entryPoiIds.length} · terminals: ${narrative.terminalPoiIds.length}`, originX + 14, originY + 44);
 }
 
 // Pre-parsed RGB tables — avoids hexToRGB on every pixel and lets the

@@ -227,6 +227,25 @@ export interface GenParams {
    * canonical "forest maze" tile shape; tune up for sparser tiles
    * (raise pocket/lobby area mins) or down for denser ones.
    */
+  /**
+   * Tier 6 (T-209) POI-network solver knobs. The solver consumes the
+   * AnnotatedZoneGraph from T-208 and the POI roster from
+   * `packages/content/data/pois/` to weave a per-tile dependency-DAG.
+   */
+  poiNetwork: {
+    /** Target POI count per tile. The matcher tries to hit this exactly. */
+    targetPoiCount: number;
+    /** Solver retry budget. After this many failures it falls back to a
+     *  degraded linear chain through the best-fit candidates. */
+    maxRetries: number;
+    /** Minimum candidate fit-score to consider a (zone, POI) pairing. */
+    minFitScore: number;
+    /** Bonus added to a candidate's score per preferred-topology match. */
+    preferredTopologyBonus: number;
+    /** Cap on the per-tile theme-bridge search depth when wiring keys. */
+    maxWireSearchDepth: number;
+  };
+
   zoneGraph: {
     /** area > this → "arena" (high-stakes setpiece) */
     arenaAreaMin: number;
@@ -348,6 +367,13 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     corridorAreaMax:        250,
     corridorAspectRatioMax: 0.4,
     pocketAreaMin:          150,
+  },
+  poiNetwork: {
+    targetPoiCount:         4,
+    maxRetries:             16,
+    minFitScore:            0.1,
+    preferredTopologyBonus: 0.5,
+    maxWireSearchDepth:     8,
   },
 };
 
@@ -481,9 +507,10 @@ function cloneParams(p: GenParams): GenParams {
     terrain:   { ...p.terrain },
     room:      { ...p.room },
     network:   { ...p.network },
-    materials: { ...p.materials },
-    kinds:     { ...p.kinds },
-    zoneGraph: { ...p.zoneGraph },
+    materials:  { ...p.materials },
+    kinds:      { ...p.kinds },
+    zoneGraph:  { ...p.zoneGraph },
+    poiNetwork: { ...p.poiNetwork },
   };
 }
 

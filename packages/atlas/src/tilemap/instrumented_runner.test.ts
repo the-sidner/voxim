@@ -53,7 +53,7 @@ Deno.test("instrumented runner: trace has one entry per stage with monotonic inp
   const r = runInstrumented({
     worldCell: cell, tileSeed: 1234, params: PRESETS.forest_maze.params,
   });
-  assertEquals(r.trace.length, 10);
+  assertEquals(r.trace.length, 11);
   // First stage's inputHash is 0 (no upstream).
   assertEquals(r.trace[0].inputHash, 0);
   // Each subsequent stage's inputHash equals the prior stage's outputHash.
@@ -92,7 +92,7 @@ Deno.test("instrumented runner: late-stage param tweak only invalidates from tha
   // share the same prefix and hit; materials itself misses; every stage
   // downstream also misses because its prefix now includes the tweaked
   // materials params. This is the strict prefix-cache guarantee.
-  const downstreamOfMaterials = new Set(["materials", "zoneGraph"]);
+  const downstreamOfMaterials = new Set(["materials", "zoneGraph", "poiNetwork"]);
   for (const t of r.trace) {
     if (downstreamOfMaterials.has(t.stageId)) {
       assert(!t.cacheHit, `${t.stageId} should have missed (downstream of materials tweak)`);
