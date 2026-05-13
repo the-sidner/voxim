@@ -1,0 +1,47 @@
+{
+  "id":          "hollow_root",
+  "schema":      1,
+  "displayName": "Hollow Root",
+
+  "type": "bossfight",
+  "activity": {
+    "bossNpcId": "elder_treant",
+    "arenaRules": {
+      "lockEntry":     true,
+      "phaseTriggers": [0.7, 0.4, 0.15],
+      "addsTable":     "rotwood_spores"
+    }
+  },
+
+  "fit": {
+    "preferredTopology": ["plaza", "arena"],
+    "minArea":           700,
+    "maxArea":           3500,
+    "enclosure":         { "min": 0.4, "max": 1.0 },
+    "requiredKind":      ["forest"],
+    "requiredBiome":     ["forest", "swamp"]
+  },
+
+  "gate": {
+    "kind":         "multi",
+    "count":        2,
+    "flavorAccept": ["bone", "verdant", "primal", "cursed", "rotten"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["rotten", "verdant", "primal"],
+      "flavorTags": ["heart-deep", "twisted", "ancient"],
+      "visualHint": "blackwood_amber"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_treant_lament",  "chance": 1.0 },
+      { "kind": "stack", "id": "heartwood_splinter",  "qty":    3   }
+    ]
+  },
+
+  "tags":         ["rotten", "primal", "verdant", "root", "boss"],
+  "difficulty":   4,
+  "quotaWeight":  0.30,
+  "roles":        ["terminal"]
+}

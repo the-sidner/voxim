@@ -1,0 +1,49 @@
+{
+  "id":          "cursed_quarry",
+  "schema":      1,
+  "displayName": "Cursed Quarry",
+
+  "type": "wave",
+  "activity": {
+    "waves": [
+      { "spawn": "hexed_miner",        "count": 4, "interval": 0  },
+      { "spawn": "hexed_miner",        "count": 3, "interval": 20 },
+      { "spawn": "stone_construct",    "count": 2, "interval": 45 }
+    ],
+    "interWaveSeconds":     12,
+    "playerSafeZoneRadius": 0
+  },
+
+  "fit": {
+    "preferredTopology": ["arena", "plaza"],
+    "minArea":           600,
+    "maxArea":           2600,
+    "enclosure":         { "min": 0.2, "max": 0.7 },
+    "requiredKind":      ["stone"],
+    "requiredBiome":     ["mountains", "hills"]
+  },
+
+  "gate": {
+    "kind":         "item",
+    "trinketRef":   null,
+    "flavorAccept": ["cursed", "stone", "primal", "ancient"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["cursed", "stone"],
+      "flavorTags": ["hexed", "crumbling", "soot-darkened"],
+      "visualHint": "veined_obsidian"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_quarry_curse_origin", "chance": 0.7 },
+      { "kind": "stack", "id": "stone_with_eye",           "qty":    1   },
+      { "kind": "stack", "id": "ore_chunk",                "qty":    3   }
+    ]
+  },
+
+  "tags":         ["cursed", "stone", "miners", "hex", "quarry"],
+  "difficulty":   3,
+  "quotaWeight":  0.70,
+  "roles":        ["midchain"]
+}

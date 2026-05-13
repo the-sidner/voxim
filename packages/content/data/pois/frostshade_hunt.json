@@ -1,0 +1,42 @@
+{
+  "id":          "frostshade_hunt",
+  "schema":      1,
+  "displayName": "Frostshade Hunt",
+
+  "type": "wave",
+  "activity": {
+    "waves": [
+      { "spawn": "frost_wolf",       "count": 5, "interval": 0  },
+      { "spawn": "frost_wolf_alpha", "count": 1, "interval": 40 }
+    ],
+    "interWaveSeconds":     18,
+    "playerSafeZoneRadius": 0
+  },
+
+  "fit": {
+    "preferredTopology": ["arena", "plaza"],
+    "minArea":           600,
+    "maxArea":           2400,
+    "enclosure":         { "min": 0.0, "max": 0.5 },
+    "requiredBiome":     ["tundra", "mountains"]
+  },
+
+  "gate": { "kind": "open" },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["primal", "mystic", "frost"],
+      "flavorTags": ["whispered", "biting", "patient"],
+      "visualHint": "icehide"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_frost_pack_song", "chance": 0.5 },
+      { "kind": "stack", "id": "frost_pelt",           "qty":    3   }
+    ]
+  },
+
+  "tags":         ["primal", "mystic", "beast", "hunt", "frost"],
+  "difficulty":   3,
+  "quotaWeight":  0.60,
+  "roles":        ["entry", "midchain"]
+}

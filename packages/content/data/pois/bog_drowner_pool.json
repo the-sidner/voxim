@@ -1,0 +1,42 @@
+{
+  "id":          "bog_drowner_pool",
+  "schema":      1,
+  "displayName": "Drowner Pool",
+
+  "type": "encounter",
+  "activity": {
+    "spawnTable":         "drowner_swarm_small",
+    "spawnTriggerRadius": 7,
+    "minClearKills":      "all",
+    "regenAfterTicks":    null
+  },
+
+  "fit": {
+    "preferredTopology": ["pocket", "deadend"],
+    "minArea":           150,
+    "maxArea":           600,
+    "enclosure":         { "min": 0.5, "max": 1.0 },
+    "requiredKind":      ["water", "forest"],
+    "requiredBiome":     ["swamp", "shore"]
+  },
+
+  "gate": { "kind": "open" },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["rotten", "tidal", "drowner"],
+      "flavorTags": ["sodden", "fetid", "writhing"],
+      "visualHint": "moss_brass"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_drowner_lullaby", "chance": 0.5 },
+      { "kind": "stack", "id": "river_silt",           "qty":    2   },
+      { "kind": "stack", "id": "drowner_pearl",        "qty":    1, "chance": 0.3 }
+    ]
+  },
+
+  "tags":         ["rotten", "tidal", "drowner", "swamp", "primal"],
+  "difficulty":   2,
+  "quotaWeight":  0.8,
+  "roles":        ["entry", "midchain"]
+}

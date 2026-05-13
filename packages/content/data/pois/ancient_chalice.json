@@ -1,0 +1,44 @@
+{
+  "id":          "ancient_chalice",
+  "schema":      1,
+  "displayName": "Ancient Chalice",
+
+  "type": "action",
+  "activity": {
+    "interactionPrefab": "chalice_pedestal",
+    "verb":              "drink",
+    "consumable":        true,
+    "preconditionTags":  []
+  },
+
+  "fit": {
+    "preferredTopology": ["pocket", "lobby"],
+    "minArea":           120,
+    "maxArea":           600,
+    "enclosure":         { "min": 0.6, "max": 1.0 },
+    "requiredKind":      ["stone"]
+  },
+
+  "gate": {
+    "kind":         "item",
+    "trinketRef":   null,
+    "flavorAccept": ["arcane", "ritual", "regal", "ancient"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["ritual", "ancient", "regal"],
+      "flavorTags": ["consecrated", "draughted", "draconian"],
+      "visualHint": "gilded_silver"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_chalice_libation",  "chance": 1.0 },
+      { "kind": "stack", "id": "chalice_residue",        "qty":    1   }
+    ]
+  },
+
+  "tags":         ["ritual", "ancient", "regal", "chalice", "consecrated"],
+  "difficulty":   2,
+  "quotaWeight":  0.50,
+  "roles":        ["midchain", "optional"]
+}

@@ -1,0 +1,44 @@
+{
+  "id":          "corrupted_glade",
+  "schema":      1,
+  "displayName": "Corrupted Glade",
+
+  "type": "encounter",
+  "activity": {
+    "spawnTable":         "blightspawn_medium",
+    "spawnTriggerRadius": 8,
+    "minClearKills":      "all",
+    "regenAfterTicks":    null
+  },
+
+  "fit": {
+    "preferredTopology": ["plaza", "lobby"],
+    "minArea":           400,
+    "maxArea":           1400,
+    "enclosure":         { "min": 0.3, "max": 0.9 },
+    "requiredBiome":     ["forest", "hills"]
+  },
+
+  "gate": {
+    "kind":         "item",
+    "trinketRef":   null,
+    "flavorAccept": ["verdant", "ancient", "ritual", "primal"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["cursed", "rotten", "verdant"],
+      "flavorTags": ["blighted", "withered", "tainted"],
+      "visualHint": "blackbark"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_glade_corruption_origin", "chance": 0.6 },
+      { "kind": "stack", "id": "blight_resin",                 "qty":    2   }
+    ]
+  },
+
+  "tags":         ["cursed", "rotten", "verdant", "glade", "forest"],
+  "difficulty":   3,
+  "quotaWeight":  0.75,
+  "roles":        ["midchain", "optional"]
+}

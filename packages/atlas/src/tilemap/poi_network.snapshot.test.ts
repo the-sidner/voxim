@@ -126,14 +126,35 @@ Deno.test("poiNetwork: trinket display names use real themes + source name", () 
     });
     const n = (r.final as PoiNetworkState).narrative;
     if (n.trinkets.length === 0 || n.degraded) continue;
-    // At least one non-degraded run should produce a trinket whose
-    // display name is non-trivial.
     const t = n.trinkets[0];
     assert(t.displayName.length > 0, "trinket display name empty");
     assert(t.displayName.includes(" "), `expected multi-word display name, got "${t.displayName}"`);
     return;
   }
-  // The 3-POI roster's theme bridges are sparse — it's OK for every
-  // attempt to be degraded. T-207's wider roster will exercise the
-  // happy path; this test just asserts the name-builder doesn't crash.
+  throw new Error("Every sampled tile fell back to degraded — bridge coverage regression?");
+});
+
+Deno.test("poiNetwork: wider roster hits happy path on majority of bakes", () => {
+  // With T-207's 15-POI roster (and bridge validator passing), random
+  // tile bakes should usually solve cleanly without falling back. We
+  // sample 20 (cell, seed) tuples and require ≥40% non-degraded. This
+  // is loose by design — the matcher's tile-specific spatial fit can
+  // legitimately fail to place 4 POIs into 4 distinct zones on some
+  // unusually-small tiles. Stronger guarantee waits on a per-tile
+  // difficulty tier signal.
+  let nonDegraded = 0;
+  const total = 20;
+  for (let i = 0; i < total; i++) {
+    const r = runInstrumented({
+      worldCell: cell(i % 4, (i + 2) % 4), tileSeed: 20_000 + i,
+      params: PRESETS.forest_maze.params,
+      content,
+    });
+    const n = (r.final as PoiNetworkState).narrative;
+    if (n.pois.length > 0 && !n.degraded) nonDegraded++;
+  }
+  assert(
+    nonDegraded / total >= 0.4,
+    `expected ≥40% non-degraded bakes, got ${nonDegraded}/${total}`,
+  );
 });

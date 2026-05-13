@@ -1,0 +1,43 @@
+{
+  "id":          "tideflow_locks",
+  "schema":      1,
+  "displayName": "Tideflow Locks",
+
+  "type": "puzzle",
+  "activity": {
+    "puzzleId":        "valve_sequence",
+    "params":          { "valves": 7, "flowGoal": "drain", "showHints": true },
+    "failurePenalty":  "reset"
+  },
+
+  "fit": {
+    "preferredTopology": ["lobby", "corridor"],
+    "minArea":           250,
+    "maxArea":           900,
+    "enclosure":         { "min": 0.4, "max": 1.0 },
+    "requiredKind":      ["water", "stone"]
+  },
+
+  "gate": {
+    "kind":         "item",
+    "trinketRef":   null,
+    "flavorAccept": ["tidal", "ritual", "arcane", "drowner"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["tidal", "ritual"],
+      "flavorTags": ["sluiced", "ceremonious", "channelled"],
+      "visualHint": "verdigris_bronze"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_tideflow_engineers", "chance": 0.7 },
+      { "kind": "stack", "id": "tide_valve_key",          "qty":    1   }
+    ]
+  },
+
+  "tags":         ["tidal", "ritual", "lock", "mechanism", "ancient"],
+  "difficulty":   3,
+  "quotaWeight":  0.55,
+  "roles":        ["midchain"]
+}

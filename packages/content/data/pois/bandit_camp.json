@@ -1,0 +1,39 @@
+{
+  "id":          "bandit_camp",
+  "schema":      1,
+  "displayName": "Bandit Camp",
+
+  "type": "encounter",
+  "activity": {
+    "spawnTable":         "bandit_pack_medium",
+    "spawnTriggerRadius": 10,
+    "minClearKills":      "all",
+    "regenAfterTicks":    null
+  },
+
+  "fit": {
+    "preferredTopology": ["lobby", "pocket", "plaza"],
+    "minArea":           250,
+    "maxArea":           900
+  },
+
+  "gate": { "kind": "open" },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["martial", "cursed", "raider"],
+      "flavorTags": ["scarred", "hardened", "wretched"],
+      "visualHint": "iron_rust"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_bandit_oath",       "chance": 0.4 },
+      { "kind": "stack", "id": "rusted_blade_fragment",  "qty":    2   },
+      { "kind": "stack", "id": "leather_scrap",          "qty":    3, "chance": 0.7 }
+    ]
+  },
+
+  "tags":         ["martial", "cursed", "raider", "bandit", "human"],
+  "difficulty":   2,
+  "quotaWeight":  1.0,
+  "roles":        ["entry", "midchain", "optional"]
+}

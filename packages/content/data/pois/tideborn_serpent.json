@@ -1,0 +1,47 @@
+{
+  "id":          "tideborn_serpent",
+  "schema":      1,
+  "displayName": "Tideborn Serpent",
+
+  "type": "bossfight",
+  "activity": {
+    "bossNpcId": "abyssal_serpent",
+    "arenaRules": {
+      "lockEntry":     true,
+      "phaseTriggers": [0.66, 0.33],
+      "addsTable":     "deep_tide_motes"
+    }
+  },
+
+  "fit": {
+    "preferredTopology": ["arena", "plaza"],
+    "minArea":           900,
+    "maxArea":           4000,
+    "enclosure":         { "min": 0.2, "max": 0.7 },
+    "requiredKind":      ["water"],
+    "requiredBiome":     ["shore", "swamp"]
+  },
+
+  "gate": {
+    "kind":         "multi",
+    "count":        2,
+    "flavorAccept": ["tidal", "ancient", "regal", "ritual", "drowner"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["tidal", "primal", "regal"],
+      "flavorTags": ["deepwater", "coronal", "scaled"],
+      "visualHint": "nacre"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_serpent_crown",      "chance": 1.0 },
+      { "kind": "stack", "id": "abyssal_scale",           "qty":    4   }
+    ]
+  },
+
+  "tags":         ["tidal", "primal", "regal", "serpent", "boss"],
+  "difficulty":   5,
+  "quotaWeight":  0.20,
+  "roles":        ["terminal"]
+}

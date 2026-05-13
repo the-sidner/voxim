@@ -1,0 +1,48 @@
+{
+  "id":          "forgotten_garrison",
+  "schema":      1,
+  "displayName": "Forgotten Garrison",
+
+  "type": "wave",
+  "activity": {
+    "waves": [
+      { "spawn": "spectral_pikeman",   "count": 3, "interval": 0  },
+      { "spawn": "spectral_archer",    "count": 2, "interval": 25 },
+      { "spawn": "spectral_captain",   "count": 1, "interval": 60 }
+    ],
+    "interWaveSeconds":     15,
+    "playerSafeZoneRadius": 0
+  },
+
+  "fit": {
+    "preferredTopology": ["plaza", "lobby", "arena"],
+    "minArea":           500,
+    "maxArea":           2400,
+    "enclosure":         { "min": 0.3, "max": 0.9 },
+    "requiredKind":      ["stone", "grass_mound"]
+  },
+
+  "gate": {
+    "kind":         "item",
+    "trinketRef":   null,
+    "flavorAccept": ["martial", "regal", "ancient", "bone"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["martial", "regal", "ancient"],
+      "flavorTags": ["disciplined", "spectral", "stoic"],
+      "visualHint": "tarnished_brass"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_garrison_oath_breaking", "chance": 0.8 },
+      { "kind": "stack", "id": "spectral_signet",             "qty":    1   },
+      { "kind": "stack", "id": "ancient_alloy_fragment",      "qty":    2, "chance": 0.5 }
+    ]
+  },
+
+  "tags":         ["martial", "regal", "ancient", "garrison", "spectral"],
+  "difficulty":   4,
+  "quotaWeight":  0.55,
+  "roles":        ["midchain", "terminal"]
+}

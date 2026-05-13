@@ -1,0 +1,40 @@
+{
+  "id":          "signal_pyre",
+  "schema":      1,
+  "displayName": "Signal Pyre",
+
+  "type": "action",
+  "activity": {
+    "interactionPrefab": "signal_brazier",
+    "verb":              "light",
+    "consumable":        true,
+    "preconditionTags":  []
+  },
+
+  "fit": {
+    "preferredTopology": ["plaza", "lobby", "arena"],
+    "minArea":           200,
+    "maxArea":           1200,
+    "enclosure":         { "min": 0.0, "max": 0.4 },
+    "requiredKind":      ["stone", "grass_mound"]
+  },
+
+  "gate": { "kind": "open" },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["martial", "primal", "beacon"],
+      "flavorTags": ["unbroken", "smouldering", "watchful"],
+      "visualHint": "scorched_iron"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_pyre_watchers", "chance": 0.5 },
+      { "kind": "stack", "id": "char_charm",        "qty":    1   }
+    ]
+  },
+
+  "tags":         ["martial", "primal", "beacon", "pyre", "watchpost"],
+  "difficulty":   1,
+  "quotaWeight":  0.50,
+  "roles":        ["entry", "midchain", "optional"]
+}

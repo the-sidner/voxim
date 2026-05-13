@@ -1,0 +1,38 @@
+{
+  "id":          "cairn_marker",
+  "schema":      1,
+  "displayName": "Cairn Marker",
+
+  "type": "exploration",
+  "activity": {
+    "triggerKind":   "look-at",
+    "triggerRadius": 5,
+    "loreId":        "lore_cairn_song"
+  },
+
+  "fit": {
+    "preferredTopology": ["pocket", "deadend", "crossroads"],
+    "minArea":           60,
+    "maxArea":           400,
+    "requiredKind":      ["stone", "grass_mound"]
+  },
+
+  "gate": { "kind": "open" },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["ancient", "stone", "primal"],
+      "flavorTags": ["weather-pitted", "silent", "rune-traced"],
+      "visualHint": "lichen_grey"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_cairn_song",         "chance": 1.0 },
+      { "kind": "stack", "id": "rune_dust",               "qty":    1, "chance": 0.4 }
+    ]
+  },
+
+  "tags":         ["ancient", "stone", "primal", "cairn", "marker"],
+  "difficulty":   1,
+  "quotaWeight":  0.40,
+  "roles":        ["entry", "optional"]
+}

@@ -132,29 +132,34 @@ Deno.test("parsePoiDef rejects unknown role", () => {
 
 // ---- integration: loader picks up POIs and ContentService can query them ----
 
-Deno.test("JsonSource.load: pois registry contains the three checked-in examples", async () => {
+Deno.test("JsonSource.load: pois registry contains the authored roster", async () => {
   const content = await JsonSource.load();
-  assertEquals(content.pois.size, 3);
-  // Sanity: each id lookups round-trip the displayName.
-  assertEquals(content.pois.getOrThrow("wolf_den").displayName, "Wolf Den");
-  assertEquals(content.pois.getOrThrow("ancient_arena").displayName, "Ancient Arena");
-  assertEquals(content.pois.getOrThrow("glyph_puzzle").displayName, "Glyph Shrine");
+  // The roster grows over time (T-207 expanded it from 3 → 15). Assert the
+  // three foundational examples are present and the registry is non-empty.
+  assertEquals(content.pois.size >= 3, true);
+  assertEquals(content.pois.getOrThrow("wolf_den").displayName,       "Wolf Den");
+  assertEquals(content.pois.getOrThrow("ancient_arena").displayName,  "Ancient Arena");
+  assertEquals(content.pois.getOrThrow("glyph_puzzle").displayName,   "Glyph Shrine");
 });
 
-Deno.test("ContentService.findPoisByRole returns the three examples by their declared roles", async () => {
+Deno.test("ContentService.findPoisByRole returns POIs by their declared roles", async () => {
   const c = await JsonSource.load();
-  const entryIds = c.findPoisByRole("entry").map(p => p.id).sort();
-  assertEquals(entryIds, ["wolf_den"]);
-  const terminalIds = c.findPoisByRole("terminal").map(p => p.id).sort();
-  assertEquals(terminalIds, ["ancient_arena"]);
-  // wolf_den + glyph_puzzle both have midchain.
-  const midIds = c.findPoisByRole("midchain").map(p => p.id).sort();
-  assertEquals(midIds, ["glyph_puzzle", "wolf_den"]);
+  const entry = c.findPoisByRole("entry").map(p => p.id);
+  assertEquals(entry.includes("wolf_den"), true, "wolf_den should be in entry roster");
+  const terminal = c.findPoisByRole("terminal").map(p => p.id);
+  assertEquals(terminal.includes("ancient_arena"), true, "ancient_arena should be terminal");
+  const mid = c.findPoisByRole("midchain").map(p => p.id);
+  assertEquals(mid.includes("wolf_den"),     true);
+  assertEquals(mid.includes("glyph_puzzle"), true);
 });
 
 Deno.test("ContentService.findPoisByTag intersects on tag value", async () => {
   const c = await JsonSource.load();
-  assertEquals(c.findPoisByTag("bone").map(p => p.id), ["wolf_den"]);
-  assertEquals(c.findPoisByTag("ancient").map(p => p.id).sort(), ["ancient_arena", "glyph_puzzle"]);
+  // wolf_den is the canonical "bone" dropper.
+  assertEquals(c.findPoisByTag("bone").map(p => p.id).includes("wolf_den"), true);
+  // "ancient" is widely shared across the roster.
+  const ancientIds = c.findPoisByTag("ancient").map(p => p.id);
+  assertEquals(ancientIds.includes("ancient_arena"), true);
+  assertEquals(ancientIds.includes("glyph_puzzle"),  true);
   assertEquals(c.findPoisByTag("nonexistent_tag").length, 0);
 });

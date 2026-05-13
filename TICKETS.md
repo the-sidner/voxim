@@ -1699,7 +1699,7 @@ green on the new POI tests, atlas + tile-server still load without
 warnings, adding a fourth POI file is purely a file drop.
 
 ### T-207 · Author POI roster covering type + theme space
-Effort: M   Status: todo   Depends on: T-206
+Effort: M   Status: done   Commit: (pending)   Depends on: T-206
 
 Three POI examples are not enough to make the generator (T-209) produce
 varied tiles. The roster needs to cover every POI `type` with at least 2-3

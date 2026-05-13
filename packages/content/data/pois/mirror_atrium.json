@@ -1,0 +1,43 @@
+{
+  "id":          "mirror_atrium",
+  "schema":      1,
+  "displayName": "Mirror Atrium",
+
+  "type": "puzzle",
+  "activity": {
+    "puzzleId":        "reflection_path",
+    "params":          { "mirrors": 6, "beams": 3, "showHints": false },
+    "failurePenalty":  "none"
+  },
+
+  "fit": {
+    "preferredTopology": ["lobby", "pocket"],
+    "minArea":           300,
+    "maxArea":           1000,
+    "enclosure":         { "min": 0.6, "max": 1.0 },
+    "requiredKind":      ["stone"]
+  },
+
+  "gate": {
+    "kind":         "item",
+    "trinketRef":   null,
+    "flavorAccept": ["glyph", "mystic", "ancient", "arcane"]
+  },
+
+  "reward": {
+    "trinketTheme": {
+      "themes":     ["mystic", "arcane"],
+      "flavorTags": ["refracted", "silvered", "luminal"],
+      "visualHint": "polished_silver"
+    },
+    "extras": [
+      { "kind": "lore",  "id": "lore_mirror_witness", "chance": 1.0 },
+      { "kind": "stack", "id": "prism_shard",        "qty":    2   }
+    ]
+  },
+
+  "tags":         ["mystic", "arcane", "mirror", "reflective", "ancient"],
+  "difficulty":   3,
+  "quotaWeight":  0.60,
+  "roles":        ["midchain", "optional"]
+}
