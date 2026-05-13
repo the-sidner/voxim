@@ -48,6 +48,11 @@ let activePreset = null;      // preset key in use, or null = world's saved para
 // on the next pipeline fetch. Dragging a trace row mutates this and
 // re-fetches; the Reset button clears it.
 let customStageOrder = null;
+// T-214 step 1 (live param re-runs): per-tile params override
+// accumulated from inspector knob edits. Empty = use world defaults.
+// Each knob edit debounces a tile re-fetch with these as `body.params`.
+let tileParamsOverride = {};
+let _tileParamsDebounce = null;
 
 // LevelDef overlay layers — toggleable per-tile. Each renders on top of
 // the active stage view, reading from `vd.level` (the per-stage
@@ -708,6 +713,11 @@ async function loadTile(cellX, cellY, opts = {}) {
   // T-214 step 4: when the user has reordered stages, send the custom
   // order so the runner iterates that instead of the canonical one.
   if (customStageOrder)                      body.stageOrder = customStageOrder;
+  // T-214 step 1: live param overrides from the tile-aside knobs.
+  // Merge over any preset params already in body.params.
+  if (Object.keys(tileParamsOverride).length > 0) {
+    body.params = { ...(body.params || {}), ...tileParamsOverride };
+  }
   const res = await fetch(`tile/${cellX}/${cellY}/pipeline`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -741,7 +751,22 @@ async function loadTile(cellX, cellY, opts = {}) {
     `tile ${tile.tileId} · seed ${tile.seed} · ${totalMs}ms (${hits}/${pipelineRun.trace.length} cache hits)` +
     ` · ${tile.payload.chambers.length} chambers · ${(tile.payload.corridors ?? []).length} corridors`;
   setCrumbs({ label: "World", href: "#world" }, { label: `Tile (${cellX},${cellY})` });
+  // Preserve focus across the aside re-render — live param editing
+  // would otherwise blur the input mid-keystroke after the debounced
+  // re-fetch resolves.
+  const focusedId = document.activeElement?.id;
+  const selStart  = document.activeElement?.selectionStart;
+  const selEnd    = document.activeElement?.selectionEnd;
   renderContextTile(cellX, cellY);
+  if (focusedId) {
+    const restored = document.getElementById(focusedId);
+    if (restored) {
+      restored.focus();
+      if (selStart != null && restored.setSelectionRange) {
+        try { restored.setSelectionRange(selStart, selEnd ?? selStart); } catch { /* not a text input */ }
+      }
+    }
+  }
   resize();
   drawTile();
   setHashState({ seed: opts.seedOverride });
@@ -788,6 +813,7 @@ function renderContextTile(cellX, cellY) {
     </section>
     ${renderTracePanel()}
     ${renderLayersPanel()}
+    ${renderParamsPanel()}
     <section>
       <h2>Stage actions</h2>
       <button class="full" id="dump-stage">Dump “${escape(stageLabel(viewStage))}” state</button>
@@ -895,6 +921,32 @@ function renderContextTile(cellX, cellY) {
       loadTile(cellX, cellY);
     });
   }
+
+  // T-214 step 1: live param inputs. Each edit updates
+  // `tileParamsOverride` and debounces a tile re-fetch.
+  for (const input of aside.querySelectorAll("[data-tile-param]")) {
+    input.addEventListener("input", () => {
+      const slice = input.dataset.slice;
+      const key   = input.dataset.key;
+      const raw   = parseFloat(input.value);
+      if (Number.isNaN(raw)) return;
+      if (!tileParamsOverride[slice]) tileParamsOverride[slice] = {};
+      tileParamsOverride[slice][key] = raw;
+      if (_tileParamsDebounce) clearTimeout(_tileParamsDebounce);
+      _tileParamsDebounce = setTimeout(() => {
+        _tileParamsDebounce = null;
+        loadTile(cellX, cellY);
+      }, 200);
+    });
+  }
+  const resetParamsBtn = aside.querySelector("#reset-tile-params");
+  if (resetParamsBtn) {
+    resetParamsBtn.addEventListener("click", () => {
+      tileParamsOverride = {};
+      if (_tileParamsDebounce) { clearTimeout(_tileParamsDebounce); _tileParamsDebounce = null; }
+      loadTile(cellX, cellY);
+    });
+  }
 }
 
 function stageLabel(id) {
@@ -930,6 +982,53 @@ function renderLayersPanel() {
     <section>
       <h2>Layers</h2>
       <div style="display:flex;flex-direction:column;gap:1px">${rows}</div>
+    </section>`;
+}
+
+// T-214 step 1: per-tile params editor. Renders the same knobs as the
+// world-bake form but scoped to "tweak this tile's pipeline run."
+// Edits accumulate in `tileParamsOverride` and debounced-fire a tile
+// re-fetch. Effective values shown reflect (worldParams ⊕ override).
+function renderParamsPanel() {
+  if (!pipelineRun || !pipelineRun.params) return "";
+  const effective = pipelineRun.params;
+  const dirtySlices = new Set(Object.keys(tileParamsOverride));
+  const sliceRows = Object.keys(effective).map(slice => {
+    const knobs = effective[slice];
+    if (!knobs || typeof knobs !== "object") return "";
+    const overrideSlice = tileParamsOverride[slice] || {};
+    const inputs = Object.keys(knobs).map(key => {
+      const cfg = KNOB_CONFIG[slice]?.[key] ?? { step: 0.01 };
+      const hint = KNOB_HINT[slice]?.[key] ?? `${slice}.${key}`;
+      const id = `tp-${slice}-${key}`;
+      const value = knobs[key];
+      const isDirty = key in overrideSlice;
+      const valStr = cfg.integer ? String(Math.round(value)) : String(value);
+      return `
+        <div class="row" style="display:flex;align-items:center;gap:6px;font-size:11px">
+          <label style="flex:1;color:${isDirty ? "var(--accent)" : "var(--text)"}" title="${escape(hint)}">${escape(key)}</label>
+          <input id="${id}" data-tile-param data-slice="${escape(slice)}" data-key="${escape(key)}"
+            type="number" step="${cfg.step}"
+            ${cfg.min !== undefined ? `min="${cfg.min}"` : ""}
+            ${cfg.max !== undefined ? `max="${cfg.max}"` : ""}
+            value="${valStr}" style="width:80px">
+        </div>`;
+    }).join("");
+    const dirtyMark = dirtySlices.has(slice) ? " ●" : "";
+    return `<details data-tile-slice="${escape(slice)}">
+      <summary style="font-size:11px;cursor:pointer">${escape(SLICE_LABELS[slice] ?? slice)}${dirtyMark}</summary>
+      <div style="padding:4px 0 8px 0">${inputs}</div>
+    </details>`;
+  }).join("");
+  const resetBtn = Object.keys(tileParamsOverride).length > 0
+    ? `<button class="full" id="reset-tile-params" style="margin-top:6px;font-size:11px">reset overrides</button>`
+    : "";
+  return `
+    <section>
+      <h2>Params</h2>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">live re-run on edit (~200ms debounce)</div>
+      ${sliceRows}
+      ${resetBtn}
     </section>`;
 }
 
