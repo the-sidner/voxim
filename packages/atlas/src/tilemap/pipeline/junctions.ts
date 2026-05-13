@@ -25,12 +25,22 @@ export interface Junction {
 
 const JUNCTIONS_SUB_SEED = 0x10C73101;
 const POISSON_K = 30;
+/**
+ * After Bridson Poisson sampling, the tile is divided into a coarse grid
+ * and every empty cell gets one forced junction. Without this, Bridson's
+ * single-seed growth often clusters junctions in one quadrant and leaves
+ * the rest of the tile path-less. The post-pass guarantees the network
+ * spans the tile uniformly while keeping Bridson's organic spacing where
+ * the Poisson sampler did reach.
+ */
+const COVERAGE_GRID_DIV = 4; // 4×4 grid = 16 coverage cells
 
 export const junctions: Transformer<NoiseState, JunctionsState, GenParams["room"]> =
   (state, seed, params) => {
     const { gridSize } = state;
     const rng = mulberry32(seed ^ JUNCTIONS_SUB_SEED);
     const seeds = poissonSeeds(gridSize, params.targetCount, params.minSeparation, rng);
+    ensureUniformCoverage(seeds, gridSize, params.minSeparation, rng);
     return { ...state, seeds };
   };
 
@@ -92,6 +102,55 @@ function poissonSeeds(
   }
 
   return samples;
+}
+
+/**
+ * Force one junction per coarse grid cell. Walks the COVERAGE_GRID_DIV²
+ * cells; for every cell containing no existing junction, samples a
+ * fresh position inside the cell (respecting `minSeparation` from
+ * existing junctions). Cells that can't satisfy the spacing constraint
+ * are skipped — that's OK; it means a tight Bridson cluster nearby
+ * already covers that area.
+ */
+function ensureUniformCoverage(
+  samples: Junction[],
+  gridSize: number,
+  minSeparation: number,
+  rng: () => number,
+): void {
+  const cellW = gridSize / COVERAGE_GRID_DIV;
+  const r2 = minSeparation * minSeparation;
+  const occupied = new Array(COVERAGE_GRID_DIV * COVERAGE_GRID_DIV).fill(false);
+
+  for (const s of samples) {
+    const cx = Math.min(COVERAGE_GRID_DIV - 1, Math.floor(s.x / cellW));
+    const cy = Math.min(COVERAGE_GRID_DIV - 1, Math.floor(s.y / cellW));
+    occupied[cy * COVERAGE_GRID_DIV + cx] = true;
+  }
+
+  for (let cy = 0; cy < COVERAGE_GRID_DIV; cy++) {
+    for (let cx = 0; cx < COVERAGE_GRID_DIV; cx++) {
+      if (occupied[cy * COVERAGE_GRID_DIV + cx]) continue;
+      // Sample up to a few candidate positions inside the cell.
+      const xLo = cx * cellW;
+      const yLo = cy * cellW;
+      let placed = false;
+      for (let attempt = 0; attempt < 12 && !placed; attempt++) {
+        const x = Math.floor(xLo + rng() * cellW);
+        const y = Math.floor(yLo + rng() * cellW);
+        // Reject if too close to any existing junction.
+        let tooClose = false;
+        for (const s of samples) {
+          const dx = s.x - x, dy = s.y - y;
+          if (dx * dx + dy * dy < r2) { tooClose = true; break; }
+        }
+        if (!tooClose) {
+          samples.push({ x, y });
+          placed = true;
+        }
+      }
+    }
+  }
 }
 
 function mulberry32(seed: number): () => number {
