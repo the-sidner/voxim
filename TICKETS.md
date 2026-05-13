@@ -1908,7 +1908,7 @@ the X" on entry; transitions fire only on actual zone-id changes
 (not every tick); save/reload preserves names byte-identical.
 
 ### T-212 · POI runtime + wilderness-stair unlock
-Effort: L   Status: in-progress   Commit: (pending) (v1)   Depends on: T-210, T-211
+Effort: L   Status: in-progress   Commit: 03525ae (v1)   Depends on: T-210, T-211
 
 **v1 landed**: PoiTrigger component + PoiSystem with two dispatch paths:
 
