@@ -1777,7 +1777,7 @@ renders the zone-role layer; a snapshot test asserts byte-identity for
 representative tiles (same gate as T-204).
 
 ### T-209 · POI matcher + dependency-DAG solver
-Effort: L   Status: done   Commit: (pending)   Depends on: T-206, T-208 (T-207 deferred — see below)
+Effort: L   Status: done   Commit: b9a2641   Depends on: T-206, T-208 (T-207 deferred — see below)
 
 The Tier-6 generator. Consumes `AnnotatedZoneGraph` (T-208) + the POI
 roster (T-207), produces a `TileNarrative` (`PoiInstance[]`,
