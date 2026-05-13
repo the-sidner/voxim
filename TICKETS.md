@@ -1830,7 +1830,7 @@ tile bakes show at least three distinct dagShapes (linear / branching /
 diamond / lattice mix); save+reload reproduces the DAG byte-identical.
 
 ### T-210 · Wilderness zones + stairs — yin-yang dungeon model
-Effort: L   Status: done   Commit: (pending)   Depends on: T-208, T-209
+Effort: L   Status: done   Commit: 3086c6b   Depends on: T-208, T-209
 
 The original Tier-3/6 model treated only open pixels as the playable
 surface; closed pixels were uniform walls. Players walked through
