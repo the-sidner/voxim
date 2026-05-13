@@ -40,7 +40,7 @@ import { zoneGraph } from "./pipeline/zone_graph.ts";
 import { poiNetwork } from "./pipeline/poi_network.ts";
 import { deriveGateSummary } from "./summary.ts";
 import { emptyLevel } from "./level/types.ts";
-import { verifyLevelInvariants } from "./level/verify.ts";
+import { rasterize } from "./level/rasterize.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
@@ -121,17 +121,18 @@ export function generateTile(
 
   const s = pipeline(initial);
 
-  // T-214 step 9: assert the LevelDef invariants the rest of the
-  // system relies on. Throws if a reducer accidentally leaks (e.g.
-  // opens a plateau pixel without a stair).
-  verifyLevelInvariants(s.level, s.openMask, s.zoneOf, s.gridSize);
+  // T-214: rasterize the LevelDef into the per-pixel buffers tile-
+  // server consumes. Today the function is a passthrough that returns
+  // the buffers the pipeline stages produced + runs the invariant
+  // verifier; future commits move buffer production into it.
+  const buffers = rasterize(s);
 
   return {
     cellX:    worldCell.cellX,
     cellY:    worldCell.cellY,
     tileSize,
     gridSize,
-    openMask:   s.openMask,
+    openMask:   buffers.openMask,
     roomOf:     s.roomOf,
     rooms:      s.rooms,
     chamberOf:  s.chamberOf,
@@ -139,14 +140,14 @@ export function generateTile(
     corridors:  s.corridors,
     portals:    s.portals,
     gateSummary: deriveGateSummary(s.portals),
-    heightMap:  s.heightMap,
-    materials:  s.materials,
-    kindOf:     s.kindOf,
-    // T-214: state.level was seeded by emptyLevel() and progressively
-    // built by the stages (zoneGraph: regions + portals; poiNetwork:
-    // narrative + stairs). No final-pass absorber needed. Regions
-    // carry their pixel sets; the derived `zoneOf` index can be
-    // recovered via `levelToZoneOf(level)` on the consumer side.
+    heightMap:  buffers.heightMap,
+    materials:  buffers.materials,
+    kindOf:     buffers.kindOf,
+    // state.level was seeded by emptyLevel() and progressively built
+    // by the reducer stages (zoneGraph: regions + portals;
+    // poiNetwork: narrative + stairs). Regions carry their pixel
+    // sets; the derived `zoneOf` index can be recovered via
+    // `levelToZoneOf(level)` on the consumer side.
     level:      s.level,
     boundaries: [],
     features:   [],

@@ -56,3 +56,5 @@ export type {
 } from "./src/tilemap/level/types.ts";
 export { findRegion, findRegionByZoneId, emptyLevel, levelToZoneOf } from "./src/tilemap/level/types.ts";
 export { verifyLevelInvariants } from "./src/tilemap/level/verify.ts";
+export { rasterize } from "./src/tilemap/level/rasterize.ts";
+export type { RasterizedBuffers } from "./src/tilemap/level/rasterize.ts";
