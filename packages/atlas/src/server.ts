@@ -421,6 +421,15 @@ function generateTileInitFromFinal(
     heightMap: final.heightMap,
     materials: final.materials,
     kindOf:    final.kindOf,
+    zoneOf:    final.zoneOf,
+    zones:     final.zones.map(z => ({
+      id:           z.id,
+      name:         z.name,
+      topologyRole: z.topologyRole,
+      traversal:    z.traversal,
+      area:         z.area,
+      centroid:     z.centroid,
+    })),
     boundaries: [],
     features:   [],
   };

@@ -194,6 +194,14 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeU16(ev.missing.length);
       for (const m of ev.missing) { w.writeStr(m.itemType); w.writeU16(m.quantity); }
       break;
+    case "ZoneEntered":
+      w.writeU8(EventType.ZoneEntered);
+      w.writeUuid(ev.playerId);
+      w.writeU16(ev.zoneId);
+      w.writeStr(ev.zoneName);
+      w.writeStr(ev.topologyRole);
+      w.writeU8(ev.traversal === "wilderness" ? 1 : 0);
+      break;
   }
 }
 
@@ -292,6 +300,14 @@ function decodeEvent(r: WireReader): GameEvent {
       const missing: BuildingMaterial[] = [];
       for (let i = 0; i < count; i++) missing.push({ itemType: r.readStr(), quantity: r.readU16() });
       return { type: "BuildingMissingMaterials", builderId, structureType, missing };
+    }
+    case EventType.ZoneEntered: {
+      const playerId     = r.readUuid();
+      const zoneId       = r.readU16();
+      const zoneName     = r.readStr();
+      const topologyRole = r.readStr();
+      const traversal    = r.readU8() === 1 ? "wilderness" : "path";
+      return { type: "ZoneEntered", playerId, zoneId, zoneName, topologyRole, traversal };
     }
     default:
       throw new Error(`Unknown event type ID: ${typeId}`);

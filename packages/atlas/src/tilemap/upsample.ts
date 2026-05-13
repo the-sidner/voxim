@@ -60,6 +60,12 @@ export interface UpsampleOutput {
    * Used by phase 4C for per-kind rendering.
    */
   kindBuffer: Uint16Array;
+  /**
+   * Nearest-sampled zone ids at target resolution (T-211), length
+   * targetSize². 0xFFFF for un-zoned pixels. Tile-server reads this
+   * to map player position → zone for the "You are in:" HUD.
+   */
+  zoneBuffer: Uint16Array;
 }
 
 export function upsampleTile(tile: TileInit, options: UpsampleOptions): UpsampleOutput {
@@ -71,6 +77,7 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
   const materialBuffer = new Uint16Array(N);
   const openBuffer     = new Uint8Array(N);
   const kindBuffer     = new Uint16Array(N);
+  const zoneBuffer     = new Uint16Array(N);
 
   // Source-of-truth floor heights — atlas's heightMap minus the wall step
   // wherever the pixel is closed. Lets us bilinear the floor without
@@ -127,8 +134,11 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
       // Openness + boundary kind: nearest only (hard edges).
       openBuffer[tIdx] = tile.openMask[nIdx];
       kindBuffer[tIdx] = tile.kindOf[nIdx];
+      // Zone id (T-211): nearest as well — zones are discrete regions
+      // so any interpolation across boundaries would be a bug.
+      zoneBuffer[tIdx] = tile.zoneOf[nIdx];
     }
   }
 
-  return { heightBuffer, materialBuffer, openBuffer, kindBuffer };
+  return { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer };
 }

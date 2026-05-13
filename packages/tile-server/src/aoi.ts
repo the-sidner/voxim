@@ -89,6 +89,11 @@ function isEventRelevant(
       return ev.builderId === playerId;
     case "BuildingMissingMaterials":
       return ev.builderId === playerId;
+    case "ZoneEntered":
+      // Each client only cares about its own player's zone transitions
+      // (other players' zone changes don't drive its HUD). Server still
+      // emits to AoI so spectator UIs / observability tools can listen.
+      return ev.playerId === playerId;
     default:
       // TypeScript enforces exhaustiveness: adding a new GameEvent type without
       // a matching case here will produce a compile error.

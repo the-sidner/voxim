@@ -18,7 +18,7 @@ import type { EntityId, ChangesetSet } from "@voxim/engine";
 import type { AtlasTileInitRepo, AtlasWorldRepo, TileSaveRepo, WorldsRepo } from "@voxim/db";
 import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
-import { chunksFromBuffers } from "@voxim/world";
+import { chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { placePois, spawnMobPois } from "./poi_placer.ts";
@@ -232,6 +232,21 @@ export class TileServer {
   private lastPushedGateSummary = -1;
   private cellX = 0;
   private cellY = 0;
+  /**
+   * Per-voxel zone id at TILE_SIZE² resolution (T-211). Source: atlas
+   * `upsampleTile()`. Used by `ZoneTrackingSystem` to map player
+   * position → zone for the "You are in:" HUD.
+   */
+  private zoneBuffer: Uint16Array | null = null;
+  /** Zone metadata indexed by `zoneBuffer` ids. */
+  private zoneById = new Map<number, {
+    id: number;
+    name: string;
+    topologyRole: string;
+    traversal: "path" | "wilderness";
+  }>();
+  /** Last zone id reported per player, to detect transitions. */
+  private playerLastZone = new Map<EntityId, number>();
   /**
    * Active world this tile-server is serving. Set on atlas terrain load;
    * the bake-poll loop watches `activeWorldBaked` to detect a newer bake
@@ -474,6 +489,18 @@ export class TileServer {
     this.cellY = atlas.cellY;
     this.activeWorldId    = atlas.world.id;
     this.activeWorldBaked = atlas.world.bakedAt;
+    // T-211: keep zone data warm for the per-player zone tracker.
+    this.zoneBuffer = atlas.zoneBuffer;
+    this.zoneById.clear();
+    for (const z of atlas.zones) {
+      this.zoneById.set(z.id, {
+        id: z.id, name: z.name, topologyRole: z.topologyRole, traversal: z.traversal,
+      });
+    }
+    console.log(
+      `[TileServer] zone graph: ${atlas.zones.length} zones loaded ` +
+      `(${atlas.zones.filter(z => z.traversal === "wilderness").length} wilderness)`,
+    );
     console.log(
       `[TileServer] active world ${atlas.world.name} (${atlas.world.id.slice(0, 8)}…) ` +
       `${atlas.world.width}×${atlas.world.height} baked ${atlas.world.bakedAt.toISOString()}`,
@@ -736,6 +763,12 @@ export class TileServer {
     // trigger radius; the EventRouter routes it to initiateHandoff.
     this.checkGateProximity();
 
+    // Zone transition check (T-211) — also after-systems / post-changeset.
+    // Walks every active session, looks up the zone under the player's
+    // current voxel, and fires ZoneEntered when it differs from the last
+    // recorded zone for that player.
+    this.checkZoneTransitions();
+
     // ── 5. BUILD DELTA ──────────────────────────────────────────────────────
     const events = this.events.drain();
     const hasSessions = this.sessions.size > 0;
@@ -835,6 +868,7 @@ export class TileServer {
     for (const [playerId, session] of this.sessions) {
       if (!session.isOpen) {
         this.sessions.delete(playerId);
+        this.playerLastZone.delete(playerId);
         if (this.world.isAlive(playerId)) {
           this.world.destroy(playerId);
         }
@@ -906,6 +940,41 @@ export class TileServer {
           break; // one gate per player per tick is plenty
         }
       }
+    }
+  }
+
+  /**
+   * T-211 zone tracker. For each active session, look up the zone id
+   * under the player's current voxel and fire a ZoneEntered game event
+   * when the zone has changed. The map is cleared on disconnect.
+   */
+  private checkZoneTransitions(): void {
+    const buf = this.zoneBuffer;
+    if (!buf || this.sessions.size === 0) return;
+    const stride = TILE_SIZE;
+    for (const playerId of this.sessions.keys()) {
+      const pos = this.world.get(playerId, Position);
+      if (!pos) continue;
+      const vx = pos.x | 0;
+      const vy = pos.y | 0;
+      if (vx < 0 || vy < 0 || vx >= stride || vy >= stride) continue;
+      const zoneId = buf[vy * stride + vx];
+      const lastZone = this.playerLastZone.get(playerId) ?? -1;
+      if (zoneId === lastZone) continue;
+      this.playerLastZone.set(playerId, zoneId);
+
+      // Sub-threshold / unzoned (0xFFFF for closed-pixel sentinel + water
+      // blobs) — emit anyway with an empty name so the client can clear
+      // its caption when the player walks across a no-zone band.
+      const meta = this.zoneById.get(zoneId);
+      this.events.push({
+        type: "ZoneEntered",
+        playerId,
+        zoneId,
+        zoneName:     meta?.name ?? "",
+        topologyRole: meta?.topologyRole ?? "",
+        traversal:    meta?.traversal ?? "path",
+      });
     }
   }
 

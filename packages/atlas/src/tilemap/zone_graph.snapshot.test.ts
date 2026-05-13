@@ -81,15 +81,13 @@ async function captureZone(e: MatrixEntry): Promise<ZoneSnapshot> {
 // Captured pre-merge from the canonical role-classifier rules; any
 // future tweak to segmentation, role rules, or default thresholds is
 // an intentional fixture diff (re-run capture mode + paste).
-// T-210: re-captured after wilderness zone segmentation went live.
-// Wilderness blobs are now first-class zones, so the per-tile zone count
-// grows substantially (forest tiles now carry many thickets + groves;
-// cliff tiles carry hundreds of micro-crags between corridors).
+// T-211: zoneOf hashes unchanged (segmentation identical); zonesJson
+// updated because each zone now carries a procedural name.
 const EXPECTED: Record<string, { zoneOf: string; zonesJson: string }> = {
-  fm_a: { zoneOf: "d37c0b3b86f605a8", zonesJson: "2388237199b5f691" },
-  fm_b: { zoneOf: "61c0ada3dea5f72d", zonesJson: "3e2ac84ca414dfde" },
-  op:   { zoneOf: "7ea21a5aa497044b", zonesJson: "bf8712ed2b70f5a1" },
-  cd:   { zoneOf: "19cf24deb42958bb", zonesJson: "227625fccaf07b9f" },
+  fm_a: { zoneOf: "d37c0b3b86f605a8", zonesJson: "659c23c56da1c3f3" },
+  fm_b: { zoneOf: "61c0ada3dea5f72d", zonesJson: "725334dc1febe309" },
+  op:   { zoneOf: "7ea21a5aa497044b", zonesJson: "7d777d557df046cf" },
+  cd:   { zoneOf: "19cf24deb42958bb", zonesJson: "9bd49d0a56b205bc" },
 };
 
 Deno.test("zoneGraph: byte-identical output across pipeline matrix", async () => {

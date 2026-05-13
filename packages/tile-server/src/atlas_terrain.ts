@@ -67,6 +67,23 @@ export interface AtlasTerrainResult {
    * Used by `poi_placer.ts` as anchor points for room/mob POIs.
    */
   chambers: Array<{ id: number; cx: number; cy: number; pixelCount: number }>;
+  /**
+   * Per-voxel zone id at TILE_SIZE² resolution (T-211). 0xFFFF for
+   * un-zoned voxels. Tile-server uses this for the "You are in:" HUD.
+   */
+  zoneBuffer: Uint16Array;
+  /**
+   * Zone metadata aligned to the ids in `zoneBuffer`. The procedural
+   * `name` field is what the client renders.
+   */
+  zones: Array<{
+    id: number;
+    name: string;
+    topologyRole: string;
+    traversal: "path" | "wilderness";
+    area: number;
+    centroid: { x: number; y: number };
+  }>;
 }
 
 export interface LoadOptions {
@@ -191,7 +208,7 @@ export async function loadTerrainFromAtlas(
 
   const tile = tileInitFromWire(row.payload as unknown as TileInitWire);
   const { materialMap, defaultMaterialId } = buildMaterialMap(content);
-  const { heightBuffer, materialBuffer, openBuffer, kindBuffer } = upsampleTile(tile, {
+  const { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer } = upsampleTile(tile, {
     targetSize: TILE_SIZE,
     materialMap,
     defaultMaterialId,
@@ -208,11 +225,11 @@ export async function loadTerrainFromAtlas(
     cellY,
     world,
     gatePositions,
-    // Atlas chambers carry their centroid in world units already; the wire
-    // round-trip preserves cx/cy/pixelCount as plain numbers.
     chambers: tile.chambers.map((c) => ({
       id: c.id, cx: c.cx, cy: c.cy, pixelCount: c.pixelCount,
     })),
+    zoneBuffer,
+    zones: tile.zones,
   };
 }
 

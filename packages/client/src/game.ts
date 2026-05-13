@@ -32,6 +32,7 @@ import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
 import { setClientWorld, setLocalPlayerId } from "./ui/client_world_ref.ts";
+import { currentZoneName, currentZoneRole, currentZoneTraversal } from "./ui/zone_ref.ts";
 import { setContentService } from "./ui/content_ref.ts";
 import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
@@ -575,6 +576,16 @@ export class VoximGame {
             break;
           case "SkillActivated":
             console.log(`[Event] SkillActivated caster=${ev.casterId.slice(-6)} slot=${ev.slot} effect=${ev.effectType}`);
+            break;
+          case "ZoneEntered":
+            if (ev.playerId === this.playerId) {
+              // Empty name = sub-threshold zone or no-zone band; clear
+              // the HUD caption rather than show "You are in: ".
+              currentZoneName.value = ev.zoneName;
+              currentZoneRole.value = ev.topologyRole;
+              currentZoneTraversal.value = ev.traversal;
+              if (ev.zoneName) pushToast(`Entering: ${ev.zoneName}`, "info");
+            }
             break;
         }
       }

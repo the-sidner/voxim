@@ -22,4 +22,5 @@ export const EventType = {
   BuildingMaterialsConsumed:   13,
   BuildingMissingMaterials:    14,
   GateCrossing:                15,
+  ZoneEntered:                 16,
 } as const;

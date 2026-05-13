@@ -146,11 +146,39 @@ export interface TileInit {
    */
   kindOf: Uint16Array;
 
+  /**
+   * Per-pixel zone id from the AnnotatedZoneGraph (T-208/T-210).
+   * 0xFFFF for closed pixels not in any wilderness zone (water, OPEN
+   * sentinel). The pair (zoneOf, zones) lets a client look up "which
+   * zone is the player in?" in O(1) by pixel index.
+   */
+  zoneOf: Uint16Array;
+  /**
+   * Zone metadata aligned to ids referenced by `zoneOf`. Each entry
+   * carries the procedural name (T-211), topology role, traversal
+   * class, area, centroid, neighbours, etc.
+   */
+  zones: ZoneWire[];
+
   // ---- placeholders for later phases ------------------------------
   /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
   boundaries: unknown[];
   /** Will be populated by phase 4 (feature kinds, e.g. hearth slot). */
   features: unknown[];
+}
+
+/**
+ * Wire-shape for a single AnnotatedZone — strips internal accumulators
+ * down to the fields the tile-server + client actually need to display.
+ * Mirrors the relevant fields from pipeline/state.ts AnnotatedZone.
+ */
+export interface ZoneWire {
+  id: number;
+  name: string;
+  topologyRole: string;
+  traversal: "path" | "wilderness";
+  area: number;
+  centroid: { x: number; y: number };
 }
 
 /**
@@ -177,6 +205,9 @@ export interface TileInitWire {
   corridors: Corridor[];
   portals: Portal[];
   gateSummary: number;
+  /** Per-pixel zone id (T-211); Uint16 base64. */
+  zoneOfB64: string;
+  zones: ZoneWire[];
   boundaries: unknown[];
   features: unknown[];
 }

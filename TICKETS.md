@@ -1886,7 +1886,7 @@ stairs + wilderness colours on the POI-network view; happy-path
 fraction ≥ 40% across 20 sample tile bakes.
 
 ### T-211 · Zone names + client zoneOf transmission
-Effort: M   Status: todo   Depends on: T-210
+Effort: M   Status: done   Commit: (pending)   Depends on: T-210
 
 Procedurally name each zone (path or wilderness) from a combination of
 biome, topology role, dominant theme of nearby POIs, and an
@@ -1946,6 +1946,88 @@ Tests:
 Done when: a baked tile with the matcher's narrative is fully
 playable end-to-end: spawn → walk → fight encounter → get trinket →
 climb stair → fight boss → terminal trinket.
+
+### T-213 · Physical stair object — heightmap ramp + step-up walkability
+Effort: M   Status: todo   Depends on: T-210
+
+T-210's stairs are currently only a *narrative* artifact — they
+declare gating in `TileNarrative.stairs[]` but the engine still
+blocks players at the wilderness boundary because the heightmap step
+(wallHeight = 2u) exceeds `stepHeight`, and openMask still reads 0
+on closed-kind pixels. T-212 originally proposed solving this with
+a teleport interactable; this ticket says **no — make the stair a
+real ramp the player walks up**.
+
+Mechanism per StairInstance:
+
+  1. RAMP CARVING. For each unlocked stair, modify the heightmap at
+     the stair anchor and a small neighbourhood: lerp from path-floor
+     height (≈0) at the path-side pixel up to wilderness-plateau
+     height (= wallHeight) over a 3-5 pixel run. Width matches the
+     stair's "tread" (3-4 pixels, configurable).
+  2. OPENMASK FLIP. The ramp pixels become walkable: openMask = 1
+     across the lerped run. Wilderness pixels reachable from the ramp
+     also become walkable — but ONLY those connected to the unlocked
+     stair (downstream flood-fill from the anchor, bounded by
+     wilderness-zone id).
+  3. PHYSICS CONTINUITY. Existing tile-server collision uses
+     openMask + heightmap + stepHeight. Once openMask flips and the
+     heightmap is lerped, the player naturally walks up — no new
+     traversal mechanic.
+
+Two states per stair:
+
+  LOCKED — heightmap stays at full wall-height across stair pixels;
+           openMask = 0; stair anchor renders as a visible prop
+           (vertical "step" plate) so the player can see WHERE to
+           climb once it unlocks.
+  UNLOCKED — heightmap lerped to ramp; openMask = 1; the prop animates
+           a brief "open" pose. Wilderness pixels behind the stair are
+           now reachable; the player walks up naturally.
+
+Wire deltas needed:
+
+  - Heightmap delta over the ramp pixel range (small — typically <20
+    pixels). Reuse the per-tile heightmap-Δ pattern that future
+    building / digging will need.
+  - openMask delta over the same range + the flooded-reachable
+    wilderness pixels.
+  - StairUnlocked event with stair id (so the client can play the
+    open animation).
+
+Visual:
+
+  - Stair prefab at the anchor — small stone steps or vine-overgrown
+    ramp depending on the wilderness zone's dominant kind (crag →
+    stone steps, grove → root-stairs, hollow → grassy ramp). One
+    prefab per wilderness role, picked at narrative-bake time.
+  - Locked stairs are visible from the start so the player can plan
+    ("I need to find a key for THAT stair").
+
+Tests:
+
+  - Snapshot: locked-stair heightmap == pre-stair heightmap byte-
+    identical (so save/reload before any unlock reproduces).
+  - Unlock event applies the heightmap delta deterministically — same
+    stair on same tile always produces same delta.
+  - Server-side collision integration test: player attempts to walk
+    onto a wilderness pixel near a locked stair → blocked. Same
+    pixel after unlock → walkable.
+  - The flooded-walkable region is bounded by the wilderness-zone
+    id; a wilderness pixel in a DIFFERENT wilderness zone is NOT
+    reachable through this stair.
+
+Out of scope:
+- The stair PROP CONTENT (the actual 3D model variants per zone
+  role). For v1, ship one generic "step plate" model and pick it for
+  every stair; per-role visuals are a follow-up.
+- T-212's POI runtime (encounters firing, bosses spawning) — that's
+  the gameplay layer; this ticket is purely the physics + visual
+  realisation of stairs.
+
+Done when: an unlocked stair is walkable end-to-end; locked stairs
+block; heightmap/openMask deltas are deterministic; the player can
+climb up onto a wilderness plateau and walk around on it.
 
 ---
 

@@ -36,6 +36,7 @@ import { DebugPanel }      from "./components/DebugPanel.tsx";
 import { NetworkPanel }    from "./components/NetworkPanel.tsx";
 import { Minimap }         from "./components/Minimap.tsx";
 import { HudStats }        from "./components/HudStats.tsx";
+import { ZoneCaption }     from "./components/ZoneCaption.tsx";
 
 export interface UIManagerProps {
   /**
@@ -84,6 +85,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       <PanelBar />
       <Minimap />
       <HudStats />
+      <ZoneCaption />
       <ToastQueue />
 
       {/* Toggleable panels */}

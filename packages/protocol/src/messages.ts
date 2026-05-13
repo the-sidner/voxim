@@ -208,7 +208,30 @@ export type GameEvent =
   | SkillActivatedEvent
   | TradeCompletedEvent
   | LoreExternalisedEvent
-  | LoreInternalisedEvent;
+  | LoreInternalisedEvent
+  | ZoneEnteredEvent;
+
+/**
+ * Fired when a player crosses a zone boundary or spawns (T-211). The
+ * client uses this to display "You are in: {zoneName}" as a HUD caption
+ * + a brief toast. Server-authoritative — the per-player CurrentZone
+ * component tracks the value; this event surfaces transitions only.
+ *
+ * `playerId` lets the client filter — only its own player's transitions
+ * should drive its HUD. A multi-player tile gets a stream of these for
+ * all players in AoI; clients pick out their own.
+ */
+export interface ZoneEnteredEvent {
+  type: "ZoneEntered";
+  playerId: EntityId;
+  zoneId: number;
+  /** Procedural display name. Empty string for sub-threshold zones. */
+  zoneName: string;
+  /** "plaza" | "pocket" | ... | "crag" | "grove" | ... — atlas ZoneRole. */
+  topologyRole: string;
+  /** "path" or "wilderness". */
+  traversal: "path" | "wilderness";
+}
 
 export interface HitSparkEvent {
   type: "HitSpark";

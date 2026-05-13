@@ -40,6 +40,7 @@ import {
 import {
   ZONE_ID_NONE, type AnnotatedZone, type AnnotatedZoneState, type MaterialsState,
 } from "./state.ts";
+import { nameZone } from "./zone_namer.ts";
 
 /** Kinds that segment into wilderness zones. Water deliberately excluded. */
 const WILDERNESS_KINDS = new Set<number>([
@@ -47,8 +48,9 @@ const WILDERNESS_KINDS = new Set<number>([
 ]);
 
 export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParams["zoneGraph"]> =
-  (state, _seed, params) => {
+  (state, seed, params) => {
     const { openMask, chamberOf, kindOf, portals, gridSize } = state;
+    const biome = state.worldCell.biome;
     const N = gridSize * gridSize;
 
     // ---- 1. Segment open pixels into PATH zones ------------------------
@@ -219,6 +221,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         isEntry: z.isEntry,
         isCorridor: z.traversal === "path" && !z.startedAsChamber,
         traversal: z.traversal,
+        name: nameZone(seed, zid, z.area, role, z.traversal, biome),
       });
     }
     zones.sort((a, b) => a.id - b.id);

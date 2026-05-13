@@ -136,6 +136,12 @@ export interface AnnotatedZone {
    * a stair-gated ascent).
    */
   traversal: "path" | "wilderness";
+  /**
+   * Procedural display name (T-211), e.g. "Whispering Grove",
+   * "Bandit's Crossroads". Empty string for sub-threshold zones
+   * (area < NAMED_AREA_MIN) that don't warrant UI display.
+   */
+  name: string;
 }
 
 /** Sentinel for `zoneOf` — closed pixels and any non-tracked open pixels. */

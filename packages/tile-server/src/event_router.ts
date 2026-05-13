@@ -40,6 +40,16 @@ export class EventRouter {
     return this.pending.splice(0);
   }
 
+  /**
+   * Push a GameEvent directly without going through the EventBus.
+   * Used by tile-server modules that produce events outside the
+   * system-event pipeline (e.g. ZoneEnteredEvent from the zone
+   * tracker, which doesn't have a TileEvents counterpart).
+   */
+  push(event: GameEvent): void {
+    this.pending.push(event);
+  }
+
   private subscribe(): void {
     const bus = this.eventBus;
     const push = (e: GameEvent) => this.pending.push(e);
