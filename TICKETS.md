@@ -1948,7 +1948,7 @@ playable end-to-end: spawn → walk → fight encounter → get trinket →
 climb stair → fight boss → terminal trinket.
 
 ### T-213 · Physical stair object — heightmap ramp + step-up walkability
-Effort: M   Status: in-progress   Commit: (pending)   Depends on: T-210
+Effort: M   Status: in-progress   Commit: 867766f (v1)   Depends on: T-210
 
 **v1 landed**: `applyStairUnlock` helper + "found" stairs (lockedBy === null)
 apply at tile boot. Wilderness plateaus reachable from boot via lerped ramps.
