@@ -160,6 +160,15 @@ export interface TileInit {
    */
   zones: ZoneWire[];
 
+  /**
+   * Tier-6 narrative (T-209) — the per-tile POI dependency-DAG +
+   * stairs. Tile-server consumes the POIs at runtime (T-212) and
+   * applies stair unlocks (T-213) to make wilderness plateaus
+   * physically walkable. Always present (may have empty arrays if
+   * the matcher was unable to populate it).
+   */
+  narrative: TileNarrativeWire;
+
   // ---- placeholders for later phases ------------------------------
   /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
   boundaries: unknown[];
@@ -179,6 +188,42 @@ export interface ZoneWire {
   traversal: "path" | "wilderness";
   area: number;
   centroid: { x: number; y: number };
+}
+
+/**
+ * Wire-shape for the per-tile narrative (T-209) — the dependency-DAG
+ * over selected POIs, the stair instances that grant access to
+ * wilderness plateaus, the trinkets that act as keys. All fields are
+ * plain JSON; no typed-array payloads here.
+ */
+export interface TileNarrativeWire {
+  pois: Array<{
+    id: string;
+    poiDefId: string;
+    zoneId: number;
+    gate: { kind: "open" | "item" | "multi" | "choice"; trinketRefs: string[] };
+    trinketId: string | null;
+    stairId: string | null;
+  }>;
+  trinkets: Array<{
+    id: string;
+    sourcePoi: string;
+    destPoi: string;
+    themes: string[];
+    displayName: string;
+  }>;
+  stairs: Array<{
+    id: string;
+    fromZoneId: number;
+    toZoneId: number;
+    anchorPixel: { x: number; y: number };
+    lockedBy: string | null;
+  }>;
+  dagShape: "linear" | "branching" | "diamond" | "lattice";
+  entryPoiIds: string[];
+  terminalPoiIds: string[];
+  degraded: boolean;
+  retries: number;
 }
 
 /**
@@ -208,6 +253,8 @@ export interface TileInitWire {
   /** Per-pixel zone id (T-211); Uint16 base64. */
   zoneOfB64: string;
   zones: ZoneWire[];
+  /** Tier-6 narrative (T-209) — POI DAG + stairs + trinkets. */
+  narrative: TileNarrativeWire;
   boundaries: unknown[];
   features: unknown[];
 }

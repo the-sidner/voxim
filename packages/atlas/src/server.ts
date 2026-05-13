@@ -430,6 +430,7 @@ function generateTileInitFromFinal(
       area:         z.area,
       centroid:     z.centroid,
     })),
+    narrative: final.narrative,
     boundaries: [],
     features:   [],
   };

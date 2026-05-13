@@ -19,9 +19,10 @@ import type { World } from "@voxim/engine";
 import {
   tileInitFromWire,
   upsampleTile,
+  applyStairUnlock,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
-  type TileInitWire,
+  type TileInitWire, type TileNarrativeWire,
 } from "@voxim/atlas";
 import { TILE_SIZE } from "@voxim/world";
 
@@ -84,6 +85,14 @@ export interface AtlasTerrainResult {
     area: number;
     centroid: { x: number; y: number };
   }>;
+  /**
+   * Tier-6 narrative (T-209) — POI DAG + stairs + trinkets. Tile-
+   * server consumes this for POI runtime spawning (T-212) and stair
+   * unlocks (T-213). The buffer mutations for stair unlocks have
+   * already been applied to `heightBuffer` and `openBuffer`; this
+   * field is kept so the runtime can introspect the gating later.
+   */
+  narrative: TileNarrativeWire;
 }
 
 export interface LoadOptions {
@@ -214,6 +223,31 @@ export async function loadTerrainFromAtlas(
     defaultMaterialId,
   });
 
+  // T-213: apply "found" stair unlocks (lockedBy === null) to the
+  // upsampled buffers so the resulting heightmap + openMask read
+  // walkable on the path-side ramp and the entire target wilderness
+  // blob. Trinket-gated stairs (lockedBy !== null) stay closed for
+  // now; T-212 will flip them at runtime when their key trinket is
+  // consumed.
+  const unlockedStairs: string[] = [];
+  if (tile.narrative && Array.isArray(tile.narrative.stairs)) {
+    const tilePixelsPerAtlasPixel = TILE_SIZE / tile.gridSize;
+    for (const stair of tile.narrative.stairs) {
+      if (stair.lockedBy !== null) continue;
+      const ax = Math.floor(stair.anchorPixel.x * tilePixelsPerAtlasPixel);
+      const ay = Math.floor(stair.anchorPixel.y * tilePixelsPerAtlasPixel);
+      const touched = applyStairUnlock(heightBuffer, openBuffer, zoneBuffer, TILE_SIZE, {
+        wildernessZoneId: stair.toZoneId,
+        anchor: { x: ax, y: ay },
+        wallHeight: 2.0,
+      });
+      if (touched > 0) unlockedStairs.push(stair.id);
+    }
+  }
+  if (unlockedStairs.length > 0) {
+    console.log(`[atlas_terrain] T-213: unlocked ${unlockedStairs.length} found stair(s) at boot: ${unlockedStairs.join(", ")}`);
+  }
+
   return {
     heightBuffer,
     materialBuffer,
@@ -230,6 +264,7 @@ export async function loadTerrainFromAtlas(
     })),
     zoneBuffer,
     zones: tile.zones,
+    narrative: tile.narrative,
   };
 }
 

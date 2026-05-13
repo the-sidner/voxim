@@ -1948,7 +1948,23 @@ playable end-to-end: spawn → walk → fight encounter → get trinket →
 climb stair → fight boss → terminal trinket.
 
 ### T-213 · Physical stair object — heightmap ramp + step-up walkability
-Effort: M   Status: todo   Depends on: T-210
+Effort: M   Status: in-progress   Commit: (pending)   Depends on: T-210
+
+**v1 landed**: `applyStairUnlock` helper + "found" stairs (lockedBy === null)
+apply at tile boot. Wilderness plateaus reachable from boot via lerped ramps.
+
+**Remaining (T-213b — next ticket-or-extension)**:
+- Runtime unlock: when a player consumes a trinket that matches a locked
+  stair's `lockedBy`, flip openMask + apply ramp + broadcast a Heightmap-Δ
+  + StairUnlocked event to AoI clients. Currently locked stairs stay closed
+  forever.
+- Stair prefab visual — atlas should emit a "stair" entity at each
+  anchor that the runtime spawns as a prop (stone steps for crag, root
+  stairs for grove, etc.). Currently the ramp is just terrain; no obvious
+  visual cue.
+- Client heightmap-delta application — applying a ramp at runtime requires
+  the client to re-mesh those chunks. Pattern exists for building-system
+  edits; reuse it.
 
 T-210's stairs are currently only a *narrative* artifact — they
 declare gating in `TileNarrative.stairs[]` but the engine still

@@ -140,6 +140,7 @@ export function generateTile(
       area:         z.area,
       centroid:     z.centroid,
     })),
+    narrative:  s.narrative,
     boundaries: [],
     features:   [],
   };
@@ -167,6 +168,7 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     gateSummary: t.gateSummary,
     zoneOfB64: bytesToBase64(new Uint8Array(t.zoneOf.buffer, t.zoneOf.byteOffset, t.zoneOf.byteLength)),
     zones:    t.zones,
+    narrative: t.narrative,
     boundaries: t.boundaries,
     features:   t.features,
   };
@@ -228,6 +230,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     gateSummary: w.gateSummary,
     zoneOf,
     zones:    w.zones,
+    narrative: w.narrative,
     boundaries: w.boundaries,
     features:   w.features,
   };
