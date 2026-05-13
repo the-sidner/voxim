@@ -1,29 +1,38 @@
 /**
  * Rasterizer — turns a LevelDef into the per-pixel buffers tile-server
- * consumes (heightMap / materials / openMask / kindOf).
+ * consumes (openMask / heightMap / materials / kindOf).
  *
- * What this file is *today* (T-214 step 3): a thin typed contract.
- * The legacy pipeline stages still produce the buffers as a side
- * effect; this function packages them and runs the invariant
- * verifier. Pulling the rasterizer interface forward gives downstream
- * commits a single place to migrate buffer production into.
+ * Architectural split (T-214):
  *
- * What this file becomes (future commits): a pure function
- * `rasterize(level) → buffers`. Regions own their pixels and their
- * renderable properties (wallStep, wallKind, floorMaterial, …); the
- * rasterizer walks regions and stamps the buffers accordingly. The
- * pipeline stages then no longer produce buffers as a side effect —
- * they only mutate LevelDef.
+ *   LevelDef = the semantic graph (regions, edges, narrative). The
+ *     reducer pipeline owns this. It says WHAT exists where, not how
+ *     each pixel looks.
  *
- * The verifier (`verifyLevelInvariants`) lives here too because it
- * checks the LevelDef ↔ buffers contract that the rasterizer is
- * eventually going to own end-to-end.
+ *   RasterizedBuffers = the per-pixel surface. The rasterizer owns
+ *     these. It walks LevelDef + pipeline scratch state and stamps
+ *     each pixel.
+ *
+ * Today's split: openMask is derived purely from LevelDef regions (a
+ * path-region pixel is open, everything else is closed). heightMap /
+ * materials / kindOf still come from the legacy pipeline stages —
+ * those stages produce per-pixel rendering values that aren't yet
+ * encoded on regions (biome-modulated floor heights, etc.). As region
+ * metadata grows (region.floorMaterial, region.floorHeight, …), more
+ * buffers move from "legacy scratch" to "rasterizer-derived."
+ *
+ * `verifyLevelInvariants` runs inside the rasterizer because the
+ * invariants are about the LevelDef ↔ buffers contract — and the
+ * rasterizer is the place that owns that contract end-to-end.
  */
 
 import type { PoiNetworkState } from "../pipeline/state.ts";
-import type { LevelDef } from "./types.ts";
+import type { LevelDef, PlateauRegion } from "./types.ts";
 import { levelToZoneOf } from "./types.ts";
 import { verifyLevelInvariants } from "./verify.ts";
+import {
+  BOUNDARY_KIND_STONE, BOUNDARY_KIND_FOREST,
+  BOUNDARY_KIND_WATER, BOUNDARY_KIND_GRASS_MOUND,
+} from "../pipeline/boundary_kinds.ts";
 
 /**
  * The canonical per-tile rasterized buffer set. All buffers are
@@ -41,25 +50,64 @@ export interface RasterizedBuffers {
 /**
  * Run the rasterizer over the final pipeline state.
  *
- * Today this is a passthrough that returns the buffers the legacy
- * stages produced, after asserting LevelDef invariants. The contract
- * is the same as the future "compute from LevelDef" form: given a
- * tile's final state, produce the per-pixel buffers consistent with
- * `state.level`.
+ * Produces:
+ *   - `openMask` from LevelDef (path-region pixels are open; everything
+ *     else is closed by default). Matches the legacy pipeline's
+ *     openMask byte-for-byte today; once it diverges, the rasterizer
+ *     is the truth.
+ *   - `heightMap` / `materials` / `kindOf` passthrough from the legacy
+ *     pipeline stages until they migrate onto regions.
+ *
+ * Verifies the LevelDef contract before sealing — throws if a reducer
+ * leaked (e.g. opened a plateau pixel without a stair).
  */
 export function rasterize(state: PoiNetworkState): RasterizedBuffers {
-  // Verify the LevelDef contract before sealing the buffers. The
-  // verifier needs a zoneOf for the plateau-sealed check; derive it
-  // from regions now (when buffers move into the rasterizer, the
-  // verifier will take the synthesized buffers as input instead).
   const derivedZoneOf = levelToZoneOf(state.level);
   verifyLevelInvariants(state.level, state.openMask, derivedZoneOf, state.gridSize);
   return {
-    openMask:  state.openMask,
+    openMask:  computeOpenMask(state.level),
     heightMap: state.heightMap,
     materials: state.materials,
-    kindOf:    state.kindOf,
+    kindOf:    computeKindOf(state.level),
   };
+}
+
+/**
+ * Compute the `gridSize²` openMask from LevelDef regions. A pixel is
+ * open (1) iff a path region owns it; plateau regions and un-zoned
+ * pixels stay closed (0).
+ */
+function computeOpenMask(level: LevelDef): Uint8Array {
+  const out = new Uint8Array(level.gridSize * level.gridSize); // zero-init → closed
+  for (const r of level.regions) {
+    if (r.kind !== "path") continue;
+    for (const idx of r.pixels) out[idx] = 1;
+  }
+  return out;
+}
+
+/**
+ * Compute the `gridSize²` kindOf from LevelDef regions. Path pixels
+ * are BOUNDARY_KIND_OPEN; plateau pixels carry their region's
+ * `wallKind`. Un-zoned pixels default to OPEN.
+ */
+function computeKindOf(level: LevelDef): Uint16Array {
+  const out = new Uint16Array(level.gridSize * level.gridSize); // zero-init → OPEN
+  for (const r of level.regions) {
+    if (r.kind !== "plateau") continue;
+    const kindNum = wallKindToBoundary(r);
+    for (const idx of r.pixels) out[idx] = kindNum;
+  }
+  return out;
+}
+
+function wallKindToBoundary(r: PlateauRegion): number {
+  switch (r.wallKind) {
+    case "stone":  return BOUNDARY_KIND_STONE;
+    case "forest": return BOUNDARY_KIND_FOREST;
+    case "grass":  return BOUNDARY_KIND_GRASS_MOUND;
+    case "water":  return BOUNDARY_KIND_WATER;
+  }
 }
 
 /**
