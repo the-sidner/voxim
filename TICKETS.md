@@ -1908,7 +1908,42 @@ the X" on entry; transitions fire only on actual zone-id changes
 (not every tick); save/reload preserves names byte-identical.
 
 ### T-212 · POI runtime + wilderness-stair unlock
-Effort: L   Status: todo   Depends on: T-210, T-211
+Effort: L   Status: in-progress   Commit: (pending) (v1)   Depends on: T-210, T-211
+
+**v1 landed**: PoiTrigger component + PoiSystem with two dispatch paths:
+
+- `encounter` — spawn NPCs from a (stub) spawn-table mapping at the
+  POI's zone centroid via `spawnPrefab`. Wolf pack, bandit pack,
+  drowner swarm, etc. map to existing NPC templates.
+- `exploration` — publish `LoreInternalised` to the triggering player
+  with the POI def's `loreId`.
+- `bossfight` / `wave` / `action` / `puzzle` — stubbed (log only).
+  Full implementations are T-212 v2.
+
+PoiSystem runs each tick; for each `PoiTrigger`, checks if any
+player session is within `triggerRadius` and fires the activity on
+first crossing. `fired` flips to true and stays — non-respawning
+behaviour for v1.
+
+**Remaining (T-212 v2)**:
+- `bossfight` — boss prefab spawn at centroid + arena rules
+  (lockEntry sets a temporary path-zone collision when engaged; HP=0
+  drops it). Adds-table spawns at phase triggers.
+- `wave` — state-machine component cycling through `activity.waves`
+  in order with `interWaveSeconds` delay. Cleared on full clear.
+- `action` — interactable prefab spawn at centroid (chalice pedestal,
+  signal brazier, etc.) — needs the entity-hover/click system from
+  T-100 to dispatch usage.
+- `puzzle` — reserves `data/puzzles/` content category; each puzzle
+  template defines its own internal rules (lever sequences,
+  reflection paths, valve sequences). Solving the puzzle fires the
+  reward path.
+- Stair runtime UNLOCK on trinket consumption — currently locked
+  stairs stay locked forever. Needs the trinket-inventory checkpoint
+  (when a player picks up trinket X, scan stairs whose `lockedBy === X`
+  and call `applyStairUnlock` + broadcast heightmap-Δ to AoI clients).
+  This is the bridge from "found stairs work" (T-213 v1) to "earn-your-
+  way-up-the-plateau".
 
 Make POIs actually do something at runtime + make stairs actually
 gate movement. Tile-server reads `TileNarrative` on tile load, spawns

@@ -93,6 +93,11 @@ export interface AtlasTerrainResult {
    * field is kept so the runtime can introspect the gating later.
    */
   narrative: TileNarrativeWire;
+  /**
+   * Atlas sample-grid size — needed by T-212 to scale zone centroids
+   * (in gridSize coords) into TILE_SIZE world coords.
+   */
+  atlasGridSize: number;
 }
 
 export interface LoadOptions {
@@ -265,6 +270,7 @@ export async function loadTerrainFromAtlas(
     zoneBuffer,
     zones: tile.zones,
     narrative: tile.narrative,
+    atlasGridSize: tile.gridSize,
   };
 }
 

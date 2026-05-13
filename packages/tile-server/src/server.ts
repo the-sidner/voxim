@@ -75,6 +75,8 @@ import { EncumbranceSystem } from "./systems/encumbrance.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { BuffSystem } from "./systems/buff.ts";
 import { PoiseSystem } from "./systems/poise.ts";
+import { PoiSystem } from "./systems/poi.ts";
+import { placePoiTriggers } from "./poi_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
 import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
@@ -466,6 +468,7 @@ export class TileServer {
       new DurabilitySystem(content),
       new AnimationSystem(content),
       new HitboxSystem(content),
+      new PoiSystem(content, () => this.sessions.keys()),
       new DebugCommandSystem(content, config.devMode ?? false),
       deathSystem,
     ];
@@ -501,6 +504,18 @@ export class TileServer {
       `[TileServer] zone graph: ${atlas.zones.length} zones loaded ` +
       `(${atlas.zones.filter(z => z.traversal === "wilderness").length} wilderness)`,
     );
+
+    // T-212: place a runtime PoiTrigger at every narrative POI's zone
+    // centroid. PoiSystem picks these up tick-wise and fires the
+    // encounter/exploration/etc. activity on first player proximity.
+    // Atlas centroids are in gridSize coords; placePoiTriggers scales
+    // to tile-server's TILE_SIZE world-unit space.
+    if (atlas.narrative?.pois?.length) {
+      placePoiTriggers(
+        this.world, atlas.narrative.pois, atlas.zones,
+        content, TILE_SIZE, atlas.atlasGridSize,
+      );
+    }
     console.log(
       `[TileServer] active world ${atlas.world.name} (${atlas.world.id.slice(0, 8)}…) ` +
       `${atlas.world.width}×${atlas.world.height} baked ${atlas.world.bakedAt.toISOString()}`,
