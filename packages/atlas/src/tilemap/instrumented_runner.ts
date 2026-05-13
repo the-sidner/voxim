@@ -78,6 +78,15 @@ export interface StageTrace {
   inputHash: number;
   /** Hash of this stage's output. */
   outputHash: number;
+  /**
+   * Error message if the stage's transformer threw. Set by the reorder
+   * UI's exploratory mode — when a stage runs out of order its state
+   * dependencies may not hold and it'll throw. The runner records the
+   * error here and skips the rest of the pipeline so the inspector
+   * can surface "this stage broke at the new order" without crashing
+   * the server.
+   */
+  error?: string;
 }
 
 // ---- runner ---------------------------------------------------------------
@@ -101,6 +110,15 @@ export interface InstrumentedRunInput {
    * When absent, the POI stage emits an empty narrative.
    */
   content?: ContentService;
+  /**
+   * Optional stage order override (T-214 step 4 — inspector
+   * "reducer reordering" mode). When set, the runner iterates this
+   * list instead of `ORDERED_STAGES`. Each id must reference a known
+   * stage and appear at most once. Stages whose state dependencies
+   * aren't met by the prior stage may crash or produce nonsense —
+   * that's the point of the feature, it's an exploratory tool.
+   */
+  stageOrder?: StageId[];
 }
 
 export interface InstrumentedRunOutput {
@@ -134,7 +152,16 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
   let skipping = !!input.resumeFromStage;
   const prefix: Array<{ id: string; params: unknown }> = [];
 
-  for (const stage of ORDERED_STAGES) {
+  // Resolve the actual stage order to run. The default is the canonical
+  // `ORDERED_STAGES`; `input.stageOrder` overrides for the inspector's
+  // reordering UI.
+  const orderIds = input.stageOrder ?? ORDERED_STAGES.map(s => s.id);
+  const stageById = new Map(ORDERED_STAGES.map(s => [s.id, s]));
+  const stagesToRun = orderIds
+    .map(id => stageById.get(id))
+    .filter((s): s is typeof ORDERED_STAGES[number] => s !== undefined);
+
+  for (const stage of stagesToRun) {
     const stageParams = (input.params as unknown as Record<string, unknown>)[stage.paramsKey];
     prefix.push({ id: stage.id, params: stageParams });
 
@@ -163,7 +190,21 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
       outputHash = cached.outputHash;
       cacheHit = true;
     } else {
-      state = stage.transformer(state, input.tileSeed, stageParams);
+      try {
+        state = stage.transformer(state, input.tileSeed, stageParams);
+      } catch (err) {
+        // Reorder mode: a stage may run before its dependencies and
+        // throw. Record the error in the trace and stop the pipeline
+        // here — the rest of the trace gets empty entries so the
+        // inspector can still show the prefix.
+        const durationMs = performance.now() - t0;
+        trace.push({
+          stageId: stage.id, label: stage.label, durationMs,
+          cacheHit: false, inputHash: prevHash, outputHash: 0,
+          error: (err as Error)?.message ?? String(err),
+        });
+        return { final: state as PoiNetworkState, trace, intermediates };
+      }
       outputHash = hashStageOutput(stage.id, state);
       input.cache?.store(input.tileSeed, prefix, { state, outputHash });
     }

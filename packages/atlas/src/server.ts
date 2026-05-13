@@ -337,6 +337,13 @@ async function runTilePipeline(
     resumeFromStage?: StageId;
     seedState?: unknown;
     intermediates?: boolean;
+    /**
+     * T-214 step 4: optional stage-order override. When present, the
+     * runner iterates this list instead of the canonical
+     * `ORDERED_STAGES`. Inspector "reducer reordering" mode sends
+     * this each time the user drags a row.
+     */
+    stageOrder?: StageId[];
   } = {};
   if (req.headers.get("content-type")?.includes("application/json")) {
     try { body = await req.json(); } catch { /* ignore */ }
@@ -374,6 +381,7 @@ async function runTilePipeline(
     content: cfg.content,
     resumeFromStage: body.resumeFromStage,
     seedState: body.seedState !== undefined ? decodeState(body.seedState) : undefined,
+    stageOrder: body.stageOrder,
   });
 
   // Encode the final tile (re-uses tileInitToWire by constructing a

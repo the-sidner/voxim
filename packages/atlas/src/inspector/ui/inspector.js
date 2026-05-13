@@ -43,6 +43,11 @@ let stageMeta   = null;       // [{id, label, paramsKey}] from /pipeline/stages
 let pipelineRun = null;       // { trace, intermediates (decoded), final, params, seed, cacheSize }
 let viewStage   = "materials";// which stage's intermediate state drives the primary canvas view
 let activePreset = null;      // preset key in use, or null = world's saved params
+// T-214 step 4: user-reordered stage list. null = canonical
+// `ORDERED_STAGES`; an array sets the order the runner will iterate
+// on the next pipeline fetch. Dragging a trace row mutates this and
+// re-fetches; the Reset button clears it.
+let customStageOrder = null;
 
 // LevelDef overlay layers — toggleable per-tile. Each renders on top of
 // the active stage view, reading from `vd.level` (the per-stage
@@ -700,6 +705,9 @@ async function loadTile(cellX, cellY, opts = {}) {
   const body = {};
   if (activePreset && presets[activePreset]) body.params = presets[activePreset].params;
   if (opts.seedOverride !== undefined)       body.seedOverride = opts.seedOverride;
+  // T-214 step 4: when the user has reordered stages, send the custom
+  // order so the runner iterates that instead of the canonical one.
+  if (customStageOrder)                      body.stageOrder = customStageOrder;
   const res = await fetch(`tile/${cellX}/${cellY}/pipeline`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -843,6 +851,50 @@ function renderContextTile(cellX, cellY) {
       setHashState();
     });
   }
+
+  // T-214 step 4: HTML5 drag-and-drop for stage rows. Source dragstart
+  // records the stage id; dragover on any row sets the visual drop
+  // target; drop reorders `customStageOrder` and re-fetches the
+  // pipeline with the new order.
+  let draggedStage = null;
+  for (const row of aside.querySelectorAll("[data-stage-row]")) {
+    row.addEventListener("dragstart", (e) => {
+      draggedStage = row.dataset.stageRow;
+      e.dataTransfer.effectAllowed = "move";
+    });
+    row.addEventListener("dragover", (e) => {
+      if (!draggedStage) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      row.style.outline = "1px solid var(--accent)";
+    });
+    row.addEventListener("dragleave", () => { row.style.outline = ""; });
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      row.style.outline = "";
+      const targetId = row.dataset.stageRow;
+      const sourceId = draggedStage;
+      draggedStage = null;
+      if (!sourceId || sourceId === targetId) return;
+      // Build the new order: take current (custom or canonical), remove
+      // source, then insert it BEFORE the target's current index.
+      const current = customStageOrder ?? stageMeta.map(s => s.id);
+      const without = current.filter(id => id !== sourceId);
+      const targetIdx = without.indexOf(targetId);
+      if (targetIdx < 0) return;
+      without.splice(targetIdx, 0, sourceId);
+      customStageOrder = without;
+      loadTile(cellX, cellY);
+    });
+  }
+
+  const resetBtn = aside.querySelector("#reset-stage-order");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      customStageOrder = null;
+      loadTile(cellX, cellY);
+    });
+  }
 }
 
 function stageLabel(id) {
@@ -883,33 +935,45 @@ function renderLayersPanel() {
 
 function renderTracePanel() {
   if (!pipelineRun || !stageMeta) return "";
-  const rows = stageMeta.map((s, i) => {
-    const t = pipelineRun.trace[i];
-    const ms = (t?.durationMs ?? 0).toFixed(1);
-    const hash = (t?.outputHash ?? 0).toString(16).padStart(8, "0").slice(0, 8);
-    const hit  = t?.cacheHit ? "●" : "○";
-    const hitTitle = t?.cacheHit ? "cache hit" : "cache miss";
+  // Iterate the trace (execution order). With a custom stageOrder the
+  // trace may differ from `stageMeta`'s canonical order; lookup labels
+  // by id. Each row is draggable — drop reorders the pipeline.
+  const stageById = new Map(stageMeta.map(s => [s.id, s]));
+  const rows = pipelineRun.trace.map((t) => {
+    const s = stageById.get(t.stageId);
+    if (!s) return "";
+    const ms = (t.durationMs ?? 0).toFixed(1);
+    const hash = (t.outputHash ?? 0).toString(16).padStart(8, "0").slice(0, 8);
+    const hit  = t.error ? "✕" : t.cacheHit ? "●" : "○";
+    const hitTitle = t.error ? `error: ${t.error}` : (t.cacheHit ? "cache hit" : "cache miss");
+    const hitColor = t.error ? "var(--danger,#f57676)" : (t.cacheHit ? "var(--accent)" : "var(--text-dim)");
+    const rowStyle = t.error ? "cursor:grab;background:rgba(245,118,118,0.08)" : "cursor:grab";
     const checked  = viewStage === s.id ? " checked" : "";
     return `
-      <tr>
+      <tr draggable="true" data-stage-row="${escape(s.id)}" style="${rowStyle}">
+        <td style="padding:2px 4px;color:var(--text-dim);user-select:none" title="drag to reorder">⠿</td>
         <td style="padding:2px 4px"><input type="radio" name="view-stage" data-view-stage value="${escape(s.id)}"${checked}></td>
         <td style="padding:2px 4px">${escape(s.label)}</td>
         <td style="padding:2px 4px;text-align:right;font-variant-numeric:tabular-nums">${ms}ms</td>
-        <td style="padding:2px 4px;color:${t?.cacheHit ? "var(--accent)" : "var(--text-dim)"};text-align:center" title="${hitTitle}">${hit}</td>
+        <td style="padding:2px 4px;color:${hitColor};text-align:center" title="${escape(hitTitle)}">${hit}</td>
         <td style="padding:2px 4px;font-family:monospace;font-size:10px;color:var(--text-dim)">${hash}</td>
       </tr>`;
   }).join("");
+  const orderBadge = customStageOrder
+    ? `<button class="full" id="reset-stage-order" style="margin-top:6px;font-size:11px">reset to canonical order</button>`
+    : `<div style="color:var(--text-dim);font-size:10px;margin-top:6px">drag a row to reorder; stage state-deps may not hold</div>`;
   return `
     <section>
       <h2>Pipeline trace</h2>
       <table style="border-collapse:collapse;font-size:11px;width:100%">
         <thead>
           <tr style="color:var(--text-dim);text-align:left">
-            <th></th><th>stage</th><th style="text-align:right">ms</th><th>hit</th><th>hash</th>
+            <th></th><th></th><th>stage</th><th style="text-align:right">ms</th><th>hit</th><th>hash</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
+      ${orderBadge}
     </section>`;
 }
 
