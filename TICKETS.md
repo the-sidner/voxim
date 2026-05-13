@@ -2133,21 +2133,34 @@ state's `level` IS the tile's LevelDef — no post-pass absorber.
   - `stair_spawner.test.ts` — placeStairs operates on `LevelDef`
     directly.
 
+**Follow-up landings:**
+  - Inspector UI controls — layer toggles, stage scrubber, live
+    param/seed re-runs, drag-to-reorder pipeline stages — all wired
+    on top of the per-stage `state.level` substrate.
+  - Region masks — `RegionMeta.pixels: number[]` added; regions own
+    their pixel sets, `zoneOf` is derived via `levelToZoneOf(level)`
+    on the consumer side, and the parallel wire field is gone.
+  - Rasterizer split — `rasterize(state): RasterizedBuffers` is the
+    canonical interface. `openMask` and `kindOf` are produced
+    directly from `level.regions` (a path-region pixel is open;
+    plateau regions stamp their `wallKind` into kindOf). Both stay
+    byte-identical to the legacy pipeline output, proving the
+    LevelDef encodes the same information.
+
 **Out of scope (future work):**
-  - **Rasterizer** as the canonical buffer producer. Today the legacy
-    pipeline stages still produce per-pixel buffers as a side effect;
-    a dedicated `rasterize(level): buffers` would make LevelDef the
-    sole source of truth and the per-stage buffer mutations would
-    become rasterizer inputs. Step 9 of the original plan was scoped
-    down to invariant verification once it became clear `openMask`
-    already enforces the plateau-sealed contract; the rasterizer
-    refactor lives in a follow-up ticket.
-  - **Inspector UI** — substrate is in place (per-stage `state.level`
-    snapshots, layered fields), but the controls (layer toggles,
-    stage scrubber, live param/seed re-runs) need building out.
-  - **Region masks** — regions reference pixels via `zoneId` + the
-    `zoneOf` buffer; carrying explicit masks on each region (once
-    reducers own shape directly) is a future refinement.
+  - **heightMap rasterizer derivation**. Today the terrain stage
+    produces a per-pixel heightMap that adds `params.wallHeight` to
+    the biome-modulated floor for closed pixels. To migrate this
+    into the rasterizer cleanly, the terrain stage should output the
+    raw floor (no wall delta) and the rasterizer should compose
+    `heightMap = floor + level.region.wallStep`. Blocked on
+    reconciling `params.wallHeight` (per-world config) vs
+    `region.wallStep` (currently hardcoded to `WALL_HEIGHT = 2.0`
+    in zoneGraph) — they need to agree before the split lands.
+  - **materials rasterizer derivation**. Path / plateau / corridor
+    materials are currently biome-modulated per-pixel by the
+    materials stage. Migrating requires region metadata for
+    floor/wall materials. Significant content + tuning surface.
 
 ---
 
