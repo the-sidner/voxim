@@ -44,6 +44,22 @@ let pipelineRun = null;       // { trace, intermediates (decoded), final, params
 let viewStage   = "materials";// which stage's intermediate state drives the primary canvas view
 let activePreset = null;      // preset key in use, or null = world's saved params
 
+// LevelDef overlay layers — toggleable per-tile. Each renders on top of
+// the active stage view, reading from `vd.level` (the per-stage
+// LevelDef snapshot). Scrubbing back to a stage before the layer's
+// originating reducer hides it automatically (the snapshot is empty).
+const LAYER_DEFS = [
+  { id: "region_backdrop",  label: "Region tint",     defaultOn: false, dim: 1.0 },
+  { id: "plateau_outline",  label: "Plateau outline", defaultOn: false },
+  { id: "region_labels",    label: "Region names",    defaultOn: false },
+  { id: "portals",          label: "Portals",         defaultOn: true  },
+  { id: "stairs",           label: "Stair edges",     defaultOn: true  },
+  { id: "trinkets",         label: "Trinket arrows",  defaultOn: false },
+  { id: "pois",             label: "POI nodes",       defaultOn: false },
+  { id: "narrative_banner", label: "Status banner",   defaultOn: false },
+];
+const enabledLayers = new Set(LAYER_DEFS.filter(l => l.defaultOn).map(l => l.id));
+
 // Stage id → which existing canvas renderer to dispatch to. The
 // renderer uses `intermediateState(stageId)` instead of `tile.payload`
 // so it draws the snapshot of that stage's output, not the final tile.
@@ -763,6 +779,7 @@ function renderContextTile(cellX, cellY) {
       <select id="preset-select" class="full">${presetOptions}</select>
     </section>
     ${renderTracePanel()}
+    ${renderLayersPanel()}
     <section>
       <h2>Stage actions</h2>
       <button class="full" id="dump-stage">Dump “${escape(stageLabel(viewStage))}” state</button>
@@ -805,6 +822,17 @@ function renderContextTile(cellX, cellY) {
     const file = e.target.files?.[0];
     if (file) loadStageFromFile(file, cellX, cellY);
   });
+  // Wire layer-toggle checkboxes. Each redraws the canvas in place —
+  // no pipeline rerun needed; layers are pure functions of the
+  // current `state.level` snapshot.
+  for (const cb of aside.querySelectorAll("[data-layer]")) {
+    cb.addEventListener("change", () => {
+      const id = cb.dataset.layer;
+      if (cb.checked) enabledLayers.add(id);
+      else enabledLayers.delete(id);
+      drawTile();
+    });
+  }
   // Wire view-this-stage radios in the trace panel.
   for (const radio of aside.querySelectorAll("[data-view-stage]")) {
     radio.addEventListener("change", () => {
@@ -819,6 +847,38 @@ function renderContextTile(cellX, cellY) {
 
 function stageLabel(id) {
   return stageMeta?.find(s => s.id === id)?.label ?? id;
+}
+
+function renderLayersPanel() {
+  // Layer counts reflect the CURRENT viewStage's snapshot. Scrubbing to
+  // an early stage shows zero counts until the producing reducer runs.
+  const level = pipelineRun?.intermediates?.[viewStage]?.level ?? null;
+  const counts = level ? {
+    region_backdrop:  level.regions.length,
+    plateau_outline:  level.regions.filter(r => r.kind === "plateau").length,
+    region_labels:    level.regions.length,
+    portals:          level.edges.portals.length,
+    stairs:           level.edges.stairs.length,
+    trinkets:         level.narrative.trinkets.length,
+    pois:             level.narrative.pois.length,
+    narrative_banner: null,
+  } : {};
+  const rows = LAYER_DEFS.map(l => {
+    const checked = enabledLayers.has(l.id) ? " checked" : "";
+    const n = counts[l.id];
+    const badge = n == null ? "" : `<span style="color:var(--text-dim);font-variant-numeric:tabular-nums">${n}</span>`;
+    return `
+      <label style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:11px;cursor:pointer">
+        <input type="checkbox" data-layer="${escape(l.id)}"${checked}>
+        <span style="flex:1">${escape(l.label)}</span>
+        ${badge}
+      </label>`;
+  }).join("");
+  return `
+    <section>
+      <h2>Layers</h2>
+      <div style="display:flex;flex-direction:column;gap:1px">${rows}</div>
+    </section>`;
 }
 
 function renderTracePanel() {
@@ -1021,6 +1081,11 @@ function drawTile() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   const layout = tileLayout(); if (!layout) return;
   const vd = viewData(); if (!vd) return;
+
+  // 1. Primary view — driven by the stage scrubber. Stage views own
+  //    the pixel-level rendering (noise / heights / materials /
+  //    chambers / etc.). The `dag` and `zones` views include their
+  //    own LevelDef bits as a preset combo; other views are plain.
   const viewer = STAGE_VIEWER[viewStage] ?? "materials";
   if      (viewer === "rooms")     drawTileRooms(layout, vd);
   else if (viewer === "height")    drawTileHeight(layout, vd);
@@ -1032,19 +1097,21 @@ function drawTile() {
   else if (viewer === "zones")     drawTileZones(layout, vd);
   else if (viewer === "dag")       drawTileDag(layout, vd);
 
-  // Portal dots float on top of every view that has them assigned.
-  ctx.fillStyle = "#fff";
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 1;
-  const { px, originX, originY } = layout;
-  const dotR = Math.max(3, Math.round(px * 0.6));
-  for (const p of vd.portals) {
-    const cx = originX + p.pixelX * px + px / 2;
-    const cy = originY + p.pixelY * px + px / 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+  // 2. LevelDef overlays — additive layers on top of the primary view.
+  //    Each reads from `vd.level` (the per-stage snapshot), so a stage
+  //    before zoneGraph shows no regions; before poiNetwork shows no
+  //    stairs/POIs/trinkets. Toggleable via the Layers panel.
+  if (vd.level) {
+    if (enabledLayers.has("region_backdrop") && viewer !== "dag" && viewer !== "zones") {
+      drawLayerRegionBackdrop(layout, vd, 1.0);
+    }
+    if (enabledLayers.has("plateau_outline"))  drawLayerPlateauOutline(layout, vd);
+    if (enabledLayers.has("region_labels"))    drawLayerRegionLabels(layout, vd);
+    if (enabledLayers.has("portals"))          drawLayerPortals(layout, vd);
+    if (enabledLayers.has("trinkets"))         drawLayerTrinkets(layout, vd);
+    if (enabledLayers.has("stairs"))           drawLayerStairs(layout, vd);
+    if (enabledLayers.has("pois"))             drawLayerPois(layout, vd);
+    if (enabledLayers.has("narrative_banner")) drawLayerNarrativeBanner(layout, vd);
   }
 }
 
@@ -1281,12 +1348,13 @@ function drawTileZones({ px, originX, originY, g }, vd) {
   }
 }
 
+// drawTileDag — the "DAG view" preset. Renders the zone backdrop +
+// every LevelDef-derived layer + a status banner. Other views render a
+// plainer primary canvas; layered overlays are added by `drawLayers`
+// based on user toggles.
 function drawTileDag({ px, originX, originY, g }, vd) {
-  // Paint the zone backdrop first (faint, role-coloured) so the DAG
-  // reads on top of the tile's actual layout.
   const zoneOf = vd.zoneOf;
   if (!zoneOf || !vd.level) {
-    // Fall back to plain materials view; render an "empty" indicator.
     drawTileMaterials({ px, originX, originY, g }, vd);
     ctx.fillStyle = "#fff";
     ctx.font = "16px ui-sans-serif, system-ui, sans-serif";
@@ -1294,9 +1362,25 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     ctx.fillText("No LevelDef — content store missing or matcher failed.", originX + 16, originY + 28);
     return;
   }
+  drawLayerRegionBackdrop({ px, originX, originY, g }, vd, /*dim*/ 0.4);
+  drawLayerNarrativeBanner({ originX, originY }, vd);
+}
 
+// ----------------------------------------------------------------------
+// Layers — composable overlays driven by LevelDef. Each layer reads
+// from `vd.level` (the snapshot AT the currently-selected stage), so
+// scrubbing back hides what hadn't been built yet. Toggleable via
+// `enabledLayers`.
+// ----------------------------------------------------------------------
+
+// Faint role-coloured tint over open pixels — gives downstream layers a
+// readable backdrop. `dim` ∈ [0,1] scales saturation; 1 = full colour
+// (used by the dedicated zones view), 0.4 = subtle (DAG view).
+function drawLayerRegionBackdrop({ px, originX, originY, g }, vd, dim) {
+  const zoneOf = vd.zoneOf;
+  if (!zoneOf || !vd.level) return;
   const roleByZoneId = new Map();
-  for (const z of vd.zones) roleByZoneId.set(z.id, z.topologyRole);
+  for (const r of vd.level.regions) roleByZoneId.set(r.zoneId, r.kind === "river" ? "morass" : r.topologyRole);
   rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
     const zid = zoneOf[idx];
     if (zid === 0xFFFF) {
@@ -1304,26 +1388,134 @@ function drawTileDag({ px, originX, originY, g }, vd) {
       return;
     }
     const rgb = ZONE_ROLE_RGB[roleByZoneId.get(zid)] ?? FALLBACK_RGB;
-    // Dim the backdrop so DAG annotations stand out.
-    buf[p] = Math.round(rgb[0] * 0.4);
-    buf[p+1] = Math.round(rgb[1] * 0.4);
-    buf[p+2] = Math.round(rgb[2] * 0.4);
+    buf[p]   = Math.round(rgb[0] * dim);
+    buf[p+1] = Math.round(rgb[1] * dim);
+    buf[p+2] = Math.round(rgb[2] * dim);
     buf[p+3] = 0xff;
   });
+}
 
-  // Source of truth: LevelDef. Regions carry centroid; narrative carries
-  // POIs + trinkets + DAG metadata.
-  const level = vd.level;
-  const narrative = level.narrative;
+// Plateau outline — emphasises the gameplay-jumpable=false invariant.
+// Walks plateau-region pixels, strokes the perimeter where the pixel
+// borders a non-plateau zone (path / FFFF).
+function drawLayerPlateauOutline({ px, originX, originY, g }, vd) {
+  const zoneOf = vd.zoneOf;
+  if (!zoneOf || !vd.level) return;
+  const plateauZones = new Set();
+  for (const r of vd.level.regions) if (r.kind === "plateau") plateauZones.add(r.zoneId);
+  if (plateauZones.size === 0) return;
+  ctx.strokeStyle = "rgba(245,118,118,0.7)";
+  ctx.lineWidth = 1.4;
+  for (let y = 0; y < g; y++) {
+    for (let x = 0; x < g; x++) {
+      const z = zoneOf[y * g + x];
+      if (!plateauZones.has(z)) continue;
+      const sx = originX + x * px;
+      const sy = originY + y * px;
+      // top edge
+      if (y === 0 || !plateauZones.has(zoneOf[(y-1) * g + x])) {
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + px, sy); ctx.stroke();
+      }
+      // bottom edge
+      if (y === g - 1 || !plateauZones.has(zoneOf[(y+1) * g + x])) {
+        ctx.beginPath(); ctx.moveTo(sx, sy + px); ctx.lineTo(sx + px, sy + px); ctx.stroke();
+      }
+      // left edge
+      if (x === 0 || !plateauZones.has(zoneOf[y * g + (x-1)])) {
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + px); ctx.stroke();
+      }
+      // right edge
+      if (x === g - 1 || !plateauZones.has(zoneOf[y * g + (x+1)])) {
+        ctx.beginPath(); ctx.moveTo(sx + px, sy); ctx.lineTo(sx + px, sy + px); ctx.stroke();
+      }
+    }
+  }
+}
+
+// Region centroid + name labels. Skip sub-threshold regions to avoid
+// crowding small zones with text.
+function drawLayerRegionLabels({ px, originX, originY }, vd) {
+  if (!vd.level) return;
+  ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const r of vd.level.regions) {
+    if (r.area < 80) continue;
+    const cxPx = originX + r.centroid.x * px + px / 2;
+    const cyPx = originY + r.centroid.y * px + px / 2;
+    const label = r.name || `#${r.zoneId} ${r.kind === "river" ? "river" : r.topologyRole}`;
+    const w = Math.min(140, label.length * 5.5);
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(cxPx - w / 2, cyPx - 7, w, 14);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, cxPx, cyPx);
+  }
+}
+
+// Tile-edge portal dots — white circles at each portal's anchor pixel.
+function drawLayerPortals({ px, originX, originY }, vd) {
+  if (!vd.level) return;
+  const dotR = Math.max(3, Math.round(px * 0.6));
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 1;
+  for (const p of vd.level.edges.portals) {
+    const cx = originX + p.pixel.x * px + px / 2;
+    const cy = originY + p.pixel.y * px + px / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+// Stair edges — diamond at the anchor + dashed line to the plateau
+// centroid. Locked stairs are red; found stairs are green-bordered.
+function drawLayerStairs({ px, originX, originY }, vd) {
+  if (!vd.level) return;
   const regionById = new Map();
-  for (const r of level.regions) regionById.set(r.id, r);
+  for (const r of vd.level.regions) regionById.set(r.id, r);
+  for (const s of vd.level.edges.stairs) {
+    const toRegion = regionById.get(s.to);
+    if (!toRegion) continue;
+    const ax = originX + s.anchorPixel.x * px + px / 2;
+    const ay = originY + s.anchorPixel.y * px + px / 2;
+    const tx = originX + toRegion.centroid.x * px + px / 2;
+    const ty = originY + toRegion.centroid.y * px + px / 2;
+    const isLocked = s.locked !== null;
+    ctx.strokeStyle = isLocked ? "rgba(245,118,118,0.6)" : "rgba(126,219,139,0.6)";
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle   = isLocked ? "#f57676" : "#1a1c21";
+    ctx.strokeStyle = isLocked ? "#f57676" : "#7edb8b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(-6, -6, 12, 12);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
 
-  // Edges first (under the nodes).
+// Trinket DAG edges — curved arrows between source POI host and dest
+// POI host, with the trinket's displayName labelled at the midpoint.
+function drawLayerTrinkets({ px, originX, originY }, vd) {
+  if (!vd.level) return;
+  const regionById = new Map();
+  for (const r of vd.level.regions) regionById.set(r.id, r);
   ctx.strokeStyle = "rgba(255,255,255,0.55)";
   ctx.lineWidth = 1.6;
-  for (const t of narrative.trinkets) {
-    const src = narrative.pois.find(p => p.id === t.sourcePoi);
-    const dst = narrative.pois.find(p => p.id === t.destPoi);
+  for (const t of vd.level.narrative.trinkets) {
+    const src = vd.level.narrative.pois.find(p => p.id === t.sourcePoi);
+    const dst = vd.level.narrative.pois.find(p => p.id === t.destPoi);
     if (!src || !dst) continue;
     const a = regionById.get(src.hostRegion);
     const b = regionById.get(dst.hostRegion);
@@ -1332,14 +1524,12 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     const ay = originY + a.centroid.y * px + px / 2;
     const bx = originX + b.centroid.x * px + px / 2;
     const by = originY + b.centroid.y * px + px / 2;
-    // Curved bezier so multiple parallel edges don't overlap.
     ctx.beginPath();
     ctx.moveTo(ax, ay);
     const midx = (ax + bx) / 2;
     const midy = (ay + by) / 2 - Math.abs(bx - ax) * 0.08;
     ctx.quadraticCurveTo(midx, midy, bx, by);
     ctx.stroke();
-    // Arrowhead at dest.
     const angle = Math.atan2(by - midy, bx - midx);
     const ar = 8;
     ctx.fillStyle = "rgba(255,255,255,0.9)";
@@ -1349,7 +1539,6 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     ctx.lineTo(bx - ar * Math.cos(angle + 0.35), by - ar * Math.sin(angle + 0.35));
     ctx.closePath();
     ctx.fill();
-    // Trinket label at edge midpoint.
     ctx.fillStyle = "rgba(0,0,0,0.7)";
     const labelW = Math.min(120, t.displayName.length * 5);
     ctx.fillRect(midx - labelW / 2, midy - 7, labelW, 14);
@@ -1359,54 +1548,17 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     ctx.textBaseline = "middle";
     ctx.fillText(t.displayName.slice(0, 22), midx, midy);
   }
+}
 
-  // Stairs (T-210, T-214) — small diamond markers at each stair edge's
-  // anchor pixel, with a short connecting line from anchor → plateau
-  // centroid. Locked edges render solid red; open (found) edges render
-  // hollow green. Source: `level.edges.stairs` — region ids resolve via
-  // `level.regions[]`.
-  const level = vd.level;
-  if (level && Array.isArray(level.edges?.stairs)) {
-    const regionById = new Map();
-    for (const r of level.regions) regionById.set(r.id, r);
-    for (const s of level.edges.stairs) {
-      const toRegion = regionById.get(s.to);
-      if (!toRegion) continue;
-      const ax = originX + s.anchorPixel.x * px + px / 2;
-      const ay = originY + s.anchorPixel.y * px + px / 2;
-      const tx = originX + toRegion.centroid.x * px + px / 2;
-      const ty = originY + toRegion.centroid.y * px + px / 2;
-      const isLocked = s.locked !== null;
-      // Dashed line from anchor → plateau centroid (the "climb").
-      ctx.strokeStyle = isLocked ? "rgba(245,118,118,0.6)" : "rgba(126,219,139,0.6)";
-      ctx.lineWidth   = 1.6;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(tx, ty);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      // Diamond marker at the anchor.
-      ctx.save();
-      ctx.translate(ax, ay);
-      ctx.rotate(Math.PI / 4);
-      ctx.fillStyle   = isLocked ? "#f57676" : "#1a1c21";
-      ctx.strokeStyle = isLocked ? "#f57676" : "#7edb8b";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.rect(-6, -6, 12, 12);
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
-
-  // Nodes — large coloured discs labelled with POI id + display name.
-  // Entry POIs get a green border, terminals get a red border, wilderness
-  // POIs get a thicker border so it's obvious they live on a plateau.
-  const entrySet    = new Set(narrative.dag.entryPoiIds);
-  const terminalSet = new Set(narrative.dag.terminalPoiIds);
-  for (const p of narrative.pois) {
+// POI nodes — large discs at each POI's host-region centroid. Entry
+// POIs get a green border, terminals red, others white.
+function drawLayerPois({ px, originX, originY }, vd) {
+  if (!vd.level) return;
+  const regionById = new Map();
+  for (const r of vd.level.regions) regionById.set(r.id, r);
+  const entrySet    = new Set(vd.level.narrative.dag.entryPoiIds);
+  const terminalSet = new Set(vd.level.narrative.dag.terminalPoiIds);
+  for (const p of vd.level.narrative.pois) {
     const host = regionById.get(p.hostRegion);
     if (!host) continue;
     const cx = originX + host.centroid.x * px + px / 2;
@@ -1427,9 +1579,13 @@ function drawTileDag({ px, originX, originY, g }, vd) {
     ctx.textBaseline = "top";
     ctx.fillText(p.poiDefId, cx, cy + r + 4);
   }
+}
 
-  // Status banner top-left: shape + retries + degraded flag + stair stats.
-  const stairEdges     = level.edges.stairs;
+// Status banner — narrative-summary text box. Drawn last so it sits
+// above every other overlay.
+function drawLayerNarrativeBanner({ originX, originY }, vd) {
+  if (!vd.level) return;
+  const stairEdges = vd.level.edges.stairs;
   const stairsLocked   = stairEdges.filter((s) => s.locked !== null).length;
   const stairsUnlocked = stairEdges.length - stairsLocked;
   ctx.fillStyle = "rgba(0,0,0,0.82)";
@@ -1438,12 +1594,12 @@ function drawTileDag({ px, originX, originY, g }, vd) {
   ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  const dag = narrative.dag;
+  const dag = vd.level.narrative.dag;
   const status = dag.degraded
     ? `DAG: ${dag.shape} · DEGRADED (retries ${dag.retries})`
     : `DAG: ${dag.shape} · retries ${dag.retries}`;
   ctx.fillText(status, originX + 14, originY + 14);
-  ctx.fillText(`${narrative.pois.length} POIs · ${narrative.trinkets.length} trinkets`, originX + 14, originY + 30);
+  ctx.fillText(`${vd.level.narrative.pois.length} POIs · ${vd.level.narrative.trinkets.length} trinkets`, originX + 14, originY + 30);
   ctx.fillText(`entries: ${dag.entryPoiIds.length} · terminals: ${dag.terminalPoiIds.length}`, originX + 14, originY + 44);
   ctx.fillText(`stairs: ${stairsUnlocked} found, ${stairsLocked} locked`, originX + 14, originY + 58);
 }
