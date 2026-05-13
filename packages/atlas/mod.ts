@@ -54,5 +54,5 @@ export type {
   StairEdge, PortalEdge, PoiPlacement, TrinketEdge,
   RegionId, BBox, Point, NarrativeDag, Reducer,
 } from "./src/tilemap/level/types.ts";
-export { findRegion, findRegionByZoneId, emptyLevel } from "./src/tilemap/level/types.ts";
+export { findRegion, findRegionByZoneId, emptyLevel, levelToZoneOf } from "./src/tilemap/level/types.ts";
 export { verifyLevelInvariants } from "./src/tilemap/level/verify.ts";

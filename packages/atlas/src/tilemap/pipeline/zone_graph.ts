@@ -325,9 +325,18 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
 
     // T-214: write LevelDef regions in the same pass. Each AnnotatedZone
     // maps to one PathRegion or PlateauRegion; PlateauRegion carries the
-    // gameplay-contract `jumpable: false` flag that the rasterizer will
-    // honour by tagging perimeter pixels in step 9 of the migration.
-    state.level.regions = zones.map(buildRegion);
+    // gameplay-contract `jumpable: false` flag and every region owns
+    // its pixel set (sorted flat indices into the grid). The pixel
+    // ownership is the source of truth — downstream `zoneOf` is derived
+    // from `levelToZoneOf(level)`.
+    const pixelsByZoneId = new Map<number, number[]>();
+    for (const z of zones) pixelsByZoneId.set(z.id, []);
+    for (let idx = 0; idx < zoneOf.length; idx++) {
+      const zid = zoneOf[idx];
+      const arr = pixelsByZoneId.get(zid);
+      if (arr) arr.push(idx);
+    }
+    state.level.regions = zones.map(z => buildRegion(z, pixelsByZoneId.get(z.id) ?? []));
 
     // T-214: portals come from the prior portalPlacement stage as
     // pixel anchors; resolve each to its host region now that regions
@@ -367,7 +376,7 @@ function buildPortalEdge(
  * from the dominant kind in their kindHistogram; path regions carry the
  * isEntry flag for tile-gate detection downstream.
  */
-function buildRegion(z: AnnotatedZone): Region {
+function buildRegion(z: AnnotatedZone, pixels: number[]): Region {
   if (z.traversal === "wilderness") {
     const r: PlateauRegion = {
       kind: "plateau",
@@ -376,6 +385,7 @@ function buildRegion(z: AnnotatedZone): Region {
       area: z.area,
       centroid: z.centroid,
       bbox: z.bbox,
+      pixels,
       name: z.name,
       topologyRole: z.topologyRole,
       wallKind: classifyWallKind(z.kindHistogram),
@@ -391,6 +401,7 @@ function buildRegion(z: AnnotatedZone): Region {
     area: z.area,
     centroid: z.centroid,
     bbox: z.bbox,
+    pixels,
     name: z.name,
     topologyRole: z.topologyRole,
     isEntry: z.isEntry,

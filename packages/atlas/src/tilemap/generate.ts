@@ -142,10 +142,11 @@ export function generateTile(
     heightMap:  s.heightMap,
     materials:  s.materials,
     kindOf:     s.kindOf,
-    zoneOf:     s.zoneOf,
     // T-214: state.level was seeded by emptyLevel() and progressively
     // built by the stages (zoneGraph: regions + portals; poiNetwork:
-    // narrative + stairs). No final-pass absorber needed.
+    // narrative + stairs). No final-pass absorber needed. Regions
+    // carry their pixel sets; the derived `zoneOf` index can be
+    // recovered via `levelToZoneOf(level)` on the consumer side.
     level:      s.level,
     boundaries: [],
     features:   [],
@@ -172,7 +173,6 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     corridors: t.corridors,
     portals:  t.portals,
     gateSummary: t.gateSummary,
-    zoneOfB64: bytesToBase64(new Uint8Array(t.zoneOf.buffer, t.zoneOf.byteOffset, t.zoneOf.byteLength)),
     level:     t.level,
     boundaries: t.boundaries,
     features:   t.features,
@@ -211,12 +211,6 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     kindBytes.byteOffset,
     kindBytes.byteLength / 2,
   );
-  const zoneOfBytes = base64ToBytes(w.zoneOfB64);
-  const zoneOf = new Uint16Array(
-    zoneOfBytes.buffer,
-    zoneOfBytes.byteOffset,
-    zoneOfBytes.byteLength / 2,
-  );
   return {
     cellX:    w.cellX,
     cellY:    w.cellY,
@@ -233,7 +227,6 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     corridors: w.corridors,
     portals:  w.portals,
     gateSummary: w.gateSummary,
-    zoneOf,
     level:     w.level,
     boundaries: w.boundaries,
     features:   w.features,

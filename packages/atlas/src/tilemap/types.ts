@@ -148,22 +148,13 @@ export interface TileInit {
   kindOf: Uint16Array;
 
   /**
-   * Per-pixel zone id from the AnnotatedZoneGraph (T-208/T-210).
-   * 0xFFFF for closed pixels not in any wilderness zone (water, OPEN
-   * sentinel). The pair (zoneOf, zones) lets a client look up "which
-   * zone is the player in?" in O(1) by pixel index.
-   */
-  zoneOf: Uint16Array;
-
-  /**
    * LevelDef (T-214) — semantic graph of the tile: regions (path /
-   * plateau / river) carrying procedural names + topology roles, edges
-   * (stairs, portals), and the narrative overlay (POIs + trinkets +
-   * DAG). `zoneOf[pixelIdx]` resolves to a region via the region's
-   * `zoneId`. Today this is built absorbingly from the legacy pipeline
-   * fields; tomorrow each pipeline stage mutates it directly and the
-   * rasterizer derives `openMask` / `heightMap` / `materials` /
-   * `kindOf` / `zoneOf` from it.
+   * plateau / river) each carrying their pixel set + procedural name
+   * + topology role, edges (stairs, portals), and the narrative
+   * overlay (POIs + trinkets + DAG). Regions own their pixels; the
+   * per-pixel `zoneOf` index is derived on the consumer side via
+   * `levelToZoneOf(level)` when O(1) "which region is at pixel P?"
+   * lookups are needed (tile-server boot, inspector overlays).
    */
   level: LevelDef;
 
@@ -198,8 +189,6 @@ export interface TileInitWire {
   corridors: Corridor[];
   portals: Portal[];
   gateSummary: number;
-  /** Per-pixel zone id (T-211); Uint16 base64. */
-  zoneOfB64: string;
   /** LevelDef (T-214) — semantic graph; JSON-friendly already. */
   level: LevelDef;
   boundaries: unknown[];

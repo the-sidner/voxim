@@ -15,7 +15,7 @@ import { JsonSource } from "@voxim/content";
 import { generateTile } from "../generate.ts";
 import { generateWorldMap } from "../../worldmap/generate.ts";
 import { PRESETS } from "../../genparams.ts";
-import { findRegion } from "./types.ts";
+import { findRegion, levelToZoneOf } from "./types.ts";
 
 const world = generateWorldMap(0, 4, 4);
 function cell(cx: number, cy: number) {
@@ -24,18 +24,20 @@ function cell(cx: number, cy: number) {
   return c;
 }
 
-Deno.test("LevelDef: every region carries a unique zoneId touched by zoneOf", async () => {
+Deno.test("LevelDef: every region's pixels round-trip through levelToZoneOf", async () => {
   const content = await JsonSource.load();
   const t = generateTile(cell(1, 1), 1001, { params: PRESETS.forest_maze.params, content });
   const zoneIds = new Set(t.level.regions.map(r => r.zoneId));
   assertEquals(zoneIds.size, t.level.regions.length, "region zoneIds are unique");
-  const seenInBuffer = new Set<number>();
-  for (let i = 0; i < t.zoneOf.length; i++) {
-    const z = t.zoneOf[i];
-    if (z !== 0xFFFF) seenInBuffer.add(z);
-  }
+  // Regions own their pixels — their area must equal pixel count, and
+  // the derived zoneOf must contain every region's zoneId in those
+  // pixels (and only those).
+  const zoneOf = levelToZoneOf(t.level);
   for (const r of t.level.regions) {
-    assert(seenInBuffer.has(r.zoneId), `region ${r.id} zoneId=${r.zoneId} not present in zoneOf buffer`);
+    assertEquals(r.area, r.pixels.length, `region ${r.id} area=${r.area} ≠ pixels=${r.pixels.length}`);
+    for (const idx of r.pixels) {
+      assertEquals(zoneOf[idx], r.zoneId, `region ${r.id} owns idx=${idx} but zoneOf says ${zoneOf[idx]}`);
+    }
   }
 });
 

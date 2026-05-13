@@ -14,6 +14,13 @@ import { emptyLevel, type LevelDef } from "./types.ts";
 
 const GRID = 4;
 
+function pixelsOf(xStart: number, xEnd: number): number[] {
+  // GRID×GRID, two columns wide each → 8 pixels per side.
+  const out: number[] = [];
+  for (let y = 0; y < GRID; y++) for (let x = xStart; x <= xEnd; x++) out.push(y * GRID + x);
+  return out;
+}
+
 function basePathPlateauLevel(): LevelDef {
   // 4×4 tile: left half = path zone (id 1), right half = plateau (id 2).
   const level = emptyLevel({ gridSize: GRID, tileSize: GRID, seed: 0, cellX: 0, cellY: 0 });
@@ -22,12 +29,14 @@ function basePathPlateauLevel(): LevelDef {
       kind: "path",
       id: "path:z1", zoneId: 1, area: 8,
       centroid: { x: 1, y: 1.5 }, bbox: { minX: 0, minY: 0, maxX: 1, maxY: 3 },
-      name: "", topologyRole: "chamber", isEntry: false,
+      pixels: pixelsOf(0, 1),
+      name: "", topologyRole: "plaza", isEntry: false,
     },
     {
       kind: "plateau",
       id: "plateau:z2", zoneId: 2, area: 8,
       centroid: { x: 3, y: 1.5 }, bbox: { minX: 2, minY: 0, maxX: 3, maxY: 3 },
+      pixels: pixelsOf(2, 3),
       name: "", topologyRole: "thicket",
       wallKind: "stone", wallStep: 2, jumpable: false,
     },
@@ -76,7 +85,8 @@ Deno.test("verify: region with no pixels in zoneOf throws", () => {
     kind: "path",
     id: "path:z99", zoneId: 99, area: 0,
     centroid: { x: 0, y: 0 }, bbox: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
-    name: "", topologyRole: "chamber", isEntry: false,
+    pixels: [],
+    name: "", topologyRole: "plaza", isEntry: false,
   });
   assertThrows(
     () => verifyLevelInvariants(level, baseOpenMask(), baseZoneOf(), GRID),

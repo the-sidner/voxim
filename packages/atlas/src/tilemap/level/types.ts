@@ -36,9 +36,17 @@ export interface Point {
 }
 
 /**
- * Common metadata for every region. `zoneId` cross-references the
- * `zoneOf` buffer on the same tile — pixels belonging to this region
- * satisfy `zoneOf[idx] === zoneId`.
+ * Common metadata for every region. The region owns its pixel set
+ * via `pixels` — a sorted array of flat indices into the gridSize²
+ * grid (`idx = y * gridSize + x`). Together the regions' pixels
+ * partition the grid (every non-out-of-bounds pixel belongs to at
+ * most one region; un-zoned pixels — e.g. OPEN-kind sentinels — don't
+ * appear in any region's list).
+ *
+ * `zoneId` is a stable numeric id used as the value of a derived
+ * `zoneOf` index when one is needed for fast O(1) "which region is at
+ * pixel P?" lookups. Tile-server builds that derived index at boot via
+ * `levelToZoneOf(level, gridSize)`.
  */
 export interface RegionMeta {
   id: RegionId;
@@ -46,6 +54,8 @@ export interface RegionMeta {
   area: number;
   centroid: Point;
   bbox: BBox;
+  /** Sorted flat pixel indices (idx = y * gridSize + x). length === area. */
+  pixels: number[];
   /** Procedural display name, e.g. "Whispering Grove". Empty when sub-threshold. */
   name: string;
 }
@@ -184,6 +194,26 @@ export function findRegion(level: LevelDef, id: RegionId): Region | undefined {
 export function findRegionByZoneId(level: LevelDef, zoneId: number): Region | undefined {
   for (const r of level.regions) if (r.zoneId === zoneId) return r;
   return undefined;
+}
+
+/**
+ * Build the derived `zoneOf` index from regions' pixel sets. The
+ * resulting `Uint16Array` answers "which region owns pixel P?" in
+ * O(1). Un-zoned pixels (e.g. OPEN sentinels not claimed by any
+ * region) carry the `0xFFFF` sentinel. Pure function — no caching.
+ *
+ * Use this on the consumer side (tile-server boot, inspector
+ * rendering) when you need a per-pixel index. The LevelDef itself
+ * doesn't ship zoneOf on the wire — it's recoverable from
+ * `regions[].pixels`.
+ */
+export function levelToZoneOf(level: LevelDef): Uint16Array {
+  const out = new Uint16Array(level.gridSize * level.gridSize).fill(0xFFFF);
+  for (const r of level.regions) {
+    const z = r.zoneId;
+    for (const idx of r.pixels) out[idx] = z;
+  }
+  return out;
 }
 
 /**

@@ -423,7 +423,6 @@ function generateTileInitFromFinal(
     heightMap: final.heightMap,
     materials: final.materials,
     kindOf:    final.kindOf,
-    zoneOf:    final.zoneOf,
     level:     final.level,
     boundaries: [],
     features:   [],

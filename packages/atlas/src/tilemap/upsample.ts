@@ -29,6 +29,7 @@
 
 import type { TileInit } from "./types.ts";
 import { WALL_HEIGHT } from "./pipeline/terrain.ts";
+import { levelToZoneOf } from "./level/types.ts";
 
 export interface UpsampleOptions {
   /** Target side length in voxels (e.g. 512 for tile-server). */
@@ -78,6 +79,11 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
   const openBuffer     = new Uint8Array(N);
   const kindBuffer     = new Uint16Array(N);
   const zoneBuffer     = new Uint16Array(N);
+
+  // Derive gridSize² zoneOf from regions[].pixels — regions own their
+  // pixel set; the per-pixel index is derived on demand here so the
+  // wire doesn't have to ship it separately.
+  const tileZoneOf = levelToZoneOf(tile.level);
 
   // Source-of-truth floor heights — atlas's heightMap minus the wall step
   // wherever the pixel is closed. Lets us bilinear the floor without
@@ -135,8 +141,9 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
       openBuffer[tIdx] = tile.openMask[nIdx];
       kindBuffer[tIdx] = tile.kindOf[nIdx];
       // Zone id (T-211): nearest as well — zones are discrete regions
-      // so any interpolation across boundaries would be a bug.
-      zoneBuffer[tIdx] = tile.zoneOf[nIdx];
+      // so any interpolation across boundaries would be a bug. Source
+      // is the regions-derived `tileZoneOf`, not a wire-shipped field.
+      zoneBuffer[tIdx] = tileZoneOf[nIdx];
     }
   }
 
