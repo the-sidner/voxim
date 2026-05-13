@@ -1886,7 +1886,7 @@ stairs + wilderness colours on the POI-network view; happy-path
 fraction ≥ 40% across 20 sample tile bakes.
 
 ### T-211 · Zone names + client zoneOf transmission
-Effort: M   Status: done   Commit: (pending)   Depends on: T-210
+Effort: M   Status: done   Commit: ac343e7   Depends on: T-210
 
 Procedurally name each zone (path or wilderness) from a combination of
 biome, topology role, dominant theme of nearby POIs, and an
