@@ -50,9 +50,15 @@ import {
 } from "./state.ts";
 import { nameZone } from "./zone_namer.ts";
 
-/** Kinds that segment into wilderness zones. Water deliberately excluded. */
+/**
+ * Kinds that segment into wilderness zones. Water now included as
+ * "morass" sectors so river / pond pixels stop reading as un-segmented
+ * gaps in the inspector. Players still can't traverse them (no bridge
+ * mechanic), but they're first-class sectors in the data model.
+ */
 const WILDERNESS_KINDS = new Set<number>([
   BOUNDARY_KIND_STONE, BOUNDARY_KIND_FOREST, BOUNDARY_KIND_GRASS_MOUND,
+  BOUNDARY_KIND_WATER,
 ]);
 
 /**
@@ -63,6 +69,17 @@ const WILDERNESS_KINDS = new Set<number>([
  */
 const CROSSROADS_DISK_RADIUS = 3;
 const CROSSROADS_DEGREE_MIN  = 3;
+
+/**
+ * Wilderness blobs smaller than this get absorbed into their largest
+ * wilderness neighbour during phase 4b. Path-network carving fragments
+ * the closed-pixel space into hundreds of tiny pockets (1-50 pixels);
+ * those aren't perceived as "places" by the player. After merging,
+ * the surviving wilderness sectors are uniformly substantial and
+ * name-worthy. Tuned for the canonical fixtures — a tile typically
+ * keeps 10-25 wilderness sectors instead of 137.
+ */
+const WILDERNESS_MERGE_THRESHOLD = 400;
 
 export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParams["zoneGraph"]> =
   (state, _stageSeed, params) => {
@@ -176,6 +193,20 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         if (y < gridSize - 1) floodWilderness(idx + gridSize, zid, zoneOf, openMask, kindOf, stack);
       }
     }
+
+    // ---- 4b. MERGE SMALL WILDERNESS BLOBS into largest neighbour -----
+    //          Wilderness segmentation produces hundreds of tiny
+    //          fragments (1-50 pixels each) where the path network
+    //          chops up the forest. Players don't perceive those as
+    //          distinct places. Merge any wilderness sector smaller
+    //          than `WILDERNESS_MERGE_THRESHOLD` into the largest
+    //          wilderness sector it touches. After merging, the
+    //          surviving sectors are substantial and uniformly
+    //          name-worthy.
+    mergeSmallWildernessZones(
+      zoneOf, openMask, gridSize, traversalOf, nextZoneId,
+      WILDERNESS_MERGE_THRESHOLD,
+    );
 
     // ---- 5. Allocate per-sector accumulators --------------------------
     const zoneCount = nextZoneId;
@@ -321,6 +352,147 @@ function floodWilderness(
   if (!WILDERNESS_KINDS.has(kindOf[idx])) return;
   zoneOf[idx] = zid;
   stack.push(idx);
+}
+
+/**
+ * Merge wilderness zones with `area < minArea` into the largest
+ * neighbouring (or proximate) wilderness zone:
+ *
+ *   1. Adjacency-based merge — small wilderness zone shares an
+ *      open-pixel boundary with a larger wilderness zone? Merge.
+ *   2. Proximity-based merge — small wilderness zone has no direct
+ *      adjacency (path corridors fully surround it) but a larger
+ *      wilderness zone exists within `MERGE_PROXIMITY_RADIUS` pixels
+ *      of any of its pixels? Merge across the thin path strip.
+ *      Mechanically: the player still walks the path as a path;
+ *      the SECTOR LABELLING just folds the small thicket into the
+ *      bigger grove it belongs to.
+ *   3. Transitive resolution (A→B→C → A→C via path compression).
+ *
+ * Truly isolated tiny zones (no wilderness within radius) stay
+ * un-merged — they're real standalone features. Path / chamber /
+ * crossroads sectors are never touched.
+ */
+const MERGE_PROXIMITY_RADIUS = 8;
+
+function mergeSmallWildernessZones(
+  zoneOf: Uint16Array,
+  _openMask: Uint8Array,
+  gridSize: number,
+  traversalOf: ("path" | "wilderness")[],
+  _zoneCount: number,
+  minArea: number,
+): void {
+  const N = gridSize * gridSize;
+  const area = new Map<number, number>();
+  const adj  = new Map<number, Set<number>>();
+  // Track bounding boxes so proximity-merge can scan only relevant
+  // regions instead of the whole tile per small zone.
+  const bbox = new Map<number, { minX: number; minY: number; maxX: number; maxY: number }>();
+
+  for (let idx = 0; idx < N; idx++) {
+    const zid = zoneOf[idx];
+    if (zid === ZONE_ID_NONE) continue;
+    if (traversalOf[zid] !== "wilderness") continue;
+    area.set(zid, (area.get(zid) ?? 0) + 1);
+    const x = idx % gridSize;
+    const y = (idx - x) / gridSize;
+    let bb = bbox.get(zid);
+    if (!bb) { bb = { minX: x, minY: y, maxX: x, maxY: y }; bbox.set(zid, bb); }
+    else {
+      if (x < bb.minX) bb.minX = x; if (x > bb.maxX) bb.maxX = x;
+      if (y < bb.minY) bb.minY = y; if (y > bb.maxY) bb.maxY = y;
+    }
+    const neighbours = [
+      x > 0              ? idx - 1        : -1,
+      x < gridSize - 1   ? idx + 1        : -1,
+      y > 0              ? idx - gridSize : -1,
+      y < gridSize - 1   ? idx + gridSize : -1,
+    ];
+    for (const nb of neighbours) {
+      if (nb < 0) continue;
+      const nzid = zoneOf[nb];
+      if (nzid === ZONE_ID_NONE) continue;
+      if (nzid === zid) continue;
+      if (traversalOf[nzid] !== "wilderness") continue;
+      let s = adj.get(zid);
+      if (!s) { s = new Set(); adj.set(zid, s); }
+      s.add(nzid);
+    }
+  }
+
+  // Pick merge targets for sub-threshold zones.
+  const mergeTo = new Map<number, number>();
+  for (const [zid, a] of area) {
+    if (a >= minArea) continue;
+
+    // (1) Adjacency-based — prefer a direct neighbour first.
+    let bestId = -1, bestArea = 0;
+    const neighbours = adj.get(zid);
+    if (neighbours && neighbours.size > 0) {
+      for (const nid of neighbours) {
+        const na = area.get(nid) ?? 0;
+        if (na > bestArea || (na === bestArea && (bestId === -1 || nid < bestId))) {
+          bestArea = na;
+          bestId   = nid;
+        }
+      }
+    }
+
+    // (2) Proximity-based — only fall back when no adjacency match.
+    //     Scan the small zone's pixels' MERGE_PROXIMITY_RADIUS neighbourhood
+    //     for ANY larger wilderness zone. Pick the largest.
+    if (bestId === -1) {
+      const bb = bbox.get(zid);
+      if (!bb) continue;
+      const R = MERGE_PROXIMITY_RADIUS;
+      const xLo = Math.max(0, bb.minX - R);
+      const xHi = Math.min(gridSize - 1, bb.maxX + R);
+      const yLo = Math.max(0, bb.minY - R);
+      const yHi = Math.min(gridSize - 1, bb.maxY + R);
+      const seen = new Set<number>();
+      for (let y = yLo; y <= yHi; y++) {
+        for (let x = xLo; x <= xHi; x++) {
+          const oid = zoneOf[y * gridSize + x];
+          if (oid === ZONE_ID_NONE) continue;
+          if (oid === zid) continue;
+          if (traversalOf[oid] !== "wilderness") continue;
+          seen.add(oid);
+        }
+      }
+      for (const nid of seen) {
+        const na = area.get(nid) ?? 0;
+        if (na > bestArea || (na === bestArea && (bestId === -1 || nid < bestId))) {
+          bestArea = na;
+          bestId   = nid;
+        }
+      }
+    }
+
+    if (bestId >= 0) mergeTo.set(zid, bestId);
+  }
+  if (mergeTo.size === 0) return;
+
+  // Resolve transitive chains: A → B where B is also merged → A → final root.
+  const resolved = new Map<number, number>();
+  const resolve = (zid: number, seen: Set<number>): number => {
+    if (resolved.has(zid)) return resolved.get(zid)!;
+    if (!mergeTo.has(zid)) { resolved.set(zid, zid); return zid; }
+    if (seen.has(zid)) { resolved.set(zid, zid); return zid; }
+    seen.add(zid);
+    const r = resolve(mergeTo.get(zid)!, seen);
+    resolved.set(zid, r);
+    return r;
+  };
+  for (const zid of mergeTo.keys()) resolve(zid, new Set());
+
+  // Apply.
+  for (let idx = 0; idx < N; idx++) {
+    const zid = zoneOf[idx];
+    if (zid === ZONE_ID_NONE) continue;
+    const target = resolved.get(zid);
+    if (target !== undefined && target !== zid) zoneOf[idx] = target;
+  }
 }
 
 // ---- mutable accumulator ---------------------------------------------

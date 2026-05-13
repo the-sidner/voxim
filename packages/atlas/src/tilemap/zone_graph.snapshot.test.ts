@@ -93,10 +93,10 @@ async function captureZone(e: MatrixEntry): Promise<ZoneSnapshot> {
 // in former corridor pixels); fm_b + op are unchanged because their
 // junction layouts happen to produce identical disk-painted regions.
 const EXPECTED: Record<string, { zoneOf: string; zonesJson: string }> = {
-  fm_a: { zoneOf: "946f485bd0c62d54", zonesJson: "f34898585ebe7ba2" },
-  fm_b: { zoneOf: "61c0ada3dea5f72d", zonesJson: "eff5d5b98fe888ad" },
+  fm_a: { zoneOf: "69c92c658b2320be", zonesJson: "9d4df299e46537b8" },
+  fm_b: { zoneOf: "4963cc566aafcd59", zonesJson: "24e664bf19948a1b" },
   op:   { zoneOf: "7ea21a5aa497044b", zonesJson: "ecc8db14ef4c7e28" },
-  cd:   { zoneOf: "d606272b26278584", zonesJson: "5f5d0ed39428bc0c" },
+  cd:   { zoneOf: "c248fe82101daf20", zonesJson: "a615b57e7d0ed653" },
 };
 
 Deno.test("zoneGraph: byte-identical output across pipeline matrix", async () => {

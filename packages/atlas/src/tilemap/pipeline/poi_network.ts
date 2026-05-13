@@ -108,12 +108,18 @@ function solveTileNarrative(
     if (!wired) continue;
 
     // Phase 4: trinket naming + stair materialization + emit
-    return buildNarrative(wired, retry, stairContext);
+    const narrative = buildNarrative(wired, retry, stairContext);
+    // Phase 5: fill in "found" stairs for any wilderness zone the
+    // matcher didn't assign a POI to. Every blob accessible from boot.
+    addFoundStairsForExposedWilderness(narrative, stairContext);
+    return narrative;
   }
 
   // Retry budget exhausted — emit a degraded narrative built from the
   // best candidates regardless of bridge solvability.
-  return emitDegraded(state.zones, allPois, biome, params, stairContext);
+  const degraded = emitDegraded(state.zones, allPois, biome, params, stairContext);
+  addFoundStairsForExposedWilderness(degraded, stairContext);
+  return degraded;
 }
 
 /** Bundled spatial data the wire + build phases need for stair anchoring. */
@@ -708,6 +714,50 @@ function pickStairAnchor(
   }
   if (bestIdx < 0) return { x: 0, y: 0 };
   return { x: bestIdx % gridSize, y: Math.floor(bestIdx / gridSize) };
+}
+
+/**
+ * For every wilderness zone the matcher DIDN'T assign a POI-stair to,
+ * add a "found" stair (lockedBy: null). Result: every reachable
+ * wilderness blob has an open stair the player can use to climb up,
+ * even when no quest content lives on that plateau. Makes initial
+ * exploration much friendlier — no map-wide hunt for the one stair
+ * the player has to find — while keeping the trinket-gated stairs
+ * (POI-narrative ones) as the intended progression spine.
+ *
+ * Skips zones with no path-zone neighbour (no anchor possible).
+ * Mutates `narrative.stairs` in place; returns the count added.
+ */
+function addFoundStairsForExposedWilderness(
+  narrative: TileNarrative,
+  ctx: StairContext,
+): number {
+  const covered = new Set<number>();
+  for (const s of narrative.stairs) covered.add(s.toZoneId);
+
+  let added = 0;
+  for (const z of ctx.zones) {
+    if (z.traversal !== "wilderness") continue;
+    if (covered.has(z.id)) continue;
+    const fromZone = pickStairPathZoneFor(z, ctx);
+    if (fromZone === null) continue; // truly isolated wilderness
+    const anchor = pickStairAnchor(fromZone, z.id, ctx);
+    if (anchor.x === 0 && anchor.y === 0) {
+      // pickStairAnchor returns 0,0 as a sentinel for "no anchor found"
+      // — that's a real corner of the tile but vanishingly unlikely to
+      // be a legitimate anchor; skip rather than place a stair there.
+      continue;
+    }
+    narrative.stairs.push({
+      id: `stair_explore_z${z.id}`,
+      fromZoneId: fromZone,
+      toZoneId: z.id,
+      anchorPixel: anchor,
+      lockedBy: null,
+    });
+    added++;
+  }
+  return added;
 }
 
 // ---------------------------------------------------------------------
