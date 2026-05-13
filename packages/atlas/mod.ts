@@ -42,7 +42,7 @@ export {
   BOUNDARY_KIND_GRASS_MOUND,
 } from "./src/tilemap/pipeline/boundary_kinds.ts";
 export { upsampleTile } from "./src/tilemap/upsample.ts";
-export { applyStairUnlock } from "./src/tilemap/stair_unlock.ts";
-export type { StairAnchor, StairUnlockOptions } from "./src/tilemap/stair_unlock.ts";
+export { applyStairUnlock, markStairAnchor } from "./src/tilemap/stair_unlock.ts";
+export type { StairAnchor, StairUnlockOptions, StairMarkerOptions } from "./src/tilemap/stair_unlock.ts";
 export type { TileNarrativeWire } from "./src/tilemap/types.ts";
 export type { UpsampleOptions, UpsampleOutput } from "./src/tilemap/upsample.ts";

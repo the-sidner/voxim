@@ -20,6 +20,7 @@ import {
   tileInitFromWire,
   upsampleTile,
   applyStairUnlock,
+  markStairAnchor,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
   type TileInitWire, type TileNarrativeWire,
@@ -228,29 +229,46 @@ export async function loadTerrainFromAtlas(
     defaultMaterialId,
   });
 
-  // T-213: apply "found" stair unlocks (lockedBy === null) to the
-  // upsampled buffers so the resulting heightmap + openMask read
-  // walkable on the path-side ramp and the entire target wilderness
-  // blob. Trinket-gated stairs (lockedBy !== null) stay closed for
-  // now; T-212 will flip them at runtime when their key trinket is
-  // consumed.
+  // T-213: stair runtime application at boot.
+  //   - VISUAL MARKER: paint a stone patch at every stair anchor
+  //     (locked + unlocked alike) so the player can spot stair
+  //     locations from across the tile.
+  //   - "FOUND" STAIRS (lockedBy === null): apply the heightmap ramp
+  //     and openMask flip so the wilderness is reachable from boot.
+  //   - LOCKED STAIRS (lockedBy !== null): keep the wall step + closed
+  //     openMask. Only the marker is visible. T-212 v2 will flip them
+  //     at runtime when the key trinket is consumed.
+  const stoneMaterialId = content.materials.get("stone")?.id ?? defaultMaterialId;
+  const markedStairs: string[] = [];
   const unlockedStairs: string[] = [];
   if (tile.narrative && Array.isArray(tile.narrative.stairs)) {
     const tilePixelsPerAtlasPixel = TILE_SIZE / tile.gridSize;
     for (const stair of tile.narrative.stairs) {
-      if (stair.lockedBy !== null) continue;
       const ax = Math.floor(stair.anchorPixel.x * tilePixelsPerAtlasPixel);
       const ay = Math.floor(stair.anchorPixel.y * tilePixelsPerAtlasPixel);
-      const touched = applyStairUnlock(heightBuffer, openBuffer, zoneBuffer, TILE_SIZE, {
+      // Marker — every stair, regardless of lock state.
+      const markedPx = markStairAnchor(materialBuffer, zoneBuffer, TILE_SIZE, {
         wildernessZoneId: stair.toZoneId,
         anchor: { x: ax, y: ay },
-        wallHeight: 2.0,
+        markerMaterialId: stoneMaterialId,
       });
-      if (touched > 0) unlockedStairs.push(stair.id);
+      if (markedPx > 0) markedStairs.push(stair.id);
+      // Ramp — only when found / pre-unlocked.
+      if (stair.lockedBy === null) {
+        const touched = applyStairUnlock(heightBuffer, openBuffer, zoneBuffer, TILE_SIZE, {
+          wildernessZoneId: stair.toZoneId,
+          anchor: { x: ax, y: ay },
+          wallHeight: 2.0,
+        });
+        if (touched > 0) unlockedStairs.push(stair.id);
+      }
     }
   }
-  if (unlockedStairs.length > 0) {
-    console.log(`[atlas_terrain] T-213: unlocked ${unlockedStairs.length} found stair(s) at boot: ${unlockedStairs.join(", ")}`);
+  if (markedStairs.length > 0) {
+    console.log(
+      `[atlas_terrain] T-213: stair markers painted=${markedStairs.length} ` +
+      `(found+unlocked=${unlockedStairs.length}, locked=${markedStairs.length - unlockedStairs.length})`,
+    );
   }
 
   return {

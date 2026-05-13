@@ -31,6 +31,73 @@ export interface StairAnchor {
   y: number;
 }
 
+export interface StairMarkerOptions {
+  wildernessZoneId: number;
+  anchor: StairAnchor;
+  /**
+   * Material id to paint the stair pixels with. Should be the
+   * tile-server-translated id for "stone" or "path" — a contrasting
+   * surface so the player can spot the stair from a distance.
+   */
+  markerMaterialId: number;
+  /** How many pixels along the climb axis the marker spans. Default 5. */
+  markerDepth?: number;
+  /** Half-width perpendicular to climb. Default 2 (5-pixel-wide tread). */
+  markerHalfWidth?: number;
+}
+
+/**
+ * Paint a visible marker patch at a stair anchor regardless of lock
+ * state (T-213 visibility fix). Locked stairs get the marker on the
+ * wilderness wall pixels so the player sees "stairs here, locked";
+ * unlocked stairs get it on the ramp pixels (called from
+ * `applyStairUnlock` below).
+ *
+ * Independent of openMask + heightmap — purely a visual cue so the
+ * player can spot stair locations from across the tile. Mutates
+ * `materialBuffer` in place.
+ */
+export function markStairAnchor(
+  materialBuffer: Uint16Array,
+  zoneBuffer: Uint16Array,
+  tileSize: number,
+  opts: StairMarkerOptions,
+): number {
+  const { wildernessZoneId, anchor, markerMaterialId } = opts;
+  const markerDepth     = opts.markerDepth     ?? 5;
+  const markerHalfWidth = opts.markerHalfWidth ?? 2;
+  const stride = tileSize;
+  if (anchor.x < 0 || anchor.y < 0 || anchor.x >= stride || anchor.y >= stride) return 0;
+  const anchorIdx = anchor.y * stride + anchor.x;
+
+  // Climb direction — same logic as the unlock helper. Painted patch
+  // runs from the anchor into the wilderness.
+  let dx = 0, dy = 0;
+  if (anchor.x > 0          && zoneBuffer[anchorIdx - 1]      === wildernessZoneId) { dx = -1; dy =  0; }
+  if (anchor.x < stride - 1 && zoneBuffer[anchorIdx + 1]      === wildernessZoneId) { dx =  1; dy =  0; }
+  if (anchor.y > 0          && zoneBuffer[anchorIdx - stride] === wildernessZoneId) { dx =  0; dy = -1; }
+  if (anchor.y < stride - 1 && zoneBuffer[anchorIdx + stride] === wildernessZoneId) { dx =  0; dy =  1; }
+  if (dx === 0 && dy === 0) return 0;
+  const px = -dy, py = dx;
+
+  let touched = 0;
+  for (let i = 0; i <= markerDepth; i++) {
+    for (let j = -markerHalfWidth; j <= markerHalfWidth; j++) {
+      const rx = anchor.x + dx * i + px * j;
+      const ry = anchor.y + dy * i + py * j;
+      if (rx < 0 || ry < 0 || rx >= stride || ry >= stride) continue;
+      const idx = ry * stride + rx;
+      // Only paint anchor row + target wilderness zone (don't bulldoze
+      // an unrelated wilderness blob that happens to share a corner).
+      const zoneOk = i === 0 ? true : zoneBuffer[idx] === wildernessZoneId;
+      if (!zoneOk) continue;
+      materialBuffer[idx] = markerMaterialId;
+      touched++;
+    }
+  }
+  return touched;
+}
+
 export interface StairUnlockOptions {
   /** Wilderness zone id whose pixels become walkable. */
   wildernessZoneId: number;

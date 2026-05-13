@@ -18,7 +18,7 @@
  */
 
 import { assert, assertEquals } from "jsr:@std/assert";
-import { applyStairUnlock } from "./stair_unlock.ts";
+import { applyStairUnlock, markStairAnchor } from "./stair_unlock.ts";
 
 const TS = 8;
 const WALL = 2.0;
@@ -168,4 +168,67 @@ Deno.test("applyStairUnlock: anchor out of bounds → no-op", () => {
   });
   assertEquals(touched, 0);
   for (let i = 0; i < open.length; i++) assertEquals(open[i], before[i]);
+});
+
+// ---- markStairAnchor (T-213 visibility) -------------------------------
+
+Deno.test("markStairAnchor: paints a patch of marker material at the anchor", () => {
+  const { zone } = makeFixture();
+  const materials = new Uint16Array(TS * TS).fill(7); // baseline = mud (7)
+  const STONE = 3;
+  const touched = markStairAnchor(materials, zone, TS, {
+    wildernessZoneId: WILD_ZID,
+    anchor: { x: 3, y: 2 },
+    markerMaterialId: STONE,
+    markerDepth: 3,
+    markerHalfWidth: 1,
+  });
+  assert(touched > 0, "expected at least one pixel painted");
+  // Anchor pixel itself + at least one pixel deeper into the wilderness
+  // should be STONE now.
+  assertEquals(materials[2 * TS + 3], STONE);
+  assertEquals(materials[2 * TS + 4], STONE);
+});
+
+Deno.test("markStairAnchor: doesn't touch unrelated wilderness pixels", () => {
+  const TS2 = 8;
+  const materials = new Uint16Array(TS2 * TS2).fill(1); // baseline grass
+  const zone = new Uint16Array(TS2 * TS2).fill(0xFFFF);
+  // Path row 4, anchor at (3, 4).
+  for (let x = 0; x < TS2; x++) zone[4 * TS2 + x] = PATH_ZID;
+  // Wilderness A above the path (rows 0..3, cols 2..4).
+  for (let y = 0; y < 4; y++) for (let x = 2; x <= 4; x++) zone[y * TS2 + x] = WILD_ZID;
+  // Wilderness B below (rows 5..7, cols 5..7) — UNRELATED.
+  for (let y = 5; y < 8; y++) for (let x = 5; x <= 7; x++) zone[y * TS2 + x] = WILD_ZID + 1;
+
+  markStairAnchor(materials, zone, TS2, {
+    wildernessZoneId: WILD_ZID,
+    anchor: { x: 3, y: 4 },
+    markerMaterialId: 3,
+    markerDepth: 5,
+    markerHalfWidth: 2,
+  });
+
+  // Wilderness B must NOT be painted.
+  for (let y = 5; y < 8; y++) for (let x = 5; x <= 7; x++) {
+    assertEquals(materials[y * TS2 + x], 1, `unrelated wilderness B (${x},${y}) shouldn't be painted`);
+  }
+});
+
+Deno.test("markStairAnchor: works regardless of lock state — locked stair still gets painted", () => {
+  // The marker function doesn't know about lock state — it just paints.
+  // The CALLER decides whether to follow it up with applyStairUnlock.
+  // This test asserts the function is purely about visuals.
+  const { open, zone } = makeFixture();
+  const materials = new Uint16Array(TS * TS).fill(7);
+  const beforeOpen = open.slice();
+  markStairAnchor(materials, zone, TS, {
+    wildernessZoneId: WILD_ZID,
+    anchor: { x: 3, y: 2 },
+    markerMaterialId: 3,
+  });
+  // openMask is unchanged — marker doesn't unlock.
+  for (let i = 0; i < open.length; i++) assertEquals(open[i], beforeOpen[i]);
+  // Materials are changed at anchor.
+  assertEquals(materials[2 * TS + 3], 3);
 });
