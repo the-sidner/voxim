@@ -2162,6 +2162,37 @@ state's `level` IS the tile's LevelDef — no post-pass absorber.
     materials stage. Migrating requires region metadata for
     floor/wall materials. Significant content + tuning surface.
 
+### T-215..T-224 · Scene graph as a central engine system
+Effort: XL (multi-ticket arc)   Status: planned
+
+See [`SCENE_GRAPH_PLAN.md`](SCENE_GRAPH_PLAN.md) at the repo root for the
+full design + migration plan. Summary:
+
+`@voxim/engine` grows a scene-graph primitive (parent/child links via a
+networked `Parent` component) that sits co-equal with the flat ECS.
+Nodes are entities; prefabs produce subtrees of entities; the same
+engine APIs work in atlas (bake), tile-server (runtime), coordinator
+(world graph), and client (rendering). What differs between services
+is *which systems they install*, not which scene representation they
+use.
+
+Migration phases (each its own ticket):
+
+  - T-215 — scene-graph primitive in engine (Parent + index + APIs)
+  - T-216 — move `spawnPrefab` into engine
+  - T-217 — `Prefab.children` field
+  - T-218 — POI scene fragments as child prefabs (first end-to-end use)
+  - T-219 — skeletal bones as scene-graph entities
+  - T-220 — equipment attachment via scene-graph
+  - T-221 — static prop sub-objects as scene-graph children
+  - T-222 — coordinator world-scale scene graph
+  - T-223 — client render-scope scene graph
+  - T-224 — inspector / editor tooling against any World
+
+The T-214 IR + reducer + rasterizer split work is the substrate this
+builds on. Snapshot determinism stays the invariant across every
+phase.
+
 ---
 
 ## Rendering & Client
