@@ -17,7 +17,6 @@ import { actionContributor } from "./action.ts";
 import { physicsContributor } from "./physics.ts";
 import { equipmentContributor } from "./equipment.ts";
 import { eventsContributor } from "./events.ts";
-import { postureContributor } from "./posture.ts";
 
 export const DEFAULT_SM_SCOPE_CONTRIBUTORS: readonly SMScopeContributor[] = [
   velocityContributor,
@@ -27,7 +26,6 @@ export const DEFAULT_SM_SCOPE_CONTRIBUTORS: readonly SMScopeContributor[] = [
   physicsContributor,
   equipmentContributor,
   eventsContributor,
-  postureContributor,
 ];
 
 /**

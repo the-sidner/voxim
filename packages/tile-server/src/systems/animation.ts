@@ -33,6 +33,9 @@ import {
 } from "@voxim/content";
 import { Velocity, AnimationState } from "../components/game.ts";
 import { CharacterStateMachine } from "../components/character_state_machine.ts";
+import { ActiveActions } from "../components/action.ts";
+import type { ActiveActionState } from "../components/action.ts";
+import { Crouched } from "../components/tags.ts";
 import { SwingContext } from "../components/swing_context.ts";
 import { Maneuver } from "../components/maneuver.ts";
 import { Equipment } from "../components/equipment.ts";
@@ -132,6 +135,24 @@ export class AnimationSystem implements System {
       const baseScope: Record<string, SMScopeValue> = { ...buildCsmVars(compiled, layerStates) };
 
       const layers: AnimationLayer[] = [];
+
+      // Locomotion is no longer a CSM layer (T-226c) — it is the
+      // `locomotion` action slot. Project it first so it occupies the same
+      // position in the composited layer list the retired CSM locomotion
+      // layer did (lowest priority, beneath right_hand/left_hand/reaction).
+      // Reads last-tick's committed slot (deferred ActiveActions write) —
+      // the same one-tick lag the CSM's deferred layerState read had.
+      const locoLayer = projectLocomotion(
+        this.content,
+        world.get(entityId, ActiveActions)?.states["locomotion"],
+        world.has(entityId, Crouched),
+        slotMap,
+        prevTime,
+        speed,
+        walkSpeedRef,
+      );
+      if (locoLayer) layers.push(locoLayer);
+
       // Total swing duration in seconds — used to scale the swing clip's
       // playback so it covers exactly windup→active→winddown when the three
       // states share the same clipId (prevTime keyed by clip persists across
@@ -196,11 +217,14 @@ export class AnimationSystem implements System {
       }
 
       // weaponActionId/ticksIntoAction drive the client weapon-trail and
-      // attachment positioning. ticksIntoAction is CUMULATIVE across the
-      // three swing phases (windup → active → winddown) — the renderer's
-      // active-window check (`ticks in [windupTicks, windupTicks+activeTicks)`)
-      // expects that. CSM combat.elapsed alone resets on each phase
-      // transition, so we add the prior phases' tick budgets here.
+      // attachment positioning. The renderer fires its trail iff
+      // ticks ∈ [windupTicks, windupTicks+activeTicks). Only the swing.active
+      // phase is the blade-moves-through-space window — windup is a hold
+      // pose and stop is a brief pre-active pause, so neither should
+      // contribute slices. Mapping their ticksIntoAction to 0 keeps them
+      // out of the trail window while still pushing weaponActionId so the
+      // weapon attachment math (which only checks weaponActionId, not
+      // ticksIntoAction) stays aligned with the swing pose.
       const combatNode = layerStates["right_hand"]?.node ?? "";
       const inSwing = combatNode.startsWith("swing.");
       let weaponActionId  = inSwing && swing ? swing.weaponActionId : "";
@@ -208,14 +232,9 @@ export class AnimationSystem implements System {
       let ticksIntoAction = 0;
       if (inSwing && action) {
         const phaseTicks = Math.round((layerStates["right_hand"]?.elapsed ?? 0) / TICK_DT);
-        // ticksIntoAction is cumulative across the swing phases; the renderer
-        // uses it to gate trail recording on the active window. swing.stop is
-        // a brief release-pause AFTER windup but BEFORE active, so it
-        // contributes the windup total but no per-tick advance.
-        if (combatNode === "swing.windup")        ticksIntoAction = phaseTicks;
-        else if (combatNode === "swing.stop")     ticksIntoAction = action.windupTicks;
-        else if (combatNode === "swing.active")   ticksIntoAction = action.windupTicks + phaseTicks;
+        if (combatNode === "swing.active")        ticksIntoAction = action.windupTicks + phaseTicks;
         else if (combatNode === "swing.winddown") ticksIntoAction = action.windupTicks + action.activeTicks + phaseTicks;
+        // swing.windup and swing.stop stay at 0 — pre-active, no trail.
       }
       // Maneuver blade-trail bridge (T-185): when the right_hand layer is in
       // `in_maneuver`, the renderer's blade trail is dormant because no
@@ -341,6 +360,69 @@ function computeClipTime(
   // state's duration (number or scope ref); the projection just walks the
   // clip from 0 → 1 across whatever real-time window the SM imposes.
   return Math.min(prev + advance, 1.0);
+}
+
+/**
+ * Project the `locomotion` action slot into one AnimationLayer, replicating
+ * exactly what the retired CSM locomotion layer emitted (T-226c).
+ *
+ *   - empty slot → fall back to the `idle` action, so the first tick after
+ *     spawn (before the dispatcher's deferred write commits) shows the idle
+ *     pose, not a rest-pose flash — matching the old spawn-time
+ *     initialSMState seeding.
+ *   - crouch variant: `anim.crouchClipId` when the `Crouched` tag is
+ *     present, replacing the CSM's `posture.crouched` paramOverride.
+ *   - speedScale / loop / mask / clip-time accumulation mirror the old
+ *     `resolveSpeedScale` + `computeClipTime` (one-shot with no explicit
+ *     speedScale auto-fits 1 / phase-duration; locomotion had no mask).
+ *
+ * Exported for the behavioral parity test.
+ */
+export function projectLocomotion(
+  content: ContentService,
+  slot: ActiveActionState | undefined,
+  crouched: boolean,
+  slotMap: Record<string, string>,
+  prevTimeByClip: Map<string, number>,
+  speed: number,
+  walkSpeedRef: number,
+): AnimationLayer | null {
+  const def = content.actions.get(slot?.actionId || "idle");
+  if (!def) return null;
+  const phaseName = slot?.phase && def.phases[slot.phase]
+    ? slot.phase
+    : Object.keys(def.phases)[0];
+  const anim = def.animation?.[phaseName];
+  if (!anim) return null;
+
+  const clipRef = crouched && anim.crouchClipId ? anim.crouchClipId : anim.clipId;
+  const clipId = resolveClipId(clipRef, slotMap);
+  if (!clipId) return null;
+
+  const loop = anim.loop ?? false;
+  const phaseTicks = def.phases[phaseName].ticks;
+  const phaseDurSec = phaseTicks > 0 ? phaseTicks * TICK_DT : 0;
+  const speedScale: number | "velocity" = anim.speedScale !== undefined
+    ? anim.speedScale
+    : (!loop && phaseDurSec > 0 ? 1 / phaseDurSec : 1);
+
+  const time = computeClipTime(
+    prevTimeByClip.get(clipId) ?? 0,
+    { loop } as SMState,
+    speedScale,
+    walkSpeedRef,
+    speed,
+  );
+
+  return {
+    clipId,
+    maskId: anim.mask ?? "",
+    time,
+    weight: 1,
+    blend: "override",
+    speedScale,
+    speedReference: speedScale === "velocity" ? walkSpeedRef : undefined,
+  };
 }
 
 function getTimeByClip(state: AnimationStateData | null): Map<string, number> {

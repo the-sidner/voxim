@@ -58,7 +58,8 @@ import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionSystem } from "./systems/action.ts";
 import { CharacterStateMachineSystem } from "./systems/character_state_machine.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry } from "./actions/index.ts";
-import { PostureIntentResolver } from "./actions/intent.ts";
+import { PostureIntentResolver, CompositeIntentResolver } from "./actions/intent.ts";
+import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
 import { ManeuverSchedulerSystem } from "./systems/maneuver_scheduler.ts";
 import { TickEventBuffer } from "./tick_events.ts";
@@ -393,15 +394,17 @@ export class TileServer {
 
     // Action runtime (T-226). Gate registry is empty until an action
     // references a gate (T-227 swings); the effect registry carries the
-    // posture tag resolvers. PostureIntentResolver is the only intent
-    // source until further CSM layers migrate (CompositeIntentResolver
-    // merges them then). No cost handler yet — posture actions are free.
+    // posture tag resolvers. Posture (T-226b) + locomotion (T-226c)
+    // intent are merged via CompositeIntentResolver — more slots compose
+    // here as further layers migrate. No cost handler yet (both slots
+    // are free).
     const actionGates = newGateRegistry();
     const actionEffects = newEffectRegistry();
     actionEffects.register(setTagResolver);
     actionEffects.register(clearTagResolver);
     const actionDispatcher = new ActionDispatcher(
-      content, actionGates, actionEffects, PostureIntentResolver,
+      content, actionGates, actionEffects,
+      new CompositeIntentResolver([PostureIntentResolver, LocomotionIntentResolver]),
     );
     skill.registerSubscribers(this.eventBus, this.world);
 

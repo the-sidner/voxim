@@ -18,14 +18,12 @@
 import { assert, assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
-import type { SMScopeValue } from "@voxim/content";
 import { ACTION_CROUCH } from "@voxim/protocol";
 import { InputState } from "../components/game.ts";
 import { Crouched } from "../components/tags.ts";
 import { ActorSlots, ActiveActions } from "../components/action.ts";
 import { CharacterStateMachineSystem } from "../systems/character_state_machine.ts";
 import { TickEventBuffer } from "../tick_events.ts";
-import { postureContributor } from "../sm_scope/posture.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry } from "./index.ts";
 import { PostureIntentResolver } from "./intent.ts";
 import { setTagResolver, clearTagResolver } from "./resolvers/tags.ts";
@@ -102,19 +100,3 @@ Deno.test("crouch input installs the Crouched tag; release clears it", () => {
   assert(!world.has(id, Crouched), "Crouched tag cleared on release");
 });
 
-Deno.test("posture contributor mirrors the Crouched tag into posture.crouched", () => {
-  const world = new World();
-  const id = newEntityId();
-  world.create(id);
-  // deno-lint-ignore no-explicit-any
-  const ctx = { world, entityId: id, content: {} as any, tickEvents: {} as any };
-
-  const up: Record<string, SMScopeValue> = {};
-  postureContributor.contribute(ctx, up);
-  assertEquals(up["posture.crouched"], false);
-
-  world.write(id, Crouched, {});
-  const down: Record<string, SMScopeValue> = {};
-  postureContributor.contribute(ctx, down);
-  assertEquals(down["posture.crouched"], true);
-});
