@@ -745,9 +745,46 @@ Cancel-into-swing/dodge from block is already expressed by `block`'s
 code. 1 block-substrate test + 169 tile-server/content/codecs/engine
 green; bake byte-identical.
 
-### T-234 — AI behavior trees as data on the action vocabulary
+### T-234 — AI behavior trees as data on the action vocabulary — **LANDED (scope clarified)**
 
-NPC behavior trees authored as JSON. Tree primitive types: `sequence`, `selector`, `cond` (gate predicate), `request_action(id, target?)`, `wait_until(action_complete)`, `pick_target(filter)`. One NPC archetype (wolf) migrated end to end. `NpcAiSystem` becomes a small BT interpreter. Bespoke per-archetype AI code deletes per migrated archetype.
+Like T-228/T-231, the codebase was already ahead of the plan here:
+
+- **The BT interpreter already exists** (`ai/bt/`: `BTNode`/`BTContext`/
+  `BTOutput`, `buildBehaviorTree`, ~15 node factories, registry).
+- **`NpcAiSystem` is already a small generic interpreter** — BT → job →
+  handler → InputState. **Zero per-archetype branches**; nothing bespoke
+  to delete (the plan's "delete per-archetype AI code" had no target).
+- **The wolf is already data-driven** end to end: `wolf.json`
+  `behaviorTreeId: "hostile"` → `behavior_trees/hostile.json` →
+  `set_job_attack_nearest` → attackTarget handler → action dispatcher.
+- `sequence`/`selector` exist; `cond` exists as the `check_*` family;
+  `pick_target` exists as `set_job_attack_nearest`.
+
+The one **genuine gap** vs. the plan's vocabulary was `request_action(id)`:
+NPCs could only emit the ~10 actions reachable through the InputState
+*bit* mapping — a signature monster move (an arbitrary action id) was not
+expressible from data. T-234 closes exactly that:
+
+- **`RequestedActions` component** — a server-only per-slot `slot→actionId`
+  channel (components/action.ts).
+- **`request_action` BT node** — `{slot, action}`, writes
+  `BTOutput.requestedActions`; build-time validated.
+- **`NpcAiSystem`** mirrors `BTOutput.requestedActions` onto the component
+  each tick (a stimulus, `world.write` like InputState; erased when not
+  requested).
+- **`RequestedActionIntentResolver`** composed *last* in the
+  `CompositeIntentResolver`, so a tree's named request overrides the
+  bit-derived intent (an NPC's signature move beats its default swing).
+  Inert for players (they never carry `RequestedActions`).
+
+The job/plan layer (wander/seek/flee/craft/gather + A*-ish pathing) is
+**deliberately kept** — it's navigation/planning, not character-action
+primitives; collapsing it into BT-action nodes would be the same
+contortion T-231 refused. Trees can now drive *any* action by name; the
+existing wolf attack keeps working (it already flows through the action
+primitive via the handler→bit→dispatcher path) and can adopt
+`request_action` for signature moves with no engine change. 3 BT tests +
+173 tile-server/content/codecs/engine green; bake byte-identical.
 
 ### T-235 — Buffs / DoTs as scene-graph children with ambient looping actions
 

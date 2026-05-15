@@ -2374,8 +2374,15 @@ Migration phases (each its own ticket; each an atomic commit):
     T-232). The DodgeSystem→CombatTimersSystem→∅ residue is fully gone —
     every combat counter is now an action phase or a tag. 1 block test
     + 169 green; bake byte-identical.
-  - T-234 — NPC behavior trees as data on the action vocabulary;
-    `NpcAiSystem` becomes a BT interpreter
+  - T-234 — DONE (scope clarified). BT interpreter + generic NpcAiSystem
+    + data-driven wolf already existed (codebase ahead of plan; no
+    per-archetype code to delete). Closed the real gap: `request_action`
+    BT node + RequestedActions per-slot channel + RequestedActionIntent-
+    Resolver (composed last, overrides bit intent) — trees can now name
+    ANY action, not just the bit-mapped subset. Job/plan navigation layer
+    deliberately kept (not character-action primitives; collapsing it
+    would be a T-231-style contortion). 3 BT tests + 173 green; bake
+    byte-identical.
   - T-235 — Buffs / DoTs as scene-graph child entities with ambient
     looping actions; delete BuffSystem
   - T-236 — Animation system fully derives from ActiveActions
