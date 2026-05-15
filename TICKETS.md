@@ -2356,8 +2356,17 @@ Migration phases (each its own ticket; each an atomic commit):
     T-238 Resource primitive, not force-fit as a player-slot action.
     Forcing a craft/build action shell would add complexity. See
     ACTION_PRIMITIVE_PLAN.md T-231.
-  - T-232 — Hit-reactions as event-initiated reaction-class actions;
-    interrupt priority + poise; delete `Staggered`
+  - T-232 — DONE. stagger_light/heavy install the `staggered` tag for
+    their play phase (phase duration = stagger window); not_staggered
+    gate reads the tag; parry posts PendingReaction:stagger_heavy.
+    Networked Staggered component DELETED — def, registry, mod export,
+    staggeredCodec/StaggeredData, protocol wire 36 retired. Client
+    renders stagger from reaction-slot AnimationState. CombatTimersSystem
+    shrank to BlockHeld-only (dies at T-233). Poise-as-Resource +
+    poise_available gate is genuinely T-238 (event-posted reactions
+    aren't intent-gated) — not duplicated here. 1 stagger test + 168
+    green; bake byte-identical. Client codec-decode debt deferred to
+    T-236 client pass.
   - T-233 — Block as primary-slot action (held tail); combat-side
     block checks become `tag_present: Blocking` gate queries
   - T-234 — NPC behavior trees as data on the action vocabulary;

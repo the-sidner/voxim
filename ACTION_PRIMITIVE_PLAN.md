@@ -688,11 +688,39 @@ the time-step timer is explicitly handed to T-238 rather than force-fit
 here. Net complexity is reduced by *not* adding a misfit `craft`/`build`
 action shell. No code, no test change, bake untouched.
 
-### T-232 — Hit-reactions as actions; interrupt priority + poise
+### T-232 — Hit-reactions as actions; interrupt priority + poise — **LANDED**
 
-`hit_react_flinch.json` / `hit_react_stagger.json` / `hit_react_knockdown.json` as reaction-class actions. The `weapon_trace` resolver's on-hit pipeline posts a hit-react action request to the receiver after damage. Dispatcher gains interrupt logic. Poise becomes a regenerating resource consulted by a `poise_available` gate.
+The reaction actions (`hit_front`/`hit_back`/`stagger_light`/`stagger_heavy`/
+`death`) already existed with `interruptPriority`, and the hit pipeline
+already posted `PendingReaction` (T-228). T-232 finished it:
 
-`Staggered` component deleted (replaced by tag installs from hit-react actions).
+- **`stagger_light`/`stagger_heavy` install the `staggered` tag** on
+  `play:enter`, clear it on `play:exit`. The reaction action's phase `ticks`
+  *is* the stagger window; the `staggered` tag is the action-lockout.
+- **The networked `Staggered` component is deleted** — def (combat.ts),
+  registry entry, `mod.ts` export, `staggeredCodec`/`StaggeredData`
+  (@voxim/codecs), and protocol wire id **36 retired (never reuse)**. The
+  client renders stagger from the reaction-slot `AnimationState`, so it
+  needs no wire component.
+- **`not_staggered` gate reads the tag** instead of the component.
+- **Parry → `PendingReaction: stagger_heavy`** on the attacker (was a
+  `Staggered` component write) — same primitive as every other hit-react.
+- **`CombatTimersSystem` shrank again** — Staggered countdown gone; only
+  `BlockHeld` remains (it dies entirely at T-233).
+
+Dispatcher interrupt logic was already present (reaction `interruptPriority`
+bypasses the running action's cancel matrix). Poise stays a regenerating
+component owned by PoiseSystem; the inline poise-break → stagger-tier policy
+in `health_hit_handler` is unchanged. **Poise-as-Resource + a
+`poise_available` gate is genuinely the T-238 Resource arc** (Poise is one
+of Discovery 1's hand-rolled resources) — not duplicated here; reactions are
+event-posted, not intent-gated, so a dispatcher precondition gate would be
+dead code. Recorded so the scope line is honest.
+
+1 stagger integration test + 168 tile-server/content/codecs/engine green;
+bake byte-identical. (Client `client_world.ts` still decodes the removed
+codec — pre-existing accepted client debt, tracked for the T-236 client
+pass; not touched per "leave the client for now".)
 
 ### T-233 — Block as primary-slot action
 
