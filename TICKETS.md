@@ -2193,6 +2193,44 @@ The T-214 IR + reducer + rasterizer split work is the substrate this
 builds on. Snapshot determinism stays the invariant across every
 phase.
 
+### T-225..T-235 · Action as the universal behavior primitive
+Effort: XL (multi-ticket arc)   Status: planned
+
+See [`ACTION_PRIMITIVE_PLAN.md`](ACTION_PRIMITIVE_PLAN.md) at the repo
+root for the full design + migration plan. Summary:
+
+Every character behavior — combat, movement, blocking, dodging,
+interacting, throwing, consuming, praying, *being hit* — collapses
+into one primitive: an `Action`. Actions are content (phases, cancel
+matrix, per-phase movement enum, costs, effects, animation clips).
+One `ActiveAction` accumulator on the actor; one `ActionDispatcher`
+system is the only writer; effect resolvers register against a small
+set of effect kinds (`weapon_trace`, `modify_inventory`, `apply_force`,
+`start_buff`, `apply_skill_verb`, …). Vermintide-style windup/active/
+winddown with cancelability rules per phase. Hit-reactions are
+event-initiated actions resolved through the same dispatcher with
+interrupt priority. NPC behavior trees compose action requests
+against the same library players use, structurally removing any
+remaining isNpc divergence.
+
+Migration phases (each its own ticket):
+
+  - T-225 — Action schema + content loader (no runtime use yet)
+  - T-226 — `ActiveAction` + dispatcher; migrate weapon swing (delete ActionSystem, SkillInProgress)
+  - T-227 — Effect resolver registry; migrate SkillSystem on-hit half into `apply_skill_verb`
+  - T-228 — Migrate dodge (delete DodgeSystem); first cross-action cancel-into
+  - T-229 — Migrate consume / interact / pray (non-combat through the same primitive)
+  - T-230 — Migrate crafting / building to actions + resolvers
+  - T-231 — Hit-reactions as event-initiated actions; interrupt priority + poise
+  - T-232 — Movement as ambient action with per-phase `free|slowed|locked` enum
+  - T-233 — NPC behavior trees as data; `NpcAiSystem` becomes an interpreter
+  - T-234 — Buffs / DoTs as scene-graph child entities with ambient actions
+  - T-235 — Animation derives from `ActiveAction` (delete velocity-heuristic clip selection)
+
+Scene-graph T-215 and T-216 land first; the rest interleaves freely.
+This arc deletes more code than it adds from T-226 onward (estimated
+net ≈ −2200 lines once complete).
+
 ---
 
 ## Rendering & Client
