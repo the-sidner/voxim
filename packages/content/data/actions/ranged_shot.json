@@ -1,0 +1,21 @@
+{
+  "id": "ranged_shot",
+  "kind": "active",
+  "slot": "primary",
+  "limbs": ["right_hand"],
+  "phases": { "windup": { "ticks": 20 }, "active": { "ticks": 1 }, "winddown": { "ticks": 12 } },
+  "cancel": {
+    "windup":   { "into": ["any"] },
+    "active":   { "into": [] },
+    "winddown": { "into": [] }
+  },
+  "movement": { "windup": "slowed", "active": "slowed", "winddown": "slowed" },
+  "costs": { "stamina": 8 },
+  "priority": 5,
+  "effects": [ { "phase": "active:enter", "kind": "projectile_spawn" } ],
+  "animation": {
+    "windup":   { "clipId": "$weapon.aim_clip", "loop": true },
+    "active":   { "clipId": "$weapon.shoot_clip", "loop": false },
+    "winddown": { "clipId": "$weapon.shoot_clip", "loop": false }
+  }
+}

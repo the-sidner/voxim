@@ -1,0 +1,21 @@
+{
+  "id": "swing_spin",
+  "kind": "active",
+  "slot": "primary",
+  "limbs": ["right_hand"],
+  "phases": { "windup": { "ticks": 6 }, "active": { "ticks": 4 }, "winddown": { "ticks": 8 } },
+  "cancel": {
+    "windup":   { "into": ["any"] },
+    "active":   { "into": [] },
+    "winddown": { "into": [] }
+  },
+  "movement": { "windup": "slowed", "active": "locked", "winddown": "slowed" },
+  "costs": { "stamina": 22 },
+  "priority": 5,
+  "effects": [ { "phase": "active:enter", "kind": "weapon_trace" } ],
+  "animation": {
+    "windup":   { "clipId": "$weapon.swing_clip", "loop": true },
+    "active":   { "clipId": "$weapon.swing_clip", "loop": false },
+    "winddown": { "clipId": "$weapon.swing_clip", "loop": false }
+  }
+}
