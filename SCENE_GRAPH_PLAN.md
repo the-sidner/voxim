@@ -386,7 +386,24 @@ content/engine tests green; bake byte-identical (no real prefab declares
 
 **Acceptance:** synthetic test passes. Snapshot determinism intact.
 
-### T-218 — POI scene fragments as child prefabs (first end-to-end use)
+### T-218 — POI scene fragments as child prefabs (first end-to-end use) — **LANDED**
+
+**Landed.** `signal_pyre` is the first real consumer: new optional
+`PoiBase.scenePrefabId` (TS + valibot) → `data/prefabs/poi/signal_pyre_scene.json`
+(a `model_campfire` parent carrying `lightEmitter` + `poiTrigger`, with four
+`torch_placed` children in a ring via T-217 `children`). `placePoiTriggers`
+now looks up the POI def: a `scenePrefabId` spawns the prefab through
+`spawnPrefab` (recursing the subtree) and patches the runtime
+`poiInstanceId`/`poiDefId` onto the trigger the generic walk wrote
+(default-merged from the prefab); POIs without one keep the legacy bare
+`Position`+`PoiTrigger` entity (not a shim — most POIs have no physical
+scene). **T-217 hook refined:** `placeChild` now also receives `parentId`,
+so the service composes a *world* Position off the parent's placement —
+static subtrees bake world coords at spawn (AoI / spatial-grid / client all
+read Position directly; live transform composition is still T-223; props
+never move so no per-tick recomposition). 2 new `poi_spawner` tests
+(scene-prefab subtree + bare fallback) + 103 content/engine/poi green; bake
+byte-identical.
 
 **Goal:** Migrate one composite case (POI scene fragments) to use child prefabs. Validates the whole stack.
 

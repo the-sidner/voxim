@@ -2198,7 +2198,15 @@ Migration phases (each its own ticket):
     unknown/abstract child ids. 3 engine prefab tests + 96 content/engine
     green; bake byte-identical (no prefab uses children yet). Bootstrap
     rides the JSON blob — no codec bump.
-  - T-218 — POI scene fragments as child prefabs (first end-to-end use)
+  - T-218 — DONE. First real `children` consumer. PoiBase.scenePrefabId
+    (TS+valibot) → prefabs/poi/signal_pyre_scene.json (campfire parent w/
+    lightEmitter+poiTrigger + 4 torch_placed children). placePoiTriggers
+    spawns the scene prefab via spawnPrefab (recursing the subtree) and
+    patches runtime poiInstanceId/poiDefId onto the walked trigger; POIs
+    w/o a scene prefab keep the bare-entity fallback. T-217 placeChild
+    hook refined to also pass parentId — service bakes child *world*
+    Position off the parent (static subtrees; live compose is T-223). 2
+    poi_spawner tests + 103 content/engine/poi green; bake byte-identical.
   - T-219 — skeletal bones as scene-graph entities
   - T-220 — equipment attachment via scene-graph
   - T-221 — static prop sub-objects as scene-graph children
