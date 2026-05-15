@@ -12,8 +12,10 @@
  * duration-exits-to-idle (jump/landing/sidestep complete → the slot empties
  * → a steady state is re-picked here):
  *
- *   1. steady + input.dodge + settled    → sidestep   (CSM pri 10; the
- *      `state.elapsed > 0.05` guard ≈ ticksInPhase > 1)
+ *   1. steady + input.dodge + settled    → dodge_roll (CSM pri 10; the
+ *      `state.elapsed > 0.05` guard ≈ ticksInPhase > 1). The dodge gameplay
+ *      (impulse, i-frames, stamina) now lives in the `dodge_roll` action's
+ *      effects/preconditions — not a bespoke DodgeSystem (T-229).
  *   2. steady + input.jump + !airborne   → jump       (CSM pri 8)
  *   3. steady + airborne                 → airborne   (CSM pri 5)
  *   4. cur jump + airborne               → airborne   (CSM jump→airborne)
@@ -25,11 +27,11 @@
  *      duration-exit-to-idle)
  *
  * "steady" = no current locomotion action (slot just emptied) or the
- * current one is a steady ground state (idle, walk, strafe). Gameplay
- * (jump impulse, dodge i-frames/velocity-lock, airborne detection) is
- * unaffected — it always lived in PhysicsSystem / DodgeSystem reading
- * input + components directly, never `csm.locomotion`. This resolver
- * drives animation only.
+ * current one is a steady ground state (idle, walk, strafe). This resolver
+ * decides *which* locomotion action a slot wants; the gameplay each entails
+ * lives in the action data (dodge_roll's impulse/i-frame effects) or in
+ * PhysicsSystem reading input + the slot's `movement` enum + the Airborne
+ * marker. No bespoke DodgeSystem (T-229).
  */
 
 import type { World, EntityId } from "@voxim/engine";
@@ -111,7 +113,7 @@ export const LocomotionIntentResolver: IntentResolver = {
 
     let want: string | null;
     if (steady && dodgeHeld && ticks > 1) {
-      want = "sidestep";
+      want = "dodge_roll";
     } else if (steady && jumpHeld && !airborne) {
       want = "jump";
     } else if (steady && airborne) {

@@ -6,7 +6,8 @@ import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { createLogger } from "../logger.ts";
 import { Position, Velocity, Facing, InputState } from "../components/game.ts";
-import { Sidestep, Airborne } from "../components/combat.ts";
+import { Airborne } from "../components/combat.ts";
+import { ActiveActions } from "../components/action.ts";
 import type { TickEventBuffer } from "../tick_events.ts";
 import { SpeedModifier } from "../components/world.ts";
 import { buildTerrainLookup, buildOpennessLookup } from "../physics/terrain_lookup.ts";
@@ -72,21 +73,24 @@ export class PhysicsSystem implements System {
       const groundZ = getHeight(position.x, position.y);
       const onGround = position.z <= groundZ + 0.01;
 
-      // Sidestep locks horizontal velocity to the committed dash vector.
-      // We synthesise an input matching that direction and override
-      // maxGroundSpeed so stepPhysics's "snap velocity to input × speed"
-      // branch produces exactly (vx, vy). Passing movement=(0,0) instead
-      // would trigger the on-ground "instant stop" drag and zero the dash
-      // before integration.
-      const sidestep = world.get(entityId, Sidestep);
-      const jump = !sidestep && hasAction(inputState.actions, ACTION_JUMP);
+      // Movement enum (T-229): a slot action whose current phase declares
+      // `movement: "locked"` (dodge_roll dash, swing active) holds the
+      // committed velocity vector and ignores input — the generic
+      // replacement for the retired bespoke Sidestep component. We
+      // synthesise an input matching the current velocity direction and
+      // override maxGroundSpeed so stepPhysics's "snap velocity to input ×
+      // speed" branch produces exactly the impulse the effect wrote.
+      // Passing movement=(0,0) instead would trigger the on-ground
+      // "instant stop" drag and zero the dash before integration.
+      const locked = isMovementLocked(world, this.content, entityId);
+      const jump = !locked && hasAction(inputState.actions, ACTION_JUMP);
 
       if (jump && onGround) {
         log.debug("jump: entity=%s pos=(%.1f,%.1f,%.1f)", entityId, position.x, position.y, position.z);
       }
 
       const speedMod = world.get(entityId, SpeedModifier);
-      const crouching = !sidestep && hasAction(inputState.actions, ACTION_CROUCH);
+      const crouching = !locked && hasAction(inputState.actions, ACTION_CROUCH);
       let speedMultiplier = speedMod?.multiplier ?? 1.0;
       if (crouching) speedMultiplier *= crouchSpeedMultiplier;
 
@@ -94,11 +98,13 @@ export class PhysicsSystem implements System {
       let physicsConfig = baseConfig;
       // (T-227: swing root-motion push via ActionImpulse was removed with
       // ActionSystem — root-motion is reintroduced later as an apply_force
-      // action effect. Sidestep still wins as an explicit player commit.)
-      if (sidestep) {
-        const dashSpeed = Math.sqrt(sidestep.vx * sidestep.vx + sidestep.vy * sidestep.vy);
+      // action effect.)
+      if (locked) {
+        // Hold whatever velocity the locking action's effect committed
+        // (dodge_impulse wrote the dash vector on dash:enter).
+        const dashSpeed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
         movement = dashSpeed > 0
-          ? { x: sidestep.vx / dashSpeed, y: sidestep.vy / dashSpeed }
+          ? { x: velocity.x / dashSpeed, y: velocity.y / dashSpeed }
           : { x: 0, y: 0 };
         physicsConfig = { ...baseConfig, maxGroundSpeed: dashSpeed };
       } else {
@@ -197,4 +203,26 @@ export class PhysicsSystem implements System {
 
 const GROUND_TOLERANCE = 0.15;
 const COYOTE_TICKS = 3;
+
+/**
+ * True if any occupied action slot's current phase declares
+ * `movement: "locked"` — the generic "stuck executing this action" signal
+ * (dodge_roll dash, swing active). `"slowed"` is currently treated as
+ * `"free"` (no consumer yet — a speed-scale pass is deferred retune, per
+ * the structure-over-parity pivot); only `"locked"` changes physics today.
+ */
+function isMovementLocked(
+  world: World,
+  content: ContentService,
+  entityId: string,
+): boolean {
+  const aa = world.get(entityId, ActiveActions);
+  if (!aa) return false;
+  for (const st of Object.values(aa.states)) {
+    if (content.actions.get(st.actionId)?.movement?.[st.phase] === "locked") {
+      return true;
+    }
+  }
+  return false;
+}
 

@@ -10,9 +10,9 @@
  * CorruptionExposure.
  *
  * Components NOT persisted: InputState (reset on connect), presence-as-flag
- * combat components like Staggered / CounterReady / IFrameActive / BlockHeld
- * / DodgeCooldown (all transient), SkillInProgress (transient — mid-swing
- * is cancelled on tile transition), Lifetime (players don't expire),
+ * combat components like Staggered / CounterReady / BlockHeld and action
+ * tags (iframe, blocking) — all transient, ActiveActions resets on connect
+ * — Lifetime (players don't expire),
  * NpcTag (players aren't NPCs).
  */
 import type { World, EntityId } from "@voxim/engine";

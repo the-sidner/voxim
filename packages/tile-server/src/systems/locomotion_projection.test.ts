@@ -68,8 +68,9 @@ Deno.test("jump one-shot auto-fits speedScale = 1 / phase-duration (8t → 2.5)"
   assertEquals(l?.time, Math.min(0 + (1 / (8 * DT)) * DT, 1));
 });
 
-Deno.test("sidestep one-shot: 5t → speedScale 4.0", () => {
-  const l = projectLocomotion(content, st("sidestep", "hop"), false, SLOTS, new Map(), 0, WALK_REF);
+Deno.test("dodge_roll dash one-shot: 5t → speedScale 4.0", () => {
+  const l = projectLocomotion(content, st("dodge_roll", "dash"), false, SLOTS, new Map(), 0, WALK_REF);
+  assertEquals(l?.clipId, "c_ss"); // $sidestep → SLOTS.sidestep
   assertEquals(l?.speedScale, 1 / (5 * DT)); // 4.0
 });
 

@@ -28,10 +28,10 @@ export type {
   LifetimeData,
 } from "./src/components/game.ts";
 export {
-  Staggered, CounterReady, IFrameActive, BlockHeld, DodgeCooldown,
+  Staggered, CounterReady, BlockHeld,
 } from "./src/components/combat.ts";
 export type {
-  IFrameActiveData, BlockHeldData, DodgeCooldownData,
+  BlockHeldData,
 } from "./src/components/combat.ts";
 export { TickEventBuffer } from "./src/tick_events.ts";
 

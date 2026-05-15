@@ -39,9 +39,7 @@ import {
 import {
   Staggered,
   CounterReady,
-  IFrameActive,
   BlockHeld,
-  DodgeCooldown,
   Poise,
 } from "./components/combat.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
@@ -123,7 +121,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Stamina,
   // 10 (attackCooldown) retired
   // 11 (combatState) retired — split into Staggered + CounterReady (below)
-  //    plus server-only IFrameActive / BlockHeld / DodgeCooldown.
+  //    plus server-only BlockHeld. (T-229: IFrameActive → `iframe` tag;
+  //    DodgeCooldown removed with the dodge migration.)
   Lifetime,
   ModelRef,
   AnimationState,
@@ -188,9 +187,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // ── Server-only defs (networked: false) ──────────────────────────────────
   Hitbox,
   // Combat counters — server-only because the client doesn't act on them.
-  IFrameActive,
+  // (T-229: IFrameActive → `iframe` tag; DodgeCooldown removed — dodge is
+  // the dodge_roll action now.)
   BlockHeld,
-  DodgeCooldown,
   // Poise (T-197) — staggering resource. Server-only; the client renders
   // stagger via CSM reaction-layer animation, not a poise bar.
   Poise,

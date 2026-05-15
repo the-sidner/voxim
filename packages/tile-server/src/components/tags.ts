@@ -45,9 +45,24 @@ export const Blocking = defineComponent({
   default: (): Record<string, never> => ({}),
 });
 
+/**
+ * IFrame — installed by the `dodge_roll` action for its dash phase
+ * (`set_tag` on `dash:enter`, `clear_tag` on `dash:exit`). Presence means
+ * the entity is invulnerable; `health_hit_handler` short-circuits when it
+ * sees this tag. Replaces the retired `IFrameActive` countdown component —
+ * the dash phase's `ticks` *is* the i-frame window now (T-229).
+ */
+export const IFrame = defineComponent({
+  name: "iframe" as const,
+  networked: false,
+  codec: emptyCodec,
+  default: (): Record<string, never> => ({}),
+});
+
 /** Closed tag vocabulary the set_tag / clear_tag resolvers dispatch through. */
 // deno-lint-ignore no-explicit-any
 export const TAG_COMPONENTS: Readonly<Record<string, ComponentDef<any>>> = {
   crouched: Crouched,
   blocking: Blocking,
+  iframe: IFrame,
 };

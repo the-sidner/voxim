@@ -7,11 +7,10 @@ import { Health, Stamina } from "../components/game.ts";
 import {
   Staggered,
   CounterReady,
-  IFrameActive,
   BlockHeld,
   Poise,
 } from "../components/combat.ts";
-import { Blocking } from "../components/tags.ts";
+import { Blocking, IFrame } from "../components/tags.ts";
 import { PendingReaction } from "../components/action.ts";
 import { Equipment } from "../components/equipment.ts";
 import { QualityStamped } from "../components/instance.ts";
@@ -65,7 +64,7 @@ export class HealthHitHandler implements HitHandler {
     const dodgeCfg = gameCfg.dodge;
 
     // iFrame check — target is momentarily invulnerable
-    if (world.has(ctx.targetId, IFrameActive)) return;
+    if (world.has(ctx.targetId, IFrame)) return;
 
     // ── Block / parry ─────────────────────────────────────────────────────────
     // Block status comes from the lag-compensated CSM combat node — what mode

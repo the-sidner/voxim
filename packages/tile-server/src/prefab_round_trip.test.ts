@@ -115,17 +115,20 @@ Deno.test("Swingable — schema/codec agreement", () => {
   // The codec always writes both chargeMin/chargeMax; on decode they come
   // back as concrete numbers. Author canonical (already-defaulted) shapes
   // here so the round-trip equality holds.
+  // Codec round-trips { chain, heavyChargeMs, damage? }. `swingActionId`
+  // is not on the wire (server-only authoring field), so it isn't part of
+  // the round-trip shapes here.
   roundTrip(Swingable, [
-    { actions: [{ actionId: "slash",        chargeMin: 0,   chargeMax: 65535 }] },
-    { actions: [{ actionId: "spear_thrust", chargeMin: 0,   chargeMax: 65535 }] },
-    { actions: [
-      { actionId: "slash",    chargeMin: 0,   chargeMax: 200 },
-      { actionId: "overhead", chargeMin: 200, chargeMax: 65535 },
-    ] },
+    { chain: [{ light: "swing_light", heavy: "swing_heavy" }], heavyChargeMs: 250 },
+    { chain: [{ light: "swing_thrust", heavy: "swing_heavy" }], heavyChargeMs: 250 },
+    { chain: [
+      { light: "swing_light",  heavy: "swing_heavy" },
+      { light: "swing_medium", heavy: "swing_spin"  },
+    ], heavyChargeMs: 300 },
     // damage: present round-trips as a number
-    { actions: [{ actionId: "slash", chargeMin: 0, chargeMax: 65535 }], damage: 12 },
+    { chain: [{ light: "swing_light", heavy: "swing_heavy" }], heavyChargeMs: 250, damage: 12 },
     // damage: absent round-trips as absent (undefined ≠ explicit 0)
-    { actions: [{ actionId: "slash", chargeMin: 0, chargeMax: 65535 }] },
+    { chain: [{ light: "swing_light", heavy: "swing_heavy" }], heavyChargeMs: 250 },
   ], "Swingable");
 });
 

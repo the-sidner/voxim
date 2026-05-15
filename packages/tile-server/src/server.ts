@@ -50,7 +50,7 @@ import { PhysicsSystem } from "./systems/physics.ts";
 import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
-import { DodgeSystem } from "./systems/dodge.ts";
+import { CombatTimersSystem } from "./systems/combat_timers.ts";
 import { HungerSystem } from "./systems/hunger.ts";
 import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
@@ -58,6 +58,9 @@ import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolv
 import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver } from "./actions/intent.ts";
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
+import { dodgeImpulseResolver } from "./actions/resolvers/movement.ts";
+import { notStaggeredGate, notExhaustedGate } from "./actions/resolvers/gates.ts";
+import { StaminaCostHandler } from "./actions/cost.ts";
 import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
@@ -394,9 +397,12 @@ export class TileServer {
     // here as further layers migrate. No cost handler yet (both slots
     // are free).
     const actionGates = newGateRegistry();
+    actionGates.register(notStaggeredGate);
+    actionGates.register(notExhaustedGate);
     const actionEffects = newEffectRegistry();
     actionEffects.register(setTagResolver);
     actionEffects.register(clearTagResolver);
+    actionEffects.register(dodgeImpulseResolver);
     const actionDispatcher = new ActionDispatcher(
       content, actionGates, actionEffects,
       new CompositeIntentResolver([
@@ -405,6 +411,7 @@ export class TileServer {
         new PrimaryIntentResolver(content),
         ReactionIntentResolver,
       ]),
+      StaminaCostHandler,
     );
     skill.registerSubscribers(this.eventBus, this.world);
 
@@ -484,7 +491,7 @@ export class TileServer {
       // ActionDispatcher advances every actor's slots (posture, locomotion,
       // primary, reaction) from intent + events. The CSM is gone (T-228).
       actionDispatcher,
-      new DodgeSystem(content),
+      new CombatTimersSystem(),
       skill,
       new ProjectileSystem(content, hitHandlers),
       new ItemPhysicsSystem(content),

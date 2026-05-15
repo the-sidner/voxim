@@ -1,0 +1,22 @@
+{
+  "id": "dodge_roll",
+  "kind": "active",
+  "slot": "locomotion",
+  "phases": { "dash": { "ticks": 5 } },
+  "cancel": { "dash": { "into": [] } },
+  "movement": { "dash": "locked" },
+  "costs": { "stamina": 15 },
+  "priority": 6,
+  "preconditions": [
+    { "gate": "not_staggered" },
+    { "gate": "not_exhausted" }
+  ],
+  "effects": [
+    { "phase": "dash:enter", "kind": "dodge_impulse" },
+    { "phase": "dash:enter", "kind": "set_tag",   "params": { "tag": "iframe" } },
+    { "phase": "dash:exit",  "kind": "clear_tag", "params": { "tag": "iframe" } }
+  ],
+  "animation": {
+    "dash": { "clipId": "$sidestep", "loop": false }
+  }
+}

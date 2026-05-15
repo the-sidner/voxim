@@ -1,9 +1,9 @@
 /**
  * Combat / action helpers shared across systems.
  *
- * Factored out because the same arithmetic was repeated in 4+ places:
- *   - ActionSystem, SkillSystem, DodgeSystem: stamina deduction + exhausted flag
- *   - ActionSystem, SkillSystem, DodgeSystem, StaminaSystem: cooldown decrement
+ * Shared stamina arithmetic. Used by the action runtime's StaminaCostHandler
+ * (action `costs.stamina`) and SkillSystem; StaminaSystem owns regen + the
+ * exhausted flag.
  *
  * These helpers only do arithmetic — they never publish events. Callers stay in
  * charge of logging / event emission.

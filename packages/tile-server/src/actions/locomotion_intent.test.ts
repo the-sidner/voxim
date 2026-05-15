@@ -79,9 +79,9 @@ Deno.test("jump beats velocity; requires steady + !airborne", () => {
 });
 
 Deno.test("dodge has top priority but needs the settle guard (ticks > 1)", () => {
-  assertEquals(want({ cur: "idle", ticks: 5, dodge: true, jump: true }), "sidestep");
-  assertEquals(want({ cur: "idle", ticks: 1, dodge: true }), "idle"); // not settled → no sidestep
-  assertEquals(want({ cur: "sidestep", dodge: true }), null); // mid-sidestep: leave it
+  assertEquals(want({ cur: "idle", ticks: 5, dodge: true, jump: true }), "dodge_roll");
+  assertEquals(want({ cur: "idle", ticks: 1, dodge: true }), "idle"); // not settled → no dodge
+  assertEquals(want({ cur: "dodge_roll", dodge: true }), null); // mid-dodge: leave it
 });
 
 Deno.test("jump → airborne mid-action; airborne → landing on touchdown", () => {
