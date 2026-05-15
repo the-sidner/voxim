@@ -2275,9 +2275,16 @@ Migration phases (each its own ticket; each an atomic commit):
     the CSM right_hand node out of StateHistoryBuffer, and
     health_hit_handler reads SwingContext.pendingSkillVerb directly,
     so retiring those requires StateHistoryBuffer to snapshot
-    ActiveActions + hit-handler rewiring. Land behind a combat
-    record/replay parity harness (first c3 step). See
-    ACTION_PRIMITIVE_PLAN.md T-227 for the full coupling map.
+    ActiveActions + hit-handler rewiring. PIVOT (user directive):
+    structure over parity — no harness; aggressive rebuild, accept
+    retuning/maneuver-breakage (maneuvers rebuilt as actions in T-228).
+    Landed: c1 inert library, c2 serverTick groundwork, c3a
+    weapon_trace+projectile_spawn resolvers (structural port, type-
+    clean, registered inert). Next = the flip (one atomic chunk):
+    PrimaryIntentResolver + block action + delete ActionSystem/
+    SwingContext/SwingChain/ActionImpulse + CSM right_hand/left_hand +
+    hit-handler rewire + AnimationSystem primary-slot projection. See
+    ACTION_PRIMITIVE_PLAN.md T-227 for the full map.
   - T-228 — Maneuvers absorbed as multi-effect actions; CSM fully
     retired (StateMachineDef, compiler, humanoid_default.json deleted)
   - T-229 — Migrate dodge (delete DodgeSystem); first cross-action

@@ -489,6 +489,36 @@ This is the foundation phase. The substrate is exercised by the smallest meaning
 > — built as the first c3 step. Recorded so the next session executes
 > with this map rather than rediscovering it.
 
+> **PIVOT (user directive): structure over parity.** "Don't mind
+> dataloss, we can redo that — it's about finding the structure now."
+> No combat record/replay harness. The coupling map above still holds,
+> but the resolution is now *aggressive rebuild + accept retuning*, not
+> byte-faithful preservation: block/parry lag-comp precision, exact
+> swing feel, and maneuvers may regress and get re-tuned/rebuilt later.
+> Maneuvers break in T-227 and are rebuilt as actions in T-228
+> (acceptable). This matches CLAUDE.md (saves/wire formats may break).
+>
+> **Landed so far:** c1 inert swing library; c2 groundwork
+> (`ResolveContext.serverTick`); **c3a — `weapon_trace` +
+> `projectile_spawn` resolvers** (structural port of
+> `resolveHits`/`spawnProjectile`/`computeBladeWorld`; rewind+dedup in
+> `state.scratch`; strike verb via `HitContext.skillVerb`, decoupled
+> from `SwingContext`). Type-clean, registered via barrel, not yet
+> wired live.
+>
+> **The flip (next, one atomic chunk — irreducible, the deletion can't
+> be partial):** `PrimaryIntentResolver` (ACTION_USE_SKILL → the
+> equipped weapon's swing action; ACTION_BLOCK → a held `block`
+> action setting a `Blocking` tag); weapon declares its swing action
+> id; wire `CompositeIntentResolver([Posture, Locomotion, Primary])`;
+> **delete** `ActionSystem` + `SwingContext` + `SwingChain` +
+> `ActionImpulse` + CSM `right_hand`/`left_hand` layers; stub the
+> maneuver path; rewire `health_hit_handler` block detection onto the
+> `Blocking` tag + `StrikeLanded` onto `ctx.skillVerb`; AnimationSystem
+> projects the primary slot for the upper body (the locomotion
+> projection pattern, reused). No parity gate — boots, swings connect,
+> blocks register; feel retuned afterward.
+
 **Goal:** Replace the `right_hand` CSM layer + `ActionSystem` + `SwingContext` + `SwingChain` with the action runtime. Universal swing actions; weapons reference action ids per chain step.
 
 **What lands:**
