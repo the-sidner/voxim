@@ -15,8 +15,8 @@
  * PlacementSystem spawns them via spawnPrefab and patches in the cell
  * coordinates once the placement is validated.
  */
-import type { World, EntityId, ComponentDef } from "@voxim/engine";
-import { newEntityId } from "@voxim/engine";
+import type { World, EntityId, ComponentDef, PrefabSpawnContext } from "@voxim/engine";
+import { newEntityId, spawnPrefab as engineSpawnPrefab } from "@voxim/engine";
 import {
   Position,
   Velocity,
@@ -353,73 +353,58 @@ export function spawnPrefab(
   prefabId: string,
   overrides: SpawnPrefabOverrides = {},
 ): EntityId {
-  const prefab = content.prefabs.get(prefabId);
-  if (!prefab) throw new Error(`spawnPrefab: unknown prefab '${prefabId}'`);
-  if (prefab.id.startsWith("_")) {
-    throw new Error(`spawnPrefab: '${prefab.id}' is abstract and cannot be spawned directly`);
-  }
+  // The generic spawn walk lives in @voxim/engine (T-216). Tile-server
+  // binds the concretes the dependency-free engine can't see: prefab
+  // lookup, component-name resolution, the compound installers (content
+  // bound in), and the placement/visual-shell/anim/slots/stats preamble.
+  const ctx: PrefabSpawnContext<SpawnPrefabOverrides> = {
+    getPrefab: (pid) => content.prefabs.get(pid),
+    resolveComponent: (name) => DEF_BY_NAME.get(name),
+    compoundInstaller: (name) => {
+      const inst = COMPOUND_INSTALLERS.get(name);
+      if (!inst) return undefined;
+      return (w, id, prefab, data, ov) => inst(w, content, id, prefab as Prefab, data, ov);
+    },
+    preInstall: (w, id, prefabLike, ov) => {
+      const prefab = prefabLike as Prefab;
+      const x = ov.x ?? 256;
+      const y = ov.y ?? 256;
+      const z = ov.z ?? 4.0;
+      // Default seed derives from the entity UUID — different but
+      // deterministic body per spawn (T-190 morph sampling). Player
+      // spawns pass heritage-derived seeds for dynasty consistency.
+      const seed = ov.seed ?? hash32(id);
 
-  const id = overrides.id ?? newEntityId();
-  const x = overrides.x ?? 256;
-  const y = overrides.y ?? 256;
-  const z = overrides.z ?? 4.0;
-  // Default seed derives from the entity UUID — gives every spawn a
-  // different but deterministic body (per T-190 morph sampling). Caller
-  // can override (player spawns pass heritage-derived seeds so a dynasty
-  // looks consistent across deaths).
-  const seed = overrides.seed ?? hash32(id);
+      w.write(id, Position, { x, y, z });
+      if (ov.facing !== undefined) {
+        w.write(id, Facing, { angle: ov.facing });
+      }
+      installVisualShell(w, content, id, prefab, seed);
 
-  world.create(id);
-  world.write(id, Position, { x, y, z });
-  if (overrides.facing !== undefined) {
-    world.write(id, Facing, { angle: overrides.facing });
-  }
-  installVisualShell(world, content, id, prefab, seed);
+      // Per-prefab animation slot map — copied onto the entity so
+      // AnimationSystem picks clips per-prefab without re-walking the
+      // prefab table. Absent → slot name falls through as the clip id.
+      if (prefab.animationSlots && Object.keys(prefab.animationSlots).length > 0) {
+        w.write(id, AnimationSlots, { slots: { ...prefab.animationSlots } });
+      }
 
-  // Per-prefab animation slot map — copied onto the entity so AnimationSystem
-  // can pick clips per-prefab without walking back through the prefab table.
-  // Only written when the prefab declares slots; absence is the back-compat
-  // path where AnimationSystem falls back to the slot name as the clip id.
-  if (prefab.animationSlots && Object.keys(prefab.animationSlots).length > 0) {
-    world.write(id, AnimationSlots, { slots: { ...prefab.animationSlots } });
-  }
+      // Action runtime (T-226): actors declaring slots get the declared
+      // set + an empty ActiveActions; the dispatcher seeds each ambient
+      // slot on the first tick from the IntentResolver.
+      if (prefab.actorSlots && prefab.actorSlots.length > 0) {
+        w.write(id, ActorSlots, { slots: [...prefab.actorSlots] });
+        w.write(id, ActiveActions, { states: {} });
+      }
 
-  // (T-228: the CSM is gone — behavior is the action dispatcher over
-  // ActorSlots/ActiveActions, installed above. No per-actor FSM state.)
+      // Raw-material stats copied onto the entity so recipes / Stats UI
+      // read them uniformly regardless of gathered-vs-crafted origin.
+      if (prefab.stats !== undefined) {
+        w.write(id, Stats, { ...prefab.stats });
+      }
+    },
+  };
 
-  // Action runtime (T-226): actors declaring slots get the declared set +
-  // an empty ActiveActions map. The ActionDispatcher seeds each ambient
-  // slot on the first tick from the IntentResolver (posture → upright),
-  // so no per-slot seeding is needed here.
-  if (prefab.actorSlots && prefab.actorSlots.length > 0) {
-    world.write(id, ActorSlots, { slots: [...prefab.actorSlots] });
-    world.write(id, ActiveActions, { states: {} });
-  }
-
-  // Raw-material stats live on the prefab and are copied onto the entity at
-  // spawn so subsequent recipes (and the future Stats UI) read them uniformly
-  // — same component shape regardless of whether the item was gathered or
-  // crafted. Crafted items get their stats written by the crafting system at
-  // recipe completion (T-124).
-  if (prefab.stats !== undefined) {
-    world.write(id, Stats, { ...prefab.stats });
-  }
-
-  for (const [name, data] of Object.entries(prefab.components)) {
-    const compound = COMPOUND_INSTALLERS.get(name);
-    if (compound) {
-      compound(world, content, id, prefab, data, overrides);
-      continue;
-    }
-    const def = DEF_BY_NAME.get(name);
-    if (!def) {
-      throw new Error(`spawnPrefab '${prefab.id}': unknown component '${name}'`);
-    }
-    const merged = { ...def.default(), ...(data as Record<string, unknown>) };
-    world.write(id, def, merged);
-  }
-
-  return id;
+  return engineSpawnPrefab(world, ctx, prefabId, overrides);
 }
 
 // ---- ground-stack drops --------------------------------------------------
