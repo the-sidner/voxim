@@ -6,7 +6,6 @@ import { InputState, Velocity, Stamina } from "../components/game.ts";
 import {
   Staggered, IFrameActive, BlockHeld, DodgeCooldown, Sidestep,
 } from "../components/combat.ts";
-import { Maneuver } from "../components/maneuver.ts";
 import { deductStamina } from "../combat/helpers.ts";
 import { createLogger } from "../logger.ts";
 
@@ -76,7 +75,6 @@ export class DodgeSystem implements System {
       // double-handling (and prevents dodging out of a "committed" move).
       const canDodge = !willStillBeStaggered
                     && !willStillBeOnCooldown
-                    && !world.has(entityId, Maneuver)
                     && hasAction(inputState.actions, ACTION_DODGE);
 
       if (!canDodge) continue;

@@ -45,7 +45,6 @@ import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
 import { Poise } from "./components/combat.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
-import { ManeuverLoadout } from "./components/maneuver_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { Stats } from "./components/instance.ts";
@@ -141,18 +140,9 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
     FogState,
   );
 
-  // Default maneuver loadout demoing the four authored maneuver shapes:
-  //   1. quick_stab    — fast poke, low stamina, interruptible
-  //   2. kick_combo    — committed two-window combo
-  //   3. leap_strike   — gap-closing dash + heavy hit
-  //   4. whirlwind     — wide-arc finisher, locked through to the recovery
-  // Other authored maneuvers (double_strike, shield_bash, prayer) exist as
-  // content but aren't bound by default. Future inventory-UI work lets the
-  // player rebind slots; for now everyone spawns with this set so the
-  // maneuver pipeline can be exercised across input → motion → trail.
-  world.write(id, ManeuverLoadout, {
-    slots: ["quick_stab", "kick_combo", "leap_strike", "whirlwind"],
-  });
+  // (T-228: the maneuver loadout/runtime was removed — maneuvers are
+  // rebuilt as multi-effect actions; skill-slot → action binding returns
+  // with the skill-loadout consolidation.)
 };
 
 /** NPC: NpcTemplate-driven stats + NpcTag + survival defaults. */

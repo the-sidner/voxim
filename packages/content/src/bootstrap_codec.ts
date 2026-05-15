@@ -28,7 +28,7 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
-  StateMachineDef, ManeuverDef, BuffDef,
+  StateMachineDef, BuffDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
@@ -53,7 +53,6 @@ interface ContentBootstrapJson {
   verbs:               VerbDef[];
   conceptVerbEntries:  ConceptVerbEntry[];
   stateMachines:       StateMachineDef[];
-  maneuvers:           ManeuverDef[];
   buffs:               BuffDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
@@ -125,7 +124,6 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     verbs:               [...service.verbs.values()],
     conceptVerbEntries:  [...service.getAllConceptVerbEntries()],
     stateMachines:       [...service.stateMachines.values()],
-    maneuvers:           [...service.maneuvers.values()],
     buffs:               [...service.buffs.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
@@ -206,9 +204,6 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const v of body.verbs)                store.registerVerbDef(v);
   for (const e of body.conceptVerbEntries)   store.registerConceptVerbEntry(e);
   for (const sm of body.stateMachines)       store.registerStateMachine(sm);
-  if (body.maneuvers) {
-    for (const m of body.maneuvers)          store.registerManeuver(m);
-  }
   if (body.buffs) {
     for (const b of body.buffs)              store.registerBuff(b);
   }

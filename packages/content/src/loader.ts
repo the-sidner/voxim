@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef, ManeuverDef, BuffDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef, BuffDef } from "./types.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
@@ -50,7 +50,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, actionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, poisRaw, stateMachinesRaw, maneuversRaw, buffsRaw, animLibraryArchetypes,
+    biomesRaw, zonesRaw, poisRaw, stateMachinesRaw, buffsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -68,7 +68,6 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "zones"),
     readJsonDir(dataDir, "pois").catch(() => []),
     readJsonDir(dataDir, "state_machines").catch(() => []),
-    readJsonDir(dataDir, "maneuvers").catch(() => []),
     readJsonDir(dataDir, "buffs").catch(() => []),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
@@ -163,10 +162,6 @@ async function loadContentStoreInternal(
 
   for (const raw of stateMachinesRaw as StateMachineDef[]) {
     store.registerStateMachine(raw);
-  }
-
-  for (const raw of maneuversRaw as ManeuverDef[]) {
-    store.registerManeuver(raw);
   }
 
   for (const raw of buffsRaw as BuffDef[]) {

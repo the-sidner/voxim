@@ -53,7 +53,6 @@ import type {
   ActionDef,
   VerbDef,
   StateMachineDef,
-  ManeuverDef,
   BuffDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
@@ -106,12 +105,6 @@ export interface ContentService {
    * gameplay systems also read CSM nodes for mode gating.
    */
   readonly stateMachines: ContentRegistryReadonly<StateMachineDef>;
-  /**
-   * Maneuvers keyed by id (T-185). Composable per-hand actions — see
-   * ManeuverDef. ActionSystem looks up by id when input dispatches a skill
-   * slot, ManeuverScheduler advances the timeline.
-   */
-  readonly maneuvers: ContentRegistryReadonly<ManeuverDef>;
   /**
    * Buffs keyed by id (T-196). Declarative status-effect definitions loaded
    * from `data/buffs/*.json`. `applyBuffById` in tile-server reads the def
@@ -236,10 +229,6 @@ export class StaticContentStore implements ContentService {
     kind: "stateMachine",
     idOf: (sm) => sm.id,
   });
-  public readonly maneuvers = new ContentRegistry<ManeuverDef>({
-    kind: "maneuver",
-    idOf: (m) => m.id,
-  });
   public readonly buffs = new ContentRegistry<BuffDef>({
     kind: "buff",
     idOf: (b) => b.id,
@@ -361,9 +350,6 @@ export class StaticContentStore implements ContentService {
     this.stateMachines.register(sm);
   }
 
-  registerManeuver(def: ManeuverDef): void {
-    this.maneuvers.register(def);
-  }
 
   registerBuff(def: BuffDef): void {
     this.buffs.register(def);

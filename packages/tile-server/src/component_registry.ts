@@ -45,8 +45,6 @@ import {
 } from "./components/combat.ts";
 import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
-import { Maneuver } from "./components/maneuver.ts";
-import { ManeuverLoadout } from "./components/maneuver_loadout.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
@@ -188,12 +186,6 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ...NETWORKED_DEFS,
   // ── Server-only defs (networked: false) ──────────────────────────────────
   Hitbox,
-  // Maneuver / ManeuverLoadout (T-185) — runtime payload kept as inert
-  // component defs so prefabs/npc templates referencing them still load.
-  // The maneuver runtime (ManeuverSchedulerSystem) was removed in T-227;
-  // maneuvers are rebuilt as multi-effect actions in T-228.
-  Maneuver,
-  ManeuverLoadout,
   // Combat counters — server-only because the client doesn't act on them.
   IFrameActive,
   BlockHeld,
