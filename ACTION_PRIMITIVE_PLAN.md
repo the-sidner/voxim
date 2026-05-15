@@ -391,16 +391,33 @@ Initial ActionDef type, loader, validator, bootstrap codec. Status: done. The sc
 >   `ActionDispatcher` wired into `server.ts` before the CSM. 3 parity
 >   tests incl. "humanoid_default compiles + scope-validates" (the
 >   boot-critical check). Commit: `<this commit>`.
-> - **T-226c — locomotion migration (NEXT).** The deferred half:
->   idle/walk/strafe as ambient locomotion-slot actions, jump as an
->   active action, airborne/landing as physics-driven actions; the
->   locomotion CSM layer deleted; AnimationSystem rewired to project the
->   lower-body layer from the locomotion slot; the crouch paramOverride
->   becomes an animation-side rule keyed on the `Crouched` tag (the
->   `posture` scope contributor is then deleted). `sidestep` is *not*
->   here — it migrates with dodge (T-229). Snapshot-determinism-gated;
->   the high-risk AnimationSystem surgery the substrate split was made to
->   isolate.
+> - **T-226c — locomotion migration (LANDED).** Three green
+>   sub-commits: (c1) `ActionAnimation` projection schema fields
+>   (clipId/crouchClipId/loop/speedScale/mask); (c2) the 9 locomotion
+>   action JSONs + `LocomotionIntentResolver` — a faithful port of the
+>   CSM layer's 13 transitions (priority order, from-state allow-lists,
+>   0.5-enter/0.2-exit velocity hysteresis, dodge settle guard,
+>   mid-action→duration-exit-to-idle), 10 FSM-port tests; (c3)
+>   `projectLocomotion` (AnimationSystem emits the lower-body layer from
+>   the locomotion slot, mirroring effectiveState+resolveSpeedScale+
+>   computeClipTime exactly; empty-slot→idle so no rest-pose flash), CSM
+>   locomotion layer deleted, `posture` scope contributor + posture.ts
+>   deleted (its only consumer was the now-gone locomotion
+>   paramOverrides — the Crouched tag is read directly by the
+>   projection; no lingering bridge), `CompositeIntentResolver([Posture,
+>   Locomotion])` wired, 8 projection-parity tests. `sidestep` migrated
+>   as a basic i-frame-cosmetic placeholder (a half-deleted CSM layer is
+>   not possible); its *proper* dodge semantics — cancel-into,
+>   real i-frames — come with dodge (T-229). Gameplay untouched
+>   (csm.locomotion had zero gameplay consumers — jump/dodge/airborne
+>   always read input+components directly). Bake byte-identical across
+>   all 11 atlas snapshots.
+>
+> **T-226 is fully landed.** The CSM is reduced to
+> right_hand/left_hand/reaction. Posture and locomotion are action
+> slots. The substrate is proven in production by two real migrations.
+> T-227 (universal swing library; delete ActionSystem + the CSM combat
+> layers) is next.
 >
 > The numbering does not shift: T-226 owns its sub-commits (a/b/c);
 > T-227+ keep their ids, so the sibling arcs T-238/T-239 don't collide.

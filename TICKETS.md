@@ -2246,12 +2246,24 @@ Migration phases (each its own ticket; each an atomic commit):
         paramOverrides rewritten csm.posture→posture.crouched;
         ActionDispatcher wired into server.ts. 3 parity tests incl.
         boot-critical CSM compile+scope-validate. Bake byte-identical.
-      - T-226c (next) — locomotion migration: idle/walk/strafe ambient
-        actions, jump active, airborne/landing physics-driven; CSM
-        locomotion layer deleted; AnimationSystem rewired; crouch
-        paramOverride → animation-side rule on Crouched tag (posture
-        contributor then deleted). sidestep migrates with dodge (T-229).
-        Snapshot-determinism-gated; the high-risk AnimationSystem surgery.
+      - T-226c (done) — locomotion migration in 3 green sub-commits:
+        c1 ActionAnimation projection schema (clipId/crouchClipId/loop/
+        speedScale/mask); c2 9 locomotion JSONs + LocomotionIntentResolver
+        (faithful 13-transition port: priority, from-state allow-lists,
+        0.5/0.2 hysteresis, dodge guard) + 10 FSM tests; c3
+        projectLocomotion (AnimationSystem emits lower-body from the
+        slot, mirrors effectiveState+resolveSpeedScale+computeClipTime;
+        empty→idle), CSM locomotion layer deleted, posture scope
+        contributor + posture.ts deleted (Crouched read directly by the
+        projection), CompositeIntentResolver([Posture,Locomotion]) wired,
+        8 projection-parity tests. sidestep is a cosmetic placeholder
+        until dodge (T-229) gives it proper semantics. Gameplay
+        untouched (zero csm.locomotion consumers). Bake byte-identical
+        across 11 atlas snapshots.
+
+  **T-226 fully landed.** CSM reduced to right_hand/left_hand/reaction;
+  posture + locomotion are action slots; substrate proven by two real
+  migrations. Next: T-227.
   - T-227 — Universal swing action library + chain refactor; delete
     ActionSystem + SwingContext + SwingChain; CSM right_hand +
     left_hand layers removed
