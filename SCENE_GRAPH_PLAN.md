@@ -350,7 +350,20 @@ Each phase is a shippable ticket. The snapshot-determinism invariant (T-214 esta
 
 **Acceptance:** every call site of the old `spawnPrefab` works identically. Snapshot determinism intact.
 
-### T-217 — `Prefab.children` field
+### T-217 — `Prefab.children` field — **LANDED**
+
+**Landed as designed.** `ChildPrefabRef {prefabId, local?: {x?,y?,z?,scale?}}`
+on `Prefab.children`; engine `spawnPrefab` recurses (spawn child via the same
+walk → `world.setParent(child, root)` → `ctx.placeChild(child, identity ∘
+local)`). A new optional `placeChild` ctx hook keeps placement service-owned
+(tile-server writes child `Position` from the local transform; **scale not yet
+folded into ModelRef — deferred until a consumer needs it**). Loader does a
+per-prefab structural check plus a post-registration cross-ref pass rejecting
+unknown / abstract (`_`-prefixed) child ids. Bootstrap needs no codec bump —
+prefabs ride the JSON blob, `children` with them. 3 engine subtree tests
+(two-children placement, arbitrary-depth recursion, unknown-id throw) + 96
+content/engine tests green; bake byte-identical (no real prefab declares
+`children` yet — pure substrate, T-218 is the first consumer).
 
 **Goal:** Prefabs can declare child prefabs; spawning a prefab with children creates a parent + subtree.
 

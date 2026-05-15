@@ -2190,7 +2190,14 @@ Migration phases (each its own ticket):
     resolveComponent/compoundInstaller/preInstall). tile-server
     spawnPrefab keeps its signature as a thin wrapper — call sites
     unchanged, behaviour identical. 70 tests green; bake byte-identical.
-  - T-217 — `Prefab.children` field
+  - T-217 — DONE. Prefab.children (ChildPrefabRef{prefabId, local?}) +
+    engine spawnPrefab subtree recursion (spawn child → setParent →
+    ctx.placeChild) + ChildSpawn structural type + placeChild ctx hook
+    (tile-server writes child Position from local; scale deferred). Loader
+    validates child shape per-prefab + a cross-ref pass rejecting
+    unknown/abstract child ids. 3 engine prefab tests + 96 content/engine
+    green; bake byte-identical (no prefab uses children yet). Bootstrap
+    rides the JSON blob — no codec bump.
   - T-218 — POI scene fragments as child prefabs (first end-to-end use)
   - T-219 — skeletal bones as scene-graph entities
   - T-220 — equipment attachment via scene-graph
