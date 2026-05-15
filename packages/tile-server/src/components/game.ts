@@ -12,19 +12,19 @@ import * as v from "valibot";
 import {
   positionCodec, velocityCodec, facingCodec,
   inputStateCodec, healthCodec, hungerCodec, thirstCodec, lifetimeCodec,
-  staminaCodec, modelRefCodec, animationStateCodec, nameCodec,
+  modelRefCodec, animationStateCodec, nameCodec,
 } from "@voxim/codecs";
 import type {
   PositionData, VelocityData, FacingData,
   InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
-  StaminaData, ModelRefData, AnimationStateData, NameData,
+  ModelRefData, AnimationStateData, NameData,
 } from "@voxim/codecs";
 
 // ---- re-exported shared types for convenience ----
 export type {
   PositionData, VelocityData, FacingData,
   InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
-  StaminaData, NameData,
+  NameData,
 };
 
 // Re-export content types that other files import from here
@@ -117,22 +117,8 @@ export const Thirst = defineComponent({
   default: (): ThirstData => ({ value: 0 }),
 });
 
-// ---- Stamina ---- 0 (exhausted) → max (full)
-
-const staminaSchema = v.object({
-  current: v.number(),
-  max: v.number(),
-  regenPerSecond: v.number(),
-  exhausted: v.boolean(),
-});
-
-export const Stamina = defineComponent({
-  name: "stamina" as const,
-  wireId: ComponentType.stamina,
-  codec: staminaCodec,
-  schema: staminaSchema,
-  default: (): StaminaData => ({ current: 100, max: 100, regenPerSecond: 8, exhausted: false }),
-});
+// (Stamina is a Resource now — components/resource.ts, data/resources/
+// stamina.json. Wire id 9 retired in @voxim/protocol; never reuse. T-238b.)
 
 // ---- Lifetime ---- remaining ticks; entity is destroyed when this reaches 0
 

@@ -12,7 +12,8 @@ import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
 import { ACTION_DODGE } from "@voxim/protocol";
 import { ActorSlots, ActiveActions } from "../components/action.ts";
-import { InputState, Velocity, Stamina, Facing } from "../components/game.ts";
+import { InputState, Velocity, Facing } from "../components/game.ts";
+import { Resource } from "../components/resource.ts";
 import { IFrame } from "../components/tags.ts";
 import { ActionDispatcher } from "./dispatcher.ts";
 import type { IntentResolver } from "./dispatcher.ts";
@@ -49,7 +50,7 @@ function dodger(world: World): string {
   });
   world.write(id, Facing, { angle: 0 });
   world.write(id, Velocity, { x: 0, y: 0, z: 0 });
-  world.write(id, Stamina, { current: 100, max: 100, regenPerSecond: 10, exhausted: false });
+  world.write(id, Resource, { values: { stamina: { value: 100, max: 100 } } });
   return id;
 }
 
@@ -67,7 +68,7 @@ Deno.test("dodge_roll: dash commits impulse + iframe + spends stamina", () => {
   const dodgeSpeed = content.getGameConfig().dodge.speed;
   assertEquals(world.get(id, Velocity), { x: dodgeSpeed, y: 0, z: 0 });
   assert(world.has(id, IFrame), "iframe tag present during dash");
-  assertEquals(world.get(id, Stamina)?.current, 85); // 100 − 15
+  assertEquals(world.get(id, Resource)?.values.stamina.value, 85); // 100 − 15
   assertEquals(world.get(id, ActiveActions)?.states["locomotion"]?.phase, "dash");
 
   // iframe stays installed for every tick of the 5-tick dash phase.
@@ -84,14 +85,14 @@ Deno.test("dodge_roll: dash commits impulse + iframe + spends stamina", () => {
   d.prepare(5);
   d.run(world, new EventBus(), 1 / 20);
   world.applyChangeset();
-  assertEquals(world.get(id, Stamina)?.current, 70); // restarted: −15 again
+  assertEquals(world.get(id, Resource)?.values.stamina.value, 70); // restarted: −15 again
   assertEquals(world.get(id, ActiveActions)?.states["locomotion"]?.ticksInPhase, 0);
 });
 
 Deno.test("dodge_roll: not_exhausted precondition blocks an exhausted actor", () => {
   const world = new World();
   const id = dodger(world);
-  world.write(id, Stamina, { current: 0, max: 100, regenPerSecond: 10, exhausted: true });
+  world.write(id, Resource, { values: { stamina: { value: 0, max: 100 } } });
   const d = wiredDispatcher(wantDodge);
 
   d.prepare(0);

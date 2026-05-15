@@ -11,13 +11,13 @@ import type { StrikeLandedPayload } from "@voxim/protocol";
 import type { ContentService, ConceptVerbEntry } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
-import { InputState, Health, Stamina, Position } from "../components/game.ts";
+import { InputState, Health, Position } from "../components/game.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { LoreLoadoutData } from "../components/lore_loadout.ts";
 import type { Registry } from "@voxim/engine";
 import type { EffectApplyHandler } from "../effects/effect_handler.ts";
 import type { DeathRequestPort } from "../events/death.ts";
-import { decrementCooldown, deductStamina } from "../combat/helpers.ts";
+import { decrementCooldown, spendStamina, staminaValue } from "../combat/helpers.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("SkillSystem");
@@ -86,10 +86,9 @@ export class SkillSystem implements System {
         const staminaCost = entry.staminaCostBase + f2.magnitude * entry.inwardScale;
         const healthCost = entry.healthCostBase;
 
-        const stamina = world.get(entityId, Stamina);
-        if (!deductStamina(world, entityId, stamina, staminaCost)) {
+        if (!spendStamina(world, entityId, staminaCost)) {
           log.debug("skill blocked: entity=%s slot=%d need=%.1f have=%.1f stamina",
-            entityId, slot, staminaCost, stamina?.current ?? 0);
+            entityId, slot, staminaCost, staminaValue(world, entityId));
           continue;
         }
 
@@ -154,8 +153,7 @@ export class SkillSystem implements System {
     if (!entry) return false;
 
     const staminaCost = entry.staminaCostBase + f2.magnitude * entry.inwardScale;
-    const stamina = world.get(casterId, Stamina);
-    if (!deductStamina(world, casterId, stamina, staminaCost)) return false;
+    if (!spendStamina(world, casterId, staminaCost)) return false;
 
     const healthCost = entry.healthCostBase;
     if (healthCost > 0) {

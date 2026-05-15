@@ -2432,7 +2432,15 @@ deleting the system it replaces.
   ResourceEffect registry (Registry<H> doctrine, resource-shaped context
   — honest refinement over "reuse the action ResolveContext") +
   modify_health effect. 5 unit tests + 178 green; inert; bake
-  byte-identical. See plan T-238a. Honest scope (mirrors T-231/T-235):
+  byte-identical. See plan T-238a.
+- **T-238b — DONE.** stamina.json (rate 8/s + equipment_stat +
+  corruption_penalty modifiers); player spawn seeds Resource.stamina
+  (NPC parity preserved); spend/staminaValue helpers replace
+  deductStamina across cost/skill/gates/hit-handler/debug; handoff
+  persists Resource. DELETED StaminaSystem, Stamina component,
+  staminaCodec/StaminaData, exhausted flag, wire id 9. corruption_penalty
+  is a documented T-238e bridge. Penalty math now multiplicative
+  (accepted retune). 2 new tests + 179 green; bake byte-identical. Honest scope (mirrors T-231/T-235):
 durability **excluded** (event-decremented, not a tick-rate scalar — a
 misfit); health passive-regen **not invented** (none exists; starvation/
 corruption damage become threshold effects on those resources); the

@@ -6,7 +6,7 @@
  * restores it as a new entity.
  *
  * Components persisted: Position, Velocity, Facing, Health, Hunger, Thirst,
- * Stamina, Inventory, Equipment, LoreLoadout, ActiveEffects, SpeedModifier,
+ * Resource (stamina/… T-238), Inventory, Equipment, LoreLoadout, ActiveEffects, SpeedModifier,
  * CorruptionExposure.
  *
  * Components NOT persisted: InputState (reset on connect), presence-as-flag
@@ -16,7 +16,8 @@
  * NpcTag (players aren't NPCs).
  */
 import type { World, EntityId } from "@voxim/engine";
-import { Position, Velocity, Facing, Health, Hunger, Thirst, Stamina } from "./components/game.ts";
+import { Position, Velocity, Facing, Health, Hunger, Thirst } from "./components/game.ts";
+import { Resource } from "./components/resource.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
@@ -43,7 +44,7 @@ interface SerializedComponents {
   health?: ReturnType<typeof Health.codec.decode> | null;
   hunger?: ReturnType<typeof Hunger.codec.decode> | null;
   thirst?: ReturnType<typeof Thirst.codec.decode> | null;
-  stamina?: ReturnType<typeof Stamina.codec.decode> | null;
+  resource?: ReturnType<typeof Resource.codec.decode> | null;
   inventory?: ReturnType<typeof Inventory.codec.decode> | null;
   equipment?: ReturnType<typeof Equipment.codec.decode> | null;
   loreLoadout?: ReturnType<typeof LoreLoadout.codec.decode> | null;
@@ -76,7 +77,7 @@ export function serializePlayer(
       health: world.get(playerId, Health) ?? null,
       hunger: world.get(playerId, Hunger) ?? null,
       thirst: world.get(playerId, Thirst) ?? null,
-      stamina: world.get(playerId, Stamina) ?? null,
+      resource: world.get(playerId, Resource) ?? null,
       inventory: world.get(playerId, Inventory) ?? null,
       equipment: world.get(playerId, Equipment) ?? null,
       loreLoadout: world.get(playerId, LoreLoadout) ?? null,
@@ -106,7 +107,7 @@ export function restorePlayer(world: World, payload: HandoffPayload): EntityId {
   if (c.health) world.write(id, Health, c.health);
   if (c.hunger) world.write(id, Hunger, c.hunger);
   if (c.thirst) world.write(id, Thirst, c.thirst);
-  if (c.stamina) world.write(id, Stamina, c.stamina);
+  if (c.resource) world.write(id, Resource, c.resource);
   if (c.inventory) world.write(id, Inventory, c.inventory);
   if (c.equipment) world.write(id, Equipment, c.equipment);
   if (c.loreLoadout) world.write(id, LoreLoadout, c.loreLoadout);

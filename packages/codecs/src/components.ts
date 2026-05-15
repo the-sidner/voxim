@@ -309,35 +309,9 @@ export const lifetimeCodec: Serialiser<LifetimeData> = buildCodec<LifetimeData>(
   ticks: { type: "i32" },
 });
 
-// ---- Stamina ----------------------------------------------------------------
-// { current: f32, max: f32, regenPerSecond: f32, exhausted: boolean }
-
-export interface StaminaData {
-  current: number;
-  max: number;
-  regenPerSecond: number;
-  exhausted: boolean;
-}
-
-export const staminaCodec: Serialiser<StaminaData> = {
-  encode(v: StaminaData): Uint8Array {
-    const w = new WireWriter();
-    w.writeF32(v.current);
-    w.writeF32(v.max);
-    w.writeF32(v.regenPerSecond);
-    w.writeU8(v.exhausted ? 1 : 0);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): StaminaData {
-    const r = new WireReader(bytes);
-    return {
-      current: r.readF32(),
-      max: r.readF32(),
-      regenPerSecond: r.readF32(),
-      exhausted: r.readU8() !== 0,
-    };
-  },
-};
+// (Stamina codec retired — stamina is a server-only `Resource` now
+// (tile-server/components/resource.ts). Wire id 9 retired in
+// @voxim/protocol; never reuse. T-238b.)
 
 // (Staggered codec retired in T-232 — stagger is a reaction action +
 // `staggered` tag now; the client renders it from the reaction-slot

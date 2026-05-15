@@ -9,7 +9,7 @@
 
 import type { GateHandler } from "../gate.ts";
 import { Staggered } from "../../components/tags.ts";
-import { Stamina } from "../../components/game.ts";
+import { staminaValue } from "../../combat/helpers.ts";
 
 /** Passes when the entity is NOT mid-stagger (stagger locks out actions). */
 export const notStaggeredGate: GateHandler = {
@@ -17,8 +17,8 @@ export const notStaggeredGate: GateHandler = {
   test: (ctx) => !ctx.world.has(ctx.entityId, Staggered),
 };
 
-/** Passes when the entity has stamina to spend (not in the exhausted state). */
+/** Passes when the entity has stamina left (value > 0; "exhausted" == ≤0). */
 export const notExhaustedGate: GateHandler = {
   id: "not_exhausted",
-  test: (ctx) => !(ctx.world.get(ctx.entityId, Stamina)?.exhausted ?? false),
+  test: (ctx) => staminaValue(ctx.world, ctx.entityId) > 0,
 };

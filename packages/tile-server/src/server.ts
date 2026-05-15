@@ -48,7 +48,8 @@ import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
 import { HungerSystem } from "./systems/hunger.ts";
-import { StaminaSystem } from "./systems/stamina.ts";
+import { equipmentStatModifier } from "./resources/modifiers/equipment_stat.ts";
+import { corruptionPenaltyModifier } from "./resources/modifiers/corruption_penalty.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver } from "./actions/index.ts";
 import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver, RequestedActionIntentResolver } from "./actions/intent.ts";
@@ -328,6 +329,8 @@ export class TileServer {
     const resourceEffects = newResourceEffectRegistry();
     resourceEffects.register(modifyHealthEffect);
     const resourceModifiers = newResourceModifierRegistry();
+    resourceModifiers.register(equipmentStatModifier);
+    resourceModifiers.register(corruptionPenaltyModifier);
     for (const entry of content.getAllConceptVerbEntries()) {
       if (!effects.apply.has(entry.effectStat)) {
         throw new Error(
@@ -489,7 +492,6 @@ export class TileServer {
       new StaleSlotCleanupSystem(),
       new NpcAiSystem(content, jobs, behaviorTrees),
       new HungerSystem(content, deathSystem),
-      new StaminaSystem(content),
       new LifetimeSystem(),
       new EquipmentSystem(content),
       new PlacementSystem(content),

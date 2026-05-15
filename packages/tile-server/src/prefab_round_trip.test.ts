@@ -25,7 +25,6 @@ import type { ComponentDef } from "@voxim/engine";
 import {
   Health,
   Hunger,
-  Stamina,
   Thirst,
 } from "./components/game.ts";
 import {
@@ -94,13 +93,6 @@ Deno.test("Thirst — schema/codec agreement", () => {
   ], "Thirst");
 });
 
-Deno.test("Stamina — schema/codec agreement", () => {
-  roundTrip(Stamina, [
-    { current: 100, max: 100, regenPerSecond: 8, exhausted: false },
-    { current: 0, max: 100, regenPerSecond: 8, exhausted: true },
-    { current: 42.25, max: 200, regenPerSecond: 12.5, exhausted: false },
-  ], "Stamina");
-});
 
 Deno.test("Equippable — schema/codec agreement", () => {
   roundTrip(Equippable, [
@@ -255,16 +247,5 @@ Deno.test("schema rejects malformed data", () => {
   }
   if (v.is(Health.schema, { current: 100 })) {
     throw new Error("Health schema should reject missing max");
-  }
-  if (!Stamina.schema) throw new Error("Stamina.schema missing");
-  if (
-    v.is(Stamina.schema, {
-      current: 100,
-      max: 100,
-      regenPerSecond: 8,
-      exhausted: "yes",
-    })
-  ) {
-    throw new Error("Stamina schema should reject non-boolean exhausted");
   }
 });

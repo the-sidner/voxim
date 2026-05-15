@@ -13,7 +13,6 @@ export {
   Health,
   Hunger,
   Thirst,
-  Stamina,
   Lifetime,
 } from "./src/components/game.ts";
 export type {
@@ -24,7 +23,6 @@ export type {
   HealthData,
   HungerData,
   ThirstData,
-  StaminaData,
   LifetimeData,
 } from "./src/components/game.ts";
 export {

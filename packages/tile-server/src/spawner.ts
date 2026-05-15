@@ -25,11 +25,11 @@ import {
   Health,
   Hunger,
   Thirst,
-  Stamina,
   ModelRef,
   AnimationState,
   Name,
 } from "./components/game.ts";
+import { Resource } from "./components/resource.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
@@ -133,10 +133,22 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   writeDefaults(
     world, id,
-    Hunger, Thirst, Stamina, CorruptionExposure,
+    Hunger, Thirst, CorruptionExposure,
     LoreLoadout, ActiveEffects, CraftingQueue, AnimationState,
     FogState,
   );
+
+  // Stamina is a Resource now (T-238b) — seeded full at spawn. Only the
+  // player carries it (NPCs never had a Stamina component; preserving
+  // that — they still can't pay stamina costs). Other resources
+  // (hunger/thirst/poise) merge into this same component in later phases.
+  const maxStamina = content.getGameConfig().player.maxStamina;
+  world.write(id, Resource, {
+    values: {
+      ...(world.get(id, Resource)?.values ?? {}),
+      stamina: { value: maxStamina, max: maxStamina },
+    },
+  });
 
   // (T-228: the maneuver loadout/runtime was removed — maneuvers are
   // rebuilt as multi-effect actions; skill-slot → action binding returns

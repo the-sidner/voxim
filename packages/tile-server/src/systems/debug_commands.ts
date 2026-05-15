@@ -20,7 +20,8 @@ import { CommandType } from "@voxim/protocol";
 import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { CommandPayload } from "@voxim/protocol";
-import { Position, Health, Stamina } from "../components/game.ts";
+import { Position, Health } from "../components/game.ts";
+import { Resource } from "../components/resource.ts";
 import { Inventory } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
 import { WorldClock } from "../components/world.ts";
@@ -133,10 +134,13 @@ export class DebugCommandSystem implements System {
         break;
       }
       case "stamina": {
-        const s = world.get(entityId, Stamina);
-        if (!s) return;
-        const v = Math.max(0, Math.min(value, s.max));
-        world.set(entityId, Stamina, { ...s, current: v, exhausted: v <= 0 });
+        const res = world.get(entityId, Resource);
+        const st = res?.values.stamina;
+        if (!res || !st) return;
+        const v = Math.max(0, Math.min(value, st.max));
+        world.set(entityId, Resource, {
+          values: { ...res.values, stamina: { value: v, max: st.max } },
+        });
         log.info("debug_set_stat: entity=%s stamina=%.1f", entityId, v);
         break;
       }

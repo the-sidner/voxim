@@ -1,16 +1,14 @@
 /**
  * Combat / action helpers shared across systems.
  *
- * Shared stamina arithmetic. Used by the action runtime's StaminaCostHandler
- * (action `costs.stamina`) and SkillSystem; StaminaSystem owns regen + the
- * exhausted flag.
+ * Stamina is a `Resource` (T-238b) — `Resource.values.stamina`. These
+ * helpers read/spend it; `ResourceSystem` owns regen + clamping. There is
+ * no `exhausted` flag any more — "exhausted" is exactly `value <= 0`.
  *
- * These helpers only do arithmetic — they never publish events. Callers stay in
- * charge of logging / event emission.
+ * Arithmetic only — never publish events. Callers own logging / events.
  */
 import type { World, EntityId } from "@voxim/engine";
-import { Stamina } from "../components/game.ts";
-import type { StaminaData } from "../components/game.ts";
+import { Resource } from "../components/resource.ts";
 
 /**
  * Ticks a cooldown down by one, clamped at zero. Use inside a system's tick
@@ -20,26 +18,23 @@ export function decrementCooldown(value: number): number {
   return value > 0 ? value - 1 : 0;
 }
 
+/** Current stamina value (0 if the entity carries no stamina resource). */
+export function staminaValue(world: World, entityId: EntityId): number {
+  return world.get(entityId, Resource)?.values.stamina?.value ?? 0;
+}
+
 /**
- * Deduct stamina cost via a deferred write, recomputing the `exhausted` flag.
- *
- * Returns true if the cost was paid (stamina was available), false otherwise.
- * A cost of 0 is always paid. Missing Stamina component returns false unless
- * the cost is zero.
- *
- * The current stamina value is threaded as a parameter so callers that already
- * read it (most do — they gate on it first) don't pay for the read twice.
+ * Spend `cost` stamina via a deferred write. Returns true if it was paid
+ * (enough available), false otherwise. Cost ≤ 0 always pays. Missing
+ * stamina resource fails unless cost is zero.
  */
-export function deductStamina(
-  world: World,
-  entityId: EntityId,
-  stamina: StaminaData | null,
-  cost: number,
-): boolean {
+export function spendStamina(world: World, entityId: EntityId, cost: number): boolean {
   if (cost <= 0) return true;
-  if (!stamina) return false;
-  if (stamina.current < cost) return false;
-  const next = Math.max(0, stamina.current - cost);
-  world.set(entityId, Stamina, { ...stamina, current: next, exhausted: next <= 0 });
+  const res = world.get(entityId, Resource);
+  const st = res?.values.stamina;
+  if (!res || !st || st.value < cost) return false;
+  world.set(entityId, Resource, {
+    values: { ...res.values, stamina: { value: Math.max(0, st.value - cost), max: st.max } },
+  });
   return true;
 }

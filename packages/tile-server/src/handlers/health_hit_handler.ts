@@ -3,7 +3,8 @@ import { TileEvents } from "@voxim/protocol";
 import type { ContentService } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
-import { Health, Stamina } from "../components/game.ts";
+import { Health } from "../components/game.ts";
+import { staminaValue } from "../combat/helpers.ts";
 import {
   CounterReady,
   Poise,
@@ -69,8 +70,7 @@ export class HealthHitHandler implements HitHandler {
     // tick; lag-comp rewind precision is accepted retune per the
     // structure-over-parity pivot). The damage handler reads the tag rather
     // than re-deriving block from raw input bits.
-    const defenderStamina = world.get(ctx.targetId, Stamina);
-    const stamGated = defenderStamina?.exhausted ?? false;
+    const stamGated = staminaValue(world, ctx.targetId) <= 0;
     const incomingAngle = Math.atan2(ctx.targetY - ctx.attackerY, ctx.targetX - ctx.attackerX);
     const isBlocking = !stamGated &&
       world.has(ctx.targetId, Blocking) &&

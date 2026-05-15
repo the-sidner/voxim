@@ -16,7 +16,7 @@ export const ComponentType = {
   health:             6,
   hunger:             7,
   thirst:             8,
-  stamina:            9,
+  // 9 is retired (was stamina) — stamina is a server-only Resource now (T-238b); do not reuse
   // 10 is retired (was attackCooldown) — do not reuse
   // 11 is retired (was combatState) — split into staggered (36) + counterReady (37)
   //    plus the server-only iFrameActive / blockHeld / dodgeCooldown

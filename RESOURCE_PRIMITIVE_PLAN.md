@@ -139,10 +139,24 @@ multi-slot shape.
   modifier chain, sustained-vs-cross, unknown-id tolerance) + 178
   content/tile-server/codecs/engine green; substrate fully inert (nothing
   installs `Resource`), bake byte-identical.
-- **T-238b — stamina.** `data/resources/stamina.json`; spawn installs the
-  resource; `StaminaCostHandler` / `health_hit_handler` / `not_exhausted`
-  read `Resource`; **delete `StaminaSystem` + the `exhausted` field +
-  `Stamina` component**. dodge/consume tests adjust to the resource shape.
+- **T-238b — stamina. LANDED.** `data/resources/stamina.json` (rate 8/s,
+  `equipment_stat` + `corruption_penalty` modifiers); player spawn seeds
+  `Resource.values.stamina` (NPCs unchanged — they never had Stamina, so
+  still can't pay stamina costs: strict parity). `staminaValue`/
+  `spendStamina` helpers replace `deductStamina`; `StaminaCostHandler`,
+  `SkillSystem`, `not_exhausted`, `health_hit_handler` stam-gate, and the
+  debug cheat all go through the Resource. handoff persists `Resource`
+  (covers stamina now, hunger/thirst/poise automatically as they migrate).
+  **Deleted: `StaminaSystem`, the `Stamina` component, `staminaCodec`/
+  `StaminaData`, the `exhausted` flag, wire id 9 (retired).** Two new
+  modifier kinds shipped: `equipment_stat` (armor penalty) and
+  `corruption_penalty` (a documented **bridge** reading the still-extant
+  `CorruptionExposure` component — becomes a generic `resource_gate` at
+  T-238e, a one-file swap since it is a registered closed kind). Penalty
+  composition is now multiplicative `(1-a)(1-c)` vs the old additive-capped
+  `1-(a+c)` — accepted retune, noted. dodge_roll + prefab_round_trip tests
+  adjusted; 2 new stamina-regen integration tests; 179 green; bake
+  byte-identical.
 - **T-238c — hunger + thirst.** `data/resources/{hunger,thirst}.json` with
   critical (cross→`emit_event`) + starvation (sustained→`modify_health`)
   thresholds; **delete `HungerSystem`**; `consume_item` drains the

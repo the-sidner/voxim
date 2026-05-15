@@ -32,7 +32,6 @@ import {
   ModelRef,
   Name,
   Position,
-  Stamina,
   Thirst,
   Velocity,
 } from "./components/game.ts";
@@ -117,7 +116,7 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Health,
   Hunger,
   Thirst,
-  Stamina,
+  // 9 (stamina) retired — stamina is a server-only Resource now (T-238b)
   // 10 (attackCooldown) retired
   // 11 (combatState) retired — only CounterReady (below) survives from the
   //    split. (T-229: IFrameActive → `iframe` tag, DodgeCooldown removed.

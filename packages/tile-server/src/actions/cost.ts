@@ -12,19 +12,17 @@
  */
 
 import type { World, EntityId } from "@voxim/engine";
-import { Stamina } from "../components/game.ts";
-import { deductStamina } from "../combat/helpers.ts";
+import { staminaValue, spendStamina } from "../combat/helpers.ts";
 import type { CostHandler } from "./dispatcher.ts";
 
 export const StaminaCostHandler: CostHandler = {
   affordable(world: World, entityId: EntityId, costs: Record<string, number>): boolean {
     const need = costs.stamina ?? 0;
     if (need <= 0) return true;
-    const s = world.get(entityId, Stamina);
-    return !!s && !s.exhausted && s.current >= need;
+    return staminaValue(world, entityId) >= need;
   },
   deduct(world: World, entityId: EntityId, costs: Record<string, number>): void {
     const need = costs.stamina ?? 0;
-    if (need > 0) deductStamina(world, entityId, world.get(entityId, Stamina), need);
+    if (need > 0) spendStamina(world, entityId, need);
   },
 };
