@@ -2193,43 +2193,101 @@ The T-214 IR + reducer + rasterizer split work is the substrate this
 builds on. Snapshot determinism stays the invariant across every
 phase.
 
-### T-225..T-235 · Action as the universal behavior primitive
-Effort: XL (multi-ticket arc)   Status: planned
+### T-225..T-237 · Action as the universal behavior primitive
+Effort: XL (multi-ticket arc)   Status: in-progress (T-225 done: `97a20cc`)
 
 See [`ACTION_PRIMITIVE_PLAN.md`](ACTION_PRIMITIVE_PLAN.md) at the repo
 root for the full design + migration plan. Summary:
 
 Every character behavior — combat, movement, blocking, dodging,
 interacting, throwing, consuming, praying, *being hit* — collapses
-into one primitive: an `Action`. Actions are content (phases, cancel
-matrix, per-phase movement enum, costs, effects, animation clips).
-One `ActiveAction` accumulator on the actor; one `ActionDispatcher`
-system is the only writer; effect resolvers register against a small
-set of effect kinds (`weapon_trace`, `modify_inventory`, `apply_force`,
-`start_buff`, `apply_skill_verb`, …). Vermintide-style windup/active/
-winddown with cancelability rules per phase. Hit-reactions are
-event-initiated actions resolved through the same dispatcher with
-interrupt priority. NPC behavior trees compose action requests
-against the same library players use, structurally removing any
-remaining isNpc divergence.
+into one primitive: an `Action`. Three interlocking pieces:
 
-Migration phases (each its own ticket):
+  - **Slots** — declared per-actor-template (humanoid:
+    `[locomotion, primary, posture]`; horseman adds `mount`; etc.).
+    Each slot holds ≤ 1 `ActiveAction` at a time. Slot dispatch is
+    independent; cross-slot deps via gates.
+  - **Actions** — universal content (phases, cancel matrix, per-phase
+    movement enum `free|slowed|locked`, costs, priority, effects,
+    animation, preconditions, limb targets). Kinds: active, reaction
+    (interruptPriority), ambient (perpetual phase). Reused across
+    weapons / actors / NPCs.
+  - **Gates** — closed-vocabulary typed predicates registered in code,
+    referenced from JSON (`has_resource`, `tag_present`, `slot_busy`,
+    `equipped_category`, etc.). No expression DSL.
 
-  - T-225 — Action schema + content loader (no runtime use yet)
-  - T-226 — `ActiveAction` + dispatcher; migrate weapon swing (delete ActionSystem, SkillInProgress)
-  - T-227 — Effect resolver registry; migrate SkillSystem on-hit half into `apply_skill_verb`
-  - T-228 — Migrate dodge (delete DodgeSystem); first cross-action cancel-into
-  - T-229 — Migrate consume / interact / pray (non-combat through the same primitive)
-  - T-230 — Migrate crafting / building to actions + resolvers
-  - T-231 — Hit-reactions as event-initiated actions; interrupt priority + poise
-  - T-232 — Movement as ambient action with per-phase `free|slowed|locked` enum
-  - T-233 — NPC behavior trees as data; `NpcAiSystem` becomes an interpreter
-  - T-234 — Buffs / DoTs as scene-graph child entities with ambient actions
-  - T-235 — Animation derives from `ActiveAction` (delete velocity-heuristic clip selection)
+Plan revised 2026-05-15: the `CharacterStateMachine` (the layered
+concurrent FSM that already exists) is the structure being absorbed,
+not supplemented. Its five jobs unbundle into slots (concurrency),
+gates (transitions), tag-installs (output flags), animation-side
+rules (paramOverrides), and ambient actions (locomotion/posture).
+Maneuvers fold in as multi-effect primary-slot actions. `SwingContext`
+folds into resolver-local state inside `weapon_trace`.
 
-Scene-graph T-215 and T-216 land first; the rest interleaves freely.
-This arc deletes more code than it adds from T-226 onward (estimated
-net ≈ −2200 lines once complete).
+Migration phases (each its own ticket; each an atomic commit):
+
+  - T-225 — Action schema + content loader (done — `97a20cc`)
+  - T-226 — Engine substrate (ActorSlots, ActiveActions, dispatcher,
+    gate registry, effect registry) + locomotion + posture migration
+    (atomic; CSM still drives upper body)
+  - T-227 — Universal swing action library + chain refactor; delete
+    ActionSystem + SwingContext + SwingChain; CSM right_hand +
+    left_hand layers removed
+  - T-228 — Maneuvers absorbed as multi-effect actions; CSM fully
+    retired (StateMachineDef, compiler, humanoid_default.json deleted)
+  - T-229 — Migrate dodge (delete DodgeSystem); first cross-action
+    cancel-into proves out
+  - T-230 — Migrate consume / interact / pray (non-combat through the
+    same primitive)
+  - T-231 — Migrate crafting / building to actions + resolvers
+  - T-232 — Hit-reactions as event-initiated reaction-class actions;
+    interrupt priority + poise; delete `Staggered`
+  - T-233 — Block as primary-slot action (held tail); combat-side
+    block checks become `tag_present: Blocking` gate queries
+  - T-234 — NPC behavior trees as data on the action vocabulary;
+    `NpcAiSystem` becomes a BT interpreter
+  - T-235 — Buffs / DoTs as scene-graph child entities with ambient
+    looping actions; delete BuffSystem
+  - T-236 — Animation system fully derives from ActiveActions
+    (final cleanup of any remaining CSM mirrors)
+  - T-237 — Skill loadout consolidation + final polish
+
+Scene-graph T-215 and T-216 land first (T-235 spawns child entities).
+This arc deletes more code than it adds from T-227 onward — estimated
+net ≈ −3000 to −4000 lines across the project once complete.
+
+### T-238 · Resource primitive arc (sibling of the action arc)
+Effort: XL (multi-ticket arc)   Status: planned
+
+See the "The unified substrate" section of
+[`ACTION_PRIMITIVE_PLAN.md`](ACTION_PRIMITIVE_PLAN.md). `StaminaSystem`,
+`HungerSystem`, `CorruptionSystem`, `DurabilitySystem`, health regen,
+and planned poise are one shape hand-rolled 5+ times: a bounded scalar
+that changes per tick by a rate, the rate modulated by external
+multipliers, crossing named thresholds that fire events / set flags /
+couple into another resource. Collapse into a `Resource` component
+family + one `ResourceSystem` + content `ResourceDef`
+(`{ bounds, rate, rateModifiers, thresholds: [{ at, effect }] }`).
+Thresholds dispatch through the **same effect registry the action arc
+introduces** — built entity-generic in T-226 specifically so this arc
+reuses it. Filed as a sibling so the spine (one substrate,
+content-driven primitives, no hardcoded switches) stays visible.
+Full sub-plan filed when the action arc nears completion. Depends on
+T-226 (effect registry must exist and be entity-generic).
+
+### T-239 · DerivedStat primitive arc (sibling of the action arc)
+Effort: L   Status: planned
+
+See the "The unified substrate" section of
+[`ACTION_PRIMITIVE_PLAN.md`](ACTION_PRIMITIVE_PLAN.md). `BuffSystem`
+already has a generic `composeRegistry`, but its output is hardcoded to
+`speedBonus → SpeedModifier`. Generalize into a `DerivedStat` primitive:
+sources register typed modifiers, one composer produces the effective
+value, consumers read it. The actor-level dual of `DerivedItemStats`
+(which already does this for items). Retire `SpeedModifier`,
+`EncumbrancePenalty`, and the per-stat bespoke composition; unify with
+`DerivedItemStats` where the symmetry is clean. Depends on the buff/
+effect machinery settling (post T-235).
 
 ---
 
