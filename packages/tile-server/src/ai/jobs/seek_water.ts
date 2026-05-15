@@ -13,7 +13,7 @@ import type {
 } from "../job_handler.ts";
 import type { Job, NpcPlanData } from "../../components/npcs.ts";
 import { moveSteps, findNearestConsumable } from "../plan_helpers.ts";
-import { Thirst } from "../../components/game.ts";
+import { Resource } from "../../components/resource.ts";
 
 export const seekWaterJob: JobHandler = {
   id: "seekWater",
@@ -51,10 +51,14 @@ export const seekWaterJob: JobHandler = {
       const dx = water.x - ctx.pos.x;
       const dy = water.y - ctx.pos.y;
       if (dx * dx + dy * dy <= ctx.defaults.foodPickupRangeSq) {
-        const thirst = ctx.world.get(ctx.entityId, Thirst);
-        if (thirst) {
-          ctx.world.set(ctx.entityId, Thirst, {
-            value: Math.max(0, thirst.value - ctx.tuning.waterThirstRestore),
+        const res = ctx.world.get(ctx.entityId, Resource);
+        const t = res?.values.thirst;
+        if (res && t) {
+          ctx.world.set(ctx.entityId, Resource, {
+            values: {
+              ...res.values,
+              thirst: { value: Math.max(0, t.value - ctx.tuning.waterThirstRestore), max: t.max },
+            },
           });
         }
         ctx.world.destroy(water.entityId);

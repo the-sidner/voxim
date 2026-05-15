@@ -47,7 +47,6 @@ import { PhysicsSystem } from "./systems/physics.ts";
 import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
-import { HungerSystem } from "./systems/hunger.ts";
 import { equipmentStatModifier } from "./resources/modifiers/equipment_stat.ts";
 import { corruptionPenaltyModifier } from "./resources/modifiers/corruption_penalty.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
@@ -85,6 +84,7 @@ import { ResourceSystem } from "./systems/resource.ts";
 import { newResourceEffectRegistry } from "./resources/effect.ts";
 import { newResourceModifierRegistry } from "./resources/modifier.ts";
 import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
+import { emitEventEffect } from "./resources/effects/emit_event.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
 import { createRecipeStepRegistry, registerBuiltinSteps } from "./crafting/mod.ts";
@@ -328,6 +328,7 @@ export class TileServer {
     // component exist (T-238b onward).
     const resourceEffects = newResourceEffectRegistry();
     resourceEffects.register(modifyHealthEffect);
+    resourceEffects.register(emitEventEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
     resourceModifiers.register(corruptionPenaltyModifier);
@@ -491,7 +492,6 @@ export class TileServer {
       // on the wire.
       new StaleSlotCleanupSystem(),
       new NpcAiSystem(content, jobs, behaviorTrees),
-      new HungerSystem(content, deathSystem),
       new LifetimeSystem(),
       new EquipmentSystem(content),
       new PlacementSystem(content),

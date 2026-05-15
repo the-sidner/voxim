@@ -286,18 +286,9 @@ export const healthCodec: Serialiser<HealthData> = buildCodec<HealthData>({
   max: { type: "f32" },
 });
 
-// ---- Hunger / Thirst --------------------------------------------------------
-// Accumulating survival meters: 0 (full/sated) → 100 (starving/parched).
-
-export interface HungerData { value: number; }
-export interface ThirstData { value: number; }
-
-export const hungerCodec: Serialiser<HungerData> = buildCodec<HungerData>({
-  value: { type: "f32" },
-});
-export const thirstCodec: Serialiser<ThirstData> = buildCodec<ThirstData>({
-  value: { type: "f32" },
-});
+// (Hunger / Thirst codecs retired — they're server-only Resources now
+// (tile-server/components/resource.ts). Wire ids 7/8 retired in
+// @voxim/protocol; never reuse. T-238c.)
 
 // ---- Lifetime ---------------------------------------------------------------
 // Countdown on transient entities (projectiles, effects). Decremented each

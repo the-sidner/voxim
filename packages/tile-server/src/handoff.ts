@@ -5,8 +5,8 @@
  * sends it to the destination tile via the gateway, and the destination tile
  * restores it as a new entity.
  *
- * Components persisted: Position, Velocity, Facing, Health, Hunger, Thirst,
- * Resource (stamina/… T-238), Inventory, Equipment, LoreLoadout, ActiveEffects, SpeedModifier,
+ * Components persisted: Position, Velocity, Facing, Health,
+ * Resource (stamina/hunger/thirst/… T-238), Inventory, Equipment, LoreLoadout, ActiveEffects, SpeedModifier,
  * CorruptionExposure.
  *
  * Components NOT persisted: InputState (reset on connect), presence-as-flag
@@ -16,7 +16,7 @@
  * NpcTag (players aren't NPCs).
  */
 import type { World, EntityId } from "@voxim/engine";
-import { Position, Velocity, Facing, Health, Hunger, Thirst } from "./components/game.ts";
+import { Position, Velocity, Facing, Health } from "./components/game.ts";
 import { Resource } from "./components/resource.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
@@ -42,8 +42,6 @@ interface SerializedComponents {
   velocity?: ReturnType<typeof Velocity.codec.decode> | null;
   facing?: ReturnType<typeof Facing.codec.decode> | null;
   health?: ReturnType<typeof Health.codec.decode> | null;
-  hunger?: ReturnType<typeof Hunger.codec.decode> | null;
-  thirst?: ReturnType<typeof Thirst.codec.decode> | null;
   resource?: ReturnType<typeof Resource.codec.decode> | null;
   inventory?: ReturnType<typeof Inventory.codec.decode> | null;
   equipment?: ReturnType<typeof Equipment.codec.decode> | null;
@@ -75,8 +73,6 @@ export function serializePlayer(
       velocity: world.get(playerId, Velocity) ?? null,
       facing: world.get(playerId, Facing) ?? null,
       health: world.get(playerId, Health) ?? null,
-      hunger: world.get(playerId, Hunger) ?? null,
-      thirst: world.get(playerId, Thirst) ?? null,
       resource: world.get(playerId, Resource) ?? null,
       inventory: world.get(playerId, Inventory) ?? null,
       equipment: world.get(playerId, Equipment) ?? null,
@@ -105,8 +101,6 @@ export function restorePlayer(world: World, payload: HandoffPayload): EntityId {
   if (c.velocity) world.write(id, Velocity, c.velocity);
   if (c.facing) world.write(id, Facing, c.facing);
   if (c.health) world.write(id, Health, c.health);
-  if (c.hunger) world.write(id, Hunger, c.hunger);
-  if (c.thirst) world.write(id, Thirst, c.thirst);
   if (c.resource) world.write(id, Resource, c.resource);
   if (c.inventory) world.write(id, Inventory, c.inventory);
   if (c.equipment) world.write(id, Equipment, c.equipment);

@@ -11,7 +11,7 @@ import { assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
 import { ActorSlots, ActiveActions } from "../components/action.ts";
-import { Hunger, Thirst } from "../components/game.ts";
+import { Resource } from "../components/resource.ts";
 import { Inventory } from "../components/items.ts";
 import { ActionDispatcher } from "./dispatcher.ts";
 import type { IntentResolver } from "./dispatcher.ts";
@@ -37,8 +37,9 @@ function eater(world: World, slots: Inventory_["slots"]): string {
   world.write(id, ActorSlots, { slots: ["primary"] });
   world.write(id, ActiveActions, { states: {} });
   world.write(id, Inventory, { slots, capacity: 20 });
-  world.write(id, Hunger, { value: 50 });
-  world.write(id, Thirst, { value: 30 });
+  world.write(id, Resource, {
+    values: { hunger: { value: 50, max: 100 }, thirst: { value: 30, max: 100 } },
+  });
   return id;
 }
 type Inventory_ = { slots: { kind: "stack"; prefabId: string; quantity: number }[] };
@@ -55,8 +56,8 @@ Deno.test("consume: ingest drains hunger/thirst and removes one berry", () => {
     world.applyChangeset();
   }
 
-  assertEquals(world.get(id, Hunger)?.value, 42); // 50 − food 8
-  assertEquals(world.get(id, Thirst)?.value, 28); // 30 − water 2
+  assertEquals(world.get(id, Resource)?.values.hunger.value, 42); // 50 − food 8
+  assertEquals(world.get(id, Resource)?.values.thirst.value, 28); // 30 − water 2
   const slots = world.get(id, Inventory)!.slots;
   assertEquals(slots, [{ kind: "stack", prefabId: "berries", quantity: 2 }]);
 });
@@ -73,5 +74,5 @@ Deno.test("consume: has_edible blocks the action with no food in inventory", () 
   }
 
   assertEquals(world.get(id, ActiveActions)?.states["primary"], undefined);
-  assertEquals(world.get(id, Hunger)?.value, 50);
+  assertEquals(world.get(id, Resource)?.values.hunger.value, 50);
 });

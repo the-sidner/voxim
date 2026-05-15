@@ -157,10 +157,20 @@ multi-slot shape.
   `1-(a+c)` — accepted retune, noted. dodge_roll + prefab_round_trip tests
   adjusted; 2 new stamina-regen integration tests; 179 green; bake
   byte-identical.
-- **T-238c — hunger + thirst.** `data/resources/{hunger,thirst}.json` with
-  critical (cross→`emit_event`) + starvation (sustained→`modify_health`)
-  thresholds; **delete `HungerSystem`**; `consume_item` drains the
-  resource; consume test adjusts.
+- **T-238c — hunger + thirst. LANDED.** `data/resources/{hunger,thirst}.json`
+  — `cross@80 → emit_event` (HungerCritical/ThirstCritical, payload
+  `{entityId,value}` preserved) + `sustained@100 → modify_health`
+  (starvation/dehydration DPS, cause "starvation" — `DeathCause` has no
+  "dehydration", parity-faithful). `emit_event` effect shipped (string →
+  `TileEvents` symbol, fail-fast on unknown). Seeded on **both** player &
+  NPC spawn (NPC AI seek-food/water reads it). Migrated consumers:
+  `consume_item`, `seek_food`/`seek_water` job handlers, `NpcAiSystem`
+  BTContext, handoff (now via the persisted `Resource`). **Deleted:
+  `HungerSystem`, `Hunger`+`Thirst` components, `hunger`/`thirst` codecs,
+  wire ids 7/8 (retired).** Accepted retune: simultaneous hunger≥100 **and**
+  thirst≥100 now deals max(2,3)·dt not 2+3 (two deferred Health writes,
+  last wins — documented edge case). 2 hunger integration tests + 179
+  green; bake byte-identical.
 - **T-238d — poise.** regen + `regenDisabled` as a Resource (a
   rate-suppress window); **delete `PoiseSystem`**; `health_hit_handler`
   break logic unchanged (reads/writes the resource value).

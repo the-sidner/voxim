@@ -1,0 +1,10 @@
+{
+  "id": "hunger",
+  "scope": "entity",
+  "bounds": { "min": 0, "max": 100 },
+  "rate": 0.008333333333333333,
+  "thresholds": [
+    { "at": 80,  "dir": "above", "edge": "cross",     "effect": "emit_event",   "params": { "event": "HungerCritical" } },
+    { "at": 100, "dir": "above", "edge": "sustained", "effect": "modify_health", "params": { "dps": -2, "cause": "starvation" } }
+  ]
+}

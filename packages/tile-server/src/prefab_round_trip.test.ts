@@ -24,8 +24,6 @@ import * as v from "valibot";
 import type { ComponentDef } from "@voxim/engine";
 import {
   Health,
-  Hunger,
-  Thirst,
 } from "./components/game.ts";
 import {
   Armor,
@@ -77,21 +75,6 @@ Deno.test("Health — schema/codec agreement", () => {
   ], "Health");
 });
 
-Deno.test("Hunger — schema/codec agreement", () => {
-  roundTrip(Hunger, [
-    { value: 0 },
-    { value: 50 },
-    { value: 99.5 },
-  ], "Hunger");
-});
-
-Deno.test("Thirst — schema/codec agreement", () => {
-  roundTrip(Thirst, [
-    { value: 0 },
-    { value: 50 },
-    { value: 100 },
-  ], "Thirst");
-});
 
 
 Deno.test("Equippable — schema/codec agreement", () => {

@@ -2,9 +2,10 @@ import type { World, Registry } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
-import { Position, InputState, Health, Hunger, Thirst } from "../components/game.ts";
+import { Position, InputState, Health } from "../components/game.ts";
 import { NpcTag, NpcJobQueue } from "../components/npcs.ts";
 import { RequestedActions } from "../components/action.ts";
+import { Resource } from "../components/resource.ts";
 import type { Job, NpcJobQueueData } from "../components/npcs.ts";
 import type { JobHandler, JobContext, NpcTuning } from "../ai/job_handler.ts";
 import { advancePlan } from "../ai/plan_helpers.ts";
@@ -51,9 +52,12 @@ export class NpcAiSystem implements System {
   run(world: World, _events: EventEmitter, _dt: number): void {
     const defaults = this.content.getGameConfig().npcAiDefaults;
 
-    for (const { entityId, npcTag, npcJobQueue, inputState, hunger, thirst, health } of world.query(
-      NpcTag, NpcJobQueue, InputState, Hunger, Thirst, Health,
+    for (const { entityId, npcTag, npcJobQueue, inputState, health } of world.query(
+      NpcTag, NpcJobQueue, InputState, Health,
     )) {
+      const resVals = world.get(entityId, Resource)?.values;
+      const hunger = resVals?.hunger?.value ?? 0;
+      const thirst = resVals?.thirst?.value ?? 0;
       const pos = world.get(entityId, Position);
       if (!pos) continue;
 
@@ -99,8 +103,8 @@ export class NpcAiSystem implements System {
         currentTick: this.currentTick, entityId,
         pos: { x: pos.x, y: pos.y },
         tuning, defaults,
-        hunger: hunger.value,
-        thirst: thirst.value,
+        hunger,
+        thirst,
         healthCurrent: health.current,
         healthMax: health.max,
         queue,

@@ -18,7 +18,7 @@ import type { World, EntityId } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import type { EffectResolver } from "../effect.ts";
 import type { GateHandler } from "../gate.ts";
-import { Hunger, Thirst } from "../../components/game.ts";
+import { Resource } from "../../components/resource.ts";
 import { Inventory, ItemData } from "../../components/items.ts";
 import type { InventorySlot } from "../../components/items.ts";
 import { QualityStamped } from "../../components/instance.ts";
@@ -74,13 +74,18 @@ export const consumeItemResolver: EffectResolver = {
       : 1;
     const stats = content.deriveItemStats(prefabId, [], quality);
 
-    if ((stats.foodValue ?? 0) > 0) {
-      const hunger = world.get(entityId, Hunger);
-      if (hunger) world.set(entityId, Hunger, { value: Math.max(0, hunger.value - stats.foodValue!) });
-    }
-    if ((stats.waterValue ?? 0) > 0) {
-      const thirst = world.get(entityId, Thirst);
-      if (thirst) world.set(entityId, Thirst, { value: Math.max(0, thirst.value - stats.waterValue!) });
+    const res = world.get(entityId, Resource);
+    if (res && ((stats.foodValue ?? 0) > 0 || (stats.waterValue ?? 0) > 0)) {
+      const values = { ...res.values };
+      const h = values.hunger;
+      if (h && (stats.foodValue ?? 0) > 0) {
+        values.hunger = { value: Math.max(0, h.value - stats.foodValue!), max: h.max };
+      }
+      const t = values.thirst;
+      if (t && (stats.waterValue ?? 0) > 0) {
+        values.thirst = { value: Math.max(0, t.value - stats.waterValue!), max: t.max };
+      }
+      world.set(entityId, Resource, { values });
     }
 
     world.set(entityId, Inventory, { ...inv, slots: consumeOne(world, inv.slots, idx) });

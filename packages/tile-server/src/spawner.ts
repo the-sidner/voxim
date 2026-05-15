@@ -23,8 +23,6 @@ import {
   Facing,
   InputState,
   Health,
-  Hunger,
-  Thirst,
   ModelRef,
   AnimationState,
   Name,
@@ -133,20 +131,21 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   writeDefaults(
     world, id,
-    Hunger, Thirst, CorruptionExposure,
+    CorruptionExposure,
     LoreLoadout, ActiveEffects, CraftingQueue, AnimationState,
     FogState,
   );
 
-  // Stamina is a Resource now (T-238b) — seeded full at spawn. Only the
-  // player carries it (NPCs never had a Stamina component; preserving
-  // that — they still can't pay stamina costs). Other resources
-  // (hunger/thirst/poise) merge into this same component in later phases.
+  // Stamina / hunger / thirst are Resources now (T-238b/c). Stamina is
+  // player-only (NPCs never had a Stamina component — preserving that, so
+  // they still can't pay stamina costs); hunger/thirst start at 0 (sated).
   const maxStamina = content.getGameConfig().player.maxStamina;
   world.write(id, Resource, {
     values: {
       ...(world.get(id, Resource)?.values ?? {}),
       stamina: { value: maxStamina, max: maxStamina },
+      hunger: { value: 0, max: 100 },
+      thirst: { value: 0, max: 100 },
     },
   });
 
@@ -192,9 +191,20 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
 
   writeDefaults(
     world, id,
-    Hunger, Thirst, CorruptionExposure,
+    CorruptionExposure,
     NpcJobQueue, AnimationState, ActiveEffects,
   );
+
+  // NPCs carry hunger/thirst Resources (NpcAiSystem reads them for the
+  // seek-food/water emergency behaviours) but no stamina (parity: they
+  // never had a Stamina component).
+  world.write(id, Resource, {
+    values: {
+      ...(world.get(id, Resource)?.values ?? {}),
+      hunger: { value: 0, max: 100 },
+      thirst: { value: 0, max: 100 },
+    },
+  });
 };
 
 /** Resource node: the static harvest-behaviour data lives on the prefab; runtime state is derived. */

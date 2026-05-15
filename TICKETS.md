@@ -2433,6 +2433,13 @@ deleting the system it replaces.
   — honest refinement over "reuse the action ResolveContext") +
   modify_health effect. 5 unit tests + 178 green; inert; bake
   byte-identical. See plan T-238a.
+- **T-238c — DONE.** hunger.json/thirst.json (cross@80→emit_event
+  HungerCritical/ThirstCritical; sustained@100→modify_health starvation).
+  emit_event effect shipped. Seeded on player+NPC spawn; consume_item,
+  seek_food/water, NpcAiSystem, handoff migrated. DELETED HungerSystem,
+  Hunger+Thirst components, hunger/thirst codecs, wire ids 7/8. Accepted
+  retune: simultaneous hunger&thirst≥100 → max not sum (deferred-write
+  edge). 2 tests + 179 green; bake byte-identical.
 - **T-238b — DONE.** stamina.json (rate 8/s + equipment_stat +
   corruption_penalty modifiers); player spawn seeds Resource.stamina
   (NPC parity preserved); spend/staminaValue helpers replace

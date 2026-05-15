@@ -11,7 +11,7 @@ import type {
 } from "../job_handler.ts";
 import type { Job, NpcPlanData } from "../../components/npcs.ts";
 import { moveSteps, findNearestConsumable } from "../plan_helpers.ts";
-import { Hunger } from "../../components/game.ts";
+import { Resource } from "../../components/resource.ts";
 
 export const seekFoodJob: JobHandler = {
   id: "seekFood",
@@ -49,10 +49,14 @@ export const seekFoodJob: JobHandler = {
       const dx = food.x - ctx.pos.x;
       const dy = food.y - ctx.pos.y;
       if (dx * dx + dy * dy <= ctx.defaults.foodPickupRangeSq) {
-        const hunger = ctx.world.get(ctx.entityId, Hunger);
-        if (hunger) {
-          ctx.world.set(ctx.entityId, Hunger, {
-            value: Math.max(0, hunger.value - ctx.tuning.foodHungerRestore),
+        const res = ctx.world.get(ctx.entityId, Resource);
+        const h = res?.values.hunger;
+        if (res && h) {
+          ctx.world.set(ctx.entityId, Resource, {
+            values: {
+              ...res.values,
+              hunger: { value: Math.max(0, h.value - ctx.tuning.foodHungerRestore), max: h.max },
+            },
           });
         }
         ctx.world.destroy(food.entityId);

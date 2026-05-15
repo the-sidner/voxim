@@ -11,19 +11,19 @@ import { ComponentType } from "@voxim/protocol";
 import * as v from "valibot";
 import {
   positionCodec, velocityCodec, facingCodec,
-  inputStateCodec, healthCodec, hungerCodec, thirstCodec, lifetimeCodec,
+  inputStateCodec, healthCodec, lifetimeCodec,
   modelRefCodec, animationStateCodec, nameCodec,
 } from "@voxim/codecs";
 import type {
   PositionData, VelocityData, FacingData,
-  InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
+  InputStateData, HealthData, LifetimeData,
   ModelRefData, AnimationStateData, NameData,
 } from "@voxim/codecs";
 
 // ---- re-exported shared types for convenience ----
 export type {
   PositionData, VelocityData, FacingData,
-  InputStateData, HealthData, HungerData, ThirstData, LifetimeData,
+  InputStateData, HealthData, LifetimeData,
   NameData,
 };
 
@@ -89,36 +89,9 @@ export const Health = defineComponent({
   default: (): HealthData => ({ current: 100, max: 100 }),
 });
 
-// ---- Hunger ---- 0 (full) → 100 (starving)
-
-const hungerSchema = v.object({
-  value: v.number(),
-});
-
-export const Hunger = defineComponent({
-  name: "hunger" as const,
-  wireId: ComponentType.hunger,
-  codec: hungerCodec,
-  schema: hungerSchema,
-  default: (): HungerData => ({ value: 0 }),
-});
-
-// ---- Thirst ---- 0 (sated) → 100 (parched)
-
-const thirstSchema = v.object({
-  value: v.number(),
-});
-
-export const Thirst = defineComponent({
-  name: "thirst" as const,
-  wireId: ComponentType.thirst,
-  codec: thirstCodec,
-  schema: thirstSchema,
-  default: (): ThirstData => ({ value: 0 }),
-});
-
-// (Stamina is a Resource now — components/resource.ts, data/resources/
-// stamina.json. Wire id 9 retired in @voxim/protocol; never reuse. T-238b.)
+// (Hunger/Thirst/Stamina are Resources now — components/resource.ts,
+// data/resources/{hunger,thirst,stamina}.json. Wire ids 7/8/9 retired in
+// @voxim/protocol; never reuse. T-238b/c.)
 
 // ---- Lifetime ---- remaining ticks; entity is destroyed when this reaches 0
 

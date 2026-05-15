@@ -1,0 +1,10 @@
+{
+  "id": "thirst",
+  "scope": "entity",
+  "bounds": { "min": 0, "max": 100 },
+  "rate": 0.011111111111111112,
+  "thresholds": [
+    { "at": 80,  "dir": "above", "edge": "cross",     "effect": "emit_event",   "params": { "event": "ThirstCritical" } },
+    { "at": 100, "dir": "above", "edge": "sustained", "effect": "modify_health", "params": { "dps": -3, "cause": "starvation" } }
+  ]
+}

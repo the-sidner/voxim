@@ -11,8 +11,6 @@ export {
   Facing,
   InputState,
   Health,
-  Hunger,
-  Thirst,
   Lifetime,
 } from "./src/components/game.ts";
 export type {
@@ -21,8 +19,6 @@ export type {
   FacingData,
   InputStateData,
   HealthData,
-  HungerData,
-  ThirstData,
   LifetimeData,
 } from "./src/components/game.ts";
 export {
