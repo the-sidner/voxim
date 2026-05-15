@@ -119,12 +119,26 @@ multi-slot shape.
 
 ## Phasing (each a green commit; system deleted in the same commit it is replaced — no parallel paths)
 
-- **T-238a — substrate (inert).** `ResourceDef` type + valibot + loader
-  (`data/resources/`) + `ContentService.resources` + bootstrap (v9→v10) +
-  `Resource` component + `ResourceSystem` + `rateModifier` registry +
-  `threshold→EffectRegistry` dispatch + the `modify_health` / `emit_event`
-  / `clamp` effect resolvers. Nothing writes `Resource` yet. Tests:
-  ResourceSystem unit (rate, bounds, cross vs sustained, a modifier).
+- **T-238a — substrate (inert). LANDED.** `ResourceDef` (+ hand-rolled
+  `validateResourceDef`, matching the action-arc validator style — *not*
+  valibot, the plan's "valibot" was loose wording; closed validator is
+  consistent with `validateActionDef`) + `data/resources/` loader +
+  `ContentService.resources` + bootstrap **v9→v10** + `Resource` component
+  (server-only, `{ values: Record<id,{value,max}> }`) + `ResourceSystem` +
+  `ResourceRateModifier` registry + threshold dispatch + the real
+  `modify_health` effect. **Design refinement (honest call, like
+  T-231/T-235):** thresholds dispatch through a *dedicated*
+  `ResourceEffect` registry — same `Registry<H>` doctrine + effect-resolver
+  pattern, but a resource-shaped context (`{world,events,entityId,content,
+  resourceId,value,dt,params,deaths}`) instead of synthesising a fake
+  `ActiveActionState`/slot/edge to reuse the action `ResolveContext`. Same
+  spine; faking action state to satisfy the plan's letter would have been
+  the smell. `clamp`/`emit_event` are *not* shipped: clamp is intrinsic to
+  bounds (not an effect), `emit_event` lands with its first consumer
+  (T-238c hunger). 5 ResourceSystem unit tests (rate, min/max clamp,
+  modifier chain, sustained-vs-cross, unknown-id tolerance) + 178
+  content/tile-server/codecs/engine green; substrate fully inert (nothing
+  installs `Resource`), bake byte-identical.
 - **T-238b — stamina.** `data/resources/stamina.json`; spawn installs the
   resource; `StaminaCostHandler` / `health_hit_handler` / `not_exhausted`
   read `Resource`; **delete `StaminaSystem` + the `exhausted` field +

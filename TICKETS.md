@@ -2425,7 +2425,14 @@ Effort: XL (multi-ticket arc)   Status: in-progress — sub-plan filed
 (filed 2026-05-15, action arc complete). Phasing T-238a (inert substrate)
 → T-238b stamina → T-238c hunger/thirst → T-238d poise → T-238e
 corruption → T-238f crafting timer → T-238g polish; each a green commit
-deleting the system it replaces. Honest scope (mirrors T-231/T-235):
+deleting the system it replaces.
+- **T-238a — DONE.** ResourceDef + validator + data/resources/ loader +
+  ContentService.resources + bootstrap v10 + Resource component (server-
+  only) + ResourceSystem + rate-modifier registry + dedicated
+  ResourceEffect registry (Registry<H> doctrine, resource-shaped context
+  — honest refinement over "reuse the action ResolveContext") +
+  modify_health effect. 5 unit tests + 178 green; inert; bake
+  byte-identical. See plan T-238a. Honest scope (mirrors T-231/T-235):
 durability **excluded** (event-decremented, not a tick-rate scalar — a
 misfit); health passive-regen **not invented** (none exists; starvation/
 corruption damage become threshold effects on those resources); the

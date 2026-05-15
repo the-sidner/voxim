@@ -41,6 +41,7 @@ import {
   Poise,
 } from "./components/combat.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
+import { Resource } from "./components/resource.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
@@ -192,6 +193,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // Poise (T-197) — staggering resource. Server-only; the client renders
   // stagger via CSM reaction-layer animation, not a poise bar.
   Poise,
+  // Resource (T-238) — every tick-scalar (stamina/hunger/poise/…) lives
+  // here once migrated. Server-only; inert until T-238b seeds one.
+  Resource,
   Hearth,
   JobBoard,
   AssignedJobBoard,

@@ -28,11 +28,11 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
-  BuffDef,
+  BuffDef, ResourceDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 9;
+export const BOOTSTRAP_VERSION = 10;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -53,6 +53,7 @@ interface ContentBootstrapJson {
   verbs:               VerbDef[];
   conceptVerbEntries:  ConceptVerbEntry[];
   buffs:               BuffDef[];
+  resources:           ResourceDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
 }
@@ -123,6 +124,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     verbs:               [...service.verbs.values()],
     conceptVerbEntries:  [...service.getAllConceptVerbEntries()],
     buffs:               [...service.buffs.values()],
+    resources:           [...service.resources.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
   };
@@ -203,6 +205,9 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const e of body.conceptVerbEntries)   store.registerConceptVerbEntry(e);
   if (body.buffs) {
     for (const b of body.buffs)              store.registerBuff(b);
+  }
+  if (body.resources) {
+    for (const r of body.resources)          store.registerResource(r);
   }
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);

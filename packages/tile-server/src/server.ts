@@ -80,6 +80,10 @@ import { placeStairs } from "./stair_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
 import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
+import { ResourceSystem } from "./systems/resource.ts";
+import { newResourceEffectRegistry } from "./resources/effect.ts";
+import { newResourceModifierRegistry } from "./resources/modifier.ts";
+import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
 import { createRecipeStepRegistry, registerBuiltinSteps } from "./crafting/mod.ts";
@@ -317,6 +321,13 @@ export class TileServer {
     // apply handler. Validated below; fail-fast on mismatch.
     const effects = createEffectRegistries();
     registerBuiltinEffects(effects);
+
+    // Resource substrate (T-238a) — registries shipped, one real effect
+    // registered. Inert until a ResourceDef + a spawn-seeded Resource
+    // component exist (T-238b onward).
+    const resourceEffects = newResourceEffectRegistry();
+    resourceEffects.register(modifyHealthEffect);
+    const resourceModifiers = newResourceModifierRegistry();
     for (const entry of content.getAllConceptVerbEntries()) {
       if (!effects.apply.has(entry.effectStat)) {
         throw new Error(
@@ -489,6 +500,7 @@ export class TileServer {
       new EncumbranceSystem(content),
       new BuffSystem(effects.tick, effects.compose, deathSystem),
       new PoiseSystem(content),
+      new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem),
       new PhysicsSystem(content, tickEvents),
       new FogOfWarSystem(),
       // ActionDispatcher advances every actor's slots (posture, locomotion,

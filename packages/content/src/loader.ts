@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, BuffDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, BuffDef, ResourceDef } from "./types.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
@@ -50,7 +50,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, actionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, poisRaw, buffsRaw, animLibraryArchetypes,
+    biomesRaw, zonesRaw, poisRaw, buffsRaw, resourcesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -68,6 +68,7 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "zones"),
     readJsonDir(dataDir, "pois").catch(() => []),
     readJsonDir(dataDir, "buffs").catch(() => []),
+    readJsonDir(dataDir, "resources").catch(() => []),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -163,6 +164,11 @@ async function loadContentStoreInternal(
 
   for (const raw of buffsRaw as BuffDef[]) {
     store.registerBuff(raw);
+  }
+
+  for (const raw of resourcesRaw as ResourceDef[]) {
+    validateResourceDef(raw);
+    store.registerResource(raw);
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
@@ -499,6 +505,67 @@ function validateActionGates(actionId: string, where: string, gates: ActionGate[
     }
     if (g.params !== undefined && (typeof g.params !== "object" || Array.isArray(g.params) || g.params === null)) {
       throw new Error(`Action '${actionId}' ${where}: gate '${g.gate}' params must be an object`);
+    }
+  }
+}
+
+/**
+ * Structural validation for ResourceDef (T-238) — same hand-rolled,
+ * closed-vocabulary style as validateActionDef (no valibot, no DSL).
+ * Cross-refs (effect/rateModifier ids exist in their registries) are
+ * checked at server boot, like action gates/effects.
+ */
+export function validateResourceDef(def: ResourceDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`ResourceDef: missing or empty id`);
+  }
+  if (def.scope !== "entity" && def.scope !== "tile") {
+    throw new Error(`Resource '${def.id}': scope must be 'entity' | 'tile', got '${def.scope}'`);
+  }
+  if (!def.bounds || typeof def.bounds !== "object"
+    || typeof def.bounds.min !== "number" || !Number.isFinite(def.bounds.min)
+    || typeof def.bounds.max !== "number" || !Number.isFinite(def.bounds.max)) {
+    throw new Error(`Resource '${def.id}': bounds must be { min:number, max:number }`);
+  }
+  if (def.bounds.max < def.bounds.min) {
+    throw new Error(`Resource '${def.id}': bounds.max < bounds.min`);
+  }
+  if (typeof def.rate !== "number" || !Number.isFinite(def.rate)) {
+    throw new Error(`Resource '${def.id}': rate must be a finite number`);
+  }
+  if (def.rateModifiers !== undefined) {
+    if (!Array.isArray(def.rateModifiers)) {
+      throw new Error(`Resource '${def.id}': rateModifiers must be an array`);
+    }
+    for (const m of def.rateModifiers) {
+      if (!m || typeof m.kind !== "string" || m.kind.length === 0) {
+        throw new Error(`Resource '${def.id}': every rateModifier needs a non-empty 'kind'`);
+      }
+      if (m.params !== undefined && (typeof m.params !== "object" || Array.isArray(m.params) || m.params === null)) {
+        throw new Error(`Resource '${def.id}': rateModifier '${m.kind}' params must be an object`);
+      }
+    }
+  }
+  if (def.thresholds !== undefined) {
+    if (!Array.isArray(def.thresholds)) {
+      throw new Error(`Resource '${def.id}': thresholds must be an array`);
+    }
+    for (const t of def.thresholds) {
+      if (typeof t.at !== "number" || !Number.isFinite(t.at)) {
+        throw new Error(`Resource '${def.id}': threshold.at must be a finite number`);
+      }
+      if (t.dir !== "above" && t.dir !== "below") {
+        throw new Error(`Resource '${def.id}': threshold.dir must be 'above' | 'below', got '${t.dir}'`);
+      }
+      if (t.edge !== "cross" && t.edge !== "sustained") {
+        throw new Error(`Resource '${def.id}': threshold.edge must be 'cross' | 'sustained', got '${t.edge}'`);
+      }
+      if (typeof t.effect !== "string" || t.effect.length === 0) {
+        throw new Error(`Resource '${def.id}': threshold.effect must be a non-empty string`);
+      }
+      if (t.params !== undefined && (typeof t.params !== "object" || Array.isArray(t.params) || t.params === null)) {
+        throw new Error(`Resource '${def.id}': threshold '${t.effect}' params must be an object`);
+      }
     }
   }
 }

@@ -53,6 +53,7 @@ import type {
   ActionDef,
   VerbDef,
   BuffDef,
+  ResourceDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
@@ -107,6 +108,15 @@ export interface ContentService {
    * drop, no handler changes.
    */
   readonly buffs: ContentRegistryReadonly<BuffDef>;
+
+  /**
+   * Resources keyed by id (T-238). Tick-scalar definitions loaded from
+   * `data/resources/*.json` — ResourceSystem integrates the rate, clamps to
+   * bounds, and dispatches threshold effects through the shared
+   * EffectRegistry. Adding a new bounded-scalar (stamina/hunger/poise/…) is
+   * a file drop. See RESOURCE_PRIMITIVE_PLAN.md.
+   */
+  readonly resources: ContentRegistryReadonly<ResourceDef>;
 
   // ---- specialized lookups ----
   /** Resolve a material by its numeric MaterialId (the wire/storage key). */
@@ -221,6 +231,10 @@ export class StaticContentStore implements ContentService {
   public readonly buffs = new ContentRegistry<BuffDef>({
     kind: "buff",
     idOf: (b) => b.id,
+  });
+  public readonly resources = new ContentRegistry<ResourceDef>({
+    kind: "resource",
+    idOf: (r) => r.id,
   });
 
   // ---- secondary indices ----
@@ -339,6 +353,10 @@ export class StaticContentStore implements ContentService {
 
   registerBuff(def: BuffDef): void {
     this.buffs.register(def);
+  }
+
+  registerResource(def: ResourceDef): void {
+    this.resources.register(def);
   }
 
   setGameConfig(config: GameConfig): void {

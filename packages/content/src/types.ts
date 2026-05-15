@@ -778,6 +778,55 @@ export interface BuffDef {
   onApplyEvent?: string;
 }
 
+// ---- resources (T-238) ----
+
+/**
+ * A tick-scalar primitive: a bounded `value` that changes each tick by a
+ * signed `rate` (regen +, decay/timer −), the rate optionally modulated by
+ * a closed vocabulary of external `rateModifiers`, crossing named
+ * `thresholds` that fire an effect through the shared EffectRegistry.
+ * Collapses StaminaSystem / HungerSystem / PoiseSystem / CorruptionSystem /
+ * the crafting time-step timer into one system + data. See
+ * RESOURCE_PRIMITIVE_PLAN.md.
+ */
+export interface ResourceDef {
+  /** Unique id. Filename without `.json` (e.g. "stamina"). */
+  id: string;
+  /** Whose entity carries the value: an actor ("entity") or a per-tile singleton ("tile"). */
+  scope: "entity" | "tile";
+  bounds: { min: number; max: number };
+  /** Signed per-SECOND base delta before modifiers (regen +, decay/timer −). */
+  rate: number;
+  /**
+   * Closed-vocabulary rate modifiers, applied in order — each transforms
+   * the running rate (scale / replace / offset). `kind` is a registered
+   * `ResourceRateModifier` id, never inline logic (registry doctrine).
+   */
+  rateModifiers?: ResourceRateModifierRef[];
+  /** Named edges that dispatch an effect through the shared EffectRegistry. */
+  thresholds?: ResourceThreshold[];
+}
+
+export interface ResourceRateModifierRef {
+  kind: string;
+  params?: Record<string, unknown>;
+}
+
+export interface ResourceThreshold {
+  /** The boundary value. */
+  at: number;
+  /** Which side of `at` the threshold's zone is. */
+  dir: "above" | "below";
+  /**
+   * `cross` fires the effect once when the value enters the zone this tick;
+   * `sustained` fires every tick the value is in the zone.
+   */
+  edge: "cross" | "sustained";
+  /** Registered EffectResolver id (the same registry the action arc uses). */
+  effect: string;
+  params?: Record<string, unknown>;
+}
+
 // ---- biomes ----
 
 /**
