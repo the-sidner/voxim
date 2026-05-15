@@ -368,10 +368,46 @@ Initial ActionDef type, loader, validator, bootstrap codec. Status: done. The sc
 >   arbitration, reaction interrupt, precondition + cost gating, slot
 >   validation). 9 dispatcher + 12 schema/codec tests. Nothing wired into
 >   the server tick. Commit: `<this commit>`.
-> - **T-226b — locomotion + posture migration (NEXT).** Everything in
->   "What lands" below: the gate library, the first resolvers, the action
->   JSONs, the `actorSlots` prefab field, CSM layer removal, Physics +
->   Animation rewiring, parity tests. Snapshot-determinism-gated.
+> - **T-226b — posture migration (LANDED).** Scoped down from
+>   "locomotion + posture" once the locomotion CSM layer proved
+>   entangled: its `sidestep` state is `i_frame`-tagged and
+>   `input.dodge`-driven (that is *dodge*, a later phase), and
+>   jump/airborne/landing are physics-coupled transient states — too
+>   much to migrate safely alongside posture. Posture alone proves the
+>   whole substrate path at near-zero risk: physics crouch (speed) was
+>   already independent of the posture layer, and the *only* coupling —
+>   the 5 locomotion crouch-variant `paramOverrides` reading
+>   `csm.posture == crouched` — is preserved by feeding the new
+>   `Crouched` tag into the (still-CSM-resident) locomotion layer via a
+>   `posture` scope contributor. Same one-tick-lag semantics; no
+>   AnimationSystem change; bake snapshot byte-identical.
+>   What landed: `Prefab.actorSlots` + inheritance merge; spawn-install
+>   of `ActorSlots`/`ActiveActions`; `Crouched` server-only tag +
+>   `TAG_COMPONENTS`; `set_tag`/`clear_tag` resolvers;
+>   `PostureIntentResolver` (+ `CompositeIntentResolver` for later
+>   slots); `upright.json`/`crouched.json`; `posture` scope contributor;
+>   posture layer deleted from `humanoid_default.json` + 5 paramOverrides
+>   rewritten `csm.posture == crouched` → `posture.crouched`;
+>   `ActionDispatcher` wired into `server.ts` before the CSM. 3 parity
+>   tests incl. "humanoid_default compiles + scope-validates" (the
+>   boot-critical check). Commit: `<this commit>`.
+> - **T-226c — locomotion migration (NEXT).** The deferred half:
+>   idle/walk/strafe as ambient locomotion-slot actions, jump as an
+>   active action, airborne/landing as physics-driven actions; the
+>   locomotion CSM layer deleted; AnimationSystem rewired to project the
+>   lower-body layer from the locomotion slot; the crouch paramOverride
+>   becomes an animation-side rule keyed on the `Crouched` tag (the
+>   `posture` scope contributor is then deleted). `sidestep` is *not*
+>   here — it migrates with dodge (T-229). Snapshot-determinism-gated;
+>   the high-risk AnimationSystem surgery the substrate split was made to
+>   isolate.
+>
+> The numbering does not shift: T-226 owns its sub-commits (a/b/c);
+> T-227+ keep their ids, so the sibling arcs T-238/T-239 don't collide.
+
+Everything in "What lands" below describes the *full* T-226 phase as
+originally conceived; it is now realised across 226a (substrate), 226b
+(posture, done), 226c (locomotion, next).
 
 **Goal:** Land the engine primitives, gate library, effect registry, dispatcher; migrate the two simplest CSM layers (locomotion + posture) end-to-end. Observable behavior identical to today for upper-body combat; CSM still drives `right_hand` + `left_hand` for now.
 

@@ -2236,9 +2236,22 @@ Migration phases (each its own ticket; each an atomic commit):
         codecs + wire ids 47/48 + components, entity-generic gate +
         effect registries, ActionDispatcher. 21 tests. Not yet wired
         into the server tick.
-      - T-226b (next) — gate library + resolvers + locomotion/posture
-        action JSONs + actorSlots prefab field + CSM layer removal +
-        Physics/Animation rewiring; snapshot-determinism-gated.
+      - T-226b (done) — posture migration only (scoped down from
+        locomotion+posture: locomotion's sidestep is i_frame/dodge-
+        entangled, jump/airborne physics-coupled — deferred to 226c).
+        Prefab.actorSlots + inheritance + spawn-install; Crouched tag +
+        TAG_COMPONENTS; set_tag/clear_tag resolvers; PostureIntent +
+        CompositeIntentResolver; upright/crouched JSONs; posture scope
+        contributor; posture layer deleted from humanoid_default + 5
+        paramOverrides rewritten csm.posture→posture.crouched;
+        ActionDispatcher wired into server.ts. 3 parity tests incl.
+        boot-critical CSM compile+scope-validate. Bake byte-identical.
+      - T-226c (next) — locomotion migration: idle/walk/strafe ambient
+        actions, jump active, airborne/landing physics-driven; CSM
+        locomotion layer deleted; AnimationSystem rewired; crouch
+        paramOverride → animation-side rule on Crouched tag (posture
+        contributor then deleted). sidestep migrates with dodge (T-229).
+        Snapshot-determinism-gated; the high-risk AnimationSystem surgery.
   - T-227 — Universal swing action library + chain refactor; delete
     ActionSystem + SwingContext + SwingChain; CSM right_hand +
     left_hand layers removed
