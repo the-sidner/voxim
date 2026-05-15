@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef, ManeuverDef, BuffDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef, ManeuverDef, BuffDef } from "./types.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
@@ -440,12 +440,47 @@ const ACTION_PHASE_REF_RE = /^([^:]+):(enter|exit|tick)$/;
  * (cancel-into target ids) are validated in a separate pass once all
  * actions have been loaded — see `validateActionCrossRefs`.
  */
+/**
+ * Validate a list of ActionGate references (preconditions / cancel gates).
+ * Only structural validation here — that `gate` is a non-empty string and
+ * `params` (if present) is a plain object. Whether the named gate exists in
+ * the runtime registry is a runtime concern (the registry throws on unknown
+ * ids); content load does not know the registered vocabulary.
+ */
+function validateActionGates(actionId: string, where: string, gates: ActionGate[]): void {
+  if (!Array.isArray(gates)) {
+    throw new Error(`Action '${actionId}' ${where}: must be an array`);
+  }
+  for (const g of gates) {
+    if (!g || typeof g.gate !== "string" || g.gate.length === 0) {
+      throw new Error(`Action '${actionId}' ${where}: every entry needs a non-empty 'gate'`);
+    }
+    if (g.params !== undefined && (typeof g.params !== "object" || Array.isArray(g.params) || g.params === null)) {
+      throw new Error(`Action '${actionId}' ${where}: gate '${g.gate}' params must be an object`);
+    }
+  }
+}
+
 export function validateActionDef(def: ActionDef): void {
   if (typeof def.id !== "string" || def.id.length === 0) {
     throw new Error(`Action: missing or empty id`);
   }
   if (!VALID_ACTION_KINDS.has(def.kind)) {
     throw new Error(`Action '${def.id}': kind must be active|reaction|ambient, got '${def.kind}'`);
+  }
+
+  if (typeof def.slot !== "string" || def.slot.length === 0) {
+    throw new Error(`Action '${def.id}': slot must be a non-empty string`);
+  }
+  if (def.limbs !== undefined) {
+    if (!Array.isArray(def.limbs)) {
+      throw new Error(`Action '${def.id}': limbs must be an array of strings`);
+    }
+    for (const limb of def.limbs) {
+      if (typeof limb !== "string" || limb.length === 0) {
+        throw new Error(`Action '${def.id}': every limb must be a non-empty string`);
+      }
+    }
   }
 
   if (!def.phases || typeof def.phases !== "object" || Array.isArray(def.phases)) {
@@ -481,6 +516,9 @@ export function validateActionDef(def: ActionDef): void {
       if (typeof target !== "string" || target.length === 0) {
         throw new Error(`Action '${def.id}' cancel.${phaseName}: every target must be a non-empty string`);
       }
+    }
+    if (rule.gates !== undefined) {
+      validateActionGates(def.id, `cancel.${phaseName}.gates`, rule.gates);
     }
   }
 
@@ -547,6 +585,10 @@ export function validateActionDef(def: ActionDef): void {
         throw new Error(`Action '${def.id}' animation.${phaseName}: clipId must be a non-empty string`);
       }
     }
+  }
+
+  if (def.preconditions !== undefined) {
+    validateActionGates(def.id, "preconditions", def.preconditions);
   }
 
   if (def.kind === "reaction" && typeof def.interruptPriority !== "number") {

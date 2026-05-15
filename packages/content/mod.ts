@@ -99,6 +99,7 @@ export type {
   ActionEffect,
   ActionAnimation,
   ActionMovement,
+  ActionGate,
   VerbDef,
   SMLayerOutput,
   SMLayerKind,

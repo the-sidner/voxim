@@ -1,6 +1,11 @@
 {
   "id": "sword_overhead",
   "kind": "active",
+  "slot": "primary",
+  "limbs": ["right_hand"],
+  "preconditions": [
+    { "gate": "tag_absent", "params": { "tag": "stunned" } }
+  ],
   "phases": {
     "windup":   { "ticks": 8 },
     "active":   { "ticks": 3 },

@@ -588,6 +588,25 @@ export interface ActionPhase {
  */
 export interface ActionCancelRule {
   into: string[];
+  /**
+   * Extra gates evaluated when an intent attempts this cancel. The cancel
+   * fires only if the target action's `preconditions` AND these gates all
+   * pass. Empty / absent → cancel governed by `into` + target preconditions
+   * alone. (T-226)
+   */
+  gates?: ActionGate[];
+}
+
+/**
+ * A typed predicate from the closed gate vocabulary (T-226). `gate` keys
+ * into the gate registry installed by the runtime; `params` is the gate's
+ * typed payload. There is no expression DSL and no boolean composition —
+ * a condition the vocabulary can't express is a new registered gate, not
+ * inline logic. Used in `ActionDef.preconditions` and `ActionCancelRule.gates`.
+ */
+export interface ActionGate {
+  gate: string;
+  params?: Record<string, unknown>;
 }
 
 /**
@@ -627,6 +646,20 @@ export interface ActionAnimation {
 export interface ActionDef {
   id: string;
   kind: "active" | "reaction" | "ambient";
+  /**
+   * Which actor slot this action occupies (`"locomotion"`, `"primary"`,
+   * `"posture"`, …). The slot set is declared per actor template
+   * (`Prefab.actorSlots`); the dispatcher rejects an action whose slot the
+   * actor does not declare. Each slot holds ≤ 1 ActiveAction at a time. (T-226)
+   */
+  slot: string;
+  /**
+   * Animation metadata — which limbs this action drives, for the animation
+   * system's bone routing. Slot ownership is unaffected: a `primary`-slot
+   * action targeting `["right_hand"]` still excludes any other primary
+   * action. Absent → the slot's conventional limb set. (T-226)
+   */
+  limbs?: string[];
   phases: Record<string, ActionPhase>;
   cancel: Record<string, ActionCancelRule>;
   movement: Record<string, ActionMovement>;
@@ -635,6 +668,12 @@ export interface ActionDef {
   priority?: number;
   /** Threshold for non-consent interruption (reactions). */
   interruptPriority?: number;
+  /**
+   * Gates evaluated at initiation. The action starts only if every gate
+   * passes (plus resource `costs` are affordable). Closed-vocabulary typed
+   * predicates — see `ActionGate`. (T-226)
+   */
+  preconditions?: ActionGate[];
   effects: ActionEffect[];
   animation?: Record<string, ActionAnimation>;
 }

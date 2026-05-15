@@ -21,6 +21,9 @@ export type {
   NameData,
   CharacterStateMachineData,
   SwingChainData,
+  ActorSlotsData,
+  ActiveActionState,
+  ActiveActionsData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
@@ -45,6 +48,8 @@ export {
   nameCodec,
   characterStateMachineCodec,
   swingChainCodec,
+  actorSlotsCodec,
+  activeActionsCodec,
   WIRE_LIMITS,
 } from "./src/components.ts";
 

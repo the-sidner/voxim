@@ -19,6 +19,7 @@ function baseValidAction(): ActionDef {
   return {
     id: "_test",
     kind: "active",
+    slot: "primary",
     phases: {
       windup:   { ticks: 4 },
       active:   { ticks: 2 },
@@ -73,12 +74,48 @@ Deno.test("validateActionDef accepts perpetual phase on ambient", () => {
   const def: ActionDef = {
     id: "_walk",
     kind: "ambient",
+    slot: "locomotion",
     phases: { loop: { ticks: -1 } },
     cancel: { loop: { into: ["any"] } },
     movement: { loop: "free" },
     effects: [],
   };
   validateActionDef(def);
+});
+
+Deno.test("validateActionDef rejects missing slot", () => {
+  const def = baseValidAction();
+  // deno-lint-ignore no-explicit-any
+  delete (def as any).slot;
+  assertThrows(() => validateActionDef(def), Error, "slot must be a non-empty string");
+});
+
+Deno.test("validateActionDef rejects non-string limb", () => {
+  const def = baseValidAction();
+  // deno-lint-ignore no-explicit-any
+  (def as any).limbs = ["right_hand", 7];
+  assertThrows(() => validateActionDef(def), Error, "every limb must be a non-empty string");
+});
+
+Deno.test("validateActionDef accepts limbs + preconditions + cancel gates", () => {
+  const def = baseValidAction();
+  def.limbs = ["right_hand", "left_hand"];
+  def.preconditions = [{ gate: "tag_absent", params: { tag: "stunned" } }];
+  def.cancel.windup.gates = [{ gate: "has_resource", params: { kind: "stamina", min: 8 } }];
+  validateActionDef(def);
+});
+
+Deno.test("validateActionDef rejects precondition with empty gate name", () => {
+  const def = baseValidAction();
+  def.preconditions = [{ gate: "" }];
+  assertThrows(() => validateActionDef(def), Error, "needs a non-empty 'gate'");
+});
+
+Deno.test("validateActionDef rejects cancel gate with array params", () => {
+  const def = baseValidAction();
+  // deno-lint-ignore no-explicit-any
+  def.cancel.windup.gates = [{ gate: "x", params: [] as any }];
+  assertThrows(() => validateActionDef(def), Error, "params must be an object");
 });
 
 Deno.test("validateActionDef rejects movement on undeclared phase", () => {
@@ -157,6 +194,9 @@ Deno.test("sword_overhead fixture round-trips through bootstrap encode/decode", 
   const after  = dst.actions.getOrThrow("sword_overhead");
 
   assertEquals(after.kind, before.kind);
+  assertEquals(after.slot, before.slot);
+  assertEquals(after.limbs, before.limbs);
+  assertEquals(after.preconditions, before.preconditions);
   assertEquals(after.phases, before.phases);
   assertEquals(after.cancel, before.cancel);
   assertEquals(after.movement, before.movement);

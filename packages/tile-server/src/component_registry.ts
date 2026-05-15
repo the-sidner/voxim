@@ -45,6 +45,7 @@ import {
   ActionImpulse,
 } from "./components/combat.ts";
 import { CharacterStateMachine } from "./components/character_state_machine.ts";
+import { ActorSlots, ActiveActions } from "./components/action.ts";
 import { SwingContext } from "./components/swing_context.ts";
 import { SwingChain } from "./components/swing_chain.ts";
 import { Maneuver } from "./components/maneuver.ts";
@@ -172,6 +173,11 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // light/heavy variants at press / release without waiting for the
   // server's AnimationState delta.
   SwingChain,
+  // Action runtime (T-226): networked so the client's mirrored World runs
+  // the same slot dispatch for prediction. ActorSlots is spawn-immutable;
+  // ActiveActions changes only when a slot's phase/action changes.
+  ActorSlots,
+  ActiveActions,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */

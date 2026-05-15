@@ -1631,6 +1631,86 @@ export const swingChainCodec: Serialiser<SwingChainData> = {
   },
 };
 
+// ---- ActorSlots ------------------------------------------------------------
+// The declared slot set for an actor (T-226). Set once at spawn from the
+// actor template's `actorSlots`; never mutated at runtime. Networked so the
+// client's mirrored World can dispatch/predict the same slots.
+
+export interface ActorSlotsData {
+  slots: string[];
+}
+
+export const actorSlotsCodec: Serialiser<ActorSlotsData> = {
+  encode(v: ActorSlotsData): Uint8Array {
+    const w = new WireWriter();
+    w.writeU16(v.slots.length);
+    for (const s of v.slots) w.writeStr(s);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): ActorSlotsData {
+    const r = new WireReader(bytes);
+    const n = r.readU16();
+    const slots: string[] = [];
+    for (let i = 0; i < n; i++) slots.push(r.readStr());
+    return { slots };
+  },
+};
+
+// ---- ActiveActions ---------------------------------------------------------
+// One entry per occupied slot: what action is running there, which phase,
+// how many ticks into it, who initiated it, plus an opaque per-resolver
+// scratch blob (JSON; replicated so client prediction matches the server).
+// Absence of a slot key = nothing running in that slot. The ActionDispatcher
+// is the only writer. (T-226)
+
+export interface ActiveActionState {
+  actionId: string;
+  phase: string;
+  ticksInPhase: number;
+  initiator: "intent" | "event" | "ambient";
+  scratch?: Record<string, unknown>;
+}
+
+export interface ActiveActionsData {
+  states: Record<string, ActiveActionState>;
+}
+
+const ACTIVE_ACTION_INITIATORS = ["intent", "event", "ambient"] as const;
+
+export const activeActionsCodec: Serialiser<ActiveActionsData> = {
+  encode(v: ActiveActionsData): Uint8Array {
+    const w = new WireWriter();
+    const entries = Object.entries(v.states);
+    w.writeU16(entries.length);
+    for (const [slot, s] of entries) {
+      w.writeStr(slot);
+      w.writeStr(s.actionId);
+      w.writeStr(s.phase);
+      w.writeU16(s.ticksInPhase);
+      w.writeU8(ACTIVE_ACTION_INITIATORS.indexOf(s.initiator));
+      w.writeStr(s.scratch ? JSON.stringify(s.scratch) : "");
+    }
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): ActiveActionsData {
+    const r = new WireReader(bytes);
+    const n = r.readU16();
+    const states: Record<string, ActiveActionState> = {};
+    for (let i = 0; i < n; i++) {
+      const slot = r.readStr();
+      const actionId = r.readStr();
+      const phase = r.readStr();
+      const ticksInPhase = r.readU16();
+      const initiator = ACTIVE_ACTION_INITIATORS[r.readU8()] ?? "intent";
+      const scratchStr = r.readStr();
+      const state: ActiveActionState = { actionId, phase, ticksInPhase, initiator };
+      if (scratchStr.length > 0) state.scratch = JSON.parse(scratchStr);
+      states[slot] = state;
+    }
+    return { states };
+  },
+};
+
 // ---- CharacterStateMachine -------------------------------------------------
 // Networked so the client can show the active SM node per layer in the debug
 // overlay. {stateMachineId, layerStates: Record<layerId,{node,elapsed}>}.

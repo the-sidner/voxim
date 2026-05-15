@@ -55,6 +55,8 @@ export const ComponentType = {
   name:               44,
   characterStateMachine: 45,
   swingChain: 46,
+  actorSlots: 47,
+  activeActions: 48,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */
