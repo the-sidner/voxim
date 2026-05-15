@@ -38,7 +38,6 @@ import {
 } from "./components/game.ts";
 import {
   CounterReady,
-  BlockHeld,
   Poise,
 } from "./components/combat.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
@@ -119,10 +118,11 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Thirst,
   Stamina,
   // 10 (attackCooldown) retired
-  // 11 (combatState) retired — split into CounterReady (below) + server-only
-  //    BlockHeld. (T-229: IFrameActive → `iframe` tag, DodgeCooldown removed.
+  // 11 (combatState) retired — only CounterReady (below) survives from the
+  //    split. (T-229: IFrameActive → `iframe` tag, DodgeCooldown removed.
   //    T-232: networked Staggered → `staggered` tag + stagger reaction
-  //    actions; wire id 36 retired.)
+  //    actions, wire id 36 retired. T-233: BlockHeld removed — parry window
+  //    is the held `block` action's ticksInPhase.)
   Lifetime,
   ModelRef,
   AnimationState,
@@ -186,10 +186,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ...NETWORKED_DEFS,
   // ── Server-only defs (networked: false) ──────────────────────────────────
   Hitbox,
-  // Combat counters — server-only because the client doesn't act on them.
-  // (T-229: IFrameActive → `iframe` tag; DodgeCooldown removed — dodge is
-  // the dodge_roll action now.)
-  BlockHeld,
+  // (Combat counters all retired: T-229 IFrameActive→`iframe` tag &
+  // DodgeCooldown removed; T-233 BlockHeld removed — parry window is the
+  // held `block` action's ticksInPhase. CombatTimersSystem is gone.)
   // Poise (T-197) — staggering resource. Server-only; the client renders
   // stagger via CSM reaction-layer animation, not a poise bar.
   Poise,

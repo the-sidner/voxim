@@ -8,8 +8,9 @@
  *
  *   CounterReady     — parried an attack and has a bonus-damage window open
  *                      (networked: future UI indicator).
- *   BlockHeld        — counts ticks since ACTION_BLOCK became held
- *                      (server-only: parry-window detection).
+ *
+ * The parry window is read from the held `block` action's primary-slot
+ * `ticksInPhase` (T-233) — no BlockHeld counter / CombatTimersSystem.
  *
  * Stagger is no longer a component here — it's the `stagger_light` /
  * `stagger_heavy` reaction actions (phase duration = stagger window) plus
@@ -25,7 +26,6 @@ import { buildCodec } from "@voxim/codecs";
 import type { Serialiser } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
 import {
-  WireWriter, WireReader,
   counterReadyCodec,
 } from "@voxim/codecs";
 import type { CounterReadyData } from "@voxim/codecs";
@@ -37,29 +37,6 @@ export const CounterReady = defineComponent({
   wireId: ComponentType.counterReady,
   codec: counterReadyCodec,
   default: (): CounterReadyData => ({}),
-});
-
-// ---- BlockHeld (server-only) ----------------------------------------------
-
-export interface BlockHeldData { ticks: number; }
-
-const blockHeldCodec: Serialiser<BlockHeldData> = {
-  encode(v: BlockHeldData): Uint8Array {
-    const w = new WireWriter();
-    w.writeU16(v.ticks);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): BlockHeldData {
-    const r = new WireReader(bytes);
-    return { ticks: r.readU16() };
-  },
-};
-
-export const BlockHeld = defineComponent({
-  name: "blockHeld" as const,
-  networked: false,
-  codec: blockHeldCodec,
-  default: (): BlockHeldData => ({ ticks: 0 }),
 });
 
 // ---- Airborne (server-only marker) ----------------------------------------

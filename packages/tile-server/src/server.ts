@@ -50,7 +50,6 @@ import { PhysicsSystem } from "./systems/physics.ts";
 import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
-import { CombatTimersSystem } from "./systems/combat_timers.ts";
 import { HungerSystem } from "./systems/hunger.ts";
 import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
@@ -492,7 +491,6 @@ export class TileServer {
       // ActionDispatcher advances every actor's slots (posture, locomotion,
       // primary, reaction) from intent + events. The CSM is gone (T-228).
       actionDispatcher,
-      new CombatTimersSystem(),
       skill,
       new ProjectileSystem(content, hitHandlers),
       new ItemPhysicsSystem(content),

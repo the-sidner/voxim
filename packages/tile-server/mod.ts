@@ -28,10 +28,7 @@ export type {
   LifetimeData,
 } from "./src/components/game.ts";
 export {
-  CounterReady, BlockHeld,
-} from "./src/components/combat.ts";
-export type {
-  BlockHeldData,
+  CounterReady,
 } from "./src/components/combat.ts";
 export { TickEventBuffer } from "./src/tick_events.ts";
 

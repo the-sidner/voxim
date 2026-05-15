@@ -6,11 +6,10 @@ import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { Health, Stamina } from "../components/game.ts";
 import {
   CounterReady,
-  BlockHeld,
   Poise,
 } from "../components/combat.ts";
 import { Blocking, IFrame } from "../components/tags.ts";
-import { PendingReaction } from "../components/action.ts";
+import { PendingReaction, ActiveActions } from "../components/action.ts";
 import { Equipment } from "../components/equipment.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
@@ -66,21 +65,25 @@ export class HealthHitHandler implements HitHandler {
     if (world.has(ctx.targetId, IFrame)) return;
 
     // ── Block / parry ─────────────────────────────────────────────────────────
-    // Block status comes from the lag-compensated CSM combat node — what mode
-    // the target was in at the rewound tick. The SM resolved input + weapon
-    // capability + valid context into the answer; damage handler reads the
-    // resolution rather than re-deriving from raw input bits.
+    // Blocking is the `block` primary-slot action's `Blocking` tag (current
+    // tick; lag-comp rewind precision is accepted retune per the
+    // structure-over-parity pivot). The damage handler reads the tag rather
+    // than re-deriving block from raw input bits.
     const defenderStamina = world.get(ctx.targetId, Stamina);
     const stamGated = defenderStamina?.exhausted ?? false;
     const incomingAngle = Math.atan2(ctx.targetY - ctx.attackerY, ctx.targetX - ctx.attackerX);
-    // T-227: blocking is the `block` primary-slot action's `Blocking` tag
-    // (current tick — the CSM right_hand rewind precision is retuned later
-    // per the structure-over-parity pivot).
     const isBlocking = !stamGated &&
       world.has(ctx.targetId, Blocking) &&
       angleDiff(incomingAngle, ctx.targetSnapshotFacing) <= combatCfg.blockArcHalfRadians;
 
-    const blockHeldTicks = world.get(ctx.targetId, BlockHeld)?.ticks ?? 0;
+    // Parry window = the opening ticks of the held `block` action. The
+    // block action is the sole writer of the Blocking tag, so its
+    // primary-slot `ticksInPhase` is exactly how long block has been held
+    // (replaces the retired BlockHeld counter / CombatTimersSystem, T-233).
+    const primary = world.get(ctx.targetId, ActiveActions)?.states["primary"];
+    const blockHeldTicks = primary?.actionId === "block"
+      ? primary.ticksInPhase
+      : Number.MAX_SAFE_INTEGER;
     const isParry = ctx.parryAllowed &&
       isBlocking &&
       blockHeldTicks < dodgeCfg.parryWindowTicks;
