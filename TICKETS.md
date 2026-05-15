@@ -2329,8 +2329,17 @@ Migration phases (each its own ticket; each an atomic commit):
     tests green; bake byte-identical. **CSM eliminated — all behavior
     is the action dispatcher.** Open follow-up: reaction interrupt-
     priority + poise tuning (was the planned T-232 polish).
-  - T-229 — Migrate dodge (delete DodgeSystem); first cross-action
-    cancel-into proves out
+  - T-229 — DONE. dodge_roll.json (replaces sidestep) — locomotion-slot
+    active, locked dash, stamina cost, not_staggered/not_exhausted
+    preconditions, dodge_impulse + iframe tag effects. Made the movement
+    enum live (PhysicsSystem honours "locked"; replaces Sidestep
+    generically + makes swing active-lock real). iframe tag replaces
+    IFrameActive; StaminaCostHandler injected (all costs.stamina now
+    real). DodgeSystem shrank to CombatTimersSystem (Staggered +
+    BlockHeld only — dies at T-232/T-233). Deleted IFrameActive/
+    DodgeCooldown/Sidestep. Fixed stale prefab_round_trip test. 166
+    tests green; bake byte-identical. Cross-action cancel-into (swing
+    windup → dodge_roll) holds via existing matrix.
   - T-230 — Migrate consume / interact / pray (non-combat through the
     same primitive)
   - T-231 — Migrate crafting / building to actions + resolvers

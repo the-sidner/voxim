@@ -599,9 +599,42 @@ This is the foundation phase. The substrate is exercised by the smallest meaning
 
 **Files touched:** ~50 files; estimated diff 3000-4000 lines, of which ~2500 are net deletes.
 
-### T-229 — Migrate dodge
+### T-229 — Migrate dodge — **LANDED**
 
-`actions/dodge_roll.json` with i-frame tag-install effects, cancel-windup-into `["any"]`. DodgeSystem deleted. First cross-action cancel-into proves out (swing windups cancel into `dodge_*`).
+`actions/dodge_roll.json` (replaces `sidestep.json`): locomotion-slot active,
+single committed `dash` phase (`movement: "locked"`), `costs.stamina: 15`,
+preconditions `not_staggered` + `not_exhausted`, effects `dodge_impulse` +
+`set_tag iframe` on `dash:enter` / `clear_tag iframe` on `dash:exit`.
+
+What landed beyond the plan's one-liner (entanglement surfaced during recon):
+
+- **The `movement` enum became live.** It had *zero* consumers — declared but
+  inert. PhysicsSystem now reads the most-restrictive `movement` across
+  occupied slots' current phase; `"locked"` holds the committed velocity
+  vector (replacing the bespoke `Sidestep` component generically) and also
+  finally makes `swing active:locked` real. `"slowed"` is still treated as
+  `"free"` (speed-scale pass deferred — documented retune).
+- **`iframe` tag** replaces the `IFrameActive` countdown component (the dash
+  phase's `ticks` *is* the i-frame window). `health_hit_handler` reads the
+  tag.
+- **A `StaminaCostHandler` was injected** (the dispatcher had no `CostHandler`
+  — all `costs` were inert). Every existing `costs.stamina` (swings too) now
+  actually spends stamina. Other cost resources stay free until T-238.
+- **DodgeSystem could not be fully deleted** — it also ran the `Staggered`
+  countdown (T-232) and the `BlockHeld` parry counter (T-233). It shrank to
+  `CombatTimersSystem` with exactly those two not-yet-migrated
+  responsibilities (honest single purpose, not a shim; dies at T-232/T-233).
+  `IFrameActive` / `DodgeCooldown` / `Sidestep` component defs deleted.
+- Stale `prefab_round_trip.test.ts` (retired `swingable.actions` shape) fixed
+  to its current `chain` shape — the whole tile-server suite compiles again.
+
+Cooldown is now stamina-rate-limited rather than a fixed tick window (the
+`DodgeCooldown` precision is the accepted structure-over-parity retune).
+Cross-action cancel-into holds: `swing_light.windup.into` is `["any"]` and
+the `dodge_*` glob matches `dodge_roll`, so a windup cancels into the dodge
+through the existing dispatcher matrix — no special-casing.
+
+166 tile-server/content/engine tests green; bake byte-identical.
 
 ### T-230 — Migrate consume / interact / pray
 
