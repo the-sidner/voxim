@@ -506,18 +506,29 @@ This is the foundation phase. The substrate is exercised by the smallest meaning
 > from `SwingContext`). Type-clean, registered via barrel, not yet
 > wired live.
 >
-> **The flip (next, one atomic chunk — irreducible, the deletion can't
-> be partial):** `PrimaryIntentResolver` (ACTION_USE_SKILL → the
-> equipped weapon's swing action; ACTION_BLOCK → a held `block`
-> action setting a `Blocking` tag); weapon declares its swing action
-> id; wire `CompositeIntentResolver([Posture, Locomotion, Primary])`;
-> **delete** `ActionSystem` + `SwingContext` + `SwingChain` +
-> `ActionImpulse` + CSM `right_hand`/`left_hand` layers; stub the
-> maneuver path; rewire `health_hit_handler` block detection onto the
-> `Blocking` tag + `StrikeLanded` onto `ctx.skillVerb`; AnimationSystem
-> projects the primary slot for the upper body (the locomotion
-> projection pattern, reused). No parity gate — boots, swings connect,
-> blocks register; feel retuned afterward.
+> **The flip (LANDED).** One atomic commit: `PrimaryIntentResolver`
+> (ACTION_BLOCK → held `block`/`Blocking` tag; ACTION_USE_SKILL → the
+> weapon's `swingActionId`; mid-swing → undisturbed; else
+> `primary_idle`); `CompositeIntentResolver([Posture, Locomotion,
+> Primary])`; **deleted** `ActionSystem` (712 LOC), `DurabilitySystem`,
+> `ManeuverSchedulerSystem`, the `action` sm-scope contributor,
+> `SwingContext`, `SwingChain`, `ActionImpulse`, CSM `right_hand` +
+> `left_hand`. weapon_trace folds in durability; AnimationSystem
+> projects locomotion + primary slots (CSM loop now only `reaction`);
+> `health_hit_handler` blocks via the `Blocking` tag + strikes via
+> `ctx.skillVerb`; `terrain_hit_handler` gates on the primary swing;
+> Maneuver/ManeuverLoadout kept as inert defs (prefabs still load),
+> runtime gone → rebuilt as actions in **T-228**. Type-clean; 45
+> action/loader + 33 sm/locomotion/bake-snapshot tests green; bake
+> byte-identical. **The CSM is fully out of locomotion/posture/combat —
+> only the `reaction` layer remains.** Accepted regressions (retuned
+> later): swing feel, lag-comp block precision, root-motion carry,
+> maneuvers, weapon-trail windowing, client swing_predictor/overlay.
+>
+> **T-227 fully landed.** Next: **T-228** — rebuild maneuvers as
+> multi-effect actions and delete the inert Maneuver defs + the
+> remaining `reaction` CSM layer (→ hit-reactions become actions, the
+> CSM is gone entirely).
 
 **Goal:** Replace the `right_hand` CSM layer + `ActionSystem` + `SwingContext` + `SwingChain` with the action runtime. Universal swing actions; weapons reference action ids per chain step.
 

@@ -2278,13 +2278,17 @@ Migration phases (each its own ticket; each an atomic commit):
     ActiveActions + hit-handler rewiring. PIVOT (user directive):
     structure over parity — no harness; aggressive rebuild, accept
     retuning/maneuver-breakage (maneuvers rebuilt as actions in T-228).
-    Landed: c1 inert library, c2 serverTick groundwork, c3a
-    weapon_trace+projectile_spawn resolvers (structural port, type-
-    clean, registered inert). Next = the flip (one atomic chunk):
-    PrimaryIntentResolver + block action + delete ActionSystem/
-    SwingContext/SwingChain/ActionImpulse + CSM right_hand/left_hand +
-    hit-handler rewire + AnimationSystem primary-slot projection. See
-    ACTION_PRIMITIVE_PLAN.md T-227 for the full map.
+    DONE — c1 swing library, c2 serverTick, c3a weapon_trace/
+    projectile_spawn resolvers, and the flip (PrimaryIntentResolver +
+    block/primary_idle actions + Blocking tag + Composite intent;
+    deleted ActionSystem/DurabilitySystem/ManeuverScheduler/action
+    sm-scope/SwingContext/SwingChain/ActionImpulse + CSM right_hand/
+    left_hand; weapon_trace folds durability; AnimationSystem projects
+    locomotion+primary; hit handlers rewired). Maneuver/ManeuverLoadout
+    kept inert (prefabs load) → rebuilt T-228. Type-clean; 45+33 tests
+    green; bake byte-identical. CSM reduced to the `reaction` layer
+    only. Accepted regressions (retuned later): feel, lag-comp block
+    precision, root-motion, maneuvers, weapon-trail, client predictor.
   - T-228 — Maneuvers absorbed as multi-effect actions; CSM fully
     retired (StateMachineDef, compiler, humanoid_default.json deleted)
   - T-229 — Migrate dodge (delete DodgeSystem); first cross-action
