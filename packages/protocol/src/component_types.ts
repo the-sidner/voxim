@@ -44,7 +44,8 @@ export const ComponentType = {
   durability:         33,
   inscribed:          34,
   qualityStamped:     35,
-  staggered:          36,
+  // 36 (staggered) retired — stagger is a reaction action + `staggered`
+  //    tag now; rendered from AnimationState. Never reuse.
   counterReady:       37,
   workstationTag:     38,
   stats:              39,

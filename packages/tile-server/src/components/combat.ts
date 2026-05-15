@@ -6,12 +6,15 @@
  * the component exists iff the state is active. Absence is the zero state.
  * Never written at spawn.
  *
- *   Staggered        — interrupted after a successful parry (networked: the
- *                      client wants to render stagger animation).
  *   CounterReady     — parried an attack and has a bonus-damage window open
  *                      (networked: future UI indicator).
  *   BlockHeld        — counts ticks since ACTION_BLOCK became held
  *                      (server-only: parry-window detection).
+ *
+ * Stagger is no longer a component here — it's the `stagger_light` /
+ * `stagger_heavy` reaction actions (phase duration = stagger window) plus
+ * the `staggered` tag (components/tags.ts) for the action-lockout; the
+ * client renders it from the networked reaction-slot AnimationState (T-232).
  *
  * Dodge invulnerability is the `iframe` tag installed by the `dodge_roll`
  * action's dash phase (see components/tags.ts); the retired IFrameActive /
@@ -23,18 +26,9 @@ import type { Serialiser } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
 import {
   WireWriter, WireReader,
-  staggeredCodec, counterReadyCodec,
+  counterReadyCodec,
 } from "@voxim/codecs";
-import type { StaggeredData, CounterReadyData } from "@voxim/codecs";
-
-// ---- Staggered (networked) ------------------------------------------------
-
-export const Staggered = defineComponent({
-  name: "staggered" as const,
-  wireId: ComponentType.staggered,
-  codec: staggeredCodec,
-  default: (): StaggeredData => ({ ticksRemaining: 0 }),
-});
+import type { CounterReadyData } from "@voxim/codecs";
 
 // ---- CounterReady (networked, zero-payload marker) ------------------------
 

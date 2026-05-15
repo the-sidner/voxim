@@ -28,7 +28,7 @@ export type {
   LifetimeData,
 } from "./src/components/game.ts";
 export {
-  Staggered, CounterReady, BlockHeld,
+  CounterReady, BlockHeld,
 } from "./src/components/combat.ts";
 export type {
   BlockHeldData,

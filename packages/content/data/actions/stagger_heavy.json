@@ -6,6 +6,9 @@
   "phases": { "play": { "ticks": 14 } },
   "cancel": { "play": { "into": [] } },
   "movement": { "play": "locked" },
-  "effects": [],
+  "effects": [
+    { "phase": "play:enter", "kind": "set_tag",   "params": { "tag": "staggered" } },
+    { "phase": "play:exit",  "kind": "clear_tag", "params": { "tag": "staggered" } }
+  ],
   "animation": { "play": { "clipId": "$stagger_heavy" } }
 }

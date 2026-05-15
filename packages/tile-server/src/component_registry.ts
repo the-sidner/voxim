@@ -37,7 +37,6 @@ import {
   Velocity,
 } from "./components/game.ts";
 import {
-  Staggered,
   CounterReady,
   BlockHeld,
   Poise,
@@ -120,9 +119,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Thirst,
   Stamina,
   // 10 (attackCooldown) retired
-  // 11 (combatState) retired — split into Staggered + CounterReady (below)
-  //    plus server-only BlockHeld. (T-229: IFrameActive → `iframe` tag;
-  //    DodgeCooldown removed with the dodge migration.)
+  // 11 (combatState) retired — split into CounterReady (below) + server-only
+  //    BlockHeld. (T-229: IFrameActive → `iframe` tag, DodgeCooldown removed.
+  //    T-232: networked Staggered → `staggered` tag + stagger reaction
+  //    actions; wire id 36 retired.)
   Lifetime,
   ModelRef,
   AnimationState,
@@ -152,10 +152,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   QualityStamped,
   Stats,
   Provenance,
-  // ── Combat presence-as-flag components (split from the retired
-  //    combatState slot). Networked because the client renders stagger
-  //    animation and surfaces the counter-ready UI.
-  Staggered,
+  // ── Combat presence-as-flag component (split from the retired
+  //    combatState slot). Networked to surface the counter-ready UI.
+  //    (Staggered is no longer networked — stagger is a reaction action,
+  //    rendered from AnimationState; T-232.)
   CounterReady,
   GateLink,
   Name,

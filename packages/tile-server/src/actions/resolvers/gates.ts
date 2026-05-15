@@ -8,7 +8,7 @@
  */
 
 import type { GateHandler } from "../gate.ts";
-import { Staggered } from "../../components/combat.ts";
+import { Staggered } from "../../components/tags.ts";
 import { Stamina } from "../../components/game.ts";
 
 /** Passes when the entity is NOT mid-stagger (stagger locks out actions). */

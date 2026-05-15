@@ -339,26 +339,10 @@ export const staminaCodec: Serialiser<StaminaData> = {
   },
 };
 
-// ---- Staggered --------------------------------------------------------------
-// { ticksRemaining: u8 } — present iff an entity is in stagger recovery after
-// a successful parry. The component's absence is the zero state; systems gate
-// swing-initiation on world.has(entityId, Staggered).
-
-export interface StaggeredData {
-  ticksRemaining: number;
-}
-
-export const staggeredCodec: Serialiser<StaggeredData> = {
-  encode(v: StaggeredData): Uint8Array {
-    const w = new WireWriter();
-    w.writeU8(v.ticksRemaining);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): StaggeredData {
-    const r = new WireReader(bytes);
-    return { ticksRemaining: r.readU8() };
-  },
-};
+// (Staggered codec retired in T-232 — stagger is a reaction action +
+// `staggered` tag now; the client renders it from the reaction-slot
+// AnimationState, so it is no longer a wire component. Wire id 36 retired,
+// never reuse.)
 
 // ---- CounterReady -----------------------------------------------------------
 // Marker component — zero payload. Present iff the entity has an open

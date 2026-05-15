@@ -5,7 +5,6 @@ import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { Health, Stamina } from "../components/game.ts";
 import {
-  Staggered,
   CounterReady,
   BlockHeld,
   Poise,
@@ -87,7 +86,11 @@ export class HealthHitHandler implements HitHandler {
       blockHeldTicks < dodgeCfg.parryWindowTicks;
 
     if (isParry) {
-      world.set(ctx.attackerId, Staggered, { ticksRemaining: dodgeCfg.staggerTicks });
+      // A parry hard-staggers the attacker: post a stagger_heavy reaction
+      // (the action installs the `staggered` tag for its play phase — that
+      // window *is* the old Staggered.ticksRemaining). The parrier opens a
+      // counter window.
+      world.set(ctx.attackerId, PendingReaction, { actionId: "stagger_heavy" });
       world.set(ctx.targetId, CounterReady, {});
       events.publish(TileEvents.DamageDealt, {
         targetId: ctx.targetId,

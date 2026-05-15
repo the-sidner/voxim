@@ -59,10 +59,28 @@ export const IFrame = defineComponent({
   default: (): Record<string, never> => ({}),
 });
 
+/**
+ * Staggered — installed by the `stagger_light` / `stagger_heavy` hit-react
+ * actions for the duration of their `play` phase (`set_tag` on `play:enter`,
+ * `clear_tag` on `play:exit`). Presence = the actor is in stagger recovery
+ * and may not start actions (the `not_staggered` precondition reads this).
+ * The reaction action's phase `ticks` *is* the stagger window — replaces
+ * the retired networked `Staggered` countdown component (T-232). The client
+ * sees the stagger as the reaction-slot clip in AnimationState, so it needs
+ * no wire component of its own.
+ */
+export const Staggered = defineComponent({
+  name: "staggered" as const,
+  networked: false,
+  codec: emptyCodec,
+  default: (): Record<string, never> => ({}),
+});
+
 /** Closed tag vocabulary the set_tag / clear_tag resolvers dispatch through. */
 // deno-lint-ignore no-explicit-any
 export const TAG_COMPONENTS: Readonly<Record<string, ComponentDef<any>>> = {
   crouched: Crouched,
   blocking: Blocking,
   iframe: IFrame,
+  staggered: Staggered,
 };

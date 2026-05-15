@@ -10,8 +10,8 @@
  * CorruptionExposure.
  *
  * Components NOT persisted: InputState (reset on connect), presence-as-flag
- * combat components like Staggered / CounterReady / BlockHeld and action
- * tags (iframe, blocking) — all transient, ActiveActions resets on connect
+ * combat components like CounterReady / BlockHeld and action tags
+ * (iframe, blocking, staggered) — all transient, ActiveActions resets on connect
  * — Lifetime (players don't expire),
  * NpcTag (players aren't NPCs).
  */

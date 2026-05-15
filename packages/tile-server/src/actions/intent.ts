@@ -87,7 +87,10 @@ export class PrimaryIntentResolver implements IntentResolver {
  *
  * The damage path writes `PendingReaction`; reaction-kind actions carry
  * `interruptPriority` so a stagger preempts a flinch and death preempts
- * all. Gameplay (Staggered, DeathSystem) is unchanged — this is animation.
+ * all. The stagger actions own their own gameplay now — they install the
+ * `staggered` tag for their `play` phase (the action-lockout the
+ * `not_staggered` precondition reads), so there's no separate Staggered
+ * component or countdown system (T-232). Death is still DeathSystem.
  */
 export const ReactionIntentResolver: IntentResolver = {
   resolve(world: World, entityId: EntityId, slots: readonly string[]): Map<string, string | null> {
