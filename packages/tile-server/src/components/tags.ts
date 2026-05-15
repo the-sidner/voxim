@@ -32,8 +32,22 @@ export const Crouched = defineComponent({
   default: (): Record<string, never> => ({}),
 });
 
+/**
+ * Blocking — installed by the `block` action while it occupies the primary
+ * slot. Read by health_hit_handler for parry/block (current-tick; the
+ * retired CSM right_hand rewind precision is retuned later, per the
+ * structure-over-parity pivot).
+ */
+export const Blocking = defineComponent({
+  name: "blocking" as const,
+  networked: false,
+  codec: emptyCodec,
+  default: (): Record<string, never> => ({}),
+});
+
 /** Closed tag vocabulary the set_tag / clear_tag resolvers dispatch through. */
 // deno-lint-ignore no-explicit-any
 export const TAG_COMPONENTS: Readonly<Record<string, ComponentDef<any>>> = {
   crouched: Crouched,
+  blocking: Blocking,
 };

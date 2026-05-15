@@ -13,7 +13,6 @@ import type { SMScopeContributor } from "./types.ts";
 import { velocityContributor } from "./velocity.ts";
 import { healthContributor } from "./health.ts";
 import { inputContributor } from "./input.ts";
-import { actionContributor } from "./action.ts";
 import { physicsContributor } from "./physics.ts";
 import { equipmentContributor } from "./equipment.ts";
 import { eventsContributor } from "./events.ts";
@@ -22,7 +21,6 @@ export const DEFAULT_SM_SCOPE_CONTRIBUTORS: readonly SMScopeContributor[] = [
   velocityContributor,
   healthContributor,
   inputContributor,
-  actionContributor,
   physicsContributor,
   equipmentContributor,
   eventsContributor,

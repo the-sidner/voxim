@@ -1,0 +1,9 @@
+{
+  "id": "primary_idle",
+  "kind": "ambient",
+  "slot": "primary",
+  "phases": { "hold": { "ticks": -1 } },
+  "cancel": { "hold": { "into": ["any"] } },
+  "movement": { "hold": "free" },
+  "effects": []
+}

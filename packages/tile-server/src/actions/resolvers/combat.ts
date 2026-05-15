@@ -35,7 +35,8 @@ import type {
 import { TileEvents } from "@voxim/protocol";
 import { Position, Facing, Velocity, InputState, Lifetime, ModelRef } from "../../components/game.ts";
 import { Equipment } from "../../components/equipment.ts";
-import { QualityStamped } from "../../components/instance.ts";
+import { QualityStamped, Durability } from "../../components/instance.ts";
+import { ItemData } from "../../components/items.ts";
 import { LoreLoadout } from "../../components/lore_loadout.ts";
 import { Hitbox } from "../../components/hitbox.ts";
 import { ProjectileData } from "../../components/projectile.ts";
@@ -110,6 +111,19 @@ export class WeaponTraceResolver implements EffectResolver {
       const rttTicks = Math.round(rttMs / (1000 / this.tickRateHz));
       scratch.rewindTick = Math.max(0, ctx.serverTick - rttTicks);
       scratch.hits = [];
+      // Durability: one point per swing, charged on the first active tick
+      // (folds in the retired DurabilitySystem). Broken weapon entity is
+      // destroyed; StaleSlotCleanupSystem clears the dangling slot ref.
+      const wEnt = world.get(entityId, Equipment)?.weapon?.entityId as EntityId | undefined;
+      const dur = wEnt ? world.get(wEnt, Durability) : null;
+      if (wEnt && dur && dur.remaining > 0) {
+        const remaining = dur.remaining - 1;
+        if (remaining > 0) world.set(wEnt, Durability, { ...dur, remaining });
+        else {
+          log.info("weapon broke: %s", world.get(wEnt, ItemData)?.prefabId ?? wEnt);
+          world.destroy(wEnt);
+        }
+      }
     }
     const ticksInPhase = ctx.state.ticksInPhase;
 

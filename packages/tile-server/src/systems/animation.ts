@@ -36,8 +36,6 @@ import { CharacterStateMachine } from "../components/character_state_machine.ts"
 import { ActiveActions } from "../components/action.ts";
 import type { ActiveActionState } from "../components/action.ts";
 import { Crouched } from "../components/tags.ts";
-import { SwingContext } from "../components/swing_context.ts";
-import { Maneuver } from "../components/maneuver.ts";
 import { Equipment } from "../components/equipment.ts";
 import type { SwingableData } from "@voxim/content";
 import { AnimationSlots } from "../components/animation_slots.ts";
@@ -108,161 +106,81 @@ export class AnimationSystem implements System {
 
       const layerStates: SMRuntimeState = csm.layerStates as SMRuntimeState;
       const baseSlots = world.get(entityId, AnimationSlots)?.slots ?? {};
-      // During a swing, override `weapon.swing_clip` with the active weapon
-      // action's clipId so the animation matches the equipped weapon, not
-      // the actor-prefab default. SwingContext is present iff csm.right_hand is
-      // in a swing.* state, which is exactly when the slot resolves.
-      const swing = world.get(entityId, SwingContext);
-      const swingClip = swing
-        ? this.content.weaponActions.get(swing.weaponActionId)?.clipId
+      // The swing/block/aim clips are weapon-specific. Inject the equipped
+      // weapon's geometry-action clip (the same chain[0] source weapon_trace
+      // reads) so `$weapon.swing_clip` etc. resolve to the held weapon's
+      // animation rather than the actor-prefab default. (T-227 — replaces
+      // the retired SwingContext-driven injection.)
+      const equipped = world.get(entityId, Equipment)?.weapon?.prefabId;
+      const swingable = equipped
+        ? this.content.prefabs.get(equipped)?.components["swingable"] as SwingableData | undefined
         : undefined;
-      const slotMap = swingClip
-        ? { ...baseSlots, "weapon.swing_clip": swingClip }
+      const geomAction = swingable?.chain?.[0]?.light
+        ? this.content.weaponActions.get(swingable.chain[0].light)
+        : undefined;
+      const slotMap = geomAction?.clipId
+        ? { ...baseSlots, "weapon.swing_clip": geomAction.clipId }
         : baseSlots;
-      // Maneuver-driven clip injection (T-185). The SM's right_hand /
-      // left_hand `in_maneuver` states carry no clip themselves; the
-      // ManeuverScheduler picks the active per-hand clip from the def's
-      // tracks each tick and writes it onto Maneuver. Pull those into the
-      // animation projection below.
-      const maneuver = world.get(entityId, Maneuver);
+
       const speed = velocityMagnitude(world, entityId);
       const prev  = world.get(entityId, AnimationState);
       const prevTime = getTimeByClip(prev);
-
-      // Build the SM scope just well enough to evaluate paramOverrides
-      // (typically just csm.<layer> reads). No need for full input/event vars
-      // here — those gate transitions, not effective-state overrides.
       const baseScope: Record<string, SMScopeValue> = { ...buildCsmVars(compiled, layerStates) };
 
       const layers: AnimationLayer[] = [];
 
-      // Locomotion is no longer a CSM layer (T-226c) — it is the
-      // `locomotion` action slot. Project it first so it occupies the same
-      // position in the composited layer list the retired CSM locomotion
-      // layer did (lowest priority, beneath right_hand/left_hand/reaction).
-      // Reads last-tick's committed slot (deferred ActiveActions write) —
-      // the same one-tick lag the CSM's deferred layerState read had.
+      // Locomotion (T-226c) + primary (T-227) are action slots, not CSM
+      // layers. Project locomotion first (lowest composite priority, where
+      // the retired CSM locomotion layer sat), then primary (upper body,
+      // above locomotion). Both read last-tick's committed ActiveActions
+      // (deferred-write lag = the CSM's old deferred layerState lag).
+      const slots = world.get(entityId, ActiveActions)?.states;
       const locoLayer = projectLocomotion(
-        this.content,
-        world.get(entityId, ActiveActions)?.states["locomotion"],
-        world.has(entityId, Crouched),
-        slotMap,
-        prevTime,
-        speed,
-        walkSpeedRef,
+        this.content, slots?.["locomotion"], world.has(entityId, Crouched),
+        slotMap, prevTime, speed, walkSpeedRef,
       );
       if (locoLayer) layers.push(locoLayer);
+      const primaryLayer = projectLocomotion(
+        this.content, slots?.["primary"], false,
+        slotMap, prevTime, speed, walkSpeedRef,
+      );
+      if (primaryLayer) layers.push(primaryLayer);
 
-      // Total swing duration in seconds — used to scale the swing clip's
-      // playback so it covers exactly windup→active→winddown when the three
-      // states share the same clipId (prevTime keyed by clip persists across
-      // SM transitions, so a constant speedScale = 1/totalSec maps the
-      // whole clip across the whole swing).
-      const swingTotalSec = swing
-        ? this.swingTotalSeconds(swing.weaponActionId)
-        : 0;
-
+      // Remaining CSM layers (only `reaction` after T-227) — hit/stagger/
+      // death overrides. Generic projection, unchanged.
       for (const compiledLayer of compiled.layers) {
         if (compiledLayer.raw.output !== "animation") continue;
-
         const lstate = layerStates[compiledLayer.raw.id];
         if (!lstate) continue;
-
         const eff = effectiveState(compiledLayer, lstate.node, baseScope);
-
-        // in_maneuver states have no static clip — the ManeuverScheduler
-        // selects one per hand from the def's tracks each tick and writes
-        // it onto Maneuver.{rightClipId,leftClipId}. We splice it in here
-        // so the SM stays generic ("the entity is in a maneuver") while
-        // the actual clip remains data-driven from the maneuver def.
-        let clipRef: string | null | undefined = eff.clip;
-        if (lstate.node === "in_maneuver" && maneuver) {
-          if (compiledLayer.raw.id === "right_hand") clipRef = maneuver.rightClipId || null;
-          else if (compiledLayer.raw.id === "left_hand") clipRef = maneuver.leftClipId || null;
-        }
-
-        if (!clipRef) continue; // null clip — layer contributes nothing this tick
-
-        const clipId = resolveClipId(clipRef, slotMap);
+        if (!eff.clip) continue;
+        const clipId = resolveClipId(eff.clip, slotMap);
         if (!clipId) continue;
-
         const speedReference = eff.speedReference ?? walkSpeedRef;
-        const speedScale = resolveSpeedScale(eff, compiledLayer.raw.id, lstate.node, swingTotalSec);
-
-        const time = computeClipTime(
-          prevTime.get(clipId) ?? 0,
-          eff,
-          speedScale,
-          speedReference,
-          speed,
-        );
-
-        // Per-state mask override: the state's `mask` (if set) wins over the
-        // layer's; an explicit "" means full body. undefined falls back to
-        // the layer's mask. This is how the right_hand layer's swing.* states
-        // escape the upper_body mask to drive the whole skeleton.
-        const maskId = eff.mask !== undefined
-          ? eff.mask
-          : compiledLayer.raw.mask ?? "";
-
+        const speedScale = resolveSpeedScale(eff, compiledLayer.raw.id, lstate.node, 0);
+        const time = computeClipTime(prevTime.get(clipId) ?? 0, eff, speedScale, speedReference, speed);
         layers.push({
           clipId,
-          maskId,
-          time,
-          weight: 1,
-          blend: "override",
-          speedScale,
+          maskId: eff.mask !== undefined ? eff.mask : compiledLayer.raw.mask ?? "",
+          time, weight: 1, blend: "override", speedScale,
           speedReference: speedScale === "velocity" ? speedReference : undefined,
         });
       }
 
-      // weaponActionId/ticksIntoAction drive the client weapon-trail and
-      // attachment positioning. The renderer fires its trail iff
-      // ticks ∈ [windupTicks, windupTicks+activeTicks). Only the swing.active
-      // phase is the blade-moves-through-space window — windup is a hold
-      // pose and stop is a brief pre-active pause, so neither should
-      // contribute slices. Mapping their ticksIntoAction to 0 keeps them
-      // out of the trail window while still pushing weaponActionId so the
-      // weapon attachment math (which only checks weaponActionId, not
-      // ticksIntoAction) stays aligned with the swing pose.
-      const combatNode = layerStates["right_hand"]?.node ?? "";
-      const inSwing = combatNode.startsWith("swing.");
-      let weaponActionId  = inSwing && swing ? swing.weaponActionId : "";
-      const action = inSwing && swing ? this.content.weaponActions.get(swing.weaponActionId) : undefined;
+      // weaponActionId / ticksIntoAction drive the client weapon-trail +
+      // attachment. Derived from the primary slot running a swing action
+      // (effects include weapon_trace). Trail-window precision is retuned
+      // later (structure-over-parity pivot) — for now: geometry action id
+      // while a swing is committed, ticks accumulated across the phases.
+      const pa = slots?.["primary"];
+      const paDef = pa ? this.content.actions.get(pa.actionId) : undefined;
+      const paSwing = !!paDef?.effects.some((e) => e.kind === "weapon_trace") && !!geomAction;
+      const weaponActionId = paSwing ? geomAction!.id : "";
       let ticksIntoAction = 0;
-      if (inSwing && action) {
-        const phaseTicks = Math.round((layerStates["right_hand"]?.elapsed ?? 0) / TICK_DT);
-        if (combatNode === "swing.active")        ticksIntoAction = action.windupTicks + phaseTicks;
-        else if (combatNode === "swing.winddown") ticksIntoAction = action.windupTicks + action.activeTicks + phaseTicks;
-        // swing.windup and swing.stop stay at 0 — pre-active, no trail.
-      }
-      // Maneuver blade-trail bridge (T-185): when the right_hand layer is in
-      // `in_maneuver`, the renderer's blade trail is dormant because no
-      // swing is active. Bridging by writing the equipped weapon's primary
-      // action id + a ticksIntoAction inside its active window gives the
-      // trail something to track and gates recording on the maneuver's
-      // hit-effect window. The blade endpoints come from FK on the
-      // hand bone (driven by the per-hand maneuver clip), so visually the
-      // trail follows whatever pose the maneuver is animating.
-      if (combatNode === "in_maneuver" && maneuver) {
-        const equip = world.get(entityId, Equipment);
-        const weaponPrefabId = equip?.weapon?.prefabId;
-        const swingable = weaponPrefabId
-          ? this.content.prefabs.get(weaponPrefabId)?.components["swingable"] as SwingableData | undefined
-          : undefined;
-        const primaryActionId = swingable?.chain?.[0]?.light;
-        const primaryAction = primaryActionId
-          ? this.content.weaponActions.get(primaryActionId)
-          : undefined;
-        if (primaryAction) {
-          weaponActionId = primaryAction.id;
-          // Record trail iff the maneuver currently has a live damage tag.
-          // Otherwise we set ticksIntoAction=0 (windup window) so the
-          // weapon attaches but no slices accumulate.
-          ticksIntoAction = maneuver.activeHitTags.length > 0
-            ? primaryAction.windupTicks
-            : 0;
-        }
+      if (paSwing && pa) {
+        if (pa.phase === "active") ticksIntoAction = geomAction!.windupTicks + pa.ticksInPhase;
+        else if (pa.phase === "winddown") ticksIntoAction = geomAction!.windupTicks + geomAction!.activeTicks + pa.ticksInPhase;
+        // windup stays 0 — pre-active, no trail slices.
       }
 
       const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
@@ -271,11 +189,6 @@ export class AnimationSystem implements System {
       }
   }
 
-  private swingTotalSeconds(weaponActionId: string): number {
-    const action = this.content.weaponActions.get(weaponActionId);
-    if (!action) return 0;
-    return (action.windupTicks + action.activeTicks + action.winddownTicks) * TICK_DT;
-  }
 }
 
 // ---- helpers ----

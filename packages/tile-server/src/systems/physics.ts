@@ -6,7 +6,7 @@ import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { createLogger } from "../logger.ts";
 import { Position, Velocity, Facing, InputState } from "../components/game.ts";
-import { Sidestep, Airborne, ActionImpulse } from "../components/combat.ts";
+import { Sidestep, Airborne } from "../components/combat.ts";
 import type { TickEventBuffer } from "../tick_events.ts";
 import { SpeedModifier } from "../components/world.ts";
 import { buildTerrainLookup, buildOpennessLookup } from "../physics/terrain_lookup.ts";
@@ -92,25 +92,15 @@ export class PhysicsSystem implements System {
 
       let movement: { x: number; y: number };
       let physicsConfig = baseConfig;
-      // ActionImpulse (T-199): swing root-motion push. Same override
-      // mechanism as Sidestep — synthesise a movement vector in the impulse
-      // direction at the impulse magnitude. Sidestep wins over ActionImpulse
-      // when both are present (sidestep is an explicit player commit).
-      // SpeedModifier scales the impulse so slow debuffs suppress the push.
-      const impulse = !sidestep ? world.get(entityId, ActionImpulse) : null;
+      // (T-227: swing root-motion push via ActionImpulse was removed with
+      // ActionSystem — root-motion is reintroduced later as an apply_force
+      // action effect. Sidestep still wins as an explicit player commit.)
       if (sidestep) {
         const dashSpeed = Math.sqrt(sidestep.vx * sidestep.vx + sidestep.vy * sidestep.vy);
         movement = dashSpeed > 0
           ? { x: sidestep.vx / dashSpeed, y: sidestep.vy / dashSpeed }
           : { x: 0, y: 0 };
         physicsConfig = { ...baseConfig, maxGroundSpeed: dashSpeed };
-      } else if (impulse) {
-        const impulseSpeed = Math.sqrt(impulse.vx * impulse.vx + impulse.vy * impulse.vy) * speedMultiplier;
-        movement = impulseSpeed > 0
-          ? { x: impulse.vx / Math.sqrt(impulse.vx * impulse.vx + impulse.vy * impulse.vy),
-              y: impulse.vy / Math.sqrt(impulse.vx * impulse.vx + impulse.vy * impulse.vy) }
-          : { x: 0, y: 0 };
-        physicsConfig = { ...baseConfig, maxGroundSpeed: impulseSpeed };
       } else {
         movement = vec2Normalize({ x: inputState.movementX, y: inputState.movementY });
         if (speedMultiplier !== 1.0) {
@@ -134,14 +124,6 @@ export class PhysicsSystem implements System {
         facing:   inputState.facing,
       });
 
-      // Tick down (or remove) any active ActionImpulse — one tick = one
-      // physics integration. PhysicsSystem is the single point of
-      // bookkeeping since it's the one place that consumed the impulse.
-      if (impulse) {
-        const remaining = impulse.ticksRemaining - 1;
-        if (remaining <= 0) world.remove(entityId, ActionImpulse);
-        else world.set(entityId, ActionImpulse, { ...impulse, ticksRemaining: remaining });
-      }
     }
 
     // Pass 2 — pairwise XY soft separation. O(N²) is fine: physics-active

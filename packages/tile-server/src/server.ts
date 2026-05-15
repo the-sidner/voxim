@@ -55,13 +55,11 @@ import { DodgeSystem } from "./systems/dodge.ts";
 import { HungerSystem } from "./systems/hunger.ts";
 import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
-import { ActionSystem } from "./systems/action.ts";
 import { CharacterStateMachineSystem } from "./systems/character_state_machine.ts";
-import { ActionDispatcher, newGateRegistry, newEffectRegistry } from "./actions/index.ts";
-import { PostureIntentResolver, CompositeIntentResolver } from "./actions/intent.ts";
+import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver } from "./actions/index.ts";
+import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver } from "./actions/intent.ts";
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
-import { ManeuverSchedulerSystem } from "./systems/maneuver_scheduler.ts";
 import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
@@ -92,7 +90,6 @@ import { Registry } from "@voxim/engine";
 import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
 import { DynastySystem } from "./systems/dynasty.ts";
-import { DurabilitySystem } from "./systems/durability.ts";
 import { StaleSlotCleanupSystem } from "./systems/stale_slot_cleanup.ts";
 import { AnimationSystem } from "./systems/animation.ts";
 import { HitboxSystem } from "./systems/hitbox.ts";
@@ -404,7 +401,11 @@ export class TileServer {
     actionEffects.register(clearTagResolver);
     const actionDispatcher = new ActionDispatcher(
       content, actionGates, actionEffects,
-      new CompositeIntentResolver([PostureIntentResolver, LocomotionIntentResolver]),
+      new CompositeIntentResolver([
+        PostureIntentResolver,
+        LocomotionIntentResolver,
+        new PrimaryIntentResolver(content),
+      ]),
     );
     skill.registerSubscribers(this.eventBus, this.world);
 
@@ -442,6 +443,12 @@ export class TileServer {
       new BlueprintHitHandler(),
       new WorkstationHitHandler(content, recipeSteps),
     ];
+
+    // T-227: the swing's active phase fires these through the dispatcher's
+    // effect registry (registered after hitHandlers since weapon_trace
+    // dispatches to them). Replaces ActionSystem.resolveHits / spawnProjectile.
+    actionEffects.register(new WeaponTraceResolver(this.stateHistory, tickRateHz, hitHandlers));
+    actionEffects.register(new ProjectileSpawnResolver());
 
     // System pipeline, declared in reading order. Real ordering constraints
     // live on each system as `dependsOn` (e.g. PhysicsSystem.dependsOn =
@@ -481,16 +488,13 @@ export class TileServer {
       // retired CSM posture layer had, so ordering is for readability.)
       actionDispatcher,
       new CharacterStateMachineSystem(content, tickEvents),
-      new ManeuverSchedulerSystem(content, tickEvents),
       new DodgeSystem(content),
       skill,
-      new ActionSystem(this.stateHistory, tickRateHz, content, hitHandlers, tickEvents),
       new ProjectileSystem(content, hitHandlers),
       new ItemPhysicsSystem(content),
       new TerrainDigSystem(content),
       new TraderSystem(content),
       new DynastySystem(content),
-      new DurabilitySystem(content),
       new AnimationSystem(content),
       new HitboxSystem(content),
       new PoiSystem(content, () => this.sessions.keys()),

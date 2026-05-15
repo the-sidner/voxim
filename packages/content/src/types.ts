@@ -270,6 +270,14 @@ export interface SwingChainEntry {
 
 export interface SwingableData {
   /**
+   * The universal swing ActionDef this weapon triggers on attack (T-227).
+   * Carries timing/cancel/movement/stamina; this weapon's `chain[0]`
+   * still supplies blade geometry via its WeaponActionDef. Absent →
+   * `swing_light`. (The combo `chain` below is retired into cancel-into
+   * rules in a later refinement.)
+   */
+  swingActionId?: string;
+  /**
    * Combo chain. Each press advances index by 1 (mod length). Chain
    * resets when the actor reaches idle without a queued press, on
    * block, on stagger, on death, or when a maneuver starts.

@@ -12,11 +12,9 @@
 import type { World } from "@voxim/engine";
 import { Heightmap, MaterialGrid, CHUNK_SIZE, snapHeight } from "@voxim/world";
 import type { ContentService } from "@voxim/content";
-import { defStateHasTag } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, InputState } from "../components/game.ts";
-import { SwingContext } from "../components/swing_context.ts";
-import { CharacterStateMachine } from "../components/character_state_machine.ts";
+import { ActiveActions } from "../components/action.ts";
 import { Equipment } from "../components/equipment.ts";
 import { spawnGroundStack } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
@@ -25,10 +23,10 @@ const log = createLogger("TerrainDigSystem");
 
 export class TerrainDigSystem implements System {
   /**
-   * Reads InputState (NpcAi writes via world.write()) and SwingContext / CSM
-   * (Action writes via world.write() on swing start); both must precede.
+   * Reads InputState (NpcAi writes via world.write()) and ActiveActions
+   * (ActionDispatcher writes); both must precede.
    */
-  readonly dependsOn = ["NpcAiSystem", "ActionSystem"];
+  readonly dependsOn = ["NpcAiSystem", "ActionDispatcher"];
 
   constructor(private readonly content: ContentService) {}
 
@@ -36,14 +34,14 @@ export class TerrainDigSystem implements System {
     const cfg = this.content.getGameConfig().terrain;
     const digReach = cfg.digReach;
 
-    for (const { entityId, swingContext: _, position } of world.query(SwingContext, Position)) {
-      // Fire only on the first tick of the active-hitbox phase (elapsed=0
-      // right after the transition into the tagged state).
-      const csm = world.get(entityId, CharacterStateMachine);
-      const combat = csm?.layerStates["right_hand"];
-      if (!combat || combat.elapsed !== 0) continue;
-      const smDef = this.content.stateMachines.get(csm!.stateMachineId);
-      if (!smDef || !defStateHasTag(smDef, "right_hand", combat.node, "active_hitbox")) continue;
+    for (const { entityId, activeActions, position } of world.query(ActiveActions, Position)) {
+      // Fire only on the first active tick of a primary-slot swing action
+      // (the action carries a weapon_trace effect). Matches the old
+      // "first tick of the active-hitbox phase" gate.
+      const pa = activeActions.states["primary"];
+      if (!pa || pa.phase !== "active" || pa.ticksInPhase !== 0) continue;
+      const paDef = this.content.actions.get(pa.actionId);
+      if (!paDef?.effects.some((e) => e.kind === "weapon_trace")) continue;
 
       const equip = world.get(entityId, Equipment);
       if (!equip?.weapon) continue;

@@ -42,12 +42,9 @@ import {
   BlockHeld,
   DodgeCooldown,
   Poise,
-  ActionImpulse,
 } from "./components/combat.ts";
 import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
-import { SwingContext } from "./components/swing_context.ts";
-import { SwingChain } from "./components/swing_chain.ts";
 import { Maneuver } from "./components/maneuver.ts";
 import { ManeuverLoadout } from "./components/maneuver_loadout.ts";
 import { Equipment } from "./components/equipment.ts";
@@ -169,10 +166,6 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // SM node per layer. Payload is small (~10 bytes per layer) and only
   // re-sent when nodes change.
   CharacterStateMachine,
-  // SwingChain (T-188): networked so the client can predict combo step
-  // light/heavy variants at press / release without waiting for the
-  // server's AnimationState delta.
-  SwingChain,
   // Action runtime (T-226): networked so the client's mirrored World runs
   // the same slot dispatch for prediction. ActorSlots is spawn-immutable;
   // ActiveActions changes only when a slot's phase/action changes.
@@ -195,18 +188,11 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ...NETWORKED_DEFS,
   // ── Server-only defs (networked: false) ──────────────────────────────────
   Hitbox,
-  // CSM swing payload (server-only). The CSM component itself is networked
-  // and listed above; SwingContext is the per-state gameplay payload.
-  SwingContext,
-  // Maneuver runtime payload (T-185). Server-only — AnimationSystem reads
-  // it to inject the per-hand clip into the in_maneuver SM state, hit
-  // handlers read activeHitTags. The maneuver's effect on the wire is
-  // already captured by AnimationState's clipId field, so the client never
-  // needs to decode the Maneuver payload itself.
+  // Maneuver / ManeuverLoadout (T-185) — runtime payload kept as inert
+  // component defs so prefabs/npc templates referencing them still load.
+  // The maneuver runtime (ManeuverSchedulerSystem) was removed in T-227;
+  // maneuvers are rebuilt as multi-effect actions in T-228.
   Maneuver,
-  // Per-actor binding of skill slots (ACTION_SKILL_1..4) to ManeuverDef
-  // ids. Server-only — the client just sends the action bit; resolution
-  // happens in ActionSystem.
   ManeuverLoadout,
   // Combat counters — server-only because the client doesn't act on them.
   IFrameActive,
@@ -215,9 +201,6 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // Poise (T-197) — staggering resource. Server-only; the client renders
   // stagger via CSM reaction-layer animation, not a poise bar.
   Poise,
-  // ActionImpulse (T-199) — transient swing root-motion push. PhysicsSystem
-  // overrides movement direction + speed while present.
-  ActionImpulse,
   Hearth,
   JobBoard,
   AssignedJobBoard,

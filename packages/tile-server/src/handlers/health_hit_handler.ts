@@ -11,8 +11,7 @@ import {
   BlockHeld,
   Poise,
 } from "../components/combat.ts";
-import { SwingContext } from "../components/swing_context.ts";
-import { Maneuver } from "../components/maneuver.ts";
+import { Blocking } from "../components/tags.ts";
 import { Equipment } from "../components/equipment.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
@@ -75,9 +74,11 @@ export class HealthHitHandler implements HitHandler {
     const defenderStamina = world.get(ctx.targetId, Stamina);
     const stamGated = defenderStamina?.exhausted ?? false;
     const incomingAngle = Math.atan2(ctx.targetY - ctx.attackerY, ctx.targetX - ctx.attackerX);
-    const targetCombatNode = ctx.targetSnapshotCsmNodes?.right_hand ?? "";
+    // T-227: blocking is the `block` primary-slot action's `Blocking` tag
+    // (current tick — the CSM right_hand rewind precision is retuned later
+    // per the structure-over-parity pivot).
     const isBlocking = !stamGated &&
-      targetCombatNode === "block" &&
+      world.has(ctx.targetId, Blocking) &&
       angleDiff(incomingAngle, ctx.targetSnapshotFacing) <= combatCfg.blockArcHalfRadians;
 
     const blockHeldTicks = world.get(ctx.targetId, BlockHeld)?.ticks ?? 0;
@@ -208,27 +209,14 @@ export class HealthHitHandler implements HitHandler {
       }
     }
 
-    // ── Maneuver hit-effect tags (T-185 placeholder) ─────────────────────────
-    // ManeuverScheduler keeps Maneuver.activeHitTags up to date with whatever
-    // the def's hitEffects track has live at the current elapsed. Hit handler
-    // iterates and applies. Today this is just a log line — the richer effect
-    // resolver (status stacks, durations, propagation) replaces this loop
-    // when that lands; the data shape (tag + magnitude) is the survivor.
-    const attackerManeuver = world.get(ctx.attackerId, Maneuver);
-    if (attackerManeuver && attackerManeuver.activeHitTags.length > 0 && !isBlocking) {
-      for (const fx of attackerManeuver.activeHitTags) {
-        log.info("maneuver-hit-tag attacker=%s target=%s tag=%s mag=%.2f",
-          ctx.attackerId, ctx.targetId, fx.tag, fx.magnitude);
-      }
-    }
-
     // ── Skill on hit ("strike" verb) ──────────────────────────────────────────
-    // Publish-only: SkillSystem subscribes to StrikeLanded on the real bus and
-    // applies stamina / cooldown / effect via world.set during the post-changeset
-    // flush. Writes land in the next tick's changeset.
-    const sc = world.get(ctx.attackerId, SwingContext);
-    if (sc?.pendingSkillVerb.startsWith("strike:")) {
-      const slot = parseInt(sc.pendingSkillVerb.slice(7), 10);
+    // The verb is derived by the weapon_trace resolver from the attacker's
+    // LoreLoadout and carried on ctx.skillVerb (T-227 — replaces reading the
+    // retired SwingContext). Publish-only: SkillSystem subscribes to
+    // StrikeLanded on the real bus and applies stamina / cooldown / effect
+    // via world.set during the post-changeset flush.
+    if (ctx.skillVerb?.startsWith("strike:")) {
+      const slot = parseInt(ctx.skillVerb.slice(7), 10);
       events.publish(TileEvents.StrikeLanded, {
         casterId: ctx.attackerId,
         slot,
