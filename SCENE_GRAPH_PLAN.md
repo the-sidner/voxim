@@ -281,7 +281,18 @@ This generalizes the heightmap-chunk pattern (bake + tile_save patches) to the e
 
 Each phase is a shippable ticket. The snapshot-determinism invariant (T-214 established) is preserved through every phase: atlas's bake output must remain byte-equivalent unless a phase explicitly changes the world shape, and tile-server / client behavior must remain consistent.
 
-### T-215 — Scene-graph primitive in `@voxim/engine`
+### T-215 — Scene-graph primitive in `@voxim/engine` — **LANDED**
+
+> Done, inert. `engine/src/scene.ts`: `Parent` (networked, engine-owned
+> inline codec — engine owns `Serialiser`, stays dependency-free; wire
+> id 49 reserved in `@voxim/protocol`), `Transform` + `composeTransform`.
+> `World` extended: `setParent`/`getParent`/`getChildren`/`descendants`/
+> `destroySubtree`/`worldTransform`/`localTransform` with an O(1) reverse
+> child index purged alongside `componentIndex` on destroy;
+> `worldTransform` takes a caller-supplied `localOf` so the engine stays
+> component-agnostic and is cycle-safe. Registered in `NETWORKED_DEFS`.
+> 8 engine tests + regression (actions/bootstrap/bake) green; bake
+> byte-identical. Nothing consumes it yet — T-216+ build on it.
 
 **Goal:** Add the `Parent` component, parent/children index in `World`, and hierarchical query APIs. **No behavior change anywhere else** — existing entities default to parent-less; no system uses the new APIs yet.
 

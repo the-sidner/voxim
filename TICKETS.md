@@ -2178,7 +2178,13 @@ use.
 
 Migration phases (each its own ticket):
 
-  - T-215 — scene-graph primitive in engine (Parent + index + APIs)
+  - T-215 — DONE (inert). engine/scene.ts: Parent (networked,
+    engine-owned inline codec, wire id 49 reserved in protocol) +
+    Transform/composeTransform; World gains setParent/getParent/
+    getChildren/descendants/destroySubtree/worldTransform/localTransform
+    (O(1) child index, changeset-deferred subtree teardown, cycle-safe
+    transform compose). Registered in NETWORKED_DEFS. 8 engine tests +
+    regression green; bake byte-identical. Nothing consumes it yet.
   - T-216 — move `spawnPrefab` into engine
   - T-217 — `Prefab.children` field
   - T-218 — POI scene fragments as child prefabs (first end-to-end use)
