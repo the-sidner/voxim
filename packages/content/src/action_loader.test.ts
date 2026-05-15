@@ -118,6 +118,28 @@ Deno.test("validateActionDef rejects cancel gate with array params", () => {
   assertThrows(() => validateActionDef(def), Error, "params must be an object");
 });
 
+Deno.test("validateActionDef accepts T-226c animation projection fields", () => {
+  const def = baseValidAction();
+  def.animation = {
+    windup: { clipId: "$walk_forward", crouchClipId: "$crouch_walk_forward", loop: true, speedScale: "velocity" },
+    active: { clipId: "$jump", loop: false, speedScale: 2.5, mask: "lower_body" },
+  };
+  validateActionDef(def);
+});
+
+Deno.test("validateActionDef rejects bad animation speedScale", () => {
+  const def = baseValidAction();
+  // deno-lint-ignore no-explicit-any
+  def.animation = { windup: { clipId: "$x", speedScale: "fast" as any } };
+  assertThrows(() => validateActionDef(def), Error, 'speedScale must be "velocity" or a finite number');
+});
+
+Deno.test("validateActionDef rejects empty crouchClipId", () => {
+  const def = baseValidAction();
+  def.animation = { windup: { clipId: "$x", crouchClipId: "" } };
+  assertThrows(() => validateActionDef(def), Error, "crouchClipId must be a non-empty string");
+});
+
 Deno.test("validateActionDef rejects movement on undeclared phase", () => {
   const def = baseValidAction();
   // deno-lint-ignore no-explicit-any

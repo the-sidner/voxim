@@ -621,9 +621,30 @@ export interface ActionEffect {
   params?: Record<string, unknown>;
 }
 
-/** Per-phase animation clip handoff to the client animation system. */
+/**
+ * Per-phase animation projection (T-226c). What the animation system needs
+ * to emit one `AnimationLayer` for the phase, mirroring the fields the
+ * retired CSM animation states carried:
+ *
+ *   - `clipId`     — clip ref; `$slot` resolves via the actor's
+ *                    animationSlots, bare ids pass through.
+ *   - `crouchClipId` — variant played while the `Crouched` tag is present.
+ *                    Replaces the CSM's `csm.posture == crouched`
+ *                    paramOverride (now an animation-side rule).
+ *   - `loop`       — loop the clip (locomotion idle/walk/strafe) vs one-shot
+ *                    (jump/landing/sidestep).
+ *   - `speedScale` — `"velocity"` ties playback to ground speed (walk /
+ *                    strafe); a number is clip-cycles/sec; absent on a
+ *                    one-shot auto-fits 1/phase-duration (matches the old
+ *                    `resolveSpeedScale`).
+ *   - `mask`       — bone mask; absent = full body (locomotion had none).
+ */
 export interface ActionAnimation {
   clipId: string;
+  crouchClipId?: string;
+  loop?: boolean;
+  speedScale?: number | "velocity";
+  mask?: string;
 }
 
 /**

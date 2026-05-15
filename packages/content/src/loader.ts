@@ -587,6 +587,22 @@ export function validateActionDef(def: ActionDef): void {
       if (typeof anim.clipId !== "string" || anim.clipId.length === 0) {
         throw new Error(`Action '${def.id}' animation.${phaseName}: clipId must be a non-empty string`);
       }
+      if (anim.crouchClipId !== undefined && (typeof anim.crouchClipId !== "string" || anim.crouchClipId.length === 0)) {
+        throw new Error(`Action '${def.id}' animation.${phaseName}: crouchClipId must be a non-empty string when present`);
+      }
+      if (anim.loop !== undefined && typeof anim.loop !== "boolean") {
+        throw new Error(`Action '${def.id}' animation.${phaseName}: loop must be a boolean`);
+      }
+      if (
+        anim.speedScale !== undefined &&
+        anim.speedScale !== "velocity" &&
+        (typeof anim.speedScale !== "number" || !Number.isFinite(anim.speedScale))
+      ) {
+        throw new Error(`Action '${def.id}' animation.${phaseName}: speedScale must be "velocity" or a finite number`);
+      }
+      if (anim.mask !== undefined && typeof anim.mask !== "string") {
+        throw new Error(`Action '${def.id}' animation.${phaseName}: mask must be a string`);
+      }
     }
   }
 
