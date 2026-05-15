@@ -1,6 +1,8 @@
 import type { EntityId } from "./math.ts";
 import type { ComponentDef } from "./component.ts";
 import { newEntityId } from "./math.ts";
+import { Parent, composeTransform, IDENTITY_TRANSFORM } from "./scene.ts";
+import type { Transform } from "./scene.ts";
 
 // ---- internal storage ----
 
@@ -57,6 +59,14 @@ export class World {
    * Insertion: write() and applyChangeset(). Removal: applyChangeset() on destroy.
    */
   private componentIndex = new Map<symbol, Set<EntityId>>();
+
+  /**
+   * Scene-graph reverse index: parent entity → its direct children.
+   * Maintained by `setParent` and the destroy purge so `getChildren` is
+   * O(1) and `descendants` is O(subtree). The forward link is the `Parent`
+   * component (networked, so hierarchy replicates for free).
+   */
+  private childIndex = new Map<EntityId, Set<EntityId>>();
 
   // pending deferred writes/removals, accumulated by systems during the tick
   // deno-lint-ignore no-explicit-any
@@ -245,14 +255,18 @@ export class World {
       }
     }
 
-    // Physically remove tombstoned entities — purge from all component indices.
+    // Physically remove tombstoned entities — purge from all component
+    // indices and the scene-graph child index (as both child and parent).
     for (const entityId of this.pendingDestroys) {
       const entity = this.store.get(entityId);
       if (entity) {
         for (const tokenId of entity.keys()) {
           this.componentIndex.get(tokenId)?.delete(entityId);
         }
+        const parentId = (entity.get(Parent.id) as StoredComponent<{ entityId: EntityId | null }> | undefined)?.data.entityId ?? null;
+        if (parentId) this.childIndex.get(parentId)?.delete(entityId);
       }
+      this.childIndex.delete(entityId);
       this.store.delete(entityId);
       this.tombstones.delete(entityId);
     }
@@ -269,6 +283,97 @@ export class World {
   /** All living entity IDs (excludes tombstoned). */
   entities(): EntityId[] {
     return Array.from(this.store.keys()).filter((id) => !this.tombstones.has(id));
+  }
+
+  // ---- scene graph (T-215) ----
+
+  /**
+   * Set (or clear, with `parent = null`) an entity's scene-graph parent.
+   * Writes the networked `Parent` component immediately (spawn/init path,
+   * like `write`) and maintains the reverse child index. Idempotent;
+   * reparenting moves the child between parents' child sets. No cycle
+   * check yet — callers build trees top-down (consumers land later).
+   */
+  setParent(child: EntityId, parent: EntityId | null): void {
+    if (!this.store.has(child)) throw new Error(`World.setParent: unknown entity ${child}`);
+    const prev = this.getParent(child);
+    if (prev === parent) return;
+    if (prev) this.childIndex.get(prev)?.delete(child);
+    this.write(child, Parent, { entityId: parent });
+    if (parent) {
+      let set = this.childIndex.get(parent);
+      if (!set) { set = new Set(); this.childIndex.set(parent, set); }
+      set.add(child);
+    }
+  }
+
+  /** Direct parent, or null if root / no `Parent` component. O(1). */
+  getParent(child: EntityId): EntityId | null {
+    return this.get(child, Parent)?.entityId ?? null;
+  }
+
+  /** Direct children (a snapshot array). O(1) via the reverse index. */
+  getChildren(parent: EntityId): EntityId[] {
+    const set = this.childIndex.get(parent);
+    return set ? [...set] : [];
+  }
+
+  /**
+   * All descendants of `root` (depth-first, excludes `root` itself).
+   * O(subtree). Safe to materialise — used by `destroySubtree` and AoI.
+   */
+  descendants(root: EntityId): EntityId[] {
+    const out: EntityId[] = [];
+    const stack = [...this.getChildren(root)];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      out.push(id);
+      const kids = this.childIndex.get(id);
+      if (kids) for (const k of kids) stack.push(k);
+    }
+    return out;
+  }
+
+  /**
+   * Tombstone `root` and its entire subtree (deferred — purged on
+   * `applyChangeset`, same semantics as `destroy`). The child index is
+   * cleaned during the purge.
+   */
+  destroySubtree(root: EntityId): void {
+    for (const d of this.descendants(root)) this.destroy(d);
+    this.destroy(root);
+  }
+
+  /**
+   * World transform = parent.world ∘ entity.local, composed up the parent
+   * chain. `localOf` supplies each entity's local transform (game data —
+   * the engine stays component-agnostic); missing → identity.
+   */
+  worldTransform(
+    entityId: EntityId,
+    localOf: (id: EntityId) => Transform | undefined,
+  ): Transform {
+    const chain: EntityId[] = [];
+    let cur: EntityId | null = entityId;
+    const seen = new Set<EntityId>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      chain.push(cur);
+      cur = this.getParent(cur);
+    }
+    let world = IDENTITY_TRANSFORM;
+    for (let i = chain.length - 1; i >= 0; i--) {
+      world = composeTransform(world, localOf(chain[i]) ?? IDENTITY_TRANSFORM);
+    }
+    return world;
+  }
+
+  /** An entity's own local transform (relative to its parent). */
+  localTransform(
+    entityId: EntityId,
+    localOf: (id: EntityId) => Transform | undefined,
+  ): Transform {
+    return localOf(entityId) ?? IDENTITY_TRANSFORM;
   }
 
   // ---- private helpers ----

@@ -53,10 +53,13 @@ export const ComponentType = {
   openMask:           42,
   kindGrid:           43,
   name:               44,
-  characterStateMachine: 45,
-  swingChain: 46,
+  // 45 (characterStateMachine) retired — CSM deleted (T-228)
+  // 46 (swingChain) retired — swing chain folded into actions (T-227)
   actorSlots: 47,
   activeActions: 48,
+  // 49 (parent) — defined in @voxim/engine/src/scene.ts; engine owns the
+  //    scene-graph primitive (co-equal with World), so its wire id lives
+  //    there. Reserved here so the numbering map stays visible. Never reuse.
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

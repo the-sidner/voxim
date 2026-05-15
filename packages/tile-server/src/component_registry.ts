@@ -20,6 +20,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
+import { Parent } from "@voxim/engine";
 import { Heightmap, KindGrid, MaterialGrid, OpenMask } from "@voxim/world";
 import {
   AnimationState,
@@ -164,6 +165,11 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // ActiveActions changes only when a slot's phase/action changes.
   ActorSlots,
   ActiveActions,
+  // Scene graph (T-215): the Parent hierarchy link. Networked so subtrees
+  // (POIs, bones, equipment, buffs) replicate for free. Engine owns the
+  // def + codec; wire id 49 is reserved in @voxim/protocol. Inert until
+  // a consumer calls the World hierarchy APIs.
+  Parent,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
