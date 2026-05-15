@@ -1265,6 +1265,15 @@ export interface Prefab {
    */
   stateMachineId?: string;
   /**
+   * Action slots this actor declares (T-226). Each slot holds ≤ 1
+   * ActiveAction at a time; the ActionDispatcher rejects any action whose
+   * `slot` isn't listed here. Grows as CSM layers migrate to the action
+   * runtime — at T-226b only `["posture"]`. Inherited from parent prefab
+   * via `extends` (replaced wholesale, not merged). Absent for non-actor
+   * prefabs.
+   */
+  actorSlots?: string[];
+  /**
    * Per-prefab morph param overrides (T-180). At spawn, the spawner copies
    * these values onto `ModelRefData.morphValues` so server and client both
    * see the same morphs over the wire. Keys must match

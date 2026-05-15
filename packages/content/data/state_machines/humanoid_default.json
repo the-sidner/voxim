@@ -2,20 +2,6 @@
   "id": "humanoid_default",
   "layers": [
     {
-      "id": "posture",
-      "kind": "posture",
-      "output": "flag",
-      "initial": "upright",
-      "states": {
-        "upright":  {},
-        "crouched": {}
-      },
-      "transitions": [
-        { "from": "upright",  "to": "crouched", "when": "input.crouch" },
-        { "from": "crouched", "to": "upright",  "when": "!input.crouch" }
-      ]
-    },
-    {
       "id": "locomotion",
       "kind": "base-locomotion",
       "output": "animation",
@@ -26,7 +12,7 @@
           "clip": "$idle",
           "loop": true,
           "paramOverrides": {
-            "csm.posture == crouched": { "clip": "$crouch_idle" }
+            "posture.crouched": { "clip": "$crouch_idle" }
           }
         },
         "walk_forward": {
@@ -34,7 +20,7 @@
           "loop": true,
           "speedScale": "velocity",
           "paramOverrides": {
-            "csm.posture == crouched": { "clip": "$crouch_walk_forward" }
+            "posture.crouched": { "clip": "$crouch_walk_forward" }
           }
         },
         "walk_backward": {
@@ -42,7 +28,7 @@
           "loop": true,
           "speedScale": "velocity",
           "paramOverrides": {
-            "csm.posture == crouched": { "clip": "$crouch_walk_backward" }
+            "posture.crouched": { "clip": "$crouch_walk_backward" }
           }
         },
         "strafe_left": {
@@ -50,7 +36,7 @@
           "loop": true,
           "speedScale": "velocity",
           "paramOverrides": {
-            "csm.posture == crouched": { "clip": "$crouch_strafe_left" }
+            "posture.crouched": { "clip": "$crouch_strafe_left" }
           }
         },
         "strafe_right": {
@@ -58,7 +44,7 @@
           "loop": true,
           "speedScale": "velocity",
           "paramOverrides": {
-            "csm.posture == crouched": { "clip": "$crouch_strafe_right" }
+            "posture.crouched": { "clip": "$crouch_strafe_right" }
           }
         },
         "sidestep": { "clip": "$sidestep", "loop": false, "duration": 0.25, "tags": ["i_frame"] },

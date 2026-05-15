@@ -57,6 +57,9 @@ import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionSystem } from "./systems/action.ts";
 import { CharacterStateMachineSystem } from "./systems/character_state_machine.ts";
+import { ActionDispatcher, newGateRegistry, newEffectRegistry } from "./actions/index.ts";
+import { PostureIntentResolver } from "./actions/intent.ts";
+import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
 import { ManeuverSchedulerSystem } from "./systems/maneuver_scheduler.ts";
 import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
@@ -387,6 +390,19 @@ export class TileServer {
     // runs before ActionSystem in the pipeline so cooldown decrements are
     // visible to swings initiated the same tick.
     const skill = new SkillSystem(content, effects.apply, deathSystem);
+
+    // Action runtime (T-226). Gate registry is empty until an action
+    // references a gate (T-227 swings); the effect registry carries the
+    // posture tag resolvers. PostureIntentResolver is the only intent
+    // source until further CSM layers migrate (CompositeIntentResolver
+    // merges them then). No cost handler yet — posture actions are free.
+    const actionGates = newGateRegistry();
+    const actionEffects = newEffectRegistry();
+    actionEffects.register(setTagResolver);
+    actionEffects.register(clearTagResolver);
+    const actionDispatcher = new ActionDispatcher(
+      content, actionGates, actionEffects, PostureIntentResolver,
+    );
     skill.registerSubscribers(this.eventBus, this.world);
 
     // Hearth anchor subscriber — when a prefab carrying the `hearth` component
@@ -456,6 +472,11 @@ export class TileServer {
       new PoiseSystem(content),
       new PhysicsSystem(content, tickEvents),
       new FogOfWarSystem(),
+      // ActionDispatcher runs before the CSM: it owns the posture slot and
+      // installs the Crouched tag the CSM's `posture` scope contributor
+      // reads. (Deferred-write semantics give the same one-tick lag the
+      // retired CSM posture layer had, so ordering is for readability.)
+      actionDispatcher,
       new CharacterStateMachineSystem(content, tickEvents),
       new ManeuverSchedulerSystem(content, tickEvents),
       new DodgeSystem(content),

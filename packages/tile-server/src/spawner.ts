@@ -33,6 +33,7 @@ import {
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
 import { CharacterStateMachine } from "./components/character_state_machine.ts";
+import { ActorSlots, ActiveActions } from "./components/action.ts";
 import { compileStateMachine, initialSMState } from "@voxim/content";
 import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
@@ -407,6 +408,15 @@ export function spawnPrefab(
       stateMachineId: prefab.stateMachineId,
       layerStates,
     });
+  }
+
+  // Action runtime (T-226): actors declaring slots get the declared set +
+  // an empty ActiveActions map. The ActionDispatcher seeds each ambient
+  // slot on the first tick from the IntentResolver (posture → upright),
+  // so no per-slot seeding is needed here.
+  if (prefab.actorSlots && prefab.actorSlots.length > 0) {
+    world.write(id, ActorSlots, { slots: [...prefab.actorSlots] });
+    world.write(id, ActiveActions, { states: {} });
   }
 
   // Raw-material stats live on the prefab and are copied onto the entity at

@@ -1,0 +1,12 @@
+{
+  "id": "crouched",
+  "kind": "ambient",
+  "slot": "posture",
+  "phases": { "hold": { "ticks": -1 } },
+  "cancel": { "hold": { "into": ["any"] } },
+  "movement": { "hold": "free" },
+  "effects": [
+    { "phase": "hold:enter", "kind": "set_tag", "params": { "tag": "crouched" } },
+    { "phase": "hold:exit", "kind": "clear_tag", "params": { "tag": "crouched" } }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "upright",
+  "kind": "ambient",
+  "slot": "posture",
+  "phases": { "hold": { "ticks": -1 } },
+  "cancel": { "hold": { "into": ["any"] } },
+  "movement": { "hold": "free" },
+  "effects": []
+}

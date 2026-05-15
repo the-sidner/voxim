@@ -342,6 +342,9 @@ export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
         modelScale:     self.modelScale     ?? parent.modelScale,
         category:       self.category       ?? parent.category,
         stateMachineId: self.stateMachineId ?? parent.stateMachineId,
+        ...((self.actorSlots ?? parent.actorSlots) !== undefined && {
+          actorSlots: self.actorSlots ?? parent.actorSlots,
+        }),
         ...(mergedTags  !== undefined && { tags:  mergedTags  }),
         ...(mergedStats !== undefined && { stats: mergedStats }),
         ...(mergedSlots !== undefined && { animationSlots: mergedSlots }),
