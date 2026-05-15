@@ -10,7 +10,7 @@
  */
 
 import type { World, EntityId } from "@voxim/engine";
-import { ACTION_CROUCH, ACTION_BLOCK, ACTION_USE_SKILL, hasAction } from "@voxim/protocol";
+import { ACTION_CROUCH, ACTION_BLOCK, ACTION_USE_SKILL, ACTION_CONSUME, hasAction } from "@voxim/protocol";
 import type { ContentService, SwingableData } from "@voxim/content";
 import { InputState, Health } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
@@ -31,10 +31,13 @@ export const PostureIntentResolver: IntentResolver = {
  * Primary slot (T-227) — the upper body. Replaces the CSM right_hand FSM:
  *
  *   - ACTION_BLOCK held              → `block` (held; sets the Blocking tag)
+ *   - ACTION_CONSUME + slot free     → `consume` (the `has_edible`
+ *     precondition rejects it when there's nothing to eat, so the slot
+ *     just stays idle rather than playing a useless eat)
  *   - ACTION_USE_SKILL + slot free   → the equipped weapon's swing action
  *     (`swingable.swingActionId`, default `swing_light`; unarmed → light)
- *   - a swing already in flight      → null (don't disturb — the dispatcher
- *     runs its windup/active/winddown; combo-as-cancel-into is later)
+ *   - an active action in flight     → null (don't disturb — the dispatcher
+ *     runs its phases; consume/swing both run to completion this way)
  *   - otherwise                      → `primary_idle` (no animation layer;
  *     locomotion's full-body clip shows through)
  *
@@ -54,6 +57,8 @@ export class PrimaryIntentResolver implements IntentResolver {
     let want: string | null;
     if (hasAction(a, ACTION_BLOCK)) {
       want = "block";
+    } else if (hasAction(a, ACTION_CONSUME) && !swinging) {
+      want = "consume";
     } else if (hasAction(a, ACTION_USE_SKILL) && !swinging) {
       const weaponPrefab = world.get(entityId, Equipment)?.weapon?.prefabId;
       const swingable = weaponPrefab

@@ -65,7 +65,7 @@ import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
-import { ConsumptionSystem } from "./systems/consumption.ts";
+import { consumeItemResolver, hasEdibleGate } from "./actions/resolvers/consume.ts";
 import { ResourceNodeSystem } from "./systems/resource_node_system.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
@@ -399,10 +399,12 @@ export class TileServer {
     const actionGates = newGateRegistry();
     actionGates.register(notStaggeredGate);
     actionGates.register(notExhaustedGate);
+    actionGates.register(hasEdibleGate);
     const actionEffects = newEffectRegistry();
     actionEffects.register(setTagResolver);
     actionEffects.register(clearTagResolver);
     actionEffects.register(dodgeImpulseResolver);
+    actionEffects.register(consumeItemResolver);
     const actionDispatcher = new ActionDispatcher(
       content, actionGates, actionEffects,
       new CompositeIntentResolver([
@@ -479,7 +481,6 @@ export class TileServer {
       new EquipmentSystem(content),
       new PlacementSystem(content),
       new CraftingSystem(content, recipeSteps),
-      new ConsumptionSystem(content),
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
       new CorruptionSystem(content, deathSystem),
