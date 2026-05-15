@@ -15,3 +15,6 @@ export type { EffectRegistry, EffectResolver, ResolveContext, EffectEdge } from 
 
 export { ActionDispatcher } from "./dispatcher.ts";
 export type { IntentResolver, CostHandler } from "./dispatcher.ts";
+
+export { setTagResolver, clearTagResolver } from "./resolvers/tags.ts";
+export { WeaponTraceResolver, ProjectileSpawnResolver } from "./resolvers/combat.ts";
