@@ -445,7 +445,49 @@ originally conceived; it is now realised across 226a (substrate), 226b
 
 This is the foundation phase. The substrate is exercised by the smallest meaningful migration; nothing ships dead.
 
-### T-227 — Universal swing action library + chain refactor (atomic)
+### T-227 — Universal swing action library + chain refactor
+
+> **In progress — sub-commits (each green):**
+> - **c1 (LANDED)** — universal swing library, inert: `swing_light/
+>   thrust/medium/heavy/spin` + `ranged_shot`, timing buckets derived
+>   from the existing WeaponActionDef tempos, reused across any weapon.
+>   Referenced by no weapon, no resolver registered.
+> - **c2 groundwork (LANDED)** — `ResolveContext.serverTick` +
+>   `ActionDispatcher.prepare()` (lag-comp resolvers need the tick).
+> - **c2/c3/c4 (NEXT — deep, uncovered)** — see coupling map below.
+>
+> **Scope refinements recorded mid-implementation:**
+> 1. **`SkillSystem` is kept whole.** Its on-hit half is a `StrikeLanded`
+>    event *subscriber*, not in the swing path — the weapon_trace
+>    resolver just publishes `StrikeLanded` as `ActionSystem` did. Its
+>    activation half (skill bits → invoke/ward/step) is unrelated to
+>    swings; that split defers to a later phase. T-227 retires
+>    `ActionSystem` + CSM `right_hand`/`left_hand` + `SwingContext`/
+>    `SwingChain` + `ActionImpulse` only — smaller, same destination.
+> 2. **`ranged_shot` is one action** (windup/active/winddown = 20/1/12,
+>    mirroring `bow_shot`) rather than the planned two cancel-chained
+>    actions — the faithful low-risk representation; the two-action
+>    split is a later refinement.
+>
+> **Coupling discovered during the c2 survey (the real T-227 cost):**
+> the swing path is more entangled than this plan first captured —
+> - `health_hit_handler` reads `SwingContext.pendingSkillVerb` directly
+>   to publish `StrikeLanded`. Retiring `SwingContext` means the skill
+>   verb must reach the handler another way (resolver derives it from
+>   `LoreLoadout` and carries it on `HitContext`, or via scratch).
+> - `HitContext.targetSnapshotCsmNodes` ⇒ lag-comp **block/parry
+>   detection rewinds the target's CSM `right_hand` node** out of
+>   `StateHistoryBuffer`. Deleting that CSM layer requires
+>   `StateHistoryBuffer` to snapshot the relevant `ActiveActions` slot
+>   state instead, and hit-handler block detection to read it.
+> - The light/heavy variant pick (windup-release `chargeMs`) and combo
+>   chain advance (`SwingChain` + `queued`) must become windup-held
+>   gates + cancel-into rules.
+> These make c3/c4 a genuine multi-session rewire that should land
+> behind a combat record/replay parity harness (capture today's
+> per-tick hit/damage/event stream, assert byte-identical post-migration)
+> — built as the first c3 step. Recorded so the next session executes
+> with this map rather than rediscovering it.
 
 **Goal:** Replace the `right_hand` CSM layer + `ActionSystem` + `SwingContext` + `SwingChain` with the action runtime. Universal swing actions; weapons reference action ids per chain step.
 

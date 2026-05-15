@@ -2265,8 +2265,19 @@ Migration phases (each its own ticket; each an atomic commit):
   posture + locomotion are action slots; substrate proven by two real
   migrations. Next: T-227.
   - T-227 — Universal swing action library + chain refactor; delete
-    ActionSystem + SwingContext + SwingChain; CSM right_hand +
-    left_hand layers removed
+    ActionSystem + SwingContext + SwingChain + ActionImpulse; CSM
+    right_hand + left_hand layers removed (SkillSystem KEPT — its
+    on-hit half is a StrikeLanded subscriber, not in the swing path).
+    In progress: c1 inert swing library (swing_light/thrust/medium/
+    heavy/spin + ranged_shot) LANDED; c2 groundwork (ResolveContext
+    .serverTick + dispatcher.prepare) LANDED. c2/c3/c4 are a deep
+    multi-session rewire — survey found block/parry lag-comp rewinds
+    the CSM right_hand node out of StateHistoryBuffer, and
+    health_hit_handler reads SwingContext.pendingSkillVerb directly,
+    so retiring those requires StateHistoryBuffer to snapshot
+    ActiveActions + hit-handler rewiring. Land behind a combat
+    record/replay parity harness (first c3 step). See
+    ACTION_PRIMITIVE_PLAN.md T-227 for the full coupling map.
   - T-228 — Maneuvers absorbed as multi-effect actions; CSM fully
     retired (StateMachineDef, compiler, humanoid_default.json deleted)
   - T-229 — Migrate dodge (delete DodgeSystem); first cross-action
