@@ -1,14 +1,12 @@
 import type { EntityId } from "@voxim/engine";
 
 /**
- * Per-entity state snapshot — the minimum data needed for lag-compensated combat resolution.
- * Facing angle is included because directional blocking depends on defender facing at
- * the moment of the attack, not at the moment of server processing.
- *
- * `csmLayerNodes` snapshots the entity's CSM layer states at this tick so
- * damage handlers querying "was the target blocking at the rewound tick"
- * route through the historical mode rather than the current one — required
- * for fair block/parry resolution under non-zero RTT (T-182 step 5).
+ * Per-entity state snapshot — the minimum data needed for lag-compensated
+ * combat resolution: position for the swept-capsule rewind, facing because
+ * directional blocking depends on the defender's facing at the moment of
+ * the attack. (Block *state* is no longer snapshotted — it is the
+ * current-tick `Blocking` tag now; the action arc dropped the historical
+ * CSM/action-bit block resolution, an accepted retune — see T-233.)
  */
 export interface EntitySnapshot {
   entityId: EntityId;
@@ -19,9 +17,6 @@ export interface EntitySnapshot {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
-  actions: number; // bitfield — for block state at time of hit
-  /** Map of layerId → node name for the entity's CSM at this tick. Empty / absent for entities without a CSM. */
-  csmLayerNodes?: Record<string, string>;
 }
 
 /** One tick's full snapshot. */

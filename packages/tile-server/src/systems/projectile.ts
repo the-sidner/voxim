@@ -104,7 +104,6 @@ export class ProjectileSystem implements System {
         const targetFacing = world.get(candidateId, Facing)?.angle
           ?? world.get(candidateId, InputState)?.facing
           ?? 0;
-        const targetActions = world.get(candidateId, InputState)?.actions ?? 0;
 
         // Projectile trajectory for this tick: prevPos → newPos.
         // Single segment (no swept prev/curr) — projectiles are small and fast,
@@ -150,7 +149,6 @@ export class ProjectileSystem implements System {
           attackerPart: "tip",
           // Projectiles use current world state — no lag rewind needed
           targetSnapshotFacing: targetFacing,
-          targetSnapshotActions: targetActions,
           attackerX: prevPos.x,
           attackerY: prevPos.y,
           targetX: targetPos.x,

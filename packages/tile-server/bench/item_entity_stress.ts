@@ -1,11 +1,15 @@
 /**
  * item_entity_stress — T-117 Phase 5 benchmark.
  *
- * Validates that 5000 unique item entities in inventories don't meaningfully
- * impact per-tick cost. Measures:
+ * Validates that thousands of unique item entities in inventories don't
+ * meaningfully impact per-tick cost. Measures the two scans that scale with
+ * item count:
  *   - world.query(Inventory) + slot iteration across all inventory holders
- *   - world.query(SwingContext) + DurabilitySystem-style weapon lookup
  *   - world.query(ItemData) full scan (linear in item count)
+ *
+ * (The old "DurabilitySystem path" measure was removed: DurabilitySystem,
+ * SwingContext and CharacterStateMachine were retired in the action-primitive
+ * arc — there is no per-actor swing component to scan.)
  *
  * Run with:
  *   deno run --allow-read packages/tile-server/bench/item_entity_stress.ts
@@ -14,8 +18,6 @@ import { World, newEntityId } from "@voxim/engine";
 import { ItemData, Inventory } from "../src/components/items.ts";
 import { Durability } from "../src/components/instance.ts";
 import { Equipment } from "../src/components/equipment.ts";
-import { SwingContext } from "../src/components/swing_context.ts";
-import { CharacterStateMachine } from "../src/components/character_state_machine.ts";
 
 const ITEM_COUNT = 5_000;
 const HOLDER_COUNT = 100;
@@ -54,27 +56,6 @@ function setup(): World {
     });
   }
 
-  // One entity with an active swing (for DurabilitySystem path).
-  const swingerId = newEntityId();
-  world.create(swingerId);
-  const weaponId = itemIds[0];
-  world.write(swingerId, Equipment, {
-    weapon: weaponId, offHand: null, head: null, chest: null,
-    legs: null, feet: null, back: null,
-  });
-  world.write(swingerId, SwingContext, {
-    weaponActionId: "slash",
-    rewindTick: 0,
-    hitEntities: [],
-    pendingSkillVerb: "",
-    weaponPrefabId: "",
-    weaponQuality: 1,
-  });
-  world.write(swingerId, CharacterStateMachine, {
-    stateMachineId: "humanoid_default",
-    layerStates: { combat: { node: "swing.active", elapsed: 0 } },
-  });
-
   return world;
 }
 
@@ -94,20 +75,6 @@ function benchItemDataScan(world: World): number {
     if (itemData.prefabId.length > 0) total++;
   }
   return total;
-}
-
-function benchDurabilityPath(world: World): number {
-  let hits = 0;
-  for (const { entityId, swingContext: _ } of world.query(SwingContext)) {
-    const csm = world.get(entityId, CharacterStateMachine);
-    const combat = csm?.layerStates["right_hand"];
-    if (!combat || combat.node !== "swing.active" || combat.elapsed !== 0) continue;
-    const equip = world.get(entityId, Equipment);
-    if (!equip?.weapon) continue;
-    const dur = world.get(equip.weapon as string, Durability);
-    if (dur) hits++;
-  }
-  return hits;
 }
 
 function measure(label: string, fn: () => unknown): void {
@@ -138,6 +105,5 @@ const world = setup();
 
 measure("inventory scan (unique slots)", () => benchInventoryScan(world));
 measure("ItemData full scan", () => benchItemDataScan(world));
-measure("DurabilitySystem path", () => benchDurabilityPath(world));
 
 console.log("\nBudget target: all paths < 2ms at full load (20Hz tick = 50ms budget)\n");

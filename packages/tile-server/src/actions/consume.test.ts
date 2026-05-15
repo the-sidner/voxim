@@ -7,7 +7,7 @@
  * ConsumptionSystem's behaviour, now animation-paced.
  */
 
-import { assert, assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
 import { ActorSlots, ActiveActions } from "../components/action.ts";

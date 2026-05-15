@@ -27,9 +27,6 @@ import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 import { GatewayLink } from "./gateway_link.ts";
-
-// Bits that represent held keys — use latest-wins rather than OR across the tick.
-const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 import type { BinaryComponentDelta, BinaryStateMessage, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
 import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
@@ -102,6 +99,10 @@ import { ProceduralSpawner } from "./procedural_spawner.ts";
 import { EventRouter } from "./event_router.ts";
 import { sortSystemsByDependencies } from "./system_order.ts";
 import type { TickContext } from "./system.ts";
+
+// Action bits that represent *held* keys (block, crouch) — merged
+// latest-wins across a tick rather than OR-accumulated like one-shots.
+const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 
 export interface TileServerConfig {
   tileId: string;
@@ -880,13 +881,11 @@ export class TileServer {
     for (const { entityId, position } of this.world.query(Position, Hitbox)) {
       const vel = this.world.get(entityId, Velocity);
       const fac = this.world.get(entityId, Facing);
-      const is  = this.world.get(entityId, InputState);
       snapEntities.push({
         entityId,
         x: position.x, y: position.y, z: position.z,
         facing: fac?.angle ?? 0,
         velocityX: vel?.x ?? 0, velocityY: vel?.y ?? 0, velocityZ: vel?.z ?? 0,
-        actions: is?.actions ?? 0,
       });
     }
     this.stateHistory.push({ serverTick, timestamp: Date.now(), entities: snapEntities });

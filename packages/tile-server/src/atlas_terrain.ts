@@ -15,7 +15,6 @@
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
 import type { GatePosition } from "@voxim/protocol";
 import type { ContentService } from "@voxim/content";
-import type { World } from "@voxim/engine";
 import {
   tileInitFromWire,
   upsampleTile,

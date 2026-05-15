@@ -25,11 +25,11 @@
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import {
-  localToWorld, segSegDistSq,
+  localToWorld,
   evaluateAnimationLayers, solveSkeleton, applyQuat,
 } from "@voxim/content";
 import type {
-  ContentService, DerivedItemStats, WeaponActionDef, SwingableData,
+  ContentService, DerivedItemStats, SwingableData,
   AnimationLayer, AnimationClip, BoneMask, BoneDef, SkeletonDef, Vec3,
 } from "@voxim/content";
 import { TileEvents } from "@voxim/protocol";
@@ -47,7 +47,6 @@ import type { EffectResolver, ResolveContext } from "../effect.ts";
 import { createLogger } from "../../logger.ts";
 
 const log = createLogger("weapon_trace");
-const SECONDS_PER_TICK = 1 / 20;
 
 interface TraceScratch {
   rewindTick: number;
@@ -193,8 +192,6 @@ export class WeaponTraceResolver implements EffectResolver {
         bodyPart: hit.partId,
         attackerPart,
         targetSnapshotFacing: target.facing ?? 0,
-        targetSnapshotActions: target.actions,
-        targetSnapshotCsmNodes: target.csmLayerNodes,
         attackerX: ax, attackerY: ay,
         targetX: target.x, targetY: target.y,
         hitX: hit.contact.x, hitY: hit.contact.y, hitZ: hit.contact.z,
@@ -216,7 +213,6 @@ export class WeaponTraceResolver implements EffectResolver {
         x: position.x, y: position.y, z: position.z,
         facing: world.get(entityId, Facing)?.angle ?? 0,
         velocityX: vel?.x ?? 0, velocityY: vel?.y ?? 0, velocityZ: vel?.z ?? 0,
-        actions: world.get(entityId, InputState)?.actions ?? 0,
       });
     }
     return { serverTick, timestamp: Date.now(), entities };

@@ -4,7 +4,6 @@ import type { ContentService, PrefabResourceNodeData } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { ResourceNode } from "../components/resource_node.ts";
-import { Position } from "../components/game.ts";
 import { spawnGroundStack } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 

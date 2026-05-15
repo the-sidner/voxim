@@ -7,7 +7,7 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
-import type { ContentService, Recipe } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import { WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";

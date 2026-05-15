@@ -7,7 +7,7 @@
  * bit-derived intent (composed last).
  */
 
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
+import { assertEquals, assertThrows } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildBehaviorTree } from "./mod.ts";

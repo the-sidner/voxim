@@ -1593,27 +1593,9 @@ export const nameCodec: Serialiser<NameData> = {
   },
 };
 
-// ---- SwingChain ------------------------------------------------------------
-// Per-actor chain-step index inside the equipped weapon's swingable.chain.
-// Networked so the client can predict which action variant fires next at
-// press time (chain[index].light) and at release time (chain[index].heavy
-// if held past swingable.heavyChargeMs).
-
-export interface SwingChainData {
-  index: number;
-}
-
-export const swingChainCodec: Serialiser<SwingChainData> = {
-  encode(v: SwingChainData): Uint8Array {
-    const w = new WireWriter();
-    w.writeU16(v.index);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): SwingChainData {
-    const r = new WireReader(bytes);
-    return { index: r.readU16() };
-  },
-};
+// (SwingChain codec retired with the CSM/maneuver teardown — combos are
+// cancel-into rules on the action vocabulary now, no networked chain-step
+// component. Wire id 46 retired, never reuse.)
 
 // ---- ActorSlots ------------------------------------------------------------
 // The declared slot set for an actor (T-226). Set once at spawn from the
@@ -1695,39 +1677,6 @@ export const activeActionsCodec: Serialiser<ActiveActionsData> = {
   },
 };
 
-// ---- CharacterStateMachine -------------------------------------------------
-// Networked so the client can show the active SM node per layer in the debug
-// overlay. {stateMachineId, layerStates: Record<layerId,{node,elapsed}>}.
-
-export interface CharacterStateMachineData {
-  stateMachineId: string;
-  layerStates: Record<string, { node: string; elapsed: number }>;
-}
-
-export const characterStateMachineCodec: Serialiser<CharacterStateMachineData> = {
-  encode(v: CharacterStateMachineData): Uint8Array {
-    const w = new WireWriter();
-    w.writeStr(v.stateMachineId);
-    const entries = Object.entries(v.layerStates);
-    w.writeU16(entries.length);
-    for (const [layerId, s] of entries) {
-      w.writeStr(layerId);
-      w.writeStr(s.node);
-      w.writeF32(s.elapsed);
-    }
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): CharacterStateMachineData {
-    const r = new WireReader(bytes);
-    const stateMachineId = r.readStr();
-    const count = r.readU16();
-    const layerStates: Record<string, { node: string; elapsed: number }> = {};
-    for (let i = 0; i < count; i++) {
-      const layerId = r.readStr();
-      const node = r.readStr();
-      const elapsed = r.readF32();
-      layerStates[layerId] = { node, elapsed };
-    }
-    return { stateMachineId, layerStates };
-  },
-};
+// (CharacterStateMachine codec retired — the CSM was fully replaced by the
+// action primitive (ActiveActions + ActionDispatcher); the client mirrors
+// behaviour from AnimationState now. Wire id 45 retired, never reuse.)

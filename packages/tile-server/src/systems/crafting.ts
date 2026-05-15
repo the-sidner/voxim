@@ -19,13 +19,12 @@
  */
 import type { World, EntityId, Registry } from "@voxim/engine";
 import type { SpatialGrid } from "../spatial_grid.ts";
-import { newEntityId } from "@voxim/engine";
 import { CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentService, Recipe, RecipeOutput } from "@voxim/content";
 import { evalFormula, parseFormula } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import { Position, InputState } from "../components/game.ts";
+import { Position } from "../components/game.ts";
 import { Inventory, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "@voxim/codecs";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
