@@ -2227,9 +2227,18 @@ folds into resolver-local state inside `weapon_trace`.
 Migration phases (each its own ticket; each an atomic commit):
 
   - T-225 — Action schema + content loader (done — `97a20cc`)
-  - T-226 — Engine substrate (ActorSlots, ActiveActions, dispatcher,
-    gate registry, effect registry) + locomotion + posture migration
-    (atomic; CSM still drives upper body)
+  - T-226 — Engine substrate + locomotion + posture migration. Lands
+    as two green sub-commits (recorded exception to the atomic-phase
+    rule — the AnimationSystem parity surgery is too risky to weld to
+    foundational types in one unreviewable diff):
+      - T-226a (done) — substrate: ActionDef schema ext (slot/limbs/
+        preconditions/cancel.gates/ActionGate), actorSlots+activeActions
+        codecs + wire ids 47/48 + components, entity-generic gate +
+        effect registries, ActionDispatcher. 21 tests. Not yet wired
+        into the server tick.
+      - T-226b (next) — gate library + resolvers + locomotion/posture
+        action JSONs + actorSlots prefab field + CSM layer removal +
+        Physics/Animation rewiring; snapshot-determinism-gated.
   - T-227 — Universal swing action library + chain refactor; delete
     ActionSystem + SwingContext + SwingChain; CSM right_hand +
     left_hand layers removed

@@ -346,7 +346,32 @@ Each phase is a shippable atomic commit. The arc deletes more than it adds from 
 
 Initial ActionDef type, loader, validator, bootstrap codec. Status: done. The schema added in T-225 needs three follow-up extensions in T-226: `slot`, `limbs`, `preconditions`, and `cancel.<phase>.gates`. These slot in cleanly — the bootstrap codec version bumps again.
 
-### T-226 — Engine substrate + locomotion + posture migration (atomic)
+### T-226 — Engine substrate + locomotion + posture migration (two green sub-commits)
+
+> **Revised mid-implementation (2026-05-15).** The phase was scoped as one
+> atomic commit. After surveying the AnimationSystem (363 LOC, deeply
+> CSM-coupled, gated by snapshot determinism) the locomotion/posture parity
+> surgery is the real risk and welding it to foundational type definitions
+> in one unreviewable diff is unsound. T-226 lands as **two sub-commits,
+> each green**: (a) the substrate, proven in isolation; (b) the
+> locomotion/posture migration that consumes it. This trades the
+> "nothing ships dead for one commit" guideline for a reviewable,
+> bisectable boundary at the highest-risk seam — a deliberate, recorded
+> exception to the atomic-phase invariant for this phase only. The
+> `commit` is no longer the atomic unit here; the **pair** is.
+>
+> - **T-226a — substrate (LANDED).** `ActionDef` schema extensions
+>   (`slot`, `limbs`, `preconditions`, `ActionCancelRule.gates`,
+>   `ActionGate`); `actorSlotsCodec` / `activeActionsCodec`; wire ids
+>   47/48; `ActorSlots` + `ActiveActions` components; entity-generic gate
+>   + effect registries; `ActionDispatcher` (phase advancement, cancel
+>   arbitration, reaction interrupt, precondition + cost gating, slot
+>   validation). 9 dispatcher + 12 schema/codec tests. Nothing wired into
+>   the server tick. Commit: `<this commit>`.
+> - **T-226b — locomotion + posture migration (NEXT).** Everything in
+>   "What lands" below: the gate library, the first resolvers, the action
+>   JSONs, the `actorSlots` prefab field, CSM layer removal, Physics +
+>   Animation rewiring, parity tests. Snapshot-determinism-gated.
 
 **Goal:** Land the engine primitives, gate library, effect registry, dispatcher; migrate the two simplest CSM layers (locomotion + posture) end-to-end. Observable behavior identical to today for upper-body combat; CSM still drives `right_hand` + `left_hand` for now.
 
