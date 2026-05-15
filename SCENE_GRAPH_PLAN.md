@@ -316,7 +316,18 @@ Each phase is a shippable ticket. The snapshot-determinism invariant (T-214 esta
 
 **Acceptance:** `world.setParent(child, parent)` + `world.destroySubtree(parent)` correctly destroys child. Server snapshot determinism intact. Client + tile-server tests pass.
 
-### T-216 — Move `spawnPrefab` into `@voxim/engine`
+### T-216 — Move `spawnPrefab` into `@voxim/engine` — **LANDED**
+
+> Done. `engine/src/prefab.ts` owns the generic walk (resolve / reject
+> abstract / create / preamble / component dispatch); concretes injected
+> via `PrefabSpawnContext` (getPrefab, resolveComponent,
+> compoundInstaller, preInstall) since they touch game component defs
+> the dependency-free engine can't see. tile-server `spawnPrefab` keeps
+> its exact signature as a thin context-binding wrapper — every call
+> site unchanged, identical behaviour. 70 regression tests green; bake
+> byte-identical. (The atlas/client-spawn payoff is structural
+> groundwork — not exercised until T-218; the immediate value is hosting
+> the T-217 children recursion in engine beside the scene primitive.)
 
 **Goal:** Lift the prefab spawn path from `tile-server/src/spawner.ts` into the engine package so both atlas and client can spawn prefabs into a `World` identically.
 

@@ -2185,7 +2185,11 @@ Migration phases (each its own ticket):
     (O(1) child index, changeset-deferred subtree teardown, cycle-safe
     transform compose). Registered in NETWORKED_DEFS. 8 engine tests +
     regression green; bake byte-identical. Nothing consumes it yet.
-  - T-216 — move `spawnPrefab` into engine
+  - T-216 — DONE. engine/src/prefab.ts owns the generic spawn walk;
+    concretes injected via PrefabSpawnContext (getPrefab/
+    resolveComponent/compoundInstaller/preInstall). tile-server
+    spawnPrefab keeps its signature as a thin wrapper — call sites
+    unchanged, behaviour identical. 70 tests green; bake byte-identical.
   - T-217 — `Prefab.children` field
   - T-218 — POI scene fragments as child prefabs (first end-to-end use)
   - T-219 — skeletal bones as scene-graph entities
