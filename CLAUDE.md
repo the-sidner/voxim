@@ -117,11 +117,11 @@ export const Health = defineComponent({
 });
 
 // Server-only component — networked: false is REQUIRED, no wireId
-export const SkillInProgress = defineComponent({
-  name: "skillInProgress" as const,
+export const PendingReaction = defineComponent({
+  name: "pendingReaction" as const,
   networked: false,
-  codec: skillInProgressCodec,
-  default: (): SkillInProgressData => ({ ... }),
+  codec: pendingReactionCodec,
+  default: (): PendingReactionData => ({ actionId: "" }),
 });
 ```
 
@@ -174,16 +174,22 @@ and `world.remove()`; the tick loop commits them all at once after all systems h
 
 ### System execution order (`server.ts`)
 
+The concrete order is dependency-sorted at boot (`sortSystemsByDependencies`); the
+shape that matters:
+
 ```
-NpcAiSystem → PhysicsSystem → DodgeSystem → HungerSystem → StaminaSystem
-→ LifetimeSystem → EquipmentSystem → CraftingSystem → ConsumptionSystem
-→ BuildingSystem → GatheringSystem → DayNightSystem → CorruptionSystem
-→ EncumbranceSystem → SkillSystem → ActionSystem → BuffSystem
-→ TraderSystem → DynastySystem → AnimationSystem
+NpcAiSystem → (Hunger/Stamina/Lifetime/Equipment/Placement/Crafting/
+ResourceNode/DayNight/Corruption/Encumbrance/Buff/Poise) → PhysicsSystem
+→ ActionDispatcher → SkillSystem → (Projectile/ItemPhysics/TerrainDig/
+Trader/Dynasty) → AnimationSystem → HitboxSystem → PoiSystem → DeathSystem
 ```
 
-Order matters: SkillSystem runs before ActionSystem so on-hit effects compose correctly.
-AnimationSystem runs last so it sees all state changes before encoding AnimationState.
+Order invariants: `NpcAiSystem` writes NPC `InputState` (via `world.write`) before
+`PhysicsSystem`/`ActionDispatcher` consume it; `ActionDispatcher` is the single
+writer of `ActiveActions` and replaces the retired ActionSystem + DodgeSystem +
+CharacterStateMachine (the whole character-behavior arc, T-225–T-234); `SkillSystem`
+runs after it so on-hit `strike` effects compose correctly; `AnimationSystem` runs
+late so it derives `AnimationState` from the tick's final `ActiveActions` + tags.
 
 ---
 
@@ -288,8 +294,9 @@ Length-prefixed binary, encoded by `binaryStateMessageCodec`. Contains:
 
 ### Rewind / lag compensation
 
-On the first active tick of a swing, ActionSystem rewinds the target's position using
-`StateHistoryBuffer.getAt(serverTick - rttTicks)`. NPCs always use the current tick.
+On the first active tick of a swing, the `weapon_trace` effect resolver rewinds the
+target's position using `StateHistoryBuffer.getAt(serverTick - rttTicks)`. NPCs
+always use the current tick.
 
 ---
 
@@ -402,34 +409,39 @@ stack slots; without it, each crafted copy is its own entity.
 ### Two-layer architecture
 
 ```
-ActionSystem (Layer 1 — physics of the swing)
-  → SkillSystem.resolve() (Layer 2 — Lore effects on hit)
+ActionDispatcher (Layer 1 — universal action primitive: every behaviour
+  is a slot action with windup/active/winddown phases + effects)
+  → SkillSystem.resolve() (Layer 2 — Lore effects on a `strike` connect)
 ```
 
-**ActionSystem** handles: windup → active → winddown timing, hitbox sweep detection, damage
-calculation, knockback, parry/block/counter logic. Delegates to SkillSystem when `pendingSkillVerb`
-is set and a hit connects.
+**ActionDispatcher** (the universal behaviour primitive, T-225–T-234 — see
+`ACTION_PRIMITIVE_PLAN.md`) is the single writer of `ActiveActions`. It advances each
+occupied slot's content-defined action through its phases and fires the action's
+`effects` on phase edges. The swing's physics is the `weapon_trace` effect resolver:
+hitbox sweep, damage, knockback, parry/block/counter — dispatched to the per-target
+`HitHandler`s in `packages/tile-server/src/handlers/`. Movement lock, i-frames,
+stagger, block, dodge, consume are all just actions/tags now — no bespoke per-mechanic
+systems.
 
-**SkillSystem** handles: skill slot activation from `ACTION_SKILL_N` flags, cooldown management,
-concept-verb matrix lookups, applying `ActiveEffects`.
+**SkillSystem** handles: skill slot activation from `ACTION_SKILL_N` flags, cooldown
+management, concept-verb matrix lookups, applying `ActiveEffects`. On a melee connect
+the `weapon_trace` resolver derives the attacker's `strike:<slot>` verb from
+`LoreLoadout` and the hit handler publishes `StrikeLanded` for SkillSystem to resolve.
 
-Hit handlers in `packages/tile-server/src/handlers/` implement `HitHandler` and are dispatched
-by ActionSystem based on what was hit (entity health, resource node, blueprint, terrain, workstation).
+### "Is the actor swinging?"
 
-### SkillInProgress component
-
-Present **only while a swing is in progress** (windup through winddown). Absent otherwise.
-Gate on "is swinging?" with `world.get(entityId, SkillInProgress) !== null`.
-Never write it at spawn.
-
-Key fields: `weaponActionId`, `phase` ("windup"|"active"|"winddown"), `ticksInPhase`,
-`hitEntities` (deduplication), `rewindTick` (lag-compensated hit tick, set once on first active
-tick), `pendingSkillVerb`.
+There is no `SkillInProgress` component (retired with the CSM). The action runtime is
+the source of truth: an actor is mid-action when its slot carries an active-kind
+action —
+`content.actions.get(world.get(id, ActiveActions)?.states["primary"]?.actionId)?.kind
+=== "active"`. Phase / `ticksInPhase` / per-resolver `scratch` (rewind tick, hit
+dedup) live in that slot's `ActiveActionState`.
 
 ### Skill loadout
 
-LoreLoadout: 4 skill slots, each `{ verb, outwardFragmentId, inwardFragmentId }`.
-- `"strike"` — fires on melee connect via `pendingSkillVerb`
+`LoreLoadout`: 4 skill slots, each `{ verb, outwardFragmentId, inwardFragmentId }`
+(there is no separate "SkillLoadout"/"ManeuverLoadout" — `LoreLoadout` is it).
+- `"strike"` — fires on melee connect (verb derived by `weapon_trace`, resolved by SkillSystem)
 - `"invoke"`, `"ward"`, `"step"` — activate immediately in SkillSystem
 
 Effect magnitude = `outwardFragment.magnitude × entry.outwardScale`.
@@ -451,15 +463,16 @@ Effect magnitude = `outwardFragment.magnitude × entry.outwardScale`.
 
 SwingPath keyframes define hilt position + blade direction. Tip is always derived:
 `hilt + bladeDir × bladeLength` via `deriveTip()`. This single path drives:
-- Server hit detection: swept capsule in ActionSystem
+- Server hit detection: swept capsule in the `weapon_trace` effect resolver
 - Client arm animation: IK constraint targets
 - Client trail ribbon: tip position each frame
 
 `ik_solver.ts` is generic — reusable for any bone chain. `ikTargets` on `WeaponActionDef`
 specifies which chains track which swingPath points.
 
-`AnimationSystem` runs last each server tick and derives `AnimationState` from observable
-entity state (velocity, SkillInProgress, health) — it never reads raw input.
+`AnimationSystem` runs late each server tick and derives `AnimationState` purely from
+the actor's slot `ActiveActions` + tags (locomotion/primary/reaction projections) plus
+health — it never reads raw input and has no velocity-heuristic or CSM fallbacks.
 
 ---
 
@@ -471,8 +484,12 @@ are NPC-unaware — no `isNpc` branches anywhere in physics, combat, or skill co
 Differences between NPCs and players are expressed through component data: `NpcTag` (marker),
 `NpcJobQueue` (AI job scheduler), `LoreLoadout` contents from `npc_templates.json`.
 
-Job queue: `current` job + `scheduled` list + A\* `plan` (waypoints). Replanning is budgeted at
-16 plans per tick to prevent frame spikes.
+Job queue: `current` job + `scheduled` list + `plan` (waypoints). Replanning is budgeted
+per tick to prevent frame spikes. Per-archetype behaviour is a data-driven behaviour tree
+(`data/behavior_trees/`, `behaviorTreeId` on the NPC template); `NpcAiSystem` is a generic
+BT interpreter with no per-archetype branches. A tree's `request_action` node names an
+action directly (via the `RequestedActions` component → `RequestedActionIntentResolver`),
+so signature moves are data, not just the input-bit subset (T-234).
 
 ---
 
@@ -519,7 +536,20 @@ extracted into separate modules:
 ## Patterns to follow
 
 **Component presence as flag** — No `active: boolean` fields. The component existing means the
-thing is happening. The component being absent means it isn't. `SkillInProgress` is canonical.
+thing is happening; absent means it isn't. The action tags (`blocking`, `iframe`,
+`staggered`, `crouched`) are canonical: an action's phase installs the tag on `:enter`
+and clears it on `:exit`; gameplay gates on `world.has(id, Tag)`.
+
+**Registry-dispatch over content-defined ids** — Never `switch` on a `kind`/`type`
+field in a system. Dispatch a content-defined string id to a registered handler via
+`Registry<H>` from `@voxim/engine`. This is co-equal with "ContentStore is the only
+data access path": it is *why* the code stays data-driven — a designer adds a new
+effect / gate / BT node / hit handler / recipe step as one handler file + one
+`register()` call, never an engine edit. Live instances: the action effect + gate
+registries (`actions/effect.ts`, `actions/gate.ts`), BT node factories
+(`ai/bt/mod.ts`), hit handlers (`handlers/`), the concept-verb effect registries,
+content registries. If a `switch (x.kind)` appears in a system, rewrite it as a
+registry.
 
 **No isNpc branches** — NPCs and players share all systems. Differences live in component data.
 

@@ -2400,11 +2400,23 @@ Migration phases (each its own ticket; each an atomic commit):
     of deleted components + game.ts swing-predictor seed) — deferred to
     the planned scene-view-centric client rebuild, where it's trivial.
     See ACTION_PRIMITIVE_PLAN.md T-236.
-  - T-237 — Skill loadout consolidation + final polish
+  - T-237 — DONE. Mostly already achieved by T-228–234 (ManeuverLoadout
+    deleted not renamed — LoreLoadout is it; intent resolution clean;
+    bootstrap v9 final; skill→action binding live). Real work: promoted
+    registry-dispatch doctrine to CLAUDE.md "Patterns to follow"
+    (Discovery 3); brought CLAUDE.md ECS/combat/NPC/animation sections in
+    line with the action-primitive end-state (no more ActionSystem/CSM/
+    SkillInProgress); fixed last stale code comments. Doc+comment only,
+    173 green; bake byte-identical.
 
-Scene-graph T-215 and T-216 land first (T-235 spawns child entities).
-This arc deletes more code than it adds from T-227 onward — estimated
-net ≈ −3000 to −4000 lines across the project once complete.
+**ACTION ARC COMPLETE (T-225–T-237, 2026-05-15.)** CSM/ActionSystem/
+DodgeSystem/ConsumptionSystem/CombatTimersSystem and the
+Staggered/IFrameActive/DodgeCooldown/Sidestep/BlockHeld components are
+gone; all character behaviour is one content action over the
+entity-generic ActionDispatcher + gate/effect registries + tags.
+T-231/T-235 re-scoped, T-236 server-done (client deferred to the
+scene-view client rebuild). Deferred structural pieces (crafting
+time-step timer, buff compose) carried by sibling arcs T-238/T-239.
 
 ### T-238 · Resource primitive arc (sibling of the action arc)
 Effort: XL (multi-ticket arc)   Status: planned

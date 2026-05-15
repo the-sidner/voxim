@@ -32,8 +32,9 @@ export const TileEvents = {
    */
   EntityDeployed: Symbol("EntityDeployed"),
   /**
-   * Published by a hit handler when a melee hit lands and the attacker's
-   * SkillInProgress carries a pending "strike:<slot>" verb. Consumed by
+   * Published by a hit handler when a melee hit lands and the `weapon_trace`
+   * resolver derived a "strike:<slot>" verb from the attacker's LoreLoadout
+   * (carried on the HitContext as `skillVerb`). Consumed by
    * SkillSystem via a real-bus subscriber registered at construction; the
    * subscriber runs during the post-changeset flush, so stamina / cooldown /
    * effect writes land in the next tick's changeset. Server-side only —

@@ -1,7 +1,18 @@
 # Action as the Universal Behavior Primitive — Implementation Plan
 
-**Status:** design locked, not yet implemented. Companion to `SCENE_GRAPH_PLAN.md`.
-**Tickets:** new arc, T-225 through T-237 (T-225 landed: `97a20cc`).
+**Status:** **COMPLETE — action arc T-225–T-237 landed (2026-05-15).** Companion to `SCENE_GRAPH_PLAN.md`.
+The CSM, ActionSystem, DodgeSystem, ConsumptionSystem, CombatTimersSystem,
+ManeuverScheduler, and the Staggered/IFrameActive/DodgeCooldown/Sidestep/
+BlockHeld components are all gone; every character behaviour (locomotion,
+posture, swing, block, dodge, consume, hit-reaction, stagger, death, NPC
+signature moves) is one content-defined action over the entity-generic
+`ActionDispatcher` + gate/effect registries + tags. T-231/T-235 were
+re-scoped (building already action-driven; buffs land with the T-239
+DerivedStat sibling — no split path); T-236 server half done, its client
+dead-code removal folds into the planned scene-view client rebuild.
+**Tickets:** arc T-225–T-237 done. Sibling arcs T-238 (Resource) /
+T-239 (DerivedStat) carry the deferred pieces (crafting timer, buff
+compose).
 **Relationship to scene-graph arc:** T-215 + T-216 (scene-graph primitive + `spawnPrefab` lift) should land first. Beyond that the two arcs are independent and interleave freely.
 
 This plan was revised on 2026-05-15 after a survey revealed the codebase had already
@@ -853,9 +864,41 @@ re-opening the fenced client now). T-236's substantive content is the
 server derivation, which is **done**. Tracked under the client-rebuild
 effort. No code here.
 
-### T-237 — Skill loadout consolidation + final polish
+### T-237 — Skill loadout consolidation + final polish — **LANDED (mostly already done)**
 
-Final cleanup: rename / consolidate the input → action mapping component (formerly `ManeuverLoadout` → `SkillLoadout`), simplify intent resolution, remove any remaining transitional fields. Bootstrap codec settles at its final version.
+Recon (2026-05-15): most of this ticket's literal content was already
+achieved incrementally by T-228–T-234, so T-237 lands as the genuine
+remaining polish rather than invented work:
+
+- **No component rename.** `ManeuverLoadout` was *deleted* in T-228, not
+  renamed; `LoreLoadout` already is the skill-loadout component. The
+  planned `SkillLoadout` name was never needed — recorded as such.
+- **Intent resolution is already clean** — 4 resolvers + composite, no
+  transitional fields or dead branches; `swingActionId` indirection is
+  load-bearing, not transitional.
+- **Bootstrap codec already settled at v9** — carries `actions`; no
+  `maneuvers`/`state_machines` (deleted T-228). No bump; v9 is final.
+- **Skill→action binding is live** (`ACTION_SKILL_N` → `LoreLoadout` slot →
+  concept-verb → effect; `weapon_trace` derives `strike:<slot>` on connect)
+  — the plan's "returns with consolidation" gap had already closed.
+
+What T-237 actually did:
+
+- **Promoted the registry-dispatch doctrine to `CLAUDE.md`** "Patterns to
+  follow" (Discovery 3) — *"registry-dispatch over content-defined ids;
+  never a `switch` on a kind field"*, co-equal with "ContentStore is the
+  only data access path".
+- **Brought `CLAUDE.md` in line with the arc's end-state** — the ECS
+  server-only example, the system execution order, the lag-comp note, the
+  whole "Combat and skills" two-layer section, the "is swinging?" guidance,
+  the skill-loadout note, the AnimationSystem note, and the NPC-AI section
+  no longer describe the retired ActionSystem / CSM / `SkillInProgress`;
+  they describe `ActionDispatcher` + actions + tags + BT `request_action`.
+- **Fixed the last stale code comments** referencing `SkillInProgress`
+  (`protocol/tile_events.ts`, `engine/component.ts`).
+
+Doc + comment only — 173 tile-server/content/codecs/engine green;
+bake byte-identical. **This closes the action arc (T-225–T-237).**
 
 ---
 

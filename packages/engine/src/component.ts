@@ -59,7 +59,7 @@ export interface NetworkedComponentDef<T, N extends string = string>
 
 /**
  * A component that is never sent over the wire (server-internal state).
- * Examples: Hitbox, SkillInProgress, WorkstationTag, NpcJobQueue.
+ * Examples: Hitbox, PendingReaction, WorkstationTag, NpcJobQueue.
  */
 export interface ServerOnlyComponentDef<T, N extends string = string>
   extends ComponentDefBase<T, N> {
