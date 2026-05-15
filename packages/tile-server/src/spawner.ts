@@ -39,7 +39,6 @@ import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
-import { Poise } from "./components/combat.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -112,8 +111,6 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
   world.write(id, SpeedModifier, { multiplier: 1.0 });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
-  const poiseCfg = content.getGameConfig().combat.poise;
-  world.write(id, Poise, { current: poiseCfg.max, max: poiseCfg.max, regenDisabledTicks: 0 });
   world.write(id, Heritage, heritage);
 
   const capacity = content.getGameConfig().player.inventoryCapacity;
@@ -140,12 +137,14 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   // player-only (NPCs never had a Stamina component — preserving that, so
   // they still can't pay stamina costs); hunger/thirst start at 0 (sated).
   const maxStamina = content.getGameConfig().player.maxStamina;
+  const maxPoise = content.getGameConfig().combat.poise.max;
   world.write(id, Resource, {
     values: {
       ...(world.get(id, Resource)?.values ?? {}),
       stamina: { value: maxStamina, max: maxStamina },
       hunger: { value: 0, max: 100 },
       thirst: { value: 0, max: 100 },
+      poise: { value: maxPoise, max: maxPoise },
     },
   });
 
@@ -164,8 +163,6 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
   writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
   world.write(id, SpeedModifier, { multiplier: speedMultiplier });
   world.write(id, Health, { current: maxHealth, max: maxHealth });
-  const poiseCfg = content.getGameConfig().combat.poise;
-  world.write(id, Poise, { current: poiseCfg.max, max: poiseCfg.max, regenDisabledTicks: 0 });
   const npcDisplayName = overrides.instanceName ?? template?.displayName ?? data.npcType;
   world.write(id, NpcTag, {
     npcType: data.npcType,
@@ -198,11 +195,13 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
   // NPCs carry hunger/thirst Resources (NpcAiSystem reads them for the
   // seek-food/water emergency behaviours) but no stamina (parity: they
   // never had a Stamina component).
+  const maxPoise = content.getGameConfig().combat.poise.max;
   world.write(id, Resource, {
     values: {
       ...(world.get(id, Resource)?.values ?? {}),
       hunger: { value: 0, max: 100 },
       thirst: { value: 0, max: 100 },
+      poise: { value: maxPoise, max: maxPoise },
     },
   });
 };

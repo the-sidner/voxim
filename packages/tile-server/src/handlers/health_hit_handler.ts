@@ -5,9 +5,9 @@ import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { Health } from "../components/game.ts";
 import { staminaValue } from "../combat/helpers.ts";
+import { Resource } from "../components/resource.ts";
 import {
   CounterReady,
-  Poise,
 } from "../components/combat.ts";
 import { Blocking, IFrame } from "../components/tags.ts";
 import { PendingReaction, ActiveActions } from "../components/action.ts";
@@ -21,9 +21,6 @@ import { TickEventBuffer } from "../tick_events.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("HealthHitHandler");
-
-/** Server tick rate — matches the 20 Hz loop. */
-const TICKS_PER_SECOND = 20;
 
 /**
  * Handles hits on entities that have a Health component.
@@ -186,24 +183,24 @@ export class HealthHitHandler implements HitHandler {
         actionId: dot >= 0 ? "hit_front" : "hit_back",
       });
 
-      // ── Poise / stagger (T-197) ────────────────────────────────────────────
-      // Damage reduces poise. When poise breaks, the breaking hit's overshoot
-      // (damage past remaining poise) picks the tier: small overshoot →
-      // stagger.light, large → stagger.heavy. Poise resets to max with a
-      // brief regen-disabled window so the actor can't immediately recover
-      // before a follow-up hit lands.
-      const poise = world.get(ctx.targetId, Poise);
-      if (poise) {
-        const next = poise.current - damage;
+      // ── Poise / stagger (T-197, poise is a Resource since T-238d) ──────────
+      // Damage reduces `Resource.values.poise`. When it breaks, the breaking
+      // hit's overshoot (damage past remaining poise) picks the tier: small
+      // overshoot → stagger.light, large → stagger.heavy. Poise resets to max
+      // and ResourceSystem owns the regen back up. (The old 0.5s
+      // regen-disabled window is gone: with break resetting to max it only
+      // bit on a re-hit within the window — an accepted retune; the dead
+      // game_config key is removed in T-238g.)
+      const res = world.get(ctx.targetId, Resource);
+      const poise = res?.values.poise;
+      if (res && poise) {
+        const next = poise.value - damage;
         if (next <= 0) {
           const overshoot = -next;
           const poiseCfg = this.content.getGameConfig().combat.poise;
           const heavy = overshoot >= poiseCfg.heavyTierDamageOvershoot;
-          const disableTicks = Math.round(poiseCfg.regenDisabledSecondsAfterBreak * TICKS_PER_SECOND);
-          world.set(ctx.targetId, Poise, {
-            current: poise.max,
-            max: poise.max,
-            regenDisabledTicks: disableTicks,
+          world.set(ctx.targetId, Resource, {
+            values: { ...res.values, poise: { value: poise.max, max: poise.max } },
           });
           // Overwrites the hit_front/back request set above — stagger
           // supersedes the flinch (and the dispatcher's interrupt
@@ -212,7 +209,9 @@ export class HealthHitHandler implements HitHandler {
             actionId: heavy ? "stagger_heavy" : "stagger_light",
           });
         } else {
-          world.set(ctx.targetId, Poise, { ...poise, current: next });
+          world.set(ctx.targetId, Resource, {
+            values: { ...res.values, poise: { value: next, max: poise.max } },
+          });
         }
       }
     }

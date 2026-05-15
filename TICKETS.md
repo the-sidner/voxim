@@ -2433,6 +2433,14 @@ deleting the system it replaces.
   — honest refinement over "reuse the action ResolveContext") +
   modify_health effect. 5 unit tests + 178 green; inert; bake
   byte-identical. See plan T-238a.
+- **T-238d — DONE.** poise.json (pure regen 12/s, bounds 0..50, no
+  modifiers/thresholds — the minimal Resource). Seeded on player+NPC
+  spawn; health_hit_handler keeps poise damage + break→stagger-tier,
+  now reading/writing Resource.values.poise. DELETED PoiseSystem,
+  Poise component, poiseCodec/PoiseData. Accepted retune: the 0.5 s
+  regen-disable window is dropped (near-vestigial since break resets to
+  max — only bit on a re-hit within the window; dead game_config key
+  removed in T-238g). 2 tests + 181 green; bake byte-identical.
 - **T-238c — DONE.** hunger.json/thirst.json (cross@80→emit_event
   HungerCritical/ThirstCritical; sustained@100→modify_health starvation).
   emit_event effect shipped. Seeded on player+NPC spawn; consume_item,

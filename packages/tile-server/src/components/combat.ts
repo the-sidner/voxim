@@ -22,7 +22,6 @@
  * DodgeCooldown countdowns are gone with the dodge migration (T-229).
  */
 import { defineComponent } from "@voxim/engine";
-import { buildCodec } from "@voxim/codecs";
 import type { Serialiser } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
 import {
@@ -58,35 +57,8 @@ export const Airborne = defineComponent({
   default: (): Record<string, never> => ({}),
 });
 
-// ---- Poise (server-only) --------------------------------------------------
-//
-// Stagger resource (T-197). Damage reduces `current`; when current ≤ 0 the
-// hit handler fires `event.stagger.light` or `event.stagger.heavy` (chosen
-// by damage overshoot) on the victim, resets current to max, and sets
-// `regenDisabledTicks` so recovery is briefly suppressed before regen
-// resumes.
-//
-// PoiseSystem ticks the regen and the disable countdown. Hit handlers are
-// the only damage source. Server-only — the client renders the staggered
-// state via the CSM reaction layer transition, so it doesn't need the raw
-// poise value (until a poise bar UI lands; then this becomes networked).
-
-export interface PoiseData {
-  current: number;
-  max: number;
-  /** Ticks of regen suppression remaining. 0 = regen active. */
-  regenDisabledTicks: number;
-}
-
-const poiseCodec: Serialiser<PoiseData> = buildCodec<PoiseData>({
-  current:            { type: "f32" },
-  max:                { type: "f32" },
-  regenDisabledTicks: { type: "i32" },
-});
-
-export const Poise = defineComponent({
-  name: "poise" as const,
-  networked: false,
-  codec: poiseCodec,
-  default: (): PoiseData => ({ current: 50, max: 50, regenDisabledTicks: 0 }),
-});
+// Poise (T-197) retired as a standalone component (T-238d): it is now
+// `Resource.values.poise` — a pure-regen tick scalar owned by
+// ResourceSystem (data/resources/poise.json). The hit handler still owns
+// poise *damage* and the break → stagger tier decision; it just reads and
+// writes the Resource now.

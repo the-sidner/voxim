@@ -35,7 +35,6 @@ import {
 } from "./components/game.ts";
 import {
   CounterReady,
-  Poise,
 } from "./components/combat.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
 import { Resource } from "./components/resource.ts";
@@ -186,11 +185,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // (Combat counters all retired: T-229 IFrameActive→`iframe` tag &
   // DodgeCooldown removed; T-233 BlockHeld removed — parry window is the
   // held `block` action's ticksInPhase. CombatTimersSystem is gone.)
-  // Poise (T-197) — staggering resource. Server-only; the client renders
-  // stagger via CSM reaction-layer animation, not a poise bar.
-  Poise,
-  // Resource (T-238) — every tick-scalar (stamina/hunger/poise/…) lives
-  // here once migrated. Server-only; inert until T-238b seeds one.
+  // Resource (T-238) — every tick-scalar (stamina/hunger/thirst/poise/…)
+  // lives here. Server-only. Poise folded in at T-238d (the standalone
+  // Poise component is gone).
   Resource,
   Hearth,
   JobBoard,

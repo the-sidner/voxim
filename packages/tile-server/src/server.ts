@@ -73,7 +73,6 @@ import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { BuffSystem } from "./systems/buff.ts";
-import { PoiseSystem } from "./systems/poise.ts";
 import { PoiSystem } from "./systems/poi.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs } from "./stair_spawner.ts";
@@ -501,7 +500,6 @@ export class TileServer {
       new CorruptionSystem(content, deathSystem),
       new EncumbranceSystem(content),
       new BuffSystem(effects.tick, effects.compose, deathSystem),
-      new PoiseSystem(content),
       new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem),
       new PhysicsSystem(content, tickEvents),
       new FogOfWarSystem(),

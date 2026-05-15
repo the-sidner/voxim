@@ -171,9 +171,22 @@ multi-slot shape.
   thirst≥100 now deals max(2,3)·dt not 2+3 (two deferred Health writes,
   last wins — documented edge case). 2 hunger integration tests + 179
   green; bake byte-identical.
-- **T-238d — poise.** regen + `regenDisabled` as a Resource (a
-  rate-suppress window); **delete `PoiseSystem`**; `health_hit_handler`
-  break logic unchanged (reads/writes the resource value).
+- **T-238d — poise. LANDED.** `data/resources/poise.json` (pure regen,
+  rate 12/s, bounds 0..50, no modifiers/thresholds — the simplest possible
+  Resource). Seeded on player & NPC spawn (`Resource.values.poise`, max
+  from `combat.poise.max`). `health_hit_handler` keeps the poise *damage*
+  and break → stagger-tier decision; it now reads/writes
+  `Resource.values.poise` instead of the standalone component.
+  **Deleted: `PoiseSystem`, the `Poise` component + `poiseCodec`/
+  `PoiseData`.** **Accepted retune (honest call):** the 0.5 s
+  `regenDisabledSecondsAfterBreak` window is *dropped*, not modeled. With
+  break resetting poise to max it only ever bit on a re-hit *within* the
+  window — near-vestigial; modeling it would have meant a second
+  countdown-Resource + a `resource_gate` modifier purely to reproduce a
+  marginal edge. The dead `game_config` key is removed in T-238g. 2 poise
+  regen integration tests (rate+clamp, broken→full no-suppression); 181
+  content/tile-server/codecs/engine green; bake byte-identical (resources
+  are runtime state, terrain untouched).
 - **T-238e — corruption.** Iff the closed `rateModifier` vocabulary above
   holds: `tileCorruption` (tile-scope) + `corruptionExposure` (entity)
   Resources; **delete `CorruptionSystem`**. Else: partial — values become
