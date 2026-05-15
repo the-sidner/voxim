@@ -2393,8 +2393,13 @@ Migration phases (each its own ticket; each an atomic commit):
     path. T-235 ∧ T-239 is one replacement: sequenced to land together
     as a single commit that deletes BuffSystem whole. See
     ACTION_PRIMITIVE_PLAN.md T-235.
-  - T-236 — Animation system fully derives from ActiveActions
-    (final cleanup of any remaining CSM mirrors)
+  - T-236 — SERVER DONE (no code). AnimationSystem already derives every
+    layer purely from ActiveActions + tags (landed T-226c/227/228); no
+    velocity heuristics / paramOverrides / CSM mirrors remain. Remaining
+    work is ~25 lines of client dead-code removal (client_world.ts decodes
+    of deleted components + game.ts swing-predictor seed) — deferred to
+    the planned scene-view-centric client rebuild, where it's trivial.
+    See ACTION_PRIMITIVE_PLAN.md T-236.
   - T-237 — Skill loadout consolidation + final polish
 
 Scene-graph T-215 and T-216 land first (T-235 spawns child entities).

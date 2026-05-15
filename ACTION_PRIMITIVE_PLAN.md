@@ -824,9 +824,34 @@ writer, hooks→damage-pipeline resolvers). Implementing it before T-239 would
 manufacture migration debt against the project's hard rule. No parallel
 path; take the big diff when both halves are ready.
 
-### T-236 — Animation derives from ActiveActions (cleanup)
+### T-236 — Animation derives from ActiveActions (cleanup) — **SERVER DONE; client deferred to the client rebuild**
 
-By this point AnimationSystem already reads slot actions (T-226 / T-227 / T-228). This phase cleans up any remaining velocity-heuristic clip selection, `paramOverrides` migrations, and direct CSM-mirroring fallbacks in the client. After this, animation is purely derived: slot actions + tags → clips + composition.
+Recon (2026-05-15) confirms the **server half is already complete**:
+`tile-server/src/systems/animation.ts` derives every layer (locomotion /
+primary / reaction) purely from `ActiveActions` + tags
+(`projectLocomotion` etc.). No velocity-heuristic clip selection, no
+`paramOverrides`, no CSM-mirror fallbacks remain — the only CSM token left
+is a doc comment explaining the `Crouched`-tag replacement. This landed
+incrementally across T-226c / T-227 / T-228. **Zero server work for T-236.**
+
+The remaining work is entirely client and entirely *deletion*: the client
+no longer typechecks because `state/client_world.ts` still imports/decodes
+deleted networked components (`staggeredCodec`/`StaggeredData`,
+`characterStateMachine`, `swingChain`) and `game.ts:752-753` reads
+`characterStateMachine`/`swingChain` to seed the swing predictor. The
+client already drives the skeleton purely from the networked
+`AnimationState` (which is server-derived from `ActiveActions`) — the
+deleted-component decodes are dead weight, ~25 lines across 2 files, plus
+one decision on swing-prediction seeding (hardcode `chainIndex=0`/
+`handNode="idle"` or drop client-side prediction).
+
+**Decision:** the client is being **deliberately left drifted** for an
+upcoming major client rebuild centred on the scene-view; it will be
+reattached then, at which point this dead-code removal + swing-predictor
+re-seed is a trivial part of that rebuild (not a standalone ticket worth
+re-opening the fenced client now). T-236's substantive content is the
+server derivation, which is **done**. Tracked under the client-rebuild
+effort. No code here.
 
 ### T-237 — Skill loadout consolidation + final polish
 
