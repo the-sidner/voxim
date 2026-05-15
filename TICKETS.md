@@ -2347,7 +2347,15 @@ Migration phases (each its own ticket; each an atomic commit):
     accepted retune). interact/pray: nothing to migrate — ACTION_INTERACT
     retired (hover PickUp command), no prayer mechanic exists. 2 consume
     tests + 168 green; bake byte-identical.
-  - T-231 — Migrate crafting / building to actions + resolvers
+  - T-231 — RE-SCOPED (doc only, no code). Premise contradicted by the
+    codebase: building construction is ALREADY action-driven (hammer
+    swing → weapon_trace → BlueprintHitHandler); blueprint Place is a UI
+    command, not a body action; crafting is workstation-state + inventory
+    commands with attack/assembly steps already hit-driven. Only the
+    time-step countdown is timer-shaped — explicitly folded into the
+    T-238 Resource primitive, not force-fit as a player-slot action.
+    Forcing a craft/build action shell would add complexity. See
+    ACTION_PRIMITIVE_PLAN.md T-231.
   - T-232 — Hit-reactions as event-initiated reaction-class actions;
     interrupt priority + poise; delete `Staggered`
   - T-233 — Block as primary-slot action (held tail); combat-side
@@ -2381,7 +2389,10 @@ introduces** — built entity-generic in T-226 specifically so this arc
 reuses it. Filed as a sibling so the spine (one substrate,
 content-driven primitives, no hardcoded switches) stays visible.
 Full sub-plan filed when the action arc nears completion. Depends on
-T-226 (effect registry must exist and be entity-generic).
+T-226 (effect registry must exist and be entity-generic). **Also
+absorbs the crafting time-step timer** (`WorkstationBuffer.progressTicks`)
+handed over from the re-scoped T-231 — a workstation-entity timed
+process, the canonical degenerate-timer-as-Resource case.
 
 ### T-239 · DerivedStat primitive arc (sibling of the action arc)
 Effort: L   Status: planned

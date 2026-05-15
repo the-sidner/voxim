@@ -656,9 +656,37 @@ POI activity or a new primary-slot action — not a migration.
 2 consume integration tests + 168 tile-server/content/engine green; bake
 byte-identical.
 
-### T-231 — Migrate crafting and building
+### T-231 — Migrate crafting and building — **RE-SCOPED (no code; folds into T-238)**
 
-Long-windup actions; recipe ids as action params. CraftingSystem and BuildingSystem shrink to resolvers.
+This line's premise is contradicted by the codebase as it actually stands
+(verified 2026-05-15) — executing it verbatim would *add* complexity, the
+opposite of the arc's goal. Findings:
+
+- **Building construction is already on the action primitive.** You build
+  by swinging a hammer at a blueprint: `swing_*` action → `weapon_trace`
+  effect → hit pipeline → `BlueprintHitHandler` decrements
+  `Blueprint.ticksRemaining` and completes. No bespoke `BuildingSystem`
+  exists. Nothing to migrate — it already flows through the primitive.
+- **Blueprint *placement* is a UI command, not a body action.**
+  `CommandType.Place` (cursor/menu, cell-aligned) spawns the blueprint via
+  `spawnPrefab`. Wrapping a windup/active/winddown around a cursor placement
+  would be a contortion with no gameplay meaning. `PlacementSystem` stays as
+  a command handler — correctly.
+- **Crafting is workstation state + inventory commands.**
+  `LoadWorkstation` / `TakeWorkstation` / `SelectRecipe` are inventory
+  plumbing (no body motion). Attack/assembly recipe steps are *already*
+  hit-driven through `WorkstationHitHandler` → the same action/hit pipeline.
+  The only "count N ticks then act" piece is the **time-step** countdown
+  (`WorkstationBuffer.progressTicks`) — which is exactly the degenerate
+  timer **Discovery 4** flags. It unifies cleanly under the **Resource /
+  timer primitive (T-238)** as a workstation-entity timed process (the
+  dispatcher is already entity-generic), *not* as a player-slot action.
+
+**Decision:** T-231 lands as this re-scope (doc only). Building needs no
+work (already primitive-driven); crafting's command + step-registry stay;
+the time-step timer is explicitly handed to T-238 rather than force-fit
+here. Net complexity is reduced by *not* adding a misfit `craft`/`build`
+action shell. No code, no test change, bake untouched.
 
 ### T-232 — Hit-reactions as actions; interrupt priority + poise
 
