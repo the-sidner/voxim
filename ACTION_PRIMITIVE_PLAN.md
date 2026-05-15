@@ -722,9 +722,28 @@ bake byte-identical. (Client `client_world.ts` still decodes the removed
 codec — pre-existing accepted client debt, tracked for the T-236 client
 pass; not touched per "leave the client for now".)
 
-### T-233 — Block as primary-slot action
+### T-233 — Block as primary-slot action — **LANDED**
 
-Block goes from "input bit checked everywhere" to "held primary-slot action with a tail phase that maintains the `Blocking` tag." Cancel rules let blocks transition into swings (parry → riposte) and dodges. Combat-side block checks become `tag_present: Blocking` gate queries.
+Block was already a held primary-slot ambient action maintaining the
+`Blocking` tag (landed incrementally in T-227/T-229); `health_hit_handler`
+already read the tag. T-233 finished the last coupling:
+
+- **Parry window now derives from the held `block` action's primary-slot
+  `ticksInPhase`** (perpetual `hold` phase counts up while held) instead of
+  the `BlockHeld` counter. `block` is the sole writer of the `Blocking`
+  tag, so its age *is* "how long block has been held".
+- **`BlockHeld` component deleted** (def + codec in combat.ts, registry
+  entry, `mod.ts` export, handoff comment).
+- **`CombatTimersSystem` deleted entirely** — it had nothing left after
+  T-232 removed the Staggered countdown. Unwired from `server.ts`. The
+  whole "residual combat-counter bookkeeping" lineage (DodgeSystem →
+  CombatTimersSystem → ∅) is now gone; every combat counter is either an
+  action phase or a tag.
+
+Cancel-into-swing/dodge from block is already expressed by `block`'s
+`hold.cancel.into: ["any"]` + the dispatcher matrix — no special riposte
+code. 1 block-substrate test + 169 tile-server/content/codecs/engine
+green; bake byte-identical.
 
 ### T-234 — AI behavior trees as data on the action vocabulary
 

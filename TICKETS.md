@@ -2367,8 +2367,13 @@ Migration phases (each its own ticket; each an atomic commit):
     aren't intent-gated) — not duplicated here. 1 stagger test + 168
     green; bake byte-identical. Client codec-decode debt deferred to
     T-236 client pass.
-  - T-233 — Block as primary-slot action (held tail); combat-side
-    block checks become `tag_present: Blocking` gate queries
+  - T-233 — DONE. Parry window now derives from the held `block`
+    action's primary-slot ticksInPhase (block is the sole Blocking-tag
+    writer, so its age = how long block held). BlockHeld component
+    deleted; CombatTimersSystem deleted entirely (nothing left after
+    T-232). The DodgeSystem→CombatTimersSystem→∅ residue is fully gone —
+    every combat counter is now an action phase or a tag. 1 block test
+    + 169 green; bake byte-identical.
   - T-234 — NPC behavior trees as data on the action vocabulary;
     `NpcAiSystem` becomes a BT interpreter
   - T-235 — Buffs / DoTs as scene-graph child entities with ambient
