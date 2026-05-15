@@ -786,9 +786,43 @@ primitive via the handler→bit→dispatcher path) and can adopt
 `request_action` for signature moves with no engine change. 3 BT tests +
 173 tile-server/content/codecs/engine green; bake byte-identical.
 
-### T-235 — Buffs / DoTs as scene-graph children with ambient looping actions
+### T-235 — Buffs / DoTs as scene-graph children — **RE-SCOPED: must land with T-239 (no split path)**
 
-A buff is a child entity parented to the actor, carrying its own `ActiveActions` with an ambient looping action whose tick effect modifies the parent. BuffSystem deleted. Hit handlers that installed buff state now spawn a buff child entity via `spawnPrefab`.
+**Substrate verified ready** (recon 2026-05-15): the ActionDispatcher is
+entity-generic — a child entity carrying `ActiveActions` with **no
+`ActorSlots`** has its ambient (`ticks:-1`) action `:tick`-advanced every
+frame and skips intent resolution (dispatcher.ts:102–116). `world.getParent`
++ `ResolveContext{world,entityId}` let a `buff_tick` resolver modify the
+parent. `spawnPrefab` recursively spawns `children` + `setParent`,
+`destroySubtree` tears down on expiry. The buff-as-child idea is sound and
+nothing in the engine blocks it.
+
+**But `BuffSystem` is three different shapes, not one:**
+
+1. **Periodic DoT/HoT** (`health` tick, `tickDeltaPerSec`) — a genuine
+   per-entity ambient tick. *Fits* a buff child + ambient action cleanly.
+2. **Aggregate stat compose** — `SpeedModifier = EncumbrancePenalty ∘
+   Σ(speed contributions)`, the *single writer* of `SpeedModifier`. This is
+   **not** a per-tick child effect; it is `effective = base ∘ Σ
+   contributions` — the **DerivedStat** primitive, already filed as sibling
+   arc **T-239** (Discovery 2). N buff children each writing `SpeedModifier`
+   would race and break the single-writer invariant.
+3. **Consume-on-use damage hooks** (`damage_boost`, `shield`) — event-shaped
+   pipeline hooks (`outgoingDamage`/`incomingDamage`), not periodic ticks.
+
+Migrating only (1) now leaves (2)+(3) in a surviving `BuffSystem` — buffs
+split across two live mechanisms, exactly the "two live paths" the refactor
+philosophy forbids. **`BuffSystem` can only be deleted when the compose half
+moves to a `DerivedStat` writer (T-239) and the damage hooks find their home
+in the same pass.** T-235 done correctly *is* T-235 ∧ T-239 as one
+replacement, not two.
+
+**Decision (doc only, no code):** T-235's design is locked and the substrate
+is proven; it is **sequenced to land with T-239**, as a single commit that
+deletes `BuffSystem` whole (DoT→buff-child ambient action, speed→DerivedStat
+writer, hooks→damage-pipeline resolvers). Implementing it before T-239 would
+manufacture migration debt against the project's hard rule. No parallel
+path; take the big diff when both halves are ready.
 
 ### T-236 — Animation derives from ActiveActions (cleanup)
 

@@ -2383,8 +2383,16 @@ Migration phases (each its own ticket; each an atomic commit):
     deliberately kept (not character-action primitives; collapsing it
     would be a T-231-style contortion). 3 BT tests + 173 green; bake
     byte-identical.
-  - T-235 — Buffs / DoTs as scene-graph child entities with ambient
-    looping actions; delete BuffSystem
+  - T-235 — RE-SCOPED (doc only). Substrate verified ready (dispatcher
+    entity-generic for slotless children; getParent; spawnPrefab
+    children/destroySubtree). But BuffSystem is 3 shapes: periodic DoT
+    (fits a buff-child ambient tick), aggregate compose → SpeedModifier
+    (that's DerivedStat = T-239, single-writer; N children would race),
+    consume-on-use damage hooks (event-shaped). Migrating only DoT
+    splits buffs across two live mechanisms — the forbidden parallel
+    path. T-235 ∧ T-239 is one replacement: sequenced to land together
+    as a single commit that deletes BuffSystem whole. See
+    ACTION_PRIMITIVE_PLAN.md T-235.
   - T-236 — Animation system fully derives from ActiveActions
     (final cleanup of any remaining CSM mirrors)
   - T-237 — Skill loadout consolidation + final polish
@@ -2426,8 +2434,12 @@ sources register typed modifiers, one composer produces the effective
 value, consumers read it. The actor-level dual of `DerivedItemStats`
 (which already does this for items). Retire `SpeedModifier`,
 `EncumbrancePenalty`, and the per-stat bespoke composition; unify with
-`DerivedItemStats` where the symmetry is clean. Depends on the buff/
-effect machinery settling (post T-235).
+`DerivedItemStats` where the symmetry is clean. **Lands together with the
+re-scoped T-235 as one commit that deletes BuffSystem whole**: DoT →
+buff-child ambient action, speed/compose → this DerivedStat writer,
+consume-on-use → damage-pipeline resolvers. The substrate readiness for
+the buff-child half is already verified (see ACTION_PRIMITIVE_PLAN.md
+T-235); this arc supplies the compose half so there's no split path.
 
 ---
 
