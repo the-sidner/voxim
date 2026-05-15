@@ -75,6 +75,8 @@ export class ActionDispatcher implements System {
   /** Runs after NpcAi (NPC intent) and Physics (velocity drives locomotion intent). */
   readonly dependsOn = ["NpcAiSystem", "PhysicsSystem"];
 
+  private serverTick = 0;
+
   constructor(
     private readonly content: ContentService,
     private readonly gates: GateRegistry,
@@ -82,6 +84,10 @@ export class ActionDispatcher implements System {
     private readonly intent: IntentResolver | null = null,
     private readonly costs: CostHandler | null = null,
   ) {}
+
+  prepare(serverTick: number): void {
+    this.serverTick = serverTick;
+  }
 
   run(world: World, events: EventEmitter, _dt: number): void {
     for (const { entityId, activeActions } of world.query(ActiveActions)) {
@@ -301,6 +307,7 @@ export class ActionDispatcher implements System {
         content: this.content,
         params: eff.params ?? {},
         edge,
+        serverTick: this.serverTick,
       });
     }
   }

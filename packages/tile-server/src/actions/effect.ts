@@ -37,6 +37,12 @@ export interface ResolveContext {
   readonly content: ContentService;
   readonly params: Record<string, unknown>;
   readonly edge: EffectEdge;
+  /**
+   * Current server tick. Global, not actor-specific (kept entity-generic).
+   * Needed by lag-compensated resolvers (weapon_trace rewinds the target to
+   * `serverTick - rttTicks`).
+   */
+  readonly serverTick: number;
 }
 
 export interface EffectResolver {
