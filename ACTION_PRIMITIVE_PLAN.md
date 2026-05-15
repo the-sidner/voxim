@@ -547,7 +547,41 @@ This is the foundation phase. The substrate is exercised by the smallest meaning
 
 **Files touched:** ~35 files; estimated diff 2500-3500 lines, of which ~1500 are net deletes.
 
-### T-228 — Maneuvers absorbed, CSM retired
+### T-228 — Maneuvers absorbed, CSM retired — **LANDED**
+
+> **Done in 3 green sub-commits.** The CSM is fully eliminated; every
+> character behavior flows through the ActionDispatcher.
+>
+> - **c1** — deleted the inert maneuver machinery (Maneuver/
+>   ManeuverLoadout components, ManeuverDef type, maneuvers/ data, all
+>   registry wiring, spawner install, dead dodge guard). Maneuvers were
+>   already runtime-dead from T-227; pure dead-code removal. The planned
+>   `ManeuverDef → ActionDef` conversion + `post_action` resolver +
+>   `SkillLoadout` are **deferred** — re-authored when skill-slot →
+>   action binding returns (T-237 consolidation). No maneuver content
+>   survived to migrate.
+> - **c2** — hit-reactions as reaction-slot actions: `hit_front`/
+>   `hit_back`/`stagger_light`/`stagger_heavy`/`death` (interruptPriority
+>   10/50/60/100); `PendingReaction` one-shot written by the damage path;
+>   `ReactionIntentResolver` (health≤0→death, else PendingReaction);
+>   AnimationSystem projects the reaction slot (top composite); the CSM
+>   reaction layer removed → the CSM def hit **zero layers**. Gameplay
+>   (Staggered, DeathSystem) untouched — the reaction layer was
+>   animation-only (locks_input/facing had zero code consumers).
+> - **c3** — deleted the CSM entirely: system + component, the ~445-LOC
+>   `state_machine.ts` compiler, `sm_expression.ts` DSL, the whole
+>   `sm_scope/` dir, `StateMachineDef` + SM types, `humanoid_default.json`
+>   + `state_machines/`, the prefab `stateMachineId` field + inheritance
+>   merge + spawner install, the stateMachines registry across store/
+>   loader/bootstrap/mod, AnimationSystem's CSM coupling, and the
+>   lag-comp snapshot's `csmLayerNodes`. Bootstrap 8 → 9.
+>
+> Verification across all three: type-clean (pre-existing webtransport
+> d.ts noise only); 49 action/loader/dispatcher/posture/locomotion +
+> bootstrap tests green; 11 atlas snapshots green — **bake
+> byte-identical**. The `reaction` slot's interrupt-priority + poise
+> tuning (the planned T-232 polish) is the open follow-up; the
+> structural endgame is reached.
 
 **Goal:** Convert all existing maneuvers to multi-effect primary-slot actions; delete the CSM entirely now that no layers remain.
 

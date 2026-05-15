@@ -2289,8 +2289,21 @@ Migration phases (each its own ticket; each an atomic commit):
     green; bake byte-identical. CSM reduced to the `reaction` layer
     only. Accepted regressions (retuned later): feel, lag-comp block
     precision, root-motion, maneuvers, weapon-trail, client predictor.
-  - T-228 — Maneuvers absorbed as multi-effect actions; CSM fully
-    retired (StateMachineDef, compiler, humanoid_default.json deleted)
+  - T-228 — DONE (3 green sub-commits). c1: deleted inert maneuver
+    machinery (Maneuver/ManeuverLoadout/ManeuverDef/maneuvers data —
+    runtime-dead since T-227; ManeuverDef→ActionDef conversion deferred
+    to the T-237 skill-loadout work, no content survived to migrate).
+    c2: hit-reactions as reaction-slot actions (hit_front/back,
+    stagger_light/heavy, death; PendingReaction + ReactionIntentResolver;
+    AnimationSystem reaction projection); CSM def emptied. c3: CSM
+    fully deleted — system+component, state_machine.ts compiler,
+    sm_expression.ts, sm_scope/, StateMachineDef+SM types,
+    humanoid_default.json, state_machines/, prefab stateMachineId,
+    spawner install, stateMachines registry, AnimationSystem CSM
+    coupling, lag-comp csmLayerNodes. Bootstrap 8→9. Type-clean; 49+11
+    tests green; bake byte-identical. **CSM eliminated — all behavior
+    is the action dispatcher.** Open follow-up: reaction interrupt-
+    priority + poise tuning (was the planned T-232 polish).
   - T-229 — Migrate dodge (delete DodgeSystem); first cross-action
     cancel-into proves out
   - T-230 — Migrate consume / interact / pray (non-combat through the
