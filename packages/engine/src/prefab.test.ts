@@ -44,13 +44,17 @@ const Local = defineComponent({
  *  records the child's local transform on a `Local` component. */
 function makeCtx(
   table: Record<string, PrefabLike>,
+  parents: Map<string, string> = new Map(),
 ): PrefabSpawnContext<{ id?: string }> {
   return {
     getPrefab: (id) => table[id],
     resolveComponent: (name) => (name === "mark" ? Mark : undefined),
     compoundInstaller: () => undefined,
     preInstall: () => {},
-    placeChild: (w, childId, local) => w.write(childId, Local, { t: local }),
+    placeChild: (w, childId, parentId, local) => {
+      w.write(childId, Local, { t: local });
+      parents.set(childId, parentId);
+    },
   };
 }
 
@@ -67,11 +71,14 @@ Deno.test("prefab with two children → 3 entities, parented, placed", () => {
     leaf: { id: "leaf", components: { mark: { tag: "leaf" } } },
   };
   const w = new World();
-  const rootId = spawnPrefab(w, makeCtx(table), "parent", {});
+  const parents = new Map<string, string>();
+  const rootId = spawnPrefab(w, makeCtx(table, parents), "parent", {});
 
   const kids = w.getChildren(rootId);
   assertEquals(kids.length, 2);
   for (const k of kids) assertEquals(w.getParent(k), rootId);
+  // placeChild receives the parent id so the service can compose world-space.
+  for (const k of kids) assertEquals(parents.get(k), rootId);
   assertEquals(w.get(rootId, Mark), { tag: "root" });
   for (const k of kids) assertEquals(w.get(k, Mark), { tag: "leaf" });
 

@@ -4,9 +4,14 @@
  * Two responsibilities:
  *
  *   1. `placePoiTriggers(world, level, content, tileSize)` — called once
- *      at tile boot. For every `level.narrative.pois` entry, creates a
- *      bare entity at the host region's centroid with `Position` +
- *      `PoiTrigger`. The PoiSystem picks these up tickwise.
+ *      at tile boot. For every `level.narrative.pois` entry, places the
+ *      POI at its host region's centroid. A POI def declaring a
+ *      `scenePrefabId` (T-218) spawns that prefab — which carries the
+ *      `poiTrigger` component and any `children` props (the scene-graph
+ *      subtree) — and patches the runtime instance/def ids onto the
+ *      spawned trigger. POIs without a scene prefab fall back to a bare
+ *      `Position` + `PoiTrigger` entity. The PoiSystem picks either up
+ *      tickwise — it only cares that a `PoiTrigger` exists.
  *
  *   2. `resolveSpawnTable(spawnTableId)` — stub mapping from POI activity
  *      `spawnTable` ids to existing NPC template ids. The 17 authored
@@ -21,6 +26,7 @@ import type { ContentService } from "@voxim/content";
 import { findRegion, type LevelDef } from "@voxim/atlas";
 import { Position } from "./components/game.ts";
 import { PoiTrigger } from "./components/poi.ts";
+import { spawnPrefab } from "./spawner.ts";
 import { createLogger } from "./logger.ts";
 
 const log = createLogger("PoiSpawner");
@@ -44,7 +50,7 @@ const DEFAULT_TRIGGER_RADIUS = 6;
 export function placePoiTriggers(
   world: World,
   level: LevelDef,
-  _content: ContentService,
+  content: ContentService,
   tileSize: number,
 ): number {
   const scale = tileSize / level.gridSize;
@@ -58,15 +64,41 @@ export function placePoiTriggers(
     }
     const wx = host.centroid.x * scale;
     const wy = host.centroid.y * scale;
-    const id = newEntityId();
-    world.create(id);
-    world.write(id, Position, { x: wx, y: wy, z: 0 });
-    world.write(id, PoiTrigger, {
-      poiInstanceId: poi.id,
-      poiDefId:      poi.poiDefId,
-      triggerRadius: DEFAULT_TRIGGER_RADIUS,
-      fired:         false,
-    });
+
+    const def = content.pois.get(poi.poiDefId);
+    const scenePrefabId = def?.scenePrefabId;
+
+    if (scenePrefabId) {
+      // T-218: the scene prefab carries `poiTrigger` + a child-prop
+      // subtree. spawnPrefab recurses the children and bakes their
+      // world Position off this centroid. The prefab can't know its
+      // per-tile instance — patch the runtime ids onto the trigger the
+      // generic walk already wrote (default-merged from the prefab data).
+      const id = spawnPrefab(world, content, scenePrefabId, { x: wx, y: wy, z: 0 });
+      const trigger = world.get(id, PoiTrigger);
+      if (!trigger) {
+        log.warn(
+          "POI %s scene prefab %s declares no poiTrigger — POI will never fire",
+          poi.id, scenePrefabId,
+        );
+      } else {
+        world.write(id, PoiTrigger, {
+          ...trigger,
+          poiInstanceId: poi.id,
+          poiDefId:      poi.poiDefId,
+        });
+      }
+    } else {
+      const id = newEntityId();
+      world.create(id);
+      world.write(id, Position, { x: wx, y: wy, z: 0 });
+      world.write(id, PoiTrigger, {
+        poiInstanceId: poi.id,
+        poiDefId:      poi.poiDefId,
+        triggerRadius: DEFAULT_TRIGGER_RADIUS,
+        fired:         false,
+      });
+    }
     placed++;
   }
   log.info("placed %d POI triggers", placed);

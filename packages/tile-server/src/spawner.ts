@@ -402,13 +402,22 @@ export function spawnPrefab(
         w.write(id, Stats, { ...prefab.stats });
       }
     },
-    // Scene-graph child placement (T-217): a child's local transform is its
-    // offset relative to the parent, stored in Position (the game's local
-    // transform — what a future `localOf` feeds World.worldTransform). This
-    // overwrites the world-space default Position from preInstall. Scale is
-    // not folded into ModelRef yet — deferred until a consumer needs it.
-    placeChild: (w, childId, local) => {
-      w.write(childId, Position, { x: local.x, y: local.y, z: local.z });
+    // Scene-graph child placement (T-217/T-218): static subtrees bake
+    // their *world* Position at spawn — parent.world ∘ local — overwriting
+    // the preInstall default. The parent's Position is already world-space
+    // (it was composed when itself spawned, recursing to any depth), so
+    // nested children resolve correctly. Props don't move, so there's no
+    // per-tick recomposition; AoI / spatial-grid / client all read the
+    // baked Position directly (the client render-scope scene graph that
+    // would compose live transforms is T-223). Scale is not folded into
+    // ModelRef yet — deferred until a consumer needs it.
+    placeChild: (w, childId, parentId, local) => {
+      const p = w.get(parentId, Position) ?? { x: 0, y: 0, z: 0 };
+      w.write(childId, Position, {
+        x: p.x + local.x,
+        y: p.y + local.y,
+        z: p.z + local.z,
+      });
     },
   };
 

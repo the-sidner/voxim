@@ -35,5 +35,6 @@
   "tags":         ["martial", "primal", "beacon", "pyre", "watchpost"],
   "difficulty":   1,
   "quotaWeight":  0.50,
-  "roles":        ["entry", "midchain", "optional"]
+  "roles":        ["entry", "midchain", "optional"],
+  "scenePrefabId": "signal_pyre_scene"
 }

@@ -63,11 +63,14 @@ export interface PrefabSpawnContext<O> {
   /**
    * Apply a freshly-spawned child's declared `local` transform after the
    * engine has parented it (T-217). The engine owns hierarchy wiring
-   * (`setParent`); the service owns where local transform is stored (the
-   * game's Position component). Receives the fully-defaulted transform.
-   * Absent = children spawn with their preInstall-default placement.
+   * (`setParent`); the service owns where the transform lands. `parentId`
+   * is passed so the service can compose a world transform off the
+   * parent's already-installed placement (static subtrees bake world
+   * Position at spawn — no per-tick recomposition until a consumer needs
+   * it). Receives the fully-defaulted local transform. Absent = children
+   * keep their preInstall-default placement.
    */
-  placeChild?(world: World, childId: EntityId, local: Transform): void;
+  placeChild?(world: World, childId: EntityId, parentId: EntityId, local: Transform): void;
 }
 
 /**
@@ -115,7 +118,7 @@ export function spawnPrefab<O extends { id?: EntityId }>(
     for (const child of prefab.children) {
       const childId = spawnPrefab(world, ctx, child.prefabId, {} as O);
       world.setParent(childId, id);
-      ctx.placeChild?.(world, childId, { ...IDENTITY_TRANSFORM, ...child.local });
+      ctx.placeChild?.(world, childId, id, { ...IDENTITY_TRANSFORM, ...child.local });
     }
   }
 

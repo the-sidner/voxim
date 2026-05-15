@@ -1,0 +1,21 @@
+{
+  "id": "signal_pyre_scene",
+  "modelId": "model_campfire",
+  "components": {
+    "lightEmitter": {
+      "color": 16740384,
+      "intensity": 1.4,
+      "radius": 18.0,
+      "flicker": 0.4
+    },
+    "poiTrigger": {
+      "triggerRadius": 8
+    }
+  },
+  "children": [
+    { "prefabId": "torch_placed", "local": { "x":  3.0, "y":  0.0 } },
+    { "prefabId": "torch_placed", "local": { "x": -3.0, "y":  0.0 } },
+    { "prefabId": "torch_placed", "local": { "x":  0.0, "y":  3.0 } },
+    { "prefabId": "torch_placed", "local": { "x":  0.0, "y": -3.0 } }
+  ]
+}

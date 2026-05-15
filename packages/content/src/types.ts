@@ -1951,6 +1951,15 @@ interface PoiBase {
    * deleting its file. A typical POI lists 2-3 roles.
    */
   roles: PoiRole[];
+  /**
+   * Optional prefab spawned at the POI's host-region centroid at tile boot
+   * (T-218). The prefab carries the `poiTrigger` component (its runtime
+   * `poiInstanceId` / `poiDefId` are patched in post-spawn) and any
+   * `children` props (altars, braziers, decals) that give the POI a
+   * physical scene. Absent → the legacy bare trigger entity is created
+   * instead. The loader rejects an unknown prefab id.
+   */
+  scenePrefabId?: string;
 }
 
 export type PoiDef =

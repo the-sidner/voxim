@@ -163,6 +163,7 @@ const poiBaseSchema = v.object({
   difficulty: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(5)),
   quotaWeight: v.pipe(v.number(), v.minValue(0)),
   roles: v.array(v.picklist(POI_ROLES)),
+  scenePrefabId: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
 /**
