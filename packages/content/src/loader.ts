@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef, ManeuverDef, BuffDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, StateMachineDef, ManeuverDef, BuffDef } from "./types.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
@@ -49,7 +49,7 @@ async function loadContentStoreInternal(
   const [
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
-    conceptVerbRaw, weaponActionsRaw, verbsRaw, behaviorTreesRaw,
+    conceptVerbRaw, weaponActionsRaw, actionsRaw, verbsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, stateMachinesRaw, maneuversRaw, buffsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
@@ -61,6 +61,7 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "npcs"),
     readJsonFile(dataDir, "concept_verb_matrix.json"),
     readJsonDir(dataDir, "weapon_actions"),
+    readJsonDir(dataDir, "actions").catch(() => []),
     readJsonFile(dataDir, "verbs.json"),
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
@@ -127,6 +128,16 @@ async function loadContentStoreInternal(
   for (const raw of weaponActionsRaw as WeaponActionDef[]) {
     store.registerWeaponAction(raw);
   }
+
+  // Actions (T-225) — validate each def's internal shape, then a final
+  // cross-reference pass once all are loaded so cancel-target globs and
+  // explicit ids can resolve against the full set.
+  const actionDefs = actionsRaw as ActionDef[];
+  for (const def of actionDefs) {
+    validateActionDef(def);
+    store.registerAction(def);
+  }
+  validateActionCrossRefs(actionDefs);
 
   for (const raw of verbsRaw as VerbDef[]) {
     store.registerVerbDef(raw);
@@ -417,6 +428,168 @@ function mergeValues(parent: unknown, child: unknown): unknown {
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+const VALID_ACTION_KINDS = new Set(["active", "reaction", "ambient"]);
+const VALID_ACTION_MOVEMENT = new Set(["free", "slowed", "locked"]);
+const VALID_ACTION_EFFECT_EDGES = new Set(["enter", "exit", "tick"]);
+const ACTION_PHASE_REF_RE = /^([^:]+):(enter|exit|tick)$/;
+
+/**
+ * Structural validation for one ActionDef. Cross-action references
+ * (cancel-into target ids) are validated in a separate pass once all
+ * actions have been loaded — see `validateActionCrossRefs`.
+ */
+export function validateActionDef(def: ActionDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`Action: missing or empty id`);
+  }
+  if (!VALID_ACTION_KINDS.has(def.kind)) {
+    throw new Error(`Action '${def.id}': kind must be active|reaction|ambient, got '${def.kind}'`);
+  }
+
+  if (!def.phases || typeof def.phases !== "object" || Array.isArray(def.phases)) {
+    throw new Error(`Action '${def.id}': phases must be an object`);
+  }
+  const phaseNames = Object.keys(def.phases);
+  if (phaseNames.length === 0) {
+    throw new Error(`Action '${def.id}': must declare at least one phase`);
+  }
+  for (const [name, phase] of Object.entries(def.phases)) {
+    if (!phase || typeof phase.ticks !== "number" || !Number.isInteger(phase.ticks)) {
+      throw new Error(`Action '${def.id}' phase '${name}': ticks must be an integer`);
+    }
+    if (phase.ticks < -1) {
+      throw new Error(`Action '${def.id}' phase '${name}': ticks must be >= -1`);
+    }
+    if (phase.ticks === -1 && def.kind !== "ambient") {
+      throw new Error(`Action '${def.id}' phase '${name}': perpetual ticks (-1) is only valid for ambient actions`);
+    }
+  }
+
+  if (!def.cancel || typeof def.cancel !== "object" || Array.isArray(def.cancel)) {
+    throw new Error(`Action '${def.id}': cancel must be an object`);
+  }
+  for (const [phaseName, rule] of Object.entries(def.cancel)) {
+    if (!phaseNames.includes(phaseName)) {
+      throw new Error(`Action '${def.id}' cancel.${phaseName}: references undeclared phase`);
+    }
+    if (!rule || !Array.isArray(rule.into)) {
+      throw new Error(`Action '${def.id}' cancel.${phaseName}: into must be an array`);
+    }
+    for (const target of rule.into) {
+      if (typeof target !== "string" || target.length === 0) {
+        throw new Error(`Action '${def.id}' cancel.${phaseName}: every target must be a non-empty string`);
+      }
+    }
+  }
+
+  if (!def.movement || typeof def.movement !== "object" || Array.isArray(def.movement)) {
+    throw new Error(`Action '${def.id}': movement must be an object`);
+  }
+  for (const name of phaseNames) {
+    const v = def.movement[name];
+    if (v === undefined) {
+      throw new Error(`Action '${def.id}' phase '${name}': movement value required (free|slowed|locked)`);
+    }
+    if (!VALID_ACTION_MOVEMENT.has(v)) {
+      throw new Error(`Action '${def.id}' movement.${name}: must be free|slowed|locked, got '${v}'`);
+    }
+  }
+  for (const name of Object.keys(def.movement)) {
+    if (!phaseNames.includes(name)) {
+      throw new Error(`Action '${def.id}' movement.${name}: references undeclared phase`);
+    }
+  }
+
+  if (def.costs !== undefined) {
+    if (typeof def.costs !== "object" || Array.isArray(def.costs)) {
+      throw new Error(`Action '${def.id}': costs must be an object`);
+    }
+    for (const [resource, value] of Object.entries(def.costs)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new Error(`Action '${def.id}' costs.${resource}: must be a finite number`);
+      }
+    }
+  }
+
+  if (!Array.isArray(def.effects)) {
+    throw new Error(`Action '${def.id}': effects must be an array`);
+  }
+  for (const eff of def.effects) {
+    if (typeof eff.kind !== "string" || eff.kind.length === 0) {
+      throw new Error(`Action '${def.id}': effect.kind must be a non-empty string`);
+    }
+    if (typeof eff.phase !== "string") {
+      throw new Error(`Action '${def.id}': effect.phase must be a string of form '<phaseName>:enter|exit|tick'`);
+    }
+    const m = eff.phase.match(ACTION_PHASE_REF_RE);
+    if (!m) {
+      throw new Error(`Action '${def.id}': effect.phase '${eff.phase}' must be '<phaseName>:enter|exit|tick'`);
+    }
+    if (!phaseNames.includes(m[1])) {
+      throw new Error(`Action '${def.id}': effect references undeclared phase '${m[1]}'`);
+    }
+    if (!VALID_ACTION_EFFECT_EDGES.has(m[2])) {
+      throw new Error(`Action '${def.id}': effect edge must be enter|exit|tick, got '${m[2]}'`);
+    }
+  }
+
+  if (def.animation !== undefined) {
+    if (typeof def.animation !== "object" || Array.isArray(def.animation)) {
+      throw new Error(`Action '${def.id}': animation must be an object`);
+    }
+    for (const [phaseName, anim] of Object.entries(def.animation)) {
+      if (!phaseNames.includes(phaseName)) {
+        throw new Error(`Action '${def.id}' animation.${phaseName}: references undeclared phase`);
+      }
+      if (typeof anim.clipId !== "string" || anim.clipId.length === 0) {
+        throw new Error(`Action '${def.id}' animation.${phaseName}: clipId must be a non-empty string`);
+      }
+    }
+  }
+
+  if (def.kind === "reaction" && typeof def.interruptPriority !== "number") {
+    throw new Error(`Action '${def.id}': reactions must declare interruptPriority (number)`);
+  }
+  if (def.priority !== undefined && typeof def.priority !== "number") {
+    throw new Error(`Action '${def.id}': priority must be a number when present`);
+  }
+}
+
+/**
+ * Cross-reference validation: every non-glob cancel target must name an
+ * existing action; every glob (`prefix_*`) must match at least one action
+ * in the loaded set. The special token `"any"` is always allowed.
+ *
+ * Runs once after all defs are registered so id resolution sees the full
+ * set, regardless of file order.
+ */
+export function validateActionCrossRefs(defs: ActionDef[]): void {
+  const ids = new Set(defs.map((d) => d.id));
+  for (const def of defs) {
+    for (const [phaseName, rule] of Object.entries(def.cancel)) {
+      for (const target of rule.into) {
+        if (target === "any") continue;
+        if (target.endsWith("*")) {
+          const prefix = target.slice(0, -1);
+          let matched = false;
+          for (const id of ids) {
+            if (id.startsWith(prefix)) { matched = true; break; }
+          }
+          if (!matched) {
+            throw new Error(
+              `Action '${def.id}' cancel.${phaseName}: glob '${target}' matches no loaded actions`,
+            );
+          }
+        } else if (!ids.has(target)) {
+          throw new Error(
+            `Action '${def.id}' cancel.${phaseName}: unknown target '${target}'`,
+          );
+        }
+      }
+    }
+  }
 }
 
 function parseMaterial(raw: RawMaterialDef): MaterialDef {

@@ -545,6 +545,100 @@ export interface WeaponActionDef {
   };
 }
 
+// ---- actions (T-225) ------------------------------------------------------
+//
+// The single primitive every character behavior instantiates — combat,
+// movement, blocking, dodging, interacting, throwing, consuming, praying,
+// being hit. Each ActionDef declares phases (windup/active/winddown for
+// active actions; arbitrary names for others), per-phase cancel rules,
+// per-phase movement lock, resource costs, priority, and an effect list
+// dispatched on phase transitions.
+//
+// At T-225 this is content plumbing only — loader scans data/actions/, the
+// type is exposed on ContentService, validation enforces internal
+// consistency, the bootstrap blob carries actions to the client. No runtime
+// use yet; ActiveAction + ActionDispatcher land in T-226.
+//
+// See ACTION_PRIMITIVE_PLAN.md for the full design.
+
+/**
+ * Movement permission during a phase. The runtime physics layer (T-232)
+ * consults the current action's per-phase value to throttle locomotion:
+ *   "free"   — full intent passes through
+ *   "slowed" — multiplied by a global slow factor
+ *   "locked" — zero
+ */
+export type ActionMovement = "free" | "slowed" | "locked";
+
+/**
+ * One phase of an Action. Iteration order follows declared key order in
+ * `phases`. `ticks === -1` marks a perpetual phase (ambient actions only;
+ * the dispatcher never advances past it).
+ */
+export interface ActionPhase {
+  ticks: number;
+}
+
+/**
+ * Cancel rule for a phase. `into` lists action ids the actor's intent may
+ * interrupt this phase with. Glob prefixes are allowed (`"dodge_*"`) and
+ * the literal token `"any"` opts in to anything. An empty list means the
+ * phase is committed — only event-initiated reactions with higher
+ * `interruptPriority` can break it (resolved at the dispatcher).
+ */
+export interface ActionCancelRule {
+  into: string[];
+}
+
+/**
+ * One effect dispatched on a phase transition. `phase` is
+ * `"<phaseName>:<edge>"` where edge is `enter` / `exit` / `tick`. `kind`
+ * keys into the effect resolver registry installed by the runtime (T-227).
+ * `params` is the resolver's payload; content load does not interpret it.
+ */
+export interface ActionEffect {
+  phase: string;
+  kind: string;
+  params?: Record<string, unknown>;
+}
+
+/** Per-phase animation clip handoff to the client animation system. */
+export interface ActionAnimation {
+  clipId: string;
+}
+
+/**
+ * Action definition — the central content type for character behavior.
+ *
+ *   kind:
+ *     "active"   — intent-driven, has a beginning and an end (swing,
+ *                  dodge, consume, interact, pray)
+ *     "reaction" — event-driven, carries `interruptPriority` so it can
+ *                  break committed phases (hit-react flinch / stagger /
+ *                  knockdown)
+ *     "ambient"  — always running at low priority, never completes
+ *                  (walk, idle, sprint). A perpetual phase uses
+ *                  `ticks: -1` as the sentinel.
+ *
+ * Adding a new action is a file drop in `data/actions/{id}.json`. The
+ * dispatcher walks the declared shape every time; no per-action code
+ * branches exist below the dispatcher.
+ */
+export interface ActionDef {
+  id: string;
+  kind: "active" | "reaction" | "ambient";
+  phases: Record<string, ActionPhase>;
+  cancel: Record<string, ActionCancelRule>;
+  movement: Record<string, ActionMovement>;
+  costs?: Record<string, number>;
+  /** Default initiation priority (active/ambient actions). */
+  priority?: number;
+  /** Threshold for non-consent interruption (reactions). */
+  interruptPriority?: number;
+  effects: ActionEffect[];
+  animation?: Record<string, ActionAnimation>;
+}
+
 // ---- maneuvers (T-185) ----------------------------------------------------
 //
 // A *maneuver* is an authored, scheduled sequence of events spanning the

@@ -50,6 +50,7 @@ import type {
   GameConfig,
   TileLayout,
   WeaponActionDef,
+  ActionDef,
   VerbDef,
   StateMachineDef,
   ManeuverDef,
@@ -86,6 +87,12 @@ export interface ContentService {
   readonly pois:            ContentRegistryReadonly<PoiDef>;
   readonly loreFragments:   ContentRegistryReadonly<LoreFragment>;
   readonly weaponActions:   ContentRegistryReadonly<WeaponActionDef>;
+  /**
+   * Action definitions (T-225) — the universal behavior primitive. Loaded
+   * from `data/actions/*.json`. Consumed by the ActionDispatcher (T-226+)
+   * which is the only writer of the `ActiveAction` component.
+   */
+  readonly actions:         ContentRegistryReadonly<ActionDef>;
   readonly verbs:           ContentRegistryReadonly<VerbDef>;
   /**
    * Animation libraries keyed by archetype id (T-178). Look up clips via
@@ -213,6 +220,10 @@ export class StaticContentStore implements ContentService {
     kind: "weaponAction",
     idOf: (w) => w.id,
   });
+  public readonly actions = new ContentRegistry<ActionDef>({
+    kind: "action",
+    idOf: (a) => a.id,
+  });
   public readonly verbs = new ContentRegistry<VerbDef>({
     kind: "verb",
     idOf: (v) => v.id,
@@ -332,6 +343,10 @@ export class StaticContentStore implements ContentService {
 
   registerWeaponAction(def: WeaponActionDef): void {
     this.weaponActions.register(def);
+  }
+
+  registerAction(def: ActionDef): void {
+    this.actions.register(def);
   }
 
   registerVerbDef(def: VerbDef): void {

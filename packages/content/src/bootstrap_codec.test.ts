@@ -26,6 +26,7 @@ Deno.test("bootstrap codec round-trips every registry", async () => {
   assertEquals(dst.zones.size,               src.zones.size);
   assertEquals(dst.loreFragments.size,       src.loreFragments.size);
   assertEquals(dst.weaponActions.size,       src.weaponActions.size);
+  assertEquals(dst.actions.size,             src.actions.size);
   assertEquals(dst.verbs.size,               src.verbs.size);
   assertEquals(dst.animationLibraries.size,  src.animationLibraries.size);
   assertEquals(dst.stateMachines.size,       src.stateMachines.size);

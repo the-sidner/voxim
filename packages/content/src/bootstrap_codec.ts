@@ -27,12 +27,12 @@ import { encodeAnimationLibraries, decodeAnimationLibraries } from "./anim_codec
 import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
-  VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
+  ActionDef, VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
   StateMachineDef, ManeuverDef, BuffDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 6;
+export const BOOTSTRAP_VERSION = 7;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -49,6 +49,7 @@ interface ContentBootstrapJson {
   zones:               ZoneDef[];
   loreFragments:       LoreFragment[];
   weaponActions:       WeaponActionDef[];
+  actions:             ActionDef[];
   verbs:               VerbDef[];
   conceptVerbEntries:  ConceptVerbEntry[];
   stateMachines:       StateMachineDef[];
@@ -120,6 +121,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     zones:               [...service.zones.values()],
     loreFragments:       [...service.loreFragments.values()],
     weaponActions:       [...service.weaponActions.values()],
+    actions:             [...service.actions.values()],
     verbs:               [...service.verbs.values()],
     conceptVerbEntries:  [...service.getAllConceptVerbEntries()],
     stateMachines:       [...service.stateMachines.values()],
@@ -200,6 +202,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const z of body.zones)                store.registerZone(z);
   for (const l of body.loreFragments)        store.registerLoreFragment(l);
   for (const w of body.weaponActions)        store.registerWeaponAction(w);
+  for (const a of body.actions)              store.registerAction(a);
   for (const v of body.verbs)                store.registerVerbDef(v);
   for (const e of body.conceptVerbEntries)   store.registerConceptVerbEntry(e);
   for (const sm of body.stateMachines)       store.registerStateMachine(sm);
