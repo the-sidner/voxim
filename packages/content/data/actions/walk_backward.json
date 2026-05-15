@@ -1,0 +1,8 @@
+{
+  "id": "walk_backward", "kind": "ambient", "slot": "locomotion",
+  "phases": { "hold": { "ticks": -1 } },
+  "cancel": { "hold": { "into": ["any"] } },
+  "movement": { "hold": "free" },
+  "effects": [],
+  "animation": { "hold": { "clipId": "$walk_backward", "crouchClipId": "$crouch_walk_backward", "loop": true, "speedScale": "velocity" } }
+}

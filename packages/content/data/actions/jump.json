@@ -1,0 +1,8 @@
+{
+  "id": "jump", "kind": "active", "slot": "locomotion",
+  "phases": { "rise": { "ticks": 8 } },
+  "cancel": { "rise": { "into": ["airborne"] } },
+  "movement": { "rise": "free" },
+  "effects": [],
+  "animation": { "rise": { "clipId": "$jump", "loop": false } }
+}

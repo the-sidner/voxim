@@ -1,0 +1,8 @@
+{
+  "id": "landing", "kind": "active", "slot": "locomotion",
+  "phases": { "land": { "ticks": 7 } },
+  "cancel": { "land": { "into": [] } },
+  "movement": { "land": "free" },
+  "effects": [],
+  "animation": { "land": { "clipId": "$landing", "loop": false } }
+}

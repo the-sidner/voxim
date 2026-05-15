@@ -1,0 +1,8 @@
+{
+  "id": "airborne", "kind": "ambient", "slot": "locomotion",
+  "phases": { "hold": { "ticks": -1 } },
+  "cancel": { "hold": { "into": ["landing"] } },
+  "movement": { "hold": "free" },
+  "effects": [],
+  "animation": { "hold": { "clipId": "$airborne", "loop": true } }
+}

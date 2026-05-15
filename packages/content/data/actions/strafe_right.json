@@ -1,0 +1,8 @@
+{
+  "id": "strafe_right", "kind": "ambient", "slot": "locomotion",
+  "phases": { "hold": { "ticks": -1 } },
+  "cancel": { "hold": { "into": ["any"] } },
+  "movement": { "hold": "free" },
+  "effects": [],
+  "animation": { "hold": { "clipId": "$strafe_right", "crouchClipId": "$crouch_strafe_right", "loop": true, "speedScale": "velocity" } }
+}

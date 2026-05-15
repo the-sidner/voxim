@@ -1,0 +1,8 @@
+{
+  "id": "sidestep", "kind": "active", "slot": "locomotion",
+  "phases": { "hop": { "ticks": 5 } },
+  "cancel": { "hop": { "into": [] } },
+  "movement": { "hop": "free" },
+  "effects": [],
+  "animation": { "hop": { "clipId": "$sidestep", "loop": false } }
+}
