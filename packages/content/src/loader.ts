@@ -114,6 +114,7 @@ async function loadContentStoreInternal(
     validatePrefabFields(effective);
     store.registerPrefab(effective);
   }
+  validatePrefabChildRefs(store);
 
   for (const raw of npcTemplatesRaw as NpcTemplate[]) {
     store.registerNpcTemplate(raw);
@@ -392,6 +393,54 @@ function validatePrefabFields(p: Prefab): void {
       }
       if (typeof v !== "number" || !Number.isFinite(v)) {
         throw new Error(`Prefab '${p.id}': stat '${k}' must be a finite number, got ${v}`);
+      }
+    }
+  }
+
+  if (p.children !== undefined) {
+    if (!Array.isArray(p.children)) {
+      throw new Error(`Prefab '${p.id}': children must be an array`);
+    }
+    for (const c of p.children) {
+      if (typeof c?.prefabId !== "string" || c.prefabId.length === 0) {
+        throw new Error(`Prefab '${p.id}': every child needs a non-empty prefabId`);
+      }
+      if (c.local !== undefined) {
+        if (typeof c.local !== "object" || Array.isArray(c.local)) {
+          throw new Error(`Prefab '${p.id}': child '${c.prefabId}' local must be an object`);
+        }
+        for (const axis of ["x", "y", "z", "scale"] as const) {
+          const v = c.local[axis];
+          if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v))) {
+            throw new Error(
+              `Prefab '${p.id}': child '${c.prefabId}' local.${axis} must be a finite number`,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * After every prefab is registered, resolve `children[].prefabId` against
+ * the full set (T-217). A child must reference a concrete prefab — unknown
+ * or abstract (`_`-prefixed) targets fail loud here rather than at spawn.
+ */
+function validatePrefabChildRefs(store: ContentService): void {
+  for (const p of store.prefabs.values()) {
+    if (!p.children) continue;
+    for (const c of p.children) {
+      const target = store.prefabs.get(c.prefabId);
+      if (!target) {
+        throw new Error(
+          `Prefab '${p.id}': child references unknown prefab '${c.prefabId}'`,
+        );
+      }
+      if (target.id.startsWith("_")) {
+        throw new Error(
+          `Prefab '${p.id}': child '${c.prefabId}' is abstract and cannot be spawned`,
+        );
       }
     }
   }

@@ -15,7 +15,7 @@ export { Parent, SCENE_PARENT_WIRE_ID, composeTransform, IDENTITY_TRANSFORM } fr
 export type { ParentData, Transform } from "./src/scene.ts";
 
 export { spawnPrefab } from "./src/prefab.ts";
-export type { PrefabLike, PrefabSpawnContext } from "./src/prefab.ts";
+export type { PrefabLike, PrefabSpawnContext, ChildSpawn } from "./src/prefab.ts";
 
 export { EventBus } from "./src/events.ts";
 

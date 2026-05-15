@@ -402,6 +402,14 @@ export function spawnPrefab(
         w.write(id, Stats, { ...prefab.stats });
       }
     },
+    // Scene-graph child placement (T-217): a child's local transform is its
+    // offset relative to the parent, stored in Position (the game's local
+    // transform — what a future `localOf` feeds World.worldTransform). This
+    // overwrites the world-space default Position from preInstall. Scale is
+    // not folded into ModelRef yet — deferred until a consumer needs it.
+    placeChild: (w, childId, local) => {
+      w.write(childId, Position, { x: local.x, y: local.y, z: local.z });
+    },
   };
 
   return engineSpawnPrefab(world, ctx, prefabId, overrides);

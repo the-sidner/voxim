@@ -19,11 +19,25 @@ import type { World } from "./world.ts";
 import type { EntityId } from "./math.ts";
 import { newEntityId } from "./math.ts";
 import type { ComponentDef } from "./component.ts";
+import type { Transform } from "./scene.ts";
+import { IDENTITY_TRANSFORM } from "./scene.ts";
+
+/**
+ * A child entry the subtree walk reads (T-217). Structurally the content
+ * package's `ChildPrefabRef`; the engine stays dependency-free by typing it
+ * here. `local` omitted-field defaults are filled to identity before
+ * `placeChild` is called.
+ */
+export interface ChildSpawn {
+  prefabId: string;
+  local?: Partial<Transform>;
+}
 
 /** The structural subset of a Prefab the generic walk reads. */
 export interface PrefabLike {
   id: string;
   components: Record<string, unknown>;
+  children?: ReadonlyArray<ChildSpawn>;
 }
 
 /**
@@ -46,6 +60,14 @@ export interface PrefabSpawnContext<O> {
    * actor slots, stats: policy the engine doesn't dictate.
    */
   preInstall(world: World, id: EntityId, prefab: PrefabLike, overrides: O): void;
+  /**
+   * Apply a freshly-spawned child's declared `local` transform after the
+   * engine has parented it (T-217). The engine owns hierarchy wiring
+   * (`setParent`); the service owns where local transform is stored (the
+   * game's Position component). Receives the fully-defaulted transform.
+   * Absent = children spawn with their preInstall-default placement.
+   */
+  placeChild?(world: World, childId: EntityId, local: Transform): void;
 }
 
 /**
@@ -82,6 +104,19 @@ export function spawnPrefab<O extends { id?: EntityId }>(
       throw new Error(`spawnPrefab '${prefab.id}': unknown component '${name}'`);
     }
     world.write(id, def, { ...def.default(), ...(data as Record<string, unknown>) });
+  }
+
+  // Scene-graph subtree (T-217). Each child is spawned through the same
+  // walk (recurses arbitrarily deep), parented to this entity, then placed
+  // at its declared local transform. `getPrefab` here surfaces an unknown
+  // child id with the same error as a top-level spawn; the content loader
+  // also rejects unknown/abstract child refs at load.
+  if (prefab.children) {
+    for (const child of prefab.children) {
+      const childId = spawnPrefab(world, ctx, child.prefabId, {} as O);
+      world.setParent(childId, id);
+      ctx.placeChild?.(world, childId, { ...IDENTITY_TRANSFORM, ...child.local });
+    }
   }
 
   return id;

@@ -1086,6 +1086,27 @@ export interface Prefab {
    * schema — unknown keys and schema violations both fail at content-load.
    */
   components: Record<string, unknown>;
+  /**
+   * Child prefabs spawned as scene-graph descendants of this entity (T-217).
+   * Spawning this prefab spawns the root, then recursively spawns each child
+   * and wires `world.setParent(child, root)`; each child's `local` transform
+   * is its offset relative to the parent. Recurses arbitrarily deep — a
+   * child may itself declare `children`. Absent = a flat single entity.
+   * Loader rejects refs to unknown or abstract (`_`-prefixed) prefab ids.
+   */
+  children?: ChildPrefabRef[];
+}
+
+/**
+ * A child entry in `Prefab.children` (T-217). `prefabId` must resolve to a
+ * concrete (non-abstract) prefab. `local` is the child's transform relative
+ * to the parent entity; omitted fields default to identity (0 / scale 1).
+ * Structurally `Partial<Transform>` so the engine consumes it without a
+ * dependency on this package.
+ */
+export interface ChildPrefabRef {
+  prefabId: string;
+  local?: { x?: number; y?: number; z?: number; scale?: number };
 }
 
 // ---- concept verb matrix ----

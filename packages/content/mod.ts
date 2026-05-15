@@ -55,6 +55,7 @@ export type {
   PrefabNpcData,
   PrefabPlayerData,
   Prefab,
+  ChildPrefabRef,
   LoreConcept,
   LoreDomain,
   LoreFragment,
