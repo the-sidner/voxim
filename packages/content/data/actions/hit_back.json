@@ -1,0 +1,11 @@
+{
+  "id": "hit_back",
+  "kind": "reaction",
+  "slot": "reaction",
+  "interruptPriority": 10,
+  "phases": { "play": { "ticks": 10 } },
+  "cancel": { "play": { "into": [] } },
+  "movement": { "play": "slowed" },
+  "effects": [],
+  "animation": { "play": { "clipId": "$hit_back", "mask": "upper_body" } }
+}

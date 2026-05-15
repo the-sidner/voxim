@@ -25,8 +25,9 @@
  */
 
 import { defineComponent } from "@voxim/engine";
+import type { Serialiser } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
-import { actorSlotsCodec, activeActionsCodec } from "@voxim/codecs";
+import { actorSlotsCodec, activeActionsCodec, WireWriter, WireReader } from "@voxim/codecs";
 import type { ActorSlotsData, ActiveActionsData } from "@voxim/codecs";
 
 export type { ActorSlotsData, ActiveActionsData, ActiveActionState } from "@voxim/codecs";
@@ -43,4 +44,25 @@ export const ActiveActions = defineComponent({
   wireId: ComponentType.activeActions,
   codec: activeActionsCodec,
   default: (): ActiveActionsData => ({ states: {} }),
+});
+
+/**
+ * PendingReaction (T-228) — a one-shot, server-only request that the damage
+ * path writes to ask for an event-driven reaction action in the `reaction`
+ * slot (hit_front/back, stagger_light/heavy). ReactionIntentResolver
+ * consumes it (returns the id, removes the component). Death is derived
+ * from health<=0 in the resolver, so it needs no PendingReaction.
+ */
+export interface PendingReactionData { actionId: string }
+
+const pendingReactionCodec: Serialiser<PendingReactionData> = {
+  encode(v) { const w = new WireWriter(); w.writeStr(v.actionId); return w.toBytes(); },
+  decode(b) { return { actionId: new WireReader(b).readStr() }; },
+};
+
+export const PendingReaction = defineComponent({
+  name: "pendingReaction" as const,
+  networked: false,
+  codec: pendingReactionCodec,
+  default: (): PendingReactionData => ({ actionId: "" }),
 });

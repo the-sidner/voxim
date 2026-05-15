@@ -12,6 +12,7 @@ import {
   Poise,
 } from "../components/combat.ts";
 import { Blocking } from "../components/tags.ts";
+import { PendingReaction } from "../components/action.ts";
 import { Equipment } from "../components/equipment.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { ActiveEffects } from "../components/lore_loadout.ts";
@@ -163,12 +164,11 @@ export class HealthHitHandler implements HitHandler {
       hitZ: ctx.hitZ,
     });
 
-    // ── CSM hit-reaction events ──────────────────────────────────────────────
-    // Fire one-tick event flags on the target so its CSM reaction layer
-    // transitions to hit_front / hit_back / stagger.{tier} / death this next
-    // tick. Blocked hits don't trigger reaction (CSM stays in `block`).
+    // ── Hit-reaction request (T-228) ─────────────────────────────────────────
+    // Post a one-shot PendingReaction; ReactionIntentResolver feeds it into
+    // the dispatcher's `reaction` slot next tick (interrupt priority lets a
+    // stagger preempt a flinch). Blocked hits don't react.
     if (!isBlocking && damage > 0) {
-      this.tickEvents.fire(ctx.targetId, "event.hit");
       // Direction from the TARGET TO THE ATTACKER. dot > 0 with target's
       // forward axis means the attacker is in the half-space the target is
       // looking at = hit came from the front.
@@ -177,8 +177,9 @@ export class HealthHitHandler implements HitHandler {
       const targetForwardX = Math.cos(ctx.targetSnapshotFacing);
       const targetForwardY = Math.sin(ctx.targetSnapshotFacing);
       const dot = targetToAttackerX * targetForwardX + targetToAttackerY * targetForwardY;
-      if (dot >= 0) this.tickEvents.fire(ctx.targetId, "event.hit.from_front");
-      else          this.tickEvents.fire(ctx.targetId, "event.hit.from_back");
+      world.set(ctx.targetId, PendingReaction, {
+        actionId: dot >= 0 ? "hit_front" : "hit_back",
+      });
 
       // ── Poise / stagger (T-197) ────────────────────────────────────────────
       // Damage reduces poise. When poise breaks, the breaking hit's overshoot
@@ -199,10 +200,12 @@ export class HealthHitHandler implements HitHandler {
             max: poise.max,
             regenDisabledTicks: disableTicks,
           });
-          this.tickEvents.fire(
-            ctx.targetId,
-            heavy ? "event.stagger.heavy" : "event.stagger.light",
-          );
+          // Overwrites the hit_front/back request set above — stagger
+          // supersedes the flinch (and the dispatcher's interrupt
+          // priority would anyway).
+          world.set(ctx.targetId, PendingReaction, {
+            actionId: heavy ? "stagger_heavy" : "stagger_light",
+          });
         } else {
           world.set(ctx.targetId, Poise, { ...poise, current: next });
         }

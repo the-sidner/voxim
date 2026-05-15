@@ -57,7 +57,7 @@ import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { CharacterStateMachineSystem } from "./systems/character_state_machine.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver } from "./actions/index.ts";
-import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver } from "./actions/intent.ts";
+import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver } from "./actions/intent.ts";
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
 import { TickEventBuffer } from "./tick_events.ts";
@@ -405,6 +405,7 @@ export class TileServer {
         PostureIntentResolver,
         LocomotionIntentResolver,
         new PrimaryIntentResolver(content),
+        ReactionIntentResolver,
       ]),
     );
     skill.registerSubscribers(this.eventBus, this.world);

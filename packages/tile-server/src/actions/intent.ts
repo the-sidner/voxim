@@ -12,9 +12,9 @@
 import type { World, EntityId } from "@voxim/engine";
 import { ACTION_CROUCH, ACTION_BLOCK, ACTION_USE_SKILL, hasAction } from "@voxim/protocol";
 import type { ContentService, SwingableData } from "@voxim/content";
-import { InputState } from "../components/game.ts";
+import { InputState, Health } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
-import { ActiveActions } from "../components/action.ts";
+import { ActiveActions, PendingReaction } from "../components/action.ts";
 import type { IntentResolver } from "./dispatcher.ts";
 
 export const PostureIntentResolver: IntentResolver = {
@@ -69,6 +69,40 @@ export class PrimaryIntentResolver implements IntentResolver {
     return out;
   }
 }
+
+/**
+ * Reaction slot (T-228) — event-driven, not intent-driven. Replaces the
+ * CSM `reaction` layer:
+ *
+ *   - Health ≤ 0                 → `death` (stable condition, interrupt 100)
+ *   - `PendingReaction` present  → its action id (hit_front/back,
+ *     stagger_light/heavy), consumed one-shot (component removed)
+ *   - otherwise                  → null (slot empty, or a reaction running
+ *     out its one-shot phase undisturbed)
+ *
+ * The damage path writes `PendingReaction`; reaction-kind actions carry
+ * `interruptPriority` so a stagger preempts a flinch and death preempts
+ * all. Gameplay (Staggered, DeathSystem) is unchanged — this is animation.
+ */
+export const ReactionIntentResolver: IntentResolver = {
+  resolve(world: World, entityId: EntityId, slots: readonly string[]): Map<string, string | null> {
+    const out = new Map<string, string | null>();
+    if (!slots.includes("reaction")) return out;
+    const hp = world.get(entityId, Health);
+    if (hp && hp.current <= 0) {
+      out.set("reaction", "death");
+      return out;
+    }
+    const pending = world.get(entityId, PendingReaction);
+    if (pending && pending.actionId) {
+      out.set("reaction", pending.actionId);
+      world.remove(entityId, PendingReaction); // one-shot consume
+      return out;
+    }
+    out.set("reaction", null);
+    return out;
+  },
+};
 
 /** Merge several per-slot resolvers into one (later slots win on conflict). */
 export class CompositeIntentResolver implements IntentResolver {

@@ -1,0 +1,11 @@
+{
+  "id": "stagger_light",
+  "kind": "reaction",
+  "slot": "reaction",
+  "interruptPriority": 50,
+  "phases": { "play": { "ticks": 8 } },
+  "cancel": { "play": { "into": [] } },
+  "movement": { "play": "locked" },
+  "effects": [],
+  "animation": { "play": { "clipId": "$stagger_light" } }
+}

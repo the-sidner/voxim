@@ -1,0 +1,11 @@
+{
+  "id": "death",
+  "kind": "reaction",
+  "slot": "reaction",
+  "interruptPriority": 100,
+  "phases": { "play": { "ticks": 30 } },
+  "cancel": { "play": { "into": [] } },
+  "movement": { "play": "locked" },
+  "effects": [],
+  "animation": { "play": { "clipId": "$death" } }
+}

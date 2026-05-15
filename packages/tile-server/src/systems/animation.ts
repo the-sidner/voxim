@@ -146,26 +146,14 @@ export class AnimationSystem implements System {
       );
       if (primaryLayer) layers.push(primaryLayer);
 
-      // Remaining CSM layers (only `reaction` after T-227) — hit/stagger/
-      // death overrides. Generic projection, unchanged.
-      for (const compiledLayer of compiled.layers) {
-        if (compiledLayer.raw.output !== "animation") continue;
-        const lstate = layerStates[compiledLayer.raw.id];
-        if (!lstate) continue;
-        const eff = effectiveState(compiledLayer, lstate.node, baseScope);
-        if (!eff.clip) continue;
-        const clipId = resolveClipId(eff.clip, slotMap);
-        if (!clipId) continue;
-        const speedReference = eff.speedReference ?? walkSpeedRef;
-        const speedScale = resolveSpeedScale(eff, compiledLayer.raw.id, lstate.node, 0);
-        const time = computeClipTime(prevTime.get(clipId) ?? 0, eff, speedScale, speedReference, speed);
-        layers.push({
-          clipId,
-          maskId: eff.mask !== undefined ? eff.mask : compiledLayer.raw.mask ?? "",
-          time, weight: 1, blend: "override", speedScale,
-          speedReference: speedScale === "velocity" ? speedReference : undefined,
-        });
-      }
+      // Reaction slot (T-228) — hit/stagger/death overrides, projected last
+      // so it composites on top (the retired CSM reaction layer was the
+      // highest-priority animation layer).
+      const reactionLayer = projectLocomotion(
+        this.content, slots?.["reaction"], false,
+        slotMap, prevTime, speed, walkSpeedRef,
+      );
+      if (reactionLayer) layers.push(reactionLayer);
 
       // weaponActionId / ticksIntoAction drive the client weapon-trail +
       // attachment. Derived from the primary slot running a swing action

@@ -1,0 +1,11 @@
+{
+  "id": "stagger_heavy",
+  "kind": "reaction",
+  "slot": "reaction",
+  "interruptPriority": 60,
+  "phases": { "play": { "ticks": 14 } },
+  "cancel": { "play": { "into": [] } },
+  "movement": { "play": "locked" },
+  "effects": [],
+  "animation": { "play": { "clipId": "$stagger_heavy" } }
+}
