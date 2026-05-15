@@ -2340,8 +2340,13 @@ Migration phases (each its own ticket; each an atomic commit):
     DodgeCooldown/Sidestep. Fixed stale prefab_round_trip test. 166
     tests green; bake byte-identical. Cross-action cancel-into (swing
     windup → dodge_roll) holds via existing matrix.
-  - T-230 — Migrate consume / interact / pray (non-combat through the
-    same primitive)
+  - T-230 — DONE. consume.json (primary-slot active raise/ingest/recover)
+    + has_edible gate + consume_item effect (actions/resolvers/consume.ts).
+    ConsumptionSystem deleted; PrimaryIntentResolver maps ACTION_CONSUME →
+    consume. Eating is animation-paced now (1/action vs 1/tick-held;
+    accepted retune). interact/pray: nothing to migrate — ACTION_INTERACT
+    retired (hover PickUp command), no prayer mechanic exists. 2 consume
+    tests + 168 green; bake byte-identical.
   - T-231 — Migrate crafting / building to actions + resolvers
   - T-232 — Hit-reactions as event-initiated reaction-class actions;
     interrupt priority + poise; delete `Staggered`

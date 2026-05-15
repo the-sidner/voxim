@@ -636,9 +636,25 @@ through the existing dispatcher matrix — no special-casing.
 
 166 tile-server/content/engine tests green; bake byte-identical.
 
-### T-230 — Migrate consume / interact / pray
+### T-230 — Migrate consume / interact / pray — **LANDED**
 
-Consumables, interactable props, quest-statue prayer — all as primary-slot actions. ConsumptionSystem shrinks to its resolver functions (`apply_edible_effect`, `modify_inventory`). Bespoke command-pipeline interaction handling deleted; everything routes through action requests.
+`consume.json` (primary slot, active: `raise`/`ingest`/`recover`) with a
+`has_edible` precondition and a `consume_item` effect on `ingest:enter`.
+ConsumptionSystem **deleted**; its logic is the `consume_item` resolver +
+`has_edible` gate (`actions/resolvers/consume.ts`). PrimaryIntentResolver
+maps `ACTION_CONSUME` → `consume` (after block, before skill). Eating is
+now animation-paced — one item per action run, not one-per-tick-held
+(accepted retune; arguably an improvement).
+
+**Scope delta (recorded honestly):** "interact" and "pray" from this line
+predate the codebase. `ACTION_INTERACT` was retired (1<<3, never reuse) —
+pickups are hover `CommandType.PickUp`, not an input bit; there is no
+prayer/shrine mechanic at all. Neither has anything to migrate, so T-230 is
+just the consume slice. If a prayer interaction is ever wanted it's a new
+POI activity or a new primary-slot action — not a migration.
+
+2 consume integration tests + 168 tile-server/content/engine green; bake
+byte-identical.
 
 ### T-231 — Migrate crafting and building
 
