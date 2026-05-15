@@ -28,6 +28,7 @@ import { setJobDefaultFactory } from "./nodes/set_job_default.ts";
 import { setJobCraftAtWorkbenchFactory } from "./nodes/set_job_craft_at_workbench.ts";
 import { tryProduceFactory } from "./nodes/try_produce.ts";
 import { executeAssignedJobFactory } from "./nodes/execute_assigned_job.ts";
+import { requestActionFactory } from "./nodes/request_action.ts";
 
 export type {
   BTNode, BTNodeFactory, BTContext, BTOutput, NodeResult,
@@ -56,6 +57,7 @@ export function registerBuiltinBTNodes(registry: Registry<BTNodeFactory>): void 
   registry.register(setJobCraftAtWorkbenchFactory);
   registry.register(tryProduceFactory);
   registry.register(executeAssignedJobFactory);
+  registry.register(requestActionFactory);
 }
 
 /**

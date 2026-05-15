@@ -54,6 +54,16 @@ export interface BTOutput {
    * repeated scans. Used by aggro-scan-with-no-target.
    */
   cooldownPlan?: NpcPlanData;
+  /**
+   * Per-slot named action requests (T-234). The `request_action` node writes
+   * `slot → actionId`; NpcAiSystem mirrors this onto the entity's
+   * `RequestedActions` component, which the dispatcher's
+   * `RequestedActionIntentResolver` turns into the slot's desired action.
+   * Lets a tree drive the action vocabulary by name (signature moves), not
+   * only the InputState-bit subset. Independent of `replaceCurrent` — a
+   * tree can both keep a navigation job and request an action.
+   */
+  requestedActions?: Record<string, string>;
 }
 
 export interface BTNode {

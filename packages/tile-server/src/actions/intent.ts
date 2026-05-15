@@ -14,7 +14,7 @@ import { ACTION_CROUCH, ACTION_BLOCK, ACTION_USE_SKILL, ACTION_CONSUME, hasActio
 import type { ContentService, SwingableData } from "@voxim/content";
 import { InputState, Health } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
-import { ActiveActions, PendingReaction } from "../components/action.ts";
+import { ActiveActions, PendingReaction, RequestedActions } from "../components/action.ts";
 import type { IntentResolver } from "./dispatcher.ts";
 
 export const PostureIntentResolver: IntentResolver = {
@@ -108,6 +108,28 @@ export const ReactionIntentResolver: IntentResolver = {
       return out;
     }
     out.set("reaction", null);
+    return out;
+  },
+};
+
+/**
+ * Named-action slot (T-234) — the data-driven NPC channel. A behavior
+ * tree's `request_action` node sets `slot → actionId` on the entity's
+ * `RequestedActions` component (via NpcAiSystem); this resolver turns it
+ * into the slot's desired action. Composed last so a tree's explicit
+ * request overrides the input-bit-derived intent (an NPC's signature move
+ * beats its default swing). Players never carry RequestedActions, so this
+ * is inert for them. Only requests for slots the actor declares apply.
+ */
+export const RequestedActionIntentResolver: IntentResolver = {
+  resolve(world: World, entityId: EntityId, slots: readonly string[]): Map<string, string | null> {
+    const out = new Map<string, string | null>();
+    const reqs = world.get(entityId, RequestedActions)?.requests;
+    if (!reqs) return out;
+    for (const slot of slots) {
+      const want = reqs[slot];
+      if (want) out.set(slot, want);
+    }
     return out;
   },
 };

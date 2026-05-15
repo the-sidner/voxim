@@ -66,3 +66,40 @@ export const PendingReaction = defineComponent({
   codec: pendingReactionCodec,
   default: (): PendingReactionData => ({ actionId: "" }),
 });
+
+/**
+ * RequestedActions (T-234) — a per-slot "run this named action" channel an
+ * NPC's behavior tree drives. The BT's `request_action` node writes
+ * `slot → actionId`; NpcAiSystem rewrites this component each tick (a
+ * stimulus, like InputState — stale requests don't linger); the
+ * `RequestedActionIntentResolver` turns it into the slot's desired action
+ * in the dispatcher. This lets data name *any* action for an NPC, not just
+ * the handful reachable through the InputState action bits. Server-only:
+ * the client mirrors NPC behaviour from the resulting ActiveActions, not
+ * from the request itself.
+ */
+export interface RequestedActionsData { requests: Record<string, string> }
+
+const requestedActionsCodec: Serialiser<RequestedActionsData> = {
+  encode(v) {
+    const w = new WireWriter();
+    const entries = Object.entries(v.requests);
+    w.writeU8(entries.length);
+    for (const [slot, actionId] of entries) { w.writeStr(slot); w.writeStr(actionId); }
+    return w.toBytes();
+  },
+  decode(b) {
+    const r = new WireReader(b);
+    const n = r.readU8();
+    const requests: Record<string, string> = {};
+    for (let i = 0; i < n; i++) requests[r.readStr()] = r.readStr();
+    return { requests };
+  },
+};
+
+export const RequestedActions = defineComponent({
+  name: "requestedActions" as const,
+  networked: false,
+  codec: requestedActionsCodec,
+  default: (): RequestedActionsData => ({ requests: {} }),
+});

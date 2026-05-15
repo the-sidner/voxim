@@ -4,6 +4,7 @@ import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import { Position, InputState, Health, Hunger, Thirst } from "../components/game.ts";
 import { NpcTag, NpcJobQueue } from "../components/npcs.ts";
+import { RequestedActions } from "../components/action.ts";
 import type { Job, NpcJobQueueData } from "../components/npcs.ts";
 import type { JobHandler, JobContext, NpcTuning } from "../ai/job_handler.ts";
 import { advancePlan } from "../ai/plan_helpers.ts";
@@ -115,6 +116,17 @@ export class NpcAiSystem implements System {
       } else if (btOut.cooldownPlan) {
         queue = { ...queue, plan: btOut.cooldownPlan };
         dirty = true;
+      }
+
+      // BT named-action requests → RequestedActions (a stimulus, written
+      // immediately like InputState so the dispatcher — which runs after
+      // NpcAiSystem — sees it this tick). Rewritten every tick; cleared
+      // when the tree stops requesting so stale names don't linger.
+      const reqs = btOut.requestedActions;
+      if (reqs && Object.keys(reqs).length > 0) {
+        world.write(entityId, RequestedActions, { requests: reqs });
+      } else if (world.has(entityId, RequestedActions)) {
+        world.erase(entityId, RequestedActions);
       }
 
       // Guard: BT is responsible for populating queue.current; if it didn't

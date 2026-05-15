@@ -54,7 +54,7 @@ import { HungerSystem } from "./systems/hunger.ts";
 import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver } from "./actions/index.ts";
-import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver } from "./actions/intent.ts";
+import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver, RequestedActionIntentResolver } from "./actions/intent.ts";
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
 import { dodgeImpulseResolver } from "./actions/resolvers/movement.ts";
@@ -411,6 +411,8 @@ export class TileServer {
         LocomotionIntentResolver,
         new PrimaryIntentResolver(content),
         ReactionIntentResolver,
+        // Last: a BT-named action request overrides the bit-derived intent.
+        RequestedActionIntentResolver,
       ]),
       StaminaCostHandler,
     );
