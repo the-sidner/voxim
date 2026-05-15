@@ -43,7 +43,6 @@ import { spawnPrefab } from "./spawner.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState, Name } from "./components/game.ts";
-import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
@@ -55,7 +54,6 @@ import { DodgeSystem } from "./systems/dodge.ts";
 import { HungerSystem } from "./systems/hunger.ts";
 import { StaminaSystem } from "./systems/stamina.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
-import { CharacterStateMachineSystem } from "./systems/character_state_machine.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver } from "./actions/index.ts";
 import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver } from "./actions/intent.ts";
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
@@ -483,12 +481,9 @@ export class TileServer {
       new PoiseSystem(content),
       new PhysicsSystem(content, tickEvents),
       new FogOfWarSystem(),
-      // ActionDispatcher runs before the CSM: it owns the posture slot and
-      // installs the Crouched tag the CSM's `posture` scope contributor
-      // reads. (Deferred-write semantics give the same one-tick lag the
-      // retired CSM posture layer had, so ordering is for readability.)
+      // ActionDispatcher advances every actor's slots (posture, locomotion,
+      // primary, reaction) from intent + events. The CSM is gone (T-228).
       actionDispatcher,
-      new CharacterStateMachineSystem(content, tickEvents),
       new DodgeSystem(content),
       skill,
       new ProjectileSystem(content, hitHandlers),
@@ -878,21 +873,12 @@ export class TileServer {
       const vel = this.world.get(entityId, Velocity);
       const fac = this.world.get(entityId, Facing);
       const is  = this.world.get(entityId, InputState);
-      const csm = this.world.get(entityId, CharacterStateMachine);
-      let csmLayerNodes: Record<string, string> | undefined;
-      if (csm) {
-        csmLayerNodes = {};
-        for (const [layerId, st] of Object.entries(csm.layerStates)) {
-          csmLayerNodes[layerId] = st.node;
-        }
-      }
       snapEntities.push({
         entityId,
         x: position.x, y: position.y, z: position.z,
         facing: fac?.angle ?? 0,
         velocityX: vel?.x ?? 0, velocityY: vel?.y ?? 0, velocityZ: vel?.z ?? 0,
         actions: is?.actions ?? 0,
-        csmLayerNodes,
       });
     }
     this.stateHistory.push({ serverTick, timestamp: Date.now(), entities: snapEntities });

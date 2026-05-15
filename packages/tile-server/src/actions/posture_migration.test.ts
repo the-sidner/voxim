@@ -1,41 +1,19 @@
 /**
- * T-226b — posture migration parity.
+ * Posture slot parity (T-226b, updated T-228 — the CSM is gone).
  *
- * Proves the substrate path end-to-end and that retiring the CSM posture
- * layer didn't break humanoid_default:
- *
- *   1. JsonSource + the real contributor set compile humanoid_default and
- *      pass scope validation — i.e. the `csm.posture == crouched` →
- *      `posture.crouched` paramOverride rewrite resolves against the new
- *      `posture` contributor. (This is exactly what
- *      CharacterStateMachineSystem's constructor does at server boot.)
- *   2. ActionDispatcher + PostureIntentResolver + set_tag/clear_tag drive
- *      the Crouched tag from the ACTION_CROUCH input bit.
- *   3. The `posture` scope contributor re-exposes that tag as
- *      `posture.crouched` for the still-CSM-resident locomotion layer.
+ * ActionDispatcher + PostureIntentResolver + set_tag/clear_tag drive the
+ * Crouched tag from the ACTION_CROUCH input bit.
  */
 
 import { assert, assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
-import { JsonSource } from "@voxim/content";
 import { ACTION_CROUCH } from "@voxim/protocol";
 import { InputState } from "../components/game.ts";
 import { Crouched } from "../components/tags.ts";
 import { ActorSlots, ActiveActions } from "../components/action.ts";
-import { CharacterStateMachineSystem } from "../systems/character_state_machine.ts";
-import { TickEventBuffer } from "../tick_events.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry } from "./index.ts";
 import { PostureIntentResolver } from "./intent.ts";
 import { setTagResolver, clearTagResolver } from "./resolvers/tags.ts";
-
-Deno.test("humanoid_default compiles + scope-validates after posture retirement", async () => {
-  const content = await JsonSource.load();
-  // CharacterStateMachineSystem's constructor compiles every SM def and
-  // runs validateStateMachineScope against DEFAULT_SM_SCOPE_CONTRIBUTORS
-  // (which now includes postureContributor). Throws on a dangling scope
-  // ref — e.g. if a `posture.crouched` paramOverride had no producer.
-  new CharacterStateMachineSystem(content, new TickEventBuffer());
-});
 
 function postureRig() {
   const world = new World();

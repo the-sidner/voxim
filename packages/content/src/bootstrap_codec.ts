@@ -28,11 +28,11 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
-  StateMachineDef, BuffDef,
+  BuffDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 8;
+export const BOOTSTRAP_VERSION = 9;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -52,7 +52,6 @@ interface ContentBootstrapJson {
   actions:             ActionDef[];
   verbs:               VerbDef[];
   conceptVerbEntries:  ConceptVerbEntry[];
-  stateMachines:       StateMachineDef[];
   buffs:               BuffDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
@@ -123,7 +122,6 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     actions:             [...service.actions.values()],
     verbs:               [...service.verbs.values()],
     conceptVerbEntries:  [...service.getAllConceptVerbEntries()],
-    stateMachines:       [...service.stateMachines.values()],
     buffs:               [...service.buffs.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
@@ -203,7 +201,6 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const a of body.actions)              store.registerAction(a);
   for (const v of body.verbs)                store.registerVerbDef(v);
   for (const e of body.conceptVerbEntries)   store.registerConceptVerbEntry(e);
-  for (const sm of body.stateMachines)       store.registerStateMachine(sm);
   if (body.buffs) {
     for (const b of body.buffs)              store.registerBuff(b);
   }

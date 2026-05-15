@@ -43,7 +43,6 @@ import {
   DodgeCooldown,
   Poise,
 } from "./components/combat.ts";
-import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
@@ -160,10 +159,6 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   CounterReady,
   GateLink,
   Name,
-  // CSM (T-182): networked so the client debug overlay can show the active
-  // SM node per layer. Payload is small (~10 bytes per layer) and only
-  // re-sent when nodes change.
-  CharacterStateMachine,
   // Action runtime (T-226): networked so the client's mirrored World runs
   // the same slot dispatch for prediction. ActorSlots is spawn-immutable;
   // ActiveActions changes only when a slot's phase/action changes.

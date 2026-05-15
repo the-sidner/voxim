@@ -101,12 +101,6 @@ export type {
   ActionMovement,
   ActionGate,
   VerbDef,
-  SMLayerOutput,
-  SMLayerKind,
-  SMState,
-  SMTransition,
-  SMLayer,
-  StateMachineDef,
   BuffDef,
   GameConfig,
   TileLayout,
@@ -167,27 +161,8 @@ export { buildRecipeGraph } from "./src/recipe_graph.ts";
 export type { FormulaNode, ParsedFormula, FormulaScope } from "./src/formula.ts";
 export { parseFormula, evalFormula, checkVars } from "./src/formula.ts";
 
-// ---- character state machine (T-182) ----
-export type { SMExprNode, ParsedSMExpr, SMScope, SMScopeValue } from "./src/sm_expression.ts";
-export { parseSMExpr, evalSMExpr, evalSMExprBool, checkSMVars } from "./src/sm_expression.ts";
-export type {
-  CompiledStateMachine,
-  SMLayerState,
-  SMRuntimeState,
-  SMTransitionFired,
-} from "./src/state_machine.ts";
-export {
-  compileStateMachine,
-  initialSMState,
-  smTickAll,
-  buildCsmVars,
-  effectiveState,
-  resolveDuration,
-  stateHasTag,
-  defStateHasTag,
-  validateStateMachineScope,
-  collectSlotRefs,
-} from "./src/state_machine.ts";
+// (T-228: the Character State Machine — compiler, expression DSL, and
+// StateMachineDef — was deleted. Behavior is the action runtime.)
 
 // ---- recipe-graph validator (server boot) ----
 export { validateRecipeGraph } from "./src/recipe_validator.ts";

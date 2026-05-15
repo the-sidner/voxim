@@ -52,7 +52,6 @@ import type {
   WeaponActionDef,
   ActionDef,
   VerbDef,
-  StateMachineDef,
   BuffDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
@@ -99,12 +98,6 @@ export interface ContentService {
    * Multiple skeletons sharing an archetype share the same library entry.
    */
   readonly animationLibraries: ContentRegistryReadonly<AnimationLibrary>;
-  /**
-   * Character State Machines keyed by id (T-182). One actor prefab references
-   * one via `prefab.stateMachineId`. Animation is one of the layer outputs;
-   * gameplay systems also read CSM nodes for mode gating.
-   */
-  readonly stateMachines: ContentRegistryReadonly<StateMachineDef>;
   /**
    * Buffs keyed by id (T-196). Declarative status-effect definitions loaded
    * from `data/buffs/*.json`. `applyBuffById` in tile-server reads the def
@@ -225,10 +218,6 @@ export class StaticContentStore implements ContentService {
     kind: "animationLibrary",
     idOf: (lib) => lib.id,
   });
-  public readonly stateMachines = new ContentRegistry<StateMachineDef>({
-    kind: "stateMachine",
-    idOf: (sm) => sm.id,
-  });
   public readonly buffs = new ContentRegistry<BuffDef>({
     kind: "buff",
     idOf: (b) => b.id,
@@ -346,9 +335,6 @@ export class StaticContentStore implements ContentService {
     this.animationLibraries.register(lib);
   }
 
-  registerStateMachine(sm: StateMachineDef): void {
-    this.stateMachines.register(sm);
-  }
 
 
   registerBuff(def: BuffDef): void {

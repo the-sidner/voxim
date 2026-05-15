@@ -1,18 +1,15 @@
 /**
- * AnimationSystem — projects the CSM's animation-typed layers into
- * AnimationLayer[] each tick.
+ * AnimationSystem — projects the action slots into AnimationLayer[] each
+ * tick (T-228: the CSM is gone).
  *
- * Reads CharacterStateMachine layer states (set by CharacterStateMachineSystem
- * earlier this tick), walks every layer with output: "animation", resolves
- * the active state's clip via `prefab.animationSlots`, advances per-clip time
- * from the previous AnimationState, and emits one AnimationLayer per
- * animation-typed CSM layer. Higher-priority layers compose on top via the
- * existing AnimationLayer evaluator (HitboxSystem on server, skeleton
- * evaluator on client).
- *
- * The CSM is the source of truth for "what should this actor be playing."
- * AnimationSystem is a pure projector — no `if (sip)` branches, no per-state
- * cascades, no `if (rolling)` overrides. State priorities live in JSON.
+ * For every entity with AnimationState, projects the locomotion, primary,
+ * and reaction slots (in that composite order — reaction on top) from their
+ * `ActiveActions` state into one AnimationLayer each, resolving clips via
+ * `prefab.animationSlots` (+ the equipped weapon's clip injected for
+ * `$weapon.swing_clip`) and advancing per-clip time from the previous
+ * AnimationState. weaponActionId / ticksIntoAction for the client trail
+ * are derived from the primary swing. Pure projector — behaviour lives in
+ * the action defs + the dispatcher, not here.
  */
 import type { World } from "@voxim/engine";
 import type { DeferredEventQueue } from "../deferred_events.ts";
@@ -21,18 +18,8 @@ import type {
   ContentService,
   AnimationStateData,
   AnimationLayer,
-  CompiledStateMachine,
-  SMRuntimeState,
-  SMScopeValue,
-  SMState,
-} from "@voxim/content";
-import {
-  compileStateMachine,
-  effectiveState,
-  buildCsmVars,
 } from "@voxim/content";
 import { Velocity, AnimationState } from "../components/game.ts";
-import { CharacterStateMachine } from "../components/character_state_machine.ts";
 import { ActiveActions } from "../components/action.ts";
 import type { ActiveActionState } from "../components/action.ts";
 import { Crouched } from "../components/tags.ts";
@@ -56,35 +43,26 @@ const TICK_DT = 1 / 20;
 const DEBUG_FORCE_REST_POSE = false;
 
 export class AnimationSystem implements System {
-  /** Runs after CSM ticks. */
-  readonly dependsOn = ["CharacterStateMachineSystem", "ActionSystem"];
+  /** Reads ActiveActions (ActionDispatcher writes); must run after it. */
+  readonly dependsOn = ["ActionDispatcher"];
 
-  /** Compiled SM cache — eager-built at construction so any SM def parse error fails fast at server boot. */
-  private compiledCache = new Map<string, CompiledStateMachine>();
   /** One-shot dedupe for projection failures so a recurring per-entity issue logs once. */
   private loggedFailures = new Set<string>();
 
-  constructor(private readonly content: ContentService) {
-    for (const def of content.stateMachines.values()) {
-      this.compiledCache.set(def.id, compileStateMachine(def));
-    }
-  }
+  constructor(private readonly content: ContentService) {}
 
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
     const cfg = this.content.getGameConfig();
     const walkSpeedRef = cfg.physics.maxGroundSpeed;
 
-    for (const { entityId, characterStateMachine: csm } of world.query(CharacterStateMachine, AnimationState)) {
-      const compiled = this.compiledCache.get(csm.stateMachineId);
-      if (!compiled) continue;
+    for (const { entityId } of world.query(AnimationState)) {
       try {
-        this.projectOne(world, entityId, csm, compiled, walkSpeedRef);
+        this.projectOne(world, entityId, walkSpeedRef);
       } catch (err) {
-        const key = `${csm.stateMachineId}:${(err as Error).message}`;
+        const key = (err as Error).message;
         if (!this.loggedFailures.has(key)) {
           this.loggedFailures.add(key);
-          log.error("animation projection failed for entity=%s sm=%s: %s",
-            entityId, csm.stateMachineId, (err as Error).message);
+          log.error("animation projection failed for entity=%s: %s", entityId, key);
         }
       }
     }
@@ -93,8 +71,6 @@ export class AnimationSystem implements System {
   private projectOne(
     world: World,
     entityId: string,
-    csm: { stateMachineId: string; layerStates: Record<string, { node: string; elapsed: number }> },
-    compiled: CompiledStateMachine,
     walkSpeedRef: number,
   ): void {
     if (DEBUG_FORCE_REST_POSE) {
@@ -104,7 +80,6 @@ export class AnimationSystem implements System {
       return;
     }
 
-      const layerStates: SMRuntimeState = csm.layerStates as SMRuntimeState;
       const baseSlots = world.get(entityId, AnimationSlots)?.slots ?? {};
       // The swing/block/aim clips are weapon-specific. Inject the equipped
       // weapon's geometry-action clip (the same chain[0] source weapon_trace
@@ -125,7 +100,6 @@ export class AnimationSystem implements System {
       const speed = velocityMagnitude(world, entityId);
       const prev  = world.get(entityId, AnimationState);
       const prevTime = getTimeByClip(prev);
-      const baseScope: Record<string, SMScopeValue> = { ...buildCsmVars(compiled, layerStates) };
 
       const layers: AnimationLayer[] = [];
 
@@ -200,50 +174,9 @@ function resolveClipId(clipRef: string, slotMap: Record<string, string>): string
   return clipRef;
 }
 
-/**
- * Decide how fast a clip advances per tick.
- *
- * Loops and explicit numeric speedScale pass through unchanged. The auto-fit
- * cases:
- *
- *   - Combat swing states (`swing.windup` / `swing.active` / `swing.winddown`):
- *     three SM states share one clipId, with prevTime[clipId] persisting
- *     across the transitions. Setting speedScale = 1/totalSwingSeconds maps
- *     the clip's 0→1 range across the entire swing.
- *
- *   - Other non-loop states with a numeric duration (roll, hit_front, death,
- *     etc.): speedScale = 1/duration so the clip plays exactly once across
- *     the state's lifetime.
- *
- * Without these, a one-shot clip would only advance at the default 1 cycle/sec
- * cadence — usually slower than the SM state's duration, freezing the pose
- * mid-motion.
- */
-function resolveSpeedScale(
-  state: SMState,
-  layerId: string,
-  nodeId: string,
-  swingTotalSec: number,
-): number | "velocity" {
-  if (state.speedScale !== undefined) {
-    if (typeof state.speedScale === "number" || state.speedScale === "velocity") {
-      return state.speedScale;
-    }
-  }
-  // Combat layer's swing states: scale to the total swing duration.
-  if (layerId === "right_hand" && nodeId.startsWith("swing.") && swingTotalSec > 0 && !state.loop) {
-    return 1 / swingTotalSec;
-  }
-  // Other one-shot states with a numeric duration: auto-fit.
-  if (!state.loop && typeof state.duration === "number" && state.duration > 0) {
-    return 1 / state.duration;
-  }
-  return 1;
-}
-
 function computeClipTime(
   prev: number,
-  state: SMState,
+  state: { loop?: boolean },
   speedScale: number | "velocity",
   speedReference: number,
   currentSpeed: number,
@@ -309,7 +242,7 @@ export function projectLocomotion(
 
   const time = computeClipTime(
     prevTimeByClip.get(clipId) ?? 0,
-    { loop } as SMState,
+    { loop },
     speedScale,
     walkSpeedRef,
     speed,

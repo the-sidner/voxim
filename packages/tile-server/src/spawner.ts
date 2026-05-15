@@ -32,9 +32,7 @@ import {
 } from "./components/game.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
-import { CharacterStateMachine } from "./components/character_state_machine.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
-import { compileStateMachine, initialSMState } from "@voxim/content";
 import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
@@ -386,19 +384,8 @@ export function spawnPrefab(
     world.write(id, AnimationSlots, { slots: { ...prefab.animationSlots } });
   }
 
-  // CSM: actor prefabs declaring a stateMachineId get the runtime component
-  // installed with seeded initial layer states so AnimationSystem on the
-  // first tick sees a populated CSM (otherwise it'd see `{}` due to
-  // deferred world.set semantics from CharacterStateMachineSystem and emit
-  // a one-tick rest-pose AnimationState).
-  if (prefab.stateMachineId) {
-    const def = content.stateMachines.get(prefab.stateMachineId);
-    const layerStates = def ? initialSMState(compileStateMachine(def)) : {};
-    world.write(id, CharacterStateMachine, {
-      stateMachineId: prefab.stateMachineId,
-      layerStates,
-    });
-  }
+  // (T-228: the CSM is gone — behavior is the action dispatcher over
+  // ActorSlots/ActiveActions, installed above. No per-actor FSM state.)
 
   // Action runtime (T-226): actors declaring slots get the declared set +
   // an empty ActiveActions map. The ActionDispatcher seeds each ambient

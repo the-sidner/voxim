@@ -1,6 +1,5 @@
 {
   "id": "_playable_character",
-  "stateMachineId": "humanoid_default",
   "actorSlots": ["posture", "locomotion", "primary", "reaction"],
   "morphRanges": {
     "armLength":      { "min": 0.92, "max": 1.10 },

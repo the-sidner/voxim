@@ -33,8 +33,6 @@ export {
 export type {
   IFrameActiveData, BlockHeldData, DodgeCooldownData,
 } from "./src/components/combat.ts";
-export { CharacterStateMachine } from "./src/components/character_state_machine.ts";
-export type { CharacterStateMachineData } from "./src/components/character_state_machine.ts";
 export { TickEventBuffer } from "./src/tick_events.ts";
 
 // NPC components
