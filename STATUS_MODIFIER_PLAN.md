@@ -1,9 +1,29 @@
 # Status / Modifier — a Universal "what changes this entity's stats?" Primitive
 
-**Status:** design locked (reframed 2026-05-16 from the earlier
-"DerivedStat" framing — see "Why the reframe"). Recon-grounded.
-Execution-ready (one big diff). Companion to `ACTION_PRIMITIVE_PLAN.md`,
-`RESOURCE_PRIMITIVE_PLAN.md`, `SCENE_GRAPH_PLAN.md`.
+**Status:** COMPLETE — phases 1, 2a, 2b all landed (reframed 2026-05-16
+from the earlier "DerivedStat" framing — see "Why the reframe"). The
+spine is done: Actions + Resources + Status/Modifier. Kept as
+architectural reference; per-phase commit hashes in `TICKETS.md` T-239.
+Companion to `ACTION_PRIMITIVE_PLAN.md`, `RESOURCE_PRIMITIVE_PLAN.md`,
+`SCENE_GRAPH_PLAN.md`.
+
+**Phase 2b — LANDED.** Rewired PhysicsSystem (`moveSpeed`),
+health_hit_handler (`damageDealt`/`damageTaken`/`armorReduction`), and
+the resource `equipment_stat` modifier to `effective()`; SkillSystem's
+five bespoke effect handlers collapsed to thin generic
+registry-dispatched resolvers (speed/damage_boost/shield → `start_buff`
+children, health → instant/DoT). Deleted: `BuffSystem`, `ActiveEffects`
+(+codec/wire 28 retired), `SpeedModifier`, `EncumbrancePenalty`,
+`EncumbranceSystem`, `damage_hook.ts`, the four non-apply sub-registries
++ tick/compose handler interfaces, dead `applyBuffById`. 189 green;
+type-clean; terrain-bake byte-identical. **Accepted retunes (structure
+over parity, documented):** damage_boost consume-on-use → a 60-tick
+`damageDealt` mul buff; shield flat-HP-absorb → a timed fractional
+`damageTaken` mul; health DoT per-tick (was per-second); NPC template
+`speedMultiplier` no longer applied (BuffSystem had skipped non-buffed
+NPCs so it *was* live — reintroduce as a `moveSpeed` ModifierSource off
+the NPC template when archetype speed matters); buffs are transient
+across tile handoff.
 **Tickets:** T-239 ∧ re-scoped T-235 — one non-phaseable commit that
 deletes `BuffSystem` whole.
 **Thesis:** the third primitive. Not "compose a derived stat" (that put

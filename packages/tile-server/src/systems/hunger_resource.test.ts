@@ -13,6 +13,7 @@ import { TileEvents } from "@voxim/protocol";
 import { Resource } from "../components/resource.ts";
 import { Health } from "../components/game.ts";
 import { ResourceSystem } from "./resource.ts";
+import { newModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { newResourceEffectRegistry } from "../resources/effect.ts";
 import { newResourceModifierRegistry } from "../resources/modifier.ts";
 import { modifyHealthEffect } from "../resources/effects/modify_health.ts";
@@ -26,7 +27,7 @@ function sys(deaths: DeathRequestPort) {
   const fx = newResourceEffectRegistry();
   fx.register(modifyHealthEffect);
   fx.register(emitEventEffect);
-  return new ResourceSystem(content, fx, newResourceModifierRegistry(), deaths);
+  return new ResourceSystem(content, fx, newResourceModifierRegistry(), deaths, newModifierSourceRegistry());
 }
 
 Deno.test("hunger crossing 80 publishes HungerCritical exactly once", () => {

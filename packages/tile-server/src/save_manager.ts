@@ -10,7 +10,7 @@
  * What is NOT saved:
  *   Players     — re-connect and spawn fresh each session
  *   NPCs        — re-spawned from configuration on startup
- *   ActiveEffects, cooldowns — transient per-session state
+ *   buffs, cooldowns        — transient per-session state
  *
  * Binary wire format (all little-endian):
  *   u32  magic   = 0x56584D32  ("VXM2")

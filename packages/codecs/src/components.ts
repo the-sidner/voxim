@@ -22,7 +22,6 @@ export const WIRE_LIMITS = {
   craftingQueue: 16,
   traderListings: 64,
   heritageTraits: 64,
-  activeEffects: 32,
   hitRecordsPerSwing: 32,
 } as const;
 
@@ -874,73 +873,8 @@ export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
   },
 };
 
-// ---- ActiveEffect -----------------------------------------------------------
-// { effectStat, magnitude, ticksRemaining, sourceEntityId, tickDeltaPerSec? }
-
-export interface ActiveEffect {
-  effectStat: string;
-  magnitude: number;
-  ticksRemaining: number;
-  sourceEntityId: string;
-  tickDeltaPerSec?: number;
-}
-
-function writeActiveEffect(w: WireWriter, v: ActiveEffect): void {
-  w.writeStr(v.effectStat);
-  w.writeF32(v.magnitude);
-  w.writeI32(v.ticksRemaining);
-  w.writeStr(v.sourceEntityId);
-  if (v.tickDeltaPerSec !== undefined) {
-    w.writeU8(1); w.writeF64(v.tickDeltaPerSec);
-  } else {
-    w.writeU8(0);
-  }
-}
-
-function readActiveEffect(r: WireReader): ActiveEffect {
-  const effectStat = r.readStr();
-  const magnitude = r.readF32();
-  const ticksRemaining = r.readI32();
-  const sourceEntityId = r.readStr();
-  const hasTickDelta = r.readU8();
-  const tickDeltaPerSec = hasTickDelta ? r.readF64() : undefined;
-  return { effectStat, magnitude, ticksRemaining, sourceEntityId, ...(tickDeltaPerSec !== undefined && { tickDeltaPerSec }) };
-}
-
-export const activeEffectCodec: Serialiser<ActiveEffect> = {
-  encode(v: ActiveEffect): Uint8Array {
-    const w = new WireWriter();
-    writeActiveEffect(w, v);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): ActiveEffect {
-    return readActiveEffect(new WireReader(bytes));
-  },
-};
-
-// ---- ActiveEffects ----------------------------------------------------------
-// { effects: ActiveEffect[] }
-
-export interface ActiveEffectsData {
-  effects: ActiveEffect[];
-}
-
-export const activeEffectsCodec: Serialiser<ActiveEffectsData> = {
-  encode(v: ActiveEffectsData): Uint8Array {
-    assertMaxLen("ActiveEffects.effects", v.effects.length, WIRE_LIMITS.activeEffects);
-    const w = new WireWriter();
-    w.writeU16(v.effects.length);
-    for (const e of v.effects) writeActiveEffect(w, e);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): ActiveEffectsData {
-    const r = new WireReader(bytes);
-    const count = r.readU16();
-    const effects: ActiveEffect[] = [];
-    for (let i = 0; i < count; i++) effects.push(readActiveEffect(r));
-    return { effects };
-  },
-};
+// ActiveEffect / ActiveEffects codecs retired (T-239) — buffs are
+// scene-graph children (server-only BuffSpec), not a networked list.
 
 // ---- NpcTag -----------------------------------------------------------------
 // { npcType: string; name: string }

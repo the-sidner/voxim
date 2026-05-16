@@ -4,6 +4,6 @@
   "bounds": { "min": 0, "max": 100 },
   "rate": 8,
   "rateModifiers": [
-    { "kind": "equipment_stat", "params": { "stat": "staminaRegenPenalty", "mode": "subtract_fraction" } }
+    { "kind": "equipment_stat", "params": { "stat": "staminaRegen" } }
   ]
 }

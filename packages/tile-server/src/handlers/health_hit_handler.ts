@@ -1,4 +1,4 @@
-import type { World, Registry, EntityId } from "@voxim/engine";
+import type { World } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
 import type { ContentService } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
@@ -11,12 +11,10 @@ import {
 } from "../components/combat.ts";
 import { Blocking, IFrame } from "../components/tags.ts";
 import { PendingReaction, ActiveActions } from "../components/action.ts";
-import { Equipment } from "../components/equipment.ts";
-import { QualityStamped } from "../components/instance.ts";
-import { ActiveEffects } from "../components/lore_loadout.ts";
 import { Velocity } from "../components/game.ts";
 import type { DeathRequestPort } from "../events/death.ts";
-import type { OutgoingDamageHook, IncomingDamageHook } from "../effects/damage_hook.ts";
+import { effective } from "../modifiers/modifier.ts";
+import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { TickEventBuffer } from "../tick_events.ts";
 import { createLogger } from "../logger.ts";
 
@@ -40,8 +38,7 @@ export class HealthHitHandler implements HitHandler {
   constructor(
     private readonly content: ContentService,
     private readonly deaths: DeathRequestPort,
-    private readonly outgoingHooks: Registry<OutgoingDamageHook>,
-    private readonly incomingHooks: Registry<IncomingDamageHook>,
+    private readonly modifierSources: ModifierSourceRegistry,
     private readonly tickEvents: TickEventBuffer,
   ) {}
 
@@ -110,26 +107,22 @@ export class HealthHitHandler implements HitHandler {
       world.remove(ctx.attackerId, CounterReady);
     }
 
-    // Outgoing damage hooks — attacker-side effect modifiers (e.g. damage_boost).
-    const attackerEffects = world.get(ctx.attackerId, ActiveEffects);
-    if (attackerEffects) {
-      for (const id of this.outgoingHooks.ids()) {
-        damageMult *= this.outgoingHooks.get(id).apply({
-          world, attackerId: ctx.attackerId, attackerEffects, hit: ctx,
-        });
-      }
-    }
+    // Attacker-side damage modifiers (e.g. a damage_boost buff child) —
+    // the Status/Modifier query, not bespoke hooks (T-239).
+    damageMult *= effective(
+      this.modifierSources,
+      { world, content: this.content, entityId: ctx.attackerId },
+      "damageDealt",
+      1,
+    );
 
-    // ── Armor reduction ───────────────────────────────────────────────────────
-    const defenderEquipment = world.get(ctx.targetId, Equipment);
-    const armorReduction = defenderEquipment
-      ? [defenderEquipment.head, defenderEquipment.chest, defenderEquipment.legs, defenderEquipment.feet, defenderEquipment.back]
-          .reduce((sum, slot) => {
-            if (!slot) return sum;
-            const quality = world.get(slot.entityId as EntityId, QualityStamped)?.quality ?? 1;
-            return sum + (this.content.deriveItemStats(slot.prefabId, [], quality).armorReduction ?? 0);
-          }, 0)
-      : 0;
+    // ── Armor reduction (the `equipment` ModifierSource sums it live) ──────────
+    const armorReduction = effective(
+      this.modifierSources,
+      { world, content: this.content, entityId: ctx.targetId },
+      "armorReduction",
+      0,
+    );
 
     const blockMult = isBlocking ? combatCfg.blockDamageMultiplier : 1.0;
     // T-198: part multipliers — attacker.{tip|mid|haft} × victim.{partId}.
@@ -141,15 +134,14 @@ export class HealthHitHandler implements HitHandler {
     const baseDamage = ctx.weaponStats.damage ?? 0;
     let damage = baseDamage * damageMult * blockMult * attackerPartMult * victimPartMult * (1 - armorReduction);
 
-    // ── Incoming damage hooks (shield absorption, etc.) ───────────────────────
-    const targetEffects = world.get(ctx.targetId, ActiveEffects);
-    if (targetEffects) {
-      for (const id of this.incomingHooks.ids()) {
-        damage = this.incomingHooks.get(id).apply({
-          world, targetId: ctx.targetId, targetEffects, incomingDamage: damage, hit: ctx,
-        });
-      }
-    }
+    // ── Target-side mitigation (e.g. a shield buff child) ─────────────────────
+    // A `damageTaken` mul ≤ 1 from the Status/Modifier query (T-239).
+    damage *= effective(
+      this.modifierSources,
+      { world, content: this.content, entityId: ctx.targetId },
+      "damageTaken",
+      1,
+    );
 
     // ── Apply damage ──────────────────────────────────────────────────────────
     const newHealth = Math.max(0, health.current - damage);

@@ -20,14 +20,45 @@
  */
 
 import { newEntityId } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import type { EffectResolver } from "../effect.ts";
 import { BuffSpec } from "../../components/buff.ts";
+import type { BuffSpecData } from "../../components/buff.ts";
 import { Resource } from "../../components/resource.ts";
 import { ActiveActions } from "../../components/action.ts";
 import { Health } from "../../components/game.ts";
 
 function num(v: unknown, fallback = 0): number {
   return typeof v === "number" ? v : fallback;
+}
+
+/**
+ * Spawn a buff as a scene-graph child of `targetId`: a bare entity
+ * carrying its `BuffSpec` (read by the `buffs` ModifierSource), the
+ * `buff` ambient action (drives the optional periodic `tickDelta`), and
+ * a `buff_timer` Resource (its lifetime → `expire_buff` → destroySubtree).
+ * The single buff-application path — `start_buff` and the generic skill
+ * effect resolvers both go through here. Data-driven: the buff *is* its
+ * `spec` + `durationTicks`, no per-buff code.
+ */
+export function spawnBuffChild(
+  world: World,
+  targetId: EntityId,
+  spec: BuffSpecData,
+  durationTicks: number,
+): EntityId {
+  const ticks = Math.max(1, Math.round(durationTicks));
+  const childId = newEntityId();
+  world.create(childId);
+  world.write(childId, BuffSpec, spec);
+  world.write(childId, Resource, {
+    values: { buff_timer: { value: ticks, max: ticks } },
+  });
+  world.write(childId, ActiveActions, {
+    states: { buff: { actionId: "buff", phase: "hold", ticksInPhase: 0, initiator: "ambient" } },
+  });
+  world.setParent(childId, targetId);
+  return childId;
 }
 
 export const startBuffResolver: EffectResolver = {
@@ -40,20 +71,12 @@ export const startBuffResolver: EffectResolver = {
         `start_buff: params need stat:string + op:"add"|"mul" (got stat=${String(stat)} op=${String(op)})`,
       );
     }
-    const value = num(ctx.params.value);
-    const tickDelta = num(ctx.params.tickDelta);
-    const durationTicks = Math.max(1, Math.round(num(ctx.params.durationTicks, 1)));
-
-    const childId = newEntityId();
-    ctx.world.create(childId);
-    ctx.world.write(childId, BuffSpec, { stat, op, value, tickDelta });
-    ctx.world.write(childId, Resource, {
-      values: { buff_timer: { value: durationTicks, max: durationTicks } },
-    });
-    ctx.world.write(childId, ActiveActions, {
-      states: { buff: { actionId: "buff", phase: "hold", ticksInPhase: 0, initiator: "ambient" } },
-    });
-    ctx.world.setParent(childId, ctx.entityId);
+    spawnBuffChild(
+      ctx.world,
+      ctx.entityId,
+      { stat, op, value: num(ctx.params.value), tickDelta: num(ctx.params.tickDelta) },
+      num(ctx.params.durationTicks, 1),
+    );
   },
 };
 

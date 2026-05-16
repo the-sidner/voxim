@@ -7,7 +7,9 @@
  *
  * Components persisted: Position, Velocity, Facing, Health,
  * Resource (stamina/hunger/thirst/poise/… T-238), Inventory, Equipment,
- * LoreLoadout, ActiveEffects, SpeedModifier.
+ * LoreLoadout. (Buffs are scene-graph child entities — transient, not
+ * carried across a tile handoff; SpeedModifier/ActiveEffects retired
+ * T-239.)
  *
  * Components NOT persisted: InputState (reset on connect), presence-as-flag
  * combat components like CounterReady and action tags (iframe, blocking,
@@ -20,8 +22,7 @@ import { Position, Velocity, Facing, Health } from "./components/game.ts";
 import { Resource } from "./components/resource.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
-import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
-import { SpeedModifier } from "./components/world.ts";
+import { LoreLoadout } from "./components/lore_loadout.ts";
 
 export interface HandoffPayload {
   playerId: string;
@@ -46,8 +47,6 @@ interface SerializedComponents {
   inventory?: ReturnType<typeof Inventory.codec.decode> | null;
   equipment?: ReturnType<typeof Equipment.codec.decode> | null;
   loreLoadout?: ReturnType<typeof LoreLoadout.codec.decode> | null;
-  activeEffects?: ReturnType<typeof ActiveEffects.codec.decode> | null;
-  speedModifier?: ReturnType<typeof SpeedModifier.codec.decode> | null;
 }
 
 /**
@@ -76,8 +75,6 @@ export function serializePlayer(
       inventory: world.get(playerId, Inventory) ?? null,
       equipment: world.get(playerId, Equipment) ?? null,
       loreLoadout: world.get(playerId, LoreLoadout) ?? null,
-      activeEffects: world.get(playerId, ActiveEffects) ?? null,
-      speedModifier: world.get(playerId, SpeedModifier) ?? null,
     },
   };
 }
@@ -103,7 +100,5 @@ export function restorePlayer(world: World, payload: HandoffPayload): EntityId {
   if (c.inventory) world.write(id, Inventory, c.inventory);
   if (c.equipment) world.write(id, Equipment, c.equipment);
   if (c.loreLoadout) world.write(id, LoreLoadout, c.loreLoadout);
-  if (c.activeEffects) world.write(id, ActiveEffects, c.activeEffects);
-  if (c.speedModifier) world.write(id, SpeedModifier, c.speedModifier);
   return id;
 }

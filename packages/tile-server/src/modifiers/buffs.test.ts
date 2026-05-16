@@ -60,7 +60,7 @@ Deno.test("start_buff spawns a child the buffs source reads as a modifier", () =
 Deno.test("buff_timer counts down → expire_buff destroys the child", () => {
   const fx = newResourceEffectRegistry();
   fx.register(expireBuffEffect);
-  const sys = new ResourceSystem(content, fx, newResourceModifierRegistry(), noDeaths);
+  const sys = new ResourceSystem(content, fx, newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
 
   const w = new World();
   const actor = newEntityId();

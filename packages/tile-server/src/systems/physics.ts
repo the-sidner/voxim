@@ -9,7 +9,8 @@ import { Position, Velocity, Facing, InputState } from "../components/game.ts";
 import { Airborne } from "../components/combat.ts";
 import { ActiveActions } from "../components/action.ts";
 import type { TickEventBuffer } from "../tick_events.ts";
-import { SpeedModifier } from "../components/world.ts";
+import { effective } from "../modifiers/modifier.ts";
+import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { buildTerrainLookup, buildOpennessLookup } from "../physics/terrain_lookup.ts";
 
 const log = createLogger("PhysicsSystem");
@@ -35,6 +36,7 @@ export class PhysicsSystem implements System {
   constructor(
     private readonly content: ContentService,
     private readonly tickEvents: TickEventBuffer,
+    private readonly modifierSources: ModifierSourceRegistry,
   ) {}
 
   run(world: World, _events: EventEmitter, dt: number): void {
@@ -89,9 +91,13 @@ export class PhysicsSystem implements System {
         log.debug("jump: entity=%s pos=(%.1f,%.1f,%.1f)", entityId, position.x, position.y, position.z);
       }
 
-      const speedMod = world.get(entityId, SpeedModifier);
       const crouching = !locked && hasAction(inputState.actions, ACTION_CROUCH);
-      let speedMultiplier = speedMod?.multiplier ?? 1.0;
+      let speedMultiplier = effective(
+        this.modifierSources,
+        { world, content: this.content, entityId },
+        "moveSpeed",
+        1.0,
+      );
       if (crouching) speedMultiplier *= crouchSpeedMultiplier;
 
       let movement: { x: number; y: number };

@@ -68,9 +68,7 @@ import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
 import { WorkstationHitHandler } from "./handlers/workstation_hit_handler.ts";
 import { TerrainDigSystem } from "./handlers/terrain_hit_handler.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
-import { EncumbranceSystem } from "./systems/encumbrance.ts";
 import { SkillSystem } from "./systems/skill.ts";
-import { BuffSystem } from "./systems/buff.ts";
 import { PoiSystem } from "./systems/poi.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs } from "./stair_spawner.ts";
@@ -80,6 +78,10 @@ import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts
 import { ResourceSystem } from "./systems/resource.ts";
 import { newResourceEffectRegistry } from "./resources/effect.ts";
 import { newResourceModifierRegistry } from "./resources/modifier.ts";
+import { newModifierSourceRegistry } from "./modifiers/modifier.ts";
+import { equipmentSource } from "./modifiers/sources/equipment.ts";
+import { encumbranceSource } from "./modifiers/sources/encumbrance.ts";
+import { buffsSource } from "./modifiers/sources/buffs.ts";
 import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
 import { emitEventEffect } from "./resources/effects/emit_event.ts";
 import { resolveRecipeEffect } from "./resources/effects/resolve_recipe.ts";
@@ -338,6 +340,16 @@ export class TileServer {
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
 
+    // Status/Modifier query (T-239) — the one place "what changes this
+    // entity's stats?" composes: equipment (live), buffs (scene-graph
+    // children), encumbrance (live). effective() over this replaces
+    // BuffSystem's compose pass, SpeedModifier, EncumbrancePenalty, and
+    // the per-consumer deriveItemStats scans.
+    const modifierSources = newModifierSourceRegistry();
+    modifierSources.register(equipmentSource);
+    modifierSources.register(encumbranceSource);
+    modifierSources.register(buffsSource);
+
     // T-238g: ResourceDef content cross-check — every threshold `effect`
     // and rateModifier `kind` referenced from data/resources/*.json must
     // resolve to a registered handler, or the runtime can't dispatch it.
@@ -498,7 +510,7 @@ export class TileServer {
     const tickEvents = new TickEventBuffer();
 
     const hitHandlers = [
-      new HealthHitHandler(content, deathSystem, effects.outgoingDamage, effects.incomingDamage, tickEvents),
+      new HealthHitHandler(content, deathSystem, modifierSources, tickEvents),
       new ResourceNodeHitHandler(content),
       new BlueprintHitHandler(),
       new WorkstationHitHandler(content, recipeSteps),
@@ -533,10 +545,8 @@ export class TileServer {
       new CraftingSystem(content, recipeSteps),
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
-      new EncumbranceSystem(content),
-      new BuffSystem(effects.tick, effects.compose, deathSystem),
-      new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem),
-      new PhysicsSystem(content, tickEvents),
+      new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem, modifierSources),
+      new PhysicsSystem(content, tickEvents, modifierSources),
       new FogOfWarSystem(),
       // ActionDispatcher advances every actor's slots (posture, locomotion,
       // primary, reaction) from intent + events. The CSM is gone (T-228).

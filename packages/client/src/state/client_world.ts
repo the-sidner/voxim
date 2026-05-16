@@ -12,7 +12,7 @@ import {
   staminaCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
   blueprintCodec, lightEmitterCodec, darknessModifierCodec,
   staggeredCodec, counterReadyCodec,
-  loreLoadoutCodec, activeEffectsCodec,
+  loreLoadoutCodec,
   durabilityCodec, craftingQueueCodec, itemDataCodec,
   workstationBufferCodec, workstationTagCodec,
   statsCodec, provenanceCodec,
@@ -25,7 +25,7 @@ import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
   StaggeredData, CounterReadyData,
-  LoreLoadoutData, ActiveEffectsData,
+  LoreLoadoutData,
   DurabilityData, CraftingQueueData, ItemDataData,
   WorkstationBufferData, WorkstationTagData,
   StatsData, ProvenanceData,
@@ -66,7 +66,6 @@ export interface EntityState {
   staggered?: StaggeredData;
   counterReady?: CounterReadyData;
   loreLoadout?: LoreLoadoutData;
-  activeEffects?: ActiveEffectsData;
   durability?: DurabilityData;
   craftingQueue?: CraftingQueueData;
   itemData?: ItemDataData;
@@ -245,9 +244,6 @@ export class ClientWorld {
         break;
       case ComponentType.loreLoadout:
         entity.loreLoadout = loreLoadoutCodec.decode(data);
-        break;
-      case ComponentType.activeEffects:
-        entity.activeEffects = activeEffectsCodec.decode(data);
         break;
       case ComponentType.durability:
         entity.durability = durabilityCodec.decode(data);

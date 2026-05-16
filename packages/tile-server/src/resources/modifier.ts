@@ -13,6 +13,7 @@
 import type { World, EntityId } from "@voxim/engine";
 import { Registry } from "@voxim/engine";
 import type { ContentService, ResourceDef } from "@voxim/content";
+import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
 
 export interface RateModifierContext {
   readonly world: World;
@@ -24,6 +25,8 @@ export interface RateModifierContext {
   readonly dt: number;
   /** The modifier's typed payload from the ResourceDef JSON. */
   readonly params: Record<string, unknown>;
+  /** Status/Modifier query registry — for sources that read effective(). */
+  readonly sources: ModifierSourceRegistry;
 }
 
 export interface ResourceRateModifier {

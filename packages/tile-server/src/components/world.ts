@@ -35,35 +35,9 @@ export function isDay(clock: WorldClockData): boolean {
 // the corruption mechanic was removed wholesale, to be reintroduced later
 // at a different scale. Wire ids 24/25 are reserved in component_types.ts.
 
-// ---- SpeedModifier ----
-// Composed speed multiplier written exclusively by BuffSystem each tick.
-// BuffSystem multiplies EncumbrancePenalty (base) × all speed ActiveEffects.
-// PhysicsSystem reads this as the final maxGroundSpeed multiplier.
-// Nothing else should write SpeedModifier directly.
-
-export interface SpeedModifierData {
-  multiplier: number;
-}
-
-export const SpeedModifier = defineComponent({
-  name: "speedModifier" as const,
-  codec: buildCodec<SpeedModifierData>({ multiplier: { type: "f32" } }),
-  default: (): SpeedModifierData => ({ multiplier: 1.0 }),
-  networked: false,
-});
-
-// ---- EncumbrancePenalty ----
-// Written each tick by EncumbranceSystem based on carried weight.
-// Value 1.0 = no penalty. Lower = slowed by overloading.
-// Read by BuffSystem which multiplies speed buffs on top of this base.
-
-export interface EncumbrancePenaltyData {
-  multiplier: number;
-}
-
-export const EncumbrancePenalty = defineComponent({
-  name: "encumbrancePenalty" as const,
-  codec: buildCodec<EncumbrancePenaltyData>({ multiplier: { type: "f32" } }),
-  default: (): EncumbrancePenaltyData => ({ multiplier: 1.0 }),
-  networked: false,
-});
+// SpeedModifier + EncumbrancePenalty retired (T-239): there is no
+// composed-output component any more. `effective(entity,"moveSpeed",1)`
+// over the ModifierSource registry replaces both — encumbrance is the
+// `encumbrance` source (live), speed buffs are scene-graph children.
+// PhysicsSystem reads the query directly; BuffSystem/EncumbranceSystem
+// are gone.

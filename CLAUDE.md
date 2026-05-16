@@ -179,7 +179,7 @@ shape that matters:
 
 ```
 NpcAiSystem → (Lifetime/Equipment/Placement/Crafting/ResourceNode/
-DayNight/Encumbrance/Buff/ResourceSystem) → PhysicsSystem
+DayNight/ResourceSystem) → PhysicsSystem
 → ActionDispatcher → SkillSystem → (Projectile/ItemPhysics/TerrainDig/
 Trader/Dynasty) → AnimationSystem → HitboxSystem → PoiSystem → DeathSystem
 ```
@@ -408,8 +408,8 @@ stack slots; without it, each crafted copy is its own entity.
 
 The engine is being collapsed onto a small set of **content-defined
 primitives** that share one dispatch substrate (`Registry<H>` +
-effect-resolver), instead of a bespoke per-mechanic system each. Two are
-landed; one is next.
+effect-resolver), instead of a bespoke per-mechanic system each. All
+three are landed.
 
 - **Action primitive (T-225–T-234 — `ACTION_PRIMITIVE_PLAN.md`, done).**
   Every behaviour — swing, dodge, block, stagger, consume, locomotion — is
@@ -429,16 +429,31 @@ landed; one is next.
   corruption mechanic was removed wholesale (T-238e), not migrated — it
   returns later at a different scale; wire ids 24/25 stay retired.**
 
-Both reuse the same doctrine: a designer adds a new effect / gate /
-rateModifier / threshold as **one handler file + one `register()` call**,
-never an engine edit, and every content id is **cross-checked against its
-registry at boot** (fail-fast — see the ResourceDef / buff / recipe-step /
-BT checks in `server.ts`). Resource state is server-only for now
-(networking is a later add, same call `ActiveActions` made).
+- **Status/Modifier primitive (T-239 — `STATUS_MODIFIER_PLAN.md`, done).**
+  "What changes this entity's stats?" is one `StatModifier {stat,op,value}`
+  + one `effective(entity,stat,base)` query (`(base+Σadd)×Πmul`) over a
+  `ModifierSource` registry. Hybrid: sources read live from the store that
+  already owns the data — `equipment` (the Equipment component),
+  `encumbrance` (carried weight), `buffs` (scene-graph children). A buff
+  is a child entity = `BuffSpec` + the `buff` ambient action (DoT tick) +
+  a `buff_timer` Resource lifetime: **all three primitives compose into
+  one mechanism.** Replaced `BuffSystem`, `ActiveEffects`,
+  `SpeedModifier`, `EncumbrancePenalty`, `EncumbranceSystem`, the five
+  bespoke effect handlers + the apply-only-survivor of five sub-registries
+  + the consume-on-use damage hooks; the per-consumer `deriveItemStats`
+  duplication is gone. `deriveItemStats` (items) now has its actor-level
+  dual without either side storing the other.
 
-**Next: DerivedStat (T-239)**, consuming the settled resource/effect
-machinery, lands together with the re-scoped buffs-as-scene-graph-children
-(the `BuffSystem`-deletion commit).
+All reuse the same doctrine: a designer adds a new effect / gate /
+rateModifier / threshold / modifier-source as **one handler file + one
+`register()` call**, never an engine edit, and every content id is
+**cross-checked against its registry at boot** (fail-fast — see the
+ResourceDef / buff / recipe-step / BT checks in `server.ts`). Buff /
+modifier / resource state is server-only for now (networking is a later
+add, same call `ActiveActions` made).
+
+The spine is complete: **Actions, Resources, Status/Modifier** — three
+content-driven primitives over one substrate.
 
 ---
 

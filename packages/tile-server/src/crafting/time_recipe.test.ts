@@ -19,6 +19,7 @@ import { ItemData } from "../components/items.ts";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import { Resource } from "../components/resource.ts";
 import { ResourceSystem } from "../systems/resource.ts";
+import { newModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { newResourceEffectRegistry } from "../resources/effect.ts";
 import { newResourceModifierRegistry } from "../resources/modifier.ts";
 import { resolveRecipeEffect } from "../resources/effects/resolve_recipe.ts";
@@ -32,7 +33,7 @@ const content = await JsonSource.load();
 function sys(): ResourceSystem {
   const fx = newResourceEffectRegistry();
   fx.register(resolveRecipeEffect);
-  return new ResourceSystem(content, fx, newResourceModifierRegistry(), noDeaths);
+  return new ResourceSystem(content, fx, newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
 }
 
 function furnace(world: World): string {

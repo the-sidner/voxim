@@ -12,6 +12,7 @@ import { StaticContentStore } from "@voxim/content";
 import type { ResourceDef } from "@voxim/content";
 import { Resource } from "../components/resource.ts";
 import { ResourceSystem } from "./resource.ts";
+import { newModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { newResourceEffectRegistry } from "../resources/effect.ts";
 import type { ResourceEffect } from "../resources/effect.ts";
 import { newResourceModifierRegistry } from "../resources/modifier.ts";
@@ -41,7 +42,7 @@ function tick(sys: ResourceSystem, world: World): void {
 
 Deno.test("integrates the rate and clamps to [min, per-entity max]", () => {
   const c = content({ id: "stamina", scope: "entity", bounds: { min: 0, max: 100 }, rate: 10 });
-  const sys = new ResourceSystem(c, newResourceEffectRegistry(), newResourceModifierRegistry(), noDeaths);
+  const sys = new ResourceSystem(c, newResourceEffectRegistry(), newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
   const w = new World();
   const id = entityWith(w, { stamina: { value: 95, max: 100 } });
 
@@ -54,7 +55,7 @@ Deno.test("integrates the rate and clamps to [min, per-entity max]", () => {
 
 Deno.test("negative rate clamps at bounds.min", () => {
   const c = content({ id: "hunger", scope: "entity", bounds: { min: 0, max: 100 }, rate: -50 });
-  const sys = new ResourceSystem(c, newResourceEffectRegistry(), newResourceModifierRegistry(), noDeaths);
+  const sys = new ResourceSystem(c, newResourceEffectRegistry(), newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
   const w = new World();
   const id = entityWith(w, { hunger: { value: 1, max: 100 } });
   tick(sys, w);
@@ -75,7 +76,7 @@ Deno.test("rateModifier chain transforms the rate in order", () => {
   };
   mods.register(halve);
   mods.register(offset);
-  const sys = new ResourceSystem(c, newResourceEffectRegistry(), mods, noDeaths);
+  const sys = new ResourceSystem(c, newResourceEffectRegistry(), mods, noDeaths, newModifierSourceRegistry());
   const w = new World();
   const id = entityWith(w, { stamina: { value: 50, max: 100 } });
 
@@ -98,7 +99,7 @@ Deno.test("sustained threshold fires every in-zone tick; cross fires once on ent
   const warnEffect: ResourceEffect = { id: "warn", resolve: () => { warn++; } };
   fx.register(starveEffect);
   fx.register(warnEffect);
-  const sys = new ResourceSystem(c, fx, newResourceModifierRegistry(), noDeaths);
+  const sys = new ResourceSystem(c, fx, newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
   const w = new World();
   const id = entityWith(w, { hunger: { value: 48, max: 100 } });
 
@@ -116,7 +117,7 @@ Deno.test("sustained threshold fires every in-zone tick; cross fires once on ent
 
 Deno.test("unknown resource id is skipped, not thrown", () => {
   const c = content(); // no defs
-  const sys = new ResourceSystem(c, newResourceEffectRegistry(), newResourceModifierRegistry(), noDeaths);
+  const sys = new ResourceSystem(c, newResourceEffectRegistry(), newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
   const w = new World();
   const id = entityWith(w, { ghost: { value: 5, max: 10 } });
   tick(sys, w);

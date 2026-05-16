@@ -61,13 +61,9 @@ import {
   WorkstationTag,
 } from "./components/building.ts";
 import { ResourceNode } from "./components/resource_node.ts";
-import {
-  EncumbrancePenalty,
-  SpeedModifier,
-  WorldClock,
-} from "./components/world.ts";
+import { WorldClock } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
-import { ActiveEffects, LoreLoadout } from "./components/lore_loadout.ts";
+import { LoreLoadout } from "./components/lore_loadout.ts";
 import { DarknessModifier, LightEmitter } from "./components/light.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { GateLink } from "./components/gate.ts";
@@ -134,7 +130,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // mechanic removed (T-238e); wire ids reserved in component_types.ts
   TraderInventory,
   LoreLoadout,
-  ActiveEffects,
+  // 28 (activeEffects) retired — buffs are scene-graph children (T-239);
+  // wire id reserved in component_types.ts
   // hitbox slot reserved — networked: false (server-only, listed in ALL_DEFS below)
   WorkstationBuffer,
   WorkstationTag,
@@ -205,8 +202,8 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   NpcJobQueue,
   ProjectileData,
   AnimationSlots,
-  SpeedModifier,
-  EncumbrancePenalty,
+  // SpeedModifier + EncumbrancePenalty retired (T-239) — effective()
+  // query replaces the composed-output components.
   // ── Instance-lifetime components (server-only) ──────────────────────────
   History,
   Owned,

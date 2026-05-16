@@ -13,6 +13,7 @@ import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
 import { Resource } from "../components/resource.ts";
 import { ResourceSystem } from "./resource.ts";
+import { newModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { newResourceEffectRegistry } from "../resources/effect.ts";
 import { newResourceModifierRegistry } from "../resources/modifier.ts";
 import type { DeathRequestPort } from "../events/death.ts";
@@ -27,6 +28,7 @@ function sys(): ResourceSystem {
     newResourceEffectRegistry(),
     newResourceModifierRegistry(),
     noDeaths,
+    newModifierSourceRegistry(),
   );
 }
 

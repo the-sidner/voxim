@@ -2523,7 +2523,15 @@ handed over from the re-scoped T-231 — a workstation-entity timed
 process, the canonical degenerate-timer-as-Resource case.
 
 ### T-239 · Status/Modifier primitive arc (sibling of the action arc)
-Effort: L   Status: in-progress — sub-plan filed (reframed)
+Effort: L   Status: done
+Commits: plan e458d35/f60d452 · Ph1 9061f7e · Ph2a 433d45e · Ph2b <this commit>
+The spine is complete: Actions + Resources + Status/Modifier, three
+content-driven primitives over one substrate. BuffSystem / ActiveEffects
+/ SpeedModifier / EncumbrancePenalty / EncumbranceSystem + the 5 bespoke
+effect handlers + 4 sub-registries deleted; one StatModifier record + an
+effective() query over a ModifierSource registry; a buff = scene-graph
+child + ambient action + buff_timer Resource. Accepted retunes recorded
+in STATUS_MODIFIER_PLAN.md. 189 green; bake byte-identical.
 
 **Sub-plan: [`STATUS_MODIFIER_PLAN.md`](STATUS_MODIFIER_PLAN.md)** (filed
 2026-05-16; reframed same day). The "DerivedStat" framing put the output

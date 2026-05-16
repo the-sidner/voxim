@@ -38,8 +38,7 @@ import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag } from "./components/building.ts";
-import { SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
-import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
+import { LoreLoadout } from "./components/lore_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { Stats } from "./components/instance.ts";
@@ -108,8 +107,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   };
   const maxHealth = maxHealthFor(heritage);
 
-  writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
-  world.write(id, SpeedModifier, { multiplier: 1.0 });
+  writeDefaults(world, id, Velocity, Facing, InputState);
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Heritage, heritage);
 
@@ -128,7 +126,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   writeDefaults(
     world, id,
-    LoreLoadout, ActiveEffects, CraftingQueue, AnimationState,
+    LoreLoadout, CraftingQueue, AnimationState,
     FogState,
   );
 
@@ -157,10 +155,11 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
   const data = rawData as PrefabNpcData;
   const template = content.npcTemplates.get(data.npcType);
   const maxHealth = template?.maxHealth ?? 80;
-  const speedMultiplier = template?.speedMultiplier ?? 1.0;
+  // NPC template speedMultiplier is no longer applied (SpeedModifier
+  // retired, T-239). Accepted retune — reintroduce later as a `moveSpeed`
+  // ModifierSource off the NPC template if archetype speed matters.
 
-  writeDefaults(world, id, Velocity, Facing, InputState, EncumbrancePenalty);
-  world.write(id, SpeedModifier, { multiplier: speedMultiplier });
+  writeDefaults(world, id, Velocity, Facing, InputState);
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   const npcDisplayName = overrides.instanceName ?? template?.displayName ?? data.npcType;
   world.write(id, NpcTag, {
@@ -187,7 +186,7 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
 
   writeDefaults(
     world, id,
-    NpcJobQueue, AnimationState, ActiveEffects,
+    NpcJobQueue, AnimationState,
   );
 
   // NPCs carry hunger/thirst Resources (NpcAiSystem reads them for the

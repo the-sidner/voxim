@@ -64,10 +64,9 @@ export { ResourceNode } from "./src/components/resource_node.ts";
 export type { ResourceNodeData } from "./src/components/resource_node.ts";
 
 // World-state components
-export { WorldClock, SpeedModifier } from "./src/components/world.ts";
+export { WorldClock } from "./src/components/world.ts";
 export type {
   WorldClockData,
-  SpeedModifierData,
 } from "./src/components/world.ts";
 
 // Spawner
@@ -75,12 +74,10 @@ export { spawnPrefab } from "./src/spawner.ts";
 export type { SpawnPrefabOverrides } from "./src/spawner.ts";
 
 // Lore / skill components
-export { LoreLoadout, ActiveEffects } from "./src/components/lore_loadout.ts";
+export { LoreLoadout } from "./src/components/lore_loadout.ts";
 export type {
   LoreSkillSlot,
   LoreLoadoutData,
-  ActiveEffect,
-  ActiveEffectsData,
 } from "./src/components/lore_loadout.ts";
 
 // Trader component

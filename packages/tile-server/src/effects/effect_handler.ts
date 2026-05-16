@@ -13,7 +13,6 @@ import type { World, EntityId } from "@voxim/engine";
 import type { ConceptVerbEntry } from "@voxim/content";
 import type { SpatialGrid } from "../spatial_grid.ts";
 import type { EventEmitter } from "../system.ts";
-import type { ActiveEffect } from "../components/lore_loadout.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 
 // ---- apply ----
@@ -44,30 +43,5 @@ export interface EffectApplyHandler {
   apply(ctx: EffectApplyContext): void;
 }
 
-// ---- tick (per-entity, per-effect, per-frame side effects) ----
-
-export interface EffectTickContext {
-  readonly world: World;
-  readonly events: EventEmitter;
-  readonly entityId: EntityId;
-  readonly effect: ActiveEffect;
-  readonly dt: number;
-  readonly deaths: DeathRequestPort;
-}
-
-export interface EffectTickHandler {
-  readonly id: string;
-  tick(ctx: EffectTickContext): void;
-}
-
-// ---- compose (per-effect contributions to composed stats) ----
-
-export interface EffectContribution {
-  /** Multiplicative bonus on movement speed. 0.2 = +20%. */
-  speedBonus?: number;
-}
-
-export interface EffectComposeHandler {
-  readonly id: string;
-  contribute(effect: ActiveEffect): EffectContribution;
-}
+// tick / compose handlers retired (T-239): periodic + stat-modifier
+// effects are buff scene-graph children + the `effective()` query.

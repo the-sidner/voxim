@@ -23,6 +23,7 @@ import { Resource } from "../components/resource.ts";
 import type { ResourceData } from "../components/resource.ts";
 import type { ResourceEffectRegistry } from "../resources/effect.ts";
 import type { ResourceModifierRegistry } from "../resources/modifier.ts";
+import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 import { createLogger } from "../logger.ts";
 
@@ -40,6 +41,7 @@ export class ResourceSystem implements System {
     private readonly effects: ResourceEffectRegistry,
     private readonly modifiers: ResourceModifierRegistry,
     private readonly deaths: DeathRequestPort,
+    private readonly sources: ModifierSourceRegistry,
   ) {}
 
   run(world: World, events: EventEmitter, dt: number): void {
@@ -56,7 +58,7 @@ export class ResourceSystem implements System {
         let rate = def.rate;
         for (const m of def.rateModifiers ?? []) {
           rate = this.modifiers.get(m.kind).rate(
-            { world, entityId, content: this.content, def, value: rv.value, dt, params: m.params ?? {} },
+            { world, entityId, content: this.content, def, value: rv.value, dt, params: m.params ?? {}, sources: this.sources },
             rate,
           );
         }

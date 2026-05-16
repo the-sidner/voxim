@@ -37,7 +37,7 @@ export const ComponentType = {
   // 25 (corruptionExposure) retired — same; do not reuse
   traderInventory:    26,
   loreLoadout:        27,
-  activeEffects:      28,
+  // 28 (activeEffects) retired — buffs are scene-graph children (T-239); do not reuse
   hitbox:             29,
   workstationBuffer:  30,
   lightEmitter:       31,
