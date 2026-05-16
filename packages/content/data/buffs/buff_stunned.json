@@ -1,8 +1,0 @@
-{
-  "id": "buff_stunned",
-  "displayName": "Stunned",
-  "effectStat": "speed",
-  "magnitude": -0.95,
-  "durationSeconds": 1.5,
-  "onApplyEvent": "event.stunned"
-}

@@ -29,10 +29,11 @@ const log = createLogger("HealthHitHandler");
  *   reduce) → apply HP change → publish StrikeLanded (if pendingSkillVerb
  *   starts with "strike:") → death request or knockback.
  *
- * Per-effect damage logic (damage_boost consumption, shield absorption) lives
- * in OutgoingDamageHook / IncomingDamageHook implementations registered in
- * `effects/mod.ts`. This handler holds zero `effectStat ===` checks and no
- * direct references to SkillSystem — strike resolution is event-driven.
+ * Attacker/target damage modifiers (damage_boost, shield) are buff
+ * scene-graph children read via the Status/Modifier `effective()` query
+ * (`damageDealt` / `damageTaken`), not bespoke hooks (T-239). This handler
+ * holds zero `effectStat ===` checks and no direct references to
+ * SkillSystem — strike resolution is event-driven.
  */
 export class HealthHitHandler implements HitHandler {
   constructor(

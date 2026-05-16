@@ -1,8 +1,9 @@
 /**
  * Flee effect — area aura that forces NPC job queues into a flee job.
  *
- * Does not use the ActiveEffects component at all; the effect is expressed
- * entirely through NpcJobQueue.current on each affected NPC.
+ * Not a stat modifier (so not a buff child): expressed entirely through
+ * NpcJobQueue.current on each affected NPC — the one documented
+ * non-modifier skill effect.
  */
 import type { EffectApplyContext, EffectApplyHandler } from "./effect_handler.ts";
 import { NpcJobQueue } from "../components/npcs.ts";

@@ -544,8 +544,8 @@ export interface WeaponActionDef {
    * Root-motion forward impulse applied while the named phase is active
    * (T-199). The character is pushed forward along its facing direction at
    * `forwardImpulse` world units / sec for the full duration of the phase.
-   * Suppressed proportionally by SpeedModifier so slows / encumbrance reduce
-   * the carry. Absent / null → no push, swing is in-place.
+   * Suppressed proportionally by `effective(moveSpeed)` so slows /
+   * encumbrance reduce the carry. Absent / null → no push, swing is in-place.
    */
   rootMotion?: {
     forwardImpulse: number;
@@ -738,45 +738,6 @@ export interface VerbDef {
   baseMagnitude: number;
 }
 
-// ---- buffs (T-196) ----
-
-/**
- * Declarative buff definition. Loaded from `data/buffs/{id}.json`.
- *
- * Bridges the existing `EffectApplyHandler` registry with a content-driven
- * authoring shape: a buff is named, durations + magnitudes live in JSON,
- * and the apply path is dispatched by `effectStat` to the same handlers
- * the lore matrix uses. Adding a new simple status effect is now a file
- * drop — no code if it reuses an existing effectStat.
- *
- * The discrete-event channel (`onApplyEvent`) lets a buff push a one-tick
- * event into the CSM scope at apply time. That's how a stun buff triggers
- * the reaction layer's `event.stunned` transition while also slowing the
- * actor via the speed effectStat.
- */
-export interface BuffDef {
-  /** Unique id. Filename without `.json`. */
-  id: string;
-  /** Display name for UI / debug. */
-  displayName: string;
-  /**
-   * Effect handler dispatched by `applyBuffById`. Must be a registered
-   * `EffectApplyHandler` id at server boot — validated, fails fast on
-   * mismatch. Common values today: "speed", "health", "shield".
-   */
-  effectStat: string;
-  /** Effect strength passed to the handler as `ctx.magnitude`. */
-  magnitude: number;
-  /** Duration in seconds — converted to ticks at apply time. */
-  durationSeconds: number;
-  /**
-   * One-tick event fired on the target's TickEventBuffer when the buff is
-   * applied. Lets the CSM react discretely (e.g. `event.stunned` driving
-   * a reaction-layer transition) in addition to the continuous modifier
-   * channel. Absent / null = no event.
-   */
-  onApplyEvent?: string;
-}
 
 // ---- resources (T-238) ----
 
@@ -1208,7 +1169,7 @@ export interface ConceptVerbEntry {
    * Handler id in the effect registries (apply/tick/compose). Each value must
    * match a registered apply handler in the server at startup; validated then
    * and fail-fast on mismatch. New effect types are added as one handler file
-   * plus a registration call — no code changes in SkillSystem/BuffSystem.
+   * plus a registration call — no code changes in SkillSystem.
    */
   effectStat: string;
   /**

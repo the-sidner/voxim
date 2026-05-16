@@ -102,7 +102,6 @@ export type {
   ActionMovement,
   ActionGate,
   VerbDef,
-  BuffDef,
   ResourceDef,
   ResourceRateModifierRef,
   ResourceThreshold,

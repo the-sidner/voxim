@@ -1,7 +1,0 @@
-{
-  "id": "buff_slow",
-  "displayName": "Slow",
-  "effectStat": "speed",
-  "magnitude": -0.3,
-  "durationSeconds": 4
-}

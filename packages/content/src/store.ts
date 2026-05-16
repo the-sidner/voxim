@@ -52,7 +52,6 @@ import type {
   WeaponActionDef,
   ActionDef,
   VerbDef,
-  BuffDef,
   ResourceDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
@@ -99,15 +98,6 @@ export interface ContentService {
    * Multiple skeletons sharing an archetype share the same library entry.
    */
   readonly animationLibraries: ContentRegistryReadonly<AnimationLibrary>;
-  /**
-   * Buffs keyed by id (T-196). Declarative status-effect definitions loaded
-   * from `data/buffs/*.json`. `applyBuffById` in tile-server reads the def
-   * and dispatches to the registered EffectApplyHandler matching
-   * `def.effectStat`. Onboard authoring path for buffs that don't need
-   * custom code — adding a new slow / poison / heal-over-time is a file
-   * drop, no handler changes.
-   */
-  readonly buffs: ContentRegistryReadonly<BuffDef>;
 
   /**
    * Resources keyed by id (T-238). Tick-scalar definitions loaded from
@@ -228,10 +218,6 @@ export class StaticContentStore implements ContentService {
     kind: "animationLibrary",
     idOf: (lib) => lib.id,
   });
-  public readonly buffs = new ContentRegistry<BuffDef>({
-    kind: "buff",
-    idOf: (b) => b.id,
-  });
   public readonly resources = new ContentRegistry<ResourceDef>({
     kind: "resource",
     idOf: (r) => r.id,
@@ -351,9 +337,6 @@ export class StaticContentStore implements ContentService {
 
 
 
-  registerBuff(def: BuffDef): void {
-    this.buffs.register(def);
-  }
 
   registerResource(def: ResourceDef): void {
     this.resources.register(def);

@@ -318,9 +318,9 @@ export class TileServer {
     this.contentBlob = await encodeBootstrap(content);
     console.log(`[TileServer] content bootstrap blob: ${(this.contentBlob.length / 1024).toFixed(1)} KB (gzipped)`);
 
-    // Effect handler registries — apply/tick/compose are plug-in points for
-    // SkillSystem and BuffSystem. Built-in effects are registered here; every
-    // `effectStat` in the concept-verb matrix must resolve to a registered
+    // Skill-effect apply registry — the SkillSystem plug-in point.
+    // Built-in resolvers are registered here; every `effectStat` in the
+    // concept-verb matrix must resolve to a registered
     // apply handler. Validated below; fail-fast on mismatch.
     const effects = createEffectRegistries();
     registerBuiltinEffects(effects);
@@ -384,17 +384,6 @@ export class TileServer {
       }
     }
 
-    // T-196: BuffDef content cross-check — every `effectStat` referenced
-    // from `data/buffs/*.json` must also resolve to a registered apply
-    // handler so the runtime can dispatch.
-    for (const buff of content.buffs.values()) {
-      if (!effects.apply.has(buff.effectStat)) {
-        throw new Error(
-          `BuffDef "${buff.id}" references effectStat "${buff.effectStat}" ` +
-          `but no apply handler is registered. Registered: [${effects.apply.ids().join(", ")}]`
-        );
-      }
-    }
 
     // DeathSystem owns the single RequestDeath queue — systems with health-loss
     // kill paths publish here instead of calling world.destroy directly.

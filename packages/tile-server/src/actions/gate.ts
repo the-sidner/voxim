@@ -8,9 +8,9 @@
  *
  * Entity-generic by design (load-bearing decision, see
  * ACTION_PRIMITIVE_PLAN.md "The unified substrate"): `GateContext` carries an
- * `entityId`, never an "actor". The Resources (T-238) and DerivedStat (T-239)
- * arcs reuse this exact registry rather than inventing parallel predicate
- * systems.
+ * `entityId`, never an "actor". The Resources (T-238) and Status/Modifier
+ * (T-239) arcs reuse this exact registry doctrine rather than inventing
+ * parallel predicate systems.
  */
 
 import type { World, EntityId } from "@voxim/engine";

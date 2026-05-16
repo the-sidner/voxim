@@ -20,9 +20,10 @@
  * synced ledger — equipment is read live from the component that already
  * owns it; nothing is duplicated. See `STATUS_MODIFIER_PLAN.md`.
  *
- * Phase 1 (this file + the equipment/encumbrance sources): inert
- * substrate — nothing calls `effective()` yet (BuffSystem / SpeedModifier
- * still authoritative). Mirrors the T-238a precedent.
+ * Live (T-239 phase 2b): PhysicsSystem (`moveSpeed`),
+ * health_hit_handler (`damageDealt`/`damageTaken`/`armorReduction`), and
+ * the resource `equipment_stat` modifier all read `effective()`;
+ * BuffSystem / SpeedModifier / EncumbrancePenalty are gone.
  */
 
 import type { World, EntityId } from "@voxim/engine";

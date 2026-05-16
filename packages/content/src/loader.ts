@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, BuffDef, ResourceDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef } from "./types.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
@@ -50,7 +50,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, actionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, poisRaw, buffsRaw, resourcesRaw, animLibraryArchetypes,
+    biomesRaw, zonesRaw, poisRaw, resourcesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -67,7 +67,6 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "biomes"),
     readJsonDir(dataDir, "zones"),
     readJsonDir(dataDir, "pois").catch(() => []),
-    readJsonDir(dataDir, "buffs").catch(() => []),
     readJsonDir(dataDir, "resources").catch(() => []),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
@@ -162,9 +161,6 @@ async function loadContentStoreInternal(
   }
 
 
-  for (const raw of buffsRaw as BuffDef[]) {
-    store.registerBuff(raw);
-  }
 
   for (const raw of resourcesRaw as ResourceDef[]) {
     validateResourceDef(raw);

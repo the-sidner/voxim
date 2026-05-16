@@ -28,11 +28,11 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
-  BuffDef, ResourceDef,
+  ResourceDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 10;
+export const BOOTSTRAP_VERSION = 11;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -52,7 +52,6 @@ interface ContentBootstrapJson {
   actions:             ActionDef[];
   verbs:               VerbDef[];
   conceptVerbEntries:  ConceptVerbEntry[];
-  buffs:               BuffDef[];
   resources:           ResourceDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
@@ -123,7 +122,6 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     actions:             [...service.actions.values()],
     verbs:               [...service.verbs.values()],
     conceptVerbEntries:  [...service.getAllConceptVerbEntries()],
-    buffs:               [...service.buffs.values()],
     resources:           [...service.resources.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
@@ -206,7 +204,6 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   // version is strictly enforced above, so a decoded blob always carries
   // every array the current envelope declares — no per-field guards
   // (those were transitional and are settled now, T-238g).
-  for (const b of body.buffs)                store.registerBuff(b);
   for (const r of body.resources)            store.registerResource(r);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
