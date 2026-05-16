@@ -1,6 +1,7 @@
 # DerivedStat as a Universal Compose Primitive — Implementation Plan
 
-**Status:** design locked; not yet implemented. Companion to
+**Status:** design locked, all scoping resolved, recon-grounded —
+execution-ready (one big diff, not yet written). Companion to
 `ACTION_PRIMITIVE_PLAN.md` (action arc complete), `RESOURCE_PRIMITIVE_PLAN.md`
 (resource arc complete), `SCENE_GRAPH_PLAN.md`.
 **Tickets:** T-239 (DerivedStat) ∧ re-scoped T-235 (buffs as scene-graph
@@ -140,6 +141,53 @@ client untouched (drifted); registry-dispatch, no `switch`; one commit,
 no flags/legacy/parallel path.
 
 ---
+
+## Resolved (user, 2026-05-16)
+
+- **A → Keep `EncumbranceSystem`, delete `EncumbrancePenalty`.** The
+  system keeps the carried-weight scan and now writes a server-only
+  `StatBase { moveSpeed }` (the multiplicative base of the moveSpeed
+  DerivedStat). `DerivedStatSystem` reads `StatBase` as the base and
+  composes Σ speed contributions on top. One writer (`EncumbranceSystem`)
+  / one reader (`DerivedStatSystem`) — not a parallel path; the
+  `EncumbrancePenalty` type/codec/registry entry are gone.
+- **B → All durationed effects are scene-graph buff children.** No
+  residual decrement loop. Speed buffs leave `ActiveEffects` entirely;
+  their contribution is summed by `DerivedStatSystem` from the entity's
+  buff *children* (each child's `Buff` action params carry
+  `effectStat`/`magnitude`). `ActiveEffects` keeps only the consume-on-use
+  entries (`damage_boost`/`shield`) the damage hooks read.
+- **C → One generic parameterized `buff` prefab.** `start_buff` passes
+  `effectStat`/`magnitude`/`durationTicks` as the child's `Buff` ambient
+  action params; one `data/prefabs/buff.json` + one `Buff` `ActionDef`.
+- **D → `DerivedStats` server-only.** Codec inline, `networked: false`;
+  networking is a later additive step (client drifted).
+
+## Design refinement found in recon — buff lifetime is a Resource
+
+A generic buff child needs a **per-instance duration**, but `ActionDef`
+phase `ticks` are static content (can't carry a spawn-time value). Clean
+resolution that *tightens* the arc instead of widening it: the buff child
+carries a **`buff_timer` Resource** — the exact T-238f `crafting_timer`
+shape (rate −20/s = −1/tick from a `start_buff`-seeded `durationTicks`
+max, bounds.min 0, `cross@0` → a new `expire_buff` ResourceEffect that
+`world.destroySubtree(self)`). Its `Buff` ambient action (`ticks:-1`)
+`:tick` runs `buff_tick` (periodic delta → `getParent`). 
+
+Consequence: **a buff is all three primitives at once** — a scene-graph
+*child* (T-215) carrying an ambient *action* (T-225) whose lifetime is a
+*Resource* (T-238). Buff-lifetime needs **zero bespoke code**; it reuses
+machinery already shipped + tested. The spine closes on itself.
+
+So the commit adds `expire_buff` (a tiny ResourceEffect:
+`destroySubtree(entityId)`) + `buff_tick` + a `Buff` ambient ActionDef +
+`data/prefabs/buff.json` + `data/resources/buff_timer.json`, and
+`start_buff` becomes: spawn the buff prefab as a child of the target,
+seed `Resource.values.buff_timer = {value:durationTicks,max:durationTicks}`
+and the child's `Buff` action params `{effectStat,magnitude}`. The
+existing `applyBuffById` and the concept-verb `speed`/`health` apply
+handlers route through `start_buff` instead of `addActiveEffect` (the
+single rewire of the effect-apply path).
 
 ## Open questions for review (before the big diff)
 
