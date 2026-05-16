@@ -1,0 +1,9 @@
+{
+  "id": "buff",
+  "kind": "ambient",
+  "slot": "buff",
+  "phases": { "hold": { "ticks": -1 } },
+  "cancel": { "hold": { "into": ["any"] } },
+  "movement": { "hold": "free" },
+  "effects": [ { "phase": "hold:tick", "kind": "buff_tick" } ]
+}

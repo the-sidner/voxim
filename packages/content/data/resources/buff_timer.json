@@ -1,0 +1,9 @@
+{
+  "id": "buff_timer",
+  "scope": "entity",
+  "bounds": { "min": 0, "max": 1 },
+  "rate": -20,
+  "thresholds": [
+    { "at": 0, "dir": "below", "edge": "cross", "effect": "expire_buff" }
+  ]
+}

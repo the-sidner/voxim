@@ -38,6 +38,7 @@ import {
 } from "./components/combat.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
 import { Resource } from "./components/resource.ts";
+import { BuffSpec } from "./components/buff.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
@@ -187,6 +188,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // lives here. Server-only. Poise folded in at T-238d (the standalone
   // Poise component is gone).
   Resource,
+  // BuffSpec (T-239) — a buff scene-graph child's modifier data. Server-
+  // only. Inert until start_buff spawns one (phase 2b wires the callers).
+  BuffSpec,
   Hearth,
   JobBoard,
   AssignedJobBoard,

@@ -83,6 +83,8 @@ import { newResourceModifierRegistry } from "./resources/modifier.ts";
 import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
 import { emitEventEffect } from "./resources/effects/emit_event.ts";
 import { resolveRecipeEffect } from "./resources/effects/resolve_recipe.ts";
+import { expireBuffEffect } from "./resources/effects/expire_buff.ts";
+import { startBuffResolver, buffTickResolver } from "./actions/resolvers/buff.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
 import { createRecipeStepRegistry, registerBuiltinSteps } from "./crafting/mod.ts";
@@ -329,6 +331,10 @@ export class TileServer {
     resourceEffects.register(modifyHealthEffect);
     resourceEffects.register(emitEventEffect);
     resourceEffects.register(resolveRecipeEffect);
+    // T-239 phase 2a — inert: buff_timer.json references expire_buff (boot
+    // cross-ref check requires it registered); nothing seeds a buff_timer
+    // yet, so it never fires until phase 2b wires start_buff's callers.
+    resourceEffects.register(expireBuffEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
 
@@ -444,6 +450,11 @@ export class TileServer {
     actionEffects.register(clearTagResolver);
     actionEffects.register(dodgeImpulseResolver);
     actionEffects.register(consumeItemResolver);
+    // T-239 phase 2a — inert: the `buff` ambient action fires buff_tick;
+    // start_buff spawns buff children. No content/skill invokes them yet
+    // (phase 2b routes the concept-verb apply path here).
+    actionEffects.register(startBuffResolver);
+    actionEffects.register(buffTickResolver);
     const actionDispatcher = new ActionDispatcher(
       content, actionGates, actionEffects,
       new CompositeIntentResolver([

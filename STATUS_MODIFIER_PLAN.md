@@ -203,13 +203,32 @@ system-deletions came in later focused commits). Same here:
   still authoritative. Unit-tested, byte-identical, fully inert. The
   `buffs` source + buff-child machinery are deferred to phase 2 (they
   need the `Buff` action that doesn't exist yet).
-- **Phase 2 — the swap (one commit, deletes BuffSystem whole).** Build
-  `start_buff`/`buff_tick`/`expire_buff` + `Buff` action + buff prefab +
-  `buff_timer` Resource + the `buffs` source; rewire physics /
-  hit-handler / skill-apply to `effective()`; delete `BuffSystem`,
-  `ActiveEffects`, `SpeedModifier`, `EncumbrancePenalty`,
-  `EncumbranceSystem`, all five effect handlers + the apply/tick/compose/
-  damage-hook registries + `applyBuffById` (dead — no runtime callers).
+- **Phase 2a — inert buff machinery. LANDED.** `buff_timer.json`
+  Resource (the T-238f shape), `expire_buff` ResourceEffect
+  (`destroySubtree`), `BuffSpec` server-only component, the `buffs`
+  ModifierSource, `start_buff`/`buff_tick` action resolvers, the `buff`
+  ambient ActionDef. Registered (boot cross-ref needs `expire_buff`/
+  `buff_tick`) but **inert** — nothing spawns a buff / carries `BuffSpec`
+  / runs the `buff` action; `BuffSystem`/`ActiveEffects` still
+  authoritative. 6 tests; 189 green; terrain-bake unaffected. **Honest
+  deviation from "buff prefab":** `start_buff` creates a *bare entity*
+  (BuffSpec + buff_timer Resource + buff ActiveActions + setParent), not
+  `spawnPrefab` — a buff has no model/physics/slots, so spawnPrefab's
+  actor/visual preamble would be wrong. Still fully data-driven (the
+  buff's data is its params); `data/prefabs/buff.json` is not needed.
+  Question C's "generic parameterized" intent is honoured; the "prefab"
+  noun isn't.
+- **Phase 2b — the swap (one commit, deletes BuffSystem whole).** Rewire
+  physics / hit-handler / the resource `equipment_stat` modifier /
+  SkillSystem's concept-verb apply to `effective()` + `start_buff`;
+  delete `BuffSystem`, `ActiveEffects`, `SpeedModifier`,
+  `EncumbrancePenalty`, `EncumbranceSystem`, all five effect handlers +
+  the apply/tick/compose/damage-hook registries + `applyBuffById` (dead).
+  Open phase-2b fork: how concept-verb matrix entries express their
+  effect as data once the keyed handlers are gone (lean: route through
+  the existing action-effect Registry — registry-dispatch is endorsed
+  doctrine, not a hardcoded switch; collapses 5 handlers → ~2 generic
+  resolvers, reusing `modify_health`). Resolve before the 2b diff.
 
 ## Shape of the one commit (= phase 2)
 
