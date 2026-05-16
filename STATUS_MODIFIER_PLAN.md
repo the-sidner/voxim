@@ -1,0 +1,187 @@
+# Status / Modifier — a Universal "what changes this entity's stats?" Primitive
+
+**Status:** design locked (reframed 2026-05-16 from the earlier
+"DerivedStat" framing — see "Why the reframe"). Recon-grounded.
+Execution-ready (one big diff). Companion to `ACTION_PRIMITIVE_PLAN.md`,
+`RESOURCE_PRIMITIVE_PLAN.md`, `SCENE_GRAPH_PLAN.md`.
+**Tickets:** T-239 ∧ re-scoped T-235 — one non-phaseable commit that
+deletes `BuffSystem` whole.
+**Thesis:** the third primitive. Not "compose a derived stat" (that put
+the *output projection* first); the real need is a **uniform way any
+source modifies an entity** — buffs, equipment, environment, posture —
+with the effective value a thin read on top.
+
+---
+
+## Why the reframe (the design correction)
+
+The earlier plan made `DerivedStats` (an output component a system
+writes) the primitive. That is backwards: the value is trivial; the
+hard, scattered thing is the **input side**. Today "something modifies
+an entity's effective stats" exists as **five unrelated mechanisms**:
+
+| Source | Today | Stored? |
+|---|---|---|
+| Buffs / DoTs / speed | `ActiveEffects` list, ticked/composed/reaped by `BuffSystem` | a list |
+| Equipment stats | `deriveItemStats(prefab)` re-scanned **per consumer** (armor in hit handler, weight in encumbrance, stamina-penalty in the resource modifier) | no — recomputed everywhere |
+| Environmental | was corruption (deleted); no general channel | — |
+| Posture | tags (`crouched` …) read ad-hoc | presence-flag |
+| Resource rate bends | closed `rateModifier` registry, re-reads equipment again | no |
+
+The unifying atom across all of them:
+
+> **Modifier** = "while CONDITION holds, stat *S* changes by (*op*,
+> *value*)." Only the **condition** differs — a timer (buff), equipped-
+> in-slot (equipment), inside-volume (environment), tag-present (posture)
+> — and every one of those conditions is *already a primitive we have*
+> (Resource timer, Equipment component, spatial membership,
+> component-presence tag).
+
+So the primitive is the **Modifier record + one `effective(entity,stat)`
+query**, not a stored output.
+
+---
+
+## The model (hybrid: query over existing stores — user decision)
+
+No redundant materialized ledger. Each source stays where it already
+lives authoritatively; one query composes across them via a
+**`ModifierSource` registry** (registry-dispatch doctrine, like
+gates/effects/rateModifiers).
+
+```ts
+type ModifierOp = "add" | "mul";                 // closed, minimal
+interface StatModifier { stat: string; op: ModifierOp; value: number; }
+
+interface ModifierSource {                        // registered, content-id dispatch
+  readonly id: string;                            // "equipment" | "buffs" | "encumbrance" | …
+  contribute(world, content, entityId): StatModifier[];
+}
+```
+
+`StatQuery.effective(world, content, entityId, stat, base)` folds every
+source's modifiers for `stat`:
+
+> **effective = (base + Σ add) × Π mul**
+
+- `moveSpeed`  → base 1; muls = encumbrance factor, each speed buff factor → a **product**
+- `armorReduction` → base 0; adds = each equipped slot's reduction → a **sum**
+- `staminaRegen` → base from `stamina.json` rate; the resource modifier becomes `effective(...,"staminaRegen")`
+
+One rule, every stat; the stat decides whether its sources are `add` or
+`mul` by what they emit. **Accepted retune:** multiple speed buffs now
+compose multiplicatively (`0.7 × 0.7`) rather than additively
+(`1 + (−0.3) + (−0.3)`) — same family of compose-semantics retune the
+arc has accepted before (T-238b); documented, not hidden.
+
+### The three source contributors shipped
+
+- **`equipment`** — live `deriveItemStats` over equipped slots → typed
+  modifiers (`armorReduction` add, `staminaRegenPenalty` mul, …). The
+  Equipment component stays the single source of truth; **nothing is
+  copied or synced**. Deletes the duplicated per-consumer scans.
+- **`buffs`** — walks the entity's scene-graph **children**; each buff
+  child carries its `{stat,op,value}` as `Buff`-action params → one
+  modifier. (Periodic DoT/HoT buffs additionally tick — see below.)
+- **`encumbrance`** — carried-weight → a single `moveSpeed` `mul`
+  factor, computed live (the exact scan `EncumbranceSystem` did).
+
+`zone`/`posture` are **future** `ModifierSource`s (one handler each when
+a consumer needs them) — not built now; the registry slot is the
+extension point. Honest scope: build the three that have consumers.
+
+---
+
+## Buffs are scene-graph children (re-scoped T-235), lifetime is a Resource
+
+The buff-as-child + Resource-lifetime refinement holds and slots in
+cleanly:
+
+- `start_buff` (effect resolver) — spawns `data/prefabs/buff.json` as a
+  **child** of the target, sets the child's `Buff` ambient-action params
+  `{stat,op,value}` (and `tickDeltaPerSec` for DoTs), and seeds
+  `Resource.values.buff_timer = {value:durationTicks,max:durationTicks}`
+  on the child.
+- `buff_timer` Resource (the T-238f `crafting_timer` shape: rate −20/s,
+  bounds.min 0, `cross@0` → `expire_buff`).
+- `expire_buff` (ResourceEffect) — `world.destroySubtree(entityId)`
+  (the child). One line; the buff vanishes, its modifier with it.
+- `buff_tick` (the `Buff` ambient action's `:tick`) — periodic-only:
+  applies `tickDeltaPerSec·dt` to `getParent(self)` Health (DoT/HoT).
+  Pure stat-modifier buffs (speed) need no tick — they only *exist* and
+  the `buffs` `ModifierSource` reads them.
+- **Consume-on-use** (`damage_boost`/`shield`) are buff children too;
+  the damage hook reads the child's modifier at the hit moment and
+  `destroySubtree`s it on consumption (consume = remove the source).
+
+Net: **`ActiveEffects` is deleted entirely** — its three roles all
+rehome (speed→child modifier, DoT→child tick, consume-on-use→child read
++ destroyed by the damage hook). *(Plan-time caveat: confirm the full
+`ActiveEffects` reader set in recon — `flee_effect` and any others —
+before the diff; if one genuinely doesn't fit the child model it stays
+a thin documented exception rather than a contortion, same rule as
+every prior arc.)*
+
+Substrate verified ready: dispatcher advances ambient (`ticks:-1`)
+actions on `ActorSlots`-less children and skips intent
+(dispatcher.ts:92–121); `spawnPrefab` children recursion +
+`setParent`/`getParent`/`destroySubtree` exist; the Resource timer
+pattern is shipped + tested (T-238f).
+
+---
+
+## Consequence that reverses an earlier answer (flagging, not flipping)
+
+Open-question **A** was answered "keep `EncumbranceSystem`, delete the
+component" — under the *old* DerivedStat framing. The **hybrid model's
+whole premise is "compose live, never store/sync,"** which makes an
+`EncumbranceSystem`-as-writer structurally pointless: its only output
+was `EncumbrancePenalty`, read only by `BuffSystem`. Under hybrid,
+encumbrance is just the `encumbrance` **`ModifierSource`** (live
+computation); `EncumbranceSystem` *and* `EncumbrancePenalty` both
+dissolve into that one contributor. Keeping the system would contradict
+the chosen model. **This supersedes answer A** — surfaced explicitly
+for objection rather than silently overridden.
+
+---
+
+## Shape of the one commit
+
+**Delete:** `BuffSystem`, `SpeedModifier`, `EncumbrancePenalty`,
+`EncumbranceSystem`, `ActiveEffects` (pending reader recon), the
+`tick`/`compose` sub-registries + `EffectTickHandler`/
+`EffectComposeHandler` + `healthEffectTick`/`speedEffectCompose`, the
+consume-on-use sentinel/decrement, `applyBuffById`'s `addActiveEffect`
+path.
+
+**Add:** `StatModifier` type + `ModifierSource` registry + `StatQuery`
+(`effective`); the `equipment` / `buffs` / `encumbrance` sources;
+`start_buff` / `buff_tick` / `expire_buff` resolvers; a `Buff` ambient
+`ActionDef`; `data/prefabs/buff.json`; `data/resources/buff_timer.json`.
+
+**Rewire:** `PhysicsSystem` `moveSpeed`, `health_hit_handler`
+`armorReduction`, the resource `equipment_stat` modifier (→
+`effective`), `applyBuffById` + concept-verb `speed`/`health` apply (→
+`start_buff`); spawner, server wiring, component registry.
+
+**Invariants:** registry-dispatch, no `switch`; one commit, no
+flags/legacy/parallel path; bake byte-identical (runtime state only);
+client untouched (drifted). The `effective()` query is pure-read; add a
+per-tick cache only if measured (no premature materialized store — that
+would re-introduce exactly what the hybrid model rejects).
+
+---
+
+## Net
+
+Five scattered "modifies an entity" mechanisms collapse to **one
+Modifier record + one `effective()` query over a `ModifierSource`
+registry**, with conditions expressed by the primitives we already have
+(Resource timer, scene-graph child, Equipment, tag). `BuffSystem`,
+`ActiveEffects`, `SpeedModifier`, `EncumbrancePenalty`,
+`EncumbranceSystem`, and the per-consumer `deriveItemStats` duplication
+all go. A buff is now *a scene-graph child carrying an action whose
+lifetime is a Resource* — Actions, Resources, and Status/Modifier are
+the three content-driven primitives over one substrate; the spine is
+complete and `deriveItemStats` (items) finally has its actor-level dual
+without either side duplicating the other.

@@ -2522,17 +2522,23 @@ absorbs the crafting time-step timer** (`WorkstationBuffer.progressTicks`)
 handed over from the re-scoped T-231 — a workstation-entity timed
 process, the canonical degenerate-timer-as-Resource case.
 
-### T-239 · DerivedStat primitive arc (sibling of the action arc)
-Effort: L   Status: in-progress — sub-plan filed
+### T-239 · Status/Modifier primitive arc (sibling of the action arc)
+Effort: L   Status: in-progress — sub-plan filed (reframed)
 
-**Sub-plan: [`DERIVEDSTAT_PRIMITIVE_PLAN.md`](DERIVEDSTAT_PRIMITIVE_PLAN.md)**
-(filed 2026-05-16, after the T-238 Resource arc closed). Recon corrected
-two design-doc assumptions: the damage hooks are already in the
-health-hit-handler (not BuffSystem), and **speed is the only composed
-actor stat that exists** — so DerivedStat ships thin (one stat, two
-contributors) not as speculative N-stat generality. One non-phaseable
-commit deletes BuffSystem whole (= T-235 ∧ T-239). Four open scoping
-questions recorded in the sub-plan, surfaced for review before the diff.
+**Sub-plan: [`STATUS_MODIFIER_PLAN.md`](STATUS_MODIFIER_PLAN.md)** (filed
+2026-05-16; reframed same day). The "DerivedStat" framing put the output
+projection first and was rejected: the real need is a **uniform way any
+source modifies an entity** (buffs, equipment, environment, posture).
+Reframed to a **Modifier record + one `effective(entity,stat)` query
+over a `ModifierSource` registry** (hybrid: compose live over existing
+stores — equipment from the Equipment component, buffs from scene-graph
+children, encumbrance live; no redundant materialized ledger/sync).
+Recon corrected two design-doc assumptions (damage hooks already live in
+health_hit_handler not BuffSystem; speed is the only composed actor stat
+today). One non-phaseable commit deletes BuffSystem + ActiveEffects +
+SpeedModifier + EncumbrancePenalty + EncumbranceSystem whole (= T-235 ∧
+T-239). Buff = scene-graph child + ambient action + buff_timer Resource
+lifetime (all three primitives at once).
 
 See the "The unified substrate" section of
 [`ACTION_PRIMITIVE_PLAN.md`](ACTION_PRIMITIVE_PLAN.md). `BuffSystem`
