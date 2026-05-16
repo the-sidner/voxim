@@ -2421,7 +2421,7 @@ time-step timer, buff compose) carried by sibling arcs T-238/T-239.
 ### T-238 · Resource primitive arc (sibling of the action arc)
 Effort: XL (multi-ticket arc)   Status: done
 Commits: T-238a 6c0590b · T-238b a2410f5 · T-238c c8714d3 ·
-T-238d 02d3cc0 · T-238e be1e8e8 · T-238f 50c13d9 · T-238g f9e9dd1
+T-238d 02d3cc0 · T-238e be1e8e8 · T-238f 50c13d9 · T-238g a88faa1
 
 **Sub-plan: [`RESOURCE_PRIMITIVE_PLAN.md`](RESOURCE_PRIMITIVE_PLAN.md)**
 (filed 2026-05-15, action arc complete). Phasing T-238a (inert substrate)
