@@ -2524,7 +2524,7 @@ process, the canonical degenerate-timer-as-Resource case.
 
 ### T-239 · Status/Modifier primitive arc (sibling of the action arc)
 Effort: L   Status: done
-Commits: plan e458d35/f60d452 · Ph1 9061f7e · Ph2a 433d45e · Ph2b <this commit>
+Commits: plan e458d35/f60d452 · Ph1 9061f7e · Ph2a 433d45e · Ph2b 1966626
 The spine is complete: Actions + Resources + Status/Modifier, three
 content-driven primitives over one substrate. BuffSystem / ActiveEffects
 / SpeedModifier / EncumbrancePenalty / EncumbranceSystem + the 5 bespoke
