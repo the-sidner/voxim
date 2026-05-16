@@ -145,7 +145,73 @@ for objection rather than silently overridden.
 
 ---
 
-## Shape of the one commit
+## Zero hardcoded effect handlers — fully data-driven (user, 2026-05-16)
+
+The five bespoke handler files (`health_effect`, `speed_effect`,
+`damage_boost_effect`, `shield_effect`, `flee_effect`) and **all** their
+sub-registries (`apply`, `tick`, `compose`, `outgoingDamage`,
+`incomingDamage`) + interfaces (`EffectApplyHandler`,
+`EffectTickHandler`, `EffectComposeHandler`, `OutgoingDamageHook`,
+`IncomingDamageHook`) are **deleted, not ported**. No `switch`/keyed
+handler on `effectStat` survives anywhere.
+
+Everything an effect did becomes content + the generic primitive:
+
+- **A buff is data**: `{ stat, op, value, durationTicks, tickDelta? }`
+  carried by the `Buff` action on a scene-graph child. `start_buff` (one
+  generic resolver) spawns it; the `buffs` `ModifierSource` reads it;
+  `buff_tick` applies `tickDelta` (DoT/HoT) to the parent; `buff_timer`
+  Resource + `expire_buff` end it. No per-effect code.
+- **The damage pipeline becomes a query, not hooks**: `health_hit_handler`
+  reads `effective(attacker,"damageDealt",1)` and
+  `effective(target,"damageTaken",1)` (and the existing `armorReduction`
+  via the `equipment` source). `damage_hook.ts` + both hook registries
+  are deleted.
+- **Concept-verb / skill effects become generic**: the matrix entry's
+  effect collapses to "apply a `{stat,op,value}` — instantly if
+  `durationTicks==0` (one-shot delta, e.g. heal/damage), else as a buff
+  child." One generic apply path replaces the keyed `EffectApplyHandler`
+  registry.
+
+**Accepted retunes (structure over parity — the established norm):**
+`damage_boost`/`shield` lose their exact *consume-on-use* semantics —
+they become ordinary durationed data-driven modifiers (a timed
+`damageDealt` mul / a `damageTaken` reduction). "Absorb N HP then pop"
+is not reproduced; if it returns later it is content (a Resource-pool
+buff), not bespoke code. `flee` (already ActiveEffects-free, writes
+`NpcJobQueue`) is **out of scope** — it is not a stat modifier; it stays
+as the one small documented non-modifier effect path (a generic
+"area-job" effect resolver, or left as the lone keyed apply if cleaner —
+recorded honestly, not contorted).
+
+This makes the arc overwhelmingly deletion + one primitive; the
+combat-pipeline risk I flagged is gone (no bespoke porting).
+
+## Phasing — inert substrate first (the T-238a precedent)
+
+The "one non-phaseable commit" constraint is about not splitting the
+*deletion* into two live paths. An **inert substrate** that nothing reads
+is not a live path — T-238a established and validated exactly this for
+the Resource arc (substrate landed inert, byte-identical, green; the
+system-deletions came in later focused commits). Same here:
+
+- **Phase 1 — inert substrate (this commit).** `StatModifier` +
+  `ModifierOp`, the `ModifierSource` registry, `StatQuery.effective()`,
+  and the two fully-buildable-now sources (`equipment`, `encumbrance`).
+  Registered in `server.ts` but **no consumer calls `effective()`** —
+  `BuffSystem`/`ActiveEffects`/`SpeedModifier`/`EncumbranceSystem` all
+  still authoritative. Unit-tested, byte-identical, fully inert. The
+  `buffs` source + buff-child machinery are deferred to phase 2 (they
+  need the `Buff` action that doesn't exist yet).
+- **Phase 2 — the swap (one commit, deletes BuffSystem whole).** Build
+  `start_buff`/`buff_tick`/`expire_buff` + `Buff` action + buff prefab +
+  `buff_timer` Resource + the `buffs` source; rewire physics /
+  hit-handler / skill-apply to `effective()`; delete `BuffSystem`,
+  `ActiveEffects`, `SpeedModifier`, `EncumbrancePenalty`,
+  `EncumbranceSystem`, all five effect handlers + the apply/tick/compose/
+  damage-hook registries + `applyBuffById` (dead — no runtime callers).
+
+## Shape of the one commit (= phase 2)
 
 **Delete:** `BuffSystem`, `SpeedModifier`, `EncumbrancePenalty`,
 `EncumbranceSystem`, `ActiveEffects` (pending reader recon), the
