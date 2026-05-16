@@ -1351,8 +1351,6 @@ export interface WorkstationBufferData {
   capacity: number;
   /** Set by SelectRecipe command for "assembly" step recipes. */
   activeRecipeId: string | null;
-  /** Countdown for "time" step recipes. null when idle. */
-  progressTicks: number | null;
 }
 
 function writeWorkstationSlot(w: WireWriter, s: WorkstationSlot): void {
@@ -1381,7 +1379,6 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
     w.writeU8(v.capacity);
     if (v.activeRecipeId !== null) { w.writeU8(1); w.writeStr(v.activeRecipeId); }
     else                           { w.writeU8(0); }
-    w.writeI32(v.progressTicks ?? -1);
     w.writeU16(v.slots.length);
     for (const s of v.slots) {
       if (s !== null) { w.writeU8(1); writeWorkstationSlot(w, s); }
@@ -1394,8 +1391,6 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
     const capacity       = r.readU8();
     const hasRecipe      = r.readU8() === 1;
     const activeRecipeId = hasRecipe ? r.readStr() : null;
-    const rawTicks       = r.readI32();
-    const progressTicks  = rawTicks < 0 ? null : rawTicks;
     const count = r.readU16();
     const slots: Array<WorkstationSlot | null> = [];
     for (let i = 0; i < count; i++) {
@@ -1403,7 +1398,7 @@ export const workstationBufferCodec: Serialiser<WorkstationBufferData> = {
       if (present) slots.push(readWorkstationSlot(r));
       else         slots.push(null);
     }
-    return { capacity, activeRecipeId, progressTicks, slots };
+    return { capacity, activeRecipeId, slots };
   },
 };
 

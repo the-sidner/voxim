@@ -22,6 +22,7 @@ import { Position } from "../../components/game.ts";
 import { Inventory } from "../../components/items.ts";
 import type { InventorySlot } from "@voxim/codecs";
 import { WorkstationTag, WorkstationBuffer } from "../../components/building.ts";
+import { Resource } from "../../components/resource.ts";
 import { moveSteps } from "../plan_helpers.ts";
 
 const NO_ACTION: JobTickAction = { movementX: 0, movementY: 0, actions: 0 };
@@ -104,9 +105,12 @@ export const craftAtWorkbenchJob: JobHandler = {
     if (job.phase === "hit") {
       const buffer = ctx.world.get(job.workbenchId, WorkstationBuffer);
       if (!buffer) return { ...NO_ACTION, clearJob: true };
-      // Recipe completed → buffer empty and no active recipe timer.
+      // Recipe completed → buffer empty, no active recipe, and no running
+      // time countdown (the crafting_timer Resource parks at 0 when done).
       const occupied = buffer.slots.filter((s) => s !== null).length;
-      if (occupied === 0 && buffer.activeRecipeId === null && buffer.progressTicks === null) {
+      const timer = ctx.world.get(job.workbenchId, Resource)?.values.crafting_timer;
+      const timerRunning = timer !== undefined && timer.value > 0;
+      if (occupied === 0 && buffer.activeRecipeId === null && !timerRunning) {
         return { ...NO_ACTION, clearJob: true };
       }
       if (!inRange) {

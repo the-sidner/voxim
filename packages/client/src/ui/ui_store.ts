@@ -112,7 +112,6 @@ export interface WorkstationPanelState {
   capacity:        number;
   slots:           (WorkstationBufferSlotView | null)[];
   activeRecipeId:  string | null;
-  progressTicks:   number | null;
 }
 
 // ── Trader ─────────────────────────────────────────────────────────────────────

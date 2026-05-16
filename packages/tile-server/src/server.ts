@@ -82,6 +82,7 @@ import { newResourceEffectRegistry } from "./resources/effect.ts";
 import { newResourceModifierRegistry } from "./resources/modifier.ts";
 import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
 import { emitEventEffect } from "./resources/effects/emit_event.ts";
+import { resolveRecipeEffect } from "./resources/effects/resolve_recipe.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
 import { createRecipeStepRegistry, registerBuiltinSteps } from "./crafting/mod.ts";
@@ -326,6 +327,7 @@ export class TileServer {
     const resourceEffects = newResourceEffectRegistry();
     resourceEffects.register(modifyHealthEffect);
     resourceEffects.register(emitEventEffect);
+    resourceEffects.register(resolveRecipeEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
     for (const entry of content.getAllConceptVerbEntries()) {

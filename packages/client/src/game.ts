@@ -915,7 +915,6 @@ export class VoximGame {
             : { kind: "unique" as const, entityId: s.entityId, prefabId: s.prefabId };
         }),
         activeRecipeId: state.workstationBuffer.activeRecipeId,
-        progressTicks:  state.workstationBuffer.progressTicks,
       },
     });
   }

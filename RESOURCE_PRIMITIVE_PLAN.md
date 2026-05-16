@@ -216,10 +216,27 @@ multi-slot shape.
   per-cell field — corruption was world content, not runtime state, so
   invariant 1 legitimately does not apply to this commit; worlds
   regenerate from seed per the `CLAUDE.md` no-on-disk-compat rule).
-- **T-238f — crafting timer.** `WorkstationBuffer.progressTicks` → a
-  workstation-entity countdown Resource whose `at:0` sustained threshold
-  fires a `resolve_recipe` effect; the time-step handler shrinks to that
-  effect. (Inputs-match auto-start stays recipe logic.)
+- **T-238f — crafting timer. LANDED.** `WorkstationBuffer.progressTicks`
+  → a `crafting_timer` Resource on the **workstation entity**
+  (`data/resources/crafting_timer.json`: rate −20/s = −1/tick from the
+  per-entity-seeded `recipe.ticks`, bounds.min 0). The `timeStep` handler
+  shrank to *only* auto-start (inputs match → seed the timer + bind
+  `activeRecipeId`); ResourceSystem owns the countdown; the new
+  `resolve_recipe` ResourceEffect owns completion (re-derive role
+  assignment vs the current buffer, then shared `resolveRecipe` or abandon
+  on mismatch). **Design refinement (honest call, cf. T-238d):** the
+  threshold is `cross@0` **not** `sustained@0` — completion is a one-shot,
+  and `cross` fires exactly once on entering the zone then parks at 0
+  (bounds.min) without re-firing, so the effect needs no "remove the
+  resource to stop" dance. Faking `sustained` to match the plan's letter
+  would have meant exactly that smell. **Deleted:**
+  `WorkstationBuffer.progressTicks` (the networked codec field — its
+  `i32` is gone from `workstationBufferCodec`; the client crafting-progress
+  readout drops with it, server-only until Resource networking lands, same
+  call the stamina/hunger bars made — client is drifted). The genericity
+  payoff: a Resource on a *workstation*, not an actor — zero special-casing
+  in `ResourceSystem`. 2 time-recipe integration tests; 183 green; bake
+  byte-identical (terrain untouched; only a wire codec changed).
 - **T-238g — polish.** Remove now-dead config keys' duplication, settle
   bootstrap at its final version, ensure `CLAUDE.md` "unified substrate"
   section reflects Action + Resource done, DerivedStat (T-239) next.

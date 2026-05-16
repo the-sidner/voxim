@@ -180,7 +180,7 @@ export function WorkstationPanel({ onAction }: { onAction: (a: UIAction) => void
         </div>
       </Section>
 
-      {ws.activeRecipeId && ws.progressTicks !== null && (
+      {ws.activeRecipeId && (
         <div style={{
           fontSize: "var(--fs-eyebrow)",
           letterSpacing: "var(--ls-eyebrow)",
@@ -188,7 +188,7 @@ export function WorkstationPanel({ onAction }: { onAction: (a: UIAction) => void
           color: "var(--ember-hi)",
           fontFamily: "var(--font-mono)",
         }}>
-          Crafting: {ws.activeRecipeId} <span class="num">({ws.progressTicks}t)</span>
+          Crafting: {ws.activeRecipeId}
         </div>
       )}
 

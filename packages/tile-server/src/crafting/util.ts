@@ -35,12 +35,12 @@ export function resolveRecipe(
   const newSlots = consumeFromBuffer(world, buffer.slots, match.recipe, match.assignment);
   // chainNextRecipeId carries the chain forward: keep the buffer primed with
   // the next recipe id so attack/assembly swings or the time-step auto-start
-  // can pick it up. Without a chain, both fields clear.
+  // can pick it up. Without a chain, the binding clears. The countdown is
+  // a `crafting_timer` Resource now (T-238f) — it parks at 0 on its own.
   world.set(stationId, WorkstationBuffer, {
     ...buffer,
     slots: newSlots,
     activeRecipeId: match.recipe.chainNextRecipeId ?? null,
-    progressTicks: null,
   });
   events.publish(TileEvents.CraftingCompleted, {
     crafterId: crafterId ?? stationId,

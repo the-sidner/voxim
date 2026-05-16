@@ -2433,6 +2433,18 @@ deleting the system it replaces.
   — honest refinement over "reuse the action ResolveContext") +
   modify_health effect. 5 unit tests + 178 green; inert; bake
   byte-identical. See plan T-238a.
+- **T-238f — DONE.** crafting_timer.json (workstation-entity Resource,
+  rate -20/s = -1/tick from per-entity-seeded recipe.ticks, bounds.min 0,
+  cross@0 -> resolve_recipe). timeStep handler shrank to auto-start only;
+  ResourceSystem owns the countdown; new resolve_recipe ResourceEffect
+  owns completion (re-derive assignment vs current buffer -> shared
+  resolveRecipe / abandon). Design refinement: cross@0 not sustained@0
+  (completion is one-shot; cross fires once then parks at 0 without
+  re-firing — no "remove resource to stop" dance). DELETED
+  WorkstationBuffer.progressTicks (networked codec i32 gone; client
+  crafting-progress readout drops, server-only until Resource networking
+  — client drifted). 2 tests + 183 green; bake byte-identical (terrain
+  untouched; only a wire codec changed).
 - **T-238e — DONE (scope changed: removal, not migration).** Project
   decision mid-arc: drop the corruption mechanic wholesale, to be
   reintroduced later at a different scale. So rather than migrate it onto

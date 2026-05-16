@@ -94,6 +94,5 @@ export const WorkstationBuffer = defineComponent({
     slots: [],
     capacity: 4,
     activeRecipeId: null,
-    progressTicks: null,
   }),
 });
