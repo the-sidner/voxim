@@ -2523,7 +2523,16 @@ handed over from the re-scoped T-231 — a workstation-entity timed
 process, the canonical degenerate-timer-as-Resource case.
 
 ### T-239 · DerivedStat primitive arc (sibling of the action arc)
-Effort: L   Status: planned
+Effort: L   Status: in-progress — sub-plan filed
+
+**Sub-plan: [`DERIVEDSTAT_PRIMITIVE_PLAN.md`](DERIVEDSTAT_PRIMITIVE_PLAN.md)**
+(filed 2026-05-16, after the T-238 Resource arc closed). Recon corrected
+two design-doc assumptions: the damage hooks are already in the
+health-hit-handler (not BuffSystem), and **speed is the only composed
+actor stat that exists** — so DerivedStat ships thin (one stat, two
+contributors) not as speculative N-stat generality. One non-phaseable
+commit deletes BuffSystem whole (= T-235 ∧ T-239). Four open scoping
+questions recorded in the sub-plan, surfaced for review before the diff.
 
 See the "The unified substrate" section of
 [`ACTION_PRIMITIVE_PLAN.md`](ACTION_PRIMITIVE_PLAN.md). `BuffSystem`
