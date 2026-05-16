@@ -178,8 +178,8 @@ The concrete order is dependency-sorted at boot (`sortSystemsByDependencies`); t
 shape that matters:
 
 ```
-NpcAiSystem → (Hunger/Stamina/Lifetime/Equipment/Placement/Crafting/
-ResourceNode/DayNight/Corruption/Encumbrance/Buff/Poise) → PhysicsSystem
+NpcAiSystem → (Lifetime/Equipment/Placement/Crafting/ResourceNode/
+DayNight/Encumbrance/Buff/ResourceSystem) → PhysicsSystem
 → ActionDispatcher → SkillSystem → (Projectile/ItemPhysics/TerrainDig/
 Trader/Dynasty) → AnimationSystem → HitboxSystem → PoiSystem → DeathSystem
 ```
@@ -404,6 +404,44 @@ stack slots; without it, each crafted copy is its own entity.
 
 ---
 
+## Universal primitives over one substrate
+
+The engine is being collapsed onto a small set of **content-defined
+primitives** that share one dispatch substrate (`Registry<H>` +
+effect-resolver), instead of a bespoke per-mechanic system each. Two are
+landed; one is next.
+
+- **Action primitive (T-225–T-234 — `ACTION_PRIMITIVE_PLAN.md`, done).**
+  Every behaviour — swing, dodge, block, stagger, consume, locomotion — is
+  a content `ActionDef`: a slot action with windup/active/winddown phases
+  whose edges fire `effects` gated by `gates`, dispatched entity-generic.
+  Replaced ActionSystem + DodgeSystem + the CharacterStateMachine.
+
+- **Resource primitive (T-238 — `RESOURCE_PRIMITIVE_PLAN.md`, done).**
+  Every bounded tick-scalar is a content `ResourceDef`: a `value` in
+  `[min,max]` moved each tick by a signed `rate` (optionally bent by a
+  closed `rateModifier` vocabulary), crossing named `thresholds` that fire
+  a `ResourceEffect`. One `ResourceSystem` + `data/resources/*.json`
+  replaced `StaminaSystem`, `HungerSystem`, `PoiseSystem`, and the
+  crafting time-step loop; the `exhausted` flag and `Stamina`/`Hunger`/
+  `Thirst`/`Poise` components are gone. It is entity-generic: the crafting
+  countdown is the same primitive on a *workstation* entity. **The
+  corruption mechanic was removed wholesale (T-238e), not migrated — it
+  returns later at a different scale; wire ids 24/25 stay retired.**
+
+Both reuse the same doctrine: a designer adds a new effect / gate /
+rateModifier / threshold as **one handler file + one `register()` call**,
+never an engine edit, and every content id is **cross-checked against its
+registry at boot** (fail-fast — see the ResourceDef / buff / recipe-step /
+BT checks in `server.ts`). Resource state is server-only for now
+(networking is a later add, same call `ActiveActions` made).
+
+**Next: DerivedStat (T-239)**, consuming the settled resource/effect
+machinery, lands together with the re-scoped buffs-as-scene-graph-children
+(the `BuffSystem`-deletion commit).
+
+---
+
 ## Combat and skills
 
 ### Two-layer architecture
@@ -497,7 +535,7 @@ so signature moves are data, not just the input-bit subset (T-234).
 
 `SaveManager` (injected into TileServer, optional) persists a binary snapshot:
 
-**What is saved:** WorldClock + TileCorruption, all terrain chunks (Heightmap + MaterialGrid),
+**What is saved:** WorldClock, all terrain chunks (Heightmap + MaterialGrid),
 resource node positions and HP.
 
 **What is NOT saved:** Players (reconnect and respawn fresh), NPCs (re-spawned from config),

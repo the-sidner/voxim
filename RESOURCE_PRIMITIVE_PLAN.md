@@ -1,8 +1,10 @@
 # Resource as a Universal Tick-Scalar Primitive — Implementation Plan
 
-**Status:** substrate implemented; T-238a–e landed, T-238f–g remain.
-Companion to `ACTION_PRIMITIVE_PLAN.md` (the action arc is complete) and
-`SCENE_GRAPH_PLAN.md`.
+**Status:** COMPLETE — T-238a–g all landed. Kept as architectural
+reference (companion to `ACTION_PRIMITIVE_PLAN.md` and
+`SCENE_GRAPH_PLAN.md`); see the per-phase commit hashes in `TICKETS.md`
+T-238. Note T-238e changed scope (corruption removed, not migrated) — the
+superseding design note below records it.
 
 > **Design note (T-238e supersedes the corruption parts below).** The
 > sections that follow discuss corruption as a *migration candidate*
@@ -237,9 +239,20 @@ multi-slot shape.
   payoff: a Resource on a *workstation*, not an actor — zero special-casing
   in `ResourceSystem`. 2 time-recipe integration tests; 183 green; bake
   byte-identical (terrain untouched; only a wire codec changed).
-- **T-238g — polish.** Remove now-dead config keys' duplication, settle
-  bootstrap at its final version, ensure `CLAUDE.md` "unified substrate"
-  section reflects Action + Resource done, DerivedStat (T-239) next.
+- **T-238g — polish. LANDED.** Boot-time cross-ref validation added:
+  every `ResourceDef` threshold `effect` and rateModifier `kind` is
+  checked against `resourceEffects` / `resourceModifiers` at server boot
+  and fails fast (mirrors the buff / recipe-step / BT checks). Bootstrap
+  settled at its final version **v10** (the resources array landed at
+  T-238a; T-238d–f changed only JSON *content* within existing envelope
+  arrays, no schema bump) — the transitional per-field `if (body.buffs)` /
+  `if (body.resources)` decode guards are removed (version is strictly
+  enforced, so a decoded blob always carries every declared array). The
+  now-dead `game_config.corruption` block was already removed in T-238e
+  (no residue). `CLAUDE.md` gained a "Universal primitives over one
+  substrate" section (Action + Resource done, corruption excised,
+  DerivedStat T-239 next) and its stale system-order / save-contract lines
+  are corrected.
 
 `ResourceSystem` order: after `DayNightSystem` (needs `WorldClock`), after
 `EquipmentSystem` (armor modifiers), before `ActionDispatcher` (actions

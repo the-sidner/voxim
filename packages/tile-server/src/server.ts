@@ -321,15 +321,41 @@ export class TileServer {
     const effects = createEffectRegistries();
     registerBuiltinEffects(effects);
 
-    // Resource substrate (T-238a) — registries shipped, one real effect
-    // registered. Inert until a ResourceDef + a spawn-seeded Resource
-    // component exist (T-238b onward).
+    // Resource substrate (T-238) — the one tick loop for every bounded
+    // scalar (stamina/hunger/thirst/poise + the crafting countdown).
+    // Thresholds dispatch through resourceEffects; rateModifiers through
+    // resourceModifiers — same Registry<H> doctrine as the action arc.
     const resourceEffects = newResourceEffectRegistry();
     resourceEffects.register(modifyHealthEffect);
     resourceEffects.register(emitEventEffect);
     resourceEffects.register(resolveRecipeEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
+
+    // T-238g: ResourceDef content cross-check — every threshold `effect`
+    // and rateModifier `kind` referenced from data/resources/*.json must
+    // resolve to a registered handler, or the runtime can't dispatch it.
+    // Fail fast at boot (mirrors the buff / recipe-step / BT checks).
+    for (const def of content.resources.values()) {
+      for (const t of def.thresholds ?? []) {
+        if (!resourceEffects.has(t.effect)) {
+          throw new Error(
+            `ResourceDef "${def.id}" references threshold effect "${t.effect}" ` +
+            `but no resource-effect handler is registered. ` +
+            `Registered: [${resourceEffects.ids().join(", ")}]`,
+          );
+        }
+      }
+      for (const m of def.rateModifiers ?? []) {
+        if (!resourceModifiers.has(m.kind)) {
+          throw new Error(
+            `ResourceDef "${def.id}" references rateModifier kind "${m.kind}" ` +
+            `but no resource-modifier handler is registered. ` +
+            `Registered: [${resourceModifiers.ids().join(", ")}]`,
+          );
+        }
+      }
+    }
     for (const entry of content.getAllConceptVerbEntries()) {
       if (!effects.apply.has(entry.effectStat)) {
         throw new Error(

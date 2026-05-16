@@ -2419,7 +2419,9 @@ scene-view client rebuild). Deferred structural pieces (crafting
 time-step timer, buff compose) carried by sibling arcs T-238/T-239.
 
 ### T-238 · Resource primitive arc (sibling of the action arc)
-Effort: XL (multi-ticket arc)   Status: in-progress — sub-plan filed
+Effort: XL (multi-ticket arc)   Status: done
+Commits: T-238a 6c0590b · T-238b a2410f5 · T-238c c8714d3 ·
+T-238d 02d3cc0 · T-238e be1e8e8 · T-238f 50c13d9 · T-238g f9e9dd1
 
 **Sub-plan: [`RESOURCE_PRIMITIVE_PLAN.md`](RESOURCE_PRIMITIVE_PLAN.md)**
 (filed 2026-05-15, action arc complete). Phasing T-238a (inert substrate)
@@ -2433,6 +2435,16 @@ deleting the system it replaces.
   — honest refinement over "reuse the action ResolveContext") +
   modify_health effect. 5 unit tests + 178 green; inert; bake
   byte-identical. See plan T-238a.
+- **T-238g — DONE.** Boot-time cross-ref validation: every ResourceDef
+  threshold effect + rateModifier kind checked against the resource
+  effect/modifier registries at server boot, fail-fast (mirrors buff /
+  recipe-step / BT checks). Bootstrap settled at final v10 (no schema
+  bump in d–f; transitional `if (body.buffs)`/`if (body.resources)`
+  decode guards removed — version is strictly enforced). CLAUDE.md gained
+  a "Universal primitives over one substrate" section (Action + Resource
+  done, corruption excised, DerivedStat T-239 next); stale system-order
+  and save-contract lines corrected. Arc complete. 183 green;
+  byte-identical.
 - **T-238f — DONE.** crafting_timer.json (workstation-entity Resource,
   rate -20/s = -1/tick from per-entity-seeded recipe.ticks, bounds.min 0,
   cross@0 -> resolve_recipe). timeStep handler shrank to auto-start only;

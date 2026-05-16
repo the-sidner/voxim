@@ -203,12 +203,11 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const a of body.actions)              store.registerAction(a);
   for (const v of body.verbs)                store.registerVerbDef(v);
   for (const e of body.conceptVerbEntries)   store.registerConceptVerbEntry(e);
-  if (body.buffs) {
-    for (const b of body.buffs)              store.registerBuff(b);
-  }
-  if (body.resources) {
-    for (const r of body.resources)          store.registerResource(r);
-  }
+  // version is strictly enforced above, so a decoded blob always carries
+  // every array the current envelope declares — no per-field guards
+  // (those were transitional and are settled now, T-238g).
+  for (const b of body.buffs)                store.registerBuff(b);
+  for (const r of body.resources)            store.registerResource(r);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
 
