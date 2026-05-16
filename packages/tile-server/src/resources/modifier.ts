@@ -5,9 +5,9 @@
  * scale, day/night selection, tile coupling) — `Registry<H>` doctrine, no
  * inline logic, no expression DSL (the action-arc rule). A modifier takes
  * the running rate and returns the transformed rate; `ResourceDef.rateModifiers`
- * chains them in declaration order. T-238a ships the registry empty — each
- * concrete `kind` lands with the consumer that needs it (stamina's armor
- * `equipment_stat` coupling, T-238b).
+ * chains them in declaration order. Shipped kind: `equipment_stat`
+ * (stamina's worn-gear regen coupling) — it defers to the Status/Modifier
+ * `effective()` query rather than scanning Equipment itself.
  */
 
 import type { World, EntityId } from "@voxim/engine";

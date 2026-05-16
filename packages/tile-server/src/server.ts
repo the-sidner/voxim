@@ -333,9 +333,7 @@ export class TileServer {
     resourceEffects.register(modifyHealthEffect);
     resourceEffects.register(emitEventEffect);
     resourceEffects.register(resolveRecipeEffect);
-    // T-239 phase 2a — inert: buff_timer.json references expire_buff (boot
-    // cross-ref check requires it registered); nothing seeds a buff_timer
-    // yet, so it never fires until phase 2b wires start_buff's callers.
+    // expire_buff: a buff child's buff_timer Resource hits 0 → destroySubtree.
     resourceEffects.register(expireBuffEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
@@ -451,9 +449,8 @@ export class TileServer {
     actionEffects.register(clearTagResolver);
     actionEffects.register(dodgeImpulseResolver);
     actionEffects.register(consumeItemResolver);
-    // T-239 phase 2a — inert: the `buff` ambient action fires buff_tick;
-    // start_buff spawns buff children. No content/skill invokes them yet
-    // (phase 2b routes the concept-verb apply path here).
+    // Buffs: start_buff spawns a buff scene-graph child; the child's
+    // `buff` ambient action fires buff_tick (DoT/HoT) each tick.
     actionEffects.register(startBuffResolver);
     actionEffects.register(buffTickResolver);
     const actionDispatcher = new ActionDispatcher(

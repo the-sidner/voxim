@@ -11,9 +11,9 @@
  * Replaces StaminaSystem / HungerSystem / PoiseSystem / the crafting
  * time-step timer (migrated one-by-one in T-238b…f). (CorruptionSystem
  * was deleted outright at T-238e — the mechanic was removed, not
- * migrated; it returns later at a different scale.) Inert
- * until something installs a `Resource` component. Entity-generic: works
- * for actor, tile-singleton, or workstation entities alike.
+ * migrated; it returns later at a different scale.) Entity-generic:
+ * actors (stamina/hunger/thirst/poise), workstations (crafting_timer),
+ * and buff children (buff_timer) all carry `Resource` alike.
  */
 
 import type { World } from "@voxim/engine";

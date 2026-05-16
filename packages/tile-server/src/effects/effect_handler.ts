@@ -2,9 +2,9 @@
  * Effect handler interfaces.
  *
  * Every `effectStat` string referenced from content (concept_verb_matrix.json)
- * must have a registered `EffectApplyHandler`. Tick and compose handlers are
- * optional — not every effect has per-tick side effects or contributes to
- * composed stats.
+ * must have a registered `EffectApplyHandler`. (Tick / compose / damage-hook
+ * handler kinds were retired in T-239 — periodic + stat-modifier effects
+ * are buff scene-graph children read via the `effective()` query.)
  *
  * Registered in `server.ts`. Validated at startup against
  * `ContentService.getAllConceptVerbEntries()` — unknown effectStat = fail fast.

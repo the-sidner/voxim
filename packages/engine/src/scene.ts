@@ -14,10 +14,9 @@
  * here and mirrored as a reservation comment in `@voxim/protocol`'s
  * `ComponentType`.
  *
- * Nothing consumes this yet (T-215 is the inert substrate): existing
- * entities are parent-less by default; no system calls the hierarchy APIs;
- * prefabs have no `children`. Downstream tickets (subtrees, bones,
- * equipment, buffs) build on it.
+ * Consumed by prefab subtrees (T-217) and buff scene-graph children
+ * (T-239 — a buff is a child entity carrying BuffSpec + the buff ambient
+ * action + a buff_timer Resource). Entities are parent-less by default.
  */
 
 import { defineComponent } from "./component.ts";

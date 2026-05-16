@@ -10,8 +10,8 @@
  *
  * Server-only: there is no resource-bar UI yet (same call `ActiveActions`
  * made at first). Networking is a later add if/when a bar needs it.
- * Nothing installs this yet — the substrate is inert until T-238b seeds
- * stamina at spawn.
+ * Installed at spawn (stamina/hunger/thirst/poise on actors) and by
+ * start_buff (buff_timer) / workstations (crafting_timer).
  */
 
 import { defineComponent } from "@voxim/engine";
