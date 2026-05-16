@@ -785,8 +785,8 @@ export interface BuffDef {
  * signed `rate` (regen +, decay/timer −), the rate optionally modulated by
  * a closed vocabulary of external `rateModifiers`, crossing named
  * `thresholds` that fire an effect through the shared EffectRegistry.
- * Collapses StaminaSystem / HungerSystem / PoiseSystem / CorruptionSystem /
- * the crafting time-step timer into one system + data. See
+ * Collapses StaminaSystem / HungerSystem / PoiseSystem / the crafting
+ * time-step timer into one system + data. See
  * RESOURCE_PRIMITIVE_PLAN.md.
  */
 export interface ResourceDef {
@@ -893,7 +893,6 @@ export interface ZoneDef {
   priority: number;
   classifyRules: ZoneClassifyRule[];
   dangerLevel: number;
-  corruptionBaseline: number;
   /** Expected NPC spawns per zone cell; fractional values are probabilistic. */
   npcSpawnDensity: number;
   /** Expected resource-node spawns per zone cell. */
@@ -1359,16 +1358,6 @@ export interface GameConfig {
     speed: number;
     parryWindowTicks: number;
     staggerTicks: number;
-  };
-  corruption: {
-    nightGainRatePerTick: number;
-    dayDecayRatePerTick: number;
-    exposureGainRatePerTick: number;
-    exposureDecayRatePerTick: number;
-    staminaPenaltyThreshold: number;
-    staminaPenaltyFraction: number;
-    healthDamageThreshold: number;
-    healthDps: number;
   };
   encumbrance: {
     maxCarryWeight: number;

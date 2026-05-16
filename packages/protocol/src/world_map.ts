@@ -34,8 +34,6 @@ export interface WorldMapCell {
   roadFlag: boolean;
   /** True if a city is seeded in this tile (T-142 spawns CityState here). */
   citySeedFlag: boolean;
-  /** 0..1 corruption level for the post-apocalyptic overlay. */
-  corruptionLevel: number;
   /** Gate placements on the tile's edges (T-140 wires them as entities). */
   gatePositions: GatePosition[];
 }

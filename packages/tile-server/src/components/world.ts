@@ -31,36 +31,9 @@ export function isDay(clock: WorldClockData): boolean {
   return t >= 0.25 && t < 0.75;
 }
 
-// ---- TileCorruption ----
-// Tile-level corruption level 0–100. Carried on the same world-state entity as WorldClock.
-// Replicated to clients for visual effects (colour grading, particle density).
-
-export interface TileCorruptionData {
-  /** 0 = pristine, 100 = maximum corruption. */
-  level: number;
-}
-
-export const TileCorruption = defineComponent({
-  name: "tileCorruption" as const,
-  wireId: ComponentType.tileCorruption,
-  codec: buildCodec<TileCorruptionData>({ level: { type: "f32" } }),
-  default: (): TileCorruptionData => ({ level: 0 }),
-});
-
-// ---- CorruptionExposure ----
-// Per-entity accumulated exposure to tile corruption. 0–100.
-// Increases while the tile is corrupted, decays when the entity is in a clean area.
-
-export interface CorruptionExposureData {
-  level: number;
-}
-
-export const CorruptionExposure = defineComponent({
-  name: "corruptionExposure" as const,
-  wireId: ComponentType.corruptionExposure,
-  codec: buildCodec<CorruptionExposureData>({ level: { type: "f32" } }),
-  default: (): CorruptionExposureData => ({ level: 0 }),
-});
+// TileCorruption (24) + CorruptionExposure (25) retired here (T-238e):
+// the corruption mechanic was removed wholesale, to be reintroduced later
+// at a different scale. Wire ids 24/25 are reserved in component_types.ts.
 
 // ---- SpeedModifier ----
 // Composed speed multiplier written exclusively by BuffSystem each tick.

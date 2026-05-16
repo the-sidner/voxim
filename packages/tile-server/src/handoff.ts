@@ -6,8 +6,8 @@
  * restores it as a new entity.
  *
  * Components persisted: Position, Velocity, Facing, Health,
- * Resource (stamina/hunger/thirst/… T-238), Inventory, Equipment, LoreLoadout, ActiveEffects, SpeedModifier,
- * CorruptionExposure.
+ * Resource (stamina/hunger/thirst/poise/… T-238), Inventory, Equipment,
+ * LoreLoadout, ActiveEffects, SpeedModifier.
  *
  * Components NOT persisted: InputState (reset on connect), presence-as-flag
  * combat components like CounterReady and action tags (iframe, blocking,
@@ -21,7 +21,7 @@ import { Resource } from "./components/resource.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
-import { SpeedModifier, CorruptionExposure } from "./components/world.ts";
+import { SpeedModifier } from "./components/world.ts";
 
 export interface HandoffPayload {
   playerId: string;
@@ -48,7 +48,6 @@ interface SerializedComponents {
   loreLoadout?: ReturnType<typeof LoreLoadout.codec.decode> | null;
   activeEffects?: ReturnType<typeof ActiveEffects.codec.decode> | null;
   speedModifier?: ReturnType<typeof SpeedModifier.codec.decode> | null;
-  corruptionExposure?: ReturnType<typeof CorruptionExposure.codec.decode> | null;
 }
 
 /**
@@ -79,7 +78,6 @@ export function serializePlayer(
       loreLoadout: world.get(playerId, LoreLoadout) ?? null,
       activeEffects: world.get(playerId, ActiveEffects) ?? null,
       speedModifier: world.get(playerId, SpeedModifier) ?? null,
-      corruptionExposure: world.get(playerId, CorruptionExposure) ?? null,
     },
   };
 }
@@ -107,6 +105,5 @@ export function restorePlayer(world: World, payload: HandoffPayload): EntityId {
   if (c.loreLoadout) world.write(id, LoreLoadout, c.loreLoadout);
   if (c.activeEffects) world.write(id, ActiveEffects, c.activeEffects);
   if (c.speedModifier) world.write(id, SpeedModifier, c.speedModifier);
-  if (c.corruptionExposure) world.write(id, CorruptionExposure, c.corruptionExposure);
   return id;
 }

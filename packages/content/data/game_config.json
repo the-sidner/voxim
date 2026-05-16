@@ -48,16 +48,6 @@
     "parryWindowTicks": 8,
     "staggerTicks": 20
   },
-  "corruption": {
-    "nightGainRatePerTick": 0.005,
-    "dayDecayRatePerTick": 0.003,
-    "exposureGainRatePerTick": 0.0001,
-    "exposureDecayRatePerTick": 0.003,
-    "staminaPenaltyThreshold": 30,
-    "staminaPenaltyFraction": 0.3,
-    "healthDamageThreshold": 60,
-    "healthDps": 2
-  },
   "encumbrance": {
     "maxCarryWeight": 50,
     "penaltyThresholdRatio": 0.5,

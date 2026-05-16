@@ -64,11 +64,9 @@ export { ResourceNode } from "./src/components/resource_node.ts";
 export type { ResourceNodeData } from "./src/components/resource_node.ts";
 
 // World-state components
-export { WorldClock, TileCorruption, CorruptionExposure, SpeedModifier } from "./src/components/world.ts";
+export { WorldClock, SpeedModifier } from "./src/components/world.ts";
 export type {
   WorldClockData,
-  TileCorruptionData,
-  CorruptionExposureData,
   SpeedModifierData,
 } from "./src/components/world.ts";
 

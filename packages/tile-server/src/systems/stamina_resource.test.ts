@@ -15,7 +15,6 @@ import { ResourceSystem } from "./resource.ts";
 import { newResourceEffectRegistry } from "../resources/effect.ts";
 import { newResourceModifierRegistry } from "../resources/modifier.ts";
 import { equipmentStatModifier } from "../resources/modifiers/equipment_stat.ts";
-import { corruptionPenaltyModifier } from "../resources/modifiers/corruption_penalty.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 
 const DT = 1 / 20;
@@ -25,7 +24,6 @@ const content = await JsonSource.load();
 function sys(): ResourceSystem {
   const mods = newResourceModifierRegistry();
   mods.register(equipmentStatModifier);
-  mods.register(corruptionPenaltyModifier);
   return new ResourceSystem(content, newResourceEffectRegistry(), mods, noDeaths);
 }
 

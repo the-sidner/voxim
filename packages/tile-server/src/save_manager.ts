@@ -3,7 +3,7 @@
  * tile_id) via `@voxim/db`'s `TileSaveRepo`.
  *
  * What is saved:
- *   WorldClock + TileCorruption  — so day/night and corruption survive restarts
+ *   WorldClock                   — so day/night survives restarts
  *   Heightmap + MaterialGrid     — all 256 terrain chunks
  *   Position + ResourceNode      — node positions, hit-point state, respawn timers
  *
@@ -34,7 +34,7 @@ import type { World, EntityId } from "@voxim/engine";
 import { WireWriter, WireReader } from "@voxim/codecs";
 import { Heightmap, MaterialGrid } from "@voxim/world";
 import type { TileSaveRepo } from "@voxim/db";
-import { WorldClock, TileCorruption } from "./components/world.ts";
+import { WorldClock } from "./components/world.ts";
 import { Position } from "./components/game.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { DEF_BY_TYPE_ID } from "./component_registry.ts";
@@ -86,18 +86,11 @@ export class SaveManager {
   serialize(world: World): Uint8Array {
     const entities: SavedEntity[] = [];
 
-    // World-state entity (WorldClock + TileCorruption)
+    // World-state entity (WorldClock)
     for (const { entityId, worldClock } of world.query(WorldClock)) {
       const components: SavedComponent[] = [
         { typeId: WorldClock.wireId, data: WorldClock.codec.encode(worldClock) },
       ];
-      const corruption = world.get(entityId, TileCorruption);
-      if (corruption) {
-        components.push({
-          typeId: TileCorruption.wireId,
-          data: TileCorruption.codec.encode(corruption),
-        });
-      }
       entities.push({ entityId, components });
       break; // only one world-state entity
     }

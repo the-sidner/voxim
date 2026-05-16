@@ -85,7 +85,7 @@ export class AccountClient {
    * disconnect hot path) but losing a death silently is worse than a few
    * hundred ms of cleanup, so we await.
    */
-  async recordDeath(userId: string, cause: "damage" | "starvation" | "corruption" | "effect", killerId?: string): Promise<void> {
+  async recordDeath(userId: string, cause: "damage" | "starvation" | "effect", killerId?: string): Promise<void> {
     const res = await fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/death`, {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),

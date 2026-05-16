@@ -32,8 +32,9 @@ export const ComponentType = {
   blueprint:          21,
   resource_node:      22,
   worldClock:         23,
-  tileCorruption:     24,
-  corruptionExposure: 25,
+  // 24 (tileCorruption) retired — corruption mechanic removed (T-238e),
+  //    to be reintroduced later at a different scale; do not reuse
+  // 25 (corruptionExposure) retired — same; do not reuse
   traderInventory:    26,
   loreLoadout:        27,
   activeEffects:      28,

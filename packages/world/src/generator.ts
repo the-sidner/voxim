@@ -67,7 +67,7 @@ const CHUNK_CELLS = CHUNK_SIZE * CHUNK_SIZE;
 export interface GeneratedTile {
   /** Chunk entity IDs indexed by chunkX + chunkY * CHUNKS_PER_TILE_SIDE */
   chunkIds: EntityId[];
-  /** Coarse zone grid for this tile (danger, corruption, spawn weights). */
+  /** Coarse zone grid for this tile (danger, spawn weights). */
   zoneGrid: ZoneGridData;
 }
 
@@ -288,7 +288,6 @@ function buildZoneGrid(
         zoneId: zoneDef.id,
         biomeId: cn.biome.id,
         avgHeight,
-        corruption: zoneDef.corruptionBaseline,
       };
     }
   }

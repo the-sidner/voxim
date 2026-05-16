@@ -11,11 +11,13 @@
  *   20      tileSize*tileSize*4   heights Float32Array
  *   +       tileSize*tileSize*2   materials Uint16Array
  *   +       for each zone cell: u8 zoneIdLen, zoneId bytes, u8 biomeIdLen,
- *           biomeId bytes, f32 avgHeight, f32 corruption
+ *           biomeId bytes, f32 avgHeight
  *
  * Version 2: zoneId and biomeId are length-prefixed UTF-8 strings (previously
  * u8 numeric enum values). Biome + zone sets are now data-driven, so names
  * are the stable identifiers.
+ * Version 3: the per-cell f32 corruption field is gone (the corruption
+ * mechanic was removed). Caches regenerate from seed — no migration.
  */
 
 import type { ZoneGridData, ZoneCell } from "./zones.ts";
@@ -23,7 +25,7 @@ import { TILE_SIZE } from "./terrain.ts";
 import { DEFAULT_TERRAIN_CONFIG } from "./terrain_config.ts";
 
 const MAGIC = 0x504d5856; // "VXMP" little-endian
-const VERSION = 2;
+const VERSION = 3;
 const HEADER_SIZE = 20;
 
 const TEXT_ENCODER = new TextEncoder();
@@ -32,8 +34,8 @@ const TEXT_DECODER = new TextDecoder();
 function zoneCellByteLength(cell: ZoneCell): number {
   const zoneBytes = TEXT_ENCODER.encode(cell.zoneId).byteLength;
   const biomeBytes = TEXT_ENCODER.encode(cell.biomeId).byteLength;
-  // u8 len + bytes, u8 len + bytes, f32 avgHeight, f32 corruption
-  return 1 + zoneBytes + 1 + biomeBytes + 4 + 4;
+  // u8 len + bytes, u8 len + bytes, f32 avgHeight
+  return 1 + zoneBytes + 1 + biomeBytes + 4;
 }
 
 /** Serialize terrain buffers and zone grid to a binary file. */
@@ -81,7 +83,6 @@ export async function saveTerrainCache(
     view.setUint8(offset, biomeIdBytes.byteLength); offset += 1;
     u8.set(biomeIdBytes, offset); offset += biomeIdBytes.byteLength;
     view.setFloat32(offset, cell.avgHeight, true); offset += 4;
-    view.setFloat32(offset, cell.corruption, true); offset += 4;
   }
 
   await Deno.writeFile(path, new Uint8Array(buf));
@@ -153,8 +154,7 @@ export async function loadTerrainCache(path: string): Promise<{
     const biomeId = TEXT_DECODER.decode(u8.subarray(offset, offset + biomeIdLen));
     offset += biomeIdLen;
     const avgHeight = view.getFloat32(offset, true); offset += 4;
-    const corruption = view.getFloat32(offset, true); offset += 4;
-    cells[i] = { zoneId, biomeId, avgHeight, corruption };
+    cells[i] = { zoneId, biomeId, avgHeight };
   }
 
   return {

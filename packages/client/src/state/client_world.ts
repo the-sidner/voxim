@@ -43,8 +43,6 @@ export interface StaminaState   { current: number; max: number; exhausted: boole
 export interface HungerState    { value: number }
 export interface ThirstState    { value: number }
 export interface WorldClockState  { ticksElapsed: number; dayLengthTicks: number }
-export interface TileCorruptionState { level: number }
-export interface CorruptionExposureState { level: number }
 
 export interface EntityState {
   position?: PositionState;
@@ -77,8 +75,6 @@ export interface EntityState {
   stats?: StatsData;
   provenance?: ProvenanceData;
   worldClock?: WorldClockState;
-  tileCorruption?: TileCorruptionState;
-  corruptionExposure?: CorruptionExposureState;
   gateLink?: GateLinkData;
   name?: NameData;
   characterStateMachine?: CharacterStateMachineData;
@@ -282,16 +278,6 @@ export class ClientWorld {
       case ComponentType.worldClock: {
         const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
         entity.worldClock = { ticksElapsed: v.getInt32(0, true), dayLengthTicks: v.getInt32(4, true) };
-        break;
-      }
-      case ComponentType.tileCorruption: {
-        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
-        entity.tileCorruption = { level: v.getFloat32(0, true) };
-        break;
-      }
-      case ComponentType.corruptionExposure: {
-        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
-        entity.corruptionExposure = { level: v.getFloat32(0, true) };
         break;
       }
       case ComponentType.gateLink:

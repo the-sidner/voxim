@@ -6,8 +6,8 @@
  * inline logic, no expression DSL (the action-arc rule). A modifier takes
  * the running rate and returns the transformed rate; `ResourceDef.rateModifiers`
  * chains them in declaration order. T-238a ships the registry empty — each
- * concrete `kind` lands with the consumer that needs it (stamina's armor /
- * corruption coupling in T-238b/e).
+ * concrete `kind` lands with the consumer that needs it (stamina's armor
+ * `equipment_stat` coupling, T-238b).
  */
 
 import type { World, EntityId } from "@voxim/engine";

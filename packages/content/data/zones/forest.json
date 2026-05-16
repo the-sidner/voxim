@@ -9,7 +9,6 @@
     }
   ],
   "dangerLevel": 3,
-  "corruptionBaseline": 10,
   "npcSpawnDensity": 0.08,
   "nodeSpawnDensity": 0.5,
   "propSpawnDensity": 1.5,

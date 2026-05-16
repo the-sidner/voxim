@@ -1,12 +1,11 @@
 /**
- * modify_health resource effect (T-238) — the starvation / corruption
- * coupling. A threshold params `{ dps, cause? }`: applies `dps × dt` to the
- * entity's Health each fire (negative dps = damage), clamps to [0, max],
- * publishes DamageDealt on damage, and requests death through the port when
- * health reaches zero (cause defaults to "effect").
+ * modify_health resource effect (T-238) — the starvation coupling. A
+ * threshold params `{ dps, cause? }`: applies `dps × dt` to the entity's
+ * Health each fire (negative dps = damage), clamps to [0, max], publishes
+ * DamageDealt on damage, and requests death through the port when health
+ * reaches zero (cause defaults to "effect").
  *
- * Inert until a ResourceDef references it (T-238c hunger / T-238e
- * corruption); shipped now so the substrate has one real, tested effect.
+ * Used by hunger/thirst (T-238c) for starvation/dehydration DPS.
  */
 
 import { TileEvents } from "@voxim/protocol";

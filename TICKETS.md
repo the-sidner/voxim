@@ -2433,6 +2433,21 @@ deleting the system it replaces.
   — honest refinement over "reuse the action ResolveContext") +
   modify_health effect. 5 unit tests + 178 green; inert; bake
   byte-identical. See plan T-238a.
+- **T-238e — DONE (scope changed: removal, not migration).** Project
+  decision mid-arc: drop the corruption mechanic wholesale, to be
+  reintroduced later at a different scale. So rather than migrate it onto
+  the Resource substrate, the whole mechanic is deleted in one commit:
+  CorruptionSystem, TileCorruption + CorruptionExposure components (wire
+  ids 24/25 retired), the corruption_penalty rate modifier (the T-238b
+  bridge — its sole purpose), game_config.corruption, ZoneDef
+  .corruptionBaseline + 11 zone JSONs, ZoneCell.corruption (terrain cache
+  v2→v3), WorldMapCell.corruptionLevel, the "corruption" DeathCause, and
+  every save/handoff/spawn/client touchpoint. Lore flavour + the
+  "Corrupted Glade" POI are world narrative (not the mechanic) — kept.
+  This moots the plan's closed-rateModifier-vocabulary hinge; equipment
+  _stat is now the only shipped modifier. 223 green. Bake intentionally
+  changes (corruption was world content, not runtime state — invariant 1
+  legitimately N/A here; worlds regenerate from seed).
 - **T-238d — DONE.** poise.json (pure regen 12/s, bounds 0..50, no
   modifiers/thresholds — the minimal Resource). Seeded on player+NPC
   spawn; health_hit_handler keeps poise damage + break→stagger-tier,

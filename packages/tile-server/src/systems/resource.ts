@@ -8,8 +8,10 @@
  *   3. fire thresholds — `sustained` every tick in-zone, `cross` once on
  *      entering the zone — through the shared `ResourceEffect` registry.
  *
- * Replaces StaminaSystem / HungerSystem / PoiseSystem / CorruptionSystem /
- * the crafting time-step timer (migrated one-by-one in T-238b…f). Inert
+ * Replaces StaminaSystem / HungerSystem / PoiseSystem / the crafting
+ * time-step timer (migrated one-by-one in T-238b…f). (CorruptionSystem
+ * was deleted outright at T-238e — the mechanic was removed, not
+ * migrated; it returns later at a different scale.) Inert
  * until something installs a `Resource` component. Entity-generic: works
  * for actor, tile-singleton, or workstation entities alike.
  */

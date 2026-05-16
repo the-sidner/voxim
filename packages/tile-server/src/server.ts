@@ -48,7 +48,6 @@ import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
 import { equipmentStatModifier } from "./resources/modifiers/equipment_stat.ts";
-import { corruptionPenaltyModifier } from "./resources/modifiers/corruption_penalty.ts";
 import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver } from "./actions/index.ts";
 import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver, RequestedActionIntentResolver } from "./actions/intent.ts";
@@ -69,7 +68,6 @@ import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
 import { WorkstationHitHandler } from "./handlers/workstation_hit_handler.ts";
 import { TerrainDigSystem } from "./handlers/terrain_hit_handler.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
-import { CorruptionSystem } from "./systems/corruption.ts";
 import { EncumbranceSystem } from "./systems/encumbrance.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { BuffSystem } from "./systems/buff.ts";
@@ -95,7 +93,7 @@ import { StaleSlotCleanupSystem } from "./systems/stale_slot_cleanup.ts";
 import { AnimationSystem } from "./systems/animation.ts";
 import { HitboxSystem } from "./systems/hitbox.ts";
 import { DebugCommandSystem } from "./systems/debug_commands.ts";
-import { WorldClock, TileCorruption } from "./components/world.ts";
+import { WorldClock } from "./components/world.ts";
 import { SaveManager } from "./save_manager.ts";
 import { serializePlayer } from "./handoff.ts";
 import { SpatialGrid } from "./spatial_grid.ts";
@@ -330,7 +328,6 @@ export class TileServer {
     resourceEffects.register(emitEventEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
-    resourceModifiers.register(corruptionPenaltyModifier);
     for (const entry of content.getAllConceptVerbEntries()) {
       if (!effects.apply.has(entry.effectStat)) {
         throw new Error(
@@ -497,7 +494,6 @@ export class TileServer {
       new CraftingSystem(content, recipeSteps),
       new ResourceNodeSystem(content),
       new DayNightSystem(content),
-      new CorruptionSystem(content, deathSystem),
       new EncumbranceSystem(content),
       new BuffSystem(effects.tick, effects.compose, deathSystem),
       new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem),
@@ -1160,7 +1156,6 @@ export class TileServer {
     const id = newEntityId();
     this.world.create(id);
     this.world.write(id, WorldClock, { ticksElapsed: 0, dayLengthTicks });
-    this.world.write(id, TileCorruption, { level: 0 });
     console.log("[TileServer] world-state entity created");
     // Starter entities (workstations, nodes) are declared in tile_layout.json.
   }

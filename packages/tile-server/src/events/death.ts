@@ -12,7 +12,7 @@
  */
 import type { EntityId } from "@voxim/engine";
 
-export type DeathCause = "damage" | "starvation" | "corruption" | "effect";
+export type DeathCause = "damage" | "starvation" | "effect";
 
 export interface RequestDeathPayload {
   readonly entityId: EntityId;

@@ -16,8 +16,6 @@ export interface ZoneCell {
   biomeId: string;
   /** Average world-unit height for cells in this zone. */
   avgHeight: number;
-  /** Corruption level 0–100. */
-  corruption: number;
 }
 
 export interface ZoneGridData {

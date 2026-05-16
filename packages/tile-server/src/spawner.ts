@@ -38,7 +38,7 @@ import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { Blueprint, WorkstationTag } from "./components/building.ts";
-import { CorruptionExposure, SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
+import { SpeedModifier, EncumbrancePenalty } from "./components/world.ts";
 import { LoreLoadout, ActiveEffects } from "./components/lore_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
@@ -128,7 +128,6 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   writeDefaults(
     world, id,
-    CorruptionExposure,
     LoreLoadout, ActiveEffects, CraftingQueue, AnimationState,
     FogState,
   );
@@ -188,7 +187,6 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
 
   writeDefaults(
     world, id,
-    CorruptionExposure,
     NpcJobQueue, AnimationState, ActiveEffects,
   );
 

@@ -1,8 +1,17 @@
 # Resource as a Universal Tick-Scalar Primitive — Implementation Plan
 
-**Status:** design locked, substrate not yet implemented. Companion to
-`ACTION_PRIMITIVE_PLAN.md` (the action arc is complete) and
+**Status:** substrate implemented; T-238a–e landed, T-238f–g remain.
+Companion to `ACTION_PRIMITIVE_PLAN.md` (the action arc is complete) and
 `SCENE_GRAPH_PLAN.md`.
+
+> **Design note (T-238e supersedes the corruption parts below).** The
+> sections that follow discuss corruption as a *migration candidate*
+> (the closed-`rateModifier`-vocabulary hinge, `daynight`/`tile_coupled`/
+> `resource_gate` kinds, the `corruptionExposure`→`stamina` coupling).
+> That question is **moot**: the corruption mechanic was removed wholesale
+> at T-238e (project decision — it returns later at a different scale), so
+> none of it migrates. Read those passages as the original design intent,
+> not the final shape. See the T-238e phasing entry.
 **Tickets:** T-238 arc, sub-tickets T-238a … T-238g below.
 **Thesis:** the second of the three primitives over one substrate. The
 action arc proved the pattern (content-defined behaviour + entity-generic
@@ -187,10 +196,26 @@ multi-slot shape.
   regen integration tests (rate+clamp, broken→full no-suppression); 181
   content/tile-server/codecs/engine green; bake byte-identical (resources
   are runtime state, terrain untouched).
-- **T-238e — corruption.** Iff the closed `rateModifier` vocabulary above
-  holds: `tileCorruption` (tile-scope) + `corruptionExposure` (entity)
-  Resources; **delete `CorruptionSystem`**. Else: partial — values become
-  Resources, a slim rate contributor remains; recorded honestly.
+- **T-238e — corruption: REMOVED, not migrated. LANDED.** Project
+  decision (mid-arc): the corruption mechanic is dropped wholesale, to be
+  reintroduced later at a different scale. So instead of migrating it onto
+  the Resource substrate, the entire mechanic is deleted in one commit —
+  **`CorruptionSystem`, the `TileCorruption` + `CorruptionExposure`
+  components (wire ids 24/25 retired), the `corruption_penalty` rate
+  modifier (the T-238b bridge — its only purpose was this coupling), the
+  `game_config.corruption` block, `ZoneDef.corruptionBaseline` + all 11
+  zone JSONs, the `ZoneCell.corruption` terrain field (cache format
+  v2→v3), `WorldMapCell.corruptionLevel`, the `"corruption"` `DeathCause`,
+  and every save/handoff/spawn/client touchpoint.** Lore flavour text and
+  the "Corrupted Glade" POI are world *narrative*, not the mechanic —
+  left intact. This **moots** the plan's "does the closed `rateModifier`
+  vocabulary hold?" question (the honest-rescope hinge): there is nothing
+  left to express, and `corruption_penalty` — the one speculative bridge
+  kind — is gone, leaving `equipment_stat` as the sole shipped modifier.
+  223 green; **bake intentionally changes** (terrain-cache v3 drops a
+  per-cell field — corruption was world content, not runtime state, so
+  invariant 1 legitimately does not apply to this commit; worlds
+  regenerate from seed per the `CLAUDE.md` no-on-disk-compat rule).
 - **T-238f — crafting timer.** `WorkstationBuffer.progressTicks` → a
   workstation-entity countdown Resource whose `at:0` sustained threshold
   fires a `resolve_recipe` effect; the time-step handler shrinks to that
@@ -225,10 +250,13 @@ handles it via `dependsOn`.
 
 ## Net
 
-Deletes `StaminaSystem`, `HungerSystem`, `PoiseSystem`, (likely)
-`CorruptionSystem`, shrinks the crafting time-step handler, and removes the
-redundant `exhausted` flag + `Stamina` component — replaced by one
-`ResourceSystem` + ~6 `data/resources/*.json` + a handful of effect /
-rateModifier handlers. Same capability, far less bespoke per-tick code; the
+Deletes `StaminaSystem`, `HungerSystem`, `PoiseSystem`, shrinks the
+crafting time-step handler, and removes the redundant `exhausted` flag +
+`Stamina` component — replaced by one `ResourceSystem` +
+~5 `data/resources/*.json` + a handful of effect / rateModifier handlers.
+`CorruptionSystem` is *also* gone but not via this substrate: the
+corruption mechanic was deleted outright (T-238e), to return later at a
+different scale. Same capability for what remained, far less bespoke
+per-tick code; the
 "what changes this scalar and what happens at the edges?" question gets one
 data-shaped answer everywhere.

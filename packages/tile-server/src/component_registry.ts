@@ -61,10 +61,8 @@ import {
 } from "./components/building.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import {
-  CorruptionExposure,
   EncumbrancePenalty,
   SpeedModifier,
-  TileCorruption,
   WorldClock,
 } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
@@ -131,8 +129,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Blueprint,
   ResourceNode,
   WorldClock,
-  TileCorruption,
-  CorruptionExposure,
+  // 24 (tileCorruption) + 25 (corruptionExposure) retired — corruption
+  // mechanic removed (T-238e); wire ids reserved in component_types.ts
   TraderInventory,
   LoreLoadout,
   ActiveEffects,
