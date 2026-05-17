@@ -60,7 +60,7 @@ import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
-import { consumeItemResolver, hasEdibleGate } from "./actions/resolvers/consume.ts";
+import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver } from "./actions/resolvers/item_use.ts";
 import { ResourceNodeSystem } from "./systems/resource_node_system.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
@@ -443,12 +443,15 @@ export class TileServer {
     const actionGates = newGateRegistry();
     actionGates.register(notStaggeredGate);
     actionGates.register(notExhaustedGate);
-    actionGates.register(hasEdibleGate);
+    actionGates.register(slotHasUsableGate);
     const actionEffects = newEffectRegistry();
     actionEffects.register(setTagResolver);
     actionEffects.register(clearTagResolver);
     actionEffects.register(dodgeImpulseResolver);
-    actionEffects.register(consumeItemResolver);
+    // T-240: `use_item`'s apply_item_effects fans an item's EffectSpec[]
+    // back through this same registry (adjust_resource etc.).
+    actionEffects.register(adjustResourceResolver);
+    actionEffects.register(new ApplyItemEffectsResolver(actionEffects));
     // Buffs: start_buff spawns a buff scene-graph child; the child's
     // `buff` ambient action fires buff_tick (DoT/HoT) each tick.
     actionEffects.register(startBuffResolver);

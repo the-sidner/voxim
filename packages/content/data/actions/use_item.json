@@ -1,0 +1,15 @@
+{
+  "id": "use_item",
+  "kind": "active",
+  "slot": "primary",
+  "phases": { "raise": { "ticks": 6 }, "apply": { "ticks": 3 }, "recover": { "ticks": 8 } },
+  "cancel": {
+    "raise":   { "into": ["any"] },
+    "apply":   { "into": [] },
+    "recover": { "into": ["any"] }
+  },
+  "movement": { "raise": "slowed", "apply": "slowed", "recover": "free" },
+  "priority": 4,
+  "preconditions": [ { "gate": "slot_has_usable" } ],
+  "effects": [ { "phase": "apply:enter", "kind": "apply_item_effects" } ]
+}

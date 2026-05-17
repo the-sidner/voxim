@@ -2563,6 +2563,52 @@ consume-on-use → damage-pipeline resolvers. The substrate readiness for
 the buff-child half is already verified (see ACTION_PRIMITIVE_PLAN.md
 T-235); this arc supplies the compose half so there's no split path.
 
+### T-240 · Usable items over the action+effect substrate
+Effort: M   Status: in-progress   Commits: Ph1 46a212f
+
+"Use an item" is an action, and an item's payload is an `EffectSpec[]`
+over the **existing** effect-resolver registry — not a new effect system.
+This kills the dead `CommandType.UseItem` → `EquipmentSystem._handleUseItem`
+path (destroys the item, applies nothing) and the `consume_item`
+slot-rescan, and retires the `edible` component. Subsumes the
+`consume`/`UseItem` duplication found in the post-T-239 cleanup sweep.
+
+Principle drawn explicitly: **use = produces a gameplay effect over time
+→ action; manage (equip/unequip/move/drop) = rearranges slots → command.**
+Only the effect-bearing "use" delegates to the action runtime; the
+EquipmentSystem command handlers stay as-is. `usable: { actionId }`
+selects the *presentation shell* (animation/timing — eat vs drink vs
+read-scroll); the *payload* is entirely the item's effect list. Procedural
+items ride the existing **stackable=prefab / unique=entity-instance**
+discriminator: unique items carry an `ItemEffects` instance component
+(generation writes the list at spawn), stackable read `effects` off the
+prefab. No new procedural/fixed concept. The effect registry becomes the
+generation vocabulary, so it joins the boot fail-fast cross-check family
+(ResourceDef / buff / recipe-step / BT). Wire compat for `UseItem` is
+broken freely (client is drift-broken by design, T-…/project memory).
+
+Phases, each a self-contained commit (refactor doctrine — old path dies
+in the same commit as the new):
+
+- **Ph1** — generic `use_item` action (primary slot, windup→apply→
+  winddown) + `slot_has_usable` gate + `apply_item_effects` edge resolver
+  (fans the slot item's `EffectSpec[]` through the shared registry);
+  `UseItem` command → `RequestedAction(use_item, {slot})`; **delete**
+  `EquipmentSystem._handleUseItem`. `consume` becomes a `use_item` shell.
+- **Ph2** — `ItemEffects` instance component + prefab `effects` field;
+  migrate every `edible` prefab to `effects`; **delete** the `edible`
+  component + codec + `consume_item`'s slot-rescan; update
+  `deriveItemStats`.
+- **Ph3** — boot cross-check (item effect ids vs registry, fail-fast);
+  `spend_item`/charges as effects (reusable items omit `spend_item`;
+  durability/charges become resources). Procedural generator targeting
+  the vocabulary is a separate later ticket — substrate only here.
+
+Done when: clicking a usable inventory slot runs the `use_item` action,
+its effects resolve through the shared registry, food restores hunger via
+an `EffectSpec`, no `edible` component or `_handleUseItem` remains, and
+boot fails fast on an unknown item effect id.
+
 ---
 
 ## Rendering & Client

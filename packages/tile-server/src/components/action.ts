@@ -68,6 +68,33 @@ export const PendingReaction = defineComponent({
 });
 
 /**
+ * PendingItemUse (T-240 Ph1) — a one-shot, server-only stimulus the
+ * `UseItem` command writes to ask the `primary` slot to run the generic
+ * `use_item` action. `PrimaryIntentResolver` consumes it one-shot (returns
+ * `use_item`, removes the component — same shape as `PendingReaction`), so
+ * a stale request never lingers. No payload in Ph1: the action acts on the
+ * first usable inventory slot (the held `ACTION_CONSUME` quick-eat key
+ * resolves to the same action with no component). Explicit per-slot
+ * targeting lands in Ph2 with the `ItemEffects` data model, where the slot
+ * can ride the action's `scratch` honestly — recorded here as a deliberate
+ * Ph1 scope cut (the ticket's "RequestedAction({slot})" wording assumed a
+ * param channel that the RequestedActions component does not have).
+ */
+export interface PendingItemUseData { _: 0 }
+
+const pendingItemUseCodec: Serialiser<PendingItemUseData> = {
+  encode() { return new Uint8Array(0); },
+  decode() { return { _: 0 }; },
+};
+
+export const PendingItemUse = defineComponent({
+  name: "pendingItemUse" as const,
+  networked: false,
+  codec: pendingItemUseCodec,
+  default: (): PendingItemUseData => ({ _: 0 }),
+});
+
+/**
  * RequestedActions (T-234) — a per-slot "run this named action" channel an
  * NPC's behavior tree drives. The BT's `request_action` node writes
  * `slot → actionId`; NpcAiSystem rewrites this component each tick (a

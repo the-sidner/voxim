@@ -14,7 +14,7 @@ import { ACTION_CROUCH, ACTION_BLOCK, ACTION_USE_SKILL, ACTION_CONSUME, hasActio
 import type { ContentService, SwingableData } from "@voxim/content";
 import { InputState, Health } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
-import { ActiveActions, PendingReaction, RequestedActions } from "../components/action.ts";
+import { ActiveActions, PendingReaction, PendingItemUse, RequestedActions } from "../components/action.ts";
 import type { IntentResolver } from "./dispatcher.ts";
 
 export const PostureIntentResolver: IntentResolver = {
@@ -31,13 +31,15 @@ export const PostureIntentResolver: IntentResolver = {
  * Primary slot (T-227) — the upper body. Replaces the CSM right_hand FSM:
  *
  *   - ACTION_BLOCK held              → `block` (held; sets the Blocking tag)
- *   - ACTION_CONSUME + slot free     → `consume` (the `has_edible`
- *     precondition rejects it when there's nothing to eat, so the slot
- *     just stays idle rather than playing a useless eat)
+ *   - ACTION_CONSUME held, or a one-shot `PendingItemUse` (the `UseItem`
+ *     command's stimulus) + slot free → `use_item` (the `slot_has_usable`
+ *     precondition rejects it when there's nothing usable, so the slot just
+ *     stays idle rather than playing a useless animation). The component is
+ *     consumed one-shot here, same as `PendingReaction` below.
  *   - ACTION_USE_SKILL + slot free   → the equipped weapon's swing action
  *     (`swingable.swingActionId`, default `swing_light`; unarmed → light)
  *   - an active action in flight     → null (don't disturb — the dispatcher
- *     runs its phases; consume/swing both run to completion this way)
+ *     runs its phases; use_item/swing both run to completion this way)
  *   - otherwise                      → `primary_idle` (no animation layer;
  *     locomotion's full-body clip shows through)
  *
@@ -57,8 +59,9 @@ export class PrimaryIntentResolver implements IntentResolver {
     let want: string | null;
     if (hasAction(a, ACTION_BLOCK)) {
       want = "block";
-    } else if (hasAction(a, ACTION_CONSUME) && !swinging) {
-      want = "consume";
+    } else if ((hasAction(a, ACTION_CONSUME) || world.has(entityId, PendingItemUse)) && !swinging) {
+      if (world.has(entityId, PendingItemUse)) world.remove(entityId, PendingItemUse); // one-shot
+      want = "use_item";
     } else if (hasAction(a, ACTION_USE_SKILL) && !swinging) {
       const weaponPrefab = world.get(entityId, Equipment)?.weapon?.prefabId;
       const swingable = weaponPrefab

@@ -1,10 +1,11 @@
 /**
- * consume action integration (T-230).
+ * use_item action integration (T-240 Ph1).
  *
- * Real content + dispatcher wiring: the `consume` primary-slot action
- * gates on `has_edible`, and on `ingest:enter` drains Hunger/Thirst and
- * removes one from the inventory stack — exactly the retired
- * ConsumptionSystem's behaviour, now animation-paced.
+ * Real content + dispatcher wiring: the generic `use_item` primary-slot
+ * action gates on `slot_has_usable`, and on `apply:enter` fans the item's
+ * synthesised `EffectSpec[]` through the shared registry — `adjust_resource`
+ * drains Hunger/Thirst — then removes one from the inventory stack. Same
+ * net behaviour as the retired `consume`, now one substrate.
  */
 
 import { assertEquals } from "jsr:@std/assert";
@@ -17,19 +18,20 @@ import { ActionDispatcher } from "./dispatcher.ts";
 import type { IntentResolver } from "./dispatcher.ts";
 import { newGateRegistry } from "./gate.ts";
 import { newEffectRegistry } from "./effect.ts";
-import { consumeItemResolver, hasEdibleGate } from "./resolvers/consume.ts";
+import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver } from "./resolvers/item_use.ts";
 
 const content = await JsonSource.load();
 
 function wired(intent: IntentResolver): ActionDispatcher {
   const gates = newGateRegistry();
-  gates.register(hasEdibleGate);
+  gates.register(slotHasUsableGate);
   const effects = newEffectRegistry();
-  effects.register(consumeItemResolver);
+  effects.register(adjustResourceResolver);
+  effects.register(new ApplyItemEffectsResolver(effects));
   return new ActionDispatcher(content, gates, effects, intent);
 }
 
-const wantConsume: IntentResolver = { resolve: () => new Map([["primary", "consume"]]) };
+const wantUse: IntentResolver = { resolve: () => new Map([["primary", "use_item"]]) };
 
 function eater(world: World, slots: Inventory_["slots"]): string {
   const id = newEntityId();
@@ -44,12 +46,12 @@ function eater(world: World, slots: Inventory_["slots"]): string {
 }
 type Inventory_ = { slots: { kind: "stack"; prefabId: string; quantity: number }[] };
 
-Deno.test("consume: ingest drains hunger/thirst and removes one berry", () => {
+Deno.test("use_item: apply drains hunger/thirst and removes one berry", () => {
   const world = new World();
   const id = eater(world, [{ kind: "stack", prefabId: "berries", quantity: 3 }]);
-  const d = wired(wantConsume);
+  const d = wired(wantUse);
 
-  // raise = 6 ticks, then ingest:enter on tick 6 fires consume_item.
+  // raise = 6 ticks, then apply:enter on tick 6 fires apply_item_effects.
   for (let t = 0; t <= 6; t++) {
     d.prepare(t);
     d.run(world, new EventBus(), 1 / 20);
@@ -62,10 +64,10 @@ Deno.test("consume: ingest drains hunger/thirst and removes one berry", () => {
   assertEquals(slots, [{ kind: "stack", prefabId: "berries", quantity: 2 }]);
 });
 
-Deno.test("consume: has_edible blocks the action with no food in inventory", () => {
+Deno.test("use_item: slot_has_usable blocks the action with nothing usable", () => {
   const world = new World();
   const id = eater(world, [{ kind: "stack", prefabId: "wooden_sword", quantity: 1 }]);
-  const d = wired(wantConsume);
+  const d = wired(wantUse);
 
   for (let t = 0; t < 3; t++) {
     d.prepare(t);

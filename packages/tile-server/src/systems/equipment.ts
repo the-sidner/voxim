@@ -11,6 +11,7 @@ import type { InventorySlot } from "../components/items.ts";
 import { Equipment } from "../components/equipment.ts";
 import type { EquipmentData } from "../components/equipment.ts";
 import { LightEmitter } from "../components/light.ts";
+import { PendingItemUse } from "../components/action.ts";
 import { QualityStamped } from "../components/instance.ts";
 import { createLogger } from "../logger.ts";
 
@@ -25,7 +26,9 @@ const log = createLogger("EquipmentSystem");
  *   Unequip      Move item entity from equipment slot back to inventory as a unique slot.
  *   MoveItem     Swap two inventory slots.
  *   DropItem     Remove an item from inventory and place it in the world.
- *   UseItem      Consume an item from a specific inventory slot (delegate to consumable logic).
+ *   UseItem      Stimulus only — drops a one-shot `PendingItemUse`; the
+ *                `use_item` action (ActionDispatcher) does the actual work
+ *                via the shared effect registry (T-240). Not handled here.
  *
  * Equipment slots store EntityIds; stats are read via world.get(entityId, ItemData).
  */
@@ -60,7 +63,11 @@ export class EquipmentSystem implements System {
             this._handleDropItem(world, entityId, cmd.fromSlot, inv);
             break;
           case CommandType.UseItem:
-            this._handleUseItem(world, entityId, cmd.fromSlot, inv);
+            // T-240: "use" is the `use_item` action, not a command handler.
+            // Drop a one-shot stimulus the PrimaryIntentResolver turns into
+            // the action next tick; effects resolve through the shared
+            // registry. Ph1 has no per-slot payload (first usable item).
+            world.set(entityId, PendingItemUse, { _: 0 });
             break;
         }
       }
@@ -262,39 +269,6 @@ export class EquipmentSystem implements System {
     }
 
     world.set(entityId, Inventory, { ...inv, slots: inv.slots.filter((_, i) => i !== fromSlot) });
-  }
-
-  private _handleUseItem(
-    world: World,
-    entityId: EntityId,
-    fromSlot: number,
-    inv: { slots: InventorySlot[]; capacity: number },
-  ): void {
-    if (fromSlot < 0 || fromSlot >= inv.slots.length) return;
-
-    const slot = inv.slots[fromSlot];
-    const prefabId = slotPrefabId(slot, world);
-    if (!prefabId) return;
-
-    const prefab = this.content.prefabs.get(prefabId);
-    if (!prefab?.components["edible"]) {
-      log.debug("use_item rejected: entity=%s item=%s has no edible component", entityId, prefabId);
-      return;
-    }
-
-    let newSlots: InventorySlot[];
-    if (slot.kind === "stack") {
-      newSlots = slot.quantity <= 1
-        ? inv.slots.filter((_, i) => i !== fromSlot)
-        : inv.slots.map((s, i) => i === fromSlot
-            ? { kind: "stack" as const, prefabId: slot.prefabId, quantity: slot.quantity - 1 }
-            : s);
-    } else {
-      world.destroy(slot.entityId as EntityId);
-      newSlots = inv.slots.filter((_, i) => i !== fromSlot);
-    }
-    world.set(entityId, Inventory, { ...inv, slots: newSlots });
-    log.info("use_item: entity=%s item=%s slot=%d", entityId, prefabId, fromSlot);
   }
 }
 
