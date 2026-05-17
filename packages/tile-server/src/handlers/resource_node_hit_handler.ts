@@ -4,6 +4,7 @@ import type { ContentService, PrefabResourceNodeData } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { ResourceNode } from "../components/resource_node.ts";
+import { Resource } from "../components/resource.ts";
 import { spawnGroundStack } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
@@ -13,7 +14,8 @@ const log = createLogger("ResourceNodeHitHandler");
  * Handles hits on entities that have a ResourceNode component.
  * Applies harvest damage, spawns yields on depletion, and schedules respawn.
  *
- * Extracted from GatheringSystem — the respawn countdown remains in ResourceNodeSystem.
+ * Extracted from GatheringSystem — the respawn countdown is the
+ * `respawn_timer` Resource (cross@0 → respawn_node, T-242).
  */
 export class ResourceNodeHitHandler implements HitHandler {
   constructor(private readonly content: ContentService) {}
@@ -70,11 +72,16 @@ export class ResourceNodeHitHandler implements HitHandler {
     });
 
     if (rnData?.respawnTicks != null) {
-      world.set(ctx.targetId, ResourceNode, {
-        ...rn,
-        hitPoints: 0,
-        depleted: true,
-        respawnTicksRemaining: rnData.respawnTicks,
+      // T-242: the respawn countdown is a Resource (cross@0 →
+      // respawn_node), not a `respawnTicksRemaining` field + a bespoke
+      // system. depleted:true now always coexists with this timer.
+      world.set(ctx.targetId, ResourceNode, { ...rn, hitPoints: 0, depleted: true });
+      const res = world.get(ctx.targetId, Resource);
+      world.set(ctx.targetId, Resource, {
+        values: {
+          ...(res?.values ?? {}),
+          respawn_timer: { value: rnData.respawnTicks, max: rnData.respawnTicks },
+        },
       });
     } else {
       world.destroy(ctx.targetId);

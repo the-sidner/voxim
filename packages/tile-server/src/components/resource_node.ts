@@ -7,14 +7,13 @@ export interface ResourceNodeData {
   nodeTypeId: string;
   /** Remaining hit points. 0 = depleted. */
   hitPoints: number;
-  /** True when depleted — entity is kept alive to track respawn countdown. */
-  depleted: boolean;
   /**
-   * Ticks remaining until respawn.
-   * Only meaningful when depleted === true.
-   * Null means never respawns (one-time node).
+   * True when depleted. The entity stays alive carrying a `respawn_timer`
+   * Resource (cross@0 → respawn_node, T-242); non-respawning nodes are
+   * destroyed on depletion instead, so `depleted` always coexists with an
+   * active respawn timer.
    */
-  respawnTicksRemaining: number | null;
+  depleted: boolean;
 }
 
 export const ResourceNode = defineComponent({
@@ -25,6 +24,5 @@ export const ResourceNode = defineComponent({
     nodeTypeId: "tree",
     hitPoints: 5,
     depleted: false,
-    respawnTicksRemaining: null,
   }),
 });

@@ -60,7 +60,6 @@ import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./actions/resolvers/item_use.ts";
-import { ResourceNodeSystem } from "./systems/resource_node_system.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
 import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
@@ -86,6 +85,7 @@ import { emitEventEffect } from "./resources/effects/emit_event.ts";
 import { resolveRecipeEffect } from "./resources/effects/resolve_recipe.ts";
 import { expireBuffEffect } from "./resources/effects/expire_buff.ts";
 import { destroySelfEffect } from "./resources/effects/destroy_self.ts";
+import { respawnNodeEffect } from "./resources/effects/respawn_node.ts";
 import { startBuffResolver, buffTickResolver } from "./actions/resolvers/buff.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
@@ -336,6 +336,7 @@ export class TileServer {
     // expire_buff: a buff child's buff_timer Resource hits 0 → destroySubtree.
     resourceEffects.register(expireBuffEffect);
     resourceEffects.register(destroySelfEffect);
+    resourceEffects.register(respawnNodeEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
 
@@ -551,7 +552,6 @@ export class TileServer {
       new EquipmentSystem(content),
       new PlacementSystem(content),
       new CraftingSystem(content, recipeSteps),
-      new ResourceNodeSystem(content),
       new DayNightSystem(content),
       new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem, modifierSources),
       new PhysicsSystem(content, tickEvents, modifierSources),

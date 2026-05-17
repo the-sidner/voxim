@@ -2666,6 +2666,39 @@ narrower Ph2 test scope missed: `prefab_round_trip.test.ts` still imported
 the retired `Edible` — deleted here (same "retire a component" shape).
 Same accepted ≤1-tick retune as every other Resource migration.
 
+### T-242 · ResourceNode respawn timer → Resource (post-T-239 sweep #4)
+Effort: S   Status: done   Commit: T242HASH
+
+`ResourceNodeSystem` exists only to decrement `respawnTicksRemaining` and
+restore the node at 0 — the same timer→Resource shape as Lifetime/buff.
+The node's *hitPoints* stay on `ResourceNode` (hit-driven, not a tick
+scalar — correctly bespoke); only the respawn countdown migrates.
+
+- `data/resources/respawn_timer.json` (rate -20, `cross@0 →
+  respawn_node`). `respawn_node` ResourceEffect restores the node from its
+  prefab `resourceNode.hitPoints` (what the system did) and drops the
+  spent timer value.
+- `ResourceNodeHitHandler`: on deplete-with-respawn, set `ResourceNode
+  {hitPoints:0, depleted:true}` + write `Resource{ respawn_timer }`
+  instead of stamping `respawnTicksRemaining`. Non-respawning nodes still
+  `world.destroy` (unchanged) — so `depleted:true` now always coexists
+  with an active timer; the `respawnTicksRemaining` field is dead and
+  removed from the component + its networked codec.
+- `ResourceNodeSystem` deleted; server wiring removed. Boot cross-check
+  automatic via the existing ResourceDef threshold-effect check.
+
+Done: depleted nodes respawn via `ResourceSystem` + `respawn_node`;
+`ResourceNodeSystem` + `respawnTicksRemaining` + its codec field gone;
+server graph type-checks; 181 tile-server+content tests green (incl. a new
+respawn_node test). One honest substrate edge, recorded in the effect
+header: the spent `respawn_timer` can't be deleted from inside the effect
+(ResourceSystem is the single Resource writer and commits its own
+post-integration write after the effect that tick — deferred-write
+clobber, same reality as item_use's adjust_resource). It's left pinned at
+0, which is inert (clamped at min; `cross@0` never re-fires with prev
+already in-zone); the hit handler overwrites it on the next depletion. No
+leak, no bespoke cleanup.
+
 ---
 
 ## Rendering & Client

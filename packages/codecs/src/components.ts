@@ -750,13 +750,13 @@ export const blueprintCodec: Serialiser<BlueprintData> = {
 };
 
 // ---- ResourceNode -----------------------------------------------------------
-// { nodeTypeId: string, hitPoints: number, depleted: boolean, respawnTicksRemaining: number|null }
+// { nodeTypeId: string, hitPoints: number, depleted: boolean }
+// (respawn countdown is the server-only `respawn_timer` Resource now — T-242)
 
 export interface ResourceNodeData {
   nodeTypeId: string;
   hitPoints: number;
   depleted: boolean;
-  respawnTicksRemaining: number | null;
 }
 
 export const resourceNodeCodec: Serialiser<ResourceNodeData> = {
@@ -765,11 +765,6 @@ export const resourceNodeCodec: Serialiser<ResourceNodeData> = {
     w.writeStr(v.nodeTypeId);
     w.writeI32(v.hitPoints);
     w.writeU8(v.depleted ? 1 : 0);
-    if (v.respawnTicksRemaining !== null) {
-      w.writeU8(1); w.writeI32(v.respawnTicksRemaining);
-    } else {
-      w.writeU8(0);
-    }
     return w.toBytes();
   },
   decode(bytes: Uint8Array): ResourceNodeData {
@@ -777,9 +772,7 @@ export const resourceNodeCodec: Serialiser<ResourceNodeData> = {
     const nodeTypeId = r.readStr();
     const hitPoints = r.readI32();
     const depleted = r.readU8() !== 0;
-    const hasRespawn = r.readU8();
-    const respawnTicksRemaining = hasRespawn ? r.readI32() : null;
-    return { nodeTypeId, hitPoints, depleted, respawnTicksRemaining };
+    return { nodeTypeId, hitPoints, depleted };
   },
 };
 

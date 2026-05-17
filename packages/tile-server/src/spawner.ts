@@ -210,7 +210,6 @@ const installResourceNode: CompoundInstaller = (world, _content, id, prefab, raw
     nodeTypeId: prefab.id,
     hitPoints: data.hitPoints,
     depleted: false,
-    respawnTicksRemaining: null,
   });
 };
 

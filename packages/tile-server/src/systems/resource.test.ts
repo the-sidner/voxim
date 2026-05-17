@@ -18,6 +18,8 @@ import type { ResourceEffect } from "../resources/effect.ts";
 import { newResourceModifierRegistry } from "../resources/modifier.ts";
 import type { ResourceRateModifier } from "../resources/modifier.ts";
 import { destroySelfEffect } from "../resources/effects/destroy_self.ts";
+import { respawnNodeEffect } from "../resources/effects/respawn_node.ts";
+import { ResourceNode } from "../components/resource_node.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 
 const DT = 1 / 20;
@@ -133,6 +135,36 @@ Deno.test("lifetime: cross@0 → destroy_self destroys the entity (T-241)", () =
   assert(w.isAlive(id), "alive while lifetime > 0");
   tick(sys, w); // 1 → 0: crosses, destroy_self
   assertEquals(w.isAlive(id), false);
+});
+
+Deno.test("respawn_timer: cross@0 → respawn_node restores the node (T-242)", () => {
+  const c = content({
+    id: "respawn_timer", scope: "entity", bounds: { min: 0, max: 1 }, rate: -20,
+    thresholds: [{ at: 0, dir: "below", edge: "cross", effect: "respawn_node" }],
+  });
+  c.registerPrefab({
+    id: "tree",
+    components: { resourceNode: { hitPoints: 5, yields: [], requiredToolType: null, respawnTicks: 100 } },
+  });
+  const fx = newResourceEffectRegistry();
+  fx.register(respawnNodeEffect);
+  const sys = new ResourceSystem(c, fx, newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
+  const w = new World();
+  const id = newEntityId();
+  w.create(id);
+  w.write(id, ResourceNode, { nodeTypeId: "tree", hitPoints: 0, depleted: true });
+  w.write(id, Resource, { values: { respawn_timer: { value: 2, max: 2 } } });
+
+  tick(sys, w); // 2 → 1: still depleted
+  assertEquals(w.get(id, ResourceNode)!.depleted, true);
+
+  tick(sys, w); // 1 → 0: cross → respawn_node
+  const rn = w.get(id, ResourceNode)!;
+  assertEquals(rn.depleted, false);
+  assertEquals(rn.hitPoints, 5); // restored from prefab template
+  // Spent timer is left inert at 0 (ResourceSystem owns the Resource write
+  // that tick — see respawn_node header); hit handler re-arms on next deplete.
+  assertEquals(w.get(id, Resource)!.values.respawn_timer.value, 0);
 });
 
 Deno.test("unknown resource id is skipped, not thrown", () => {
