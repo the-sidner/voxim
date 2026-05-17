@@ -2564,7 +2564,7 @@ the buff-child half is already verified (see ACTION_PRIMITIVE_PLAN.md
 T-235); this arc supplies the compose half so there's no split path.
 
 ### T-240 · Usable items over the action+effect substrate
-Effort: M   Status: in-progress   Commits: Ph1 048c723 · Ph2 PH2HASH
+Effort: M   Status: in-progress   Commits: Ph1 048c723 · Ph2 5bdf076
 
 "Use an item" is an action, and an item's payload is an `EffectSpec[]`
 over the **existing** effect-resolver registry — not a new effect system.
