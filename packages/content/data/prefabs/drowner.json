@@ -2,6 +2,7 @@
   "id": "drowner",
   "extends": "_playable_character",
   "modelId": "biped_skeletal",
+  "modelScale": 1.35,
   "animationSlots": {
     "idle": "zombie_idle",
     "walk_forward": "zombie_walk",

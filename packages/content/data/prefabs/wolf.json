@@ -1,6 +1,7 @@
 {
   "id": "wolf",
   "modelId": "wolf",
+  "modelScale": 1.3,
   "components": {
     "npc": {
       "npcType": "wolf"

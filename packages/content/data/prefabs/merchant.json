@@ -2,6 +2,7 @@
   "id": "merchant",
   "extends": "_playable_character",
   "modelId": "biped_skeletal",
+  "modelScale": 1.4,
   "components": {
     "npc": {
       "npcType": "merchant"

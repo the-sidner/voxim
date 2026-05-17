@@ -24,7 +24,7 @@
  * Solver space: x=right, y=up, z=-fwd.
  * Sub-model AABB voxel coordinates use entity-local convention.
  */
-import type { BodyPartVolume, Hitbox, SubObjectRef } from "./types.ts";
+import type { BodyPartVolume, Hitbox, SkeletonDef, SubObjectRef } from "./types.ts";
 import type { BoneTransform } from "./skeleton_solver.ts";
 import { quatFromEulerXYZ, applyQuat } from "./ik_solver.ts";
 import type { Quat } from "./ik_solver.ts";
@@ -137,8 +137,17 @@ export interface HitboxPartTemplate {
  * without pulling in the server-only ContentService.
  */
 export interface HitboxContentAdapter {
-  getModel(id: string): { subObjects?: Array<{ probability?: number; pool?: string[]; modelId?: string; boneId?: string; hitbox?: boolean; transform: SubObjectRef["transform"] }>; nodes: Array<{ x: number; y: number; z: number }> } | null;
+  getModel(id: string): { subObjects?: Array<{ probability?: number; pool?: string[]; modelId?: string; boneId?: string; hitbox?: boolean; transform: SubObjectRef["transform"] }>; nodes: Array<{ x: number; y: number; z: number }>; skeletonId?: string } | null;
   getModelAabb(id: string): Hitbox | null;
+  /**
+   * Optional skeleton lookup. When provided, models with a skeletonId that
+   * yield no sub-object hitboxes fall back to per-bone capsule derivation
+   * from the bone hierarchy. Skeletal-visualization models like
+   * `biped_skeletal` rely on this — their bone_segment sub-objects are
+   * authored `hitbox: false` (purely visual), so without skeleton-derived
+   * capsules they end up with no hittable parts at all.
+   */
+  getSkeleton?(skeletonId: string): SkeletonDef | null;
 }
 
 /**
@@ -209,9 +218,103 @@ export function deriveHitboxTemplate(
   }
 
   if (parts.length === 0) {
+    // Skeletal-viz models (e.g. biped_skeletal) have all sub-objects marked
+    // hitbox:false, so the loop above produces nothing. Derive per-bone
+    // capsules straight from the skeleton hierarchy instead — gives every
+    // bone-driven entity a proper anatomical hitbox without authoring.
+    if (model.skeletonId && content.getSkeleton) {
+      const skeleton = content.getSkeleton(model.skeletonId);
+      if (skeleton) {
+        const skeletalParts = deriveSkeletalCapsules(skeleton, scale);
+        if (skeletalParts.length > 0) return skeletalParts;
+      }
+    }
     const rootAabb = content.getModelAabb(modelId);
     if (!rootAabb) return [];
     return fallbackFromAabb(rootAabb, modelId, scale);
+  }
+  return parts;
+}
+
+// ── Skeleton-driven capsule derivation ───────────────────────────────────────
+
+/**
+ * Default per-bone radius (entity-local rest units, multiplied by scale at
+ * derivation). Calibrated for the biped skeleton; unknown bones fall back to
+ * DEFAULT_BONE_RADIUS so the system degrades gracefully on new archetypes.
+ */
+const BONE_RADIUS: Record<string, number> = {
+  torso_lower: 0.32, torso_mid: 0.30, torso_upper: 0.34,
+  head:        0.36,
+  upper_arm_l: 0.18, lower_arm_l: 0.16, hand_l: 0.18,
+  upper_arm_r: 0.18, lower_arm_r: 0.16, hand_r: 0.18,
+  upper_leg_l: 0.24, lower_leg_l: 0.22, foot_l: 0.22,
+  upper_leg_r: 0.24, lower_leg_r: 0.22, foot_r: 0.22,
+};
+const DEFAULT_BONE_RADIUS = 0.20;
+/** Length of the small nub capsule attached to terminal bones. */
+const TERMINAL_NUB_LENGTH = 0.30;
+
+/**
+ * Build per-bone capsule templates from a skeleton. Each non-terminal bone
+ * gets a capsule from its origin to its first-declared child's rest offset;
+ * terminals (no children) get a short nub along their local +Y axis (Mixamo
+ * convention: bone-local +Y = bone direction).
+ *
+ * Templates are bone-local in solver space, ready for applyHitboxTemplate
+ * to wrap each tick with live BoneTransforms.
+ */
+function deriveSkeletalCapsules(skeleton: SkeletonDef, scale: number): HitboxPartTemplate[] {
+  // Build parent → first-child map. First-declared child is the "primary"
+  // anatomical child (spine over limbs, head over arms), matching the
+  // build_skeletal.ts visualization convention.
+  const firstChild = new Map<string, { id: string; restX: number; restY: number; restZ: number }>();
+  for (const bone of skeleton.bones) {
+    if (bone.parent !== null && !firstChild.has(bone.parent)) {
+      firstChild.set(bone.parent, {
+        id: bone.id,
+        restX: bone.restX,
+        restY: bone.restY,
+        restZ: bone.restZ,
+      });
+    }
+  }
+
+  const parts: HitboxPartTemplate[] = [];
+  for (const bone of skeleton.bones) {
+    // The synthetic root has no associated body volume — its visible child
+    // (torso_lower) carries its own capsule.
+    if (bone.parent === null) continue;
+
+    const radius = (BONE_RADIUS[bone.id] ?? DEFAULT_BONE_RADIUS) * scale;
+    if (radius < MIN_RADIUS_VOXELS * scale) continue;
+
+    const child = firstChild.get(bone.id);
+    if (child) {
+      // Capsule from this bone's origin to its primary child's origin.
+      // child.rest{X,Y,Z} is in entity-local (right=X, fwd=Y, up=Z);
+      // template-space is solver (x=right, y=up, z=-fwd).
+      parts.push({
+        id: bone.id,
+        boneId: bone.id,
+        fromX: 0, fromY: 0, fromZ: 0,
+        toX:  child.restX * scale,
+        toY:  child.restZ * scale,
+        toZ: -child.restY * scale,
+        radius,
+      });
+    } else {
+      // Terminal bone — emit a short nub along the bone's local +Y direction
+      // (Mixamo convention places bone-local +Y along the bone axis, away
+      // from the parent). applyQuat rotates this by the bone's world rot.
+      parts.push({
+        id: bone.id,
+        boneId: bone.id,
+        fromX: 0, fromY: 0,                       fromZ: 0,
+        toX:   0, toY:   TERMINAL_NUB_LENGTH * scale, toZ:   0,
+        radius,
+      });
+    }
   }
   return parts;
 }

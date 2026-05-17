@@ -223,10 +223,13 @@ export class ContentCache {
     const key = `${modelId}:${seed}:${scale}`;
     let tmpl = this.hitboxTemplateCache.get(key);
     if (!tmpl) {
-      // Minimal adapter — deriveHitboxTemplate only needs getModel + getModelAabb.
+      // Minimal adapter — getSkeleton is required for biped_skeletal etc.
+      // whose hitbox is derived from the bone hierarchy rather than voxel
+      // sub-objects.
       const adapter: HitboxContentAdapter = {
         getModel: (id) => this.models.get(id) ?? null,
         getModelAabb: (id) => this.getModelAabb(id),
+        getSkeleton: (id) => this.skeletons.get(id) ?? null,
       };
       tmpl = deriveHitboxTemplate(modelId, seed, adapter, scale);
       this.hitboxTemplateCache.set(key, tmpl);

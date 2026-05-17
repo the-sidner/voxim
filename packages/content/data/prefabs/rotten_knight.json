@@ -2,6 +2,7 @@
   "id": "rotten_knight",
   "extends": "_playable_character",
   "modelId": "biped_skeletal",
+  "modelScale": 1.5,
   "animationSlots": {
     "idle": "sword_and_shield_idle",
     "walk_forward": "sword_and_shield_walk",
