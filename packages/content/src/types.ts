@@ -337,7 +337,15 @@ export interface PlaceableData {
    */
   tool?: "single" | "polyline";
 }
-export interface EdibleData { food: number; water: number; health: number; stamina: number; }
+/**
+ * One entry in an item's effect payload (T-240). `id` names an action
+ * effect resolver registered in the tile-server (`adjust_resource`, …);
+ * `params` is that resolver's typed payload. The vocabulary that
+ * procedural item generation targets — the same registry the action
+ * substrate fires from. Lives on the prefab (stackable items) or an
+ * `ItemEffects` instance component (unique items).
+ */
+export interface EffectSpec { id: string; params?: Record<string, unknown>; }
 export interface IlluminatorData { radius: number; color: number; intensity: number; flicker: number; }
 export interface ArmorData { reduction: number; staminaPenalty: number; }
 export interface MaterialSourceData { materialName: string; }
@@ -1086,6 +1094,17 @@ export interface Prefab {
    * upstream producer (prefab default OR recipe formula output) emits.
    */
   stats?: Record<string, number>;
+  /**
+   * Item effect payload (T-240) — what "using" this item does. A list of
+   * `EffectSpec`s fanned through the shared action-effect registry by the
+   * `use_item` action. Top-level, not a `components` entry: effects are
+   * item data (like `stats`), not an ECS component installed on a world
+   * entity, so the spawn walk never tries to resolve an `effects`
+   * component. Stackable items carry their payload here; unique items
+   * carry a per-instance `ItemEffects` component instead (procedural
+   * generation writes it at spawn). Absent ⇒ the item is not usable.
+   */
+  effects?: EffectSpec[];
   /**
    * Open-set component dictionary. Each key is either a `ComponentDef.name`
    * registered in the tile-server component registry (written directly at

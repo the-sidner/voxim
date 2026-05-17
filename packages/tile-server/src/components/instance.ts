@@ -32,6 +32,7 @@ import type {
   StatsData,
   ProvenanceData,
 } from "@voxim/codecs";
+import type { EffectSpec } from "@voxim/content";
 
 export type { DurabilityData, InscribedData, QualityStampedData, StatsData, ProvenanceData };
 
@@ -165,4 +166,44 @@ export const Owned = defineComponent({
     },
   },
   default: (): OwnedData => ({ lineage: [] }),
+});
+
+// ---- ItemEffects (server-only) ----
+// Per-instance effect payload for *unique* items (T-240). Stackable items
+// carry their `effects` on the prefab; a unique item's payload can differ
+// per instance — this is where procedural generation writes the generated
+// EffectSpec[] at spawn. `use_item`'s apply_item_effects reads this when the
+// used slot is unique, else falls back to the prefab. Server-only: the
+// client reconstructs nothing from it. params is opaque JSON.
+
+export interface ItemEffectsData {
+  effects: EffectSpec[];
+}
+
+export const ItemEffects = defineComponent({
+  name: "itemEffects" as const,
+  networked: false,
+  codec: {
+    encode(v: ItemEffectsData): Uint8Array {
+      const w = new WireWriter();
+      w.writeU8(v.effects.length);
+      for (const e of v.effects) {
+        w.writeStr(e.id);
+        w.writeStr(e.params ? JSON.stringify(e.params) : "");
+      }
+      return w.toBytes();
+    },
+    decode(b: Uint8Array): ItemEffectsData {
+      const r = new WireReader(b);
+      const n = r.readU8();
+      const effects: EffectSpec[] = [];
+      for (let i = 0; i < n; i++) {
+        const id = r.readStr();
+        const p = r.readStr();
+        effects.push(p.length > 0 ? { id, params: JSON.parse(p) } : { id });
+      }
+      return { effects };
+    },
+  },
+  default: (): ItemEffectsData => ({ effects: [] }),
 });

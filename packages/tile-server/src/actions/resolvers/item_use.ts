@@ -1,71 +1,79 @@
 /**
- * Usable-item resolvers (T-240 Ph1) — "use an item" is the generic
- * `use_item` primary-slot action; an item's payload is an `EffectSpec[]`
- * fanned through the *same* effect-resolver registry the action substrate
- * already owns. No bespoke per-item code, ever.
+ * Usable-item resolvers (T-240) — "use an item" is the generic `use_item`
+ * primary-slot action; an item's payload is an `EffectSpec[]` fanned
+ * through the *same* effect-resolver registry the action substrate already
+ * owns. No bespoke per-item code, ever.
  *
  *   slot_has_usable — precondition gate: passes when the inventory holds a
- *     usable item (Ph1: "usable" = an `edible` prefab — `use_item` is the
- *     only shell so far; Ph2 replaces the `edible` probe with the
- *     `usable`/`ItemEffects` data model). Generalises the retired
- *     `has_edible`.
+ *     usable item (one carrying a non-empty effect payload). Generalises
+ *     the retired `has_edible`.
  *
  *   apply_item_effects — fired on `apply:enter`. Resolves the first usable
- *     slot, derives the item's `EffectSpec[]`, and dispatches each spec
- *     back through the shared registry, then removes one from the
- *     stack / destroys the unique. Ph1 synthesises the spec list from the
- *     still-present `edible` stats (food/water → `adjust_resource`); Ph2
- *     reads a real `effects` field and deletes this bridge.
+ *     slot, reads the item's `EffectSpec[]` (Ph2: straight off the data —
+ *     `ItemEffects` instance component for unique items, the prefab's
+ *     `effects` for stackables; the Ph1 `deriveItemStats` bridge is gone),
+ *     dispatches each spec back through the shared registry, then removes
+ *     one from the stack / destroys the unique.
  *
- *   adjust_resource — generic `{ deltas: { <id>: <signed> } }` nudge,
- *     each clamped to its def's bounds, applied in ONE `world.set`. The
- *     first effect of the procedural vocabulary: food is
- *     `adjust_resource{ deltas:{ hunger:-foodValue, thirst:-waterValue } }`.
- *     The map (not a single resource) is deliberate: deferred-write
- *     semantics mean two `world.set`s on the same component in one tick
- *     clobber (the second reads committed, not pending), so a fan of
- *     multiple Resource-touching effects can't compose by separate sets.
- *     One atomic multi-key effect dodges that for the food case; the
- *     general "many effects deposit onto one scalar in a tick" problem is
- *     the deposit-API design ticket (deferred — see the post-T-239 sweep).
+ *   adjust_resource — generic `{ deltas: { <id>: <signed> } }` nudge, each
+ *     clamped to its def's bounds, applied in ONE `world.set`. The map (not
+ *     a single resource) is deliberate: deferred-write semantics mean two
+ *     `world.set`s on the same component in one tick clobber (the second
+ *     reads committed, not pending), so a fan of multiple Resource-touching
+ *     effects can't compose by separate sets. One atomic multi-key effect
+ *     dodges that for the food case; the general "many effects deposit onto
+ *     one scalar in a tick" problem is the deposit-API design ticket
+ *     (deferred — see the post-T-239 sweep).
  *
- * Replaces `consume`/`consume_item`/`has_edible` and the dead
+ * Replaces `consume`/`consume_item`/`has_edible`/`Edible` and the dead
  * `EquipmentSystem._handleUseItem` (destroyed the item, applied nothing) —
  * one path now, per the refactor doctrine.
+ *
+ * Scope (recorded in TICKETS T-240): selection is still "first usable
+ * slot", not the explicit slot the `UseItem` command names — that needs a
+ * per-action param channel the dispatcher doesn't have (the slot would
+ * ride `ActiveActionState.scratch`, but `start()` seeds no scratch and
+ * intent carries only an action id). Deferred as a substrate gap, not
+ * item-effects work — a leak-prone PendingItemUse-with-slot carrier was
+ * rejected as accretion.
  */
 
 import type { World, EntityId } from "@voxim/engine";
-import type { ContentService } from "@voxim/content";
+import type { ContentService, EffectSpec } from "@voxim/content";
 import type { EffectResolver, EffectRegistry, ResolveContext } from "../effect.ts";
 import type { GateHandler } from "../gate.ts";
 import { Resource } from "../../components/resource.ts";
 import { Inventory, ItemData } from "../../components/items.ts";
 import type { InventorySlot } from "../../components/items.ts";
-import { QualityStamped } from "../../components/instance.ts";
+import { ItemEffects } from "../../components/instance.ts";
 import { createLogger } from "../../logger.ts";
 
 const log = createLogger("item_use");
-
-interface EffectSpec {
-  id: string;
-  params: Record<string, unknown>;
-}
 
 function slotPrefabId(slot: InventorySlot, world: World): string | null {
   if (slot.kind === "stack") return slot.prefabId;
   return world.get(slot.entityId as EntityId, ItemData)?.prefabId ?? null;
 }
 
-/** Index of the first inventory slot holding a usable prefab, or -1. */
+/**
+ * The item's effect payload. Unique items carry a per-instance
+ * `ItemEffects` (what procedural generation writes); stackables read the
+ * prefab's `effects`. One resolution either way.
+ */
+function slotEffects(world: World, content: ContentService, slot: InventorySlot): EffectSpec[] {
+  if (slot.kind === "unique") {
+    const inst = world.get(slot.entityId as EntityId, ItemEffects);
+    if (inst) return inst.effects;
+  }
+  const pid = slotPrefabId(slot, world);
+  return (pid && content.prefabs.get(pid)?.effects) || [];
+}
+
+/** Index of the first inventory slot holding a usable (effect-bearing) item, or -1. */
 function findUsableSlot(world: World, content: ContentService, entityId: EntityId): number {
   const inv = world.get(entityId, Inventory);
   if (!inv) return -1;
-  return inv.slots.findIndex((s) => {
-    const pid = slotPrefabId(s, world);
-    // Ph1: "usable" == edible (use_item is the only shell). Ph2 swaps this
-    // for the `usable`/`ItemEffects` probe.
-    return !!pid && !!content.prefabs.get(pid)?.components["edible"];
-  });
+  return inv.slots.findIndex((s) => slotEffects(world, content, s).length > 0);
 }
 
 function consumeOne(world: World, slots: InventorySlot[], idx: number): InventorySlot[] {
@@ -78,21 +86,6 @@ function consumeOne(world: World, slots: InventorySlot[], idx: number): Inventor
   }
   world.destroy(slot.entityId as EntityId);
   return slots.filter((_, i) => i !== idx);
-}
-
-/**
- * Ph1 bridge: build the item's effect list from its `edible` stats. Ph2
- * reads this list straight off the item (`ItemEffects` / prefab `effects`)
- * and this synthesis is deleted.
- */
-function deriveItemEffects(content: ContentService, prefabId: string, quality: number): EffectSpec[] {
-  const stats = content.deriveItemStats(prefabId, [], quality);
-  const deltas: Record<string, number> = {};
-  if ((stats.foodValue ?? 0) > 0) deltas.hunger = -stats.foodValue!;
-  if ((stats.waterValue ?? 0) > 0) deltas.thirst = -stats.waterValue!;
-  return Object.keys(deltas).length > 0
-    ? [{ id: "adjust_resource", params: { deltas } }]
-    : [];
 }
 
 export const slotHasUsableGate: GateHandler = {
@@ -120,14 +113,10 @@ export class ApplyItemEffectsResolver implements EffectResolver {
     if (idx === -1) return; // raced away (gate passed at start, gone now)
 
     const slot = inv.slots[idx];
-    const prefabId = slotPrefabId(slot, world)!;
-    const quality = slot.kind === "unique"
-      ? world.get(slot.entityId as EntityId, QualityStamped)?.quality ?? 1
-      : 1;
-
-    const specs = deriveItemEffects(content, prefabId, quality);
+    const prefabId = slotPrefabId(slot, world);
+    const specs = slotEffects(world, content, slot);
     for (const spec of specs) {
-      this.effects.get(spec.id).resolve({ ...ctx, params: spec.params });
+      this.effects.get(spec.id).resolve({ ...ctx, params: spec.params ?? {} });
     }
 
     world.set(entityId, Inventory, { ...inv, slots: consumeOne(world, inv.slots, idx) });

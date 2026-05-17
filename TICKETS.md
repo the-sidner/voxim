@@ -2564,7 +2564,7 @@ the buff-child half is already verified (see ACTION_PRIMITIVE_PLAN.md
 T-235); this arc supplies the compose half so there's no split path.
 
 ### T-240 · Usable items over the action+effect substrate
-Effort: M   Status: in-progress   Commits: Ph1 048c723
+Effort: M   Status: in-progress   Commits: Ph1 048c723 · Ph2 PH2HASH
 
 "Use an item" is an action, and an item's payload is an `EffectSpec[]`
 over the **existing** effect-resolver registry — not a new effect system.
@@ -2595,10 +2595,23 @@ in the same commit as the new):
   (fans the slot item's `EffectSpec[]` through the shared registry);
   `UseItem` command → `RequestedAction(use_item, {slot})`; **delete**
   `EquipmentSystem._handleUseItem`. `consume` becomes a `use_item` shell.
-- **Ph2** — `ItemEffects` instance component + prefab `effects` field;
-  migrate every `edible` prefab to `effects`; **delete** the `edible`
-  component + codec + `consume_item`'s slot-rescan; update
-  `deriveItemStats`.
+- **Ph2** ✓ — `ItemEffects` server-only instance component + top-level
+  prefab `effects` field (NOT a `components` key — effects are item data
+  like `stats`, so the spawn walk never tries to resolve an `effects`
+  component / content-load never rejects it); migrated berries (the only
+  `edible` prefab) to `effects`; **deleted** the `Edible` component +
+  schema + codec + `EdibleData` type (it was dead scaffolding — never
+  written to any entity) and the Ph1 `deriveItemStats` synthesis bridge.
+  `deriveItemStats` now derives `foodValue`/`waterValue` from the item's
+  `adjust_resource` effects, so its DerivedItemStats contract is unchanged
+  and NPC food-seeking (`findNearestConsumable`) is untouched.
+  **Scope cut, deliberate:** selection stays "first usable slot", not the
+  explicit slot `UseItem` names. Per-slot targeting needs a per-action
+  param channel the dispatcher lacks (slot would ride
+  `ActiveActionState.scratch`, but `start()` seeds none and intent carries
+  only an action id). That's a substrate gap, not item-effects work; a
+  leak-prone `PendingItemUse{slot}` carrier was rejected as accretion.
+  Tracked for a later substrate ticket / Ph3-adjacent.
 - **Ph3** — boot cross-check (item effect ids vs registry, fail-fast);
   `spend_item`/charges as effects (reusable items omit `spend_item`;
   durability/charges become resources). Procedural generator targeting

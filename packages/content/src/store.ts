@@ -437,7 +437,6 @@ export class StaticContentStore implements ContentService {
     const c = prefab.components;
     const weight = c["weight"] as { baseWeight?: number } | undefined;
     const armor = c["armor"] as { reduction?: number; staminaPenalty?: number } | undefined;
-    const edible = c["edible"] as { food?: number; water?: number } | undefined;
     const illuminator = c["illuminator"] as { radius?: number; color?: number; intensity?: number; flicker?: number } | undefined;
     const tool = c["tool"] as { toolType?: string } | undefined;
     const swingable = c["swingable"] as { damage?: number } | undefined;
@@ -445,8 +444,20 @@ export class StaticContentStore implements ContentService {
     const stats: DerivedItemStats = { weight: weight?.baseWeight ?? 1 };
     if (armor?.reduction !== undefined) stats.armorReduction = armor.reduction * quality;
     if (armor?.staminaPenalty !== undefined) stats.staminaRegenPenalty = armor.staminaPenalty;
-    if (edible?.food !== undefined) stats.foodValue = edible.food * quality;
-    if (edible?.water !== undefined) stats.waterValue = edible.water * quality;
+    // foodValue / waterValue are derived from the item's effect payload
+    // (T-240): a negative `adjust_resource` delta on hunger/thirst is, by
+    // definition, how much eating/drinking it restores. The DerivedItemStats
+    // contract is unchanged so NPC AI (findNearestConsumable) is untouched.
+    for (const e of prefab.effects ?? []) {
+      if (e.id !== "adjust_resource") continue;
+      const d = (e.params?.deltas ?? {}) as Record<string, unknown>;
+      if (typeof d.hunger === "number" && d.hunger < 0) {
+        stats.foodValue = (stats.foodValue ?? 0) + -d.hunger * quality;
+      }
+      if (typeof d.thirst === "number" && d.thirst < 0) {
+        stats.waterValue = (stats.waterValue ?? 0) + -d.thirst * quality;
+      }
+    }
     if (illuminator?.intensity) {
       stats.lightRadius = illuminator.radius;
       stats.lightColor = illuminator.color;

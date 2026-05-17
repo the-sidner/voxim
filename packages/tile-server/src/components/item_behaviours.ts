@@ -16,7 +16,7 @@ import * as v from "valibot";
 import type {
   EquipSlot, ItemSlotDef, StatContribution,
   EquippableData, SwingableData, SwingChainEntry, ToolData, DeployableData, PlaceableData,
-  EdibleData, IlluminatorData, ArmorData, MaterialSourceData,
+  IlluminatorData, ArmorData, MaterialSourceData,
   ComposedData, StackableData, WeightData,
 } from "@voxim/content";
 
@@ -248,43 +248,11 @@ export const Placeable = defineComponent({
   default: (): PlaceableData => ({ alignment: "forward-facing" }),
 });
 
-// ---------------------------------------------------------------------------
-// Edible — item can be consumed to restore needs / buffs. Replaces the
-// foodValue / waterValue fields currently on DerivedItemStats.
-// ---------------------------------------------------------------------------
-
-const edibleSchema = v.object({
-  food: v.number(),
-  water: v.number(),
-  health: v.number(),
-  stamina: v.number(),
-});
-
-export const Edible = defineComponent({
-  name: "edible" as const,
-  networked: false,
-  schema: edibleSchema,
-  codec: {
-    encode(v: EdibleData): Uint8Array {
-      const w = new WireWriter();
-      w.writeF32(v.food);
-      w.writeF32(v.water);
-      w.writeF32(v.health);
-      w.writeF32(v.stamina);
-      return w.toBytes();
-    },
-    decode(b: Uint8Array): EdibleData {
-      const r = new WireReader(b);
-      return {
-        food: r.readF32(),
-        water: r.readF32(),
-        health: r.readF32(),
-        stamina: r.readF32(),
-      };
-    },
-  },
-  default: (): EdibleData => ({ food: 0, water: 0, health: 0, stamina: 0 }),
-});
+// Edible retired (T-240 Ph2) — "what eating does" is now the item's
+// `effects` payload (EffectSpec[] on the prefab / ItemEffects instance
+// component), fanned through the action-effect registry by `use_item`.
+// `deriveItemStats` derives foodValue/waterValue from those effects, so
+// the DerivedItemStats contract (and NPC food-seeking) is unchanged.
 
 // ---------------------------------------------------------------------------
 // Illuminator — item emits light while equipped. Replaces light* fields

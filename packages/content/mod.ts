@@ -38,7 +38,7 @@ export type {
   ToolData,
   DeployableData,
   PlaceableData,
-  EdibleData,
+  EffectSpec,
   IlluminatorData,
   ArmorData,
   MaterialSourceData,
