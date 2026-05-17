@@ -2,7 +2,8 @@
   "id": "berries",
   "modelId": "model_berries",
   "effects": [
-    { "id": "adjust_resource", "params": { "deltas": { "hunger": -8, "thirst": -2 } } }
+    { "id": "adjust_resource", "params": { "deltas": { "hunger": -8, "thirst": -2 } } },
+    { "id": "spend_item" }
   ],
   "components": {
     "stackable": {},

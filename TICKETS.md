@@ -2564,7 +2564,7 @@ the buff-child half is already verified (see ACTION_PRIMITIVE_PLAN.md
 T-235); this arc supplies the compose half so there's no split path.
 
 ### T-240 · Usable items over the action+effect substrate
-Effort: M   Status: in-progress   Commits: Ph1 048c723 · Ph2 5bdf076
+Effort: M   Status: done   Commits: Ph1 048c723 · Ph2 5bdf076 · Ph3 PH3HASH
 
 "Use an item" is an action, and an item's payload is an `EffectSpec[]`
 over the **existing** effect-resolver registry — not a new effect system.
@@ -2612,15 +2612,29 @@ in the same commit as the new):
   only an action id). That's a substrate gap, not item-effects work; a
   leak-prone `PendingItemUse{slot}` carrier was rejected as accretion.
   Tracked for a later substrate ticket / Ph3-adjacent.
-- **Ph3** — boot cross-check (item effect ids vs registry, fail-fast);
-  `spend_item`/charges as effects (reusable items omit `spend_item`;
-  durability/charges become resources). Procedural generator targeting
-  the vocabulary is a separate later ticket — substrate only here.
+- **Ph3** ✓ — boot cross-check: every prefab `effects[].id` must resolve
+  to a registered action-effect resolver, fail fast at boot (joins the
+  ResourceDef / buff / recipe-step / BT family in `server.ts`). `spend_item`
+  is now an effect, not a hardcoded step in `apply_item_effects`: a
+  consumable lists it (berries does), a **reusable** item (wand/tool)
+  omits it and survives the use — covered by tests. Durability/charges
+  *can* now be expressed as an item-carried resource + `spend_item`'s
+  absence, but the existing `Durability` instance component (combat
+  weapon_trace) is **not** migrated here — that's a separate refactor, not
+  dragged in (accretion risk). Procedural generator targeting the
+  vocabulary remains a separate later ticket — substrate only.
 
-Done when: clicking a usable inventory slot runs the `use_item` action,
-its effects resolve through the shared registry, food restores hunger via
-an `EffectSpec`, no `edible` component or `_handleUseItem` remains, and
-boot fails fast on an unknown item effect id.
+Done: clicking a usable slot runs `use_item`, effects resolve through the
+shared registry, food restores hunger via an `EffectSpec`, no `edible`
+component / `_handleUseItem` remains, boot fails fast on an unknown item
+effect id. 132 action+system+content tests green; server graph type-checks.
+
+Deferred (tracked, not done — deliberate scope edges, not loose ends):
+- Explicit per-slot targeting (`UseItem` names a slot): needs a per-action
+  param channel the dispatcher lacks. Substrate gap; a leak-prone
+  `PendingItemUse{slot}` carrier was rejected as accretion.
+- `Durability` → item-resource migration: own ticket when it's worth it.
+- Procedural item-effect generation against the vocabulary: own ticket.
 
 ---
 

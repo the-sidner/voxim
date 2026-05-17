@@ -21,7 +21,7 @@ import { ActionDispatcher } from "./dispatcher.ts";
 import type { IntentResolver } from "./dispatcher.ts";
 import { newGateRegistry } from "./gate.ts";
 import { newEffectRegistry } from "./effect.ts";
-import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver } from "./resolvers/item_use.ts";
+import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./resolvers/item_use.ts";
 
 const content = await JsonSource.load();
 
@@ -30,6 +30,7 @@ function wired(intent: IntentResolver): ActionDispatcher {
   gates.register(slotHasUsableGate);
   const effects = newEffectRegistry();
   effects.register(adjustResourceResolver);
+  effects.register(spendItemResolver);
   effects.register(new ApplyItemEffectsResolver(effects));
   return new ActionDispatcher(content, gates, effects, intent);
 }
@@ -70,13 +71,13 @@ Deno.test("use_item: stackable berries — effects come off the prefab", () => {
   assertEquals(world.get(id, Inventory)!.slots, [{ kind: "stack", prefabId: "berries", quantity: 2 }]);
 });
 
-Deno.test("use_item: unique item — effects come off the ItemEffects instance", () => {
+Deno.test("use_item: unique item w/ spend_item — effects off the instance, then destroyed", () => {
   const world = new World();
   const itemId = newEntityId();
   world.create(itemId);
   world.write(itemId, ItemData, { prefabId: "_potion", quantity: 1 });
   world.write(itemId, ItemEffects, {
-    effects: [{ id: "adjust_resource", params: { deltas: { hunger: -20 } } }],
+    effects: [{ id: "adjust_resource", params: { deltas: { hunger: -20 } } }, { id: "spend_item" }],
   });
   const id = eater(world, [{ kind: "unique", entityId: itemId }]);
   run(wired(wantUse), world, 6);
@@ -84,6 +85,22 @@ Deno.test("use_item: unique item — effects come off the ItemEffects instance",
   assertEquals(world.get(id, Resource)?.values.hunger.value, 30); // 50 − 20
   assertEquals(world.get(id, Inventory)!.slots, []);              // unique destroyed
   assertEquals(world.isAlive(itemId), false);
+});
+
+Deno.test("use_item: reusable item (no spend_item) applies its effect and survives", () => {
+  const world = new World();
+  const itemId = newEntityId();
+  world.create(itemId);
+  world.write(itemId, ItemData, { prefabId: "_wand", quantity: 1 });
+  world.write(itemId, ItemEffects, {
+    effects: [{ id: "adjust_resource", params: { deltas: { hunger: -20 } } }],
+  });
+  const id = eater(world, [{ kind: "unique", entityId: itemId }]);
+  run(wired(wantUse), world, 6);
+
+  assertEquals(world.get(id, Resource)?.values.hunger.value, 30);            // effect applied
+  assertEquals(world.get(id, Inventory)!.slots, [{ kind: "unique", entityId: itemId }]); // kept
+  assertEquals(world.isAlive(itemId), true);
 });
 
 Deno.test("use_item: slot_has_usable blocks the action with nothing usable", () => {

@@ -9,11 +9,15 @@
  *     the retired `has_edible`.
  *
  *   apply_item_effects — fired on `apply:enter`. Resolves the first usable
- *     slot, reads the item's `EffectSpec[]` (Ph2: straight off the data —
+ *     slot, reads the item's `EffectSpec[]` (straight off the data —
  *     `ItemEffects` instance component for unique items, the prefab's
- *     `effects` for stackables; the Ph1 `deriveItemStats` bridge is gone),
- *     dispatches each spec back through the shared registry, then removes
- *     one from the stack / destroys the unique.
+ *     `effects` for stackables), and dispatches each spec back through the
+ *     shared registry. Pure fan-out: consumption is not hardcoded.
+ *
+ *   spend_item — consume one of the used item (decrement stack / destroy
+ *     unique). An effect the item lists, not a fixed step (Ph3): a
+ *     reusable item (wand, tool) omits it and survives the use; charges /
+ *     durability are then just a resource the item carries.
  *
  *   adjust_resource — generic `{ deltas: { <id>: <signed> } }` nudge, each
  *     clamped to its def's bounds, applied in ONE `world.set`. The map (not
@@ -115,14 +119,34 @@ export class ApplyItemEffectsResolver implements EffectResolver {
     const slot = inv.slots[idx];
     const prefabId = slotPrefabId(slot, world);
     const specs = slotEffects(world, content, slot);
+    // Pure fan-out — including `spend_item` if the item lists it.
+    // Consumption is no longer hardcoded here: a reusable item (wand,
+    // tool) simply omits `spend_item` and survives the use.
     for (const spec of specs) {
       this.effects.get(spec.id).resolve({ ...ctx, params: spec.params ?? {} });
     }
-
-    world.set(entityId, Inventory, { ...inv, slots: consumeOne(world, inv.slots, idx) });
     log.info("used: entity=%s item=%s effects=%d", entityId, prefabId, specs.length);
   }
 }
+
+/**
+ * Consume one of the used item: decrement the stack / destroy the unique.
+ * An effect, not a hardcoded step — items that list it are consumable;
+ * items that don't are reusable. Re-derives the used slot (the item is
+ * still present — no prior effect removes it), tolerating the same
+ * raced-away case as the others.
+ */
+export const spendItemResolver: EffectResolver = {
+  id: "spend_item",
+  resolve(ctx) {
+    const { world, content, entityId } = ctx;
+    const inv = world.get(entityId, Inventory);
+    if (!inv) return;
+    const idx = findUsableSlot(world, content, entityId);
+    if (idx === -1) return;
+    world.set(entityId, Inventory, { ...inv, slots: consumeOne(world, inv.slots, idx) });
+  },
+};
 
 /**
  * Generic bounded-resource nudge. `params.deltas` maps Resource value keys

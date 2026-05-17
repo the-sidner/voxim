@@ -60,7 +60,7 @@ import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
-import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver } from "./actions/resolvers/item_use.ts";
+import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./actions/resolvers/item_use.ts";
 import { ResourceNodeSystem } from "./systems/resource_node_system.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
@@ -451,6 +451,7 @@ export class TileServer {
     // T-240: `use_item`'s apply_item_effects fans an item's EffectSpec[]
     // back through this same registry (adjust_resource etc.).
     actionEffects.register(adjustResourceResolver);
+    actionEffects.register(spendItemResolver);
     actionEffects.register(new ApplyItemEffectsResolver(actionEffects));
     // Buffs: start_buff spawns a buff scene-graph child; the child's
     // `buff` ambient action fires buff_tick (DoT/HoT) each tick.
@@ -510,6 +511,24 @@ export class TileServer {
     // dispatches to them). Replaces ActionSystem.resolveHits / spawnProjectile.
     actionEffects.register(new WeaponTraceResolver(this.stateHistory, tickRateHz, hitHandlers));
     actionEffects.register(new ProjectileSpawnResolver());
+
+    // T-240 Ph3: item effect content cross-check — every `effects[].id` on
+    // every prefab must resolve to a registered action-effect resolver, or
+    // `use_item` can't dispatch it. Fail fast at boot (mirrors the
+    // ResourceDef / buff / recipe-step / BT checks). Unique items' runtime
+    // `ItemEffects` (procedural) can't be boot-checked; the prefab payload
+    // is the static surface generation targets.
+    for (const prefab of content.prefabs.values()) {
+      for (const spec of prefab.effects ?? []) {
+        if (!actionEffects.has(spec.id)) {
+          throw new Error(
+            `Prefab "${prefab.id}" lists item effect "${spec.id}" but no ` +
+            `action-effect resolver is registered. ` +
+            `Registered: [${actionEffects.ids().join(", ")}]`,
+          );
+        }
+      }
+    }
 
     // System pipeline, declared in reading order. Real ordering constraints
     // live on each system as `dependsOn` (e.g. PhysicsSystem.dependsOn =
