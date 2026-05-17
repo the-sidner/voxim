@@ -48,7 +48,6 @@ import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
 import { equipmentStatModifier } from "./resources/modifiers/equipment_stat.ts";
-import { LifetimeSystem } from "./systems/lifetime.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver } from "./actions/index.ts";
 import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver, RequestedActionIntentResolver } from "./actions/intent.ts";
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
@@ -86,6 +85,7 @@ import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
 import { emitEventEffect } from "./resources/effects/emit_event.ts";
 import { resolveRecipeEffect } from "./resources/effects/resolve_recipe.ts";
 import { expireBuffEffect } from "./resources/effects/expire_buff.ts";
+import { destroySelfEffect } from "./resources/effects/destroy_self.ts";
 import { startBuffResolver, buffTickResolver } from "./actions/resolvers/buff.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
@@ -335,6 +335,7 @@ export class TileServer {
     resourceEffects.register(resolveRecipeEffect);
     // expire_buff: a buff child's buff_timer Resource hits 0 → destroySubtree.
     resourceEffects.register(expireBuffEffect);
+    resourceEffects.register(destroySelfEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
 
@@ -547,7 +548,6 @@ export class TileServer {
       // on the wire.
       new StaleSlotCleanupSystem(),
       new NpcAiSystem(content, jobs, behaviorTrees),
-      new LifetimeSystem(),
       new EquipmentSystem(content),
       new PlacementSystem(content),
       new CraftingSystem(content, recipeSteps),

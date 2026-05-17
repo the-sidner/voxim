@@ -7,7 +7,8 @@
  *   - Terrain collision: destroy if z ≤ heightmap height at (x, y)
  *   - Entity collision via SpatialGrid + Hitbox capsule sweep test
  *   - On entity hit: dispatch to the same HitHandler[] chain as melee
- *   - Destroy when maxHits reached or Lifetime expires (Lifetime handled by LifetimeSystem)
+ *   - Destroy when maxHits reached (lifetime expiry is the `lifetime`
+ *     Resource: ResourceSystem cross@0 → destroy_self, T-241)
  *
  * Projectile hits pass parryAllowed: false — the attacker is far away and
  * cannot be staggered regardless of the defender's block timing.

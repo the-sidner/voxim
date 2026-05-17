@@ -289,15 +289,9 @@ export const healthCodec: Serialiser<HealthData> = buildCodec<HealthData>({
 // (tile-server/components/resource.ts). Wire ids 7/8 retired in
 // @voxim/protocol; never reuse. T-238c.)
 
-// ---- Lifetime ---------------------------------------------------------------
-// Countdown on transient entities (projectiles, effects). Decremented each
-// tick by LifetimeSystem; when ticks reaches 0 the entity is destroyed.
-
-export interface LifetimeData { ticks: number; }
-
-export const lifetimeCodec: Serialiser<LifetimeData> = buildCodec<LifetimeData>({
-  ticks: { type: "i32" },
-});
+// (Lifetime codec retired — transient-entity expiry is a server-only
+// Resource now (data/resources/lifetime.json, cross@0 → destroy_self).
+// Wire id 12 retired in @voxim/protocol; never reuse. T-241.)
 
 // (Stamina codec retired — stamina is a server-only `Resource` now
 // (tile-server/components/resource.ts). Wire id 9 retired in

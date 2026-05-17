@@ -27,7 +27,6 @@ import {
   Facing,
   Health,
   InputState,
-  Lifetime,
   ModelRef,
   Name,
   Position,
@@ -113,7 +112,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   //    T-232: networked Staggered → `staggered` tag + stagger reaction
   //    actions, wire id 36 retired. T-233: BlockHeld removed — parry window
   //    is the held `block` action's ticksInPhase.)
-  Lifetime,
+  // 12 (lifetime) retired — Lifetime is data/resources/lifetime.json
+  //    (cross@0 → destroy_self). T-241.
   ModelRef,
   AnimationState,
   Equipment,

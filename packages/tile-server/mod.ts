@@ -11,7 +11,6 @@ export {
   Facing,
   InputState,
   Health,
-  Lifetime,
 } from "./src/components/game.ts";
 export type {
   PositionData,
@@ -19,7 +18,6 @@ export type {
   FacingData,
   InputStateData,
   HealthData,
-  LifetimeData,
 } from "./src/components/game.ts";
 export {
   CounterReady,

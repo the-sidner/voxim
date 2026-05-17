@@ -2636,6 +2636,36 @@ Deferred (tracked, not done — deliberate scope edges, not loose ends):
 - `Durability` → item-resource migration: own ticket when it's worth it.
 - Procedural item-effect generation against the vocabulary: own ticket.
 
+### T-241 · Lifetime → Resource (post-T-239 sweep #1)
+Effort: S   Status: done   Commit: T241HASH
+
+`LifetimeSystem` decrements `Lifetime.ticks` and `world.destroy`s at 0 —
+byte-for-byte the `buff_timer` Resource pattern (`cross@0 →
+destroySubtree`) the T-239 buff arc already runs. A parallel countdown
+mechanism the refactor doctrine says shouldn't survive. From the
+post-T-239 sweep (#1, the cleanest win): a bounded tick-scalar *is* a
+`ResourceDef`.
+
+- `data/resources/lifetime.json` — mirror `buff_timer` (rate -20 = -1/tick
+  at 20Hz, `cross@0 → destroy_self`); per-entity max seeded at spawn.
+- `destroy_self` ResourceEffect — `world.destroy(entityId)`. Distinct from
+  `expire_buff`'s `destroySubtree`: a projectile is not a buff and has no
+  subtree; honest leaf name. Boot cross-check is automatic (the existing
+  ResourceDef threshold-effect check in `server.ts`).
+- The only `Lifetime` writer (`ProjectileSpawnResolver`) writes
+  `Resource{ lifetime }` instead. `LifetimeSystem` deleted; `Lifetime`
+  component retired (wire id 12 → retired comment, never reused — it was
+  networked but only server-transient projectiles carried it; the client
+  renders projectiles from Position/ProjectileData, never needed it).
+
+Done: projectile expiry is `ResourceSystem` + `destroy_self`; `Lifetime`
+component + `LifetimeSystem` + `lifetimeCodec` gone; wire id 12 retired;
+server graph type-checks; 180 tile-server+content tests green (incl. a new
+lifetime cross@0→destroy_self test). Also swept up a Ph2 leftover the
+narrower Ph2 test scope missed: `prefab_round_trip.test.ts` still imported
+the retired `Edible` — deleted here (same "retire a component" shape).
+Same accepted ≤1-tick retune as every other Resource migration.
+
 ---
 
 ## Rendering & Client

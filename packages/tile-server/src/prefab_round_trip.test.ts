@@ -30,7 +30,6 @@ import {
   Composed,
   Deployable,
   Placeable,
-  Edible,
   Equippable,
   Illuminator,
   MaterialSource,
@@ -130,15 +129,6 @@ Deno.test("Placeable — schema/codec agreement", () => {
     { alignment: "forward-facing", reach: 3.5 },
     { alignment: "cell-aligned", requiresToolType: "hammer", reach: 2.0, cellMustBeEmpty: true },
   ], "Placeable");
-});
-
-Deno.test("Edible — schema/codec agreement", () => {
-  roundTrip(Edible, [
-    { food: 40, water: 0, health: 0, stamina: 0 },
-    { food: 0, water: 50, health: 0, stamina: 0 },
-    { food: 25, water: 10, health: 5, stamina: 15 },
-    { food: 0, water: 0, health: 0, stamina: 0 },
-  ], "Edible");
 });
 
 Deno.test("Illuminator — schema/codec agreement", () => {

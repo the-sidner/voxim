@@ -20,7 +20,8 @@ export const ComponentType = {
   // 10 is retired (was attackCooldown) — do not reuse
   // 11 is retired (was combatState) — split into staggered (36) + counterReady (37)
   //    plus the server-only iFrameActive / blockHeld / dodgeCooldown
-  lifetime:           12,
+  // 12 is retired (was lifetime) — server-only Resource now
+  //    (data/resources/lifetime.json, cross@0 → destroy_self); do not reuse (T-241)
   modelRef:           13,
   animationState:     14,
   equipment:          15,

@@ -33,7 +33,8 @@ import type {
   AnimationLayer, AnimationClip, BoneMask, BoneDef, SkeletonDef, Vec3,
 } from "@voxim/content";
 import { TileEvents } from "@voxim/protocol";
-import { Position, Facing, Velocity, InputState, Lifetime, ModelRef } from "../../components/game.ts";
+import { Position, Facing, Velocity, InputState, ModelRef } from "../../components/game.ts";
+import { Resource } from "../../components/resource.ts";
 import { Equipment } from "../../components/equipment.ts";
 import { QualityStamped, Durability } from "../../components/instance.ts";
 import { ItemData } from "../../components/items.ts";
@@ -248,7 +249,11 @@ export class ProjectileSpawnResolver implements EffectResolver {
       y: Math.sin(facing) * speed,
       z: gravityScale > 0 ? speed * combatCfg.projectileDefaults.arcFactor : 0,
     });
-    world.write(projId, Lifetime, { ticks: lifetimeTicks });
+    // T-241: lifetime is a Resource (cross@0 → destroy_self), not a
+    // bespoke Lifetime countdown. Per-entity max seeded here.
+    world.write(projId, Resource, {
+      values: { lifetime: { value: lifetimeTicks, max: lifetimeTicks } },
+    });
     world.write(projId, ProjectileData, {
       ownerId: entityId,
       damage: stats.damage ?? 0,

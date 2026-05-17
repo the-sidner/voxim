@@ -11,19 +11,19 @@ import { ComponentType } from "@voxim/protocol";
 import * as v from "valibot";
 import {
   positionCodec, velocityCodec, facingCodec,
-  inputStateCodec, healthCodec, lifetimeCodec,
+  inputStateCodec, healthCodec,
   modelRefCodec, animationStateCodec, nameCodec,
 } from "@voxim/codecs";
 import type {
   PositionData, VelocityData, FacingData,
-  InputStateData, HealthData, LifetimeData,
+  InputStateData, HealthData,
   ModelRefData, AnimationStateData, NameData,
 } from "@voxim/codecs";
 
 // ---- re-exported shared types for convenience ----
 export type {
   PositionData, VelocityData, FacingData,
-  InputStateData, HealthData, LifetimeData,
+  InputStateData, HealthData,
   NameData,
 };
 
@@ -93,14 +93,9 @@ export const Health = defineComponent({
 // data/resources/{hunger,thirst,stamina}.json. Wire ids 7/8/9 retired in
 // @voxim/protocol; never reuse. T-238b/c.)
 
-// ---- Lifetime ---- remaining ticks; entity is destroyed when this reaches 0
-
-export const Lifetime = defineComponent({
-  name: "lifetime" as const,
-  wireId: ComponentType.lifetime,
-  codec: lifetimeCodec,
-  default: (): LifetimeData => ({ ticks: 0 }),
-});
+// (Lifetime is a Resource now — components/resource.ts,
+// data/resources/lifetime.json (cross@0 → destroy_self). Wire id 12
+// retired in @voxim/protocol; never reuse. T-241.)
 
 // ---- ModelRef ---- which model template this entity renders as (client-side only)
 

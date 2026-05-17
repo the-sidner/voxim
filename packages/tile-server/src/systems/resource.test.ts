@@ -17,6 +17,7 @@ import { newResourceEffectRegistry } from "../resources/effect.ts";
 import type { ResourceEffect } from "../resources/effect.ts";
 import { newResourceModifierRegistry } from "../resources/modifier.ts";
 import type { ResourceRateModifier } from "../resources/modifier.ts";
+import { destroySelfEffect } from "../resources/effects/destroy_self.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 
 const DT = 1 / 20;
@@ -113,6 +114,25 @@ Deno.test("sustained threshold fires every in-zone tick; cross fires once on ent
   assertEquals(w.get(id, Resource)!.values.hunger.value, 100);
   assert(starve >= 2, "sustained fires every tick while pinned at the cap");
   assertEquals(warn, 1, "cross still only fired once");
+});
+
+Deno.test("lifetime: cross@0 → destroy_self destroys the entity (T-241)", () => {
+  // The data/resources/lifetime.json shape: rate -20 (=-1/tick at 20Hz),
+  // cross below 0 → destroy_self. Replaces LifetimeSystem.
+  const c = content({
+    id: "lifetime", scope: "entity", bounds: { min: 0, max: 1 }, rate: -20,
+    thresholds: [{ at: 0, dir: "below", edge: "cross", effect: "destroy_self" }],
+  });
+  const fx = newResourceEffectRegistry();
+  fx.register(destroySelfEffect);
+  const sys = new ResourceSystem(c, fx, newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
+  const w = new World();
+  const id = entityWith(w, { lifetime: { value: 2, max: 2 } }); // 2 ticks left
+
+  tick(sys, w); // 2 → 1
+  assert(w.isAlive(id), "alive while lifetime > 0");
+  tick(sys, w); // 1 → 0: crosses, destroy_self
+  assertEquals(w.isAlive(id), false);
 });
 
 Deno.test("unknown resource id is skipped, not thrown", () => {
