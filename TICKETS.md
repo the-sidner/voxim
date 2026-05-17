@@ -2637,7 +2637,7 @@ Deferred (tracked, not done — deliberate scope edges, not loose ends):
 - Procedural item-effect generation against the vocabulary: own ticket.
 
 ### T-241 · Lifetime → Resource (post-T-239 sweep #1)
-Effort: S   Status: done   Commit: T241HASH
+Effort: S   Status: done   Commit: a97e09e
 
 `LifetimeSystem` decrements `Lifetime.ticks` and `world.destroy`s at 0 —
 byte-for-byte the `buff_timer` Resource pattern (`cross@0 →
