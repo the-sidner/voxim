@@ -2667,7 +2667,7 @@ the retired `Edible` — deleted here (same "retire a component" shape).
 Same accepted ≤1-tick retune as every other Resource migration.
 
 ### T-242 · ResourceNode respawn timer → Resource (post-T-239 sweep #4)
-Effort: S   Status: done   Commit: T242HASH
+Effort: S   Status: done   Commit: 52f2647
 
 `ResourceNodeSystem` exists only to decrement `respawnTicksRemaining` and
 restore the node at 0 — the same timer→Resource shape as Lifetime/buff.
