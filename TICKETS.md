@@ -2745,7 +2745,7 @@ one small extra component crosses the wire per in-AoI projectile — correct
 (a projectile *is* an entity) and inert for the client.
 
 ### T-244 · DRY the weapon_trace / projectile_trace sweep tail
-Effort: S   Status: done   Commit: <hash>
+Effort: S   Status: done   Commit: f4c2b0c
 
 The T-243 non-goal, landed. `weapon_trace` (melee) and `projectile_trace`
 (ranged) carried two copies of the same dispatch tail: once a candidate
