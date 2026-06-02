@@ -2744,9 +2744,35 @@ Note: projectiles now carry the networked `ActiveActions` (wireId 48), so
 one small extra component crosses the wire per in-AoI projectile — correct
 (a projectile *is* an entity) and inert for the client.
 
----
+### T-244 · DRY the weapon_trace / projectile_trace sweep tail
+Effort: S   Status: done   Commit: <hash>
 
-## Rendering & Client
+The T-243 non-goal, landed. `weapon_trace` (melee) and `projectile_trace`
+(ranged) carried two copies of the same dispatch tail: once a candidate
+target is in hand, both `testHitboxIntersection` → publish `HitSpark` →
+run the shared `HitHandler[]` chain, building a near-identical
+`HitContext`. The genuine difference is everything *before* (candidate
+source, exclusions, broad-phase) and a handful of `HitContext` fields
+(attackerPart, weaponStats, parry, skillVerb, coordinates) — not the tail.
+
+- `combat/sweep.ts` — `dispatchSweepHit(world, events, handlers, hitbox,
+  targetPos, targetFacing, radius, segments, buildContext)`: tests the
+  swept volume, and on contact builds the context (caller's closure),
+  fires `HitSpark` at the context's hit point, runs the handler chain,
+  returns the intersection (so callers record dedup / count hits). The
+  pure geometry test stays in `hit_resolver.ts`; this is the events +
+  dispatch layer on top.
+- Both resolvers' inner loops now call it. HitSpark position is read back
+  off the built context (`hitX/Y/Z`), so melee's blade-contact point and
+  ranged's trajectory-end point both flow through unchanged — byte-for-byte
+  the prior behaviour. Each caller keeps its own loop (the control flow
+  genuinely differs: melee hits every target in arc; ranged breaks +
+  destroys at maxHits), so this DRYs the shared tail without forcing a
+  unified loop the two don't actually share.
+
+Done: one copy of the test→spark→dispatch tail; server graph type-checks;
+185 tile-server+content tests green (incl. the melee weapon-trace suite and
+the T-243 projectile tests, both exercising the shared path).
 
 ### T-065 · Enclosure detection on server
 Effort: L   Status: todo

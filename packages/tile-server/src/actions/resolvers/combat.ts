@@ -32,7 +32,6 @@ import type {
   ContentService, DerivedItemStats, SwingableData,
   AnimationLayer, AnimationClip, BoneMask, BoneDef, SkeletonDef, Vec3,
 } from "@voxim/content";
-import { TileEvents } from "@voxim/protocol";
 import { Position, Facing, Velocity, InputState, ModelRef } from "../../components/game.ts";
 import { Resource } from "../../components/resource.ts";
 import { Equipment } from "../../components/equipment.ts";
@@ -44,7 +43,7 @@ import { ProjectileData } from "../../components/projectile.ts";
 import { ActiveActions } from "../../components/action.ts";
 import type { HitHandler, HitContext } from "../../hit_handler.ts";
 import type { StateHistoryBuffer, TickSnapshot, EntitySnapshot } from "../../state_history.ts";
-import { testHitboxIntersection } from "../../combat/hit_resolver.ts";
+import { dispatchSweepHit } from "../../combat/sweep.ts";
 import type { EffectResolver, ResolveContext } from "../effect.ts";
 import { createLogger } from "../../logger.ts";
 
@@ -174,33 +173,24 @@ export class WeaponTraceResolver implements EffectResolver {
       if (!hitbox || hitbox.parts.length === 0) continue;
 
       const targetPos: Vec3 = { x: target.x, y: target.y, z: target.z ?? 0 };
-      const hit = testHitboxIntersection(
-        hitbox, targetPos, target.facing ?? 0, bladeRadius,
+      const hit = dispatchSweepHit(
+        world, events, this.handlers, hitbox, targetPos, target.facing ?? 0, bladeRadius,
         [{ from: bladePrev.base, to: bladePrev.tip }, { from: bladeCurr.base, to: bladeCurr.tip }],
+        (h): HitContext => ({
+          attackerId: entityId,
+          targetId: target.entityId,
+          weaponStats: stats,
+          bodyPart: h.partId,
+          attackerPart: h.attackerT < 1 / 3 ? "haft" : h.attackerT < 2 / 3 ? "mid" : "tip",
+          targetSnapshotFacing: target.facing ?? 0,
+          attackerX: ax, attackerY: ay,
+          targetX: target.x, targetY: target.y,
+          hitX: h.contact.x, hitY: h.contact.y, hitZ: h.contact.z,
+          parryAllowed: true,
+          skillVerb: verb,
+        }),
       );
-      if (!hit) continue;
-
-      const attackerPart = hit.attackerT < 1 / 3 ? "haft" : hit.attackerT < 2 / 3 ? "mid" : "tip";
-      scratch.hits.push({ entityId: target.entityId, bodyPart: hit.partId });
-      events.publish(TileEvents.HitSpark, {
-        x: hit.contact.x, y: hit.contact.y, z: hit.contact.z,
-        attackerPart, victimPart: hit.partId,
-      });
-
-      const hitCtx: HitContext = {
-        attackerId: entityId,
-        targetId: target.entityId,
-        weaponStats: stats,
-        bodyPart: hit.partId,
-        attackerPart,
-        targetSnapshotFacing: target.facing ?? 0,
-        attackerX: ax, attackerY: ay,
-        targetX: target.x, targetY: target.y,
-        hitX: hit.contact.x, hitY: hit.contact.y, hitZ: hit.contact.z,
-        parryAllowed: true,
-        skillVerb: verb,
-      };
-      for (const h of this.handlers) h.onHit(world, events, hitCtx);
+      if (hit) scratch.hits.push({ entityId: target.entityId, bodyPart: hit.partId });
     }
 
     ctx.state.scratch = scratch as unknown as Record<string, unknown>;

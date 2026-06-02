@@ -24,13 +24,12 @@
  * server-authoritative, born on the server, not predicted by the client.
  */
 
-import type { Vec3, DerivedItemStats } from "@voxim/content";
-import { TileEvents } from "@voxim/protocol";
+import type { Vec3 } from "@voxim/content";
 import { Position, Velocity, Facing, InputState } from "../../components/game.ts";
 import { Hitbox } from "../../components/hitbox.ts";
 import { ProjectileData } from "../../components/projectile.ts";
 import type { HitHandler, HitContext } from "../../hit_handler.ts";
-import { testHitboxIntersection } from "../../combat/hit_resolver.ts";
+import { dispatchSweepHit } from "../../combat/sweep.ts";
 import { buildTerrainLookup } from "../../physics/terrain_lookup.ts";
 import { ballisticStep } from "../../physics/ballistic.ts";
 import type { EffectResolver, ResolveContext } from "../effect.ts";
@@ -108,66 +107,49 @@ export class ProjectileTraceResolver implements EffectResolver {
       // Projectile trajectory for this tick: prevPos → newPos.
       // Single segment (no swept prev/curr) — projectiles are small and fast,
       // but the tick dt is short enough that a single segment is faithful.
-      const p0: Vec3 = prevPos;
-      const p1: Vec3 = { x: newPos.x, y: newPos.y, z: newPos.z };
       const tPos: Vec3 = { x: targetPos.x, y: targetPos.y, z: targetPos.z };
 
-      const hit = testHitboxIntersection(
-        hitbox,
-        tPos,
-        targetFacing,
-        projectileData.radius,
-        [{ from: p0, to: p1 }],
+      // Shared dispatch tail with weapon_trace: test → HitSpark → handlers.
+      const hit = dispatchSweepHit(
+        world, events, this.handlers, hitbox, tPos, targetFacing, projectileData.radius,
+        [{ from: prevPos, to: { x: newPos.x, y: newPos.y, z: newPos.z } }],
+        (h): HitContext => ({
+          attackerId: projectileData.ownerId,
+          targetId: candidateId,
+          // Reconstruct DerivedItemStats from the flat fields on ProjectileData
+          weaponStats: {
+            damage: projectileData.damage,
+            toolType: projectileData.toolType || undefined,
+            harvestPower: projectileData.harvestPower,
+            buildPower: projectileData.buildPower,
+            armorReduction: projectileData.armorReduction,
+            weight: 0,
+          },
+          bodyPart: h.partId,
+          // Projectiles always strike with their point — the "tip" attacker
+          // part conceptually matches an arrowhead / bolt-tip impact and
+          // picks up the tip damage multiplier from game_config.
+          attackerPart: "tip",
+          // Projectiles use current world state — no lag rewind needed.
+          // HitSpark fires at the trajectory end (newPos), as before.
+          targetSnapshotFacing: targetFacing,
+          attackerX: prevPos.x,
+          attackerY: prevPos.y,
+          targetX: targetPos.x,
+          targetY: targetPos.y,
+          hitX: newPos.x,
+          hitY: newPos.y,
+          hitZ: newPos.z,
+          parryAllowed: false,
+        }),
       );
       if (!hit) continue;
-      const hitBodyPart = hit.partId;
 
       log.info("projectile hit: entity=%s owner=%s target=%s part=%s",
-        entityId, projectileData.ownerId, candidateId, hitBodyPart);
+        entityId, projectileData.ownerId, candidateId, hit.partId);
 
       hitEntities = [...hitEntities, candidateId];
       hitCount = hitEntities.length;
-
-      // Reconstruct DerivedItemStats from the flat fields stored in ProjectileData
-      const weaponStats: DerivedItemStats = {
-        damage: projectileData.damage,
-        toolType: projectileData.toolType || undefined,
-        harvestPower: projectileData.harvestPower,
-        buildPower: projectileData.buildPower,
-        armorReduction: projectileData.armorReduction,
-        weight: 0,
-      };
-
-      const hitCtx: HitContext = {
-        attackerId: projectileData.ownerId,
-        targetId: candidateId,
-        weaponStats,
-        bodyPart: hitBodyPart,
-        // Projectiles always strike with their point — the "tip" attacker
-        // part conceptually matches an arrowhead / bolt-tip impact and
-        // picks up the tip damage multiplier from game_config.
-        attackerPart: "tip",
-        // Projectiles use current world state — no lag rewind needed
-        targetSnapshotFacing: targetFacing,
-        attackerX: prevPos.x,
-        attackerY: prevPos.y,
-        targetX: targetPos.x,
-        targetY: targetPos.y,
-        hitX: newPos.x,
-        hitY: newPos.y,
-        hitZ: newPos.z,
-        parryAllowed: false,
-      };
-
-      events.publish(TileEvents.HitSpark, {
-        x: newPos.x, y: newPos.y, z: newPos.z,
-        attackerPart: "tip",
-        victimPart: hitBodyPart,
-      });
-
-      for (const handler of this.handlers) {
-        handler.onHit(world, events, hitCtx);
-      }
 
       // Check if max hits reached after this hit
       if (projectileData.maxHits > 0 && hitCount >= projectileData.maxHits) {
