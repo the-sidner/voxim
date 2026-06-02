@@ -2,7 +2,8 @@
  * ProjectileData component — server-only, not networked.
  *
  * Attached to projectile entities spawned by ranged weapon actions.
- * Carries all data needed by ProjectileSystem for physics and hit dispatch:
+ * Carries all data the `projectile_trace` effect (the `projectile_flight`
+ * ambient action's `hold:tick`, T-243) needs for physics and hit dispatch:
  *   - Owner reference (prevents self-hit)
  *   - Flat weapon stats used by HitHandlers (mirrors DerivedItemStats fields)
  *   - Physics parameters (gravity scale, collision radius)

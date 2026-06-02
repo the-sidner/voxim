@@ -1,9 +1,9 @@
 /**
  * Shared capsule-vs-hitbox intersection test.
  *
- * Both melee (ActionSystem) and ranged (ProjectileSystem) resolve hits by
- * testing one or more blade/trajectory segments against each body part in a
- * target's hitbox. Prior to this helper each system carried its own copy of
+ * Both melee (`weapon_trace`) and ranged (`projectile_trace`) effects
+ * resolve hits by testing one or more blade/trajectory segments against each
+ * body part in a target's hitbox. Prior to this helper each path carried its own copy of
  * the inner loop — same localToWorld transforms, same segSegDistSq test, same
  * short-circuit on first hit. Factored here so a fix in one path is a fix in
  * both, and a new weapon archetype (thrown, hitscan, channelled AoE) doesn't

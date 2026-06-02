@@ -1,0 +1,9 @@
+{
+  "id": "projectile_flight",
+  "kind": "ambient",
+  "slot": "flight",
+  "phases": { "hold": { "ticks": -1 } },
+  "cancel": { "hold": { "into": ["any"] } },
+  "movement": { "hold": "free" },
+  "effects": [ { "phase": "hold:tick", "kind": "projectile_trace" } ]
+}

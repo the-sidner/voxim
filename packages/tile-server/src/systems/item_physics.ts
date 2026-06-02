@@ -10,8 +10,8 @@
  * and are not touched.
  *
  * Uses the shared physics substrate (buildTerrainLookup + ballisticStep)
- * — same kinematics math as ProjectileSystem; this system just encodes
- * the "settle" policy on terrain contact instead of "destroy".
+ * — same kinematics math as the `projectile_trace` effect; this system
+ * just encodes the "settle" policy on terrain contact instead of "destroy".
  */
 import type { World, EntityId } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";

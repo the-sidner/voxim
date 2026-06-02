@@ -48,7 +48,7 @@ import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
 import { equipmentStatModifier } from "./resources/modifiers/equipment_stat.ts";
-import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver } from "./actions/index.ts";
+import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver, ProjectileTraceResolver } from "./actions/index.ts";
 import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver, RequestedActionIntentResolver } from "./actions/intent.ts";
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
@@ -91,7 +91,6 @@ import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
 import { createRecipeStepRegistry, registerBuiltinSteps } from "./crafting/mod.ts";
 import { Registry } from "@voxim/engine";
-import { ProjectileSystem } from "./systems/projectile.ts";
 import { TraderSystem } from "./systems/trader.ts";
 import { DynastySystem } from "./systems/dynasty.ts";
 import { StaleSlotCleanupSystem } from "./systems/stale_slot_cleanup.ts";
@@ -513,6 +512,10 @@ export class TileServer {
     // dispatches to them). Replaces ActionSystem.resolveHits / spawnProjectile.
     actionEffects.register(new WeaponTraceResolver(this.stateHistory, tickRateHz, hitHandlers));
     actionEffects.register(new ProjectileSpawnResolver());
+    // T-243: projectile flight is an ambient action (`projectile_flight`)
+    // whose `hold:tick` fires this — motion + collision + hit dispatch over
+    // the shared hitHandlers. Replaces the bespoke ProjectileSystem.
+    actionEffects.register(new ProjectileTraceResolver(hitHandlers));
 
     // T-240 Ph3: item effect content cross-check — every `effects[].id` on
     // every prefab must resolve to a registered action-effect resolver, or
@@ -526,6 +529,23 @@ export class TileServer {
           throw new Error(
             `Prefab "${prefab.id}" lists item effect "${spec.id}" but no ` +
             `action-effect resolver is registered. ` +
+            `Registered: [${actionEffects.ids().join(", ")}]`,
+          );
+        }
+      }
+    }
+
+    // T-243: action-effect content cross-check — every `effects[].kind` on
+    // every ActionDef must resolve to a registered resolver, or the
+    // dispatcher throws mid-tick the first time that phase edge fires.
+    // Closes the doctrine gap (weapon_trace / buff_tick / projectile_trace
+    // were dispatch-time-only); same fail-fast stance as the checks above.
+    for (const action of content.actions.values()) {
+      for (const eff of action.effects) {
+        if (!actionEffects.has(eff.kind)) {
+          throw new Error(
+            `Action "${action.id}" phase "${eff.phase}" lists effect ` +
+            `"${eff.kind}" but no action-effect resolver is registered. ` +
             `Registered: [${actionEffects.ids().join(", ")}]`,
           );
         }
@@ -560,7 +580,6 @@ export class TileServer {
       // primary, reaction) from intent + events. The CSM is gone (T-228).
       actionDispatcher,
       skill,
-      new ProjectileSystem(content, hitHandlers),
       new ItemPhysicsSystem(content),
       new TerrainDigSystem(content),
       new TraderSystem(content),

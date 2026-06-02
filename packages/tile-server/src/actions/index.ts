@@ -18,3 +18,4 @@ export type { IntentResolver, CostHandler } from "./dispatcher.ts";
 
 export { setTagResolver, clearTagResolver } from "./resolvers/tags.ts";
 export { WeaponTraceResolver, ProjectileSpawnResolver } from "./resolvers/combat.ts";
+export { ProjectileTraceResolver } from "./resolvers/projectile.ts";

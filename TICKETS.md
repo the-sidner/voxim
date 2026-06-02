@@ -2699,6 +2699,51 @@ clobber, same reality as item_use's adjust_resource). It's left pinned at
 already in-zone); the hit handler overwrites it on the next depletion. No
 leak, no bespoke cleanup.
 
+### T-243 · Projectile flight → ambient action (post-T-239 sweep #5)
+Effort: L   Status: done
+
+`ProjectileSystem` is a bespoke per-tick System that duplicates the
+`weapon_trace` shape (sweep a volume this tick → broad-phase → intersect →
+dedup → `HitContext` → handler chain → HitSpark) and adds a third gravity
+integrator beside PhysicsSystem and ItemPhysicsSystem. A projectile is a
+real world entity with physicality, not a particle — so under the action
+doctrine its flight belongs *on* the substrate, not beside it. The
+substrate was built for this: `ActionDispatcher` already advances ambient
+actions on any entity carrying `ActiveActions` with no `ActorSlots`/intent
+(the buff-child precedent, T-239). Lifetime already migrated (T-241).
+
+- `data/actions/projectile_flight.json` — ambient action, slot `flight`,
+  one perpetual phase `hold` (`ticks: -1`), effect
+  `{ phase: "hold:tick", kind: "projectile_trace" }`. Mirrors `buff.json`.
+- `projectile_trace` EffectResolver (`actions/resolvers/projectile.ts`) —
+  lifts `ProjectileSystem.run`'s per-projectile body into a single-entity
+  `resolve(ctx)`: ballistic step → terrain collision → broad-phase over
+  `query(Hitbox, Position)` + distance cull (same shape as weapon_trace's
+  candidate loop; no spatial-grid threading into the effect layer) →
+  `testHitboxIntersection` → dedup via `ProjectileData.hitEntities` →
+  shared `HitHandler[]` chain (unchanged) → `world.destroy` on terrain hit
+  / maxHits. Constructed with `(hitHandlers)`; gravity + terrain from
+  `ctx.content` / `ctx.world`.
+- `ProjectileSpawnResolver` additionally seeds the ambient action at spawn
+  (`states: { flight: { actionId: "projectile_flight", phase: "hold",
+  ticksInPhase: 0, initiator: "ambient" } }`) — verbatim buff-spawn shape.
+- `ProjectileSystem` + `systems/projectile.ts` deleted; removed from the
+  server pipeline.
+- Doctrine gap closed: add a boot cross-check that every `ActionDef`
+  effect `kind` resolves to a registered action-effect resolver (today
+  weapon_trace/buff_tick/projectile_trace only fail at dispatch). Covers
+  the new effect fail-fast, same stance as the ResourceDef/recipe-step/BT
+  checks.
+
+Non-goal (follow-up): deduping the sweep core *shared* with weapon_trace.
+This sweep moves projectile flight onto the substrate; weapon_trace keeps
+its lag-comp snapshot path untouched. Extracting one `traceAndDispatch`
+both call is a separate, lower-risk cleanup once both live as effects.
+
+Note: projectiles now carry the networked `ActiveActions` (wireId 48), so
+one small extra component crosses the wire per in-AoI projectile — correct
+(a projectile *is* an entity) and inert for the client.
+
 ---
 
 ## Rendering & Client

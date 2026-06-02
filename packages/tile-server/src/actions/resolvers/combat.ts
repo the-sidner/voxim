@@ -41,6 +41,7 @@ import { ItemData } from "../../components/items.ts";
 import { LoreLoadout } from "../../components/lore_loadout.ts";
 import { Hitbox } from "../../components/hitbox.ts";
 import { ProjectileData } from "../../components/projectile.ts";
+import { ActiveActions } from "../../components/action.ts";
 import type { HitHandler, HitContext } from "../../hit_handler.ts";
 import type { StateHistoryBuffer, TickSnapshot, EntitySnapshot } from "../../state_history.ts";
 import { testHitboxIntersection } from "../../combat/hit_resolver.ts";
@@ -262,6 +263,14 @@ export class ProjectileSpawnResolver implements EffectResolver {
       buildPower: stats.buildPower ?? 0,
       armorReduction: stats.armorReduction ?? 0,
       gravityScale, radius, hitEntities: [], maxHits,
+    });
+    // T-243: flight is an ambient action on the substrate, not a bespoke
+    // ProjectileSystem. The `projectile_flight` action's perpetual
+    // `hold:tick` fires `projectile_trace` (motion + collision + hit
+    // dispatch). Seeded verbatim like the buff-child ambient action
+    // (T-239) — no ActorSlots, no intent; the dispatcher just advances it.
+    world.write(projId, ActiveActions, {
+      states: { flight: { actionId: "projectile_flight", phase: "hold", ticksInPhase: 0, initiator: "ambient" } },
     });
     if (action.projectile.modelId) {
       const s = worldCfg.defaultEntityScale;
