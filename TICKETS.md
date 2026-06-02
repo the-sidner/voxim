@@ -4322,9 +4322,39 @@ does the same; `resolveRecipe` spawns each output and chains via
 `chainNextRecipeId`; `attack_step`, `assembly_step`, `time_step` log
 the full outputs list.
 
----
+### T-245 · POI activity dispatch → registry (kill the last system switch)
+Effort: M   Status: done   Commit: <hash>
 
-## Account service (gateway-hosted)
+`PoiSystem.dispatch` carried a `switch (def.type)` over the six POI
+activity kinds (encounter / exploration / bossfight / wave / action /
+puzzle) — a literal violation of the "never switch on a kind/type field in
+a system; rewrite it as a registry" doctrine, and the very thing the
+system's own comment anticipated ("per-type adapter modules"). All six
+types appear in authored content; four silently no-op'd through the switch.
+
+- `poi/activity.ts` — `PoiActivityHandler { id; activate(ctx) }` +
+  `PoiActivityContext` (world, events, content, def, pos, playerId,
+  poiInstanceId). `def.activity` narrows to the handler's shape (registry
+  guarantees `handler.id === def.type`).
+- `poi/activities/{encounter,exploration}.ts` — the two real handlers,
+  lifted verbatim from the switch's cases. `poi/activities/unimplemented.ts`
+  — `makeUnimplementedActivity(type)`, registered for the four not-yet-built
+  types as explicit no-op adapters (identical behaviour to the old stub
+  branch: log + nothing) so every type has a home. `poi/mod.ts` —
+  `newPoiActivityRegistry()` (mirrors `ai/bt/mod.ts`).
+- `PoiSystem` takes the registry; `dispatch` is now
+  `activities.get(def.type).activate(ctx)`. `spawnPrefab` /
+  `resolveSpawnTable` / `TileEvents` imports moved into the handlers.
+- Boot cross-check in `server.ts`: every `PoiDef.type` must resolve to a
+  registered handler — fail fast, same stance as the ResourceDef /
+  action-effect / recipe-step / BT checks. (So `get()` never throws at
+  runtime.)
+
+Each future POI type (bossfight, wave, …) is now one handler file + one
+`register()` call, no engine edit — the substrate doctrine, finished for
+POIs. Done: switch gone; server graph type-checks; 187 tile-server+content
+tests green (incl. 2 new: the boot invariant — every content POI type
+resolves — and an unimplemented type firing without crashing).
 
 The gateway gains a second responsibility alongside tile routing: it is the
 outward-facing account service. It owns user identity, credentials, session

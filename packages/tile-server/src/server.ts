@@ -68,6 +68,7 @@ import { TerrainDigSystem } from "./handlers/terrain_hit_handler.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { PoiSystem } from "./systems/poi.ts";
+import { newPoiActivityRegistry } from "./poi/mod.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs } from "./stair_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
@@ -552,6 +553,21 @@ export class TileServer {
       }
     }
 
+    // T-245: POI activity registry + content cross-check — every PoiDef's
+    // `type` must resolve to a registered PoiActivityHandler, or PoiSystem
+    // throws when that POI first fires. Replaces the per-type switch; same
+    // fail-fast stance as the checks above.
+    const poiActivities = newPoiActivityRegistry();
+    for (const poi of content.pois.values()) {
+      if (!poiActivities.has(poi.type)) {
+        throw new Error(
+          `POI "${poi.id}" has activity type "${poi.type}" but no ` +
+          `PoiActivityHandler is registered. ` +
+          `Registered: [${poiActivities.ids().join(", ")}]`,
+        );
+      }
+    }
+
     // System pipeline, declared in reading order. Real ordering constraints
     // live on each system as `dependsOn` (e.g. PhysicsSystem.dependsOn =
     // ["NpcAiSystem"] because NpcAi writes InputState via world.write() that
@@ -586,7 +602,7 @@ export class TileServer {
       new DynastySystem(content),
       new AnimationSystem(content),
       new HitboxSystem(content),
-      new PoiSystem(content, () => this.sessions.keys()),
+      new PoiSystem(content, poiActivities, () => this.sessions.keys()),
       new DebugCommandSystem(content, config.devMode ?? false),
       deathSystem,
     ];

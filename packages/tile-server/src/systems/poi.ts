@@ -24,13 +24,11 @@
  */
 
 import type { World } from "@voxim/engine";
-import { TileEvents } from "@voxim/protocol";
 import type { ContentService, PoiDef } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position } from "../components/game.ts";
 import { PoiTrigger } from "../components/poi.ts";
-import { spawnPrefab } from "../spawner.ts";
-import { resolveSpawnTable } from "../poi_spawner.ts";
+import type { PoiActivityRegistry } from "../poi/mod.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("PoiSystem");
@@ -46,6 +44,7 @@ export type ListPlayersFn = () => IterableIterator<string>;
 export class PoiSystem implements System {
   constructor(
     private readonly content: ContentService,
+    private readonly activities: PoiActivityRegistry,
     private readonly listPlayers: ListPlayersFn,
   ) {}
 
@@ -92,42 +91,11 @@ export class PoiSystem implements System {
   ): void {
     log.info("POI %s (%s/%s) activated by player %s", poiInstanceId, def.id, def.type, playerId.slice(-6));
 
-    switch (def.type) {
-      case "encounter": {
-        const entries = resolveSpawnTable(def.activity.spawnTable);
-        for (const e of entries) {
-          for (let i = 0; i < e.count; i++) {
-            // Spread spawns in a small ring around the centroid so they
-            // don't pile into one pixel.
-            const angle = (i / e.count) * Math.PI * 2;
-            const r = 1.5 + i * 0.3;
-            try {
-              spawnPrefab(world, this.content, e.npcId, {
-                x: pos.x + Math.cos(angle) * r,
-                y: pos.y + Math.sin(angle) * r,
-                z: pos.z,
-              });
-            } catch (err) {
-              log.warn("spawn '%s' failed: %s", e.npcId, (err as Error).message);
-            }
-          }
-        }
-        break;
-      }
-      case "exploration": {
-        events.publish(TileEvents.LoreInternalised, {
-          entityId: playerId,
-          fragmentId: def.activity.loreId,
-        });
-        break;
-      }
-      case "bossfight":
-      case "wave":
-      case "action":
-      case "puzzle":
-        // Stub for T-212 v2 — full per-type adapters land later.
-        log.info("  stub: %s not yet implemented", def.type);
-        break;
-    }
+    // Registry dispatch over the content-defined `def.type` — every type is
+    // a registered PoiActivityHandler (server.ts cross-checks at boot, so
+    // get() never throws here). Replaces the per-type switch (T-245).
+    this.activities.get(def.type).activate({
+      world, events, content: this.content, def, pos, playerId, poiInstanceId,
+    });
   }
 }

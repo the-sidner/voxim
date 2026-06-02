@@ -15,6 +15,9 @@ import { TileEvents } from "@voxim/protocol";
 import { Position } from "./components/game.ts";
 import { PoiTrigger } from "./components/poi.ts";
 import { PoiSystem } from "./systems/poi.ts";
+import { newPoiActivityRegistry } from "./poi/mod.ts";
+
+const activities = newPoiActivityRegistry();
 
 function makeWorld() {
   return new World();
@@ -39,7 +42,7 @@ Deno.test("PoiSystem: stays idle when no player is in range", async () => {
   });
 
   // No player.
-  const sys = new PoiSystem(content, () => [].values());
+  const sys = new PoiSystem(content, activities, () => [].values());
   sys.run(world, events, 0.05);
   world.applyChangeset();
   assertEquals(lorePublished, false);
@@ -73,7 +76,7 @@ Deno.test("PoiSystem: exploration fires LoreInternalised on first proximity", as
     fired:         false,
   });
 
-  const sys = new PoiSystem(content, () => [pid].values());
+  const sys = new PoiSystem(content, activities, () => [pid].values());
   sys.run(world, events, 0.05);
   world.applyChangeset();
 
@@ -104,7 +107,7 @@ Deno.test("PoiSystem: does NOT re-fire on subsequent ticks", async () => {
     fired:         false,
   });
 
-  const sys = new PoiSystem(content, () => [pid].values());
+  const sys = new PoiSystem(content, activities, () => [pid].values());
   for (let i = 0; i < 5; i++) {
     sys.run(world, events, 0.05);
     world.applyChangeset();
@@ -132,7 +135,7 @@ Deno.test("PoiSystem: out-of-range player does not trigger", async () => {
     fired:         false,
   });
 
-  const sys = new PoiSystem(content, () => [pid].values());
+  const sys = new PoiSystem(content, activities, () => [pid].values());
   sys.run(world, events, 0.05);
   world.applyChangeset();
   assertEquals(fired, false);
@@ -159,8 +162,49 @@ Deno.test("PoiSystem: unknown poiDefId logs a warning, does not fire, does not c
     fired:         false,
   });
 
-  const sys = new PoiSystem(content, () => [pid].values());
+  const sys = new PoiSystem(content, activities, () => [pid].values());
   sys.run(world, events, 0.05);
   world.applyChangeset();
   assertEquals(fired, false);
+});
+
+Deno.test("PoiActivityRegistry: every POI type in content resolves (the boot invariant)", async () => {
+  const content = await JsonSource.load();
+  for (const poi of content.pois.values()) {
+    assert(
+      activities.has(poi.type),
+      `POI "${poi.id}" type "${poi.type}" has no registered activity handler`,
+    );
+  }
+});
+
+Deno.test("PoiSystem: an unimplemented activity type fires without crashing", async () => {
+  const world = makeWorld();
+  const content = await JsonSource.load();
+  const events = new EventBus();
+
+  // Pick a real POI whose type is one of the unimplemented stubs.
+  const stub = [...content.pois.values()].find(
+    (p) => p.type !== "encounter" && p.type !== "exploration",
+  );
+  assert(stub, "expected at least one bossfight/wave/action/puzzle POI in content");
+
+  const pid = newEntityId();
+  world.create(pid);
+  world.write(pid, Position, { x: 100, y: 100, z: 0 });
+  const tid = newEntityId();
+  world.create(tid);
+  world.write(tid, Position, { x: 100, y: 100, z: 0 });
+  world.write(tid, PoiTrigger, {
+    poiInstanceId: `${stub!.id}_z1`,
+    poiDefId:      stub!.id,
+    triggerRadius: 5,
+    fired:         false,
+  });
+
+  const sys = new PoiSystem(content, activities, () => [pid].values());
+  sys.run(world, events, 0.05);
+  world.applyChangeset();
+  // Stub no-ops, but the trigger still fires (one-shot) — no throw.
+  assertEquals(world.get(tid, PoiTrigger)?.fired, true);
 });
