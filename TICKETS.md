@@ -2700,7 +2700,7 @@ already in-zone); the hit handler overwrites it on the next depletion. No
 leak, no bespoke cleanup.
 
 ### T-243 · Projectile flight → ambient action (post-T-239 sweep #5)
-Effort: L   Status: done
+Effort: L   Status: done   Commit: ef61011
 
 `ProjectileSystem` is a bespoke per-tick System that duplicates the
 `weapon_trace` shape (sweep a volume this tick → broad-phase → intersect →
