@@ -4323,7 +4323,7 @@ does the same; `resolveRecipe` spawns each output and chains via
 the full outputs list.
 
 ### T-245 · POI activity dispatch → registry (kill the last system switch)
-Effort: M   Status: done   Commit: <hash>
+Effort: M   Status: done   Commit: d3582e1
 
 `PoiSystem.dispatch` carried a `switch (def.type)` over the six POI
 activity kinds (encounter / exploration / bossfight / wave / action /
