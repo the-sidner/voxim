@@ -4420,7 +4420,7 @@ coverage: heal+cost+cooldown on activation, a slot on cooldown no-ops, no
 flag no-ops).
 
 ### T-248 · Global cooldown (GCD) — the decided cooldown model, half 1
-Effort: S   Status: done   Commit: <hash>
+Effort: S   Status: done   Commit: a092ac0
 
 Design decision (skill arc): cooldowns are a **global CD + separate per-skill
 CDs** (WoW-like). Per-skill already existed (`skillCooldowns[4]`); this adds
