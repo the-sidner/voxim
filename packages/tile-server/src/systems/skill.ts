@@ -10,30 +10,32 @@ import {
 import type { StrikeLandedPayload } from "@voxim/protocol";
 import type { ContentService, ConceptVerbEntry } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
-import type { SpatialGrid } from "../spatial_grid.ts";
-import { InputState, Health, Position } from "../components/game.ts";
+import { InputState, Health } from "../components/game.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { LoreLoadoutData } from "../components/lore_loadout.ts";
-import type { Registry } from "@voxim/engine";
-import type { EffectApplyHandler } from "../effects/effect_handler.ts";
-import type { DeathRequestPort } from "../events/death.ts";
+import type { ActiveActionState } from "../components/action.ts";
+import type { EffectRegistry } from "../actions/effect.ts";
 import { decrementCooldown, spendStamina, staminaValue } from "../combat/helpers.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("SkillSystem");
 const SKILL_ACTION_FLAGS = [ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4];
 
+// SkillSystem fires effects outside the phase machine, so it supplies a
+// throwaway slot/state/edge — the skill effect resolvers read only
+// `entityId` + `params`. The synthetic state goes away when a skill
+// becomes an action (then the dispatch is genuinely phase-driven).
+const SKILL_DISPATCH_STATE: ActiveActionState = { actionId: "", phase: "", ticksInPhase: 0, initiator: "intent" };
+
 export class SkillSystem implements System {
   /** Reads InputState written by NpcAi via world.write(); must precede. */
   readonly dependsOn = ["NpcAiSystem"];
 
   private currentTick = 0;
-  private spatial: SpatialGrid | null = null;
 
   constructor(
     private readonly content: ContentService,
-    private readonly applyRegistry: Registry<EffectApplyHandler>,
-    private readonly deaths: DeathRequestPort,
+    private readonly actionEffects: EffectRegistry,
   ) {}
 
   /**
@@ -51,9 +53,8 @@ export class SkillSystem implements System {
     });
   }
 
-  prepare(serverTick: number, ctx: TickContext): void {
+  prepare(serverTick: number, _ctx: TickContext): void {
     this.currentTick = serverTick;
-    this.spatial = ctx.spatial;
   }
 
   run(world: World, events: EventEmitter, _dt: number): void {
@@ -182,24 +183,29 @@ export class SkillSystem implements System {
     magnitude: number,
     overrideTargetId: EntityId | null,
   ): void {
-    const casterPos = world.get(casterId, Position);
-    if (!casterPos) return;
-
     events.publish(TileEvents.SkillActivated, { casterId, slot, effectType: entry.effectType });
 
-    this.applyRegistry.get(entry.effectStat).apply({
+    // One effect substrate (T-246): fire through the action-effect registry.
+    // The per-cast config the verb-matrix entry carries becomes `params`;
+    // the effect's actor is `entityId`. (When a skill becomes an action,
+    // these params come straight from the action's effect spec instead.)
+    this.actionEffects.get(entry.effectStat).resolve({
       world,
       events,
-      casterId,
-      casterX: casterPos.x,
-      casterY: casterPos.y,
-      casterZ: casterPos.z,
-      entry,
-      magnitude,
-      currentTick: this.currentTick,
-      spatial: this.spatial,
-      overrideTargetId,
-      deaths: this.deaths,
+      entityId: casterId,
+      slot: "skill",
+      state: SKILL_DISPATCH_STATE,
+      content: this.content,
+      params: {
+        magnitude,
+        durationTicks: entry.durationTicks,
+        targeting: entry.targeting,
+        range: entry.range,
+        drainToCaster: entry.drainToCaster ?? false,
+        overrideTargetId,
+      },
+      edge: "enter",
+      serverTick: this.currentTick,
     });
   }
 }

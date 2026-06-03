@@ -73,7 +73,7 @@ import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs } from "./stair_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
-import { createEffectRegistries, registerBuiltinEffects } from "./effects/mod.ts";
+import { speedSkillEffect, damageBoostSkillEffect, shieldSkillEffect, fleeSkillEffect, HealthSkillResolver } from "./actions/resolvers/skill_effects.ts";
 import { ResourceSystem } from "./systems/resource.ts";
 import { newResourceEffectRegistry } from "./resources/effect.ts";
 import { newResourceModifierRegistry } from "./resources/modifier.ts";
@@ -318,13 +318,6 @@ export class TileServer {
     this.contentBlob = await encodeBootstrap(content);
     console.log(`[TileServer] content bootstrap blob: ${(this.contentBlob.length / 1024).toFixed(1)} KB (gzipped)`);
 
-    // Skill-effect apply registry — the SkillSystem plug-in point.
-    // Built-in resolvers are registered here; every `effectStat` in the
-    // concept-verb matrix must resolve to a registered
-    // apply handler. Validated below; fail-fast on mismatch.
-    const effects = createEffectRegistries();
-    registerBuiltinEffects(effects);
-
     // Resource substrate (T-238) — the one tick loop for every bounded
     // scalar (stamina/hunger/thirst/poise + the crafting countdown).
     // Thresholds dispatch through resourceEffects; rateModifiers through
@@ -374,15 +367,6 @@ export class TileServer {
         }
       }
     }
-    for (const entry of content.getAllConceptVerbEntries()) {
-      if (!effects.apply.has(entry.effectStat)) {
-        throw new Error(
-          `ContentService references effectStat "${entry.effectStat}" ` +
-          `(verb=${entry.verb} outward=${entry.outwardConcept} inward=${entry.inwardConcept}) ` +
-          `but no apply handler is registered. Registered: [${effects.apply.ids().join(", ")}]`
-        );
-      }
-    }
 
 
     // DeathSystem owns the single RequestDeath queue — systems with health-loss
@@ -430,12 +414,6 @@ export class TileServer {
       }
     }
 
-    // SkillSystem is constructed up front so we can register its StrikeLanded
-    // subscriber against the real event bus before the tick loop starts. It
-    // runs before ActionSystem in the pipeline so cooldown decrements are
-    // visible to swings initiated the same tick.
-    const skill = new SkillSystem(content, effects.apply, deathSystem);
-
     // Action runtime (T-226). Gate registry is empty until an action
     // references a gate (T-227 swings); the effect registry carries the
     // posture tag resolvers. Posture (T-226b) + locomotion (T-226c)
@@ -459,6 +437,35 @@ export class TileServer {
     // `buff` ambient action fires buff_tick (DoT/HoT) each tick.
     actionEffects.register(startBuffResolver);
     actionEffects.register(buffTickResolver);
+    // T-246: the five skill effects fold onto this one substrate (the
+    // parallel `effects/` apply registry is gone). speed/damage_boost/shield
+    // are buff children; health is the targeted heal/drain (needs the death
+    // port); flee forces NPC job queues. SkillSystem fires them through this
+    // registry; an action's effect spec can name them too.
+    actionEffects.register(speedSkillEffect);
+    actionEffects.register(damageBoostSkillEffect);
+    actionEffects.register(shieldSkillEffect);
+    actionEffects.register(fleeSkillEffect);
+    actionEffects.register(new HealthSkillResolver(deathSystem));
+
+    // Concept-verb cross-check (now against the unified registry): every
+    // matrix entry's effectStat must resolve to a registered effect.
+    for (const entry of content.getAllConceptVerbEntries()) {
+      if (!actionEffects.has(entry.effectStat)) {
+        throw new Error(
+          `ContentService references effectStat "${entry.effectStat}" ` +
+          `(verb=${entry.verb} outward=${entry.outwardConcept} inward=${entry.inwardConcept}) ` +
+          `but no effect resolver is registered. Registered: [${actionEffects.ids().join(", ")}]`,
+        );
+      }
+    }
+
+    // SkillSystem dispatches through the one action-effect registry. Built
+    // here (after the registry) so its StrikeLanded subscriber can register
+    // against the real bus before the tick loop; runs before swings so
+    // cooldown decrements are visible the same tick.
+    const skill = new SkillSystem(content, actionEffects);
+
     const actionDispatcher = new ActionDispatcher(
       content, actionGates, actionEffects,
       new CompositeIntentResolver([

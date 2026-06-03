@@ -4356,6 +4356,43 @@ POIs. Done: switch gone; server graph type-checks; 187 tile-server+content
 tests green (incl. 2 new: the boot invariant — every content POI type
 resolves — and an unimplemented type firing without crashing).
 
+### T-246 · One effect substrate — skill effects fold onto action effects
+Effort: M   Status: done   Commit: <hash>
+
+Step 1 of the skill-as-action arc (a skill is an action; effects compose,
+data-driven). The blocker was **two parallel effect substrates**: action
+effects (`actions/effect.ts`, `EffectResolver`/`ResolveContext`, fired on
+phase edges) and a second skill-only registry (`effects/`,
+`EffectApplyHandler`/`EffectApplyContext`, fired by `SkillSystem` with its
+own caster+magnitude context). The five skill effects already overlapped
+the action effects — speed/damage_boost/shield are `spawnBuffChild` calls
+(= `start_buff`), health is a targeted heal/drain. One substrate.
+
+- `actions/resolvers/skill_effects.ts` — the five effects as ordinary
+  `EffectResolver`s: actor is `ctx.entityId`, per-cast config
+  (`magnitude`/`durationTicks`/`targeting`/`range`/`drainToCaster`/
+  `overrideTargetId`) arrives in `ctx.params`. `health` is a class resolver
+  (needs the death port); targeting is query-based (bounded counts, same as
+  `projectile_trace`) instead of the spatial grid.
+- `SkillSystem` drops the `applyRegistry`/`deaths` deps; `dispatch` fires
+  through the one action-effect registry, building `params` from the
+  concept-verb entry. It supplies a throwaway slot/state/edge (the effects
+  read only entityId+params) — the synthetic shape that disappears when a
+  skill genuinely becomes an action (step 2).
+- The `effects/` dir (effect_handler, skill_effects, flee_effect, mod,
+  util) is deleted; `EffectApplyHandler`/`EffectApplyContext` gone. The
+  concept-verb boot cross-check now validates `effectStat` against the
+  unified `actionEffects` registry. Server construction reorders so
+  `actionEffects` (with the skill effects) is built before `SkillSystem`.
+
+Side benefit: item `effects[]` and skill effects now share one registry, so
+a consumable can name `health`/`speed` etc. directly. The verb matrix
+survives only as the temporary param-source (slated to go in step 2 — the
+data-driven composability is what's kept). Done: one effect substrate;
+`deno check` clean; 192 tile-server+content tests green (incl. 5 new
+locking each skill effect through the unified resolver path — behaviour
+preserved from the retired registry).
+
 The gateway gains a second responsibility alongside tile routing: it is the
 outward-facing account service. It owns user identity, credentials, session
 tokens, per-user settings, and persistent heritage. Tile servers become
