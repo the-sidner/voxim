@@ -4357,7 +4357,7 @@ tests green (incl. 2 new: the boot invariant — every content POI type
 resolves — and an unimplemented type firing without crashing).
 
 ### T-246 · One effect substrate — skill effects fold onto action effects
-Effort: M   Status: done   Commit: <hash>
+Effort: M   Status: done   Commit: 698dd6b
 
 Step 1 of the skill-as-action arc (a skill is an action; effects compose,
 data-driven). The blocker was **two parallel effect substrates**: action
