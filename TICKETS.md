@@ -4394,7 +4394,7 @@ locking each skill effect through the unified resolver path — behaviour
 preserved from the retired registry).
 
 ### T-247 · Consolidate skill activation into one path (skill-as-action prep)
-Effort: S   Status: done   Commit: <hash>
+Effort: S   Status: done   Commit: c464f6b
 
 `SkillSystem.run()` (the SKILL_N input path) and `resolveStrike()` (the
 on-hit StrikeLanded path) carried two near-identical copies of the
