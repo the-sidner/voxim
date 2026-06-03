@@ -8,10 +8,10 @@
  * registry carrying just the `health` resolver the test skill needs.
  */
 
-import { assert, assertEquals, assertAlmostEquals } from "jsr:@std/assert";
+import { assertEquals, assertAlmostEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
-import { ACTION_SKILL_1 } from "@voxim/protocol";
+import { ACTION_SKILL_1, ACTION_SKILL_2 } from "@voxim/protocol";
 import { InputState, Health } from "../components/game.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import { Resource } from "../components/resource.ts";
@@ -38,9 +38,10 @@ function makeHealer(world: World, actions: number, cooldowns = [0, 0, 0, 0]): st
     seq: 1, timestamp: 0, facing: 0, movementX: 0, movementY: 0, actions, chargeMs: 0, rttMs: 0,
   });
   world.write(id, LoreLoadout, {
-    skills: [HEAL_SLOT, null, null, null],
+    skills: [HEAL_SLOT, HEAL_SLOT, null, null],
     learnedFragmentIds: ["mending_touch", "swift_step"],
     skillCooldowns: cooldowns,
+    globalCooldownTicks: 0,
   });
   world.write(id, Resource, { values: { stamina: { value: 100, max: 100 } } });
   world.write(id, Health, { current: 10, max: 100 });
@@ -87,4 +88,35 @@ Deno.test("activation: no SKILL flag → nothing happens", () => {
 
   assertEquals(world.get(id, Health)!.current, 10);
   assertEquals(world.get(id, LoreLoadout)!.skillCooldowns[0], 0);
+});
+
+Deno.test("global cooldown: one active cast locks the bar that tick and sets the GCD", () => {
+  const world = new World();
+  // Both slot 0 and slot 1 hold the heal; press both flags the same tick.
+  const id = makeHealer(world, ACTION_SKILL_1 | ACTION_SKILL_2);
+  const sys = skillSystem();
+
+  sys.run(world, new EventBus(), 1 / 20);
+  world.applyChangeset();
+
+  const ll = world.get(id, LoreLoadout)!;
+  assertEquals(ll.skillCooldowns[0], 80, "slot 0 fired");
+  assertEquals(ll.skillCooldowns[1], 0, "slot 1 blocked by the GCD slot 0 raised");
+  assertEquals(ll.globalCooldownTicks, 20, "GCD set from config");
+  assertEquals(world.get(id, Health)!.current, 50, "healed exactly once (10 + 40)");
+});
+
+Deno.test("global cooldown: blocks activation while active, and decrements each tick", () => {
+  const world = new World();
+  const id = makeHealer(world, ACTION_SKILL_1);
+  const seeded = world.get(id, LoreLoadout)!;
+  world.write(id, LoreLoadout, { ...seeded, globalCooldownTicks: 3 });
+  const sys = skillSystem();
+
+  sys.run(world, new EventBus(), 1 / 20);
+  world.applyChangeset();
+
+  assertEquals(world.get(id, Health)!.current, 10, "no cast — GCD still active");
+  assertEquals(world.get(id, LoreLoadout)!.globalCooldownTicks, 2, "GCD ticked down");
+  assertEquals(world.get(id, LoreLoadout)!.skillCooldowns[0], 0, "slot never fired");
 });

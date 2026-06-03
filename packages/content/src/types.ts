@@ -1378,6 +1378,8 @@ export interface GameConfig {
     externaliseConsumeTicks: number;
     blankTomeItemType: string;
     tomeItemType: string;
+    /** Global cooldown: ticks any active skill use locks out all slots. */
+    globalCooldownTicks: number;
   };
   terrain: {
     /** Height removed per shovel swing, in world units. Multiples of HEIGHT_STEP (0.25). */

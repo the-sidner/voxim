@@ -828,6 +828,8 @@ export interface LoreLoadoutData {
   skills: (LoreSkillSlot | null)[];
   learnedFragmentIds: string[];
   skillCooldowns: number[];
+  /** Global cooldown remaining (ticks) — any active skill use sets it; gates all slots. */
+  globalCooldownTicks: number;
 }
 
 export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
@@ -845,6 +847,7 @@ export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
     for (const id of v.learnedFragmentIds) w.writeStr(id);
     // 4 cooldown values (u32)
     for (let i = 0; i < 4; i++) w.writeU32(v.skillCooldowns[i] ?? 0);
+    w.writeU32(v.globalCooldownTicks ?? 0);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): LoreLoadoutData {
@@ -856,7 +859,8 @@ export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
     const learnedFragmentIds: string[] = [];
     for (let i = 0; i < learnedCount; i++) learnedFragmentIds.push(r.readStr());
     const skillCooldowns = [r.readU32(), r.readU32(), r.readU32(), r.readU32()];
-    return { skills, learnedFragmentIds, skillCooldowns };
+    const globalCooldownTicks = r.readU32();
+    return { skills, learnedFragmentIds, skillCooldowns, globalCooldownTicks };
   },
 };
 

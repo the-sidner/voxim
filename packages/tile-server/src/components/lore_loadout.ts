@@ -24,6 +24,8 @@ export interface LoreLoadoutData {
   learnedFragmentIds: string[];
   /** Ticks remaining before each slot can be used again. Index matches skills[]. */
   skillCooldowns: number[];
+  /** Global cooldown remaining (ticks): any active skill use sets it; gates all slots. */
+  globalCooldownTicks: number;
 }
 
 export const LoreLoadout = defineComponent({
@@ -34,6 +36,7 @@ export const LoreLoadout = defineComponent({
     skills: [null, null, null, null],
     learnedFragmentIds: [],
     skillCooldowns: [0, 0, 0, 0],
+    globalCooldownTicks: 0,
   }),
 });
 

@@ -80,7 +80,8 @@
   "lore": {
     "externaliseConsumeTicks": 20,
     "blankTomeItemType": "blank_tome",
-    "tomeItemType": "tome"
+    "tomeItemType": "tome",
+    "globalCooldownTicks": 20
   },
   "terrain": {
     "digStep": 0.25,

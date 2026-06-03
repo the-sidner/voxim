@@ -58,17 +58,23 @@ export class SkillSystem implements System {
   }
 
   run(world: World, events: EventEmitter, _dt: number): void {
+    const gcdTicks = this.content.getGameConfig().lore.globalCooldownTicks;
+
     for (const { entityId, inputState, loreLoadout } of world.query(InputState, LoreLoadout)) {
       const newCooldowns = loreLoadout.skillCooldowns.map(decrementCooldown);
-      let loadoutDirty = newCooldowns.some((c, i) => c !== loreLoadout.skillCooldowns[i]);
+      let gcd = decrementCooldown(loreLoadout.globalCooldownTicks);
+      let loadoutDirty = gcd !== loreLoadout.globalCooldownTicks
+        || newCooldowns.some((c, i) => c !== loreLoadout.skillCooldowns[i]);
 
       for (let slot = 0; slot < 4; slot++) {
         if (!hasAction(inputState.actions, SKILL_ACTION_FLAGS[slot])) continue;
-        if (newCooldowns[slot] > 0) continue; // on cooldown — the activation gate
+        if (newCooldowns[slot] > 0) continue; // per-skill cooldown
+        if (gcd > 0) continue;                // global cooldown — one cast locks the bar
 
         const cooldownTicks = this.activateSkill(world, events, entityId, slot, null);
         if (cooldownTicks !== null) {
           newCooldowns[slot] = cooldownTicks;
+          gcd = gcdTicks; // any active skill triggers the global cooldown
           loadoutDirty = true;
         }
       }
@@ -77,6 +83,7 @@ export class SkillSystem implements System {
         world.set(entityId, LoreLoadout, {
           ...loreLoadout,
           skillCooldowns: newCooldowns,
+          globalCooldownTicks: gcd,
         } as LoreLoadoutData);
       }
     }

@@ -4419,6 +4419,31 @@ clean; 195 tile-server+content tests green (incl. 3 new — first SkillSystem
 coverage: heal+cost+cooldown on activation, a slot on cooldown no-ops, no
 flag no-ops).
 
+### T-248 · Global cooldown (GCD) — the decided cooldown model, half 1
+Effort: S   Status: done   Commit: <hash>
+
+Design decision (skill arc): cooldowns are a **global CD + separate per-skill
+CDs** (WoW-like). Per-skill already existed (`skillCooldowns[4]`); this adds
+the global cooldown — one active skill use locks the whole bar for a config
+duration. Slots into the `activateSkill` seam (T-247).
+
+- `LoreLoadout.globalCooldownTicks` (networked — codec + component default +
+  spawner). Wire format of `loreLoadout` gains a trailing u32 (the client
+  re-receives on reconnect; doctrine permits the break).
+- `game_config.lore.globalCooldownTicks` (default 20 = 1.0s @ 20Hz).
+- `SkillSystem.run`: decrements the GCD each tick, gates every active slot on
+  `gcd === 0`, and stamps `gcd = config` on any cast — a single local `gcd`
+  in the per-entity loop so a slot 0 cast blocks slot 3 the same tick.
+- Scope: the **active** (SKILL_N) path only. On-hit `strike` riders
+  (`resolveStrike`) neither check nor set the GCD — procs ignore the GCD,
+  same as the reference model.
+
+Will move to a gate over a shared resource when a skill becomes an action
+(arc step 2b); the field + semantics + tests survive that move, only the
+dispatch site changes. Done: `deno check` clean (codecs+content+tile-server);
+197 tests green (incl. 2 new: one cast locks the bar + sets GCD; an active
+GCD blocks and decrements).
+
 The gateway gains a second responsibility alongside tile routing: it is the
 outward-facing account service. It owns user identity, credentials, session
 tokens, per-user settings, and persistent heritage. Tile servers become

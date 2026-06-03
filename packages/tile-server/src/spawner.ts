@@ -182,6 +182,7 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
     skills: slots,
     learnedFragmentIds: [],
     skillCooldowns: slots.map(() => 0),
+    globalCooldownTicks: 0,
   });
 
   writeDefaults(
