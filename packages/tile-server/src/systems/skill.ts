@@ -64,52 +64,13 @@ export class SkillSystem implements System {
 
       for (let slot = 0; slot < 4; slot++) {
         if (!hasAction(inputState.actions, SKILL_ACTION_FLAGS[slot])) continue;
-        if (newCooldowns[slot] > 0) continue;
+        if (newCooldowns[slot] > 0) continue; // on cooldown — the activation gate
 
-        const skillSlot = loreLoadout.skills[slot];
-        if (!skillSlot) continue;
-
-        const f1 = this.content.loreFragments.get(skillSlot.outwardFragmentId);
-        const f2 = this.content.loreFragments.get(skillSlot.inwardFragmentId);
-        if (!f1 || !f2) {
-          log.warn("skill slot %d: missing fragment f1=%s f2=%s entity=%s",
-            slot, skillSlot.outwardFragmentId, skillSlot.inwardFragmentId, entityId);
-          continue;
+        const cooldownTicks = this.activateSkill(world, events, entityId, slot, null);
+        if (cooldownTicks !== null) {
+          newCooldowns[slot] = cooldownTicks;
+          loadoutDirty = true;
         }
-
-        const entry = this.content.getConceptVerbEntry(skillSlot.verb, f1.concept, f2.concept);
-        if (!entry) {
-          log.warn("skill slot %d: no entry for verb=%s outward=%s inward=%s entity=%s",
-            slot, skillSlot.verb, f1.concept, f2.concept, entityId);
-          continue;
-        }
-
-        const staminaCost = entry.staminaCostBase + f2.magnitude * entry.inwardScale;
-        const healthCost = entry.healthCostBase;
-
-        if (!spendStamina(world, entityId, staminaCost)) {
-          log.debug("skill blocked: entity=%s slot=%d need=%.1f have=%.1f stamina",
-            entityId, slot, staminaCost, staminaValue(world, entityId));
-          continue;
-        }
-
-        if (healthCost > 0) {
-          const health = world.get(entityId, Health);
-          if (!health || health.current <= healthCost) {
-            log.debug("skill blocked: entity=%s slot=%d insufficient hp for health cost %.1f", entityId, slot, healthCost);
-            continue;
-          }
-          world.set(entityId, Health, { ...health, current: health.current - healthCost });
-        }
-
-        newCooldowns[slot] = entry.cooldownTicks;
-        loadoutDirty = true;
-
-        const magnitude = f1.magnitude * entry.outwardScale;
-        log.info("skill activated: entity=%s slot=%d verb=%s effect=%s magnitude=%.2f targeting=%s",
-          entityId, slot, entry.verb, entry.effectStat, magnitude, entry.targeting);
-
-        this.dispatch(world, events, entityId, slot, entry, magnitude, null);
       }
 
       if (loadoutDirty) {
@@ -125,8 +86,6 @@ export class SkillSystem implements System {
    * Resolve a skill from a specific slot on a caster targeting a single entity.
    * Invoked from the StrikeLanded subscriber during the post-changeset flush —
    * writes (stamina, cooldown, effect) queue into the next tick's changeset.
-   * Also reusable internally for invoke/ward/step verbs that fire without a
-   * swing.
    *
    * Returns false if the skill fizzled (cooldown, insufficient stamina, no entry).
    */
@@ -139,39 +98,75 @@ export class SkillSystem implements System {
   ): boolean {
     const loreLoadout = world.get(casterId, LoreLoadout);
     if (!loreLoadout) return false;
+    if ((loreLoadout.skillCooldowns[slot] ?? 0) > 0) return false; // on cooldown
 
-    const skillSlot = loreLoadout.skills[slot];
-    if (!skillSlot) return false;
+    const cooldownTicks = this.activateSkill(world, events, casterId, slot, targetId);
+    if (cooldownTicks === null) return false;
 
-    const cooldowns = loreLoadout.skillCooldowns;
-    if ((cooldowns[slot] ?? 0) > 0) return false;
+    const newCooldowns = loreLoadout.skillCooldowns.map((c, i) => i === slot ? cooldownTicks : decrementCooldown(c));
+    world.set(casterId, LoreLoadout, { ...loreLoadout, skillCooldowns: newCooldowns } as LoreLoadoutData);
+    return true;
+  }
+
+  /**
+   * The single skill-activation path: resolve the slot's fragments → matrix
+   * entry, pay the stamina/health cost, and fire the effect. Returns the
+   * cooldown ticks to stamp on success, or null if it didn't fire (no slot /
+   * fragments / entry, or unaffordable). The caller owns the cooldown
+   * bookkeeping — `run` batches all four slots, the strike path stamps one.
+   *
+   * This is the seam step 2 converts to "start the skill action": the cost
+   * becomes the action's `costs`, the cooldown a gate, the dispatch the
+   * action's effect on a phase edge.
+   */
+  private activateSkill(
+    world: World,
+    events: EventEmitter,
+    casterId: EntityId,
+    slot: number,
+    overrideTargetId: EntityId | null,
+  ): number | null {
+    const skillSlot = world.get(casterId, LoreLoadout)?.skills[slot];
+    if (!skillSlot) return null;
 
     const f1 = this.content.loreFragments.get(skillSlot.outwardFragmentId);
     const f2 = this.content.loreFragments.get(skillSlot.inwardFragmentId);
-    if (!f1 || !f2) return false;
-
-    const entry = this.content.getConceptVerbEntry(skillSlot.verb, f1.concept, f2.concept);
-    if (!entry) return false;
-
-    const staminaCost = entry.staminaCostBase + f2.magnitude * entry.inwardScale;
-    if (!spendStamina(world, casterId, staminaCost)) return false;
-
-    const healthCost = entry.healthCostBase;
-    if (healthCost > 0) {
-      const health = world.get(casterId, Health);
-      if (!health || health.current <= healthCost) return false;
-      world.set(casterId, Health, { ...health, current: health.current - healthCost });
+    if (!f1 || !f2) {
+      log.warn("skill slot %d: missing fragment f1=%s f2=%s entity=%s",
+        slot, skillSlot.outwardFragmentId, skillSlot.inwardFragmentId, casterId);
+      return null;
     }
 
-    const newCooldowns = cooldowns.map((c, i) => i === slot ? entry.cooldownTicks : decrementCooldown(c));
-    world.set(casterId, LoreLoadout, { ...loreLoadout, skillCooldowns: newCooldowns } as LoreLoadoutData);
+    const entry = this.content.getConceptVerbEntry(skillSlot.verb, f1.concept, f2.concept);
+    if (!entry) {
+      log.warn("skill slot %d: no entry for verb=%s outward=%s inward=%s entity=%s",
+        slot, skillSlot.verb, f1.concept, f2.concept, casterId);
+      return null;
+    }
+
+    const staminaCost = entry.staminaCostBase + f2.magnitude * entry.inwardScale;
+    if (!spendStamina(world, casterId, staminaCost)) {
+      log.debug("skill blocked: entity=%s slot=%d need=%.1f have=%.1f stamina",
+        casterId, slot, staminaCost, staminaValue(world, casterId));
+      return null;
+    }
+
+    if (entry.healthCostBase > 0) {
+      const health = world.get(casterId, Health);
+      if (!health || health.current <= entry.healthCostBase) {
+        log.debug("skill blocked: entity=%s slot=%d insufficient hp for health cost %.1f",
+          casterId, slot, entry.healthCostBase);
+        return null;
+      }
+      world.set(casterId, Health, { ...health, current: health.current - entry.healthCostBase });
+    }
 
     const magnitude = f1.magnitude * entry.outwardScale;
-    log.info("skill resolved (strike): caster=%s slot=%d effect=%s magnitude=%.2f target=%s",
-      casterId, slot, entry.effectStat, magnitude, targetId ?? "none");
+    log.info("skill activated: entity=%s slot=%d verb=%s effect=%s magnitude=%.2f target=%s",
+      casterId, slot, entry.verb, entry.effectStat, magnitude, overrideTargetId ?? "none");
 
-    this.dispatch(world, events, casterId, slot, entry, magnitude, targetId);
-    return true;
+    this.dispatch(world, events, casterId, slot, entry, magnitude, overrideTargetId);
+    return entry.cooldownTicks;
   }
 
   private dispatch(

@@ -4393,6 +4393,32 @@ data-driven composability is what's kept). Done: one effect substrate;
 locking each skill effect through the unified resolver path — behaviour
 preserved from the retired registry).
 
+### T-247 · Consolidate skill activation into one path (skill-as-action prep)
+Effort: S   Status: done   Commit: <hash>
+
+`SkillSystem.run()` (the SKILL_N input path) and `resolveStrike()` (the
+on-hit StrikeLanded path) carried two near-identical copies of the
+activation core: resolve the slot's fragments → concept-verb entry, pay the
+stamina/health cost, fire the effect. They differed only in cooldown
+bookkeeping (run batches all four slots; strike stamps one) and the target.
+
+- `activateSkill(world, events, casterId, slot, overrideTargetId)` — the one
+  activation path; returns the cooldown ticks to stamp on success, or null
+  if it didn't fire (no slot/fragments/entry, or unaffordable). The caller
+  owns the cooldown array write.
+- `run` and `resolveStrike` shrink to: check the slot's cooldown gate →
+  `activateSkill` → stamp the returned cooldown. The cost/dispatch logic
+  lives in exactly one place.
+
+This is the seam step 2 converts to "start the skill action": the cost
+becomes the action's `costs`, the cooldown a gate, the dispatch the action's
+effect on a phase edge. Behaviour-preserving refactor (the one cosmetic
+change: cooldown is stamped after dispatch instead of before — independent
+deferred writes, same result). Done: one activation path; `deno check`
+clean; 195 tile-server+content tests green (incl. 3 new — first SkillSystem
+coverage: heal+cost+cooldown on activation, a slot on cooldown no-ops, no
+flag no-ops).
+
 The gateway gains a second responsibility alongside tile routing: it is the
 outward-facing account service. It owns user identity, credentials, session
 tokens, per-user settings, and persistent heritage. Tile servers become
