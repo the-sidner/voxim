@@ -442,6 +442,39 @@ Done when: a sample slash on the iron sword carries the character ~0.3m
 forward during its active window; the push is suppressed under a slow
 debuff; declaring rootMotion: null preserves the in-place behaviour.
 
+### T-254 · Combat drift sweep: reaction priority, active-tick traces, DoT lethality, SKILL_N verbs
+Effort: M   Status: todo
+
+Code/content drift at the action boundary — each side assumes a contract the other doesn't
+honor, and none of it fails fast (2026-06 review):
+
+- **Any reaction force-interrupts any running reaction.** Incumbent priority is
+  `def.priority ?? 0` (`dispatcher.ts:223-229`) but reaction defs only declare
+  `interruptPriority` — a `hit_front` (10) cancels a running `stagger_heavy` (60), replacing
+  a 14-tick lockout with a short flinch. Compare against the incumbent's `interruptPriority`
+  (or give reactions a real `priority`).
+- **`weapon_trace` only ever samples the first arc slice.** All swing JSONs wire it on
+  `active:enter` only, while the resolver is built for per-tick sampling (`tCurr/tPrev`
+  math + hit-dedup scratch) — `swing_heavy`'s 3 active ticks contribute nothing to hit
+  detection. Wire `active:tick` in the swing JSONs.
+- **`sword_overhead`'s `params.weaponActionId` override is never read** — the resolver
+  always derives geometry/timing from the equipped weapon's light variant. Honor
+  `ctx.params`.
+- **DoT cannot kill.** `buff.ts:92` clamps health to ≥0 and no path scans hp ≤ 0 — a
+  poisoned target sits at 0 HP forever looping the death reaction. Route lethality through
+  one place.
+- **SKILL_N casts strike-verb skills directly.** `activateSkill` has no verb filter, so a
+  strike slot fires its on-hit effect as a targetless button AoE — contradicting the
+  documented model (strikes fire on melee connect only).
+- **Fail-fast gaps:** ActionDef gate ids (`preconditions`, `cancel.*.gates`) are never
+  cross-checked against the gate registry at boot (unknown id throws mid-tick), and
+  `readJsonDir(dataDir, "actions").catch(() => [])` silently boots a server with zero
+  actions on a directory read error.
+
+Done when: getting tapped no longer cancels a hard stagger; heavy swings connect during
+their full active window; a DoT kill destroys the entity; SKILL_N on a strike slot is a
+no-op; both fail-fast gaps abort boot loudly.
+
 ---
 
 ## Networking & Client Prediction
@@ -477,6 +510,33 @@ Track RTT per client using the `timestamp` field in input datagrams. Maintain a 
 (configurable window). Expose as `rttTicks` for use in lag compensation (T-001) and client
 reconciliation (T-011).
 Done when: each session has a live RTT estimate in ticks; it's used by ActionSystem.
+
+### T-253 · Input hardening: finiteness, RTT clamp, seq ordering, reconnect, backpressure
+Effort: M   Status: todo
+
+Hostile-client hardening of the input path (2026-06 review):
+
+- **Non-finite input poisons the world.** `vec2Normalize` bounds magnitude but not NaN;
+  `movementX: NaN` flows through `stepPhysics` into `Position`, and the pairwise-separation
+  pass (`physics.ts:154-162`) spreads the NaN to every nearby entity — onto the wire and
+  into the lag-comp history. The input drain must zero/reject non-finite movement/facing.
+- **Client timestamp drives an unbounded rewind window.** `updateRtt` (`session.ts:71-75`)
+  has no upper clamp and the history buffer holds 6.4s — a lying client sustains
+  multi-second lag-comp rewinds. Clamp RTT to a sane max.
+- **Inputs are latest-by-arrival, not latest-by-seq.** A reordered older datagram is applied
+  as current and acked, regressing `ackInputSeq` and breaking reconciliation. Discard
+  datagrams with seq ≤ last applied.
+- **Reconnect corrupts the session map.** A second connection for the same playerId
+  overwrites `sessions` without closing the old session; the old session's cleanup then
+  unconditionally deletes the *new* entry (`server.ts:1448,1498-1499`). Evict the existing
+  session first; cleanup must only delete its own entry.
+- **No backpressure bound.** `sendStateRaw` (`session.ts:199-212`) chains a full state
+  message per tick for a non-reading client, unbounded; `commandQueue` is a plain unbounded
+  array. Cap depth, drop/close past the cap.
+
+Done when: fuzzed NaN/reordered datagrams leave all positions finite and acks monotonic; a
+second connection per playerId cleanly replaces the first; a stalled reader is disconnected
+at the queue cap.
 
 ---
 
@@ -1074,6 +1134,22 @@ Done when: a forester NPC depletes a tree, walks to each dropped log, and the lo
 inventory before it transitions to its next job. Verified via the NPC inventory tooltip and the
 ground entity count returning to baseline near the node.
 
+### T-255 · NPCs can't pay stamina — melee/dodge never starts
+Effort: S   Status: todo
+
+Since T-229 wired `StaminaCostHandler` into the dispatcher, `canStart` fails for every NPC
+swing: NPCs are deliberately seeded *without* a stamina resource (`spawner.ts:193-197`,
+"parity" comment predates the cost wiring), `staminaValue` returns 0 for a missing resource,
+and every swing action costs 10-22 stamina. What used to be "NPC skills fizzle" silently
+became "NPC melee never starts" (2026-06 review).
+
+Fix: seed NPCs with a stamina resource (template-driven max) — the "no isNpc branches"
+answer, and NPC stamina pressure falls out for free. Alternative (worse): make the cost
+handler's policy explicit for actors without the resource.
+
+Done when: a wolf/bandit lands melee hits on a live server; dodge-capable NPCs dodge; an NPC
+that runs dry visibly pauses attacking until stamina recovers.
+
 ---
 
 ## World & Macro Simulation
@@ -1207,6 +1283,92 @@ When the client receives a `GateCrossing` event in the state stream, it opens a 
 connection to the destination tile server address (provided by gateway), closes the old one, and
 re-initialises the client world state from the first state message on the new connection.
 Done when: client seamlessly transitions between tiles on gate crossing.
+
+### T-256 · Handoff v2: transfer the whole player, not eight components
+Effort: L   Status: todo
+
+The T-140 handoff ships a partial component list and loses state in four ways (2026-06
+review; same root cause as T-251 — partial entity transfer with no "re-complete" pass):
+
+- **Unique items are destroyed.** `serializePlayer` (`handoff.ts:57-80`) copies the
+  `Inventory`/`Equipment` components but not the referenced item *entities* (Durability,
+  QualityStamped, …). On the destination, `StaleSlotCleanupSystem` scrubs the dangling refs
+  next tick; the source tile destroys only the player and leaks the orphaned item entities.
+  Every gate crossing silently deletes everything equipped/unique.
+- **`restorePlayer` produces a hollow entity.** It writes 8 components; the reconnect path
+  sees `isAlive` and skips `spawnPrefab` (`server.ts:1353-1355`) — no ModelRef (invisible),
+  no Hitbox (unhittable), no ActorSlots (can't act), no FogState/Heritage/Name.
+- **Handoff↔disconnect race.** `handedOff` is set only after the gateway ack
+  (`server.ts:1202`); a disconnect during the fetch runs normal cleanup (wrong
+  `updateLocation`, ghost entity on the destination), and the stale `handedOff` entry later
+  swallows a real death's `recordDeath` (`server.ts:1503-1507`). The `wasHandedOff`
+  early-return also precedes `saveFog` — fog is dropped on every crossing.
+- **Gates ignore the carved portal offset.** Tile-server places triggers/arrivals at edge
+  midpoints (`gate.ts:37-58`) while atlas carves the only walkable corridor at the shared
+  `gate.offset` — gates can be physically unreachable and arrivals land in closed pixels.
+
+Fix shape: serialize the full archetype *plus* referenced item entities (recursive over
+inventory/equipment refs); restore through `spawnPrefab` + component overlay, not raw
+writes; mark `handedOff` before the gateway fetch and reconcile on failure; place
+gates/arrivals at the carved offset. Add a serialize→restore round-trip test asserting
+component-set equality.
+
+Done when: a player crosses a gate with equipped unique items and continues playing —
+visible, hittable, acting, items intact, fog preserved — and a disconnect mid-handoff
+neither ghosts the entity nor suppresses a later death record.
+
+### T-257 · Multi-process correctness sweep: routing loop, event-log order, regen params, TILE_ID
+Effort: S   Status: todo
+
+Four independent fixes across the multi-process stack (2026-06 review):
+
+- **A dead tile stream kills coordinator→tile routing permanently.** The write rejection
+  exits the gateway read loop without closing the coordinator session
+  (`gateway/src/edge/wt_server.ts:186-196`) — the coordinator keeps writing into a stream
+  nobody reads until process restart. Close the session on routing failure (both
+  directions) so reconnect logic kicks in. Symmetric hazard in `acceptTile`'s loop.
+- **City event log is permuted on every append.** The trim query's `ORDER BY 1` orders the
+  one-row outer select, not the aggregate input (`db/src/repos/city_repo.ts:106-122`) — the
+  log scrambles and the LIMIT trim evicts the wrong entries. Fix:
+  `jsonb_agg(elem ORDER BY idx)`.
+- **Atlas lazy regen ignores persisted GenParams.** `getOrGenerateTile`
+  (`atlas/src/server.ts:473`) falls back to `DEFAULT_GEN_PARAMS` while the bake path uses
+  the world's merged params — on-demand tiles diverge from baked siblings. Pass the
+  persisted params.
+- **Default `TILE_ID="tile_0"` cannot boot.** `parseTileId` requires `^\d+_\d+$` and
+  `loadTerrainFromAtlas` runs unconditionally — the documented `deno task tile`/`demo`
+  paths crash without an explicit `TILE_ID=0_0`. Fix the default in `tile-server/main.ts:62`.
+
+Done when: killing a tile mid-command doesn't wedge the coordinator channel; event-log
+ordering has a repo test; lazy-regen output matches the bake for a non-default world;
+`deno task demo` boots with no env vars.
+
+### T-258 · Control-plane auth — pre-launch blocker
+Effort: M   Status: todo
+
+**Deliberately deferred: not relevant while dev-only. Must land before anything is publicly
+reachable.** The secret machinery exists (`X-Voxim-Service-Secret`,
+`constantTimeEqualStrings`) but only guards `/internal/*` (2026-06 review):
+
+- Tile admin `/handoff`, `/jobs`, `/assign-job-board` accept any POST — `/handoff` writes
+  attacker-supplied Health/Inventory/Equipment via `restorePlayer`; the port binds
+  `0.0.0.0` and also serves the client assets, so it is public by design
+  (`admin_server.ts:42-118`).
+- Gateway `/register`, `/heartbeat`, `/handoff` are unauthenticated
+  (`gateway/src/server.ts:156-158`) — registry poisoning routes clients (and handoff
+  payloads carrying player state) to an attacker.
+- Atlas `POST /world/bake` + `/restart` are public via Caddy with CORS `*`
+  (`atlas/src/server.ts:114`, `docker/Caddyfile:32-42`) — any third-party web page can bake
+  a new world, exiting every tile-server and the coordinator.
+- Fail-open: without `VOXIM_SERVICE_SECRET`/`GATEWAY_URL` the join path accepts any claimed
+  playerId (`server.ts:1344-1348`); the dev-secret fallback has no production guard.
+
+Fix: require the service secret on every mutating control-plane endpoint (tile admin,
+gateway register/heartbeat/handoff, atlas bake/restart); split admin off the public asset
+port or bind it non-public; fail closed in production when the secret is unset.
+
+Done when: every mutating endpoint rejects requests without the secret; production with a
+missing secret refuses to boot instead of running open.
 
 ---
 
@@ -3994,6 +4156,112 @@ for deterministic order, and loads each file as one item.
 generated TypeScript files aggregate the per-item imports for static bundling:
 `weapon_actions_static.ts` and `item_templates_static.ts`.  Run
 `deno task gen-content` after adding/renaming data files.
+
+### T-249 · Changeset: ordered op-log + `world.mutate` (deferred read-modify-write)
+Effort: L   Status: todo
+
+`applyChangeset` applies all `pendingSets`, then all `pendingRemovals`
+(`engine/src/world.ts:233-256`). Two structural consequences, both with live victims
+(2026-06 review):
+
+- **Program order between `set()` and `remove()` is inverted.** `clear_tag` (interrupted
+  action's exit) + `set_tag` (new action's enter) in the same tick nets to *removed* — a
+  force-interrupted stagger runs without its `Staggered` tag; a `PendingReaction` consumed
+  (deferred remove) and re-set by a same-tick hit is dropped.
+- **Whole-component `set` is last-write-wins against the committed base.** Two hits in one
+  tick lose one hit's damage (both `DamageDealt` events still fire); two DoT buffs don't
+  stack; a stamina spend and a poise hit on the same `Resource` erase each other; and
+  `resolveStrike`'s flush-time writes land at the front of the *next* tick's queue where
+  `SkillSystem.run`'s cooldown batch and `ResourceSystem`'s every-tick `Resource` rewrite
+  overwrite them — T-247/T-248 strike skills currently fire cooldown- and cost-free.
+
+Fix, three moves:
+
+1. **One pending op queue** (`set | mutate | remove`), applied strictly in push order at
+   commit. Restores program-order semantics; a set-then-remove nets to a removal.
+2. **`world.mutate(id, C, fn)`** — deferred read-modify-write. `fn` runs at commit against
+   the value *after* earlier ops this tick, so concurrent contributions compose. Reads during
+   the tick still see committed state — the "systems can't see each other's writes" isolation
+   doctrine holds untouched. Convert the multi-writer components (`Health`, `Resource`,
+   `LoreLoadout` cooldowns, `PendingReaction`) to mutate; plain `set` remains for
+   single-writer ownership (ActionDispatcher → ActiveActions, spawn paths). `ResourceSystem`
+   mutates individual resource keys instead of rewriting the whole component.
+3. **Post-changeset event flush becomes notify-only.** `resolveStrike` moves out of the flush
+   into `SkillSystem.run` (drain a StrikeLanded buffer at the top of run), so cooldown stamps
+   and costs land inside the system phase, batched with the GCD logic — single writer of
+   `LoreLoadout` again. Resolving a tick's strikes together also fixes "one cleave = N
+   activations paid once" (each flush-time call read the still-committed cooldown 0).
+
+Delta build derives the final value per (entity, component) from the op walk — encode once
+(fixes the "exactly once" violation); removals feed T-250's removal channel.
+
+Done when: the stagger-tag and PendingReaction same-tick cases keep the later write; two
+same-tick hits both subtract health; DoTs stack; strike cooldowns/costs survive the following
+tick; engine tests cover set/mutate/remove interleavings.
+
+### T-250 · Replication: component-removal channel + death events + InputState
+Effort: M   Status: todo
+
+Three gaps where the changeset produces transitions the wire cannot express (2026-06 review):
+
+- `runTick` builds deltas only from `changeset.sets` (`server.ts:950`); `changeset.removals`
+  is dropped and `BinaryStateMessage` has no removal channel at all. `CounterReady` —
+  networked purely as a UI presence flag — latches on the client forever; stale
+  `Velocity`/`Position` survive on in-AoI entities. "Component presence as flag" is
+  structurally unimplementable on the wire as it stands.
+- `computeSessionUpdate` prunes `knownEntities` (step 3) *before* filtering events (step 5),
+  so `EntityDied`'s `knownEntities.has(ev.entityId)` is false for exactly the sessions that
+  knew the entity (`aoi.ts:219-239`) — the event is wire-dead; clients only see a bare
+  despawn. Filter events against the pre-prune known set.
+- `InputState` is in `NETWORKED_DEFS` but every writer uses `world.write`, so it never
+  appears in any delta; the comment at `server.ts:1006` asserts a delivery path that does not
+  exist. Decide: make it server-only, or route it through the changeset.
+
+Done when: removing a networked component reaches the client as a removal; `EntityDied`
+arrives at sessions that knew the entity; `InputState` is either server-only or actually
+replicates.
+
+### T-251 · Save/load: complete the entity round-trip
+Effort: L   Status: todo
+
+`serialize()` is an allowlist of three queries while spawning is a rich pipeline (visual
+shell, archetype installers, server-only Resources); nothing reconciles the two
+(`save_manager.ts`, 2026-06 review):
+
+- Chunks save only `Heightmap + MaterialGrid`; `OpenMask`/`KindGrid` are lost and
+  `buildOpennessLookup` treats a missing mask as open — after one restart-with-save, POI
+  walls and water boundaries are walkable and client decoration is gone.
+- Workstations and placed structures are never matched by any save query, but
+  `spawnInitialEntities` runs only `if (!loaded)` — gone forever after the first autosave.
+- Resource nodes reload without `ModelRef`/`Hitbox` (invisible, skipped by weapon_trace) and
+  without the server-only respawn `Resource` — nodes saved depleted are permanently dead.
+- `deserialize` mutates the world before rejecting trailing bytes (then the fresh path runs
+  on top — duplicate chunks/WorldClock); a truncated payload throws unhandled and crashes
+  boot.
+
+Fix shape: save the full chunk component set; include placed/workstation entities; run loaded
+entities through a "re-complete" pass (installVisualShell + archetype installers) instead of
+raw component writes; validate the full payload before any `world.create`. Add the missing
+round-trip test: spawn → save → load → assert component-set equality per entity class.
+SaveManager has zero tests today.
+
+Done when: restart-with-save preserves collision, decoration, workstations and harvestable
+nodes; a corrupt save is rejected without world mutation; the round-trip test passes.
+
+### T-252 · Delete TickEventBuffer; prune stale per-entity state; equip-entity leak
+Effort: S   Status: todo
+
+- `TickEventBuffer` has been write-only since the CSM retired (T-228): `physics.ts:201,204`
+  fire into it, nothing reads or `clear()`s it — unbounded per-entity Map growth for the
+  process lifetime. Delete it (replace-don't-accrete slipped here).
+- `PhysicsSystem.offGroundTicks` and the `HitboxSystem` pose/transform pools never drop
+  destroyed entities — slow growth under NPC churn.
+- `spawnEquipEntity` creates item entities for every player *and NPC*, but `DeathSystem`
+  destroys only the holder (`deathHooks` is empty) and the disconnect path destroys only the
+  player — every NPC kill and player session leaks ItemData entities into the world.
+
+Done when: grep finds no TickEventBuffer; per-entity maps shrink on entity destroy; killing
+an NPC removes its equip entities from the world.
 
 ---
 
