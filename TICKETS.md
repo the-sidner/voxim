@@ -4712,6 +4712,35 @@ dispatch site changes. Done: `deno check` clean (codecs+content+tile-server);
 197 tests green (incl. 2 new: one cast locks the bar + sets GCD; an active
 GCD blocks and decrements).
 
+### T-259 · Trigger primitive arc — the fourth primitive (on-hit/proc substrate)
+Effort: L   Status: todo
+
+**Sub-plan: [`TRIGGER_PRIMITIVE_PLAN.md`](TRIGGER_PRIMITIVE_PLAN.md)**
+(filed 2026-06-03). Design decision: the `strike` loadout verb is obsolete
+— a swing is an action; on-hit behaviour is a *triggered effect*, not a
+skill slot. The first proposal (an `"active:hit"` pseudo-edge fired by
+weapon_trace) was reviewed and **rejected**: it overloads the temporal
+phase-edge vocabulary with a contingent world event, makes weapon_trace a
+second effect dispatcher, and builds a hit-only mechanism where the vision
+(low-health procs, on-kill effects, zone/equipment behaviours) demands a
+general primitive anyway.
+
+Accepted shape: keep synchronous hit *resolution* (HitHandler chain)
+untouched; **reify the hit as a `HitLanded` event**; add `TriggerDef`
+content (`on` event kind from a closed catalog, `as` role binding,
+`conditions` = the existing gate registry, `effects` through the one T-246
+registry, optional internal cooldown) + one `TriggerSystem` as the single
+event→effect bridge (post-changeset, the strike path's documented timing) +
+a `TriggerSource` registry mirroring ModifierSource (v1: equipment).
+No trigger re-entry in v1 (proc loops are a decision, not an accident).
+
+Phases: **a** primitive standalone (+ HitLanded) · **b** strike cutover —
+wolf's DRAIN becomes a weapon trigger and the seven-site strike path
+(strikeVerb, HitContext.skillVerb, StrikeLanded, resolveStrike,
+registerSubscribers) is deleted in the same commit · **c** proc surface
+(health_below gate, on-kill + low-health demo triggers). Closes the spine:
+Actions · Resources · Modifiers · **Triggers**.
+
 The gateway gains a second responsibility alongside tile routing: it is the
 outward-facing account service. It owns user identity, credentials, session
 tokens, per-user settings, and persistent heritage. Tile servers become
