@@ -1,0 +1,10 @@
+{
+  "id": "vampiric_bite",
+  "on": "hit_landed",
+  "as": "attacker",
+  "internalCooldownTicks": 25,
+  "effects": [
+    { "kind": "health",
+      "params": { "magnitude": 12, "targeting": "entity", "drainToCaster": true } }
+  ]
+}

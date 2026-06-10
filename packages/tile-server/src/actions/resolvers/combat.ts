@@ -11,8 +11,9 @@
  *                       (the WeaponActionDef stays the geometric source —
  *                       universal swing actions supply only timing), sweeps
  *                       a lag-compensated capsule, dispatches hit handlers,
- *                       publishes HitSpark, and derives the strike verb from
- *                       LoreLoadout (no SwingContext).
+ *                       and publishes HitSpark. (On-hit riders are the
+ *                       Trigger primitive's job, T-259 — the LoreLoadout
+ *                       strike-verb derivation is gone.)
  *   projectile_spawn  — fires on active:enter for ranged actions; spawns the
  *                       projectile entity.
  *
@@ -37,7 +38,6 @@ import { Resource } from "../../components/resource.ts";
 import { Equipment } from "../../components/equipment.ts";
 import { QualityStamped, Durability } from "../../components/instance.ts";
 import { ItemData } from "../../components/items.ts";
-import { LoreLoadout } from "../../components/lore_loadout.ts";
 import { Hitbox } from "../../components/hitbox.ts";
 import { ProjectileData } from "../../components/projectile.ts";
 import { ActiveActions } from "../../components/action.ts";
@@ -79,11 +79,6 @@ function weaponContext(world: World, entityId: EntityId, content: ContentService
   return { stats, prefabId, weaponActionId };
 }
 
-function strikeVerb(world: World, entityId: EntityId): string | undefined {
-  const loadout = world.get(entityId, LoreLoadout);
-  const slot = loadout?.skills.findIndex((s) => s?.verb === "strike") ?? -1;
-  return slot >= 0 ? `strike:${slot}` : undefined;
-}
 
 export class WeaponTraceResolver implements EffectResolver {
   readonly id = "weapon_trace";
@@ -159,7 +154,6 @@ export class WeaponTraceResolver implements EffectResolver {
 
     const tipDist = Math.sqrt((bladeCurr.tip.x - ax) ** 2 + (bladeCurr.tip.y - ay) ** 2 + (bladeCurr.tip.z - az) ** 2);
     const broadReach = tipDist + bladeRadius + 0.5;
-    const verb = strikeVerb(world, entityId);
 
     for (const target of snap.entities) {
       if (target.entityId === entityId) continue;
@@ -187,7 +181,6 @@ export class WeaponTraceResolver implements EffectResolver {
           targetX: target.x, targetY: target.y,
           hitX: h.contact.x, hitY: h.contact.y, hitZ: h.contact.z,
           parryAllowed: true,
-          skillVerb: verb,
         }),
       );
       if (hit) scratch.hits.push({ entityId: target.entityId, bodyPart: hit.partId });

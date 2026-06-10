@@ -463,10 +463,10 @@ export class TileServer {
       }
     }
 
-    // SkillSystem dispatches through the one action-effect registry. Built
-    // here (after the registry) so its StrikeLanded subscriber can register
-    // against the real bus before the tick loop; runs before swings so
-    // cooldown decrements are visible the same tick.
+    // SkillSystem dispatches through the one action-effect registry; runs
+    // before swings so cooldown decrements are visible the same tick.
+    // (Its StrikeLanded subscriber is gone — on-hit riders are the Trigger
+    // primitive, T-259b.)
     const skill = new SkillSystem(content, actionEffects);
 
     // Trigger primitive (T-259) — the single event→effect bridge. Catalog
@@ -529,7 +529,6 @@ export class TileServer {
       ]),
       StaminaCostHandler,
     );
-    skill.registerSubscribers(this.eventBus, this.world);
     // Trigger collectors run during the (notify-only) post-changeset flush
     // and only buffer; the TriggerSystem drains at the top of its next run.
     triggerSystem.registerSubscribers(this.eventBus);

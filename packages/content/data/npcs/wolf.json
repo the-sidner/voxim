@@ -12,15 +12,5 @@
   "fleeTicks": 120,
   "seekFoodTicks": 150,
   "speedMultiplier": 1.4,
-  "weaponItemType": "wolf_bite",
-  "skillLoadout": [
-    {
-      "verb": "strike",
-      "outwardFragmentId": "vampiric_drain",
-      "inwardFragmentId": "swift_step"
-    },
-    null,
-    null,
-    null
-  ]
+  "weaponItemType": "wolf_bite"
 }

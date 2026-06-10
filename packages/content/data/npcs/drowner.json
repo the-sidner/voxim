@@ -12,15 +12,5 @@
   "fleeTicks": 100,
   "seekFoodTicks": 200,
   "speedMultiplier": 1.3,
-  "weaponItemType": "drowner_claws",
-  "skillLoadout": [
-    {
-      "verb": "strike",
-      "outwardFragmentId": "vampiric_drain",
-      "inwardFragmentId": "swift_step"
-    },
-    null,
-    null,
-    null
-  ]
+  "weaponItemType": "drowner_claws"
 }

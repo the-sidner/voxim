@@ -39,12 +39,6 @@ export interface HitContext {
    * Projectile hits: false — attacker is far away, parry deflects but cannot stagger them.
    */
   parryAllowed: boolean;
-  /**
-   * Skill verb to fire on connect, e.g. "strike:0" (slot index), or absent.
-   * Set by the weapon_trace resolver from the attacker's LoreLoadout —
-   * replaces health_hit_handler reading the retired SwingContext directly.
-   */
-  skillVerb?: string;
 }
 
 /**

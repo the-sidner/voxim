@@ -14,6 +14,8 @@ import type { EntityId } from "@voxim/engine";
 import { JsonSource, StaticContentStore } from "@voxim/content";
 import { TileEvents } from "@voxim/protocol";
 import { Equipment } from "../components/equipment.ts";
+import { Health, Position } from "../components/game.ts";
+import { HealthSkillResolver } from "../actions/resolvers/skill_effects.ts";
 import { TriggerSystem } from "./trigger.ts";
 import { newTriggerCatalog } from "../triggers/catalog.ts";
 import { newTriggerSourceRegistry, equipmentTriggerSource } from "../triggers/source.ts";
@@ -192,6 +194,48 @@ Deno.test("no proc chains: trigger-fired events are tagged and dropped by collec
   h.tick(3);
   const chained = h.fired.filter((f) => f.tag === "chain");
   assertEquals(chained.length, 1, "the republished event never re-enters");
+});
+
+Deno.test("T-259b: the wolf's drain runs on REAL content — wolf_bite grants vampiric_bite", () => {
+  // No test content here: data/prefabs/items/wolf_bite.json grants
+  // data/triggers/vampiric_bite.json (the strike-slot replacement).
+  const world = new World();
+  const bus = new EventBus();
+  const gates = newGateRegistry();
+  const effects = newEffectRegistry();
+  effects.register(new HealthSkillResolver({ request: () => {} }));
+  const sources = newTriggerSourceRegistry();
+  sources.register(equipmentTriggerSource);
+  const sys = new TriggerSystem(content, newTriggerCatalog(), sources, gates, effects);
+  sys.registerSubscribers(bus);
+
+  const wolf = newEntityId();
+  world.create(wolf);
+  world.write(wolf, Position, { x: 0, y: 0, z: 0 });
+  world.write(wolf, Health, { current: 50, max: 100 });
+  world.write(wolf, Equipment, {
+    weapon: { entityId: "fang", prefabId: "wolf_bite" },
+    offHand: null, head: null, chest: null, legs: null, feet: null, back: null,
+  });
+  const prey = newEntityId();
+  world.create(prey);
+  world.write(prey, Position, { x: 1, y: 0, z: 0 });
+  world.write(prey, Health, { current: 100, max: 100 });
+
+  bus.publish(TileEvents.HitLanded, { attackerId: wolf, targetId: prey, bodyPart: "torso", damage: 5, blocked: false });
+  sys.prepare(1, { spatial: null as never, pendingCommands: new Map() });
+  sys.run(world, bus, DT);
+  world.applyChangeset();
+
+  assertEquals(world.get(prey, Health)!.current, 88, "drained 12 (magnitude 3 × old outwardScale 4)");
+  assertEquals(world.get(wolf, Health)!.current, 62, "drainToCaster heals the wolf");
+
+  // ICD 25 (the old strike cooldown): an immediate second bite doesn't proc.
+  bus.publish(TileEvents.HitLanded, { attackerId: wolf, targetId: prey, bodyPart: "torso", damage: 5, blocked: false });
+  sys.prepare(2, { spatial: null as never, pendingCommands: new Map() });
+  sys.run(world, bus, DT);
+  world.applyChangeset();
+  assertEquals(world.get(prey, Health)!.current, 88, "ICD blocks the immediate re-proc");
 });
 
 Deno.test("an entity with no trigger sources is inert", () => {

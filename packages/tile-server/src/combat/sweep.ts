@@ -7,7 +7,7 @@
  * publish a HitSpark and run the shared HitHandler chain. They differ only
  * in what comes *before* (candidate source, exclusions, broad-phase,
  * segment geometry) and in a handful of HitContext fields (attackerPart,
- * weaponStats, parry, skillVerb, coordinates) — all decided by the caller's
+ * weaponStats, parry, coordinates) — all decided by the caller's
  * `buildContext`. That variation stays with each caller; this is the one
  * copy of the dispatch tail they share.
  *

@@ -1,4 +1,4 @@
-import type { World, EntityId, EventBus } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import {
   ACTION_SKILL_1,
   ACTION_SKILL_2,
@@ -7,7 +7,6 @@ import {
   hasAction,
   TileEvents,
 } from "@voxim/protocol";
-import type { StrikeLandedPayload } from "@voxim/protocol";
 import type { ContentService, ConceptVerbEntry } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { InputState, Health } from "../components/game.ts";
@@ -38,20 +37,6 @@ export class SkillSystem implements System {
     private readonly actionEffects: EffectRegistry,
   ) {}
 
-  /**
-   * Subscribe to the real tile event bus. Called once from TileServer after
-   * world + bus are constructed. The StrikeLanded handler runs during the
-   * post-changeset flush, so any world.set inside resolveStrike queues into
-   * the next tick's changeset — a 50ms delay from the hit, invisible for
-   * stamina / cooldown / effect feedback at 20 Hz.
-   */
-  registerSubscribers(bus: EventBus, world: World): void {
-    bus.subscribe(TileEvents.StrikeLanded, (p: StrikeLandedPayload) => {
-      // Pass the bus as the EventEmitter — SkillSystem publishes SkillActivated
-      // synchronously during flush; EventRouter picks it up in the same tick.
-      this.resolveStrike(world, bus, p.casterId, p.slot, p.targetId);
-    });
-  }
 
   prepare(serverTick: number, _ctx: TickContext): void {
     this.currentTick = serverTick;
@@ -89,31 +74,6 @@ export class SkillSystem implements System {
     }
   }
 
-  /**
-   * Resolve a skill from a specific slot on a caster targeting a single entity.
-   * Invoked from the StrikeLanded subscriber during the post-changeset flush —
-   * writes (stamina, cooldown, effect) queue into the next tick's changeset.
-   *
-   * Returns false if the skill fizzled (cooldown, insufficient stamina, no entry).
-   */
-  resolveStrike(
-    world: World,
-    events: EventEmitter,
-    casterId: EntityId,
-    slot: number,
-    targetId: EntityId | null,
-  ): boolean {
-    const loreLoadout = world.get(casterId, LoreLoadout);
-    if (!loreLoadout) return false;
-    if ((loreLoadout.skillCooldowns[slot] ?? 0) > 0) return false; // on cooldown
-
-    const cooldownTicks = this.activateSkill(world, events, casterId, slot, targetId);
-    if (cooldownTicks === null) return false;
-
-    const newCooldowns = loreLoadout.skillCooldowns.map((c, i) => i === slot ? cooldownTicks : decrementCooldown(c));
-    world.set(casterId, LoreLoadout, { ...loreLoadout, skillCooldowns: newCooldowns } as LoreLoadoutData);
-    return true;
-  }
 
   /**
    * The single skill-activation path: resolve the slot's fragments → matrix

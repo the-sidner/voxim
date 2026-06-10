@@ -8,15 +8,5 @@
   "wanderTicks": 50,
   "attackTicks": 30,
   "fleeTicks": 80,
-  "weaponItemType": "wooden_sword",
-  "skillLoadout": [
-    {
-      "verb": "strike",
-      "outwardFragmentId": "keen_edge",
-      "inwardFragmentId": "penance"
-    },
-    null,
-    null,
-    null
-  ]
+  "weaponItemType": "wooden_sword"
 }

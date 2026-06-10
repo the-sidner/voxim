@@ -12,15 +12,5 @@
   "fleeTicks": 0,
   "seekFoodTicks": 9999,
   "speedMultiplier": 0.85,
-  "weaponItemType": "rotten_knight_arm",
-  "skillLoadout": [
-    {
-      "verb": "strike",
-      "outwardFragmentId": "infernal_brand",
-      "inwardFragmentId": "ward_of_stone"
-    },
-    null,
-    null,
-    null
-  ]
+  "weaponItemType": "rotten_knight_arm"
 }

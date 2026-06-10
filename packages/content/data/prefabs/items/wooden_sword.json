@@ -1,0 +1,6 @@
+{
+  "id": "wooden_sword",
+  "category": "weapon",
+  "triggers": ["keen_frenzy"],
+  "components": {}
+}

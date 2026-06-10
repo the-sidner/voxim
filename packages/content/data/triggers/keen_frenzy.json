@@ -1,0 +1,9 @@
+{
+  "id": "keen_frenzy",
+  "on": "hit_landed",
+  "as": "attacker",
+  "internalCooldownTicks": 50,
+  "effects": [
+    { "kind": "damage_boost", "params": { "magnitude": 1.2 } }
+  ]
+}

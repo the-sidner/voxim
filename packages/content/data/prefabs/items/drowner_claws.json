@@ -1,0 +1,6 @@
+{
+  "id": "drowner_claws",
+  "category": "natural_weapon",
+  "triggers": ["vampiric_bite"],
+  "components": {}
+}

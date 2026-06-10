@@ -32,17 +32,6 @@ export const TileEvents = {
    */
   EntityDeployed: Symbol("EntityDeployed"),
   /**
-   * Published by a hit handler when a melee hit lands and the `weapon_trace`
-   * resolver derived a "strike:<slot>" verb from the attacker's LoreLoadout
-   * (carried on the HitContext as `skillVerb`). Consumed by
-   * SkillSystem via a real-bus subscriber registered at construction; the
-   * subscriber runs during the post-changeset flush, so stamina / cooldown /
-   * effect writes land in the next tick's changeset. Server-side only —
-   * never translated into a client GameEvent (the visible DamageDealt and
-   * SkillActivated events already cover the user-facing side).
-   */
-  StrikeLanded: Symbol("StrikeLanded"),
-  /**
    * The reified hit fact (T-259): published by HealthHitHandler after a
    * hit fully resolves (block/parry/damage/poise), carrying who hit whom,
    * where, for how much. Consumed by the TriggerSystem's collectors (the
@@ -138,12 +127,6 @@ export interface SkillActivatedPayload {
   casterId: EntityId;
   slot: number;
   effectType: string;
-}
-
-export interface StrikeLandedPayload {
-  casterId: EntityId;
-  slot: number;
-  targetId: EntityId;
 }
 
 export interface HitLandedPayload {

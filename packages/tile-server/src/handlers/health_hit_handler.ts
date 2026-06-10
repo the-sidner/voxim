@@ -27,14 +27,14 @@ const log = createLogger("HealthHitHandler");
  * Combat resolution flow:
  *   block/parry → outgoing damage hooks (attacker effects modify multiplier)
  *   → armor + block reduction → incoming damage hooks (target effects absorb /
- *   reduce) → apply HP change → publish StrikeLanded (if pendingSkillVerb
- *   starts with "strike:") → death request or knockback.
+ *   reduce) → apply HP change → publish HitLanded (the Trigger primitive's
+ *   reified hit fact, T-259) → death request or knockback.
  *
  * Attacker/target damage modifiers (damage_boost, shield) are buff
  * scene-graph children read via the Status/Modifier `effective()` query
  * (`damageDealt` / `damageTaken`), not bespoke hooks (T-239). This handler
- * holds zero `effectStat ===` checks and no direct references to
- * SkillSystem — strike resolution is event-driven.
+ * holds zero `effectStat ===` checks — on-hit riders are content triggers
+ * consuming the HitLanded fact (T-259), never handler code.
  */
 export class HealthHitHandler implements HitHandler {
   constructor(
@@ -226,21 +226,6 @@ export class HealthHitHandler implements HitHandler {
           adjustResourceKey(world, ctx.targetId, "poise", -damage);
         }
       }
-    }
-
-    // ── Skill on hit ("strike" verb) ──────────────────────────────────────────
-    // The verb is derived by the weapon_trace resolver from the attacker's
-    // LoreLoadout and carried on ctx.skillVerb (T-227 — replaces reading the
-    // retired SwingContext). Publish-only: SkillSystem subscribes to
-    // StrikeLanded on the real bus and applies stamina / cooldown / effect
-    // via world.set during the post-changeset flush.
-    if (ctx.skillVerb?.startsWith("strike:")) {
-      const slot = parseInt(ctx.skillVerb.slice(7), 10);
-      events.publish(TileEvents.StrikeLanded, {
-        casterId: ctx.attackerId,
-        slot,
-        targetId: ctx.targetId,
-      });
     }
 
     // ── Death / knockback ─────────────────────────────────────────────────────

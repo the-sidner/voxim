@@ -1,0 +1,6 @@
+{
+  "id": "wolf_bite",
+  "category": "natural_weapon",
+  "triggers": ["vampiric_bite"],
+  "components": {}
+}
