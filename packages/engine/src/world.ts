@@ -68,11 +68,19 @@ export class World {
    */
   private childIndex = new Map<EntityId, Set<EntityId>>();
 
-  // pending deferred writes/removals, accumulated by systems during the tick
-  // deno-lint-ignore no-explicit-any
-  private pendingSets: Array<{ entityId: EntityId; token: ComponentDef<any>; data: unknown }> = [];
-  // deno-lint-ignore no-explicit-any
-  private pendingRemovals: Array<{ entityId: EntityId; token: ComponentDef<any> }> = [];
+  // Pending deferred ops, accumulated by systems during the tick. ONE
+  // ordered log (T-249): program order between set / mutate / remove on the
+  // same (entity, component) is preserved at commit — set-then-remove nets
+  // to a removal, remove-then-set to a set, and mutate composes on whatever
+  // earlier ops this tick left behind.
+  private pendingOps: Array<
+    // deno-lint-ignore no-explicit-any
+    | { kind: "set"; entityId: EntityId; token: ComponentDef<any>; data: unknown }
+    // deno-lint-ignore no-explicit-any
+    | { kind: "mutate"; entityId: EntityId; token: ComponentDef<any>; fn: (current: unknown) => unknown }
+    // deno-lint-ignore no-explicit-any
+    | { kind: "remove"; entityId: EntityId; token: ComponentDef<any> }
+  > = [];
   private pendingDestroys = new Set<EntityId>();
 
   // ---- entity lifecycle ----
@@ -149,9 +157,27 @@ export class World {
   /**
    * Deferred write — queues a component update to the pending changeset.
    * Applied atomically when applyChangeset() is called at end of tick.
+   * Whole-value replace: use for single-writer components; concurrent
+   * contributors to one component should use mutate() instead.
    */
   set<T>(entityId: EntityId, token: ComponentDef<T>, data: T): void {
-    this.pendingSets.push({ entityId, token, data });
+    this.pendingOps.push({ kind: "set", entityId, token, data });
+  }
+
+  /**
+   * Deferred read-modify-write (T-249). `fn` runs at commit against the
+   * component's value *after all earlier ops this tick* — so concurrent
+   * contributions (two hits subtracting health, a spend and a regen on one
+   * Resource) compose instead of last-write-wins clobbering. Reads during
+   * the tick still see committed state; the "systems can't see each
+   * other's writes" isolation doctrine holds untouched.
+   *
+   * If the component is absent at that point in the op walk (never present,
+   * or removed by an earlier op), the mutate is skipped. `fn` must be pure
+   * (value in, value out) — it must not touch the world.
+   */
+  mutate<T>(entityId: EntityId, token: ComponentDef<T>, fn: (current: T) => T): void {
+    this.pendingOps.push({ kind: "mutate", entityId, token, fn: fn as (current: unknown) => unknown });
   }
 
   /**
@@ -160,7 +186,7 @@ export class World {
    * doesn't have the component. Game systems must use this (not erase()).
    */
   remove<T>(entityId: EntityId, token: ComponentDef<T>): void {
-    this.pendingRemovals.push({ entityId, token });
+    this.pendingOps.push({ kind: "remove", entityId, token });
   }
 
   /**
@@ -228,30 +254,71 @@ export class World {
    * Call exactly once per tick, after all systems have run.
    */
   applyChangeset(): AppliedChangeset {
-    const appliedSets: ChangesetSet[] = [];
+    // Walk the op log in push order over a per-(entity, component) working
+    // view seeded from committed state, then commit ONE net result per key
+    // (a final value or a removal). Program order is preserved within a key
+    // (T-249); the delta build sees each changed component exactly once.
+    interface WorkingSlot {
+      // deno-lint-ignore no-explicit-any
+      token: ComponentDef<any>;
+      present: boolean;
+      data: unknown;
+    }
+    const working = new Map<EntityId, Map<symbol, WorkingSlot>>();
 
-    for (const entry of this.pendingSets) {
-      const entity = this.store.get(entry.entityId);
+    for (const op of this.pendingOps) {
+      const entity = this.store.get(op.entityId);
       // Skip if entity was destroyed this tick or never existed
-      if (!entity || this.tombstones.has(entry.entityId)) continue;
+      if (!entity || this.tombstones.has(op.entityId)) continue;
 
-      const prev = entity.get(entry.token.id) as StoredComponent | undefined;
-      // New component on this entity — add to reverse index.
-      if (!prev) this.indexAdd(entry.entityId, entry.token.id);
-      const version = (prev?.version ?? 0) + 1;
-      entity.set(entry.token.id, { version, data: entry.data });
-      appliedSets.push({ entityId: entry.entityId, token: entry.token, data: entry.data, version });
+      let slots = working.get(op.entityId);
+      if (!slots) {
+        slots = new Map();
+        working.set(op.entityId, slots);
+      }
+      let slot = slots.get(op.token.id);
+      if (!slot) {
+        const committed = entity.get(op.token.id) as StoredComponent | undefined;
+        slot = { token: op.token, present: committed !== undefined, data: committed?.data };
+        slots.set(op.token.id, slot);
+      }
+
+      switch (op.kind) {
+        case "set":
+          slot.present = true;
+          slot.data = op.data;
+          break;
+        case "remove":
+          slot.present = false;
+          slot.data = undefined;
+          break;
+        case "mutate":
+          // Absent at this point in the walk (never present, or removed by
+          // an earlier op) — skipped by contract.
+          if (slot.present) slot.data = op.fn(slot.data);
+          break;
+      }
     }
 
-    // Apply deferred component removals.
+    const appliedSets: ChangesetSet[] = [];
     const appliedRemovals: ChangesetRemoval[] = [];
-    for (const { entityId, token } of this.pendingRemovals) {
-      if (this.tombstones.has(entityId)) continue;
-      const entity = this.store.get(entityId);
-      if (!entity) continue;
-      if (entity.delete(token.id)) {
-        this.componentIndex.get(token.id)?.delete(entityId);
-        appliedRemovals.push({ entityId, token });
+    for (const [entityId, slots] of working) {
+      const entity = this.store.get(entityId)!;
+      for (const [tokenId, slot] of slots) {
+        const prev = entity.get(tokenId) as StoredComponent | undefined;
+        if (slot.present) {
+          // New component on this entity — add to reverse index.
+          if (!prev) this.indexAdd(entityId, tokenId);
+          const version = (prev?.version ?? 0) + 1;
+          entity.set(tokenId, { version, data: slot.data });
+          appliedSets.push({ entityId, token: slot.token, data: slot.data, version });
+        } else if (prev !== undefined) {
+          entity.delete(tokenId);
+          this.componentIndex.get(tokenId)?.delete(entityId);
+          appliedRemovals.push({ entityId, token: slot.token });
+        }
+        // absent before and after (e.g. a lone remove of a component the
+        // entity never had) — pure no-op, matching the old semantics.
       }
     }
 
@@ -273,8 +340,7 @@ export class World {
 
     const destroys = Array.from(this.pendingDestroys);
 
-    this.pendingSets = [];
-    this.pendingRemovals = [];
+    this.pendingOps = [];
     this.pendingDestroys.clear();
 
     return { sets: appliedSets, removals: appliedRemovals, destroys };
