@@ -165,7 +165,8 @@ export class SkillSystem implements System {
           casterId, slot, entry.healthCostBase);
         return null;
       }
-      world.set(casterId, Health, { ...health, current: health.current - entry.healthCostBase });
+      const cost = entry.healthCostBase;
+      world.mutate(casterId, Health, (h) => ({ ...h, current: Math.max(0, h.current - cost) }));
     }
 
     const magnitude = f1.magnitude * entry.outwardScale;

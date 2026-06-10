@@ -87,9 +87,12 @@ export const buffTickResolver: EffectResolver = {
     if (!spec || spec.tickDelta === 0) return;
     const parent = ctx.world.getParent(ctx.entityId);
     if (parent === null) return;
-    const health = ctx.world.get(parent, Health);
-    if (!health) return;
-    const next = Math.max(0, Math.min(health.max, health.current + spec.tickDelta));
-    ctx.world.set(parent, Health, { ...health, current: next });
+    if (!ctx.world.has(parent, Health)) return;
+    // Composing mutate (T-249): two DoT buffs on one parent stack.
+    const delta = spec.tickDelta;
+    ctx.world.mutate(parent, Health, (h) => ({
+      ...h,
+      current: Math.max(0, Math.min(h.max, h.current + delta)),
+    }));
   },
 };

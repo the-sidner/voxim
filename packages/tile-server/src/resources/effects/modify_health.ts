@@ -24,7 +24,11 @@ export const modifyHealthEffect: ResourceEffect = {
     const delta = dps * ctx.dt;
     const next = Math.max(0, Math.min(health.max, health.current + delta));
     if (next === health.current) return;
-    ctx.world.set(ctx.entityId, Health, { ...health, current: next });
+    // Composing mutate (T-249): starvation DPS stacks with same-tick hits.
+    ctx.world.mutate(ctx.entityId, Health, (h) => ({
+      ...h,
+      current: Math.max(0, Math.min(h.max, h.current + delta)),
+    }));
 
     if (delta < 0) {
       ctx.events.publish(TileEvents.DamageDealt, {

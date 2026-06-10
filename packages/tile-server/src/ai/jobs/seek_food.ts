@@ -11,7 +11,7 @@ import type {
 } from "../job_handler.ts";
 import type { Job, NpcPlanData } from "../../components/npcs.ts";
 import { moveSteps, findNearestConsumable } from "../plan_helpers.ts";
-import { Resource } from "../../components/resource.ts";
+import { adjustResourceKey } from "../../resources/mutate.ts";
 
 export const seekFoodJob: JobHandler = {
   id: "seekFood",
@@ -49,16 +49,8 @@ export const seekFoodJob: JobHandler = {
       const dx = food.x - ctx.pos.x;
       const dy = food.y - ctx.pos.y;
       if (dx * dx + dy * dy <= ctx.defaults.foodPickupRangeSq) {
-        const res = ctx.world.get(ctx.entityId, Resource);
-        const h = res?.values.hunger;
-        if (res && h) {
-          ctx.world.set(ctx.entityId, Resource, {
-            values: {
-              ...res.values,
-              hunger: { value: Math.max(0, h.value - ctx.tuning.foodHungerRestore), max: h.max },
-            },
-          });
-        }
+        // Composing delta (T-249): feeding composes with the regen tick.
+        adjustResourceKey(ctx.world, ctx.entityId, "hunger", -ctx.tuning.foodHungerRestore);
         ctx.world.destroy(food.entityId);
         return {
           movementX: 0, movementY: 0, actions: 0,

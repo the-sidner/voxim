@@ -14,6 +14,7 @@
 import type { World, EntityId, Registry } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
 import type { System, EventEmitter } from "../system.ts";
+import { Health } from "../components/game.ts";
 import type {
   DeathCause,
   DeathRequestPort,
@@ -46,6 +47,16 @@ export class DeathSystem implements System, DeathRequestPort {
   }
 
   run(world: World, events: EventEmitter, _dt: number): void {
+    // Composed-lethal sweep (T-249): each damage writer's own death check
+    // sees only committed state, so two individually-survivable hits whose
+    // mutates compose to ≤0 kill nobody at hit time. Catch them here — one
+    // tick after the composed total commits.
+    for (const { entityId, health } of world.query(Health)) {
+      if (health.current <= 0) {
+        this.pending.push({ entityId, cause: "effect" });
+      }
+    }
+
     if (this.pending.length === 0) return;
 
     const pending = this.pending;

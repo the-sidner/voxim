@@ -47,6 +47,7 @@ import type { ContentService, EffectSpec } from "@voxim/content";
 import type { EffectResolver, EffectRegistry, ResolveContext } from "../effect.ts";
 import type { GateHandler } from "../gate.ts";
 import { Resource } from "../../components/resource.ts";
+import { adjustResourceKey } from "../../resources/mutate.ts";
 import { Inventory, ItemData } from "../../components/items.ts";
 import type { InventorySlot } from "../../components/items.ts";
 import { ItemEffects } from "../../components/instance.ts";
@@ -152,7 +153,8 @@ export const spendItemResolver: EffectResolver = {
  * Generic bounded-resource nudge. `params.deltas` maps Resource value keys
  * to signed changes; each result is clamped to that def's bounds (`min`
  * from content, `max` per-entity from the component) and all are committed
- * in one `world.set` (see the file header on why a single atomic write).
+ * as composing per-key mutates (T-249) — eating while the regen tick and a
+ * stamina spend land on the same Resource composes instead of clobbering.
  * Keys the entity does not carry are skipped.
  */
 export const adjustResourceResolver: EffectResolver = {
@@ -161,21 +163,12 @@ export const adjustResourceResolver: EffectResolver = {
     const { world, content, entityId, params } = ctx;
     const deltas = params.deltas;
     if (typeof deltas !== "object" || deltas === null) return;
+    if (!world.has(entityId, Resource)) return;
 
-    const res = world.get(entityId, Resource);
-    if (!res) return;
-
-    let changed = false;
-    const values = { ...res.values };
     for (const [id, d] of Object.entries(deltas as Record<string, unknown>)) {
-      const rv = res.values[id];
-      if (!rv || typeof d !== "number") continue;
+      if (typeof d !== "number") continue;
       const min = content.resources.get(id)?.bounds.min ?? 0;
-      const next = Math.max(min, Math.min(rv.max, rv.value + d));
-      if (next === rv.value) continue;
-      values[id] = { value: next, max: rv.max };
-      changed = true;
+      adjustResourceKey(world, entityId, id, d, min);
     }
-    if (changed) world.set(entityId, Resource, { values });
   },
 };

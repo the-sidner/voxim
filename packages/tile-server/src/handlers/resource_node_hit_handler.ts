@@ -4,7 +4,7 @@ import type { ContentService, PrefabResourceNodeData } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
 import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { ResourceNode } from "../components/resource_node.ts";
-import { Resource } from "../components/resource.ts";
+import { upsertResourceKey } from "../resources/mutate.ts";
 import { spawnGroundStack } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
@@ -76,13 +76,9 @@ export class ResourceNodeHitHandler implements HitHandler {
       // respawn_node), not a `respawnTicksRemaining` field + a bespoke
       // system. depleted:true now always coexists with this timer.
       world.set(ctx.targetId, ResourceNode, { ...rn, hitPoints: 0, depleted: true });
-      const res = world.get(ctx.targetId, Resource);
-      world.set(ctx.targetId, Resource, {
-        values: {
-          ...(res?.values ?? {}),
-          respawn_timer: { value: rnData.respawnTicks, max: rnData.respawnTicks },
-        },
-      });
+      // Composing upsert (T-249): seeds/resets the timer without clobbering
+      // sibling keys or same-tick contributions; creates Resource if absent.
+      upsertResourceKey(world, ctx.targetId, "respawn_timer", rnData.respawnTicks, rnData.respawnTicks);
     } else {
       world.destroy(ctx.targetId);
     }

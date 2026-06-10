@@ -145,9 +145,9 @@ export class HealthSkillResolver implements EffectResolver {
     const overrideTargetId = (params.overrideTargetId as EntityId | null | undefined) ?? null;
 
     if (targeting === "self") {
-      const health = world.get(entityId, Health);
-      if (health) {
-        world.set(entityId, Health, { ...health, current: Math.min(health.max, health.current + mag) });
+      if (world.has(entityId, Health)) {
+        // Composing mutate (T-249): heals stack with same-tick damage.
+        world.mutate(entityId, Health, (h) => ({ ...h, current: Math.min(h.max, h.current + mag) }));
       }
       return;
     }
@@ -170,14 +170,16 @@ export class HealthSkillResolver implements EffectResolver {
       }
       const targetHealth = world.get(targetId, Health);
       if (!targetHealth) continue;
+      // stolen / death are computed against committed state (this cast's
+      // own view); the writes compose with other same-tick contributions
+      // (T-249) — a composed-only kill is caught by DeathSystem's sweep.
       const stolen = Math.min(mag, targetHealth.current);
       const next = targetHealth.current - stolen;
-      world.set(targetId, Health, { ...targetHealth, current: next });
+      world.mutate(targetId, Health, (h) => ({ ...h, current: Math.max(0, h.current - stolen) }));
       events.publish(TileEvents.DamageDealt, { targetId, sourceId: entityId, amount: stolen, blocked: false });
       if (next <= 0) this.deaths.request({ entityId: targetId, killerId: entityId, cause: "effect" });
-      if (drainToCaster) {
-        const ch = world.get(entityId, Health);
-        if (ch) world.set(entityId, Health, { ...ch, current: Math.min(ch.max, ch.current + stolen) });
+      if (drainToCaster && world.has(entityId, Health)) {
+        world.mutate(entityId, Health, (h) => ({ ...h, current: Math.min(h.max, h.current + stolen) }));
       }
     }
   }

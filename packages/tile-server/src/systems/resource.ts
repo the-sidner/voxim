@@ -46,7 +46,13 @@ export class ResourceSystem implements System {
 
   run(world: World, events: EventEmitter, dt: number): void {
     for (const { entityId, resource } of world.query(Resource)) {
-      let next: Record<string, { value: number; max: number }> | null = null;
+      // Per-key integration deltas, applied as ONE composing mutate at the
+      // end (T-249): the integration composes with other writers' same-tick
+      // contributions (a stamina spend, a poise hit) instead of rewriting
+      // the whole component last-write-wins. Thresholds are still evaluated
+      // against the run-time integrated value — same-tick foreign deltas
+      // shift threshold timing by ≤1 tick, the accepted Resource retune.
+      let deltas: Record<string, { delta: number; min: number }> | null = null;
 
       for (const [id, rv] of Object.entries(resource.values)) {
         const def = this.content.resources.get(id);
@@ -79,14 +85,25 @@ export class ResourceSystem implements System {
         }
 
         if (nextVal !== prev) {
-          if (!next) next = { ...resource.values };
-          next[id] = { value: nextVal, max: rv.max };
+          if (!deltas) deltas = {};
+          deltas[id] = { delta: nextVal - prev, min: def.bounds.min };
         }
       }
 
-      if (next) {
-        const data: ResourceData = { values: next };
-        world.set(entityId, Resource, data);
+      if (deltas) {
+        const d = deltas;
+        world.mutate(entityId, Resource, (r): ResourceData => {
+          const values = { ...r.values };
+          for (const [id, { delta, min }] of Object.entries(d)) {
+            const rv = values[id];
+            if (!rv) continue;
+            values[id] = {
+              value: Math.max(min, Math.min(rv.max, rv.value + delta)),
+              max: rv.max,
+            };
+          }
+          return { values };
+        });
       }
     }
   }

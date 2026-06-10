@@ -13,7 +13,7 @@ import type {
 } from "../job_handler.ts";
 import type { Job, NpcPlanData } from "../../components/npcs.ts";
 import { moveSteps, findNearestConsumable } from "../plan_helpers.ts";
-import { Resource } from "../../components/resource.ts";
+import { adjustResourceKey } from "../../resources/mutate.ts";
 
 export const seekWaterJob: JobHandler = {
   id: "seekWater",
@@ -51,16 +51,8 @@ export const seekWaterJob: JobHandler = {
       const dx = water.x - ctx.pos.x;
       const dy = water.y - ctx.pos.y;
       if (dx * dx + dy * dy <= ctx.defaults.foodPickupRangeSq) {
-        const res = ctx.world.get(ctx.entityId, Resource);
-        const t = res?.values.thirst;
-        if (res && t) {
-          ctx.world.set(ctx.entityId, Resource, {
-            values: {
-              ...res.values,
-              thirst: { value: Math.max(0, t.value - ctx.tuning.waterThirstRestore), max: t.max },
-            },
-          });
-        }
+        // Composing delta (T-249): drinking composes with the regen tick.
+        adjustResourceKey(ctx.world, ctx.entityId, "thirst", -ctx.tuning.waterThirstRestore);
         ctx.world.destroy(water.entityId);
         return {
           movementX: 0, movementY: 0, actions: 0,

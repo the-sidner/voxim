@@ -9,6 +9,7 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { Resource } from "../components/resource.ts";
+import { adjustResourceKey } from "../resources/mutate.ts";
 
 /**
  * Ticks a cooldown down by one, clamped at zero. Use inside a system's tick
@@ -24,17 +25,15 @@ export function staminaValue(world: World, entityId: EntityId): number {
 }
 
 /**
- * Spend `cost` stamina via a deferred write. Returns true if it was paid
- * (enough available), false otherwise. Cost ≤ 0 always pays. Missing
- * stamina resource fails unless cost is zero.
+ * Spend `cost` stamina via a composing deferred write (T-249: a spend and
+ * the regen tick on the same Resource compose at commit). Returns true if
+ * it was paid (enough available against committed state), false otherwise.
+ * Cost ≤ 0 always pays. Missing stamina resource fails unless cost is zero.
  */
 export function spendStamina(world: World, entityId: EntityId, cost: number): boolean {
   if (cost <= 0) return true;
-  const res = world.get(entityId, Resource);
-  const st = res?.values.stamina;
-  if (!res || !st || st.value < cost) return false;
-  world.set(entityId, Resource, {
-    values: { ...res.values, stamina: { value: Math.max(0, st.value - cost), max: st.max } },
-  });
+  const st = world.get(entityId, Resource)?.values.stamina;
+  if (!st || st.value < cost) return false;
+  adjustResourceKey(world, entityId, "stamina", -cost);
   return true;
 }

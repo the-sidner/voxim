@@ -15,6 +15,7 @@
 import type { RecipeStepHandler, RecipeTickContext } from "../step_handler.ts";
 import { WorkstationBuffer } from "../../components/building.ts";
 import { Resource } from "../../components/resource.ts";
+import { upsertResourceKey } from "../../resources/mutate.ts";
 import { findMatchingRecipe } from "../../systems/crafting.ts";
 import { createLogger } from "../../logger.ts";
 
@@ -33,13 +34,8 @@ export const timeStep: RecipeStepHandler = {
     const match = findMatchingRecipe(content, stationType, "time", buffer.slots);
     if (!match) return;
 
-    const resource = world.get(stationId, Resource);
-    world.set(stationId, Resource, {
-      values: {
-        ...(resource?.values ?? {}),
-        crafting_timer: { value: match.recipe.ticks, max: match.recipe.ticks },
-      },
-    });
+    // Composing upsert (T-249); creates Resource on a fresh station.
+    upsertResourceKey(world, stationId, "crafting_timer", match.recipe.ticks, match.recipe.ticks);
     world.set(stationId, WorkstationBuffer, { ...buffer, activeRecipeId: match.recipe.id });
     log.info(
       "time-recipe started: station=%s recipe=%s ticks=%d",

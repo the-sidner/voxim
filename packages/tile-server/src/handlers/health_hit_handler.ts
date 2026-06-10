@@ -6,6 +6,7 @@ import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { Health } from "../components/game.ts";
 import { staminaValue } from "../combat/helpers.ts";
 import { Resource } from "../components/resource.ts";
+import { adjustResourceKey, upsertResourceKey } from "../resources/mutate.ts";
 import {
   CounterReady,
 } from "../components/combat.ts";
@@ -145,8 +146,13 @@ export class HealthHitHandler implements HitHandler {
     );
 
     // ── Apply damage ──────────────────────────────────────────────────────────
+    // Composing mutate (T-249): two same-tick hits both subtract. The local
+    // newHealth (vs committed state) still drives this hit's own death
+    // request / reaction decisions; a kill only visible in the composed
+    // total is caught by DeathSystem's health≤0 sweep next tick.
     const newHealth = Math.max(0, health.current - damage);
-    world.set(ctx.targetId, Health, { ...health, current: newHealth });
+    const dmg = damage;
+    world.mutate(ctx.targetId, Health, (h) => ({ ...h, current: Math.max(0, h.current - dmg) }));
 
     events.publish(TileEvents.DamageDealt, {
       targetId: ctx.targetId,
@@ -192,9 +198,9 @@ export class HealthHitHandler implements HitHandler {
           const overshoot = -next;
           const poiseCfg = this.content.getGameConfig().combat.poise;
           const heavy = overshoot >= poiseCfg.heavyTierDamageOvershoot;
-          world.set(ctx.targetId, Resource, {
-            values: { ...res.values, poise: { value: poise.max, max: poise.max } },
-          });
+          // Break: reset to max (absolute, composing-merge — sibling keys
+          // and later same-tick contributions stay intact, T-249).
+          upsertResourceKey(world, ctx.targetId, "poise", poise.max, poise.max);
           // Overwrites the hit_front/back request set above — stagger
           // supersedes the flinch (and the dispatcher's interrupt
           // priority would anyway).
@@ -202,9 +208,10 @@ export class HealthHitHandler implements HitHandler {
             actionId: heavy ? "stagger_heavy" : "stagger_light",
           });
         } else {
-          world.set(ctx.targetId, Resource, {
-            values: { ...res.values, poise: { value: next, max: poise.max } },
-          });
+          // Composing subtract: two same-tick hits both chip poise (each
+          // hit's break decision still reads committed state — a break only
+          // visible in the composed total breaks on the next hit).
+          adjustResourceKey(world, ctx.targetId, "poise", -damage);
         }
       }
     }
