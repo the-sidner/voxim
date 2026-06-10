@@ -42,6 +42,14 @@ export const TileEvents = {
    * SkillActivated events already cover the user-facing side).
    */
   StrikeLanded: Symbol("StrikeLanded"),
+  /**
+   * The reified hit fact (T-259): published by HealthHitHandler after a
+   * hit fully resolves (block/parry/damage/poise), carrying who hit whom,
+   * where, for how much. Consumed by the TriggerSystem's collectors (the
+   * `hit_landed` catalog kind) — content-defined on-hit triggers fire off
+   * it next tick. Server-side only; DamageDealt covers the client face.
+   */
+  HitLanded: Symbol("HitLanded"),
   TradeCompleted: Symbol("TradeCompleted"),
   LoreExternalised: Symbol("LoreExternalised"),
   LoreInternalised: Symbol("LoreInternalised"),
@@ -136,6 +144,14 @@ export interface StrikeLandedPayload {
   casterId: EntityId;
   slot: number;
   targetId: EntityId;
+}
+
+export interface HitLandedPayload {
+  attackerId: EntityId;
+  targetId: EntityId;
+  bodyPart: string;
+  damage: number;
+  blocked: boolean;
 }
 
 export interface EntityDeployedPayload {

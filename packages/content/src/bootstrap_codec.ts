@@ -28,11 +28,11 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
-  ResourceDef,
+  ResourceDef, TriggerDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 11;
+export const BOOTSTRAP_VERSION = 12;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -53,6 +53,7 @@ interface ContentBootstrapJson {
   verbs:               VerbDef[];
   conceptVerbEntries:  ConceptVerbEntry[];
   resources:           ResourceDef[];
+  triggers:            TriggerDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
 }
@@ -123,6 +124,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     verbs:               [...service.verbs.values()],
     conceptVerbEntries:  [...service.getAllConceptVerbEntries()],
     resources:           [...service.resources.values()],
+    triggers:            [...service.triggers.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
   };
@@ -205,6 +207,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   // every array the current envelope declares — no per-field guards
   // (those were transitional and are settled now, T-238g).
   for (const r of body.resources)            store.registerResource(r);
+  for (const t of body.triggers)             store.registerTrigger(t);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
 

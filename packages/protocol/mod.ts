@@ -66,6 +66,7 @@ export type {
   DayPhaseChangedPayload,
   SkillActivatedPayload,
   StrikeLandedPayload,
+  HitLandedPayload,
   EntityDeployedPayload,
   TradeCompletedPayload,
   LoreExternalisedPayload,

@@ -69,6 +69,9 @@ import { DayNightSystem } from "./systems/day_night.ts";
 import { SkillSystem } from "./systems/skill.ts";
 import { PoiSystem } from "./systems/poi.ts";
 import { newPoiActivityRegistry } from "./poi/mod.ts";
+import { TriggerSystem } from "./systems/trigger.ts";
+import { newTriggerCatalog } from "./triggers/catalog.ts";
+import { newTriggerSourceRegistry, equipmentTriggerSource } from "./triggers/source.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs } from "./stair_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
@@ -466,6 +469,54 @@ export class TileServer {
     // cooldown decrements are visible the same tick.
     const skill = new SkillSystem(content, actionEffects);
 
+    // Trigger primitive (T-259) — the single event→effect bridge. Catalog
+    // (closed event-kind vocabulary) + sources (live "who owns which
+    // triggers" reads; v1: equipment) + the buffered TriggerSystem.
+    const triggerCatalog = newTriggerCatalog();
+    const triggerSources = newTriggerSourceRegistry();
+    triggerSources.register(equipmentTriggerSource);
+    const triggerSystem = new TriggerSystem(content, triggerCatalog, triggerSources, actionGates, actionEffects);
+
+    // T-259 content cross-checks — every TriggerDef's `on` must be a
+    // catalog kind, every condition gate and effect kind registered, and
+    // every prefab `triggers[]` ref must resolve. Fail fast at boot, same
+    // stance as the ResourceDef / action-effect / POI checks.
+    for (const trig of content.triggers.values()) {
+      if (!triggerCatalog.has(trig.on)) {
+        throw new Error(
+          `Trigger "${trig.id}" listens to "${trig.on}" but no such event ` +
+          `kind is in the catalog. Known: [${triggerCatalog.ids().join(", ")}]`,
+        );
+      }
+      for (const c of trig.conditions ?? []) {
+        if (!actionGates.has(c.gate)) {
+          throw new Error(
+            `Trigger "${trig.id}" condition gate "${c.gate}" is not ` +
+            `registered. Registered: [${actionGates.ids().join(", ")}]`,
+          );
+        }
+      }
+      for (const eff of trig.effects) {
+        if (!actionEffects.has(eff.kind)) {
+          throw new Error(
+            `Trigger "${trig.id}" lists effect "${eff.kind}" but no ` +
+            `action-effect resolver is registered. ` +
+            `Registered: [${actionEffects.ids().join(", ")}]`,
+          );
+        }
+      }
+    }
+    for (const prefab of content.prefabs.values()) {
+      for (const t of prefab.triggers ?? []) {
+        if (!content.triggers.get(t)) {
+          throw new Error(
+            `Prefab "${prefab.id}" grants trigger "${t}" but no such ` +
+            `TriggerDef is loaded. Loaded: [${[...content.triggers.ids()].join(", ")}]`,
+          );
+        }
+      }
+    }
+
     const actionDispatcher = new ActionDispatcher(
       content, actionGates, actionEffects,
       new CompositeIntentResolver([
@@ -479,6 +530,9 @@ export class TileServer {
       StaminaCostHandler,
     );
     skill.registerSubscribers(this.eventBus, this.world);
+    // Trigger collectors run during the (notify-only) post-changeset flush
+    // and only buffer; the TriggerSystem drains at the top of its next run.
+    triggerSystem.registerSubscribers(this.eventBus);
 
     // Hearth anchor subscriber — when a prefab carrying the `hearth` component
     // is placed, tell the account service so the heir spawns at the new
@@ -591,6 +645,10 @@ export class TileServer {
       // scrubbed before downstream systems read slots or a stale ref is sent
       // on the wire.
       new StaleSlotCleanupSystem(),
+      // TriggerSystem drains last tick's buffered events early so its
+      // effects (procs, buffs, damage) land in this tick's changeset
+      // alongside everything else (T-259).
+      triggerSystem,
       new NpcAiSystem(content, jobs, behaviorTrees),
       new EquipmentSystem(content),
       new PlacementSystem(content),

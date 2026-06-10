@@ -53,6 +53,7 @@ import type {
   ActionDef,
   VerbDef,
   ResourceDef,
+  TriggerDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
@@ -107,6 +108,15 @@ export interface ContentService {
    * a file drop. See RESOURCE_PRIMITIVE_PLAN.md.
    */
   readonly resources: ContentRegistryReadonly<ResourceDef>;
+
+  /**
+   * Triggers keyed by id (T-259). Reactive couplings loaded from
+   * `data/triggers/*.json` — when event `on` occurs and the owner fills
+   * role `as`, fire `effects` through the shared action-effect registry.
+   * Attached to owners via TriggerSources (equipment `triggers[]`, …).
+   * See TRIGGER_PRIMITIVE_PLAN.md.
+   */
+  readonly triggers: ContentRegistryReadonly<TriggerDef>;
 
   // ---- specialized lookups ----
   /** Resolve a material by its numeric MaterialId (the wire/storage key). */
@@ -221,6 +231,10 @@ export class StaticContentStore implements ContentService {
   public readonly resources = new ContentRegistry<ResourceDef>({
     kind: "resource",
     idOf: (r) => r.id,
+  });
+  public readonly triggers = new ContentRegistry<TriggerDef>({
+    kind: "trigger",
+    idOf: (t) => t.id,
   });
 
   // ---- secondary indices ----
@@ -340,6 +354,10 @@ export class StaticContentStore implements ContentService {
 
   registerResource(def: ResourceDef): void {
     this.resources.register(def);
+  }
+
+  registerTrigger(def: TriggerDef): void {
+    this.triggers.register(def);
   }
 
   setGameConfig(config: GameConfig): void {

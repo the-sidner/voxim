@@ -796,6 +796,39 @@ export interface ResourceThreshold {
   params?: Record<string, unknown>;
 }
 
+// ---- triggers (T-259 — the fourth primitive) ----
+
+/** One effect a trigger fires — `kind` is a registered action-effect
+ * resolver id (the one T-246 registry). */
+export interface TriggerEffect {
+  kind: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * A content-defined reactive coupling (`data/triggers/{id}.json`,
+ * TRIGGER_PRIMITIVE_PLAN.md): when event `on` occurs and the trigger's
+ * owner fills role `as`, and every `conditions` gate passes against the
+ * owner, fire `effects` with the event's other party bound as target.
+ * Attached to owners via sources (a weapon/armor prefab's `triggers[]`,
+ * later inscriptions / zones / buffs).
+ */
+export interface TriggerDef {
+  id: string;
+  /** Event kind from the closed catalog (hit_landed / damage_taken /
+   * entity_died, …) — boot-cross-checked. */
+  on: string;
+  /** Which event role binds to the owner (e.g. "attacker" | "target" |
+   * "killer" | "victim"). */
+  as: string;
+  /** Gate refs tested against the owner (the action arc's gate registry). */
+  conditions?: ActionGate[];
+  /** Internal cooldown (ICD): ticks this trigger stays dormant after
+   * firing. 0 / absent = none. */
+  internalCooldownTicks?: number;
+  effects: TriggerEffect[];
+}
+
 // ---- biomes ----
 
 /**
@@ -1105,6 +1138,14 @@ export interface Prefab {
    * generation writes it at spawn). Absent ⇒ the item is not usable.
    */
   effects?: EffectSpec[];
+  /**
+   * Trigger ids this item grants its holder while equipped (T-259):
+   * the `equipment` TriggerSource walks worn prefabs' `triggers[]` live —
+   * a vampiric weapon's on-hit drain, an armor's when-hit proc. Each id
+   * must resolve in `ContentService.triggers` (boot-cross-checked). Like
+   * `effects`, item data — not an ECS component.
+   */
+  triggers?: string[];
   /**
    * Open-set component dictionary. Each key is either a `ComponentDef.name`
    * registered in the tile-server component registry (written directly at

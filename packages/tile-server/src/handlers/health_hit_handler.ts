@@ -165,6 +165,18 @@ export class HealthHitHandler implements HitHandler {
       hitZ: ctx.hitZ,
     });
 
+    // ── The reified hit fact (T-259) ─────────────────────────────────────────
+    // Published after resolution (damage + blocked known) for the
+    // TriggerSystem's `hit_landed` collectors — content-defined on-hit
+    // triggers (weapon procs etc.) fire off it next tick. Server-side only.
+    events.publish(TileEvents.HitLanded, {
+      attackerId: ctx.attackerId,
+      targetId: ctx.targetId,
+      bodyPart: ctx.bodyPart,
+      damage,
+      blocked: isBlocking,
+    });
+
     // ── Hit-reaction request (T-228) ─────────────────────────────────────────
     // Post a one-shot PendingReaction; ReactionIntentResolver feeds it into
     // the dispatcher's `reaction` slot next tick (interrupt priority lets a

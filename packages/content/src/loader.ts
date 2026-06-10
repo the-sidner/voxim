@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef } from "./types.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
@@ -50,7 +50,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     conceptVerbRaw, weaponActionsRaw, actionsRaw, verbsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, poisRaw, resourcesRaw, animLibraryArchetypes,
+    biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -68,6 +68,7 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "zones"),
     readJsonDir(dataDir, "pois").catch(() => []),
     readJsonDir(dataDir, "resources").catch(() => []),
+    readJsonDir(dataDir, "triggers").catch(() => []),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -165,6 +166,11 @@ async function loadContentStoreInternal(
   for (const raw of resourcesRaw as ResourceDef[]) {
     validateResourceDef(raw);
     store.registerResource(raw);
+  }
+
+  for (const raw of triggersRaw as TriggerDef[]) {
+    validateTriggerDef(raw);
+    store.registerTrigger(raw);
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
@@ -511,6 +517,47 @@ function validateActionGates(actionId: string, where: string, gates: ActionGate[
  * Cross-refs (effect/rateModifier ids exist in their registries) are
  * checked at server boot, like action gates/effects.
  */
+
+/**
+ * Shape-validate one TriggerDef (T-259). Registry membership of `on` /
+ * `conditions[].gate` / `effects[].kind` is the server's boot cross-check
+ * (the catalog and registries live there); this guards the JSON shape.
+ */
+export function validateTriggerDef(def: TriggerDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`TriggerDef: missing or empty id`);
+  }
+  if (typeof def.on !== "string" || def.on.length === 0) {
+    throw new Error(`Trigger '${def.id}': 'on' must be a non-empty event kind`);
+  }
+  if (typeof def.as !== "string" || def.as.length === 0) {
+    throw new Error(`Trigger '${def.id}': 'as' must be a non-empty role name`);
+  }
+  if (def.conditions !== undefined) {
+    if (!Array.isArray(def.conditions)) {
+      throw new Error(`Trigger '${def.id}': conditions must be an array`);
+    }
+    for (const c of def.conditions) {
+      if (!c || typeof c.gate !== "string" || c.gate.length === 0) {
+        throw new Error(`Trigger '${def.id}': every condition needs a non-empty 'gate'`);
+      }
+    }
+  }
+  if (def.internalCooldownTicks !== undefined
+    && (typeof def.internalCooldownTicks !== "number" || def.internalCooldownTicks < 0
+      || !Number.isFinite(def.internalCooldownTicks))) {
+    throw new Error(`Trigger '${def.id}': internalCooldownTicks must be a non-negative number`);
+  }
+  if (!Array.isArray(def.effects) || def.effects.length === 0) {
+    throw new Error(`Trigger '${def.id}': effects must be a non-empty array`);
+  }
+  for (const e of def.effects) {
+    if (!e || typeof e.kind !== "string" || e.kind.length === 0) {
+      throw new Error(`Trigger '${def.id}': every effect needs a non-empty 'kind'`);
+    }
+  }
+}
+
 export function validateResourceDef(def: ResourceDef): void {
   if (typeof def.id !== "string" || def.id.length === 0) {
     throw new Error(`ResourceDef: missing or empty id`);
