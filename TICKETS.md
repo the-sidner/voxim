@@ -4724,7 +4724,7 @@ GCD blocks and decrements).
 
 ### T-259 · Trigger primitive arc — the fourth primitive (on-hit/proc substrate)
 Effort: L   Status: in-progress
-Commits: plan 087ce97/d45071e · 0 (op-log) 2b36633 · 0b (mutate+conversions) 6fd0ae2 · a (primitive) d82f785
+Commits: plan 087ce97/d45071e · 0 (op-log) 2b36633 · 0b (mutate+conversions) 6fd0ae2 · a (primitive) d82f785 · b (strike cutover) d6426c0
 
 **Sub-plan: [`TRIGGER_PRIMITIVE_PLAN.md`](TRIGGER_PRIMITIVE_PLAN.md)**
 (filed 2026-06-03). Design decision: the `strike` loadout verb is obsolete
