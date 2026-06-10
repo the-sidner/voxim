@@ -4158,7 +4158,7 @@ generated TypeScript files aggregate the per-item imports for static bundling:
 `deno task gen-content` after adding/renaming data files.
 
 ### T-249 · Changeset: ordered op-log + `world.mutate` (deferred read-modify-write)
-Effort: L   Status: todo
+Effort: L   Status: done   Commits: 2b36633 (moves 1+2, engine) · 6fd0ae2 (move 2, conversions)
 
 `applyChangeset` applies all `pendingSets`, then all `pendingRemovals`
 (`engine/src/world.ts:233-256`). Two structural consequences, both with live victims
@@ -4723,7 +4723,8 @@ dispatch site changes. Done: `deno check` clean (codecs+content+tile-server);
 GCD blocks and decrements).
 
 ### T-259 · Trigger primitive arc — the fourth primitive (on-hit/proc substrate)
-Effort: L   Status: todo
+Effort: L   Status: in-progress
+Commits: plan 087ce97/d45071e · 0 (op-log) 2b36633 · 0b (mutate+conversions) 6fd0ae2
 
 **Sub-plan: [`TRIGGER_PRIMITIVE_PLAN.md`](TRIGGER_PRIMITIVE_PLAN.md)**
 (filed 2026-06-03). Design decision: the `strike` loadout verb is obsolete
