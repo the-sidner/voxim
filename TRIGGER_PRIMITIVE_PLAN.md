@@ -3,7 +3,15 @@
 **Status:** FILED — design accepted, no phase landed yet. Companion to
 `ACTION_PRIMITIVE_PLAN.md`, `RESOURCE_PRIMITIVE_PLAN.md`,
 `STATUS_MODIFIER_PLAN.md`.
-**Tickets:** T-259 arc (phases T-259a–c below).
+**Tickets:** T-259 arc (phases below), **combined with T-249** (changeset
+op-log + `world.mutate`) — project decision 2026-06-10. T-249's diagnosis
+("flush-time writes land at the front of the next tick's queue and are
+clobbered by every-tick rewrites") applies verbatim to a flush-subscribing
+TriggerSystem, and T-249's move 3 (relocate `resolveStrike`) would build
+what T-259b deletes. Merged: T-249 moves 1+2 are this arc's substrate
+phases (0/0b); the notify-only-flush doctrine is adopted; TriggerSystem is
+its first-class consumer (buffered system, below); the strike criterion
+resolves by deletion.
 **Thesis:** the fourth primitive over the same substrate. Actions answer
 "what is this entity *doing*", Resources "what bounded scalar is *moving*",
 Modifiers "what changes this entity's *stats*". Triggers answer **"when
@@ -60,9 +68,14 @@ caveat that rules it out for core combat reactions.)
 **In scope:**
 - `TriggerDef` content type (`data/triggers/{id}.json`) + registry +
   loader + bootstrap (version bump; client re-receives — doctrine permits).
-- `TriggerSystem`: the **single** event→effect bridge. Subscribes to the
-  real bus (post-changeset flush, the exact timing `resolveStrike` runs at
-  today — "invisible at 20 Hz" per the existing skill.ts comment).
+- `TriggerSystem`: the **single** event→effect bridge — a real System.
+  It *collects* catalog events during the (notify-only, T-249) post-
+  changeset flush into a buffer and *drains* the buffer at the top of its
+  next `run`, firing effects via `world.mutate` inside the system phase so
+  concurrent procs compose. Net latency: one tick after the event — the
+  exact timing `resolveStrike` has today ("invisible at 20 Hz" per the
+  existing skill.ts comment), but with writes that land in the changeset
+  like every other system's.
 - A `TriggerSource` registry mirroring `ModifierSource` (hybrid doctrine:
   read live from the store that owns the data) — v1 source: `equipment`
   (weapon + armor prefab `triggers[]`).
@@ -143,7 +156,10 @@ payloads (`{ entityId }`) join the catalog when a use case arrives.
 
 ## Runtime (TriggerSystem)
 
-Per subscribed event, during the post-changeset flush:
+Two halves. **Collect:** bus subscribers (one per catalog kind) push
+`(kind, payload)` into a plain buffer during the post-changeset flush —
+no world writes there (the T-249 notify-only doctrine). **Drain:** at the
+top of `TriggerSystem.run` next tick, per buffered event:
 
 1. Resolve involved entities per the catalog binding (e.g. attacker +
    target).
@@ -154,19 +170,49 @@ Per subscribed event, during the post-changeset flush:
    = O), check ICD.
 4. Fire `effects` through the action-effect registry (owner as `entityId`,
    other party as `overrideTargetId`, synthetic slot/state — the same
-   dispatch shape `SkillSystem.dispatch` uses since T-246).
+   dispatch shape `SkillSystem.dispatch` uses since T-246). Effects write
+   via `world.mutate` (T-249) so concurrent procs on the same component
+   compose instead of clobbering.
 5. Stamp ICD.
 
-**Re-entrancy invariant:** effects fired by triggers may themselves publish
-catalog events (the `health` effect publishes `DamageDealt`). The bus is
-synchronous during flush → unguarded, a lifesteal weapon would proc itself.
-v1 rule: **no re-entry** — `TriggerSystem` sets a `dispatching` flag and
-drops (logs) events arriving while it is set. Proc chains are a design
-decision for later, not an accident now.
+**Re-entrancy invariant (no proc chains, v1):** effects fired during the
+drain may themselves publish catalog events (the `health` effect publishes
+`DamageDealt`) — those flush at end of tick and would re-enter the buffer,
+giving a self-sustaining cross-tick loop (a damage_taken/`as: attacker`
+trigger matches its own proc's event at 1 proc per tick, forever).
+v1 rule: TriggerSystem hands its effects a wrapping `EventEmitter` that
+tags payloads `viaTrigger: true` (clients still see the
+DamageDealt/HitSpark); the collectors skip tagged events. Proc chains are
+a design decision for later, not an accident now.
 
 ---
 
 ## Phasing (each a green commit; old path deleted in the same commit its replacement lands)
+
+### T-259·0 — ordered op-log (= T-249 move 1)
+One pending op queue (`set | mutate | remove`) in `World`, applied
+strictly in push order at commit; the changeset nets to **one final value
+or removal per (entity, component)** (encode-once for the delta build —
+`AppliedChangeset`'s shape is unchanged, only its semantics tighten).
+Restores program order: set-then-remove nets to a removal, remove-then-set
+to a set. Fixes the live victims: force-interrupted stagger keeps its tag;
+a same-tick consumed-and-reposted `PendingReaction` survives. Engine tests
+over set/remove interleavings.
+
+### T-259·0b — `world.mutate` + multi-writer conversions (= T-249 move 2)
+`world.mutate(id, C, fn)` — deferred read-modify-write; `fn` runs at
+commit against the value after earlier ops this tick (absent component →
+op skipped). Reads during the tick still see committed state — the
+isolation doctrine holds. Convert the multi-writer call sites: Health
+(HealthHitHandler, `health` effect, `buff_tick`, `modify_health`,
+skill health-cost), Resource (`ResourceSystem` merges its computed keys
+instead of rewriting the component; `spendStamina`; `adjust_resource`).
+DeathSystem gains a health≤0 sweep at the top of its run (two
+individually-survivable hits that compose lethally must still kill —
+each handler's own check sees only committed state). `LoreLoadout` stays
+single-writer-by-deletion (T-259b kills the second writer). Tests: two
+same-tick hits both subtract; DoTs stack; spend + regen on one Resource
+compose; composed-lethal dies.
 
 ### T-259a — the primitive, standalone
 `TriggerDef` type + `data/triggers/` loader + content registry + bootstrap

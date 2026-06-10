@@ -4195,9 +4195,19 @@ Fix, three moves:
 Delta build derives the final value per (entity, component) from the op walk — encode once
 (fixes the "exactly once" violation); removals feed T-250's removal channel.
 
+**Combined with the T-259 trigger arc (project decision 2026-06-10).** Move 3 as
+written (relocate `resolveStrike` into a SkillSystem buffer-drain) is superseded:
+T-259b deletes the strike path outright, so the interim relocation would be
+built-then-deleted. The combined sequencing instead: moves 1+2 land first (engine
+op-log + mutate + conversions — T-259's trigger effects need them to compose), the
+**notify-only flush doctrine** from move 3 is adopted as-is, and its consumer is the
+T-259 `TriggerSystem` (a real System draining an event buffer at the top of its
+run — not a flush-time writer). "Strike cooldowns/costs survive" resolves by
+deletion in T-259b. See `TRIGGER_PRIMITIVE_PLAN.md` for the merged phasing.
+
 Done when: the stagger-tag and PendingReaction same-tick cases keep the later write; two
-same-tick hits both subtract health; DoTs stack; strike cooldowns/costs survive the following
-tick; engine tests cover set/mutate/remove interleavings.
+same-tick hits both subtract health; DoTs stack; engine tests cover set/mutate/remove
+interleavings. (Strike criterion → T-259b.)
 
 ### T-250 · Replication: component-removal channel + death events + InputState
 Effort: M   Status: todo
@@ -4734,12 +4744,22 @@ event→effect bridge (post-changeset, the strike path's documented timing) +
 a `TriggerSource` registry mirroring ModifierSource (v1: equipment).
 No trigger re-entry in v1 (proc loops are a decision, not an accident).
 
-Phases: **a** primitive standalone (+ HitLanded) · **b** strike cutover —
-wolf's DRAIN becomes a weapon trigger and the seven-site strike path
-(strikeVerb, HitContext.skillVerb, StrikeLanded, resolveStrike,
-registerSubscribers) is deleted in the same commit · **c** proc surface
-(health_below gate, on-kill + low-health demo triggers). Closes the spine:
-Actions · Resources · Modifiers · **Triggers**.
+**Combined with T-249 (project decision 2026-06-10):** T-249's flush-time-write
+diagnosis applies verbatim to the originally planned flush-subscribing
+TriggerSystem, so the runtime is revised: TriggerSystem is a real System that
+*collects* events during the notify-only flush and *drains* the buffer at the
+top of its next run, firing effects via `world.mutate` so concurrent procs
+compose. T-249 moves 1+2 are the arc's substrate phases; T-249 move 3 is
+superseded (strike deleted, not relocated).
+
+Phases (merged): **0** = T-249 move 1 (ordered op-log) · **0b** = T-249 move 2
+(`world.mutate` + multi-writer conversions) · **a** primitive standalone
+(+ HitLanded, buffered TriggerSystem) · **b** strike cutover — wolf's DRAIN
+becomes a weapon trigger and the seven-site strike path (strikeVerb,
+HitContext.skillVerb, StrikeLanded, resolveStrike, registerSubscribers) is
+deleted in the same commit (completes T-249's strike criterion by deletion) ·
+**c** proc surface (health_below gate, on-kill + low-health demo triggers).
+Closes the spine: Actions · Resources · Modifiers · **Triggers**.
 
 The gateway gains a second responsibility alongside tile routing: it is the
 outward-facing account service. It owns user identity, credentials, session
