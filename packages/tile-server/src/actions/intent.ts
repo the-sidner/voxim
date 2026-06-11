@@ -10,11 +10,16 @@
  */
 
 import type { World, EntityId } from "@voxim/engine";
-import { ACTION_CROUCH, ACTION_BLOCK, ACTION_USE_SKILL, ACTION_CONSUME, hasAction } from "@voxim/protocol";
+import {
+  ACTION_CROUCH, ACTION_BLOCK, ACTION_USE_SKILL, ACTION_CONSUME,
+  ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4,
+  hasAction,
+} from "@voxim/protocol";
 import type { ContentService, SwingableData } from "@voxim/content";
 import { InputState, Health } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
 import { ActiveActions, PendingReaction, PendingItemUse, RequestedActions } from "../components/action.ts";
+import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { IntentResolver } from "./dispatcher.ts";
 
 export const PostureIntentResolver: IntentResolver = {
@@ -77,6 +82,33 @@ export class PrimaryIntentResolver implements IntentResolver {
     return out;
   }
 }
+
+/**
+ * Skill bar (T-260b) — SKILL_N presses become primary-slot intent for the
+ * slot's skill ActionDef. Composes AFTER PrimaryIntentResolver, so a skill
+ * press overrides a swing press; the dispatcher then arbitrates like any
+ * other action (cancel matrix, costs, per-action cooldown + GCD —
+ * T-260a). Replaces SkillSystem.run: there is no separate skill
+ * activation path any more.
+ */
+export const SkillIntentResolver: IntentResolver = {
+  resolve(world: World, entityId: EntityId, slots: readonly string[]): Map<string, string | null> {
+    const out = new Map<string, string | null>();
+    if (!slots.includes("primary")) return out;
+    const a = world.get(entityId, InputState)?.actions ?? 0;
+    const loadout = world.get(entityId, LoreLoadout);
+    if (!loadout) return out;
+    const flags = [ACTION_SKILL_1, ACTION_SKILL_2, ACTION_SKILL_3, ACTION_SKILL_4];
+    for (let i = 0; i < 4; i++) {
+      if (!hasAction(a, flags[i])) continue;
+      const actionId = loadout.skills[i];
+      if (!actionId) continue;
+      out.set("primary", actionId);
+      break; // lowest pressed slot wins the tick
+    }
+    return out;
+  },
+};
 
 /**
  * Reaction slot (T-228) — event-driven, not intent-driven. Replaces the

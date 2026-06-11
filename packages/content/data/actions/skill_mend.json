@@ -1,0 +1,21 @@
+{
+  "id": "skill_mend",
+  "kind": "active",
+  "slot": "primary",
+  "phases": { "windup": { "ticks": 8 }, "active": { "ticks": 1 }, "winddown": { "ticks": 6 } },
+  "cancel": {
+    "windup":   { "into": ["any"] },
+    "active":   { "into": [] },
+    "winddown": { "into": [] }
+  },
+  "movement": { "windup": "slowed", "active": "locked", "winddown": "slowed" },
+  "costs": { "stamina": 23 },
+  "cooldownTicks": 80,
+  "triggersGcd": true,
+  "priority": 5,
+  "preconditions": [ { "gate": "not_staggered" } ],
+  "effects": [
+    { "phase": "active:enter", "kind": "health",
+      "params": { "magnitude": 40, "targeting": "self" } }
+  ]
+}

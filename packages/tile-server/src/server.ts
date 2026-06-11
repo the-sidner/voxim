@@ -49,7 +49,7 @@ import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
 import { equipmentStatModifier } from "./resources/modifiers/equipment_stat.ts";
 import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver, ProjectileTraceResolver } from "./actions/index.ts";
-import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, ReactionIntentResolver, RequestedActionIntentResolver } from "./actions/intent.ts";
+import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, SkillIntentResolver, ReactionIntentResolver, RequestedActionIntentResolver } from "./actions/intent.ts";
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
 import { dodgeImpulseResolver } from "./actions/resolvers/movement.ts";
@@ -66,7 +66,6 @@ import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
 import { WorkstationHitHandler } from "./handlers/workstation_hit_handler.ts";
 import { TerrainDigSystem } from "./handlers/terrain_hit_handler.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
-import { SkillSystem } from "./systems/skill.ts";
 import { PoiSystem } from "./systems/poi.ts";
 import { newPoiActivityRegistry } from "./poi/mod.ts";
 import { TriggerSystem } from "./systems/trigger.ts";
@@ -454,23 +453,16 @@ export class TileServer {
     actionEffects.register(fleeSkillEffect);
     actionEffects.register(new HealthSkillResolver(deathSystem));
 
-    // Concept-verb cross-check (now against the unified registry): every
-    // matrix entry's effectStat must resolve to a registered effect.
-    for (const entry of content.getAllConceptVerbEntries()) {
-      if (!actionEffects.has(entry.effectStat)) {
+    // T-260b: every configured starting-skill slot must be a loaded
+    // ActionDef (the slots ARE action ids now; matrix + verbs are gone).
+    for (const sk of content.getGameConfig().player.startingSkills ?? []) {
+      if (sk !== null && !content.actions.get(sk)) {
         throw new Error(
-          `ContentService references effectStat "${entry.effectStat}" ` +
-          `(verb=${entry.verb} outward=${entry.outwardConcept} inward=${entry.inwardConcept}) ` +
-          `but no effect resolver is registered. Registered: [${actionEffects.ids().join(", ")}]`,
+          `player.startingSkills names action "${sk}" but no such ActionDef ` +
+          `is loaded.`,
         );
       }
     }
-
-    // SkillSystem dispatches through the one action-effect registry; runs
-    // before swings so cooldown decrements are visible the same tick.
-    // (Its StrikeLanded subscriber is gone — on-hit riders are the Trigger
-    // primitive, T-259b.)
-    const skill = new SkillSystem(content, actionEffects);
 
     // Trigger primitive (T-259) — the single event→effect bridge. Catalog
     // (closed event-kind vocabulary) + sources (live "who owns which
@@ -537,6 +529,9 @@ export class TileServer {
         PostureIntentResolver,
         LocomotionIntentResolver,
         new PrimaryIntentResolver(content),
+        // T-260b: a SKILL_N press overrides the bit-derived primary intent —
+        // the skill bar IS the action system now (SkillSystem is gone).
+        SkillIntentResolver,
         ReactionIntentResolver,
         // Last: a BT-named action request overrides the bit-derived intent.
         RequestedActionIntentResolver,
@@ -673,7 +668,6 @@ export class TileServer {
       // ActionDispatcher advances every actor's slots (posture, locomotion,
       // primary, reaction) from intent + events. The CSM is gone (T-228).
       actionDispatcher,
-      skill,
       new ItemPhysicsSystem(content),
       new TerrainDigSystem(content),
       new TraderSystem(content),
@@ -909,7 +903,7 @@ export class TileServer {
       `${content.npcTemplates.size} NPC types,`,
       `${content.prefabs.size} prefabs,`,
       `${content.loreFragments.size} lore fragments,`,
-      `${content.getAllConceptVerbEntries().length} skill entries loaded`,
+      `${[...content.triggers.ids()].length} triggers loaded`,
     );
   }
 

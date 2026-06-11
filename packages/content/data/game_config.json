@@ -25,7 +25,11 @@
       "staminaCostPerSwing": 5
     },
     "projectileDefaults": {
-      "spawnOffset": { "fwd": 0.6, "right": 0.0, "up": 1.4 },
+      "spawnOffset": {
+        "fwd": 0.6,
+        "right": 0.0,
+        "up": 1.4
+      },
       "arcFactor": 0.08
     },
     "poise": {
@@ -35,8 +39,17 @@
       "heavyTierDamageOvershoot": 25
     },
     "partMultipliers": {
-      "attacker": { "tip": 1.25, "mid": 1.0, "haft": 0.6 },
-      "victim":   { "head": 1.75, "torso_upper": 1.0, "torso_mid": 1.0, "torso_lower": 1.0 }
+      "attacker": {
+        "tip": 1.25,
+        "mid": 1.0,
+        "haft": 0.6
+      },
+      "victim": {
+        "head": 1.75,
+        "torso_upper": 1.0,
+        "torso_mid": 1.0,
+        "torso_lower": 1.0
+      }
     }
   },
   "dodge": {
@@ -55,7 +68,7 @@
   },
   "dayNight": {
     "dawnStart": 0.25,
-    "noonStart": 0.50,
+    "noonStart": 0.5,
     "duskStart": 0.75,
     "dayLengthTicks": 14400
   },
@@ -120,7 +133,13 @@
     "maxHealth": 100,
     "maxStamina": 100,
     "staminaRegenPerSec": 8,
-    "inventoryCapacity": 20
+    "inventoryCapacity": 20,
+    "startingSkills": [
+      "skill_mend",
+      "skill_fireblast",
+      null,
+      null
+    ]
   },
   "persistence": {
     "saveIntervalTicks": 6000

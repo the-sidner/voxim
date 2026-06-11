@@ -75,8 +75,6 @@ function isEventRelevant(
       return knownEntities.has(ev.nodeId) || knownEntities.has(ev.harvesterId);
     case "DayPhaseChanged":
       return true;
-    case "SkillActivated":
-      return knownEntities.has(ev.casterId);
     case "TradeCompleted":
       return ev.buyerId === playerId || knownEntities.has(ev.traderId);
     case "LoreExternalised":

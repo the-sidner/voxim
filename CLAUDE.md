@@ -180,7 +180,7 @@ shape that matters:
 ```
 NpcAiSystem → (Lifetime/Equipment/Placement/Crafting/ResourceNode/
 DayNight/ResourceSystem) → PhysicsSystem
-→ ActionDispatcher → SkillSystem → (Projectile/ItemPhysics/TerrainDig/
+→ ActionDispatcher → (ItemPhysics/TerrainDig/
 Trader/Dynasty) → AnimationSystem → HitboxSystem → PoiSystem → DeathSystem
 ```
 
@@ -323,8 +323,6 @@ data/
   materials/        {name}.json  — MaterialDef (numeric id in file, name is filename)
 
   game_config.json              — singleton: combat ratios, physics constants, AI defaults
-  concept_verb_matrix.json      — skill effect table: verb × outward × inward → effect + scaling
-  verbs.json                    — skill verb definitions
   terrain_config.json           — terrain generation parameters
   tile_layout.json              — optional: NPC/prop placement overrides for a specific tile
 ```
@@ -498,12 +496,16 @@ hitbox sweep, damage, knockback, parry/block/counter — dispatched to the per-t
 stagger, block, dodge, consume are all just actions/tags now — no bespoke per-mechanic
 systems.
 
-**SkillSystem** handles *active* skills only: slot activation from `ACTION_SKILL_N`
-flags, per-slot cooldowns + the global cooldown (T-248), concept-verb matrix lookups,
-effect dispatch through the one action-effect registry (T-246). On-hit riders are NOT
-skills: `HealthHitHandler` publishes the `HitLanded` fact and content triggers
-(weapon / archetype `triggers[]`) consume it via `TriggerSystem` (T-259b — the
-strike verb and `StrikeLanded` are gone).
+**There is no SkillSystem (T-260b).** An active skill IS an `ActionDef`
+(`data/actions/skill_*.json`): phases, stamina `costs`, gate
+`preconditions`, `cooldownTicks` + `triggersGcd` (the dispatcher's
+cooldown primitive, T-260a — state in the server-only `ActionCooldowns`),
+and `effects` with inline params (e.g. `health` on `active:enter`). A
+`SKILL_N` press becomes primary-slot intent via `SkillIntentResolver`
+(composes after the bit-derived primary intent, so a skill press beats a
+swing press); the dispatcher arbitrates and runs it like any other action.
+On-hit riders are content triggers consuming the `HitLanded` fact via
+`TriggerSystem` (T-259).
 
 ### "Is the actor swinging?"
 
@@ -516,12 +518,14 @@ dedup) live in that slot's `ActiveActionState`.
 
 ### Skill loadout
 
-`LoreLoadout`: 4 skill slots, each `{ verb, outwardFragmentId, inwardFragmentId }`
-(there is no separate "SkillLoadout"/"ManeuverLoadout" — `LoreLoadout` is it).
-Slots are **active-only** (T-259b): `"invoke"`, `"ward"`, `"step"` activate in
-SkillSystem on a `SKILL_N` press, gated by the slot cooldown + the GCD. The
-`"strike"` verb is retired — on-hit behaviour is a weapon/archetype trigger;
-the matrix's strike rows are inert until the matrix retires (skill-arc 2b).
+`LoreLoadout`: 4 skill slots, each the **id of a skill ActionDef** (or null),
+plus `learnedFragmentIds` (lore learning; lost on death). The verb +
+fragment-pair composition and the concept-verb matrix are GONE (T-260b) —
+a skill's behaviour lives entirely on its ActionDef; fragment-driven
+magnitude scaling returns later as param interpolation if wanted. Players
+seed their bar from `game_config.player.startingSkills` (boot-cross-checked
+against `content.actions`). NPCs carry no LoreLoadout (their procs are
+weapon/archetype triggers, T-259).
 
 Effect magnitude = `outwardFragment.magnitude × entry.outwardScale`.
 
@@ -561,7 +565,7 @@ health — it never reads raw input and has no velocity-heuristic or CSM fallbac
 are NPC-unaware — no `isNpc` branches anywhere in physics, combat, or skill code.
 
 Differences between NPCs and players are expressed through component data: `NpcTag` (marker),
-`NpcJobQueue` (AI job scheduler), `LoreLoadout` contents from `npc_templates.json`.
+`NpcJobQueue` (AI job scheduler), `triggers[]` procs from the NPC template (T-259c).
 
 Job queue: `current` job + `scheduled` list + `plan` (waypoints). Replanning is budgeted
 per tick to prevent frame spikes. Per-archetype behaviour is a data-driven behaviour tree
@@ -626,7 +630,8 @@ data access path": it is *why* the code stays data-driven — a designer adds a 
 effect / gate / BT node / hit handler / recipe step as one handler file + one
 `register()` call, never an engine edit. Live instances: the action effect + gate
 registries (`actions/effect.ts`, `actions/gate.ts`), BT node factories
-(`ai/bt/mod.ts`), hit handlers (`handlers/`), the concept-verb effect registries,
+(`ai/bt/mod.ts`), hit handlers (`handlers/`), POI activities (`poi/`), trigger
+sources + the event-kind catalog (`triggers/`),
 content registries. If a `switch (x.kind)` appears in a system, rewrite it as a
 registry.
 

@@ -44,14 +44,10 @@ import type {
   PoiRole,
   LoreFragment,
   Prefab,
-  ConceptVerbEntry,
-  SkillVerb,
-  LoreConcept,
   GameConfig,
   TileLayout,
   WeaponActionDef,
   ActionDef,
-  VerbDef,
   ResourceDef,
   TriggerDef,
 } from "./types.ts";
@@ -92,7 +88,6 @@ export interface ContentService {
    * which is the only writer of the `ActiveAction` component.
    */
   readonly actions:         ContentRegistryReadonly<ActionDef>;
-  readonly verbs:           ContentRegistryReadonly<VerbDef>;
   /**
    * Animation libraries keyed by archetype id (T-178). Look up clips via
    * `store.animationLibraries.getOrThrow(skeleton.archetype).clips[clipId]`.
@@ -128,8 +123,6 @@ export interface ContentService {
   getModelAabb(id: string): Hitbox | null;
   /** Returns the SkeletonDef associated with the given model ID, or null. */
   getSkeletonForModel(modelId: string): SkeletonDef | null;
-  getConceptVerbEntry(verb: SkillVerb, outward: LoreConcept, inward: LoreConcept): ConceptVerbEntry | null;
-  getAllConceptVerbEntries(): readonly ConceptVerbEntry[];
   /**
    * Every prefab whose `category` matches AND whose `tags` is a superset of
    * the requested tag list. Empty `requiredTags` returns all prefabs in the
@@ -220,10 +213,6 @@ export class StaticContentStore implements ContentService {
     kind: "action",
     idOf: (a) => a.id,
   });
-  public readonly verbs = new ContentRegistry<VerbDef>({
-    kind: "verb",
-    idOf: (v) => v.id,
-  });
   public readonly animationLibraries = new ContentRegistry<AnimationLibrary>({
     kind: "animationLibrary",
     idOf: (lib) => lib.id,
@@ -239,7 +228,6 @@ export class StaticContentStore implements ContentService {
 
   // ---- secondary indices ----
   private materialsByNumericId = new Map<MaterialId, MaterialDef>();
-  private conceptVerbEntries = new Map<string, ConceptVerbEntry>();
   private biomesByPrioritySorted: BiomeDef[] = [];
   private zonesByPrioritySorted: ZoneDef[] = [];
   /** Lazy-built POI indices. `null` = needs rebuild after last register. */
@@ -329,20 +317,12 @@ export class StaticContentStore implements ContentService {
     this.loreFragments.register(fragment);
   }
 
-  registerConceptVerbEntry(entry: ConceptVerbEntry): void {
-    this.conceptVerbEntries.set(`${entry.verb}:${entry.outwardConcept}:${entry.inwardConcept}`, entry);
-  }
-
   registerWeaponAction(def: WeaponActionDef): void {
     this.weaponActions.register(def);
   }
 
   registerAction(def: ActionDef): void {
     this.actions.register(def);
-  }
-
-  registerVerbDef(def: VerbDef): void {
-    this.verbs.register(def);
   }
 
   registerAnimationLibrary(lib: AnimationLibrary): void {
@@ -382,14 +362,6 @@ export class StaticContentStore implements ContentService {
     const model = this.models.get(modelId);
     if (!model?.skeletonId) return null;
     return this.skeletons.get(model.skeletonId) ?? null;
-  }
-
-  getConceptVerbEntry(verb: SkillVerb, outward: LoreConcept, inward: LoreConcept): ConceptVerbEntry | null {
-    return this.conceptVerbEntries.get(`${verb}:${outward}:${inward}`) ?? null;
-  }
-
-  getAllConceptVerbEntries(): readonly ConceptVerbEntry[] {
-    return Array.from(this.conceptVerbEntries.values());
   }
 
   getPrefabsByCategory(category: string, requiredTags: readonly string[] = []): readonly Prefab[] {

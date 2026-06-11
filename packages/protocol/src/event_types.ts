@@ -14,7 +14,8 @@ export const EventType = {
   GateApproached:    5,
   NodeDepleted:      6,
   DayPhaseChanged:   7,
-  SkillActivated:    8,
+  // 8 (SkillActivated) retired — SkillSystem deleted (T-260b); the event was never
+  // EventRouter-translated, so it was wire-dead. Never reuse.
   TradeCompleted:    9,
   LoreExternalised:  10,
   LoreInternalised:  11,

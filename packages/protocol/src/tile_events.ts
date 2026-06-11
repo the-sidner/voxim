@@ -23,7 +23,6 @@ export const TileEvents = {
   GateApproached: Symbol("GateApproached"),
   NodeDepleted: Symbol("NodeDepleted"),
   DayPhaseChanged: Symbol("DayPhaseChanged"),
-  SkillActivated: Symbol("SkillActivated"),
   /**
    * Published by PlacementSystem after a Place command spawns a world
    * entity. Subscribers react to prefab-specific side-effects (hearth
@@ -121,12 +120,6 @@ export interface NodeDepletedPayload {
 export interface DayPhaseChangedPayload {
   phase: string;
   timeOfDay: number;
-}
-
-export interface SkillActivatedPayload {
-  casterId: EntityId;
-  slot: number;
-  effectType: string;
 }
 
 export interface HitLandedPayload {

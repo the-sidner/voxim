@@ -126,9 +126,16 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   writeDefaults(
     world, id,
-    LoreLoadout, CraftingQueue, AnimationState,
+    CraftingQueue, AnimationState,
     FogState,
   );
+
+  // Skill bar (T-260b): slots name skill ActionDefs; the starting kit is
+  // config (cross-checked against content.actions at boot).
+  world.write(id, LoreLoadout, {
+    skills: [...(content.getGameConfig().player.startingSkills ?? [null, null, null, null])],
+    learnedFragmentIds: [],
+  });
 
   // Stamina / hunger / thirst are Resources now (T-238b/c). Stamina is
   // player-only (NPCs never had a Stamina component — preserving that, so
@@ -177,13 +184,8 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
   }
   world.write(id, Equipment, eq);
 
-  const slots = template?.skillLoadout ?? [null, null, null, null];
-  world.write(id, LoreLoadout, {
-    skills: slots,
-    learnedFragmentIds: [],
-    skillCooldowns: slots.map(() => 0),
-    globalCooldownTicks: 0,
-  });
+  // No LoreLoadout for NPCs (T-260b): it existed for strike slots, which
+  // are weapon/archetype triggers now (T-259b); NPCs don't learn lore.
 
   writeDefaults(
     world, id,

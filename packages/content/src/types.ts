@@ -749,16 +749,6 @@ export interface BodyPartVolume {
   radius: number;
 }
 
-/**
- * Per-verb balance constant for the skill system.
- * baseMagnitude feeds the balance formula:
- *   effectPower = f1.magnitude + verb.baseMagnitude
- *   ratio       = f2.magnitude / effectPower
- */
-export interface VerbDef {
-  id: SkillVerb;
-  baseMagnitude: number;
-}
 
 
 // ---- resources (T-238) ----
@@ -992,12 +982,6 @@ export interface NpcTemplate {
   /** Item type to equip as weapon at spawn (e.g. "wolf_bite"). Null/absent = unarmed. */
   weaponItemType?: string;
   /**
-   * Initial skill loadout spawned onto this NPC.
-   * References fragment IDs from lore_fragments.json.
-   * null slots are unequipped. NPCs are also given learnedFragmentIds for each referenced fragment.
-   */
-  skillLoadout?: (SkillSlot | null)[];
-  /**
    * Trigger ids this archetype carries innately (T-259c) — the
    * `npc_template` TriggerSource reads them live via NpcTag.npcType.
    * Signature procs (a cornered wolf's frenzy) without any item. Each id
@@ -1197,83 +1181,6 @@ export interface Prefab {
 export interface ChildPrefabRef {
   prefabId: string;
   local?: { x?: number; y?: number; z?: number; scale?: number };
-}
-
-// ---- concept verb matrix ----
-
-/**
- * The action that triggers a skill.
- *   strike  — melee-range activation, targets the entity in front
- *   invoke  — ranged/area activation (no weapon contact needed)
- *   ward    — self-targeted defensive activation
- *   step    — movement-linked activation (fires on dodge/move input)
- */
-export type SkillVerb = "strike" | "invoke" | "ward" | "step";
-
-/**
- * One configured skill slot — the atomic unit of a character's skill loadout.
- * A skill = verb + outward fragment (what it does) + inward fragment (what it costs).
- * The concept-verb matrix resolves the (verb, f1.concept, f2.concept) triple to an effect.
- */
-export interface SkillSlot {
-  verb: SkillVerb;
-  outwardFragmentId: string;
-  inwardFragmentId: string;
-}
-
-/**
- * What the skill does in the world (outward concept determines this,
- * modified by the inward concept's cost shape).
- */
-export type SkillEffectType =
-  | "damage_boost"   // next attack(s) deal extra damage
-  | "area_damage"    // instant damage to all entities within range
-  | "heal"           // restore caster health
-  | "speed_boost"    // temporary movement speed increase
-  | "shield"         // absorb a fixed amount of incoming damage
-  | "fear_aura"      // nearby NPCs immediately flee
-  | "drain_life"     // steal health from the nearest entity in range
-  | "poison_aura";   // periodic damage to entities within range for duration
-
-/**
- * One cell in the concept-verb matrix.
- * The triple (verb, outwardConcept, inwardConcept) uniquely identifies a skill.
- * outwardConcept determines WHAT the skill does.
- * inwardConcept determines HOW IT COSTS (stamina shape, health cost, etc.).
- */
-export interface ConceptVerbEntry {
-  verb: SkillVerb;
-  outwardConcept: LoreConcept;
-  inwardConcept: LoreConcept;
-  effectType: SkillEffectType;
-  /**
-   * Handler id in the effect registries (apply/tick/compose). Each value must
-   * match a registered apply handler in the server at startup; validated then
-   * and fail-fast on mismatch. New effect types are added as one handler file
-   * plus a registration call — no code changes in SkillSystem.
-   */
-  effectStat: string;
-  /**
-   * When true, health stolen from the target is also restored to the caster.
-   * Used for drain_life effects. Default false.
-   */
-  drainToCaster?: boolean;
-  /** Effect strength added per point of Fragment1 magnitude. */
-  outwardScale: number;
-  /** Stamina cost added per point of Fragment2 magnitude. */
-  inwardScale: number;
-  /** Flat stamina cost (before inward scaling). */
-  staminaCostBase: number;
-  /** Flat health cost (high-power skills; 0 for stamina-only). */
-  healthCostBase: number;
-  /** Ticks before this skill can be used again. */
-  cooldownTicks: number;
-  /** Ticks the effect lasts. 0 = instant. */
-  durationTicks: number;
-  /** How the skill finds its target. */
-  targeting: "self" | "entity" | "area";
-  /** Activation range in world units (for entity/area targeting). */
-  range: number;
 }
 
 // ---- lore ----
@@ -1490,6 +1397,10 @@ export interface GameConfig {
     maxStamina: number;
     staminaRegenPerSec: number;
     inventoryCapacity: number;
+    /** Skill ActionDef ids seeded into a fresh player's LoreLoadout slots
+     * (T-260b); null = empty slot. Cross-checked against content.actions
+     * at boot. */
+    startingSkills?: (string | null)[];
   };
   /** Server-side persistence tuning — autosave cadence and future knobs. */
   persistence: {

@@ -205,8 +205,7 @@ export type GameEvent =
   | GateCrossingEvent
   | NodeDepletedEvent
   | DayPhaseChangedEvent
-  | SkillActivatedEvent
-  | TradeCompletedEvent
+    | TradeCompletedEvent
   | LoreExternalisedEvent
   | LoreInternalisedEvent
   | ZoneEnteredEvent;
@@ -333,13 +332,6 @@ export interface DayPhaseChangedEvent {
   /** "dawn" | "noon" | "dusk" | "midnight" */
   phase: string;
   timeOfDay: number;
-}
-
-export interface SkillActivatedEvent {
-  type: "SkillActivated";
-  casterId: EntityId;
-  slot: number;
-  effectType: string;
 }
 
 export interface TradeCompletedEvent {

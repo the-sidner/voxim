@@ -8,7 +8,7 @@
 import type { Serialiser } from "@voxim/engine";
 import { buildCodec } from "./binary.ts";
 import { WireWriter, WireReader } from "./wire.ts";
-import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb, BodyPartVolume } from "@voxim/content";
+import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, BodyPartVolume } from "@voxim/content";
 
 /**
  * Hard array-size caps for variable-length component payloads. Purely a
@@ -178,7 +178,7 @@ export const kindGridCodec: Serialiser<KindGridData> = {
 // ============================================================================
 
 // Re-export the content types we encode so consumers can import from one place.
-export type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, SkillVerb };
+export type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer };
 
 // ---- ItemPart ---------------------------------------------------------------
 // { slot: string, materialName: string }
@@ -776,91 +776,42 @@ export const resourceNodeCodec: Serialiser<ResourceNodeData> = {
   },
 };
 
-// ---- SkillVerb enum map -----------------------------------------------------
-
-export const SKILL_VERB_TO_U8: Record<string, number> = {
-  strike: 0,
-  invoke: 1,
-  ward:   2,
-  step:   3,
-};
-
-export const U8_TO_SKILL_VERB: string[] = ["strike", "invoke", "ward", "step"];
-
-// ---- LoreSkillSlot ----------------------------------------------------------
-// { verb: SkillVerb, outwardFragmentId: string, inwardFragmentId: string }
-
-export interface LoreSkillSlot {
-  verb: SkillVerb;
-  outwardFragmentId: string;
-  inwardFragmentId: string;
-}
-
-function writeLoreSkillSlot(w: WireWriter, v: LoreSkillSlot): void {
-  w.writeU8(SKILL_VERB_TO_U8[v.verb] ?? 0);
-  w.writeStr(v.outwardFragmentId);
-  w.writeStr(v.inwardFragmentId);
-}
-
-function readLoreSkillSlot(r: WireReader): LoreSkillSlot {
-  const verb = (U8_TO_SKILL_VERB[r.readU8()] ?? "strike") as SkillVerb;
-  const outwardFragmentId = r.readStr();
-  const inwardFragmentId  = r.readStr();
-  return { verb, outwardFragmentId, inwardFragmentId };
-}
-
-export const loreSkillSlotCodec: Serialiser<LoreSkillSlot> = {
-  encode(v: LoreSkillSlot): Uint8Array {
-    const w = new WireWriter();
-    writeLoreSkillSlot(w, v);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): LoreSkillSlot {
-    return readLoreSkillSlot(new WireReader(bytes));
-  },
-};
-
 // ---- LoreLoadout ------------------------------------------------------------
-// { skills: (LoreSkillSlot|null)[], learnedFragmentIds: string[], skillCooldowns: number[] }
-// Always exactly 4 skill slots and 4 cooldown values.
+// T-260b: a slot is the id of a skill ActionDef (the dispatcher runs it,
+// costs/cooldowns/GCD included) — the verb+fragment pair and the per-slot
+// cooldown array left the wire (cooldown state is the server-only
+// ActionCooldowns component). Always exactly 4 slots.
 
 export interface LoreLoadoutData {
-  skills: (LoreSkillSlot | null)[];
+  /** Skill ActionDef ids; null = unassigned slot. */
+  skills: (string | null)[];
   learnedFragmentIds: string[];
-  skillCooldowns: number[];
-  /** Global cooldown remaining (ticks) — any active skill use sets it; gates all slots. */
-  globalCooldownTicks: number;
 }
 
 export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
   encode(v: LoreLoadoutData): Uint8Array {
     const w = new WireWriter();
-    // 4 hasSlot flags
-    for (let i = 0; i < 4; i++) w.writeU8(v.skills[i] !== null && v.skills[i] !== undefined ? 1 : 0);
-    // slot data
     for (let i = 0; i < 4; i++) {
       const s = v.skills[i];
-      if (s !== null && s !== undefined) writeLoreSkillSlot(w, s);
+      if (s !== null && s !== undefined) {
+        w.writeU8(1);
+        w.writeStr(s);
+      } else {
+        w.writeU8(0);
+      }
     }
-    // learned fragment IDs
     w.writeU16(v.learnedFragmentIds.length);
     for (const id of v.learnedFragmentIds) w.writeStr(id);
-    // 4 cooldown values (u32)
-    for (let i = 0; i < 4; i++) w.writeU32(v.skillCooldowns[i] ?? 0);
-    w.writeU32(v.globalCooldownTicks ?? 0);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): LoreLoadoutData {
     const r = new WireReader(bytes);
-    const hasSlot = [r.readU8(), r.readU8(), r.readU8(), r.readU8()];
-    const skills: (LoreSkillSlot | null)[] = [];
-    for (let i = 0; i < 4; i++) skills.push(hasSlot[i] ? readLoreSkillSlot(r) : null);
+    const skills: (string | null)[] = [];
+    for (let i = 0; i < 4; i++) skills.push(r.readU8() ? r.readStr() : null);
     const learnedCount = r.readU16();
     const learnedFragmentIds: string[] = [];
     for (let i = 0; i < learnedCount; i++) learnedFragmentIds.push(r.readStr());
-    const skillCooldowns = [r.readU32(), r.readU32(), r.readU32(), r.readU32()];
-    const globalCooldownTicks = r.readU32();
-    return { skills, learnedFragmentIds, skillCooldowns, globalCooldownTicks };
+    return { skills, learnedFragmentIds };
   },
 };
 

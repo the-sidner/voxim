@@ -27,12 +27,12 @@ import { encodeAnimationLibraries, decodeAnimationLibraries } from "./anim_codec
 import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
-  ActionDef, VerbDef, ConceptVerbEntry, GameConfig, TileLayout, Prefab,
+  ActionDef, GameConfig, TileLayout, Prefab,
   ResourceDef, TriggerDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 12;
+export const BOOTSTRAP_VERSION = 13;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -50,8 +50,6 @@ interface ContentBootstrapJson {
   loreFragments:       LoreFragment[];
   weaponActions:       WeaponActionDef[];
   actions:             ActionDef[];
-  verbs:               VerbDef[];
-  conceptVerbEntries:  ConceptVerbEntry[];
   resources:           ResourceDef[];
   triggers:            TriggerDef[];
   gameConfig:          GameConfig;
@@ -121,8 +119,6 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     loreFragments:       [...service.loreFragments.values()],
     weaponActions:       [...service.weaponActions.values()],
     actions:             [...service.actions.values()],
-    verbs:               [...service.verbs.values()],
-    conceptVerbEntries:  [...service.getAllConceptVerbEntries()],
     resources:           [...service.resources.values()],
     triggers:            [...service.triggers.values()],
     gameConfig:          service.getGameConfig(),
@@ -201,8 +197,6 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const l of body.loreFragments)        store.registerLoreFragment(l);
   for (const w of body.weaponActions)        store.registerWeaponAction(w);
   for (const a of body.actions)              store.registerAction(a);
-  for (const v of body.verbs)                store.registerVerbDef(v);
-  for (const e of body.conceptVerbEntries)   store.registerConceptVerbEntry(e);
   // version is strictly enforced above, so a decoded blob always carries
   // every array the current envelope declares — no per-field guards
   // (those were transitional and are settled now, T-238g).

@@ -28,7 +28,6 @@
  *   GateCrossing      uuid entityId, str destinationTileAddress, str destinationTileCertHashHex
  *   NodeDepleted      uuid nodeId, str nodeTypeId, uuid harvesterId
  *   DayPhaseChanged   str phase, f32 timeOfDay
- *   SkillActivated    uuid casterId, u8 slot, str effectType
  *   TradeCompleted    uuid buyerId, uuid traderId, str itemType, u16 quantity, i32 coinDelta
  *   LoreExternalised  uuid entityId, str fragmentId
  *   LoreInternalised  uuid entityId, str fragmentId
@@ -148,12 +147,6 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeStr(ev.phase);
       w.writeF32(ev.timeOfDay);
       break;
-    case "SkillActivated":
-      w.writeU8(EventType.SkillActivated);
-      w.writeUuid(ev.casterId);
-      w.writeU8(ev.slot);
-      w.writeStr(ev.effectType);
-      break;
     case "TradeCompleted":
       w.writeU8(EventType.TradeCompleted);
       w.writeUuid(ev.buyerId);
@@ -258,13 +251,6 @@ function decodeEvent(r: WireReader): GameEvent {
       };
     case EventType.DayPhaseChanged:
       return { type: "DayPhaseChanged", phase: r.readStr(), timeOfDay: r.readF32() };
-    case EventType.SkillActivated:
-      return {
-        type: "SkillActivated",
-        casterId: r.readUuid(),
-        slot: r.readU8(),
-        effectType: r.readStr(),
-      };
     case EventType.TradeCompleted:
       return {
         type: "TradeCompleted",

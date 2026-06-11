@@ -74,7 +74,6 @@ export type { SpawnPrefabOverrides } from "./src/spawner.ts";
 // Lore / skill components
 export { LoreLoadout } from "./src/components/lore_loadout.ts";
 export type {
-  LoreSkillSlot,
   LoreLoadoutData,
 } from "./src/components/lore_loadout.ts";
 

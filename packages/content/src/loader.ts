@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, ConceptVerbEntry, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, VerbDef, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef } from "./types.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
@@ -49,7 +49,7 @@ async function loadContentStoreInternal(
   const [
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
-    conceptVerbRaw, weaponActionsRaw, actionsRaw, verbsRaw, behaviorTreesRaw,
+    weaponActionsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
@@ -59,10 +59,8 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "lore"),
     readJsonDir(dataDir, "prefabs"),
     readJsonDir(dataDir, "npcs"),
-    readJsonFile(dataDir, "concept_verb_matrix.json"),
     readJsonDir(dataDir, "weapon_actions"),
     readJsonDir(dataDir, "actions").catch(() => []),
-    readJsonFile(dataDir, "verbs.json"),
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
     readJsonDir(dataDir, "zones"),
@@ -121,10 +119,6 @@ async function loadContentStoreInternal(
     store.registerNpcTemplate(raw);
   }
 
-  for (const raw of conceptVerbRaw as ConceptVerbEntry[]) {
-    store.registerConceptVerbEntry(raw);
-  }
-
   for (const raw of weaponActionsRaw as WeaponActionDef[]) {
     store.registerWeaponAction(raw);
   }
@@ -138,10 +132,6 @@ async function loadContentStoreInternal(
     store.registerAction(def);
   }
   validateActionCrossRefs(actionDefs);
-
-  for (const raw of verbsRaw as VerbDef[]) {
-    store.registerVerbDef(raw);
-  }
 
   for (const raw of behaviorTreesRaw as BehaviorTreeSpec[]) {
     store.registerBehaviorTree(raw);

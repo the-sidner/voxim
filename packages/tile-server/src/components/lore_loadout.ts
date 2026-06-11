@@ -1,31 +1,19 @@
 import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
 import { loreLoadoutCodec } from "@voxim/codecs";
-import type { SkillVerb } from "@voxim/content";
 
 /**
- * One equipped skill slot — a verb plus two fragment IDs.
- *   verb            — determines activation mode and targeting class
- *   outwardFragmentId — Fragment in position 1; its concept drives what the skill does
- *   inwardFragmentId  — Fragment in position 2; its concept drives the cost shape
+ * The four equippable skill slots (T-260b): each names a skill `ActionDef`
+ * id — the dispatcher starts it like any other action (costs, per-action
+ * cooldown, GCD, gates all live on the def / in ActionCooldowns). The old
+ * verb+fragment pair and the wire-side cooldown arrays are gone with the
+ * concept-verb matrix.
  */
-export interface LoreSkillSlot {
-  verb: SkillVerb;
-  /** ID of the internally-learned LoreFragment that fills position 1 (outward). */
-  outwardFragmentId: string;
-  /** ID of the internally-learned LoreFragment that fills position 2 (inward). */
-  inwardFragmentId: string;
-}
-
 export interface LoreLoadoutData {
-  /** Four equippable skill slots — null means the slot is unassigned. */
-  skills: (LoreSkillSlot | null)[];
+  /** Skill ActionDef ids; null = unassigned slot. */
+  skills: (string | null)[];
   /** IDs of all internally-held fragments (usable; lost on death). */
   learnedFragmentIds: string[];
-  /** Ticks remaining before each slot can be used again. Index matches skills[]. */
-  skillCooldowns: number[];
-  /** Global cooldown remaining (ticks): any active skill use sets it; gates all slots. */
-  globalCooldownTicks: number;
 }
 
 export const LoreLoadout = defineComponent({
@@ -35,8 +23,6 @@ export const LoreLoadout = defineComponent({
   default: (): LoreLoadoutData => ({
     skills: [null, null, null, null],
     learnedFragmentIds: [],
-    skillCooldowns: [0, 0, 0, 0],
-    globalCooldownTicks: 0,
   }),
 });
 
