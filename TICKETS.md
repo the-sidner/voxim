@@ -443,7 +443,7 @@ forward during its active window; the push is suppressed under a slow
 debuff; declaring rootMotion: null preserves the in-place behaviour.
 
 ### T-254 · Combat drift sweep: reaction priority, active-tick traces, DoT lethality, SKILL_N verbs
-Effort: M   Status: done   Commit: <hash>
+Effort: M   Status: done   Commit: 466c23b
 Two bullets resolved by earlier arcs before this commit: DoT lethality —
 fixed by T-249's DeathSystem health≤0 sweep (regression test added here);
 SKILL_N-fires-strike-verbs — moot, the strike verb and the verb matrix were
