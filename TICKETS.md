@@ -4259,7 +4259,7 @@ Done when: restart-with-save preserves collision, decoration, workstations and h
 nodes; a corrupt save is rejected without world mutation; the round-trip test passes.
 
 ### T-252 · Delete TickEventBuffer; prune stale per-entity state; equip-entity leak
-Effort: S   Status: done   Commit: <hash>
+Effort: S   Status: done   Commit: 3635d0b
 
 - `TickEventBuffer` has been write-only since the CSM retired (T-228): `physics.ts:201,204`
   fire into it, nothing reads or `clear()`s it — unbounded per-entity Map growth for the
