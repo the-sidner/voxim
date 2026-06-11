@@ -1135,7 +1135,7 @@ inventory before it transitions to its next job. Verified via the NPC inventory 
 ground entity count returning to baseline near the node.
 
 ### T-255 · NPCs can't pay stamina — melee/dodge never starts
-Effort: S   Status: done   Commit: <hash>
+Effort: S   Status: done   Commit: 6ec1cf6
 
 Since T-229 wired `StaminaCostHandler` into the dispatcher, `canStart` fails for every NPC
 swing: NPCs are deliberately seeded *without* a stamina resource (`spawner.ts:193-197`,
