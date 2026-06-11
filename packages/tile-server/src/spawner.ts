@@ -137,9 +137,8 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
     learnedFragmentIds: [],
   });
 
-  // Stamina / hunger / thirst are Resources now (T-238b/c). Stamina is
-  // player-only (NPCs never had a Stamina component — preserving that, so
-  // they still can't pay stamina costs); hunger/thirst start at 0 (sated).
+  // Stamina / hunger / thirst are Resources now (T-238b/c); NPCs carry
+  // stamina too since T-255. Hunger/thirst start at 0 (sated).
   const maxStamina = content.getGameConfig().player.maxStamina;
   const maxPoise = content.getGameConfig().combat.poise.max;
   world.write(id, Resource, {
@@ -192,13 +191,17 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
     NpcJobQueue, AnimationState,
   );
 
-  // NPCs carry hunger/thirst Resources (NpcAiSystem reads them for the
-  // seek-food/water emergency behaviours) but no stamina (parity: they
-  // never had a Stamina component).
+  // NPCs carry hunger/thirst (NpcAiSystem's seek-food/water emergencies),
+  // poise, AND stamina (T-255): since the dispatcher charges action costs
+  // (T-229), a stamina-less NPC could never start a swing or dodge —
+  // "NPC skills fizzle" had silently become "NPC melee never starts".
+  // Template-driven max; NPC stamina pressure falls out for free.
   const maxPoise = content.getGameConfig().combat.poise.max;
+  const maxStamina = template?.maxStamina ?? content.getGameConfig().npcAiDefaults.maxStamina;
   world.write(id, Resource, {
     values: {
       ...(world.get(id, Resource)?.values ?? {}),
+      stamina: { value: maxStamina, max: maxStamina },
       hunger: { value: 0, max: 100 },
       thirst: { value: 0, max: 100 },
       poise: { value: maxPoise, max: maxPoise },

@@ -176,6 +176,7 @@
     "attackPlanExpiryTicks": 30,
     "attackReplanDistSq": 16.0,
     "replanBudgetPerTick": 16,
-    "seekScanRadius": 48
+    "seekScanRadius": 48,
+    "maxStamina": 80
   }
 }

@@ -936,6 +936,12 @@ export interface NpcTemplate {
   displayName: string;
   maxHealth: number;
   /**
+   * Stamina pool (T-255). Falls back to npcAiDefaults.maxStamina. NPCs pay
+   * the same action costs players do (swings, dodges, skill actions) — an
+   * NPC that runs dry pauses attacking until regen catches up.
+   */
+  maxStamina?: number;
+  /**
    * Flee when current health falls below this fraction of max.
    * 0 means never flee (e.g. mindless beast that fights to the death).
    */
@@ -1428,6 +1434,8 @@ export interface GameConfig {
   };
   /** Global fallback defaults for NPC AI tuning. Per-type overrides live on NpcTemplate. */
   npcAiDefaults: {
+    /** Default NPC stamina pool when the template doesn't override (T-255). */
+    maxStamina: number;
     wanderRadius: number;
     wanderTicks: number;
     idleTicks: number;
