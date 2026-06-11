@@ -2,20 +2,64 @@
   "id": "swing_medium",
   "kind": "active",
   "slot": "primary",
-  "limbs": ["right_hand"],
-  "phases": { "windup": { "ticks": 3 }, "active": { "ticks": 2 }, "winddown": { "ticks": 5 } },
-  "cancel": {
-    "windup":   { "into": ["any"] },
-    "active":   { "into": [] },
-    "winddown": { "into": [] }
+  "limbs": [
+    "right_hand"
+  ],
+  "phases": {
+    "windup": {
+      "ticks": 3
+    },
+    "active": {
+      "ticks": 2
+    },
+    "winddown": {
+      "ticks": 5
+    }
   },
-  "movement": { "windup": "slowed", "active": "locked", "winddown": "slowed" },
-  "costs": { "stamina": 14 },
+  "cancel": {
+    "windup": {
+      "into": [
+        "any"
+      ]
+    },
+    "active": {
+      "into": []
+    },
+    "winddown": {
+      "into": []
+    }
+  },
+  "movement": {
+    "windup": "slowed",
+    "active": "locked",
+    "winddown": "slowed"
+  },
+  "costs": {
+    "stamina": 14
+  },
   "priority": 5,
-  "effects": [ { "phase": "active:enter", "kind": "weapon_trace" } ],
+  "effects": [
+    {
+      "phase": "active:enter",
+      "kind": "weapon_trace"
+    },
+    {
+      "phase": "active:tick",
+      "kind": "weapon_trace"
+    }
+  ],
   "animation": {
-    "windup":   { "clipId": "$weapon.swing_clip", "loop": true },
-    "active":   { "clipId": "$weapon.swing_clip", "loop": false },
-    "winddown": { "clipId": "$weapon.swing_clip", "loop": false }
+    "windup": {
+      "clipId": "$weapon.swing_clip",
+      "loop": true
+    },
+    "active": {
+      "clipId": "$weapon.swing_clip",
+      "loop": false
+    },
+    "winddown": {
+      "clipId": "$weapon.swing_clip",
+      "loop": false
+    }
   }
 }

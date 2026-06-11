@@ -443,7 +443,14 @@ forward during its active window; the push is suppressed under a slow
 debuff; declaring rootMotion: null preserves the in-place behaviour.
 
 ### T-254 · Combat drift sweep: reaction priority, active-tick traces, DoT lethality, SKILL_N verbs
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: <hash>
+Two bullets resolved by earlier arcs before this commit: DoT lethality —
+fixed by T-249's DeathSystem health≤0 sweep (regression test added here);
+SKILL_N-fires-strike-verbs — moot, the strike verb and the verb matrix were
+deleted (T-259b/T-260b). The remaining four land here; sword_overhead also
+turned out to ship an unregistered `tag_absent` gate (never boot-checked,
+would have thrown mid-tick) — replaced with `not_staggered`, and the new
+gate cross-check would now catch it at boot.
 
 Code/content drift at the action boundary — each side assumes a contract the other doesn't
 honor, and none of it fails fast (2026-06 review):

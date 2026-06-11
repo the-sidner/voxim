@@ -625,6 +625,22 @@ export class TileServer {
           );
         }
       }
+      // T-254: gate ids too (preconditions + cancel-rule gates) — an
+      // unknown gate previously threw mid-tick on first arbitration
+      // (sword_overhead shipped with an unregistered `tag_absent` for
+      // months and nothing noticed).
+      const gateRefs = [
+        ...(action.preconditions ?? []),
+        ...Object.values(action.cancel).flatMap((r) => r.gates ?? []),
+      ];
+      for (const g of gateRefs) {
+        if (!actionGates.has(g.gate)) {
+          throw new Error(
+            `Action "${action.id}" references gate "${g.gate}" but no gate ` +
+            `handler is registered. Registered: [${actionGates.ids().join(", ")}]`,
+          );
+        }
+      }
     }
 
     // T-245: POI activity registry + content cross-check — every PoiDef's

@@ -234,8 +234,11 @@ export class ActionDispatcher implements System {
     }
 
     // Slot occupied — decide whether `want` may displace `current`.
+    // Reactions declare only `interruptPriority`; it doubles as their
+    // incumbent weight (T-254) — without this, any reaction force-cancelled
+    // any running reaction (a tap's hit_front replaced a hard stagger).
     const curDef = this.content.actions.get(current.actionId);
-    const curPriority = curDef?.priority ?? 0;
+    const curPriority = curDef?.priority ?? curDef?.interruptPriority ?? 0;
 
     if (
       want.kind === "reaction" &&

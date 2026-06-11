@@ -2,37 +2,70 @@
   "id": "sword_overhead",
   "kind": "active",
   "slot": "primary",
-  "limbs": ["right_hand"],
+  "limbs": [
+    "right_hand"
+  ],
   "preconditions": [
-    { "gate": "tag_absent", "params": { "tag": "stunned" } }
+    {
+      "gate": "not_staggered"
+    }
   ],
   "phases": {
-    "windup":   { "ticks": 8 },
-    "active":   { "ticks": 3 },
-    "winddown": { "ticks": 12 }
+    "windup": {
+      "ticks": 8
+    },
+    "active": {
+      "ticks": 3
+    },
+    "winddown": {
+      "ticks": 12
+    }
   },
   "cancel": {
-    "windup":   { "into": [] },
-    "active":   { "into": [] },
-    "winddown": { "into": [] }
+    "windup": {
+      "into": []
+    },
+    "active": {
+      "into": []
+    },
+    "winddown": {
+      "into": []
+    }
   },
   "movement": {
-    "windup":   "slowed",
-    "active":   "locked",
+    "windup": "slowed",
+    "active": "locked",
     "winddown": "slowed"
   },
-  "costs": { "stamina": 18 },
+  "costs": {
+    "stamina": 18
+  },
   "priority": 5,
   "effects": [
     {
       "phase": "active:enter",
       "kind": "weapon_trace",
-      "params": { "weaponActionId": "overhead" }
+      "params": {
+        "weaponActionId": "overhead"
+      }
+    },
+    {
+      "phase": "active:tick",
+      "kind": "weapon_trace",
+      "params": {
+        "weaponActionId": "overhead"
+      }
     }
   ],
   "animation": {
-    "windup":   { "clipId": "sword_overhead_windup" },
-    "active":   { "clipId": "sword_overhead_active" },
-    "winddown": { "clipId": "sword_overhead_recover" }
+    "windup": {
+      "clipId": "sword_overhead_windup"
+    },
+    "active": {
+      "clipId": "sword_overhead_active"
+    },
+    "winddown": {
+      "clipId": "sword_overhead_recover"
+    }
   }
 }

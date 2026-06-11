@@ -93,7 +93,13 @@ export class WeaponTraceResolver implements EffectResolver {
     if (ctx.edge === "exit") return;
     const { world, events, entityId, content } = ctx;
 
-    const { stats, weaponActionId } = weaponContext(world, entityId, content);
+    const { stats, weaponActionId: derived } = weaponContext(world, entityId, content);
+    // An action may pin its weapon geometry/timing via params (T-254 —
+    // signature moves like sword_overhead trace their own arc regardless
+    // of the equipped weapon's chain). Default: the equipped weapon.
+    const weaponActionId = typeof ctx.params.weaponActionId === "string"
+      ? ctx.params.weaponActionId
+      : derived;
     const action = content.weaponActions.get(weaponActionId);
     if (!action || !action.clipId || !action.blade) {
       log.warn("weapon action %s missing clip/blade — no trace", weaponActionId);

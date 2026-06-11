@@ -48,9 +48,10 @@ Deno.test("JsonSource loads sword_overhead fixture into content.actions", async 
   assertEquals(overhead.phases.active.ticks, 3);
   assertEquals(overhead.phases.winddown.ticks, 12);
   assertEquals(overhead.movement.active, "locked");
-  assertEquals(overhead.effects.length, 1);
-  assertEquals(overhead.effects[0].kind, "weapon_trace");
-  assertEquals(overhead.effects[0].phase, "active:enter");
+  // T-254: weapon_trace is wired on BOTH active edges so multi-tick active
+  // windows trace their whole arc.
+  const traces = overhead.effects.filter((e) => e.kind === "weapon_trace");
+  assertEquals(traces.map((e) => e.phase).sort(), ["active:enter", "active:tick"]);
 });
 
 Deno.test("validateActionDef accepts a minimal well-formed def", () => {

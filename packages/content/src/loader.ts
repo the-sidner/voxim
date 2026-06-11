@@ -60,13 +60,13 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "prefabs"),
     readJsonDir(dataDir, "npcs"),
     readJsonDir(dataDir, "weapon_actions"),
-    readJsonDir(dataDir, "actions").catch(() => []),
+    readJsonDirOptional(dataDir, "actions"),
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
     readJsonDir(dataDir, "zones"),
-    readJsonDir(dataDir, "pois").catch(() => []),
-    readJsonDir(dataDir, "resources").catch(() => []),
-    readJsonDir(dataDir, "triggers").catch(() => []),
+    readJsonDirOptional(dataDir, "pois"),
+    readJsonDirOptional(dataDir, "resources"),
+    readJsonDirOptional(dataDir, "triggers"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -183,6 +183,21 @@ async function loadContentStoreInternal(
  * parse each as a single item, and return them sorted by path for deterministic
  * registration order.
  */
+/**
+ * Read an optional content directory: a MISSING directory is an empty
+ * category; any other error (permissions, I/O) still fails the boot —
+ * `.catch(() => [])` used to swallow those and silently boot a server
+ * with zero actions (T-254).
+ */
+async function readJsonDirOptional(dir: string, subdir: string): Promise<unknown[]> {
+  try {
+    return await readJsonDir(dir, subdir);
+  } catch (e) {
+    if (e instanceof Deno.errors.NotFound) return [];
+    throw e;
+  }
+}
+
 async function readJsonDir(dir: string, subdir: string): Promise<unknown[]> {
   const fullDir = `${dir}/${subdir}`;
   const paths: string[] = [];
