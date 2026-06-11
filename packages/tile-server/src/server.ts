@@ -53,7 +53,7 @@ import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, 
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
 import { dodgeImpulseResolver } from "./actions/resolvers/movement.ts";
-import { notStaggeredGate, notExhaustedGate } from "./actions/resolvers/gates.ts";
+import { notStaggeredGate, notExhaustedGate, healthBelowGate } from "./actions/resolvers/gates.ts";
 import { StaminaCostHandler } from "./actions/cost.ts";
 import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
@@ -71,7 +71,7 @@ import { PoiSystem } from "./systems/poi.ts";
 import { newPoiActivityRegistry } from "./poi/mod.ts";
 import { TriggerSystem } from "./systems/trigger.ts";
 import { newTriggerCatalog } from "./triggers/catalog.ts";
-import { newTriggerSourceRegistry, equipmentTriggerSource } from "./triggers/source.ts";
+import { newTriggerSourceRegistry, equipmentTriggerSource, npcTemplateTriggerSource } from "./triggers/source.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs } from "./stair_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
@@ -427,6 +427,9 @@ export class TileServer {
     actionGates.register(notStaggeredGate);
     actionGates.register(notExhaustedGate);
     actionGates.register(slotHasUsableGate);
+    // health_below: the low-health proc condition (T-259c) — usable by
+    // trigger conditions and action preconditions alike.
+    actionGates.register(healthBelowGate);
     const actionEffects = newEffectRegistry();
     actionEffects.register(setTagResolver);
     actionEffects.register(clearTagResolver);
@@ -475,6 +478,7 @@ export class TileServer {
     const triggerCatalog = newTriggerCatalog();
     const triggerSources = newTriggerSourceRegistry();
     triggerSources.register(equipmentTriggerSource);
+    triggerSources.register(npcTemplateTriggerSource);
     const triggerSystem = new TriggerSystem(content, triggerCatalog, triggerSources, actionGates, actionEffects);
 
     // T-259 content cross-checks — every TriggerDef's `on` must be a
@@ -511,6 +515,16 @@ export class TileServer {
         if (!content.triggers.get(t)) {
           throw new Error(
             `Prefab "${prefab.id}" grants trigger "${t}" but no such ` +
+            `TriggerDef is loaded. Loaded: [${[...content.triggers.ids()].join(", ")}]`,
+          );
+        }
+      }
+    }
+    for (const tmpl of content.npcTemplates.values()) {
+      for (const t of tmpl.triggers ?? []) {
+        if (!content.triggers.get(t)) {
+          throw new Error(
+            `NpcTemplate "${tmpl.id}" grants trigger "${t}" but no such ` +
             `TriggerDef is loaded. Loaded: [${[...content.triggers.ids()].join(", ")}]`,
           );
         }

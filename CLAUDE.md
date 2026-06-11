@@ -187,8 +187,9 @@ Trader/Dynasty) → AnimationSystem → HitboxSystem → PoiSystem → DeathSyst
 Order invariants: `NpcAiSystem` writes NPC `InputState` (via `world.write`) before
 `PhysicsSystem`/`ActionDispatcher` consume it; `ActionDispatcher` is the single
 writer of `ActiveActions` and replaces the retired ActionSystem + DodgeSystem +
-CharacterStateMachine (the whole character-behavior arc, T-225–T-234); `SkillSystem`
-runs after it so on-hit `strike` effects compose correctly; `AnimationSystem` runs
+CharacterStateMachine (the whole character-behavior arc, T-225–T-234);
+`TriggerSystem` runs early, draining last tick's buffered events so procs land
+in this tick's changeset (T-259); `AnimationSystem` runs
 late so it derives `AnimationState` from the tick's final `ActiveActions` + tags.
 
 ---
@@ -444,16 +445,36 @@ three are landed.
   duplication is gone. `deriveItemStats` (items) now has its actor-level
   dual without either side storing the other.
 
+- **Trigger primitive (T-249+T-259 — `TRIGGER_PRIMITIVE_PLAN.md`, done).**
+  "When fact X occurs, fire effect Y": a content `TriggerDef`
+  (`data/triggers/*.json`) names an event kind from a **closed catalog**
+  (`hit_landed` / `damage_taken` / `entity_died`), a role binding (`as:
+  attacker|target|killer|victim`), gate `conditions`, an internal cooldown,
+  and `effects` fired through the one action-effect registry with the
+  event's other party bound as target. One buffered `TriggerSystem` is the
+  **single event→effect bridge** (collects during the notify-only flush,
+  drains at the top of its next run, writes via `world.mutate` so
+  concurrent procs compose; ≤1-tick latency). Owners get triggers from
+  `TriggerSource`s reading live stores: `equipment` (worn prefabs'
+  `triggers[]`) and `npc_template` (innate archetype procs). No proc
+  chains (v1): trigger-published events are `viaTrigger`-tagged and
+  skipped by collectors. **Replaced the seven-site strike path**
+  (strikeVerb / HitContext.skillVerb / StrikeLanded / resolveStrike) —
+  on-hit behaviour is content (`vampiric_bite`), not a loadout verb.
+  Underpinned by T-249: the changeset is an ordered op-log and
+  `world.mutate(id, C, fn)` is the deferred read-modify-write every
+  multi-writer component (Health, Resource) now uses.
+
 All reuse the same doctrine: a designer adds a new effect / gate /
-rateModifier / threshold / modifier-source as **one handler file + one
+rateModifier / threshold / modifier-source / trigger-source as **one handler file + one
 `register()` call**, never an engine edit, and every content id is
 **cross-checked against its registry at boot** (fail-fast — see the
 ResourceDef / buff / recipe-step / BT checks in `server.ts`). Buff /
 modifier / resource state is server-only for now (networking is a later
 add, same call `ActiveActions` made).
 
-The spine is complete: **Actions, Resources, Status/Modifier** — three
-content-driven primitives over one substrate.
+The spine is complete: **Actions, Resources, Status/Modifier, Triggers** —
+four content-driven primitives over one substrate.
 
 ---
 
@@ -464,7 +485,8 @@ content-driven primitives over one substrate.
 ```
 ActionDispatcher (Layer 1 — universal action primitive: every behaviour
   is a slot action with windup/active/winddown phases + effects)
-  → SkillSystem.resolve() (Layer 2 — Lore effects on a `strike` connect)
+  → TriggerSystem (Layer 2 — on-hit/on-kill riders: content TriggerDefs
+    consuming the HitLanded/DamageDealt/EntityDied facts, T-259)
 ```
 
 **ActionDispatcher** (the universal behaviour primitive, T-225–T-234 — see
@@ -476,10 +498,12 @@ hitbox sweep, damage, knockback, parry/block/counter — dispatched to the per-t
 stagger, block, dodge, consume are all just actions/tags now — no bespoke per-mechanic
 systems.
 
-**SkillSystem** handles: skill slot activation from `ACTION_SKILL_N` flags, cooldown
-management, concept-verb matrix lookups, applying `ActiveEffects`. On a melee connect
-the `weapon_trace` resolver derives the attacker's `strike:<slot>` verb from
-`LoreLoadout` and the hit handler publishes `StrikeLanded` for SkillSystem to resolve.
+**SkillSystem** handles *active* skills only: slot activation from `ACTION_SKILL_N`
+flags, per-slot cooldowns + the global cooldown (T-248), concept-verb matrix lookups,
+effect dispatch through the one action-effect registry (T-246). On-hit riders are NOT
+skills: `HealthHitHandler` publishes the `HitLanded` fact and content triggers
+(weapon / archetype `triggers[]`) consume it via `TriggerSystem` (T-259b — the
+strike verb and `StrikeLanded` are gone).
 
 ### "Is the actor swinging?"
 
@@ -494,8 +518,10 @@ dedup) live in that slot's `ActiveActionState`.
 
 `LoreLoadout`: 4 skill slots, each `{ verb, outwardFragmentId, inwardFragmentId }`
 (there is no separate "SkillLoadout"/"ManeuverLoadout" — `LoreLoadout` is it).
-- `"strike"` — fires on melee connect (verb derived by `weapon_trace`, resolved by SkillSystem)
-- `"invoke"`, `"ward"`, `"step"` — activate immediately in SkillSystem
+Slots are **active-only** (T-259b): `"invoke"`, `"ward"`, `"step"` activate in
+SkillSystem on a `SKILL_N` press, gated by the slot cooldown + the GCD. The
+`"strike"` verb is retired — on-hit behaviour is a weapon/archetype trigger;
+the matrix's strike rows are inert until the matrix retires (skill-arc 2b).
 
 Effect magnitude = `outwardFragment.magnitude × entry.outwardScale`.
 

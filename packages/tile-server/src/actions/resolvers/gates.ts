@@ -9,6 +9,7 @@
 
 import type { GateHandler } from "../gate.ts";
 import { Staggered } from "../../components/tags.ts";
+import { Health } from "../../components/game.ts";
 import { staminaValue } from "../../combat/helpers.ts";
 
 /** Passes when the entity is NOT mid-stagger (stagger locks out actions). */
@@ -21,4 +22,20 @@ export const notStaggeredGate: GateHandler = {
 export const notExhaustedGate: GateHandler = {
   id: "not_exhausted",
   test: (ctx) => staminaValue(ctx.world, ctx.entityId) > 0,
+};
+
+/**
+ * Passes when the entity's health fraction is strictly below
+ * `params.fraction` (default 0.25). The low-health proc condition (T-259c)
+ * — `on: damage_taken` + this gate is a "below X % HP" trigger with no new
+ * event needed. No Health component = never passes.
+ */
+export const healthBelowGate: GateHandler = {
+  id: "health_below",
+  test: (ctx) => {
+    const h = ctx.world.get(ctx.entityId, Health);
+    if (!h || h.max <= 0) return false;
+    const fraction = typeof ctx.params.fraction === "number" ? ctx.params.fraction : 0.25;
+    return h.current / h.max < fraction;
+  },
 };

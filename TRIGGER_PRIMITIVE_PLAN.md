@@ -1,6 +1,8 @@
 # Trigger as the Fourth Primitive — Implementation Plan
 
-**Status:** FILED — design accepted, no phase landed yet. Companion to
+**Status:** COMPLETE — all phases landed (0/0b = T-249 engine+conversions,
+a = primitive, b = strike cutover, c = proc surface; hashes in `TICKETS.md`
+T-259). Kept as architectural reference. Companion to
 `ACTION_PRIMITIVE_PLAN.md`, `RESOURCE_PRIMITIVE_PLAN.md`,
 `STATUS_MODIFIER_PLAN.md`.
 **Tickets:** T-259 arc (phases below), **combined with T-249** (changeset

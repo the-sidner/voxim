@@ -4723,8 +4723,14 @@ dispatch site changes. Done: `deno check` clean (codecs+content+tile-server);
 GCD blocks and decrements).
 
 ### T-259 · Trigger primitive arc — the fourth primitive (on-hit/proc substrate)
-Effort: L   Status: in-progress
-Commits: plan 087ce97/d45071e · 0 (op-log) 2b36633 · 0b (mutate+conversions) 6fd0ae2 · a (primitive) d82f785 · b (strike cutover) d6426c0
+Effort: L   Status: done
+Commits: plan 087ce97/d45071e · 0 (op-log) 2b36633 · 0b (mutate+conversions) 6fd0ae2 · a (primitive) d82f785 · b (strike cutover) d6426c0 · c (proc surface) <hash>
+The spine closes: Actions · Resources · Modifiers · **Triggers**. Phase c
+shipped the `health_below` gate, the `npc_template` TriggerSource
+(NpcTemplate.triggers[] — innate archetype procs), and two real procs:
+`desperate_frenzy` (wolf, damage_taken + health_below 0.25 → damage_boost,
+ICD 200) and `hunters_vigor` (iron_sword, entity_died as killer →
++20 stamina). CLAUDE.md updated to the four-primitive architecture.
 
 **Sub-plan: [`TRIGGER_PRIMITIVE_PLAN.md`](TRIGGER_PRIMITIVE_PLAN.md)**
 (filed 2026-06-03). Design decision: the `strike` loadout verb is obsolete

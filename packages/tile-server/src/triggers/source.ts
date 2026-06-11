@@ -11,6 +11,7 @@ import type { World, EntityId, Registry } from "@voxim/engine";
 import { Registry as RegistryImpl } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import { Equipment } from "../components/equipment.ts";
+import { NpcTag } from "../components/npcs.ts";
 
 export interface TriggerSourceContext {
   readonly world: World;
@@ -43,5 +44,19 @@ export const equipmentTriggerSource: TriggerSource = {
       for (const t of prefab?.triggers ?? []) out.push(t);
     }
     return out;
+  },
+};
+
+/**
+ * NPC archetypes carry their template's `triggers[]` innately (T-259c) —
+ * signature procs (a cornered wolf's frenzy) without any item. Live read
+ * via NpcTag.npcType, the same way NpcAi resolves its tuning.
+ */
+export const npcTemplateTriggerSource: TriggerSource = {
+  id: "npc_template",
+  collect({ world, content, entityId }): string[] {
+    const tag = world.get(entityId, NpcTag);
+    if (!tag) return [];
+    return [...(content.npcTemplates.get(tag.npcType)?.triggers ?? [])];
   },
 };

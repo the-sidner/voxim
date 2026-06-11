@@ -12,5 +12,8 @@
   "fleeTicks": 120,
   "seekFoodTicks": 150,
   "speedMultiplier": 1.4,
-  "weaponItemType": "wolf_bite"
+  "weaponItemType": "wolf_bite",
+  "triggers": [
+    "desperate_frenzy"
+  ]
 }

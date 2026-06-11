@@ -983,6 +983,13 @@ export interface NpcTemplate {
    * null slots are unequipped. NPCs are also given learnedFragmentIds for each referenced fragment.
    */
   skillLoadout?: (SkillSlot | null)[];
+  /**
+   * Trigger ids this archetype carries innately (T-259c) — the
+   * `npc_template` TriggerSource reads them live via NpcTag.npcType.
+   * Signature procs (a cornered wolf's frenzy) without any item. Each id
+   * must resolve in `ContentService.triggers` (boot-cross-checked).
+   */
+  triggers?: string[];
 }
 
 // ---- resource nodes ----

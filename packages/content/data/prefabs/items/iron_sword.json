@@ -1,17 +1,29 @@
 {
   "id": "iron_sword",
   "modelId": "model_sword_basic",
-  "modelScale": 0.10,
+  "modelScale": 0.1,
   "components": {
     "equippable": {
       "slot": "weapon"
     },
     "swingable": {
       "chain": [
-        { "light": "slash_inward",   "heavy": "heavy_overhead" },
-        { "light": "slash_outward",  "heavy": "heavy_overhead" },
-        { "light": "thrust",         "heavy": "heavy_360" },
-        { "light": "slash_backhand", "heavy": "heavy_360" }
+        {
+          "light": "slash_inward",
+          "heavy": "heavy_overhead"
+        },
+        {
+          "light": "slash_outward",
+          "heavy": "heavy_overhead"
+        },
+        {
+          "light": "thrust",
+          "heavy": "heavy_360"
+        },
+        {
+          "light": "slash_backhand",
+          "heavy": "heavy_360"
+        }
       ],
       "heavyChargeMs": 250,
       "damage": 25
@@ -19,5 +31,8 @@
     "weight": {
       "baseWeight": 1.5
     }
-  }
+  },
+  "triggers": [
+    "hunters_vigor"
+  ]
 }

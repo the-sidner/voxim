@@ -15,10 +15,15 @@ import { JsonSource, StaticContentStore } from "@voxim/content";
 import { TileEvents } from "@voxim/protocol";
 import { Equipment } from "../components/equipment.ts";
 import { Health, Position } from "../components/game.ts";
-import { HealthSkillResolver } from "../actions/resolvers/skill_effects.ts";
+import { Resource } from "../components/resource.ts";
+import { NpcTag } from "../components/npcs.ts";
+import { BuffSpec } from "../components/buff.ts";
+import { HealthSkillResolver, damageBoostSkillEffect } from "../actions/resolvers/skill_effects.ts";
+import { adjustResourceResolver } from "../actions/resolvers/item_use.ts";
+import { healthBelowGate } from "../actions/resolvers/gates.ts";
 import { TriggerSystem } from "./trigger.ts";
 import { newTriggerCatalog } from "../triggers/catalog.ts";
-import { newTriggerSourceRegistry, equipmentTriggerSource } from "../triggers/source.ts";
+import { newTriggerSourceRegistry, equipmentTriggerSource, npcTemplateTriggerSource } from "../triggers/source.ts";
 import { newGateRegistry } from "../actions/gate.ts";
 import { newEffectRegistry } from "../actions/effect.ts";
 import type { EffectResolver, ResolveContext } from "../actions/effect.ts";
@@ -236,6 +241,82 @@ Deno.test("T-259b: the wolf's drain runs on REAL content — wolf_bite grants va
   sys.run(world, bus, DT);
   world.applyChangeset();
   assertEquals(world.get(prey, Health)!.current, 88, "ICD blocks the immediate re-proc");
+});
+
+Deno.test("T-259c: low-health frenzy — innate NPC trigger, gated on health_below (REAL content)", () => {
+  // data/npcs/wolf.json carries triggers:["desperate_frenzy"] via the
+  // npc_template source: on damage_taken (as target), below 25 % HP,
+  // gain a damageDealt ×1.5 buff child.
+  const world = new World();
+  const bus = new EventBus();
+  const gates = newGateRegistry();
+  gates.register(healthBelowGate);
+  const effects = newEffectRegistry();
+  effects.register(damageBoostSkillEffect);
+  const sources = newTriggerSourceRegistry();
+  sources.register(npcTemplateTriggerSource);
+  const sys = new TriggerSystem(content, newTriggerCatalog(), sources, gates, effects);
+  sys.registerSubscribers(bus);
+
+  const wolf = newEntityId();
+  world.create(wolf);
+  world.write(wolf, NpcTag, { npcType: "wolf", name: "Wolf" });
+  world.write(wolf, Health, { current: 40, max: 60 }); // 67 % — gate fails
+
+  const attacker = newEntityId();
+  world.create(attacker);
+
+  const wound = () =>
+    bus.publish(TileEvents.DamageDealt, { targetId: wolf, sourceId: attacker, amount: 5, blocked: false });
+  const tick = (t: number) => {
+    sys.prepare(t, { spatial: null as never, pendingCommands: new Map() });
+    sys.run(world, bus, DT);
+    world.applyChangeset();
+  };
+  const buffChild = () => {
+    for (const id of world.getChildren(wolf)) {
+      const spec = world.get(id, BuffSpec);
+      if (spec) return spec;
+    }
+    return null;
+  };
+
+  wound();
+  tick(1);
+  assertEquals(buffChild(), null, "healthy wolf: gate blocks the frenzy");
+
+  world.write(wolf, Health, { current: 10, max: 60 }); // 17 % — below 0.25
+  wound();
+  tick(2);
+  const spec = buffChild();
+  assert(spec, "cornered wolf: frenzy buff child spawned");
+  assertEquals(spec, { stat: "damageDealt", op: "mul", value: 1.5, tickDelta: 0 });
+});
+
+Deno.test("T-259c: on-kill stamina restore — iron_sword's hunters_vigor (REAL content)", () => {
+  const world = new World();
+  const bus = new EventBus();
+  const effects = newEffectRegistry();
+  effects.register(adjustResourceResolver);
+  const sources = newTriggerSourceRegistry();
+  sources.register(equipmentTriggerSource);
+  const sys = new TriggerSystem(content, newTriggerCatalog(), sources, newGateRegistry(), effects);
+  sys.registerSubscribers(bus);
+
+  const hunter = newEntityId();
+  world.create(hunter);
+  world.write(hunter, Equipment, {
+    weapon: { entityId: "blade", prefabId: "iron_sword" },
+    offHand: null, head: null, chest: null, legs: null, feet: null, back: null,
+  });
+  world.write(hunter, Resource, { values: { stamina: { value: 50, max: 100 } } });
+
+  bus.publish(TileEvents.EntityDied, { entityId: "the-victim", killerId: hunter });
+  sys.prepare(1, { spatial: null as never, pendingCommands: new Map() });
+  sys.run(world, bus, DT);
+  world.applyChangeset();
+
+  assertEquals(world.get(hunter, Resource)!.values.stamina.value, 70, "kill restored 20 stamina");
 });
 
 Deno.test("an entity with no trigger sources is inert", () => {

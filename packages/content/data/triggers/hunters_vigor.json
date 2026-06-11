@@ -1,0 +1,8 @@
+{
+  "id": "hunters_vigor",
+  "on": "entity_died",
+  "as": "killer",
+  "effects": [
+    { "kind": "adjust_resource", "params": { "deltas": { "stamina": 20 } } }
+  ]
+}

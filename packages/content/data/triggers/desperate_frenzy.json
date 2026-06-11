@@ -1,0 +1,12 @@
+{
+  "id": "desperate_frenzy",
+  "on": "damage_taken",
+  "as": "target",
+  "conditions": [
+    { "gate": "health_below", "params": { "fraction": 0.25 } }
+  ],
+  "internalCooldownTicks": 200,
+  "effects": [
+    { "kind": "damage_boost", "params": { "magnitude": 0.5, "durationTicks": 100 } }
+  ]
+}
