@@ -47,7 +47,9 @@ export class HitboxSystem implements System {
   prepare(_tick: number): void {}
 
   run(world: World, _events: DeferredEventQueue, _dt: number): void {
+    const seen = new Set<string>();
     for (const { entityId, animationState, modelRef } of world.query(AnimationState, ModelRef)) {
+      seen.add(entityId);
       const current = world.get(entityId, Hitbox);
       if (current && !current.derive) continue;
       const skeleton = this.content.getSkeletonForModel(modelRef.modelId);
@@ -87,6 +89,17 @@ export class HitboxSystem implements System {
         }
       } else if (!partsEqual(current?.parts, parts)) {
         world.set(entityId, Hitbox, { derive: true, parts } as HitboxData);
+      }
+    }
+
+    // Prune pooled maps for entities that vanished (destroyed / despawned)
+    // — the pools otherwise grow for the process lifetime (T-252).
+    if (this.posePool.size > seen.size) {
+      for (const key of this.posePool.keys()) {
+        if (!seen.has(key)) {
+          this.posePool.delete(key);
+          this.transformPool.delete(key);
+        }
       }
     }
   }

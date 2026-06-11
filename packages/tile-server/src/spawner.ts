@@ -71,6 +71,26 @@ function emptyEquipment(): EquipmentData {
 }
 
 /**
+ * Destroy every item ENTITY this holder carries — equipment slots and
+ * unique inventory slots (T-252, the dual of spawnEquipEntity). Without
+ * this, every NPC kill and player disconnect leaked ItemData entities into
+ * the world forever (deathHooks was empty; the cleanup paths destroyed
+ * only the holder). Stack slots are plain data, nothing to destroy.
+ */
+export function destroyCarriedItemEntities(world: World, holderId: EntityId): void {
+  const eq = world.get(holderId, Equipment);
+  if (eq) {
+    for (const slot of [eq.weapon, eq.offHand, eq.head, eq.chest, eq.legs, eq.feet, eq.back]) {
+      if (slot && world.isAlive(slot.entityId)) world.destroy(slot.entityId);
+    }
+  }
+  const inv = world.get(holderId, Inventory);
+  for (const slot of inv?.slots ?? []) {
+    if (slot?.kind === "unique" && world.isAlive(slot.entityId)) world.destroy(slot.entityId);
+  }
+}
+
+/**
  * Create an item entity with no Position (it lives in an equipment slot, not the world).
  * Returns an EquipmentSlot carrying both the new EntityId and the prefabId.
  */

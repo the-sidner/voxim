@@ -36,7 +36,7 @@ import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
 import type { SessionInfo } from "./account_client.ts";
-import { spawnPrefab } from "./spawner.ts";
+import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState, Name } from "./components/game.ts";
@@ -55,7 +55,6 @@ import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
 import { dodgeImpulseResolver } from "./actions/resolvers/movement.ts";
 import { notStaggeredGate, notExhaustedGate, healthBelowGate } from "./actions/resolvers/gates.ts";
 import { StaminaCostHandler } from "./actions/cost.ts";
-import { TickEventBuffer } from "./tick_events.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
@@ -376,6 +375,13 @@ export class TileServer {
     // Hook registry is empty for now; later populated with drop-table, heir-spawn,
     // corpse-spawn hooks — additive, no system-file edits required.
     const deathHooks = new Registry<DeathHook>();
+    // T-252: dying holders take their carried item ENTITIES with them
+    // (equipment + unique inventory slots) — drop-tables become a sibling
+    // hook later; until then a kill must not leak entities.
+    deathHooks.register({
+      id: "equip_cleanup",
+      onDeath: (ctx) => destroyCarriedItemEntities(ctx.world, ctx.entityId),
+    });
     const deathSystem = new DeathSystem(deathHooks);
 
     // Job handler registry — NpcAiSystem dispatches each NPC's current Job
@@ -568,10 +574,9 @@ export class TileServer {
 
     // One-tick event channel from gameplay systems → CSM. Cleared at the end
     // of CharacterStateMachineSystem.run each tick.
-    const tickEvents = new TickEventBuffer();
 
     const hitHandlers = [
-      new HealthHitHandler(content, deathSystem, modifierSources, tickEvents),
+      new HealthHitHandler(content, deathSystem, modifierSources),
       new ResourceNodeHitHandler(content),
       new BlueprintHitHandler(),
       new WorkstationHitHandler(content, recipeSteps),
@@ -663,7 +668,7 @@ export class TileServer {
       new CraftingSystem(content, recipeSteps),
       new DayNightSystem(content),
       new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem, modifierSources),
-      new PhysicsSystem(content, tickEvents, modifierSources),
+      new PhysicsSystem(content, modifierSources),
       new FogOfWarSystem(),
       // ActionDispatcher advances every actor's slots (posture, locomotion,
       // primary, reaction) from intent + events. The CSM is gone (T-228).
@@ -1092,6 +1097,9 @@ export class TileServer {
         this.sessions.delete(playerId);
         this.playerLastZone.delete(playerId);
         if (this.world.isAlive(playerId)) {
+          // T-252: take the carried item entities along — players respawn
+          // fresh (save doctrine), so leaving them would leak forever.
+          destroyCarriedItemEntities(this.world, playerId);
           this.world.destroy(playerId);
         }
       }

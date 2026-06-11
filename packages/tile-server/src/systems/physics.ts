@@ -8,7 +8,6 @@ import { createLogger } from "../logger.ts";
 import { Position, Velocity, Facing, InputState } from "../components/game.ts";
 import { Airborne } from "../components/combat.ts";
 import { ActiveActions } from "../components/action.ts";
-import type { TickEventBuffer } from "../tick_events.ts";
 import { effective } from "../modifiers/modifier.ts";
 import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { buildTerrainLookup, buildOpennessLookup } from "../physics/terrain_lookup.ts";
@@ -35,7 +34,6 @@ export class PhysicsSystem implements System {
 
   constructor(
     private readonly content: ContentService,
-    private readonly tickEvents: TickEventBuffer,
     private readonly modifierSources: ModifierSourceRegistry,
   ) {}
 
@@ -198,10 +196,17 @@ export class PhysicsSystem implements System {
       const shouldBeAirborne = off >= COYOTE_TICKS;
       if (shouldBeAirborne && !wasAirborne) {
         world.write(s.entityId, Airborne, {});
-        this.tickEvents.fire(s.entityId, "event.left_ground");
       } else if (!shouldBeAirborne && wasAirborne) {
         world.erase(s.entityId, Airborne);
-        this.tickEvents.fire(s.entityId, "event.landed");
+      }
+    }
+
+    // Prune airborne counters for entities that vanished (destroyed /
+    // despawned) — the map otherwise grows for the process lifetime (T-252).
+    if (this.offGroundTicks.size > steps.length) {
+      const seen = new Set(steps.map((s) => s.entityId));
+      for (const key of this.offGroundTicks.keys()) {
+        if (!seen.has(key)) this.offGroundTicks.delete(key);
       }
     }
   }

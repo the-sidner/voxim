@@ -22,7 +22,6 @@ export type {
 export {
   CounterReady,
 } from "./src/components/combat.ts";
-export { TickEventBuffer } from "./src/tick_events.ts";
 
 // NPC components
 export { NpcTag, NpcJobQueue } from "./src/components/npcs.ts";

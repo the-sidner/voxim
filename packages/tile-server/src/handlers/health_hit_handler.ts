@@ -16,7 +16,6 @@ import { Velocity } from "../components/game.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 import { effective } from "../modifiers/modifier.ts";
 import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
-import { TickEventBuffer } from "../tick_events.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("HealthHitHandler");
@@ -41,7 +40,6 @@ export class HealthHitHandler implements HitHandler {
     private readonly content: ContentService,
     private readonly deaths: DeathRequestPort,
     private readonly modifierSources: ModifierSourceRegistry,
-    private readonly tickEvents: TickEventBuffer,
   ) {}
 
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
