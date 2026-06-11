@@ -4724,7 +4724,7 @@ GCD blocks and decrements).
 
 ### T-259 · Trigger primitive arc — the fourth primitive (on-hit/proc substrate)
 Effort: L   Status: done
-Commits: plan 087ce97/d45071e · 0 (op-log) 2b36633 · 0b (mutate+conversions) 6fd0ae2 · a (primitive) d82f785 · b (strike cutover) d6426c0 · c (proc surface) <hash>
+Commits: plan 087ce97/d45071e · 0 (op-log) 2b36633 · 0b (mutate+conversions) 6fd0ae2 · a (primitive) d82f785 · b (strike cutover) d6426c0 · c (proc surface) f3a59b2
 The spine closes: Actions · Resources · Modifiers · **Triggers**. Phase c
 shipped the `health_below` gate, the `npc_template` TriggerSource
 (NpcTemplate.triggers[] — innate archetype procs), and two real procs:
