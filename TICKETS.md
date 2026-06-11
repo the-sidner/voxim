@@ -4732,6 +4732,44 @@ shipped the `health_below` gate, the `npc_template` TriggerSource
 ICD 200) and `hunters_vigor` (iron_sword, entity_died as killer →
 +20 stamina). CLAUDE.md updated to the four-primitive architecture.
 
+### T-260 · Skill = Action — slots point at actions; the verb matrix retires
+Effort: L   Status: in-progress
+
+Skill-arc step 2 (decisions recorded 2026-06-03: slots point at actions;
+cooldown model = global CD + per-skill CDs). An active skill becomes an
+`ActionDef` — windup/active/winddown, costs, gates, effects with inline
+params — started through the dispatcher like every other action. The
+concept-verb matrix and the verb vocabulary retire; data-driven
+composability survives as the skill action's `effects[]` (param
+interpolation from fragments returns later if wanted).
+
+**a — cooldowns as a dispatcher primitive.** `ActionDef.cooldownTicks`
+(per-action, WoW model: the spell is on cooldown wherever bound) +
+`ActionDef.triggersGcd` (raises/blocked-by the actor's global cooldown,
+`game_config.lore.globalCooldownTicks`). Server-only `ActionCooldowns
+{gcd, remaining}` component; the dispatcher decrements at the top of run,
+checks in `canStart` (committed view, ≤1-tick retune), stamps on actual
+`start()` — a request rejected by the cancel matrix burns nothing.
+Composing mutates throughout (T-249). Generic: dodge/NPC signature moves
+can now carry cooldowns. Supersedes T-248's loadout-level GCD field (the
+semantics + tests move here in phase b).
+
+**b — the cutover.** `LoreLoadout.skills` becomes `(actionId | null)[4]`
+(codec reshape; `skillCooldowns` + `globalCooldownTicks` leave the wire —
+cooldown state is the server-only `ActionCooldowns`). `SkillIntentResolver`
+(SKILL_N bit + slot's actionId → primary-slot intent, after
+PrimaryIntentResolver so a skill press beats a swing press) replaces
+`SkillSystem.run`; **SkillSystem is deleted** — the last Layer-2 system.
+Ship `skill_mend` (self-heal cast) + `skill_fireblast` (area damage) as
+ActionDefs; players start with `skill_mend` (config
+`player.startingSkills`). DELETE: concept_verb_matrix.json, verbs.json,
+`ConceptVerbEntry`/`VerbDef`/`SkillVerb`/`LoreSkillSlot` types, the
+store/loader/bootstrap plumbing (bootstrap v13), the concept-verb boot
+check, `NpcTemplate.skillLoadout`, and the whole SkillActivated wire path
+(event id 8 → retired comment; EventRouter never subscribed it — it was
+already wire-dead).
+
+
 **Sub-plan: [`TRIGGER_PRIMITIVE_PLAN.md`](TRIGGER_PRIMITIVE_PLAN.md)**
 (filed 2026-06-03). Design decision: the `strike` loadout verb is obsolete
 — a swing is an action; on-hit behaviour is a *triggered effect*, not a

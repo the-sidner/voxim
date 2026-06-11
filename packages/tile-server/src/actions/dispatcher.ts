@@ -37,6 +37,7 @@ import type { World, EntityId } from "@voxim/engine";
 import type { ContentService, ActionDef, ActionGate } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { ActorSlots, ActiveActions } from "../components/action.ts";
+import { ActionCooldowns } from "../components/action_cooldowns.ts";
 import type { ActiveActionState, ActiveActionsData } from "../components/action.ts";
 import type { GateRegistry, GateContext } from "./gate.ts";
 import type { EffectRegistry, EffectEdge } from "./effect.ts";
@@ -90,6 +91,20 @@ export class ActionDispatcher implements System {
   }
 
   run(world: World, events: EventEmitter, _dt: number): void {
+    // ── Cooldown tick-down (T-260; single writer: this system) ────────────
+    // Spent keys are dropped. Stamps from this run's start() calls compose
+    // with the decrement via the ordered op-log (T-249).
+    for (const { entityId, actionCooldowns } of world.query(ActionCooldowns)) {
+      if (actionCooldowns.gcd === 0 && Object.keys(actionCooldowns.remaining).length === 0) continue;
+      world.mutate(entityId, ActionCooldowns, (ac) => {
+        const remaining: Record<string, number> = {};
+        for (const [id, ticks] of Object.entries(ac.remaining)) {
+          if (ticks > 1) remaining[id] = ticks - 1;
+        }
+        return { gcd: ac.gcd > 0 ? ac.gcd - 1 : 0, remaining };
+      });
+    }
+
     for (const { entityId, activeActions } of world.query(ActiveActions)) {
       const declared = world.get(entityId, ActorSlots)?.slots ?? null;
       // Work on a shallow copy of the slot map; commit once at the end.
@@ -245,8 +260,16 @@ export class ActionDispatcher implements System {
     this.start(world, events, entityId, slot, want, "intent", states);
   }
 
-  /** Preconditions + cost affordability. Does not mutate. */
+  /** Preconditions + cooldowns + cost affordability. Does not mutate. */
   private canStart(world: World, entityId: EntityId, def: ActionDef): boolean {
+    // Per-action cooldown + global cooldown (T-260) — committed view; the
+    // decrement queued this tick hasn't landed, so a cooldown reads one
+    // tick high here (an accepted ≤1-tick retune, same as Resources).
+    if ((def.cooldownTicks ?? 0) > 0 || def.triggersGcd) {
+      const ac = world.get(entityId, ActionCooldowns);
+      if ((def.cooldownTicks ?? 0) > 0 && (ac?.remaining[def.id] ?? 0) > 0) return false;
+      if (def.triggersGcd && (ac?.gcd ?? 0) > 0) return false;
+    }
     if (def.preconditions && !this.gatesPass(world, entityId, def.preconditions)) return false;
     if (def.costs && this.costs && !this.costs.affordable(world, entityId, def.costs)) return false;
     return true;
@@ -263,6 +286,23 @@ export class ActionDispatcher implements System {
     states: Record<string, ActiveActionState>,
   ): void {
     if (def.costs && this.costs) this.costs.deduct(world, entityId, def.costs);
+    // Stamp per-action cooldown + GCD on actual start (T-260) — a request
+    // rejected by the cancel matrix burns nothing.
+    const cd = def.cooldownTicks ?? 0;
+    const gcd = def.triggersGcd ? this.content.getGameConfig().lore.globalCooldownTicks : 0;
+    if (cd > 0 || gcd > 0) {
+      if (world.has(entityId, ActionCooldowns)) {
+        world.mutate(entityId, ActionCooldowns, (ac) => ({
+          gcd: Math.max(ac.gcd, gcd),
+          remaining: cd > 0 ? { ...ac.remaining, [def.id]: cd } : ac.remaining,
+        }));
+      } else {
+        world.set(entityId, ActionCooldowns, {
+          gcd,
+          remaining: cd > 0 ? { [def.id]: cd } : {},
+        });
+      }
+    }
     const first = Object.keys(def.phases)[0];
     const state: ActiveActionState = { actionId: def.id, phase: first, ticksInPhase: 0, initiator };
     states[slot] = state;

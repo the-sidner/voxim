@@ -701,6 +701,20 @@ export interface ActionDef {
   cancel: Record<string, ActionCancelRule>;
   movement: Record<string, ActionMovement>;
   costs?: Record<string, number>;
+  /**
+   * Per-action cooldown (T-260): ticks after a start before the same
+   * action can start again on that actor. Checked by the dispatcher's
+   * `canStart`, stamped on `start` (server-only `ActionCooldowns`
+   * component). 0 / absent = none.
+   */
+  cooldownTicks?: number;
+  /**
+   * Whether starting this action raises the actor's global cooldown
+   * (`game_config.lore.globalCooldownTicks`) — and is itself blocked while
+   * the GCD is running. The WoW-style skill-bar lockout: skill actions set
+   * this; swings/dodges don't. (T-260)
+   */
+  triggersGcd?: boolean;
   /** Default initiation priority (active/ambient actions). */
   priority?: number;
   /** Threshold for non-consent interruption (reactions). */

@@ -692,6 +692,13 @@ export function validateActionDef(def: ActionDef): void {
     }
   }
 
+  if (def.cooldownTicks !== undefined
+    && (typeof def.cooldownTicks !== "number" || def.cooldownTicks < 0 || !Number.isFinite(def.cooldownTicks))) {
+    throw new Error(`Action '${def.id}': cooldownTicks must be a non-negative number`);
+  }
+  if (def.triggersGcd !== undefined && typeof def.triggersGcd !== "boolean") {
+    throw new Error(`Action '${def.id}': triggersGcd must be a boolean`);
+  }
   if (def.costs !== undefined) {
     if (typeof def.costs !== "object" || Array.isArray(def.costs)) {
       throw new Error(`Action '${def.id}': costs must be an object`);
