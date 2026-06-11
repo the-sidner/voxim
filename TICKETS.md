@@ -4733,7 +4733,7 @@ ICD 200) and `hunters_vigor` (iron_sword, entity_died as killer →
 +20 stamina). CLAUDE.md updated to the four-primitive architecture.
 
 ### T-260 · Skill = Action — slots point at actions; the verb matrix retires
-Effort: L   Status: in-progress
+Effort: L   Status: done   Commits: a 6acf3b8 · b b5ec63d
 
 Skill-arc step 2 (decisions recorded 2026-06-03: slots point at actions;
 cooldown model = global CD + per-skill CDs). An active skill becomes an
