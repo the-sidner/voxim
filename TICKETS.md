@@ -519,7 +519,7 @@ reconciliation (T-011).
 Done when: each session has a live RTT estimate in ticks; it's used by ActionSystem.
 
 ### T-253 · Input hardening: finiteness, RTT clamp, seq ordering, reconnect, backpressure
-Effort: M   Status: done   Commit: <hash>
+Effort: M   Status: done   Commit: 45c9a16
 
 Hostile-client hardening of the input path (2026-06 review):
 
