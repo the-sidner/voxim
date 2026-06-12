@@ -31,6 +31,7 @@ import type { BinaryComponentDelta, BinaryStateMessage, BootstrapHeader, Command
 import { computeSessionUpdate } from "./aoi.ts";
 import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
 import { ClientSession } from "./session.ts";
+import { sanitizeAndMergeInputs } from "./input_merge.ts";
 import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
@@ -956,22 +957,22 @@ export class TileServer {
     for (const [playerId, session] of this.sessions) {
       if (!this.world.isAlive(playerId)) continue;
 
-      // Drain movement datagrams into InputState.
+      // Drain movement datagrams into InputState — sanitized and merged
+      // (T-253): non-finite fields zeroed, stale/replayed seqs discarded,
+      // "latest" chosen by seq (datagrams are unordered), one-shot bits
+      // OR'd, held bits from the latest frame.
       const inputs = session.inputBuffer.drain();
-      if (inputs.length > 0) {
-        const latest = inputs[inputs.length - 1];
-        // One-shot bits: OR across all frames so a click in any frame isn't dropped.
-        // Held bits: take from latest frame only — releasing a key before tick end
-        // must not be reported as still held.
-        let oneShots = 0;
-        for (const inp of inputs) oneShots |= inp.actions;
-        const mergedActions = (oneShots & ~HELD_ACTION_MASK) | (latest.actions & HELD_ACTION_MASK);
+      const merged = sanitizeAndMergeInputs(inputs, session.lastAppliedSeq, HELD_ACTION_MASK);
+      if (merged) {
+        const { latest, mergedActions } = merged;
+        session.lastAppliedSeq = latest.seq;
 
-        // Update per-session RTT EMA from the latest datagram's client timestamp.
+        // Update per-session RTT EMA from the latest datagram's client
+        // timestamp — clamped (T-253): the timestamp is client-supplied.
         if (latest.timestamp > 0) {
+          const net = this.content.getGameConfig().network;
           const sampleMs = Math.max(0, Date.now() - latest.timestamp);
-          const alpha = this.content.getGameConfig().network.rttEmaAlpha;
-          session.updateRtt(sampleMs, alpha);
+          session.updateRtt(sampleMs, net.rttEmaAlpha, net.rttMaxMs);
         }
 
         this.world.write(playerId, InputState, {
@@ -1534,6 +1535,14 @@ export class TileServer {
     clientSession.attachDatagramWriter(
       (session.datagrams.writable as WritableStream<Uint8Array>).getWriter(),
     );
+    // Reconnect (T-253): evict any existing session for this player BEFORE
+    // registering the new one — previously the map entry was silently
+    // overwritten and the old session's cleanup then deleted the NEW entry.
+    const existing = this.sessions.get(playerId);
+    if (existing) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} reconnected — evicting old session`);
+      existing.close();
+    }
     this.sessions.set(playerId, clientSession);
 
     // Send the initial world snapshot immediately rather than waiting for the next
@@ -1585,6 +1594,13 @@ export class TileServer {
     //   - entity gone → combat death already destroyed it; inform the
     //     account service so heritage advances a generation.
     clientSession.close();
+    // T-253: a reconnect may have replaced the map entry with a NEW session —
+    // this (old) session's cleanup must not delete it or destroy the
+    // player the new session is serving.
+    if (this.sessions.get(playerId) !== clientSession) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)}: stale session ended (superseded by reconnect)`);
+      return;
+    }
     this.sessions.delete(playerId);
     // Handoff already destroyed the entity + closed the session intentionally
     // (player moved to another tile). Don't treat that as a death or rewrite
@@ -1605,6 +1621,8 @@ export class TileServer {
       }
     }
     if (this.world.isAlive(playerId)) {
+      // T-252: take the carried item entities along (players respawn fresh).
+      destroyCarriedItemEntities(this.world, playerId);
       this.world.destroy(playerId);
       if (this.accountClient) {
         await this.accountClient.updateLocation(playerId, this.tileId).catch((err: unknown) => {

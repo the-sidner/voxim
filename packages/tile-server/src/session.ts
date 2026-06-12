@@ -36,6 +36,16 @@ export class ClientSession {
    */
   rttMs = 0;
 
+  /**
+   * Highest input seq applied to InputState (T-253). The drain discards
+   * datagrams at or below it — a reordered older datagram must not regress
+   * the applied input or the ack.
+   */
+  lastAppliedSeq = 0;
+
+  /** Bytes handed to sendStateRaw but not yet written (T-253 backpressure). */
+  private _queuedBytes = 0;
+
   private outWriter:      WritableStreamDefaultWriter<Uint8Array> | null = null;
   private datagramWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private _closed = false;
@@ -68,11 +78,27 @@ export class ClientSession {
    * Called by the tick loop after draining the input buffer.
    * alpha: weight of the new sample (0–1). Lower = smoother, slower to react.
    */
-  updateRtt(sampleMs: number, alpha: number): void {
+  updateRtt(sampleMs: number, alpha: number, maxMs: number): void {
+    // The sample derives from a CLIENT-supplied timestamp (T-253): clamp it
+    // so a lying client can't sustain multi-second lag-comp rewinds (the
+    // history buffer holds 6.4s).
+    const clamped = Math.min(Math.max(0, sampleMs), maxMs);
     this.rttMs = this.rttMs === 0
-      ? sampleMs                                      // cold start: accept first sample directly
-      : alpha * sampleMs + (1 - alpha) * this.rttMs;
+      ? clamped                                       // cold start: accept first sample directly
+      : alpha * clamped + (1 - alpha) * this.rttMs;
   }
+
+  /**
+   * Enqueue a client command, bounded (T-253): past the cap the command is
+   * dropped — an unbounded queue let a client allocate server memory at
+   * datagram speed. The tick loop drains the queue every 50ms; a legitimate
+   * client cannot get anywhere near the cap.
+   */
+  enqueueCommand(cmd: CommandPayload): void {
+    if (this.commandQueue.length >= ClientSession.MAX_COMMAND_QUEUE) return;
+    this.commandQueue.push(cmd);
+  }
+  private static readonly MAX_COMMAND_QUEUE = 256;
 
   // ── receive ──────────────────────────────────────────────────────────────
 
@@ -95,7 +121,7 @@ export class ClientSession {
           if (decoded.kind === "movement") {
             this.inputBuffer.push(decoded.data);
           } else if (decoded.kind === "command") {
-            this.commandQueue.push(decoded.data.command);
+            this.enqueueCommand(decoded.data.command);
           }
           // decoded.kind === "unknown" is silently discarded
         } catch {
@@ -196,8 +222,20 @@ export class ClientSession {
    */
   private static readonly CHUNK_SIZE = 65536;
 
+  /** Unwritten-byte ceiling: a reader stalled past this is disconnected
+   * (T-253). Generous — the initial terrain spawn alone is ~1.6 MB. */
+  private static readonly MAX_QUEUED_BYTES = 4 * 1024 * 1024;
+
   sendStateRaw(bytes: Uint8Array): void {
     if (this._closed || !this.outWriter) return;
+    // Backpressure bound (T-253): per-tick state messages previously
+    // chained unboundedly for a non-reading client.
+    if (this._queuedBytes + bytes.byteLength > ClientSession.MAX_QUEUED_BYTES) {
+      console.error(`[Session] ${this.playerId.slice(-8)}: send queue exceeded ${ClientSession.MAX_QUEUED_BYTES} bytes — closing stalled session`);
+      this.close();
+      return;
+    }
+    this._queuedBytes += bytes.byteLength;
     const writer = this.outWriter;
     const chunk = ClientSession.CHUNK_SIZE;
     this._writeQueue = this._writeQueue.then(async () => {
@@ -208,6 +246,8 @@ export class ClientSession {
     }).catch((err) => {
       console.error(`[Session] ${this.playerId.slice(-8)}: write failed, closing session —`, err);
       this._closed = true;
+    }).finally(() => {
+      this._queuedBytes -= bytes.byteLength;
     });
   }
 

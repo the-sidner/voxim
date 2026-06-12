@@ -1422,6 +1422,9 @@ export interface GameConfig {
   network: {
     /** Exponential moving average alpha for per-session RTT estimation (0–1). Lower = smoother. */
     rttEmaAlpha: number;
+    /** Upper clamp on a single RTT sample (ms) — the sample derives from a
+     * client-supplied timestamp, so it is hostile input (T-253). */
+    rttMaxMs: number;
     /** Radius in world units within which entities are visible to a client. */
     aoiRadius: number;
   };

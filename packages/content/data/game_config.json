@@ -149,7 +149,8 @@
   },
   "network": {
     "rttEmaAlpha": 0.15,
-    "aoiRadius": 128
+    "aoiRadius": 128,
+    "rttMaxMs": 1000
   },
   "prediction": {
     "correctionHalfLifeMs": 60,
