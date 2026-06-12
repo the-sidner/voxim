@@ -1325,7 +1325,11 @@ visible, hittable, acting, items intact, fog preserved — and a disconnect mid-
 neither ghosts the entity nor suppresses a later death record.
 
 ### T-257 · Multi-process correctness sweep: routing loop, event-log order, regen params, TILE_ID
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: <hash>
+Verification note: gateway/db carry no test harness (they need live
+infra) — the four fixes are type-checked + reviewed; the SQL ordering fix
+and the wedge-on-dead-stream closes should get integration coverage when a
+compose-based test rig exists (recorded gap, not hidden).
 
 Four independent fixes across the multi-process stack (2026-06 review):
 

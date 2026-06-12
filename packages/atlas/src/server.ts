@@ -470,7 +470,10 @@ async function getOrGenerateTile(
     gates:  cellRow.gates as unknown as WorldCellRecord["gates"],
     rivers: cellRow.rivers as unknown as WorldCellRecord["rivers"],
   };
-  const tile = generateTile(cell, tileSeed, { content: cfg.content });
+  // T-257: use the world's persisted GenParams — falling back to
+  // DEFAULT_GEN_PARAMS made on-demand tiles diverge from baked siblings.
+  const lazyParams = mergeGenParams(active.params as unknown as DeepPartialGenParams);
+  const tile = generateTile(cell, tileSeed, { content: cfg.content, params: lazyParams });
   const payload = tileInitToWire(tile) as unknown as Record<string, unknown>;
   await cfg.tilesRepo.put({
     worldId: active.id,

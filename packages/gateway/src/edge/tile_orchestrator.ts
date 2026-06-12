@@ -51,7 +51,7 @@ export class TileOrchestrator {
   private readonly spawner: TileSpawner;
   private readonly staleAfterMs: number;
   private readonly sweepIntervalMs: number;
-  private sweepTimer: number | null = null;
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: TileOrchestratorConfig) {
     this.repo = config.repo;

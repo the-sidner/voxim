@@ -59,7 +59,9 @@ globalThis.addEventListener("unhandledrejection", (event) => {
   event.preventDefault();
 });
 
-const tileId         = Deno.env.get("TILE_ID")      ?? "tile_0";
+// T-257: parseTileId requires "<x>_<y>" — the old default "tile_0" could
+// never boot the documented `deno task tile` / `demo` paths.
+const tileId         = Deno.env.get("TILE_ID")      ?? "0_0";
 const port           = parseInt(Deno.env.get("PORT")       ?? "4434");
 const adminPort      = parseInt(Deno.env.get("ADMIN_PORT") ?? "14434");
 // Default to $HOSTNAME (docker sets it to the container hostname) so the

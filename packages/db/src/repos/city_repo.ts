@@ -107,13 +107,15 @@ export class PgCityRepo implements CityRepo {
         text: `
           UPDATE cities
           SET event_log = (
-            SELECT jsonb_agg(elem)
+            -- T-257: order INSIDE the aggregate. The old "ORDER BY 1" after
+            -- the subselect ordered the one-row outer select — the log was
+            -- permuted on every append and the LIMIT evicted wrong entries.
+            SELECT jsonb_agg(elem ORDER BY idx)
             FROM (
-              SELECT elem FROM jsonb_array_elements(event_log || jsonb_build_array($2::jsonb)) WITH ORDINALITY AS t(elem, idx)
+              SELECT elem, idx FROM jsonb_array_elements(event_log || jsonb_build_array($2::jsonb)) WITH ORDINALITY AS t(elem, idx)
               ORDER BY idx DESC
               LIMIT $3
             ) recent
-            ORDER BY 1
           ),
           updated_at = now()
           WHERE city_id = $1

@@ -192,6 +192,11 @@ export class WtServer {
       }
     } catch (err) {
       console.warn(`[Gateway] coordinator stream error: ${(err as Error).message}`);
+    } finally {
+      // T-257: whatever ended the loop, close the session — a coordinator
+      // nobody reads otherwise keeps writing into the void until a process
+      // restart (its reconnect logic only kicks in on close).
+      link.close();
     }
   }
 
@@ -206,7 +211,16 @@ export class WtServer {
       console.warn(`[Gateway] dropped tile_command for unknown/offline tile ${env.targetTileId}`);
       return;
     }
-    await tile.send(env);
+    try {
+      await tile.send(env);
+    } catch (err) {
+      // T-257: a dead tile stream must kill the TILE link (so the tile's
+      // reconnect replaces it), not propagate and kill the coordinator
+      // read loop — that wedged coordinator→tile routing permanently.
+      console.warn(`[Gateway] tile ${env.targetTileId} write failed — closing its link: ${(err as Error).message}`);
+      tile.close();
+      this.tileLinks.delete(env.targetTileId);
+    }
   }
 
   // ---- tile ----
@@ -251,6 +265,10 @@ export class WtServer {
       }
     } catch (err) {
       console.warn(`[Gateway] tile ${tileId} stream error: ${(err as Error).message}`);
+    } finally {
+      // T-257: symmetric to the coordinator loop — close on exit so the
+      // tile's reconnect logic kicks in instead of writing into the void.
+      link.close();
     }
   }
 
@@ -270,7 +288,15 @@ export class WtServer {
       return;
     }
     // Pass through unchanged — gateway is just a switchboard.
-    await this.coordinator.send(env);
+    try {
+      await this.coordinator.send(env);
+    } catch (err) {
+      // T-257: a dead coordinator stream closes the COORDINATOR link, not
+      // the tile read loop.
+      console.warn(`[Gateway] coordinator write failed — closing its link: ${(err as Error).message}`);
+      this.coordinator.close();
+      this.coordinator = null;
+    }
   }
 
   private warnedNoCoordinator = false;
