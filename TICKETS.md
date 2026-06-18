@@ -4268,7 +4268,7 @@ suppression, EntityDied pre-prune relevance (tile-server); counter_window expiry
 consumer for the upcoming rework; its unrelated drift errors are left for that holistic pass.
 
 ### T-251 · Save/load: complete the entity round-trip
-Effort: L   Status: done   Commit: <pending>
+Effort: L   Status: done   Commit: e070d58
 
 `serialize()` is an allowlist of three queries while spawning is a rich pipeline (visual
 shell, archetype installers, server-only Resources); nothing reconciles the two
