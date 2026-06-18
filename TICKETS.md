@@ -6469,7 +6469,7 @@ bar just consumes it. Bundles clean.
 Done when: channelling a non-instant skill shows a filling cast bar that completes as the skill fires.
 
 ### T-267 · Auto-regenerate the dev WebTransport cert at boot
-Effort: S   Status: done   Commit: <pending>
+Effort: S   Status: done   Commit: 5f7d560
 
 The WebTransport `serverCertificateHashes` path requires a current ECDSA P-256 cert valid ≤14
 days. So it expires ~weekly, and a stale cert fails the QUIC handshake with an opaque
