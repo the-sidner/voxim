@@ -6451,7 +6451,7 @@ Done when: casting a skill shows its slot sweep down over its cooldown, and ever
 dims on the GCD. Bundles clean; 259 server tests green.
 
 ### T-266 · Cast bar — skill windup feedback from the action runtime
-Effort: S   Status: done   Commit: <pending>
+Effort: S   Status: done   Commit: b8d0e22
 
 Completes the skill feedback loop (see it on the bar → press → cast → cooldown sweep). The
 client ignored the networked `ActiveActions` (dumped to `raw`); now it decodes it.
