@@ -6388,7 +6388,7 @@ paths and reads vitals from `Resource.values`). 259 green.
 Done when (server half): the wire carries `Resource`, AoI-filtered, change-gated.
 
 ### T-263 · Client compiles + runs against the current protocol
-Effort: M   Status: done   Commit: <pending>
+Effort: M   Status: done   Commit: 6e85745
 
 The client had drifted to 26 type errors (broken-by-design through the server refactor arc) —
 it could not `deno check` or bundle. First step of the client rework: make it consume the
