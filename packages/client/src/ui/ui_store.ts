@@ -222,6 +222,8 @@ export interface UIState {
   skillLoadout: SkillLoadoutState | null;
   /** Local player's live action cooldowns (gcd + per-action), for the skill bar sweep. */
   skillCooldowns: { gcd: number; remaining: Record<string, number> } | null;
+  /** Local player's in-progress cast (a skill's windup), for the cast bar. Null when not casting. */
+  castState: { label: string; frac: number } | null;
 
   // Active interactions (at most one of each at a time)
   workstation:  WorkstationPanelState | null;
@@ -297,6 +299,7 @@ const _initial: UIState = {
   stats:       null,
   skillLoadout: null,
   skillCooldowns: null,
+  castState: null,
   workstation: null,
   trader:      null,
   dialogue:    null,

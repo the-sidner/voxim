@@ -839,6 +839,26 @@
 #ui .skillbar .slot { border: none; overflow: hidden; }
 #ui .skillbar .slot .slot-glyph { color: var(--col-accent); }
 
+/* Cast bar: fills while channelling a skill's windup. */
+#ui .castbar {
+  width: 220px; height: 18px;
+  background: var(--line);
+  border: var(--hair) solid var(--line-strong);
+  position: relative;
+  overflow: hidden;
+}
+#ui .castbar .castbar-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--col-accent);
+}
+#ui .castbar .castbar-label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--text-xs);
+  color: var(--bone);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
 /* Cooldown sweep: a bottom-up dark fill covering the remaining fraction, with
    the seconds-left centred over the slot. */
 #ui .slot .slot-cd-fill {

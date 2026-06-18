@@ -6449,3 +6449,21 @@ the sweep.
 
 Done when: casting a skill shows its slot sweep down over its cooldown, and every slot briefly
 dims on the GCD. Bundles clean; 259 server tests green.
+
+### T-266 · Cast bar — skill windup feedback from the action runtime
+Effort: S   Status: done   Commit: <pending>
+
+Completes the skill feedback loop (see it on the bar → press → cast → cooldown sweep). The
+client ignored the networked `ActiveActions` (dumped to `raw`); now it decodes it.
+
+- `client_world` decodes `activeActions` into `EntityState.activeActions` (the action runtime:
+  per-slot `{actionId, phase, ticksInPhase}`).
+- `deriveCastState` (game.ts): the local player is "casting" while its primary slot runs an
+  active-kind action in `windup`; the bar fills `ticksInPhase / windupTicks`. Instant actions
+  (≤1 windup tick) show nothing. Patched into `uiState.castState` (reactive path).
+- New `CastBar` component, centred above the action bars, accent fill + skill label.
+
+No new wire id — `ActiveActions` was already networked (T-226) for client prediction; the cast
+bar just consumes it. Bundles clean.
+
+Done when: channelling a non-instant skill shows a filling cast bar that completes as the skill fires.

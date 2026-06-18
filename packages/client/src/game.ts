@@ -41,7 +41,7 @@ import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
 import { loadLoginName } from "./ui/login.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { EquipmentData, InventoryData, LoreLoadoutData, ResourceData } from "@voxim/codecs";
+import type { EquipmentData, InventoryData, LoreLoadoutData, ResourceData, ActiveActionsData } from "@voxim/codecs";
 import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
@@ -258,6 +258,7 @@ export class VoximGame {
         if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
         if (state.resource)    patchUI(vitalsPatch(state.resource));
         if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
+        if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, this.contentService) });
         if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
         if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory, this.world) });
         if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
@@ -432,6 +433,7 @@ export class VoximGame {
           if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
           if (state.resource)  patchUI(vitalsPatch(state.resource));
           if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
+          if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, this.contentService) });
           if (state.equipment) {
             patchUI({ equipment: mapEquipmentToUI(state.equipment) });
             if (this.input) {
@@ -1402,11 +1404,34 @@ function vitalsPatch(resource: ResourceData): Parameters<typeof patchUI>[0] {
 
 /**
  * Map a server LoreLoadoutData into the SkillLoadoutState shape the UI expects.
- * A slot is the id of a skill ActionDef (or null); cooldowns live in the
- * server-only ActionCooldowns component and aren't on the wire yet.
+ * A slot is the id of a skill ActionDef (or null); cooldowns come from the
+ * networked ActionCooldowns component (T-265), keyed by action id.
  */
 function mapLoreLoadoutToUI(loadout: LoreLoadoutData): SkillLoadoutState {
   return { slots: loadout.skills.map((actionId, index) => ({ index, actionId: actionId ?? null })) };
+}
+
+/**
+ * Derive the cast-bar state from the action runtime (T-266): the local player
+ * is "casting" while its primary slot runs an active-kind action in its windup
+ * phase. Instant actions (≤1 windup tick) show no bar. Null when not casting.
+ */
+function deriveCastState(
+  actions: ActiveActionsData,
+  content: ContentService | null,
+): { label: string; frac: number } | null {
+  const slot = actions.states["primary"];
+  if (!slot) return null;
+  const def = content?.actions.get(slot.actionId);
+  if (!def || def.kind !== "active" || slot.phase !== "windup") return null;
+  const total = def.phases?.windup?.ticks ?? 0;
+  if (total <= 1) return null;
+  const label = slot.actionId
+    .replace(/^skill_/, "")
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+  return { label, frac: Math.min(1, slot.ticksInPhase / total) };
 }
 
 function getToolType(prefabId: string | undefined, content: ContentService | null): string | undefined {

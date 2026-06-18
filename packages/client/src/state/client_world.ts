@@ -9,7 +9,7 @@ import { ComponentType, COMPONENT_TYPE_TO_NAME } from "@voxim/protocol";
 import {
   positionCodec, velocityCodec, facingCodec,
   heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
-  resourceCodec, actionCooldownsCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
+  resourceCodec, actionCooldownsCodec, activeActionsCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
   blueprintCodec, lightEmitterCodec, darknessModifierCodec,
   loreLoadoutCodec,
   durabilityCodec, craftingQueueCodec, itemDataCodec,
@@ -21,7 +21,7 @@ import {
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
-  ResourceData, ActionCooldownsData,
+  ResourceData, ActionCooldownsData, ActiveActionsData,
   LoreLoadoutData,
   DurabilityData, CraftingQueueData, ItemDataData,
   WorkstationBufferData, WorkstationTagData,
@@ -45,6 +45,8 @@ export interface EntityState {
   resource?: ResourceData;
   /** Per-action cooldowns + GCD — drives the skill bar sweep (T-265). */
   actionCooldowns?: ActionCooldownsData;
+  /** Action runtime: what's running in each slot + phase progress — drives the cast bar (T-266). */
+  activeActions?: ActiveActionsData;
   heightmap?: HeightmapData;
   materialGrid?: MaterialGridData;
   openMask?: OpenMaskData;
@@ -162,6 +164,9 @@ export class ClientWorld {
         break;
       case ComponentType.actionCooldowns:
         entity.actionCooldowns = actionCooldownsCodec.decode(data);
+        break;
+      case ComponentType.activeActions:
+        entity.activeActions = activeActionsCodec.decode(data);
         break;
       case ComponentType.heightmap: {
         const hm = heightmapCodec.decode(data);
