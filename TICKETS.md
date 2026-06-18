@@ -6489,3 +6489,23 @@ A dev hit exactly this: the on-disk cert was 6+ weeks expired.
 
 Done when: starting the stack with an expired/missing dev cert regenerates it and the browser
 connects, regardless of gateway/tile boot order. The manual `deno task gen-certs` still works.
+
+### T-268 · Devtools studio de-drift (CSM-era animation editor)
+Effort: M   Status: todo
+
+The studio animation editor was built around the retired CSM / state-machine model (T-228).
+T-267-adjacent work removed the immediate build blocker (the SMDriverPanel, which imported the
+deleted `compileStateMachine`/`smTickAll`/`initialSMState` from `@voxim/content`) so the devtools
+container stops crash-looping. But residual CSM-era scaffolding remains, none of it build-breaking
+(esbuild erases the dead type imports):
+
+- `content_loader.ts` still exports `StateMachineDef` + `loadStateMachine` (state_machines/*.json)
+  with no consumer.
+- `ANIM_DIRS` keeps `state_machines` in the browsable list though the tab is gone.
+- The maneuver tab / `ManeuverPanel` / `onManeuverTick` are likely also retired-era (the maneuver
+  runtime was removed at T-228) — verify and remove if dead.
+- The animation editor should be re-grounded on the current model (action runtime + the
+  constraint-pipeline animation), not state machines.
+
+Done when: the studio animation editor reflects the current animation architecture with no
+CSM/state-machine or maneuver-runtime remnants, and `build_studio.ts` stays green.

@@ -23,16 +23,16 @@ import type { Viewport } from "../shell/viewport.ts";
 import { buildSkeletonView, type SkeletonView, type BoneLike } from "./skeleton_view.ts";
 import { sampleClipAtTime, type ClipLike } from "./clip_sampler.ts";
 import { EquipmentPanel, type SlotState } from "./EquipmentPanel.tsx";
-import { SMDriverPanel } from "./SMDriverPanel.tsx";
 import { ManeuverPanel, type ManeuverTick } from "./ManeuverPanel.tsx";
 import { attachEquipment, type AttachedEquipment } from "./equip_attach.ts";
-import { loadWeaponAction, type PrefabSummary, type StateMachineDef } from "../shell/content_loader.ts";
+import { loadWeaponAction, type PrefabSummary } from "../shell/content_loader.ts";
 import type { MaterialDef } from "../voxel-editor/model_types.ts";
-import type { SMRuntimeState } from "@voxim/content";
 
-const ANIM_DIRS = ["skeletons", "anim_library", "state_machines", "maneuvers", "weapon_actions", "clip_overrides"];
+// state_machines/ kept in the dir list as legacy content; the SM-driver tab
+// was removed with the CSM (T-228) — see T-268 for the broader studio de-drift.
+const ANIM_DIRS = ["skeletons", "anim_library", "maneuvers", "weapon_actions", "clip_overrides"];
 
-type RightTab = "clip" | "equipment" | "sm" | "maneuver";
+type RightTab = "clip" | "equipment" | "maneuver";
 
 interface Skeleton {
   id: string;
@@ -63,11 +63,6 @@ export function AnimationEditor() {
   const equippedRef = useRef<{ weapon: AttachedEquipment | null; offHand: AttachedEquipment | null }>({
     weapon: null, offHand: null,
   });
-  // ── Layer B: state machine driver ──────────────────────────────────
-  const [smDef, setSmDef] = useState<StateMachineDef | null>(null);
-  // Latest layer states from the SM driver tick — used to pick the
-  // currently-active animation clip when SM driver is the active tab.
-  const smStateRef = useRef<SMRuntimeState>({});
   // Per-prefab slot map used to resolve "$weapon.swing_clip" etc. We
   // pull this from the actor prefab the user picked (defaults to
   // _playable_character).
@@ -127,15 +122,6 @@ export function AnimationEditor() {
         setPlaying(false);
       } catch (e) {
         console.warn("animation editor: clip load failed:", e);
-      }
-      return;
-    }
-    if (path.startsWith("state_machines/")) {
-      try {
-        setSmDef(await readJson<StateMachineDef>(path));
-        setRightTab("sm");
-      } catch (e) {
-        console.warn("animation editor: SM load failed:", e);
       }
       return;
     }
@@ -235,7 +221,6 @@ export function AnimationEditor() {
   // Push the sampled pose into the skeleton view whenever time/clip
   // changes (manual clip-player mode).
   useEffect(() => {
-    if (rightTab === "sm") return; // SM driver owns pose updates in its tab
     const view = skViewRef.current;
     if (!view) return;
     if (!clip) {
@@ -245,65 +230,6 @@ export function AnimationEditor() {
     const pose = sampleClipAtTime(clip, time);
     view.applyPose(pose);
   }, [time, clip, skeleton, rightTab]);
-
-  // SM-driver pose: each SM tick, walk the layers in priority order,
-  // find the highest-priority animation-output layer whose current
-  // state has a clip, resolve the clip via $-slot indirection +
-  // equipped weapon's primary action, sample, apply.
-  const smOnTick = (next: SMRuntimeState, def: StateMachineDef) => {
-    smStateRef.current = next;
-    if (rightTab !== "sm") return;
-    const view = skViewRef.current;
-    if (!view) return;
-
-    // Resolve "$weapon.swing_clip" from the picked weapon's primary action.
-    const weaponActionId = (slots.weapon?.components["swingable"] as
-      | { chain?: { light: string; heavy: string }[] }
-      | undefined)?.chain?.[0]?.light;
-    // We don't synchronously have the WeaponActionDef here, so the
-    // slot map gets a best-effort lookup. The slot map already has
-    // `weapon.swing_clip` from the base prefab; if it's a $-ref or
-    // missing, we fall back to "great_sword_slash" (the base default).
-    const slotMap = slotMapRef.current;
-
-    // Walk layers in priority order (highest priority wins). Engine
-    // does this in AnimationSystem.run; here we approximate by
-    // picking the FIRST animation-output layer (in JSON order) with a
-    // non-null clip.
-    const animLayers = def.layers.filter((l) => l.output === "animation");
-    // priority highest first
-    animLayers.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-    let chosenClipId: string | null = null;
-    for (const layer of animLayers) {
-      const s = next[layer.id];
-      if (!s) continue;
-      const stateDef = (layer.states[s.node] ?? {}) as { clip?: string | null };
-      if (stateDef.clip == null) continue;
-      let ref = stateDef.clip;
-      if (ref.startsWith("$")) {
-        ref = slotMap[ref.slice(1)] ?? "";
-      }
-      if (ref) { chosenClipId = ref; break; }
-    }
-    if (!chosenClipId) {
-      view.applyPose(new Map());
-      return;
-    }
-    // Sample the resolved clip at the layer's elapsed time. We don't
-    // have its loop / durationSeconds without loading the clip JSON,
-    // so cache on a per-id basis below.
-    loadClipById(chosenClipId, skeleton).then((c) => {
-      if (!c) return;
-      const elapsed = next[animLayers[0].id]?.elapsed ?? 0;
-      const dur = c.durationSeconds ?? 1;
-      let t = elapsed / dur;
-      if (c.loop) t = t - Math.floor(t); else t = Math.min(1, t);
-      view.applyPose(sampleClipAtTime(c, t));
-    });
-    // Suppress unused-var warning when weaponActionId isn't consumed
-    // until the next refactor pulls in WeaponActionDef.
-    void weaponActionId;
-  };
 
   // Maneuver pose driver — when the maneuver tab is firing, sample
   // the right_hand track's active clip and apply. (Per-hand masking
@@ -427,7 +353,6 @@ export function AnimationEditor() {
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {rightTab === "clip"      && <ClipInspector clip={clip} skeleton={skeleton} />}
             {rightTab === "equipment" && <EquipmentPanel slots={slots} onEquip={(slot, prefab) => setSlots((s) => ({ ...s, [slot]: prefab }))} />}
-            {rightTab === "sm"        && <SMDriverPanel def={smDef} onTick={smOnTick} active={rightTab === "sm"} />}
             {rightTab === "maneuver"  && <ManeuverPanel active={rightTab === "maneuver"} onTick={onManeuverTick} onIdle={onManeuverIdle} />}
           </div>
         </div>
@@ -455,7 +380,6 @@ function RightTabs({ current, onPick }: { current: RightTab; onPick: (t: RightTa
     <div style={{ display: "flex", borderBottom: "1px solid var(--line-strong)", background: "var(--moss)" }}>
       {tab("clip",      "Clip")}
       {tab("equipment", "Equipment")}
-      {tab("sm",        "SM driver")}
       {tab("maneuver",  "Maneuver")}
     </div>
   );
