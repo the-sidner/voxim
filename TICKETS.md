@@ -4221,7 +4221,7 @@ same-tick hits both subtract health; DoTs stack; engine tests cover set/mutate/r
 interleavings. (Strike criterion → T-259b.)
 
 ### T-250 · Replication: component-removal channel + death events + InputState
-Effort: M   Status: done   Commit: <pending>
+Effort: M   Status: done   Commit: f8626b2
 
 Three gaps where the changeset produces transitions the wire cannot express (2026-06 review):
 
