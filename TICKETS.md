@@ -6386,3 +6386,26 @@ the client compile-fix (the rework removes the retired separate stamina/hunger/t
 paths and reads vitals from `Resource.values`). 259 green.
 
 Done when (server half): the wire carries `Resource`, AoI-filtered, change-gated.
+
+### T-263 · Client compiles + runs against the current protocol
+Effort: M   Status: done   Commit: <pending>
+
+The client had drifted to 26 type errors (broken-by-design through the server refactor arc) —
+it could not `deno check` or bundle. First step of the client rework: make it consume the
+*current* wire, so it builds and shows live vitals again. NOT a feature pass — the deeper
+scene-view rework follows.
+
+- **Vitals from `Resource` (T-262).** `client_world` decodes the networked `resource` component
+  into `EntityState.resource`; `game.ts` feeds the HUD from `resource.values` (stamina/hunger).
+  The retired separate `stamina`/`hunger`/`thirst` decode paths + `StaminaState`/etc. are gone.
+- **Dropped retired-component debris.** `CharacterStateMachine`, `SwingChain`, `Staggered` decode
+  paths removed (CSM retired T-228, swing folded into actions T-227, stagger is a tag/AnimationState
+  T-232). The local swing predictor no longer tracks a chain index (predicts a basic swing; chain
+  variation arrives via networked AnimationState). The DebugPanel "state machine" view became an
+  "Animation" view reading AnimationState.
+- **Skill loadout is action ids.** `SkillSlot` is `{ index, actionId }` (was verb + fragment pair +
+  per-slot cooldown). Cooldowns live in the server-only ActionCooldowns — not on the wire yet.
+- Removed the retired `SkillActivated` event handler; fixed two TSX casts.
+
+Done when: `deno check packages/client/src/game.ts` is clean and `deno task bundle` writes
+`game.js`. Both pass. 259 server tests green.

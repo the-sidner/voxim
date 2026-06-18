@@ -84,11 +84,8 @@ export interface PlayerStatsState {
 
 export interface SkillSlot {
   index: number;
-  verb:             string;
-  outwardFragmentId: string | null;
-  inwardFragmentId:  string | null;
-  cooldownTicks:    number;
-  maxCooldownTicks: number;
+  /** Id of the skill ActionDef bound to this slot, or null when empty. */
+  actionId: string | null;
 }
 
 export interface SkillLoadoutState {

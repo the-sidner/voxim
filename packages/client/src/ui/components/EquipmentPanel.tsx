@@ -105,7 +105,7 @@ export function EquipmentPanel({ onAction }: { onAction: (a: UIAction) => void }
         {Object.entries(DOLL_LAYOUT).map(([slot, { row, col }]) => (
           <div key={slot} style={{ gridRow: row, gridColumn: col }}>
             <EquipSlot
-              item={(eq as Record<string, ItemStack | null | undefined>)[slot] ?? null}
+              item={(eq as unknown as Record<string, ItemStack | null | undefined>)[slot] ?? null}
               slot={slot}
               onAction={onAction}
             />

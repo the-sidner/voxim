@@ -9,39 +9,31 @@ import { ComponentType, COMPONENT_TYPE_TO_NAME } from "@voxim/protocol";
 import {
   positionCodec, velocityCodec, facingCodec,
   heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
-  staminaCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
+  resourceCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
   blueprintCodec, lightEmitterCodec, darknessModifierCodec,
-  staggeredCodec,
   loreLoadoutCodec,
   durabilityCodec, craftingQueueCodec, itemDataCodec,
   workstationBufferCodec, workstationTagCodec,
   statsCodec, provenanceCodec,
   gateLinkCodec,
   nameCodec,
-  characterStateMachineCodec,
-  swingChainCodec,
 } from "@voxim/codecs";
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
-  StaggeredData,
+  ResourceData,
   LoreLoadoutData,
   DurabilityData, CraftingQueueData, ItemDataData,
   WorkstationBufferData, WorkstationTagData,
   StatsData, ProvenanceData,
   GateLinkData,
   NameData,
-  CharacterStateMachineData,
-  SwingChainData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
 export interface VelocityState  { x: number; y: number; z: number }
 export interface FacingState    { angle: number }
 export interface HealthState    { current: number; max: number }
-export interface StaminaState   { current: number; max: number; exhausted: boolean }
-export interface HungerState    { value: number }
-export interface ThirstState    { value: number }
 export interface WorldClockState  { ticksElapsed: number; dayLengthTicks: number }
 
 export interface EntityState {
@@ -49,9 +41,8 @@ export interface EntityState {
   velocity?: VelocityState;
   facing?: FacingState;
   health?: HealthState;
-  stamina?: StaminaState;
-  hunger?: HungerState;
-  thirst?: ThirstState;
+  /** All tick-scalars (stamina/hunger/thirst/poise/…) — vitals for the HUD (T-262). */
+  resource?: ResourceData;
   heightmap?: HeightmapData;
   materialGrid?: MaterialGridData;
   openMask?: OpenMaskData;
@@ -63,7 +54,6 @@ export interface EntityState {
   blueprint?: BlueprintData;
   lightEmitter?: LightEmitterData;
   darknessModifier?: DarknessModifierData;
-  staggered?: StaggeredData;
   loreLoadout?: LoreLoadoutData;
   durability?: DurabilityData;
   craftingQueue?: CraftingQueueData;
@@ -75,8 +65,6 @@ export interface EntityState {
   worldClock?: WorldClockState;
   gateLink?: GateLinkData;
   name?: NameData;
-  characterStateMachine?: CharacterStateMachineData;
-  swingChain?: SwingChainData;
   /** Raw bytes for components the client doesn't decode eagerly, keyed by component name. */
   raw: Map<string, Uint8Array>;
   /** Per-component version counters (component type ID → version). Stale deltas are discarded. */
@@ -167,16 +155,9 @@ export class ClientWorld {
         entity.health = { current: v.getFloat32(0, true), max: v.getFloat32(4, true) };
         break;
       }
-      case ComponentType.stamina: {
-        const s = staminaCodec.decode(data);
-        entity.stamina = { current: s.current, max: s.max, exhausted: s.exhausted };
+      case ComponentType.resource:
+        entity.resource = resourceCodec.decode(data);
         break;
-      }
-      case ComponentType.hunger: {
-        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
-        entity.hunger = { value: v.getFloat32(0, true) };
-        break;
-      }
       case ComponentType.heightmap: {
         const hm = heightmapCodec.decode(data);
         entity.heightmap = hm;
@@ -235,9 +216,6 @@ export class ClientWorld {
       case ComponentType.darknessModifier:
         entity.darknessModifier = darknessModifierCodec.decode(data);
         break;
-      case ComponentType.staggered:
-        entity.staggered = staggeredCodec.decode(data);
-        break;
       case ComponentType.loreLoadout:
         entity.loreLoadout = loreLoadoutCodec.decode(data);
         break;
@@ -262,11 +240,6 @@ export class ClientWorld {
       case ComponentType.provenance:
         entity.provenance = provenanceCodec.decode(data);
         break;
-      case ComponentType.thirst: {
-        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
-        entity.thirst = { value: v.getFloat32(0, true) };
-        break;
-      }
       case ComponentType.worldClock: {
         const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
         entity.worldClock = { ticksElapsed: v.getInt32(0, true), dayLengthTicks: v.getInt32(4, true) };
@@ -277,12 +250,6 @@ export class ClientWorld {
         break;
       case ComponentType.name:
         entity.name = nameCodec.decode(data);
-        break;
-      case ComponentType.characterStateMachine:
-        entity.characterStateMachine = characterStateMachineCodec.decode(data);
-        break;
-      case ComponentType.swingChain:
-        entity.swingChain = swingChainCodec.decode(data);
         break;
       default: {
         const name = COMPONENT_TYPE_TO_NAME.get(typeId);

@@ -209,47 +209,27 @@ function CSMSection() {
   const world = clientWorld.value;
   const id = localPlayerId.value;
   const entity = world && id ? world.get(id) : undefined;
-  const csm = entity?.characterStateMachine;
   const anim = entity?.animationState;
-  const chain = entity?.swingChain;
 
-  if (!csm || Object.keys(csm.layerStates).length === 0) {
+  // The CSM was retired (T-228); the action runtime drives animation now. The
+  // client sees its result as the networked AnimationState (derived from
+  // ActiveActions), so that's what this debug view reflects.
+  if (!anim) {
     return (
-      <Section title="State machine">
-        <div style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>(no state machine)</div>
+      <Section title="Animation">
+        <div style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>(no animation state)</div>
       </Section>
     );
   }
 
-  const layers = Object.entries(csm.layerStates);
   return (
-    <Section title="State machine">
+    <Section title="Animation">
       <div style={{ fontSize: "var(--text-xs)", fontFamily: "monospace" }}>
-        <div style={{ color: "var(--col-text-dim)", marginBottom: "var(--gap-xs)" }}>
-          sm: {csm.stateMachineId}
-        </div>
-        {layers.map(([layerId, st]) => (
-          <div key={layerId} style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: "var(--col-text-dim)" }}>{layerId}</span>
-            <span>
-              <span style={{ color: "var(--col-accent)" }}>{st.node}</span>
-              <span style={{ color: "var(--col-text-dim)", marginLeft: "var(--gap-xs)" }}>
-                {st.elapsed.toFixed(2)}s
-              </span>
-            </span>
-          </div>
-        ))}
-        <div style={{ marginTop: "var(--gap-xs)", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ color: "var(--col-text-dim)" }}>chain idx</span>
-          <span style={{ color: chain ? "var(--col-accent)" : "var(--col-text-dim)" }}>
-            {chain ? chain.index : "—"}
-          </span>
-        </div>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <span style={{ color: "var(--col-text-dim)" }}>action</span>
-          <span style={{ color: "var(--col-accent)" }}>{anim?.weaponActionId || "—"}</span>
+          <span style={{ color: "var(--col-accent)" }}>{anim.weaponActionId || "—"}</span>
         </div>
-        {anim && anim.layers.length > 0 && (
+        {anim.layers.length > 0 && (
           <div style={{ marginTop: "var(--gap-xs)", color: "var(--col-text-dim)" }}>
             playing: {anim.layers.map((l) => l.clipId || "—").join(" + ")}
           </div>

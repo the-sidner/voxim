@@ -41,7 +41,7 @@ import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
 import { loadLoginName } from "./ui/login.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { EquipmentData, InventoryData, LoreLoadoutData } from "@voxim/codecs";
+import type { EquipmentData, InventoryData, LoreLoadoutData, ResourceData } from "@voxim/codecs";
 import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
@@ -256,8 +256,7 @@ export class VoximGame {
       }
       if (entityId === this.playerId) {
         if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
-        if (state.stamina)     patchUI({ stamina:      { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
-        if (state.hunger)      patchUI({ hunger:       { value: state.hunger.value } });
+        if (state.resource)    patchUI(vitalsPatch(state.resource));
         if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
         if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory, this.world) });
         if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
@@ -430,8 +429,7 @@ export class VoximGame {
         }
         if (entityId === this.playerId) {
           if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
-          if (state.stamina)   patchUI({ stamina:   { current: state.stamina.current, max: state.stamina.max, exhausted: state.stamina.exhausted } });
-          if (state.hunger)    patchUI({ hunger:    { value: state.hunger.value } });
+          if (state.resource)  patchUI(vitalsPatch(state.resource));
           if (state.equipment) {
             patchUI({ equipment: mapEquipmentToUI(state.equipment) });
             if (this.input) {
@@ -577,9 +575,6 @@ export class VoximGame {
           case "LoreInternalised":
             console.log(`[Event] LoreInternalised entity=${ev.entityId.slice(-6)} fragment=${ev.fragmentId}`);
             if (ev.entityId === this.playerId) pushToast(`Lore absorbed: ${ev.fragmentId}`, "success");
-            break;
-          case "SkillActivated":
-            console.log(`[Event] SkillActivated caster=${ev.casterId.slice(-6)} slot=${ev.slot} effect=${ev.effectType}`);
             break;
           case "ZoneEntered":
             if (ev.playerId === this.playerId) {
@@ -748,15 +743,11 @@ export class VoximGame {
         const swingable = prefab?.components?.["swingable"] as
           | { chain: { light: string; heavy: string }[]; heavyChargeMs: number }
           | undefined;
-        // SwingChain isn't sent via "component removed" deltas — when the
-        // server-side chain ends, the cached index lingers. Treat the
-        // cached index as authoritative only while csm.right_hand is in
-        // a swing state; collapse to 0 when idle (the only chain-step the
-        // press-from-idle path produces).
-        const handNode = player?.characterStateMachine?.layerStates["right_hand"]?.node ?? "idle";
-        const cachedIndex = player?.swingChain?.index ?? 0;
-        const chainIndex = handNode === "idle" ? 0 : cachedIndex;
-        const predicted = this.swingPredictor.predict(pressed, swingable ?? null, chainIndex, performance.now());
+        // Swing chains were folded into the action runtime (T-227) — there's no
+        // client-side chain tracking anymore. Predict a basic swing on press
+        // for responsiveness; chain-step variation arrives via the networked
+        // AnimationState (derived from ActiveActions).
+        const predicted = this.swingPredictor.predict(pressed, swingable ?? null, 0, performance.now());
         if (predicted) this.renderer?.forceLocalAnimation(predicted);
       }
 
@@ -1394,18 +1385,26 @@ function worldClockPhase(ticksElapsed: number, dayLengthTicks: number): string {
 }
 
 /**
+ * Map the local player's Resource component to the HUD vital bars (T-262).
+ * Stamina/hunger come from the keyed scalars; `exhausted` is derived (the
+ * server-side exhausted flag was retired with the Resource primitive).
+ */
+function vitalsPatch(resource: ResourceData): Parameters<typeof patchUI>[0] {
+  const patch: Parameters<typeof patchUI>[0] = {};
+  const s = resource.values.stamina;
+  if (s) patch.stamina = { current: s.value, max: s.max, exhausted: s.value <= 0 };
+  const h = resource.values.hunger;
+  if (h) patch.hunger = { value: h.value };
+  return patch;
+}
+
+/**
  * Map a server LoreLoadoutData into the SkillLoadoutState shape the UI expects.
+ * A slot is the id of a skill ActionDef (or null); cooldowns live in the
+ * server-only ActionCooldowns component and aren't on the wire yet.
  */
 function mapLoreLoadoutToUI(loadout: LoreLoadoutData): SkillLoadoutState {
-  const slots = loadout.skills.map((s, index) => ({
-    index,
-    verb:              s?.verb              ?? "strike",
-    outwardFragmentId: s?.outwardFragmentId ?? null,
-    inwardFragmentId:  s?.inwardFragmentId  ?? null,
-    cooldownTicks:     loadout.skillCooldowns[index] ?? 0,
-    maxCooldownTicks:  0,
-  }));
-  return { slots };
+  return { slots: loadout.skills.map((actionId, index) => ({ index, actionId: actionId ?? null })) };
 }
 
 function getToolType(prefabId: string | undefined, content: ContentService | null): string | undefined {
