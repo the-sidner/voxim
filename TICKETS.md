@@ -6366,3 +6366,23 @@ risks gates landing in walls (worse than the known-wrong-but-safe midpoint).
 
 Done when: a gate sits on its carved corridor and a handed-off player arrives on an open
 cell, verified against the atlas OpenMask.
+
+### T-262 · Network the Resource component (vitals on the wire)
+Effort: S   Status: done   Commit: <pending>
+
+The first step of the client rework, server-side: the HUD (`StatusBars.tsx`,
+`ui_store.ts`) is wired to show stamina/hunger/poise but received nothing — `Resource` went
+server-only at T-238 ("networking is a later add"). This is that add.
+
+- `resourceCodec` + `ResourceData`/`ResourceValue` moved to `@voxim/codecs` (networked codecs
+  are shared); `Resource` def flips to `wireId: ComponentType.resource` (50, fresh slot).
+- Listed in `NETWORKED_DEFS`. Delta churn is bounded by `ResourceSystem` — it only emits a
+  change when the integrated value actually moves and is not bound-clamped, so a rested actor
+  (stamina/poise at max) ships nothing; only hunger/thirst drift and active spend/regen do.
+
+Follow-up (not blocking): quantise sub-unit hunger/thirst drift if the per-tick delta proves
+costly; the client-side consumption (decode `resource`, feed the HUD from `values`) lands with
+the client compile-fix (the rework removes the retired separate stamina/hunger/thirst decode
+paths and reads vitals from `Resource.values`). 259 green.
+
+Done when (server half): the wire carries `Resource`, AoI-filtered, change-gated.

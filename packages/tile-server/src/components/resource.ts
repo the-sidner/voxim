@@ -8,52 +8,26 @@
  * (max is per-entity — seeded at spawn, e.g. heritage-scaled stamina),
  * and dispatches threshold effects.
  *
- * Server-only: there is no resource-bar UI yet (same call `ActiveActions`
- * made at first). Networking is a later add if/when a bar needs it.
+ * Networked (T-262): the client HUD reads the local player's
+ * stamina/hunger/thirst/poise from here. The per-tick delta churn is bounded
+ * — `ResourceSystem` only emits a change when the integrated value actually
+ * moves and isn't bound-clamped, so a rested actor (stamina/poise at max)
+ * ships nothing; only hunger/thirst drift and active spend/regen do. (A future
+ * optimisation could quantise the sub-unit hunger/thirst drift.)
  * Installed at spawn (stamina/hunger/thirst/poise on actors) and by
  * start_buff (buff_timer) / workstations (crafting_timer).
  */
 
 import { defineComponent } from "@voxim/engine";
-import type { Serialiser } from "@voxim/engine";
-import { WireWriter, WireReader } from "@voxim/codecs";
+import { ComponentType } from "@voxim/protocol";
+import { resourceCodec } from "@voxim/codecs";
+import type { ResourceData, ResourceValue } from "@voxim/codecs";
 
-export interface ResourceValue {
-  value: number;
-  max: number;
-}
-
-export interface ResourceData {
-  values: Record<string, ResourceValue>;
-}
-
-const resourceCodec: Serialiser<ResourceData> = {
-  encode(v: ResourceData): Uint8Array {
-    const w = new WireWriter();
-    const entries = Object.entries(v.values);
-    w.writeU8(entries.length);
-    for (const [id, rv] of entries) {
-      w.writeStr(id);
-      w.writeF32(rv.value);
-      w.writeF32(rv.max);
-    }
-    return w.toBytes();
-  },
-  decode(b: Uint8Array): ResourceData {
-    const r = new WireReader(b);
-    const n = r.readU8();
-    const values: Record<string, ResourceValue> = {};
-    for (let i = 0; i < n; i++) {
-      const id = r.readStr();
-      values[id] = { value: r.readF32(), max: r.readF32() };
-    }
-    return { values };
-  },
-};
+export type { ResourceData, ResourceValue };
 
 export const Resource = defineComponent({
   name: "resource" as const,
-  networked: false,
+  wireId: ComponentType.resource,
   codec: resourceCodec,
   default: (): ResourceData => ({ values: {} }),
 });

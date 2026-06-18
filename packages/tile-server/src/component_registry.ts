@@ -158,6 +158,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // ActiveActions changes only when a slot's phase/action changes.
   ActorSlots,
   ActiveActions,
+  // Resource (T-262) — vitals on the wire so the client HUD shows
+  // stamina/hunger/thirst/poise. Server-only until now (T-238); the delta is
+  // change-gated by ResourceSystem so a rested actor ships nothing.
+  Resource,
   // Scene graph (T-215): the Parent hierarchy link. Networked so subtrees
   // (POIs, bones, equipment, buffs) replicate for free. Engine owns the
   // def + codec; wire id 49 is reserved in @voxim/protocol. Inert until
@@ -193,9 +197,7 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // DodgeCooldown removed; T-233 BlockHeld removed — parry window is the
   // held `block` action's ticksInPhase. CombatTimersSystem is gone.)
   // Resource (T-238) — every tick-scalar (stamina/hunger/thirst/poise/…)
-  // lives here. Server-only. Poise folded in at T-238d (the standalone
-  // Poise component is gone).
-  Resource,
+  // lives here. Networked since T-262 — listed in NETWORKED_DEFS above.
   // BuffSpec (T-239) — a buff scene-graph child's modifier data. Server-
   // only. Inert until start_buff spawns one (phase 2b wires the callers).
   BuffSpec,

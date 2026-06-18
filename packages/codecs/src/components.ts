@@ -306,6 +306,44 @@ export const healthCodec: Serialiser<HealthData> = buildCodec<HealthData>({
 // server-only now (combat presence-flags are not networked; the wire carries
 // data, not flags). The def's zero-payload codec is inline in combat.ts.
 
+// ---- Resource (networked T-262) ----------------------------------------------
+// Every tick-scalar an entity carries (stamina/hunger/thirst/poise/…), one
+// component holding `values[id] = { value, max }`. Networked so the client HUD
+// can show vitals (the "resource networking is a later add" from T-238 — now).
+
+export interface ResourceValue {
+  value: number;
+  max: number;
+}
+
+export interface ResourceData {
+  values: Record<string, ResourceValue>;
+}
+
+export const resourceCodec: Serialiser<ResourceData> = {
+  encode(v: ResourceData): Uint8Array {
+    const w = new WireWriter();
+    const entries = Object.entries(v.values);
+    w.writeU8(entries.length);
+    for (const [id, rv] of entries) {
+      w.writeStr(id);
+      w.writeF32(rv.value);
+      w.writeF32(rv.max);
+    }
+    return w.toBytes();
+  },
+  decode(b: Uint8Array): ResourceData {
+    const r = new WireReader(b);
+    const n = r.readU8();
+    const values: Record<string, ResourceValue> = {};
+    for (let i = 0; i < n; i++) {
+      const id = r.readStr();
+      values[id] = { value: r.readF32(), max: r.readF32() };
+    }
+    return { values };
+  },
+};
+
 // ---- ModelRef ---------------------------------------------------------------
 // { modelId: string, scaleX/Y/Z: f32, seed: u32, morphValues: u8 count + (str,f32)... }
 // Note: ModelRefData also has optional materialBindings — not transmitted over the wire
