@@ -6432,7 +6432,7 @@ for cooldown sweeps; clickable activation for mouse users.
 Done when: the action bar shows the loadout with key hints; the hotbar no longer claims keys 1–4.
 
 ### T-265 · Network ActionCooldowns — skill-bar cooldown sweep
-Effort: S   Status: done   Commit: <pending>
+Effort: S   Status: done   Commit: 848ddcc
 
 The skill bar (T-264) showed slots but no cooldown feedback — `ActionCooldowns` (gcd +
 per-action `remaining`) was server-only. Networked it (same pattern as Resource T-262) and drew
