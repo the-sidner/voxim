@@ -1292,7 +1292,7 @@ re-initialises the client world state from the first state message on the new co
 Done when: client seamlessly transitions between tiles on gate crossing.
 
 ### T-256 · Handoff v2: transfer the whole player, not eight components
-Effort: L   Status: todo
+Effort: L   Status: done   Commit: <pending>   (gap 4 split to T-261)
 
 The T-140 handoff ships a partial component list and loses state in four ways (2026-06
 review; same root cause as T-251 — partial entity transfer with no "re-complete" pass):
@@ -1323,6 +1323,29 @@ component-set equality.
 Done when: a player crosses a gate with equipped unique items and continues playing —
 visible, hittable, acting, items intact, fog preserved — and a disconnect mid-handoff
 neither ghosts the entity nor suppresses a later death record.
+
+**Done (gaps 1–3; gap 4 → T-261).** The "done when" maps exactly to gaps 1–3; gap 4 (carved
+gate offset) is split to T-261 because it needs the live render to verify the offset scale.
+
+- **Gaps 1+2 — the data loss.** Handoff rebuilt on the same `SpawnedFrom` re-completion as
+  T-251. `serializePlayer` now carries the player's `prefabId` + position + overlay components
+  **plus the carried unique item entities** (their ItemData/Durability/QualityStamped/… by name)
+  **plus the fog bitmap** (raw bytes — fog's codec is a no-op stub). `restorePlayer(world,
+  content, payload)` restores the item entities, RE-SPAWNS the player through `spawnPrefab`
+  (full shell: ModelRef/Hitbox/ActorSlots/FogState), drops the throwaway starter equipment, then
+  overlays the saved state (Inventory/Equipment now point at the restored items). No more
+  silent gear deletion, no more hollow invisible player. Components travel as decoded data
+  objects keyed by name (JSON-native). admin_server gained a `content` dep for the re-spawn.
+- **Gap 3 — the race + fog.** Both cleanup sites (the tick-sweep and the handleSession
+  finally) now skip an entity whose `handingOff` is set — an in-flight handoff owns its fate, so
+  a mid-fetch disconnect no longer ghosts it / records a wrong death / rewrites last_tile_id.
+  `handedOff` is cleared in the handoff `finally` so a leaked marker can't swallow a later real
+  death. `saveFog` moved before the handed-off early-return; fog also rides in the payload, so a
+  crossing preserves it without depending on account-service timing.
+
+Tests: serialize→restore round-trip (item entity + durability intact, shell re-completed, health/
+position/fog carried, JSON round-tripped) + restore idempotency. 259 green. The gateway-process
+race fixes (gap 3) are reviewed, not integration-tested — no multi-process harness (cf. T-257).
 
 ### T-257 · Multi-process correctness sweep: routing loop, event-log order, regen params, TILE_ID
 Effort: S   Status: done   Commit: 173a3ac
@@ -6324,3 +6347,22 @@ Done when: a manual workflow run produces six ghcr.io tags, the sysadmin
 pulls them on a clean host with only `docker-compose.prod.yml` + `.env`,
 and the stack comes up identically to the dev compose.
 
+
+### T-261 · Place gates + arrivals at the carved corridor offset
+Effort: M   Status: todo
+
+Split from T-256 gap 4. Gates spawn at edge MIDPOINTS (`gatePositionForEdge` /
+`mirrorPosition` use `TILE_SIZE / 2`) while atlas carves the only walkable corridor at the
+shared `gate.offset` (`atlas_terrain.ts:192-205` reads `g.offset` then discards it; the
+`GatePosition` wire type is edge-only). So a gate trigger — and the mirrored arrival point —
+can land in a closed pixel: the gate is physically unreachable, or the handed-off player
+arrives stuck in a wall.
+
+Fix shape: carry the along-edge `offset` on `GatePosition` (scaled atlas-pixels → world units
+via `TILE_SIZE / tile.gridSize`); `gatePositionForEdge` + `mirrorPosition` place along the
+edge at that offset instead of the midpoint. Deferred from T-256 because it needs the live
+multi-process render + an open-pixel check to verify the offset scale — shipping it blind
+risks gates landing in walls (worse than the known-wrong-but-safe midpoint).
+
+Done when: a gate sits on its carved corridor and a handed-off player arrives on an open
+cell, verified against the atlas OpenMask.

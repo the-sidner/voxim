@@ -866,6 +866,7 @@ export class TileServer {
     if (config.adminPort) {
       startAdminServer(config.adminPort, {
         world: this.world,
+        content,
         getCertHashHex: () => this.certHashHex,
         getWtPort: () => this.wtPort,
       });
@@ -1117,6 +1118,11 @@ export class TileServer {
     // Remove disconnected sessions
     for (const [playerId, session] of this.sessions) {
       if (!session.isOpen) {
+        // T-256: an in-flight handoff owns this entity's fate — don't destroy
+        // it out from under the fetch (that ghosts it on the destination).
+        // initiateHandoff destroys + deletes on success; the tile-sweep cleans
+        // it up after the handoff resolves and clears handingOff.
+        if (this.handingOff.has(playerId)) continue;
         this.sessions.delete(playerId);
         this.playerLastZone.delete(playerId);
         if (this.world.isAlive(playerId)) {
@@ -1267,8 +1273,13 @@ export class TileServer {
     const handoffId = crypto.randomUUID();
     const body = serializePlayer(this.world, payload.entityId, dynastyId, payload.destinationTileId, handoffId);
 
-    if (gateLink && body.components.position) {
-      body.components.position = mirrorPosition(body.components.position.z, gateLink.edge);
+    // Land the player just inside the destination's matching gate. Mirror both
+    // the re-spawn coordinates and the Position overlay so spawnPrefab and the
+    // overlay agree.
+    if (gateLink) {
+      const arrival = mirrorPosition(body.z, gateLink.edge);
+      body.x = arrival.x; body.y = arrival.y; body.z = arrival.z;
+      body.player.position = arrival;
     }
 
     // Inform the coordinator (T-139 channel). Best-effort — gateway may
@@ -1326,6 +1337,12 @@ export class TileServer {
       console.error("[TileServer] handoff fetch error:", err);
     }).finally(() => {
       this.handingOff.delete(payload.entityId);
+      // T-256: don't let a handedOff marker outlive the operation. The success
+      // path's own cleanup (destroy + sessions.delete) makes the subsequent
+      // disconnect-cleanup superseded-return before it consumes the marker, so
+      // a leaked entry would later swallow a real death's recordDeath for a
+      // player who returned to this tile.
+      this.handedOff.delete(payload.entityId);
     });
   }
 
@@ -1625,17 +1642,20 @@ export class TileServer {
       console.log(`[TileServer] player ${playerId.slice(0, 8)}: stale session ended (superseded by reconnect)`);
       return;
     }
-    this.sessions.delete(playerId);
-    // Handoff already destroyed the entity + closed the session intentionally
-    // (player moved to another tile). Don't treat that as a death or rewrite
-    // the last_tile_id back to ours; the destination tile owns both now.
-    const wasHandedOff = this.handedOff.delete(playerId);
-    if (wasHandedOff) {
-      console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
+    // T-256: a handoff fetch is in flight — it owns the entity. A disconnect
+    // here must NOT run normal cleanup (that records a wrong death / rewrites
+    // last_tile_id back to ours / ghosts the entity on the destination). The
+    // handoff's success path (destroy + delete) or the tile-sweep (on failure)
+    // cleans up once handingOff clears.
+    if (this.handingOff.has(playerId)) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)}: session ended mid-handoff — handoff owns the entity`);
       return;
     }
+    this.sessions.delete(playerId);
     // Persist fog of war (T-161) before the entity (and its FogState) is
-    // dropped.  Best-effort: errors log but never block disconnect cleanup.
+    // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
+    // run after, so fog was dropped on the rare crossing that reaches here).
+    // Best-effort: errors log but never block disconnect cleanup.
     if (this.accountClient) {
       const fog = this.world.get(playerId, FogState);
       if (fog) {
@@ -1643,6 +1663,14 @@ export class TileServer {
           console.error("[TileServer] fog save failed:", err);
         });
       }
+    }
+    // Handoff already destroyed the entity + closed the session intentionally
+    // (player moved to another tile). Don't treat that as a death or rewrite
+    // the last_tile_id back to ours; the destination tile owns both now.
+    const wasHandedOff = this.handedOff.delete(playerId);
+    if (wasHandedOff) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
+      return;
     }
     if (this.world.isAlive(playerId)) {
       // T-252: take the carried item entities along (players respawn fresh).

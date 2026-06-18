@@ -6,11 +6,14 @@
 import { serveDir } from "@std/http/file-server";
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
+import type { ContentService } from "@voxim/content";
 import { restorePlayer } from "./handoff.ts";
 import { JobBoard, AssignedJobBoard } from "./components/job_board.ts";
 
 export interface AdminServerDeps {
   world: World;
+  /** Content service — handoff restore re-spawns the player through its prefab. */
+  content: ContentService;
   /** Returns the current cert SHA-256 fingerprint (hex). Called per-request. */
   getCertHashHex: () => string;
   /** Returns the current WebTransport port. Called per-request. */
@@ -56,7 +59,7 @@ async function handleAdminRequest(
         if (oldest !== undefined) seenHandoffs.delete(oldest);
       }
       seenHandoffs.set(payload.handoffId, Date.now());
-      restorePlayer(deps.world, payload);
+      restorePlayer(deps.world, deps.content, payload);
       console.log(`[TileServer] received handoff ${payload.handoffId.slice(0, 8)} for player ${payload.playerId}`);
       return Response.json({ type: "handoff_ack", playerId: payload.playerId });
     } catch {
