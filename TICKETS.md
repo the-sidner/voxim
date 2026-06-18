@@ -6368,7 +6368,7 @@ Done when: a gate sits on its carved corridor and a handed-off player arrives on
 cell, verified against the atlas OpenMask.
 
 ### T-262 · Network the Resource component (vitals on the wire)
-Effort: S   Status: done   Commit: <pending>
+Effort: S   Status: done   Commit: 6d07fa4
 
 The first step of the client rework, server-side: the HUD (`StatusBars.tsx`,
 `ui_store.ts`) is wired to show stamina/hunger/poise but received nothing — `Resource` went
