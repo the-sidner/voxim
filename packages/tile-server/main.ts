@@ -33,6 +33,7 @@
  *   deno task tile
  */
 import { TileServer } from "./mod.ts";
+import { ensureFreshDevCert } from "./src/dev_cert.ts";
 import {
   createPool,
   PgAtlasTileInitRepo,
@@ -78,6 +79,14 @@ const serviceSecret  = Deno.env.get("VOXIM_SERVICE_SECRET");
 const databaseUrl    = Deno.env.get("DATABASE_URL");     // undefined → ephemeral
 const dataDir        = Deno.env.get("DATA_DIR");         // undefined → default loader path
 const devMode        = !["0", "false"].includes(Deno.env.get("DEV_MODE") ?? "");
+
+// Self-heal the dev cert: WebTransport requires a current ≤14-day ECDSA cert,
+// so it expires roughly weekly and an expired one fails the handshake with an
+// opaque SSL error. Only when using the default dev path — a deployment that
+// supplies its own TLS_CERT manages its own cert lifecycle.
+if (!Deno.env.get("TLS_CERT")) {
+  await ensureFreshDevCert(certPath, keyPath);
+}
 
 const cert = await Deno.readTextFile(certPath);
 const key  = await Deno.readTextFile(keyPath);

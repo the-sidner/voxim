@@ -21,7 +21,7 @@
   },
   "tasks": {
     "gateway":      "deno run --allow-net --allow-read --allow-env --unstable-net packages/gateway/main.ts",
-    "tile":         "deno run --allow-net --allow-read --allow-write --allow-env --unstable-net packages/tile-server/main.ts",
+    "tile":         "deno run --allow-net --allow-read --allow-write --allow-env --allow-run=openssl --unstable-net packages/tile-server/main.ts",
     "coordinator":  "deno run --allow-net --allow-read --allow-env --unstable-net packages/coordinator/main.ts",
     "ai-manager":   "deno run --allow-net --allow-env packages/ai-manager/main.ts",
     "atlas":        "deno run --allow-net --allow-read --allow-env packages/atlas/main.ts",

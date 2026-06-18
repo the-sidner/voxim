@@ -6467,3 +6467,22 @@ No new wire id — `ActiveActions` was already networked (T-226) for client pred
 bar just consumes it. Bundles clean.
 
 Done when: channelling a non-instant skill shows a filling cast bar that completes as the skill fires.
+
+### T-267 · Auto-regenerate the dev WebTransport cert at boot
+Effort: S   Status: done   Commit: <pending>
+
+The WebTransport `serverCertificateHashes` path requires a current ECDSA P-256 cert valid ≤14
+days. So it expires ~weekly, and a stale cert fails the QUIC handshake with an opaque
+`SSL_ERROR_BAD_CERTIFICATE` / "WebTransport connection rejected" — nothing points at the cert.
+A dev hit exactly this: the on-disk cert was 6+ weeks expired.
+
+- `dev_cert.ts`: `generateDevCert(certPath, keyPath)` (the openssl ECDSA/14-day invocation) +
+  `ensureFreshDevCert` — regenerates if the cert is missing or `openssl x509 -checkend 172800`
+  says it expires within 2 days. No-op when current; warns (not aborts) if openssl is absent.
+- `main.ts` calls it before reading the cert, **only** when `TLS_CERT` is unset (the default dev
+  path) — a deployment that supplies its own cert manages its own lifecycle.
+- `scripts/gen_certs.ts` now delegates to the same `generateDevCert` (one implementation).
+- `deno task tile` granted scoped `--allow-run=openssl` so the self-heal can actually run.
+
+Done when: starting the tile-server with an expired/missing dev cert regenerates it and the
+browser connects. The manual `deno task gen-certs` still works.
