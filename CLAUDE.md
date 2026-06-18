@@ -621,7 +621,19 @@ extracted into separate modules:
 **Component presence as flag** — No `active: boolean` fields. The component existing means the
 thing is happening; absent means it isn't. The action tags (`blocking`, `iframe`,
 `staggered`, `crouched`) are canonical: an action's phase installs the tag on `:enter`
-and clears it on `:exit`; gameplay gates on `world.has(id, Tag)`.
+and clears it on `:exit`; gameplay gates on `world.has(id, Tag)`. Safe because each flag has
+**one writer** and **paired install/clear edges** (the dispatcher fires a phase's `:exit`
+even on cancel/interrupt, so no tag is orphaned); a stale `true` field has no such guard.
+
+Presence-as-flag is a **server-local** idiom: every flag is `networked: false` (the combat
+tags, `CounterReady`, `Airborne`). **Networked presence-flags are abolished** (T-250) — the
+wire carries *data*, the client *derives* presentation from it (stagger/counter render off
+`AnimationState`, not a wire flag). A flag that needs a lifetime gets one from the Resource
+primitive (`CounterReady` ← `counter_window` `cross@0` → `clear_counter_ready`), the same
+mechanism buffs/projectiles use — not a hand-rolled countdown. The wire's `removals` channel
+exists for genuine networked *data*-component removals (a settled item shedding `Velocity`, a
+picked-up item shedding `Position`), built from the changeset op-log's `removals` — "presence
+as flag" is only wire-honest because that channel exists.
 
 **Registry-dispatch over content-defined ids** — Never `switch` on a `kind`/`type`
 field in a system. Dispatch a content-defined string id to a registered handler via

@@ -1,0 +1,9 @@
+{
+  "id": "counter_window",
+  "scope": "entity",
+  "bounds": { "min": 0, "max": 1 },
+  "rate": -20,
+  "thresholds": [
+    { "at": 0, "dir": "below", "edge": "cross", "effect": "clear_counter_ready" }
+  ]
+}

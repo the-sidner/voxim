@@ -86,9 +86,13 @@ export class HealthHitHandler implements HitHandler {
       // A parry hard-staggers the attacker: post a stagger_heavy reaction
       // (the action installs the `staggered` tag for its play phase — that
       // window *is* the old Staggered.ticksRemaining). The parrier opens a
-      // counter window.
+      // counter window: the CounterReady flag plus a `counter_window` Resource
+      // that expires it (cross@0 → clear_counter_ready) if unconsumed — so the
+      // bonus can't latch forever the way it did before T-250.
       world.set(ctx.attackerId, PendingReaction, { actionId: "stagger_heavy" });
       world.set(ctx.targetId, CounterReady, {});
+      const counterTicks = combatCfg.counterWindowTicks;
+      upsertResourceKey(world, ctx.targetId, "counter_window", counterTicks, counterTicks);
       events.publish(TileEvents.DamageDealt, {
         targetId: ctx.targetId,
         sourceId: ctx.attackerId,

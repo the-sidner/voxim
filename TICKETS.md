@@ -4221,7 +4221,7 @@ same-tick hits both subtract health; DoTs stack; engine tests cover set/mutate/r
 interleavings. (Strike criterion → T-259b.)
 
 ### T-250 · Replication: component-removal channel + death events + InputState
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: <pending>
 
 Three gaps where the changeset produces transitions the wire cannot express (2026-06 review):
 
@@ -4241,6 +4241,31 @@ Three gaps where the changeset produces transitions the wire cannot express (202
 Done when: removing a networked component reaches the client as a removal; `EntityDied`
 arrives at sessions that knew the entity; `InputState` is either server-only or actually
 replicates.
+
+**Done (the principled answer to "is presence-as-flag a good idea?"):**
+
+- **Removal channel** — `BinaryStateMessage.removals` (`[uuid, u8 typeId]` per entry,
+  between `deltas` and `destroys`), fed by `buildRemovalMap(changeset.removals)` (the op-log's
+  removals from T-249) → AoI emits per-component removals only for entities that **survive**
+  the prune (a destroyed/left-AoI entity is a whole-entity `destroy`, no redundant removals).
+  Client `ClientWorld.applyRemoval` clears the decoded field + forgets the version. Fixes the
+  real current ghost bugs: `item_physics` removing `Velocity` on settle, `crafting` removing
+  `Position` on pickup — both latched on the client before.
+- **EntityDied** — events now filter against a `knownThisTick` snapshot taken **before** the
+  prune, so a death the same tick the entity despawns still reaches the sessions that knew it.
+- **InputState → server-only** — it has no client consumer (clients reconcile on `ackInputSeq`,
+  render remotes from `AnimationState`) and never produced a delta. Dropped from `NETWORKED_DEFS`;
+  the phantom "delivered via the reliable delta stream" comment is gone. Wire id 5 reserved.
+- **CounterReady → server-only + bounded** — the *last* networked dynamic presence-flag is now
+  server-only (combat flags are not networked; the wire carries data). Its no-expiry latch bug
+  is fixed by a `counter_window` Resource (`cross@0` → `clear_counter_ready`) — the buff/lifetime
+  mechanism, primitives composing. Wire id 37 reserved; `counterReadyCodec` deleted from
+  `@voxim/codecs`. Doctrine recorded in CLAUDE.md: networked presence-flags are abolished.
+
+Tests: removal codec round-trip + stream-resync (protocol); AoI removal emission, destroy-wins
+suppression, EntityDied pre-prune relevance (tile-server); counter_window expiry (tile-server).
+252 green. Client (drifted, pre-existing 24-error baseline) gets the correct `applyRemoval`
+consumer for the upcoming rework; its unrelated drift errors are left for that holistic pass.
 
 ### T-251 · Save/load: complete the entity round-trip
 Effort: L   Status: todo

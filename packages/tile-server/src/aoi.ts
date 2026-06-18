@@ -17,6 +17,7 @@ import type {
   BinaryStateMessage,
   BinaryEntitySpawn,
   BinaryComponentDelta,
+  BinaryComponentRemoval,
   BinaryComponentEntry,
 } from "@voxim/protocol";
 import type { ClientSession } from "./session.ts";
@@ -111,6 +112,7 @@ export function computeSessionUpdate(
   spatial: SpatialGrid,
   playerId: EntityId,
   changedComponents: Map<EntityId, BinaryComponentDelta[]>,
+  removedComponents: Map<EntityId, number[]>,
   worldDestroys: ReadonlySet<EntityId>,
   events: GameEvent[],
   serverTick: number,
@@ -210,6 +212,13 @@ export function computeSessionUpdate(
     }
   }
 
+  // Snapshot the known set BEFORE the prune below. Events (notably
+  // EntityDied) are relevant to a session that knew the entity *this tick*,
+  // even though that same entity is being despawned this tick — filtering
+  // against the post-prune set would make a death the client never sees as
+  // anything but a bare despawn (T-250). Includes this tick's spawns.
+  const knownThisTick = new Set(session.knownEntities);
+
   // ── 3. Destroys: left AoI or world-destroyed ────────────────────────────────
   const destroys: string[] = [];
   const toRemove: EntityId[] = [];
@@ -231,9 +240,22 @@ export function computeSessionUpdate(
     for (const d of entityDeltas) deltas.push(d);
   }
 
+  // ── 4b. Removals: components dropped from entities that REMAIN known ──────────
+  // An entity leaving AoI or destroyed this tick is a whole-entity `destroy`
+  // (handled above) — its per-component removals are redundant, so we only
+  // emit removals for survivors of the prune. The component's wire-ID latches
+  // forever on the client without this (settled item → Velocity, picked-up
+  // item → Position, expiring combat flag).
+  const removals: BinaryComponentRemoval[] = [];
+  for (const [entityId, types] of removedComponents) {
+    if (!session.knownEntities.has(entityId)) continue;
+    if (newlySpawned.has(entityId)) continue;
+    for (const componentType of types) removals.push({ entityId, componentType });
+  }
+
   // ── 5. Events: filter by relevance ───────────────────────────────────────────
   const filteredEvents = events.filter((ev) =>
-    isEventRelevant(ev, playerId, session.knownEntities)
+    isEventRelevant(ev, playerId, knownThisTick)
   );
 
   // ── 6. Fog of war (T-157) ───────────────────────────────────────────────────
@@ -261,6 +283,7 @@ export function computeSessionUpdate(
     ackInputSeq,
     spawns,
     deltas,
+    removals,
     destroys,
     events: filteredEvents,
     fogSnapshot,

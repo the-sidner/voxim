@@ -102,7 +102,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Position,
   Velocity,
   Facing,
-  InputState,
+  // 5 (inputState) retired from the wire (T-250) — server-only now; it never
+  //   produced a delta (every writer uses world.write) and has no client
+  //   consumer (clients reconcile on ackInputSeq, render remotes from
+  //   AnimationState). Listed in ALL_DEFS below.
   Health,
   // 7 (hunger) / 8 (thirst) retired — server-only Resources now (T-238c)
   // 9 (stamina) retired — server-only Resource now (T-238b)
@@ -143,11 +146,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   QualityStamped,
   Stats,
   Provenance,
-  // ── Combat presence-as-flag component (split from the retired
-  //    combatState slot). Networked to surface the counter-ready UI.
-  //    (Staggered is no longer networked — stagger is a reaction action,
-  //    rendered from AnimationState; T-232.)
-  CounterReady,
+  // 37 (counterReady) retired from the wire (T-250) — combat presence-flags
+  //    are server-only now (the wire carries data, not flags; the client
+  //    derives presentation from AnimationState/Health). Listed in ALL_DEFS.
+  //    (Staggered went server-only at T-232 for the same reason.)
   GateLink,
   Name,
   // Action runtime (T-226): networked so the client's mirrored World runs
@@ -176,6 +178,12 @@ export const DEF_BY_TYPE_ID: ReadonlyMap<number, NetworkedComponentDef<any>> =
 export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   ...NETWORKED_DEFS,
   // ── Server-only defs (networked: false) ──────────────────────────────────
+  // InputState (T-250) — the tick's input stimulus; written via world.write,
+  // read by physics/dispatcher/AI. Never on the wire (see NETWORKED_DEFS note).
+  InputState,
+  // CounterReady (T-250) — parry bonus-damage flag; server-only, bounded by
+  // the counter_window Resource. Read by health_hit_handler.
+  CounterReady,
   Hitbox,
   // (Combat counters all retired: T-229 IFrameActive→`iframe` tag &
   // DodgeCooldown removed; T-233 BlockHeld removed — parry window is the

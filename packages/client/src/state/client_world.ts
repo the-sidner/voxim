@@ -11,7 +11,7 @@ import {
   heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
   staminaCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
   blueprintCodec, lightEmitterCodec, darknessModifierCodec,
-  staggeredCodec, counterReadyCodec,
+  staggeredCodec,
   loreLoadoutCodec,
   durabilityCodec, craftingQueueCodec, itemDataCodec,
   workstationBufferCodec, workstationTagCodec,
@@ -24,7 +24,7 @@ import {
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
-  StaggeredData, CounterReadyData,
+  StaggeredData,
   LoreLoadoutData,
   DurabilityData, CraftingQueueData, ItemDataData,
   WorkstationBufferData, WorkstationTagData,
@@ -64,7 +64,6 @@ export interface EntityState {
   lightEmitter?: LightEmitterData;
   darknessModifier?: DarknessModifierData;
   staggered?: StaggeredData;
-  counterReady?: CounterReadyData;
   loreLoadout?: LoreLoadoutData;
   durability?: DurabilityData;
   craftingQueue?: CraftingQueueData;
@@ -239,9 +238,6 @@ export class ClientWorld {
       case ComponentType.staggered:
         entity.staggered = staggeredCodec.decode(data);
         break;
-      case ComponentType.counterReady:
-        entity.counterReady = counterReadyCodec.decode(data);
-        break;
       case ComponentType.loreLoadout:
         entity.loreLoadout = loreLoadoutCodec.decode(data);
         break;
@@ -333,6 +329,26 @@ export class ClientWorld {
       entity.velocity = { x: e.vx, y: e.vy, z: e.vz };
       entity.facing   = { angle: e.facing };
     }
+  }
+
+  /**
+   * Apply a component removal for an entity that REMAINS known (T-250). The
+   * server dropped this component (settled item shedding Velocity, picked-up
+   * item shedding Position, an expiring flag) — clear the decoded field so it
+   * stops driving rendering/UI, and forget its version so a later re-add is
+   * accepted. Whole-entity removal is `applyDestroy`, not this.
+   */
+  applyRemoval(entityId: string, componentType: number): void {
+    const entity = this.entities.get(entityId);
+    if (!entity) return;
+    entity.versions.delete(componentType);
+    const name = COMPONENT_TYPE_TO_NAME.get(componentType);
+    if (!name) return;
+    // Decoded fields on EntityState are keyed by the component name
+    // (entity.position, entity.velocity, …); undecoded ones live in `raw`.
+    // Clear whichever holds it.
+    if (entity.raw.has(name)) entity.raw.delete(name);
+    else delete (entity as unknown as Record<string, unknown>)[name];
   }
 
   applyDestroy(entityId: string): void {

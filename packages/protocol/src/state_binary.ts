@@ -9,6 +9,8 @@
  *       per component: [u8 typeId] [u16 dataLen] [bytes…]
  *   u16  numDeltas
  *     per delta: [uuid16 entityId] [u8 typeId] [u32 version] [u16 dataLen] [bytes…]
+ *   u16  numRemovals
+ *     per removal: [uuid16 entityId] [u8 typeId]
  *   u16  numDestroys
  *     per destroy: [uuid16 entityId]
  *   u16  numEvents
@@ -59,6 +61,11 @@ export interface BinaryComponentDelta {
   data: Uint8Array;       // pre-encoded component bytes
 }
 
+export interface BinaryComponentRemoval {
+  entityId: string;
+  componentType: number;  // u8 from ComponentType
+}
+
 export interface BinaryStateMessage {
   serverTick: number;
   ackInputSeq: number;
@@ -66,6 +73,15 @@ export interface BinaryStateMessage {
   spawns: BinaryEntitySpawn[];
   /** Component changes for already-known entities. */
   deltas: BinaryComponentDelta[];
+  /**
+   * Components removed from an entity that REMAINS known to this client
+   * (e.g. a settled item shedding Velocity, a picked-up item shedding
+   * Position, a combat flag expiring). Without this channel a removed
+   * component latches on the client forever — "component presence as flag"
+   * is only wire-honest because of this list. Whole-entity removal is the
+   * separate `destroys` channel.
+   */
+  removals: BinaryComponentRemoval[];
   /** Entity UUIDs removed from this client's view (world destroy or left AoI). */
   destroys: string[];
   events: GameEvent[];
@@ -331,6 +347,13 @@ export const binaryStateMessageCodec: Serialiser<BinaryStateMessage> = {
       w.writeBytes(d.data);
     }
 
+    // removals (component dropped from a still-known entity)
+    w.writeU16(msg.removals.length);
+    for (const rm of msg.removals) {
+      w.writeUuid(rm.entityId);
+      w.writeU8(rm.componentType);
+    }
+
     // destroys
     w.writeU16(msg.destroys.length);
     for (const id of msg.destroys) {
@@ -397,6 +420,15 @@ export const binaryStateMessageCodec: Serialiser<BinaryStateMessage> = {
       deltas.push({ entityId, componentType, version, data });
     }
 
+    // removals
+    const numRemovals = r.readU16();
+    const removals: BinaryComponentRemoval[] = [];
+    for (let i = 0; i < numRemovals; i++) {
+      const entityId = r.readUuid();
+      const componentType = r.readU8();
+      removals.push({ entityId, componentType });
+    }
+
     // destroys
     const numDestroys = r.readU16();
     const destroys: string[] = [];
@@ -422,6 +454,6 @@ export const binaryStateMessageCodec: Serialiser<BinaryStateMessage> = {
 
     const onlineCount = r.readU16();
 
-    return { serverTick, ackInputSeq, spawns, deltas, destroys, events, fogSnapshot, fogReveals, onlineCount };
+    return { serverTick, ackInputSeq, spawns, deltas, removals, destroys, events, fogSnapshot, fogReveals, onlineCount };
   },
 };

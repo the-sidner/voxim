@@ -9,6 +9,7 @@
   },
   "combat": {
     "counterDamageMultiplier": 1.5,
+    "counterWindowTicks": 40,
     "blockDamageMultiplier": 0.2,
     "blockArcHalfRadians": 1.5707963267948966,
     "knockbackImpulseXY": 5,

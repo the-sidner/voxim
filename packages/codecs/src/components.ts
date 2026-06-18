@@ -302,21 +302,9 @@ export const healthCodec: Serialiser<HealthData> = buildCodec<HealthData>({
 // AnimationState, so it is no longer a wire component. Wire id 36 retired,
 // never reuse.)
 
-// ---- CounterReady -----------------------------------------------------------
-// Marker component — zero payload. Present iff the entity has an open
-// counter-attack window after a successful parry. Cleared by HealthHitHandler
-// when the counter lands (or by a future timer when the window expires).
-
-export type CounterReadyData = Record<never, never>;
-
-export const counterReadyCodec: Serialiser<CounterReadyData> = {
-  encode(_v: CounterReadyData): Uint8Array {
-    return new Uint8Array(0);
-  },
-  decode(_bytes: Uint8Array): CounterReadyData {
-    return {};
-  },
-};
+// CounterReady codec retired (T-250) — the parry bonus-damage flag is
+// server-only now (combat presence-flags are not networked; the wire carries
+// data, not flags). The def's zero-payload codec is inline in combat.ts.
 
 // ---- ModelRef ---------------------------------------------------------------
 // { modelId: string, scaleX/Y/Z: f32, seed: u32, morphValues: u8 count + (str,f32)... }

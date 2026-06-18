@@ -101,6 +101,7 @@ export type {
   BinaryComponentEntry,
   BinaryEntitySpawn,
   BinaryComponentDelta,
+  BinaryComponentRemoval,
   BinaryStateMessage,
 } from "./src/state_binary.ts";
 

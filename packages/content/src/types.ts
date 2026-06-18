@@ -1251,6 +1251,8 @@ export interface GameConfig {
   };
   combat: {
     counterDamageMultiplier: number;
+    /** Ticks an unconsumed counter window survives before clear_counter_ready expires it. */
+    counterWindowTicks: number;
     blockDamageMultiplier: number;
     blockArcHalfRadians: number;
     knockbackImpulseXY: number;

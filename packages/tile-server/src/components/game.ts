@@ -57,10 +57,18 @@ export const Facing = defineComponent({
 // Written immediately at tick start from the drained input ring buffer.
 // Not deferred — it is the stimulus for the tick, not an output of it.
 // All other systems read this as "what the player (or NPC AI) intends this tick."
+//
+// Server-only (T-250): it has no client consumer. A remote player's behaviour
+// reaches clients as the networked AnimationState (derived from ActiveActions);
+// the local client reconciles against `ackInputSeq`, not an echoed input
+// component. It was in NETWORKED_DEFS but every writer uses `world.write`
+// (immediate, bypasses the changeset), so it never produced a delta anyway —
+// the "delivered via the reliable delta stream" claim was a phantom path.
+// wire id 5 (inputState) stays reserved in component_types.ts.
 
 export const InputState = defineComponent({
   name: "inputState" as const,
-  wireId: ComponentType.inputState,
+  networked: false,
   codec: inputStateCodec,
   default: (): InputStateData => ({
     facing: 0,

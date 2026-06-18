@@ -6,8 +6,14 @@
  * the component exists iff the state is active. Absence is the zero state.
  * Never written at spawn.
  *
- *   CounterReady     — parried an attack and has a bonus-damage window open
- *                      (networked: future UI indicator).
+ *   CounterReady     — parried an attack and has a bonus-damage window open.
+ *                      Server-only (T-250): combat presence-flags are not
+ *                      networked — the wire carries data (Health,
+ *                      AnimationState), not flags. The window is bounded by a
+ *                      `counter_window` Resource (cross@0 → clear_counter_ready
+ *                      removes this tag) — the same lifetime mechanism buffs
+ *                      and projectiles use, so an unconsumed counter expires
+ *                      instead of latching forever.
  *
  * The parry window is read from the held `block` action's primary-slot
  * `ticksInPhase` (T-233) — no BlockHeld counter / CombatTimersSystem.
@@ -23,19 +29,19 @@
  */
 import { defineComponent } from "@voxim/engine";
 import type { Serialiser } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import {
-  counterReadyCodec,
-} from "@voxim/codecs";
-import type { CounterReadyData } from "@voxim/codecs";
 
-// ---- CounterReady (networked, zero-payload marker) ------------------------
+const emptyCodec: Serialiser<Record<string, never>> = {
+  encode: () => new Uint8Array(),
+  decode: () => ({}),
+};
+
+// ---- CounterReady (server-only, zero-payload marker) ----------------------
 
 export const CounterReady = defineComponent({
   name: "counterReady" as const,
-  wireId: ComponentType.counterReady,
-  codec: counterReadyCodec,
-  default: (): CounterReadyData => ({}),
+  networked: false,
+  codec: emptyCodec,
+  default: (): Record<string, never> => ({}),
 });
 
 // ---- Airborne (server-only marker) ----------------------------------------
@@ -44,11 +50,6 @@ export const CounterReady = defineComponent({
 // is the sole writer (computes from post-integration position vs terrain) and
 // uses world.write so the same-tick CSM tick reads it without a one-frame
 // lag. Empty payload — presence is the flag.
-
-const emptyCodec: Serialiser<Record<string, never>> = {
-  encode: () => new Uint8Array(),
-  decode: () => ({}),
-};
 
 export const Airborne = defineComponent({
   name: "airborne" as const,

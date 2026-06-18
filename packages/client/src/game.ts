@@ -388,6 +388,10 @@ export class VoximGame {
         this.world.applyDelta(delta);
         updated.add(delta.entityId);
       }
+      for (const rm of msg.removals) {
+        this.world.applyRemoval(rm.entityId, rm.componentType);
+        updated.add(rm.entityId);
+      }
       for (const entityId of msg.destroys) {
         this.world.applyDestroy(entityId);
         this.renderer?.removeEntity(entityId);

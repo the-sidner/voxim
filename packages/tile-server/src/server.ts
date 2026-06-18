@@ -14,7 +14,7 @@
  * self-registration in dev/demo mode (single tile, no gateway).
  */
 import { World, EventBus, newEntityId } from "@voxim/engine";
-import type { EntityId, ChangesetSet } from "@voxim/engine";
+import type { EntityId, ChangesetSet, ChangesetRemoval } from "@voxim/engine";
 import type { AtlasTileInitRepo, AtlasWorldRepo, TileSaveRepo, WorldsRepo } from "@voxim/db";
 import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
@@ -89,6 +89,7 @@ import { resolveRecipeEffect } from "./resources/effects/resolve_recipe.ts";
 import { expireBuffEffect } from "./resources/effects/expire_buff.ts";
 import { destroySelfEffect } from "./resources/effects/destroy_self.ts";
 import { respawnNodeEffect } from "./resources/effects/respawn_node.ts";
+import { clearCounterReadyEffect } from "./resources/effects/clear_counter_ready.ts";
 import { startBuffResolver, buffTickResolver } from "./actions/resolvers/buff.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
@@ -332,6 +333,7 @@ export class TileServer {
     resourceEffects.register(expireBuffEffect);
     resourceEffects.register(destroySelfEffect);
     resourceEffects.register(respawnNodeEffect);
+    resourceEffects.register(clearCounterReadyEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
 
@@ -1035,6 +1037,7 @@ export class TileServer {
       // Build component delta map once (encodes each changed component exactly once).
       // AoI filtering and spawn/despawn logic run per session in computeSessionUpdate.
       const changedComponents = this.buildDeltaMap(changeset.sets);
+      const removedComponents = this.buildRemovalMap(changeset.removals);
       const worldDestroys = new Set(changeset.destroys);
       const aoiRadius = this.content.getGameConfig().network.aoiRadius;
       for (const [playerId, session] of this.sessions) {
@@ -1043,7 +1046,7 @@ export class TileServer {
         const ackInputSeq = inputState?.seq ?? 0;
         const msg = computeSessionUpdate(
           this.world, session, this.spatial, playerId,
-          changedComponents, worldDestroys, events, serverTick, ackInputSeq,
+          changedComponents, removedComponents, worldDestroys, events, serverTick, ackInputSeq,
           aoiRadius, this.sessions.size,
         );
         const payload = binaryStateMessageCodec.encode(msg);
@@ -1090,9 +1093,12 @@ export class TileServer {
     // Paginate across multiple datagrams with the same serverTick.
     if (hasSessions) {
       const PAGE_SIZE = 27;
-      // actions intentionally excluded from wire snapshot — clients receive InputState
-      // via reliable delta stream. snapEntities keeps actions for the server-side
-      // StateHistoryBuffer (lag-compensated block detection), not for the wire format.
+      // actions intentionally excluded from the wire snapshot — a remote
+      // player's behaviour reaches clients as the networked AnimationState
+      // (derived from their ActiveActions), never as raw input. InputState is
+      // server-only (T-250): the client reconciles against `ackInputSeq`, not
+      // an echoed input component. snapEntities keeps actions only for the
+      // server-side StateHistoryBuffer (lag-compensated block detection).
       const snapEntitiesMapped = snapEntities.map((e) => ({
         entityId: e.entityId,
         x: e.x, y: e.y, z: e.z,
@@ -1152,6 +1158,23 @@ export class TileServer {
       } catch {
         // Encoding failure — skip; stale data is better than a crash
       }
+    }
+    return map;
+  }
+
+  /**
+   * Map of entity → networked component wire-IDs removed this tick. The AoI
+   * filter turns these into per-session removals for entities that REMAIN
+   * known (a settled item shedding Velocity, a picked-up item shedding
+   * Position). Server-only removals are dropped — the client never knew them.
+   */
+  private buildRemovalMap(removals: ReadonlyArray<ChangesetRemoval>): Map<EntityId, number[]> {
+    const map = new Map<EntityId, number[]>();
+    for (const entry of removals) {
+      if (!entry.token.networked) continue;
+      let list = map.get(entry.entityId);
+      if (!list) { list = []; map.set(entry.entityId, list); }
+      list.push(entry.token.wireId);
     }
     return map;
   }
@@ -1322,6 +1345,7 @@ export class TileServer {
       ackInputSeq: this.world.get(entityId, InputState)?.seq ?? 0,
       spawns: [],
       deltas: [],
+      removals: [],
       destroys: [],
       events: [{
         type: "GateCrossing" as const,
@@ -1551,7 +1575,7 @@ export class TileServer {
     {
       const initialMsg = computeSessionUpdate(
         this.world, clientSession, this.spatial, playerId,
-        new Map(), new Set(), [], this.tickLoop.currentTick, 0,
+        new Map(), new Map(), new Set(), [], this.tickLoop.currentTick, 0,
         this.content.getGameConfig().network.aoiRadius,
         this.sessions.size,
       );
