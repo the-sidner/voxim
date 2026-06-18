@@ -33,7 +33,7 @@
  *   deno task tile
  */
 import { TileServer } from "./mod.ts";
-import { ensureFreshDevCert } from "./src/dev_cert.ts";
+import { ensureFreshDevCert } from "../../scripts/dev_cert.ts";
 import {
   createPool,
   PgAtlasTileInitRepo,

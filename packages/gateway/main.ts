@@ -35,6 +35,7 @@ import {
   PgTileRepo,
   PgUserTileFogRepo,
 } from "@voxim/db";
+import { ensureFreshDevCert } from "../../scripts/dev_cert.ts";
 
 const port      = parseInt(Deno.env.get("ADMIN_PORT") ?? "8081");
 const wtPort    = parseInt(Deno.env.get("WT_PORT")    ?? "8080");
@@ -47,6 +48,16 @@ const serviceSecret = Deno.env.get("VOXIM_SERVICE_SECRET")
 // Cert hash is returned to clients so they can pin the tile's matching cert
 // via WebTransport serverCertificateHashes. The gateway also uses the same
 // cert + key to terminate TLS for its own service WT listener (T-137).
+//
+// Self-heal the shared dev cert (T-267): the gateway hashes the same
+// ./certs/cert.pem the tile serves, so both must agree on a CURRENT cert.
+// `ensureFreshDevCert` is idempotent, so whichever of gateway/tile boots first
+// regenerates an expired cert and the other reads the same fresh one — no
+// boot-order hash mismatch. Skipped when TLS_CERT is supplied (prod manages it).
+if (!Deno.env.get("TLS_CERT")) {
+  await ensureFreshDevCert(certPath, keyPath);
+}
+
 const cert = await Deno.readTextFile(certPath);
 const key  = await Deno.readTextFile(keyPath);
 

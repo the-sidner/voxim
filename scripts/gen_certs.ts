@@ -13,7 +13,7 @@
  *
  * Output: ./certs/cert.pem and ./certs/key.pem. Requires openssl on PATH.
  */
-import { generateDevCert } from "../packages/tile-server/src/dev_cert.ts";
+import { generateDevCert } from "./dev_cert.ts";
 
 await generateDevCert("certs/cert.pem", "certs/key.pem");
 console.log("Generated certs/cert.pem and certs/key.pem (ECDSA P-256, valid 14 days)");

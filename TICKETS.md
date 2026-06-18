@@ -6479,10 +6479,13 @@ A dev hit exactly this: the on-disk cert was 6+ weeks expired.
 - `dev_cert.ts`: `generateDevCert(certPath, keyPath)` (the openssl ECDSA/14-day invocation) +
   `ensureFreshDevCert` — regenerates if the cert is missing or `openssl x509 -checkend 172800`
   says it expires within 2 days. No-op when current; warns (not aborts) if openssl is absent.
-- `main.ts` calls it before reading the cert, **only** when `TLS_CERT` is unset (the default dev
-  path) — a deployment that supplies its own cert manages its own lifecycle.
-- `scripts/gen_certs.ts` now delegates to the same `generateDevCert` (one implementation).
-- `deno task tile` granted scoped `--allow-run=openssl` so the self-heal can actually run.
+- Both `tile-server/main.ts` AND `gateway/main.ts` call it before reading the cert, **only** when
+  `TLS_CERT` is unset (default dev path). The gateway hashes the same `./certs/cert.pem` the tile
+  serves (dev shares one cert), so both must agree on a current cert — `ensureFreshDevCert` is
+  idempotent, so whichever boots first regenerates and the other reads the same fresh cert (no
+  boot-order hash mismatch). Helper is `scripts/dev_cert.ts` (shared dev tooling, no cross-package
+  dep); `scripts/gen_certs.ts` delegates to the same `generateDevCert`.
+- `tile` + `gateway` tasks granted scoped `--allow-run=openssl` (gateway also `--allow-write`).
 
-Done when: starting the tile-server with an expired/missing dev cert regenerates it and the
-browser connects. The manual `deno task gen-certs` still works.
+Done when: starting the stack with an expired/missing dev cert regenerates it and the browser
+connects, regardless of gateway/tile boot order. The manual `deno task gen-certs` still works.
