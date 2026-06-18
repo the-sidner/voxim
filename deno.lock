@@ -435,7 +435,9 @@
     "https://esm.sh/three@0.167.0": "d074abd55656b9e50e2ef2e48af0c3cbea68a7752a61f21c6b22b69bf2438276",
     "https://esm.sh/three@0.167.0/denonext/examples/jsm/loaders/GLTFLoader.mjs": "db9fa766abf2d670ae14010e62a43248c35bfe2172d2e0e087b73d180bed8f43",
     "https://esm.sh/three@0.167.0/denonext/three.mjs": "c5d60fd5e94ca1e4f7e6849f843ab87d609ed284fbca1e5cffe9d35e4747b9ff",
-    "https://esm.sh/three@0.167.0/examples/jsm/loaders/GLTFLoader.js": "3aa905202883313045ab634a1824b90fd76a09b75d24ccdcd2765abe79ebe3da",
+    "https://esm.sh/three@0.167.0/es2022/examples/jsm/loaders/GLTFLoader.mjs": "db9fa766abf2d670ae14010e62a43248c35bfe2172d2e0e087b73d180bed8f43",
+    "https://esm.sh/three@0.167.0/es2022/three.mjs": "25d5a1f2e3bf8f65a37d1fdfa6545e5bc9eb587220cb2f14f9a912f445100ffb",
+    "https://esm.sh/three@0.167.0/examples/jsm/loaders/GLTFLoader.js": "da69b92b11d6d6c25301d5f1bff86065c4843c5d438c5e3f3fa7eee3e1841b33",
     "https://esm.sh/three@0.184.0/denonext/build/three.core.mjs": "3f5ea85e3ca2d1cbaf8fabbb6c7db9c0d2a89865392a65da4366d5b82301134f",
     "https://esm.sh/three@0.184.0/denonext/webgpu.mjs": "1a71c6777a60fd99427118bca19168f3ceac06d966ca29aa52141a0bd384b911",
     "https://esm.sh/three@0.184.0/webgpu": "635cd4a42aad3f082c4382d77f36444ee32fc18a6b975e92d5db90f1dd7801f7"
