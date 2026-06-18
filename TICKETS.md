@@ -6411,7 +6411,7 @@ Done when: `deno check packages/client/src/game.ts` is clean and `deno task bund
 `game.js`. Both pass. 259 server tests green.
 
 ### T-264 · Skill bar UI — show the player's ability loadout
-Effort: S   Status: done   Commit: <pending>
+Effort: S   Status: done   Commit: 14420ca
 
 The player has skills (`game_config.player.startingSkills` → skill_mend, skill_fireblast) bound
 to keys 1–4 (`ACTION_SKILL_1..4`, sent by intent_translator), and the server activates them via
