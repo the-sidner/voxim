@@ -1292,7 +1292,7 @@ re-initialises the client world state from the first state message on the new co
 Done when: client seamlessly transitions between tiles on gate crossing.
 
 ### T-256 · Handoff v2: transfer the whole player, not eight components
-Effort: L   Status: done   Commit: <pending>   (gap 4 split to T-261)
+Effort: L   Status: done   Commit: 1bfd43f   (gap 4 split to T-261)
 
 The T-140 handoff ships a partial component list and loses state in four ways (2026-06
 review; same root cause as T-251 — partial entity transfer with no "re-complete" pass):
