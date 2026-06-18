@@ -61,6 +61,7 @@ export const ComponentType = {
   actorSlots: 47,
   activeActions: 48,
   resource:           50,  // T-262: vitals (stamina/hunger/thirst/poise) on the wire for the HUD
+  actionCooldowns:    51,  // T-265: per-action cooldowns + GCD for the skill bar sweep
   // 49 (parent) — defined in @voxim/engine/src/scene.ts; engine owns the
   //    scene-graph primitive (co-equal with World), so its wire id lives
   //    there. Reserved here so the numbering map stays visible. Never reuse.

@@ -344,6 +344,41 @@ export const resourceCodec: Serialiser<ResourceData> = {
   },
 };
 
+// ---- ActionCooldowns (networked T-265) ---------------------------------------
+// Per-actor action cooldown state: `gcd` ticks of global cooldown + per-action
+// `remaining[id]`. Networked so the skill bar can draw cooldown sweeps. Only
+// churns during active cooldowns (a brief post-cast window).
+
+export interface ActionCooldownsData {
+  gcd: number;
+  remaining: Record<string, number>;
+}
+
+export const actionCooldownsCodec: Serialiser<ActionCooldownsData> = {
+  encode(v: ActionCooldownsData): Uint8Array {
+    const w = new WireWriter();
+    w.writeU32(v.gcd);
+    const entries = Object.entries(v.remaining);
+    w.writeU16(entries.length);
+    for (const [id, ticks] of entries) {
+      w.writeStr(id);
+      w.writeU32(ticks);
+    }
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): ActionCooldownsData {
+    const r = new WireReader(bytes);
+    const gcd = r.readU32();
+    const count = r.readU16();
+    const remaining: Record<string, number> = {};
+    for (let i = 0; i < count; i++) {
+      const id = r.readStr();
+      remaining[id] = r.readU32();
+    }
+    return { gcd, remaining };
+  },
+};
+
 // ---- ModelRef ---------------------------------------------------------------
 // { modelId: string, scaleX/Y/Z: f32, seed: u32, morphValues: u8 count + (str,f32)... }
 // Note: ModelRefData also has optional materialBindings — not transmitted over the wire

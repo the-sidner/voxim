@@ -6430,3 +6430,22 @@ Wires up the previously-dead skillLoadout state. Bundles clean. Follow-up: netwo
 for cooldown sweeps; clickable activation for mouse users.
 
 Done when: the action bar shows the loadout with key hints; the hotbar no longer claims keys 1–4.
+
+### T-265 · Network ActionCooldowns — skill-bar cooldown sweep
+Effort: S   Status: done   Commit: <pending>
+
+The skill bar (T-264) showed slots but no cooldown feedback — `ActionCooldowns` (gcd +
+per-action `remaining`) was server-only. Networked it (same pattern as Resource T-262) and drew
+the sweep.
+
+- `actionCooldownsCodec` + `ActionCooldownsData` moved to `@voxim/codecs`; `ActionCooldowns` def
+  flips to `wireId: ComponentType.actionCooldowns` (51). It was never in the registry (installed
+  at runtime via mutate, never via prefab) — now in `NETWORKED_DEFS`. Churns only during the
+  brief post-cast cooldown window.
+- Client decodes `actionCooldowns`; game.ts patches `uiState.skillCooldowns` (reactive path, like
+  vitals). `SkillBar` draws a bottom-up dark fill covering the remaining fraction (locked by the
+  larger of the per-action cooldown and the GCD) plus the seconds left — measured against the
+  ActionDef's `cooldownTicks` and `game_config.lore.globalCooldownTicks`.
+
+Done when: casting a skill shows its slot sweep down over its cooldown, and every slot briefly
+dims on the GCD. Bundles clean; 259 server tests green.

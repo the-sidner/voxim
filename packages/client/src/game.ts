@@ -257,6 +257,7 @@ export class VoximGame {
       if (entityId === this.playerId) {
         if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
         if (state.resource)    patchUI(vitalsPatch(state.resource));
+        if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
         if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
         if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory, this.world) });
         if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
@@ -430,6 +431,7 @@ export class VoximGame {
         if (entityId === this.playerId) {
           if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
           if (state.resource)  patchUI(vitalsPatch(state.resource));
+          if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
           if (state.equipment) {
             patchUI({ equipment: mapEquipmentToUI(state.equipment) });
             if (this.input) {

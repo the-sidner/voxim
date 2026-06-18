@@ -836,8 +836,26 @@
   border: var(--hair) solid var(--col-accent);
   padding: var(--hair);
 }
-#ui .skillbar .slot { border: none; }
+#ui .skillbar .slot { border: none; overflow: hidden; }
 #ui .skillbar .slot .slot-glyph { color: var(--col-accent); }
+
+/* Cooldown sweep: a bottom-up dark fill covering the remaining fraction, with
+   the seconds-left centred over the slot. */
+#ui .slot .slot-cd-fill {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+#ui .slot .slot-cd-text {
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+  color: var(--bone);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
 
 /* ── VITALS HUD ─────────────────────────────────────────────── */
 

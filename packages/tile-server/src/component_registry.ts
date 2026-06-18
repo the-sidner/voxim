@@ -36,6 +36,7 @@ import {
   CounterReady,
 } from "./components/combat.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
+import { ActionCooldowns } from "./components/action_cooldowns.ts";
 import { Resource } from "./components/resource.ts";
 import { BuffSpec } from "./components/buff.ts";
 import { Equipment } from "./components/equipment.ts";
@@ -162,6 +163,9 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // stamina/hunger/thirst/poise. Server-only until now (T-238); the delta is
   // change-gated by ResourceSystem so a rested actor ships nothing.
   Resource,
+  // ActionCooldowns (T-265) — per-action cooldowns + GCD so the skill bar
+  // draws cooldown sweeps. Only churns during the brief post-cast window.
+  ActionCooldowns,
   // Scene graph (T-215): the Parent hierarchy link. Networked so subtrees
   // (POIs, bones, equipment, buffs) replicate for free. Engine owns the
   // def + codec; wire id 49 is reserved in @voxim/protocol. Inert until

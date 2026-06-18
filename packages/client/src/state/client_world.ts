@@ -9,7 +9,7 @@ import { ComponentType, COMPONENT_TYPE_TO_NAME } from "@voxim/protocol";
 import {
   positionCodec, velocityCodec, facingCodec,
   heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
-  resourceCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
+  resourceCodec, actionCooldownsCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
   blueprintCodec, lightEmitterCodec, darknessModifierCodec,
   loreLoadoutCodec,
   durabilityCodec, craftingQueueCodec, itemDataCodec,
@@ -21,7 +21,7 @@ import {
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
-  ResourceData,
+  ResourceData, ActionCooldownsData,
   LoreLoadoutData,
   DurabilityData, CraftingQueueData, ItemDataData,
   WorkstationBufferData, WorkstationTagData,
@@ -43,6 +43,8 @@ export interface EntityState {
   health?: HealthState;
   /** All tick-scalars (stamina/hunger/thirst/poise/…) — vitals for the HUD (T-262). */
   resource?: ResourceData;
+  /** Per-action cooldowns + GCD — drives the skill bar sweep (T-265). */
+  actionCooldowns?: ActionCooldownsData;
   heightmap?: HeightmapData;
   materialGrid?: MaterialGridData;
   openMask?: OpenMaskData;
@@ -157,6 +159,9 @@ export class ClientWorld {
       }
       case ComponentType.resource:
         entity.resource = resourceCodec.decode(data);
+        break;
+      case ComponentType.actionCooldowns:
+        entity.actionCooldowns = actionCooldownsCodec.decode(data);
         break;
       case ComponentType.heightmap: {
         const hm = heightmapCodec.decode(data);

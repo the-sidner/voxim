@@ -220,6 +220,8 @@ export interface UIState {
   hotbar:       HotbarState | null;
   stats:        PlayerStatsState | null;
   skillLoadout: SkillLoadoutState | null;
+  /** Local player's live action cooldowns (gcd + per-action), for the skill bar sweep. */
+  skillCooldowns: { gcd: number; remaining: Record<string, number> } | null;
 
   // Active interactions (at most one of each at a time)
   workstation:  WorkstationPanelState | null;
@@ -294,6 +296,7 @@ const _initial: UIState = {
   hotbar:      { slots: Array(8).fill(null) as (null)[], activeIndex: 0 },
   stats:       null,
   skillLoadout: null,
+  skillCooldowns: null,
   workstation: null,
   trader:      null,
   dialogue:    null,
