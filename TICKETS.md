@@ -6409,3 +6409,24 @@ scene-view rework follows.
 
 Done when: `deno check packages/client/src/game.ts` is clean and `deno task bundle` writes
 `game.js`. Both pass. 259 server tests green.
+
+### T-264 · Skill bar UI — show the player's ability loadout
+Effort: S   Status: done   Commit: <pending>
+
+The player has skills (`game_config.player.startingSkills` → skill_mend, skill_fireblast) bound
+to keys 1–4 (`ACTION_SKILL_1..4`, sent by intent_translator), and the server activates them via
+SkillIntentResolver — but nothing rendered them. `uiState.skillLoadout` was computed in game.ts
+and consumed by no component; the player pressed 1–4 blind. The item Hotbar even mislabeled its
+mouse-only slots "1–4", colliding with the skill keys.
+
+- New `SkillBar` (bottom-centre action row): four slots keyed 1–4, each showing the slotted skill
+  ActionDef as a derived label (`skill_mend` → "Mend"; ActionDefs carry no authored name).
+  Display-only — the number keys already activate server-side; cooldowns wait on networking the
+  server-only ActionCooldowns.
+- Item Hotbar moved above the SkillBar and stripped of its misleading 1–4 key labels (it's a
+  mouse-driven consumable quick-bar). Accent-bordered `.skillbar` CSS distinguishes the two rows.
+
+Wires up the previously-dead skillLoadout state. Bundles clean. Follow-up: network ActionCooldowns
+for cooldown sweeps; clickable activation for mouse users.
+
+Done when: the action bar shows the loadout with key hints; the hotbar no longer claims keys 1–4.

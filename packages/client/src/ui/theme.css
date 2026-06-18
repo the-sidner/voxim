@@ -825,6 +825,20 @@
 }
 #ui .hotbar .slot { border: none; }
 
+/* Skill / ability bar — same grid as the hotbar, accented so the action row
+   (keys 1–4) reads distinctly from the item quick-bar stacked above it. */
+#ui .skillbar {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--cell);
+  gap: var(--hair);
+  background: var(--line);
+  border: var(--hair) solid var(--col-accent);
+  padding: var(--hair);
+}
+#ui .skillbar .slot { border: none; }
+#ui .skillbar .slot .slot-glyph { color: var(--col-accent); }
+
 /* ── VITALS HUD ─────────────────────────────────────────────── */
 
 #ui .vitals {

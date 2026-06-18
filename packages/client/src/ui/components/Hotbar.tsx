@@ -11,7 +11,10 @@ export function Hotbar({ onAction }: { onAction: (a: UIAction) => void }) {
 
   return (
     <div class="hotbar interactive" style={{
-      position: "fixed", bottom: "36px", left: "50%",
+      // Stacked above the SkillBar (which owns the 1–4 keys). This is a
+      // mouse-driven consumable quick-bar — no keyboard slot labels, since
+      // those number keys activate skills, not hotbar items.
+      position: "fixed", bottom: "92px", left: "50%",
       transform: "translateX(-50%)",
       zIndex: "var(--z-hud)",
     }}>
@@ -23,7 +26,6 @@ export function Hotbar({ onAction }: { onAction: (a: UIAction) => void }) {
           title={item?.displayName ?? ""}
           onClick={() => item && onAction({ type: "hotbar_use", hotbarSlot: i })}
         >
-          <span class="slot-key">{i + 1}</span>
           {item && (
             <span class="slot-glyph">
               {item.displayName.slice(0, 1).toUpperCase()}

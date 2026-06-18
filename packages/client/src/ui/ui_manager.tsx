@@ -18,6 +18,7 @@ import type { UIAction } from "./ui_actions.ts";
 import { StatusBars }      from "./components/StatusBars.tsx";
 import { PanelBar }        from "./components/PanelBar.tsx";
 import { Hotbar }          from "./components/Hotbar.tsx";
+import { SkillBar }        from "./components/SkillBar.tsx";
 import { EquipmentPanel }  from "./components/EquipmentPanel.tsx";
 import { InventoryPanel }  from "./components/InventoryPanel.tsx";
 import { StatsPanel }      from "./components/StatsPanel.tsx";
@@ -81,6 +82,7 @@ export function UIManager({ onAction }: UIManagerProps) {
 
       {/* Always-visible HUD layer */}
       <StatusBars />
+      <SkillBar />
       <Hotbar onAction={onAction} />
       <PanelBar />
       <Minimap />
