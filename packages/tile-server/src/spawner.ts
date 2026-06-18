@@ -37,6 +37,7 @@ import { Heritage } from "./components/heritage.ts";
 import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
+import { SpawnedFrom } from "./components/spawned_from.ts";
 import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
@@ -422,6 +423,10 @@ export function spawnPrefab(
       if (ov.facing !== undefined) {
         w.write(id, Facing, { angle: ov.facing });
       }
+      // Record the prefab origin so this entity can be re-completed from its
+      // prefab later (save/load restart, tile handoff) without losing the
+      // installers' additions (ModelRef/Hitbox/server-only Resources).
+      w.write(id, SpawnedFrom, { prefabId: prefab.id });
       installVisualShell(w, content, id, prefab, seed);
 
       // Per-prefab animation slot map — copied onto the entity so

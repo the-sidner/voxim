@@ -4268,7 +4268,7 @@ suppression, EntityDied pre-prune relevance (tile-server); counter_window expiry
 consumer for the upcoming rework; its unrelated drift errors are left for that holistic pass.
 
 ### T-251 · Save/load: complete the entity round-trip
-Effort: L   Status: todo
+Effort: L   Status: done   Commit: <pending>
 
 `serialize()` is an allowlist of three queries while spawning is a rich pipeline (visual
 shell, archetype installers, server-only Resources); nothing reconciles the two
@@ -4293,6 +4293,31 @@ SaveManager has zero tests today.
 
 Done when: restart-with-save preserves collision, decoration, workstations and harvestable
 nodes; a corrupt save is rejected without world mutation; the round-trip test passes.
+
+**Done.** The root cause was reconstruction without re-completion. Fixed with a new primitive
++ a format rewrite (v3) — the same shape T-256 (handoff) will reuse:
+
+- **`SpawnedFrom { prefabId }`** (server-only, stamped by `spawnPrefab` on every entity) — the
+  re-completion key. Any entity can now be rebuilt by `spawnPrefab(prefabId, {id, x,y,z})` (which
+  re-runs visual shell + archetype installers + server-only Resources, regenerating the shell
+  deterministically because the entity id — and thus `seed = hash32(id)` — is preserved) then
+  overlaying its mutable state. Replaces the impossible "raw-write a saved component subset".
+- **Format v3** keyed by component **name** (`DEF_BY_NAME`), so server-only state (the respawn /
+  crafting `Resource`) persists next to networked state — save format decoupled from wire format.
+  Two entity kinds: RAW (chunks save the **full** grid set Heightmap+MaterialGrid+OpenMask+KindGrid;
+  WorldClock) raw-written back; PREFAB (fixtures: ResourceNode | WorkstationTag | Blueprint) re-spawned
+  + overlaid. Fixes: walls/water walkable (OpenMask now saved), missing decoration (KindGrid), invisible
+  un-hittable nodes (ModelRef/Hitbox regenerated), permanently-dead nodes (respawn Resource overlaid),
+  vanished workstations/structures (now persisted via their prefab).
+- **Validate-before-mutate** — `deserialize` parses + structurally validates the WHOLE payload first
+  (truncation surfaces as a WireReader over-read; bad magic/version/trailing/count all caught) and only
+  then touches the world. A corrupt save leaves the world untouched so the fresh-boot path runs clean.
+  Content drift (a retired prefab/component id) is skipped per-item, not fatal.
+
+SaveManager went from zero tests to a round-trip suite: chunk full-grid-set, depleted-node
+re-completion (shell + respawn timer), WorldClock, truncated-rejected-without-mutation, bad-magic.
+257 green. (Placed non-workstation props — a lone torch with no fixture marker — are not yet
+persisted; tracked as a follow-up if it bites.)
 
 ### T-252 · Delete TickEventBuffer; prune stale per-entity state; equip-entity leak
 Effort: S   Status: done   Commit: 3635d0b

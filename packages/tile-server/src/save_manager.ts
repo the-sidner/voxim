@@ -2,75 +2,121 @@
  * World persistence — binary payload stored in `tile_saves` (one row per
  * tile_id) via `@voxim/db`'s `TileSaveRepo`.
  *
- * What is saved:
- *   WorldClock                   — so day/night survives restarts
- *   Heightmap + MaterialGrid     — all 256 terrain chunks
- *   Position + ResourceNode      — node positions, hit-point state, respawn timers
+ * The save is the *complete* restart truth for everything the boot path skips
+ * when a save loads (`if (!loaded)` in server.ts): the world clock, every
+ * terrain chunk, and every persistent world fixture. NPCs, players, items,
+ * gates and POI layout are re-derived every boot and deliberately NOT saved.
  *
- * What is NOT saved:
- *   Players     — re-connect and spawn fresh each session
- *   NPCs        — re-spawned from configuration on startup
- *   buffs, cooldowns        — transient per-session state
+ * Two entity shapes (T-251):
+ *
+ *   RAW    — chunks (Heightmap + MaterialGrid + OpenMask + KindGrid) and the
+ *            WorldClock singleton. No prefab; their components ARE their state.
+ *            Saved as a component list, raw-written back verbatim. The full
+ *            grid set matters: a missing OpenMask reads as walkable (POI walls
+ *            become passable), a missing KindGrid drops client decoration.
+ *
+ *   PREFAB — fixtures (resource nodes, workstations, pending blueprints). A
+ *            raw component subset can't reconstruct these: the spawn pipeline
+ *            installs ModelRef/Hitbox/server-only Resources that a node needs
+ *            to be hittable and to respawn. So we save `{prefabId, position,
+ *            mutable-state components}` and on load RE-SPAWN through
+ *            `spawnPrefab` (which re-runs the whole pipeline, regenerating the
+ *            visual shell deterministically from the preserved entity id) then
+ *            OVERLAY the saved mutable state. `SpawnedFrom` carries the prefab
+ *            id; the same re-completion the tile handoff will use (T-256).
+ *
+ * Components are keyed by NAME, resolved through `DEF_BY_NAME`, so server-only
+ * state (the respawn/crafting Resource) persists alongside networked state —
+ * the save format is independent of the wire format.
  *
  * Binary wire format (all little-endian):
  *   u32  magic   = 0x56584D32  ("VXM2")
- *   u32  version = 2
+ *   u32  version = 3
  *   f64  savedAt (ms since epoch)
  *   u32  numEntities
  *   per entity:
- *     bytes[16]  entityId  (UUID, raw bytes)
+ *     u8         kind        (0 = RAW, 1 = PREFAB)
+ *     bytes[16]  entityId    (UUID, raw bytes)
+ *     if kind == PREFAB:
+ *       str      prefabId
+ *       f32 x, f32 y, f32 z  (re-spawn position)
  *     u16        numComponents
  *     per component:
- *       u8       typeId    (from ComponentType enum)
+ *       str      componentName
  *       u16      dataLen
  *       bytes…   componentData
- *
- * Adding a new persisted component:
- *   1. Ensure it has an entry in COMPONENT_REGISTRY (component_registry.ts).
- *   2. Add it to the relevant query in serialize() below.
- *   3. No changes needed to load() — it reads any typeId it recognises.
  */
-import type { World, EntityId } from "@voxim/engine";
+import type { World, EntityId, ComponentDef } from "@voxim/engine";
 import { WireWriter, WireReader } from "@voxim/codecs";
-import { Heightmap, MaterialGrid } from "@voxim/world";
+import { Heightmap, MaterialGrid, OpenMask, KindGrid } from "@voxim/world";
 import type { TileSaveRepo } from "@voxim/db";
+import type { ContentService } from "@voxim/content";
 import { WorldClock } from "./components/world.ts";
 import { Position } from "./components/game.ts";
+import { Resource } from "./components/resource.ts";
 import { ResourceNode } from "./components/resource_node.ts";
-import { DEF_BY_TYPE_ID } from "./component_registry.ts";
+import { SpawnedFrom } from "./components/spawned_from.ts";
+import { Blueprint, WorkstationBuffer, WorkstationTag } from "./components/building.ts";
+import { DEF_BY_NAME } from "./component_registry.ts";
+import { spawnPrefab } from "./spawner.ts";
 
 const SAVE_MAGIC   = 0x56584D32; // "VXM2"
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
+
+const KIND_RAW    = 0;
+const KIND_PREFAB = 1;
+
+/** Full component set persisted for a terrain chunk (RAW). */
+// deno-lint-ignore no-explicit-any
+const CHUNK_DEFS: ReadonlyArray<ComponentDef<any>> = [Heightmap, MaterialGrid, OpenMask, KindGrid];
+
+/** Fixture marker components — an entity carrying any of these is persisted. */
+// deno-lint-ignore no-explicit-any
+const FIXTURE_MARKER_DEFS: ReadonlyArray<ComponentDef<any>> = [ResourceNode, WorkstationTag, Blueprint];
+
+/**
+ * Mutable runtime state overlaid onto a re-spawned fixture. Static prefab data
+ * (ModelRef, Hitbox, WorkstationTag, the slots an actor declares) is NOT here
+ * — spawnPrefab regenerates it. `resource` carries the server-only respawn /
+ * crafting timer; without it a saved-depleted node would never respawn.
+ */
+// deno-lint-ignore no-explicit-any
+const FIXTURE_STATE_DEFS: ReadonlyArray<ComponentDef<any>> = [
+  ResourceNode,
+  Resource,
+  WorkstationBuffer,
+  Blueprint,
+];
 
 interface SavedComponent {
-  typeId: number;
+  name: string;
   data: Uint8Array;
 }
 
-interface SavedEntity {
+interface RawEntity {
+  kind: typeof KIND_RAW;
   entityId: EntityId;
   components: SavedComponent[];
 }
 
-function encodeEntity(
-  entityId: EntityId,
-  components: SavedComponent[],
-  w: WireWriter,
-): void {
-  w.writeUuid(entityId);
-  w.writeU16(components.length);
-  for (const { typeId, data } of components) {
-    w.writeU8(typeId);
-    w.writeU16(data.byteLength);
-    w.writeBytes(data);
-  }
+interface PrefabEntity {
+  kind: typeof KIND_PREFAB;
+  entityId: EntityId;
+  prefabId: string;
+  x: number;
+  y: number;
+  z: number;
+  components: SavedComponent[];
 }
+
+type ParsedEntity = RawEntity | PrefabEntity;
 
 // ---- SaveManager ----
 
 export class SaveManager {
   constructor(
     private readonly repo: TileSaveRepo,
+    private readonly content: ContentService,
     private readonly worldId: string,
     private readonly tileId: string,
   ) {}
@@ -84,46 +130,71 @@ export class SaveManager {
 
   /** Public for tests / future export tools — produces the VXM2 byte payload. */
   serialize(world: World): Uint8Array {
-    const entities: SavedEntity[] = [];
+    const raw: RawEntity[] = [];
+    const prefab: PrefabEntity[] = [];
 
-    // World-state entity (WorldClock)
+    // WorldClock singleton (RAW) — only one.
     for (const { entityId, worldClock } of world.query(WorldClock)) {
-      const components: SavedComponent[] = [
-        { typeId: WorldClock.wireId, data: WorldClock.codec.encode(worldClock) },
-      ];
-      entities.push({ entityId, components });
-      break; // only one world-state entity
+      raw.push({
+        kind: KIND_RAW,
+        entityId,
+        components: [{ name: WorldClock.name, data: WorldClock.codec.encode(worldClock) }],
+      });
+      break;
     }
 
-    // Terrain chunks (Heightmap + MaterialGrid)
-    for (const { entityId, heightmap, materialGrid } of world.query(Heightmap, MaterialGrid)) {
-      entities.push({
+    // Terrain chunks (RAW) — the full grid set.
+    for (const { entityId } of world.query(Heightmap)) {
+      raw.push({ kind: KIND_RAW, entityId, components: collectComponents(world, entityId, CHUNK_DEFS) });
+    }
+
+    // Fixtures (PREFAB) — nodes, workstations, blueprints. De-dup: a
+    // workstation carries both WorkstationTag and (sometimes) a Blueprint
+    // during construction, so collect ids once.
+    const fixtureIds = new Set<EntityId>();
+    for (const def of FIXTURE_MARKER_DEFS) {
+      for (const { entityId } of world.query(def)) fixtureIds.add(entityId);
+    }
+    for (const entityId of fixtureIds) {
+      const sf = world.get(entityId, SpawnedFrom);
+      const pos = world.get(entityId, Position);
+      if (!sf || !pos) {
+        // Can't re-complete without a prefab origin + a world position. A
+        // fixture should always have both; warn rather than silently drop.
+        console.warn(`[SaveManager] fixture ${entityId.slice(-8)} missing SpawnedFrom/Position — not persisted`);
+        continue;
+      }
+      prefab.push({
+        kind: KIND_PREFAB,
         entityId,
-        components: [
-          { typeId: Heightmap.wireId,     data: Heightmap.codec.encode(heightmap) },
-          { typeId: MaterialGrid.wireId,  data: MaterialGrid.codec.encode(materialGrid) },
-        ],
+        prefabId: sf.prefabId,
+        x: pos.x, y: pos.y, z: pos.z,
+        components: collectComponents(world, entityId, FIXTURE_STATE_DEFS),
       });
     }
 
-    // Resource nodes (Position + ResourceNode)
-    for (const { entityId, position, resource_node } of world.query(Position, ResourceNode)) {
-      entities.push({
-        entityId,
-        components: [
-          { typeId: Position.wireId,     data: Position.codec.encode(position) },
-          { typeId: ResourceNode.wireId, data: ResourceNode.codec.encode(resource_node) },
-        ],
-      });
-    }
+    const entities: ParsedEntity[] = [...raw, ...prefab];
 
     const w = new WireWriter();
     w.writeU32(SAVE_MAGIC);
     w.writeU32(SAVE_VERSION);
     w.writeF64(Date.now());
     w.writeU32(entities.length);
-    for (const entity of entities) {
-      encodeEntity(entity.entityId, entity.components, w);
+    for (const e of entities) {
+      w.writeU8(e.kind);
+      w.writeUuid(e.entityId);
+      if (e.kind === KIND_PREFAB) {
+        w.writeStr(e.prefabId);
+        w.writeF32(e.x);
+        w.writeF32(e.y);
+        w.writeF32(e.z);
+      }
+      w.writeU16(e.components.length);
+      for (const c of e.components) {
+        w.writeStr(c.name);
+        w.writeU16(c.data.byteLength);
+        w.writeBytes(c.data);
+      }
     }
     return w.toBytes();
   }
@@ -143,75 +214,145 @@ export class SaveManager {
 
   /** Public for tests / future import tools. */
   deserialize(world: World, bytes: Uint8Array): boolean {
+    // ── Phase 1: parse + validate the WHOLE payload before any world
+    //    mutation. A corrupt / truncated save must leave the world untouched
+    //    so the fresh-boot path can run on a clean slate.
+    let parsed: ParsedEntity[];
+    let savedAt: number;
+    try {
+      const result = this.parse(bytes);
+      if (!result) return false; // bad magic / version — already logged
+      ({ entities: parsed, savedAt } = result);
+    } catch (err) {
+      console.warn(`[SaveManager] corrupt save payload (${(err as Error).message}) — starting fresh`);
+      return false;
+    }
+
+    // ── Phase 2: apply. Structure is validated; unknown prefab/component ids
+    //    (content drifted since save) are skipped per-item, not fatal.
+    for (const e of parsed) {
+      if (e.kind === KIND_PREFAB) {
+        if (!this.content.prefabs.get(e.prefabId)) {
+          console.warn(`[SaveManager] saved fixture references unknown prefab "${e.prefabId}" — skipped`);
+          continue;
+        }
+        spawnPrefab(world, this.content, e.prefabId, { id: e.entityId, x: e.x, y: e.y, z: e.z });
+      } else {
+        world.create(e.entityId);
+      }
+      overlayComponents(world, e.entityId, e.components);
+    }
+
+    console.log(
+      `[SaveManager] loaded binary save v${SAVE_VERSION} from ${new Date(savedAt).toISOString()}`,
+      `| ${parsed.length} entities`,
+    );
+    return true;
+  }
+
+  /**
+   * Read + structurally validate a payload into memory. Returns null for a
+   * non-VXM2 / wrong-version payload (recoverable: start fresh). Throws on
+   * structural corruption (truncation surfaces as a WireReader over-read,
+   * trailing bytes, or a declared/recovered count mismatch) — the caller
+   * turns that into a clean "start fresh" without having touched the world.
+   */
+  private parse(bytes: Uint8Array): { entities: ParsedEntity[]; savedAt: number } | null {
     const r = new WireReader(bytes);
 
     const magic = r.readU32();
     if (magic !== SAVE_MAGIC) {
       console.warn("[SaveManager] not a VXM2 save payload — starting fresh");
-      return false;
+      return null;
     }
-
     const version = r.readU32();
     if (version !== SAVE_VERSION) {
-      console.warn(
-        `[SaveManager] save version mismatch (got ${version}, expected ${SAVE_VERSION}) — starting fresh`,
-      );
-      return false;
+      console.warn(`[SaveManager] save version mismatch (got ${version}, expected ${SAVE_VERSION}) — starting fresh`);
+      return null;
     }
 
     const savedAt     = r.readF64();
     const numEntities = r.readU32();
-    let   loaded      = 0;
+    const entities: ParsedEntity[] = [];
 
     for (let i = 0; i < numEntities; i++) {
+      const kind = r.readU8();
       const entityId = r.readUuid() as EntityId;
-      const numComps = r.readU16();
 
-      const comps: SavedComponent[] = [];
-      for (let j = 0; j < numComps; j++) {
-        const typeId  = r.readU8();
-        const dataLen = r.readU16();
-        const data    = r.readBytes(dataLen);
-        comps.push({ typeId, data });
+      if (kind === KIND_PREFAB) {
+        const prefabId = r.readStr();
+        const x = r.readF32(), y = r.readF32(), z = r.readF32();
+        entities.push({ kind: KIND_PREFAB, entityId, prefabId, x, y, z, components: readComponents(r) });
+      } else if (kind === KIND_RAW) {
+        entities.push({ kind: KIND_RAW, entityId, components: readComponents(r) });
+      } else {
+        throw new Error(`unknown entity kind ${kind} at index ${i}`);
       }
-
-      world.create(entityId);
-      for (const { typeId, data } of comps) {
-        const def = DEF_BY_TYPE_ID.get(typeId);
-        if (!def) continue; // unknown typeId — forward-compatibility skip
-        try {
-          // deno-lint-ignore no-explicit-any — def is NetworkedComponentDef<unknown> at this
-          // point; the decoded value is the correct type by construction (same def owns both
-          // codec and world slot), but TypeScript can't prove it without a generic parameter.
-          world.write(entityId, def, def.codec.decode(data) as any);
-        } catch {
-          console.warn(`[SaveManager] failed to decode component typeId=${typeId} for entity ${entityId}`);
-        }
-      }
-      loaded++;
     }
 
     if (!r.done) {
-      console.warn(
-        `[SaveManager] payload has ${bytes.byteLength - r.offset} trailing bytes after the declared ${numEntities} entities — refusing to use`,
-      );
-      return false;
+      throw new Error(`${bytes.byteLength - r.offset} trailing bytes after ${numEntities} entities`);
     }
-    if (loaded !== numEntities) {
-      console.warn(`[SaveManager] payload declared ${numEntities} entities but only ${loaded} were recovered — refusing to use`);
-      return false;
+    if (entities.length !== numEntities) {
+      throw new Error(`declared ${numEntities} entities but recovered ${entities.length}`);
     }
-
-    console.log(
-      `[SaveManager] loaded binary save v${SAVE_VERSION} from ${new Date(savedAt).toISOString()}`,
-      `| ${loaded} entities`,
-    );
-    return true;
+    return { entities, savedAt };
   }
 
   /** True if a saved snapshot exists for this tile. */
   async exists(): Promise<boolean> {
     const row = await this.repo.get(this.worldId, this.tileId);
     return row !== null;
+  }
+}
+
+// ---- helpers ----
+
+/** Encode every present component from `defs` on `entityId`. */
+function collectComponents(
+  world: World,
+  entityId: EntityId,
+  // deno-lint-ignore no-explicit-any
+  defs: ReadonlyArray<ComponentDef<any>>,
+): SavedComponent[] {
+  const out: SavedComponent[] = [];
+  for (const def of defs) {
+    const value = world.get(entityId, def);
+    if (value === null) continue;
+    out.push({ name: def.name, data: def.codec.encode(value) });
+  }
+  return out;
+}
+
+/** Read one component list from the cursor (shared by RAW and PREFAB). */
+function readComponents(r: WireReader): SavedComponent[] {
+  const n = r.readU16();
+  const out: SavedComponent[] = [];
+  for (let j = 0; j < n; j++) {
+    const name = r.readStr();
+    const dataLen = r.readU16();
+    const data = r.readBytes(dataLen);
+    out.push({ name, data });
+  }
+  return out;
+}
+
+/**
+ * Decode + write each saved component onto an entity. For a PREFAB entity this
+ * runs AFTER spawnPrefab, so it overlays mutable state onto the freshly-built
+ * shell (replacing the installer's fresh ResourceNode with the saved depleted
+ * one, adding the server-only respawn Resource). Unknown names / undecodable
+ * bytes are skipped with a warning — never fatal mid-apply.
+ */
+function overlayComponents(world: World, entityId: EntityId, components: SavedComponent[]): void {
+  for (const { name, data } of components) {
+    const def = DEF_BY_NAME.get(name);
+    if (!def) continue; // component retired since save — forward-compat skip
+    try {
+      // deno-lint-ignore no-explicit-any
+      world.write(entityId, def, def.codec.decode(data) as any);
+    } catch {
+      console.warn(`[SaveManager] failed to decode component "${name}" for entity ${entityId.slice(-8)}`);
+    }
   }
 }

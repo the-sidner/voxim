@@ -766,7 +766,7 @@ export class TileServer {
     // Persistence is scoped per (world_id, tile_id) — switching worlds
     // (rebake) starts that world's tiles fresh.
     if (config.tileSaves) {
-      this.saveManager = new SaveManager(config.tileSaves, atlas.world.id, config.tileId);
+      this.saveManager = new SaveManager(config.tileSaves, content, atlas.world.id, config.tileId);
     }
 
     // Restart-on-bake: every 5s ask the worlds repo for the latest world.

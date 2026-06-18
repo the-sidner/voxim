@@ -60,6 +60,7 @@ import {
   WorkstationTag,
 } from "./components/building.ts";
 import { ResourceNode } from "./components/resource_node.ts";
+import { SpawnedFrom } from "./components/spawned_from.ts";
 import { WorldClock } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
@@ -184,6 +185,9 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // CounterReady (T-250) — parry bonus-damage flag; server-only, bounded by
   // the counter_window Resource. Read by health_hit_handler.
   CounterReady,
+  // SpawnedFrom (T-251) — prefab id stamped by spawnPrefab; the re-completion
+  // key for save/load and tile handoff. Server-only.
+  SpawnedFrom,
   Hitbox,
   // (Combat counters all retired: T-229 IFrameActive→`iframe` tag &
   // DodgeCooldown removed; T-233 BlockHeld removed — parry window is the
