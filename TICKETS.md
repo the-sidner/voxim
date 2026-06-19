@@ -662,14 +662,14 @@ Done when: a dwarf character renders with dwarf skeleton proportions; animations
 ## Item Durability
 
 ### T-086 · Item durability scalar component
-Effort: S   Status: todo   (Durability component+codec+drain exist but inert -- no prefab installs it)
+Effort: S   Status: done   (deriveItemStats.maxDurability + installDurability at spawnEquipEntity & crafting; drain was already live)
 
 Add `Durability: { current: number; max: number }` component to all equippable items at spawn.
 This is independent of material quality — two steel swords can be at different durability states.
 Done when: equipped items have a durability component; it serialises and syncs to client.
 
 ### T-087 · Durability drain from use (combat + crafting)
-Effort: S   Status: todo   (combat drain exists but inert until items carry Durability -- T-086)
+Effort: S   Status: done   (combat resolver drains the equipped item 1/swing -- combat & harvest -- and destroys at 0; live once items carry Durability)
 
 Each successful combat hit with a weapon reduces its durability by a configurable amount.
 Crafting tool use similarly drains the tool. At zero durability, item becomes unusable.

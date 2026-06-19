@@ -42,7 +42,7 @@ import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
-import { Stats } from "./components/instance.ts";
+import { Stats, Durability } from "./components/instance.ts";
 import type {
   ContentService,
   Prefab,
@@ -95,11 +95,19 @@ export function destroyCarriedItemEntities(world: World, holderId: EntityId): vo
  * Create an item entity with no Position (it lives in an equipment slot, not the world).
  * Returns an EquipmentSlot carrying both the new EntityId and the prefabId.
  */
-function spawnEquipEntity(world: World, prefabId: string): import("@voxim/codecs").EquipmentSlot {
+function spawnEquipEntity(world: World, content: ContentService, prefabId: string): import("@voxim/codecs").EquipmentSlot {
   const entityId = newEntityId();
   world.create(entityId);
   world.write(entityId, ItemData, { prefabId, quantity: 1 });
+  installDurability(world, content, entityId, prefabId);
   return { entityId, prefabId };
+}
+
+/** Install a fresh Durability component (full) on a unique item entity if its
+ *  prefab type carries a durability ceiling (T-086). Weapons/tools/armor do. */
+export function installDurability(world: World, content: ContentService, itemId: EntityId, prefabId: string): void {
+  const max = content.deriveItemStats(prefabId).maxDurability;
+  if (max !== undefined && max > 0) world.write(itemId, Durability, { remaining: max, max });
 }
 
 // ---- compound archetype installers ----
@@ -141,7 +149,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   const eq = emptyEquipment();
   for (const [slot, prefabId] of Object.entries(data.startingEquipment ?? {})) {
     if (!prefabId) continue;
-    eq[slot as keyof EquipmentData] = spawnEquipEntity(world, prefabId as string);
+    eq[slot as keyof EquipmentData] = spawnEquipEntity(world, content, prefabId as string);
   }
   world.write(id, Equipment, eq);
 
@@ -200,7 +208,7 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
 
   const eq = emptyEquipment();
   if (template?.weaponItemType) {
-    eq.weapon = spawnEquipEntity(world, template.weaponItemType as string);
+    eq.weapon = spawnEquipEntity(world, content, template.weaponItemType as string);
   }
   world.write(id, Equipment, eq);
 

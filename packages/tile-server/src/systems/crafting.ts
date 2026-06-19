@@ -33,7 +33,7 @@ import { Provenance, QualityStamped, Stats } from "../components/instance.ts";
 import type { ProvenanceData } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
-import { spawnPrefab, spawnGroundStack } from "../spawner.ts";
+import { spawnPrefab, spawnGroundStack, installDurability } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("CraftingSystem");
@@ -489,6 +489,8 @@ export function spawnOutputNear(
     const id = spawnPrefab(world, content, output.itemType, { x, y, z });
     world.write(id, ItemData, { prefabId: output.itemType, quantity: 1 });
     world.write(id, QualityStamped, { quality });
+    installDurability(world, content, id, output.itemType); // T-086
+
     if (computedStats) {
       world.write(id, Stats, { ...computedStats });
     }

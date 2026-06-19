@@ -60,6 +60,10 @@ import { buildRecipeGraph } from "./recipe_graph.ts";
 import type { ContentRegistryReadonly } from "./registry.ts";
 import { ContentRegistry } from "./registry.ts";
 
+/** Default max durability for an equippable/usable item whose prefab doesn't
+ *  declare an explicit `durability` (T-086). */
+const DEFAULT_MAX_DURABILITY = 100;
+
 export interface ContentService {
   // ---- federated registries (T-175) ----
   // Primary access path. Each registry is read-only post-load.
@@ -428,10 +432,16 @@ export class StaticContentStore implements ContentService {
     const weight = c["weight"] as { baseWeight?: number } | undefined;
     const armor = c["armor"] as { reduction?: number; staminaPenalty?: number } | undefined;
     const illuminator = c["illuminator"] as { radius?: number; color?: number; intensity?: number; flicker?: number } | undefined;
-    const tool = c["tool"] as { toolType?: string } | undefined;
-    const swingable = c["swingable"] as { damage?: number } | undefined;
+    const tool = c["tool"] as { toolType?: string; durability?: number } | undefined;
+    const swingable = c["swingable"] as { damage?: number; durability?: number } | undefined;
+    const armorDur = c["armor"] as { durability?: number } | undefined;
 
     const stats: DerivedItemStats = { weight: weight?.baseWeight ?? 1 };
+    // Durability (T-086): equippable/usable items get a per-instance ceiling.
+    // An explicit `durability` on the behaviour component wins; else a default.
+    const explicitDur = swingable?.durability ?? tool?.durability ?? armorDur?.durability;
+    if (explicitDur !== undefined) stats.maxDurability = explicitDur;
+    else if (swingable || tool || armor) stats.maxDurability = DEFAULT_MAX_DURABILITY;
     if (armor?.reduction !== undefined) stats.armorReduction = armor.reduction * quality;
     if (armor?.staminaPenalty !== undefined) stats.staminaRegenPenalty = armor.staminaPenalty;
     // foodValue / waterValue are derived from the item's effect payload

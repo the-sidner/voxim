@@ -216,6 +216,9 @@ export interface DerivedItemStats {
   staminaCostPerSwing?: number;
   toolType?: string;
   harvestPower?: number;
+  /** Max durability for a unique item entity (T-086) — the per-instance Durability ceiling.
+   *  Explicit `durability` on swingable/tool/armor wins; else a default for any equippable item. */
+  maxDurability?: number;
   /** Reduces blueprint ticksRemaining by this amount per hammer swing. */
   buildPower?: number;
   /** Height units removed per shovel swing. Multiplied by terrain.digStep in config. */
