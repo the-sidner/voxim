@@ -6522,7 +6522,7 @@ Done when: the studio animation editor reflects the current animation architectu
 CSM/state-machine or maneuver-runtime remnants, and `build_studio.ts` stays green.
 
 ### T-269 · LightEmitter unequip via component removal, not the zero-intensity sentinel
-Effort: S   Status: done   Commit: <pending>
+Effort: S   Status: done   Commit: f7dc43b
 
 The cleanup T-097 itself called for, now that T-250 shipped the removal channel. When no
 light-emitting item is equipped, `EquipmentSystem._updateLightEmitter` wrote a sentinel
