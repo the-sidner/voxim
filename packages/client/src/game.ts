@@ -27,7 +27,7 @@ import { ForestPropsRenderer } from "./render/forest_props.ts";
 import { WaterRenderer } from "./render/water_renderer.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { makeWorkstationHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, makeTraderHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
@@ -282,6 +282,7 @@ export class VoximGame {
     // Interaction system — entity hover highlight + click dispatch.
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);
     this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
+    this.interactionSystem.register(makeTraderHandler((entityId) => this._openTrader(entityId)));
     this.interactionSystem.register(resourceNodeHandler);
     this.interactionSystem.register(makeGroundItemHandler((entityId) =>
       this._sendCommand({ cmd: CommandType.PickUp, entityId }),
@@ -459,6 +460,12 @@ export class VoximGame {
         if (uiState.value.workstation?.entityId === entityId) {
           this._mirrorWorkstationToUi(entityId);
         }
+        // Trade panel: refresh when the open trader's stock OR the player's
+        // inventory (coins/goods) changes, so prices and the sell list stay live.
+        const traderId = uiState.value.trader?.npcId;
+        if (traderId && (entityId === traderId || entityId === this.playerId)) {
+          this._mirrorTraderToUi(traderId);
+        }
       }
 
       // Workstation panel cleanup: if the entity left AoI / was destroyed,
@@ -467,6 +474,10 @@ export class VoximGame {
       const wsId = uiState.value.workstation?.entityId;
       if (wsId && msg.destroys.includes(wsId)) {
         closePanel("workstation");
+      }
+      const trId = uiState.value.trader?.npcId;
+      if (trId && msg.destroys.includes(trId)) {
+        closePanel("trader");
       }
 
       if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
@@ -900,6 +911,68 @@ export class VoximGame {
   }
 
   /**
+   * Open the trade panel for a nearby trader NPC (T-075). Builds buy/sell offers
+   * from the trader's networked `traderInventory.listings`: buy lists every
+   * listing (with live stock), sell lists only the listings the player currently
+   * holds. Both buttons dispatch the listing-slot index — the TraderSystem keys
+   * buy and sell by the same slot.
+   */
+  private _openTrader(entityId: string): void {
+    const tr = this.world.get(entityId);
+    if (!tr?.traderInventory || !tr.position) return;
+    const me = this.playerId ? this.world.get(this.playerId) : null;
+    if (!me?.position) return;
+    const dx = me.position.x - tr.position.x;
+    const dy = me.position.y - tr.position.y;
+    if (dx * dx + dy * dy > 3 * 3) {
+      pushToast("Too far away", "warn");
+      return;
+    }
+    this._mirrorTraderToUi(entityId);
+    openPanel("trader");
+  }
+
+  /**
+   * Snapshot a trader's catalogue + the player's coins/holdings into uiState.
+   * Called on open and on every state-message touching the open trader or the
+   * player entity, so the panel reflects stock + coin changes without polling.
+   */
+  private _mirrorTraderToUi(entityId: string): void {
+    const tr = this.world.get(entityId);
+    if (!tr?.traderInventory) return;
+    const me = this.playerId ? this.world.get(this.playerId) : null;
+
+    const currency = this.contentService?.getGameConfig().trade.currencyItemType ?? "coins";
+    const nameOf = humanizeItemType;
+
+    // Tally stackable holdings by prefabId (coins + sellable goods are stacks).
+    const held = new Map<string, number>();
+    for (const s of me?.inventory?.slots ?? []) {
+      if (s.kind === "stack") held.set(s.prefabId, (held.get(s.prefabId) ?? 0) + s.quantity);
+    }
+
+    const listings = tr.traderInventory.listings;
+    patchUI({
+      trader: {
+        npcId: entityId,
+        npcName: tr.name?.value ?? "Trader",
+        playerCoins: held.get(currency) ?? 0,
+        buyOffers: listings.map((l, slot) => ({
+          slot, itemType: l.itemType, displayName: nameOf(l.itemType),
+          priceCoin: l.buyPrice, stock: l.stock < 0 ? null : l.stock,
+        })),
+        sellOffers: listings.flatMap((l, slot) => {
+          const have = held.get(l.itemType) ?? 0;
+          return have < 1 ? [] : [{
+            slot, itemType: l.itemType, displayName: nameOf(l.itemType),
+            priceCoin: l.sellPrice, stock: have,
+          }];
+        }),
+      },
+    });
+  }
+
+  /**
    * Snapshot the open workstation's networked state into uiState so the panel
    * stays purely reactive on the signal. Called both on initial open and on
    * every state-message that touches the open station.
@@ -1200,12 +1273,18 @@ export class VoximGame {
         break;
       }
 
+      case "trade_buy":
+        this._sendCommand({ cmd: CommandType.TradeBuy, listingSlot: action.slot });
+        break;
+
+      case "trade_sell":
+        this._sendCommand({ cmd: CommandType.TradeSell, inventorySlot: action.slot });
+        break;
+
       // Not yet implemented — log for discoverability during development.
       case "split_stack":
       case "hotbar_assign":
       case "hotbar_use":
-      case "trade_buy":
-      case "trade_sell":
       case "dialogue_choice":
       case "dialogue_close":
       case "rebind_key":

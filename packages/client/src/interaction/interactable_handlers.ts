@@ -32,6 +32,23 @@ export function makeWorkstationHandler(
 }
 
 /**
+ * Trader NPCs. Identified by the `traderInventory` networked component. Click
+ * opens the trade panel for that entity, gated on the player being within
+ * `interactionRange` blocks (the server enforces `trade.rangeWorldUnits` too).
+ */
+export function makeTraderHandler(
+  open: (entityId: string) => void,
+): EntityInteractionHandler {
+  return {
+    id: "trader",
+    priority: 10,
+    interactionRange: 3,
+    canHandle: (t) => t.entityState.traderInventory !== undefined,
+    onClick: (t) => { open(t.entityId); return true; },
+  };
+}
+
+/**
  * Harvestable resource nodes — trees, rocks, ore veins, bushes, etc.
  * Identified by the "resource_node" networked component.
  * Gathering is driven by the server via the interact action; click falls through.

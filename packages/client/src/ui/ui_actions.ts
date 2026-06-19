@@ -27,9 +27,9 @@ export type UIAction =
   | { type: "load_workstation"; inventorySlot: number; bufferSlot: number }
   | { type: "take_workstation"; bufferSlot: number }
 
-  // Trading
-  | { type: "trade_buy";  itemType: string; quantity: number }
-  | { type: "trade_sell"; inventorySlot: number; quantity: number }
+  // Trading — `slot` is the index into the trader's listings (server keys both by listing slot)
+  | { type: "trade_buy";  slot: number }
+  | { type: "trade_sell"; slot: number }
 
   // Dialogue
   | { type: "dialogue_choice"; npcId: string; choiceIndex: number }

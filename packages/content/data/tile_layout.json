@@ -5,7 +5,19 @@
     { "prefabId": "workbench",      "x": 261, "y": 256, "z": 4.0 },
     { "prefabId": "campfire",       "x": 259, "y": 258, "z": 4.0 }
   ],
-  "npcs": [],
+  "npcs": [
+    {
+      "prefabId": "merchant",
+      "x": 254, "y": 256,
+      "name": "Edda the Trader",
+      "traderListings": [
+        { "itemType": "berries",    "buyPrice": 3,  "sellPrice": 1,  "stock": -1 },
+        { "itemType": "cloth",      "buyPrice": 6,  "sellPrice": 2,  "stock": -1 },
+        { "itemType": "iron_ingot", "buyPrice": 12, "sellPrice": 5,  "stock": 10 },
+        { "itemType": "iron_sword", "buyPrice": 45, "sellPrice": 22, "stock": 2 }
+      ]
+    }
+  ],
   "proceduralNodes": true,
   "proceduralNpcs": true
 }

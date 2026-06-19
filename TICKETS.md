@@ -556,11 +556,20 @@ the ritual without hard-coding it.
 Done when: death triggers the heir flow; heir spawns at workbench and can complete the ritual.
 
 ### T-075 · Trader interaction UI
-Effort: S   Status: todo   (TraderPanel renders; buy/sell not dispatched to server)
+Effort: M   Status: done   (full interaction flow: decode→handler→panel→dispatch; merchant placed; verified end-to-end via testplay harness)
 
 When interacting with a trader NPC, show a buy/sell panel: trader's goods + prices on one side,
 player's inventory on the other. Transaction deducts/adds physical coin items (T-031).
 Done when: player can buy and sell items with a trader NPC via a UI panel.
+
+Landed: client now decodes the networked `traderInventory`; `makeTraderHandler` opens the panel
+on interact (range-gated); `_openTrader`/`_mirrorTraderToUi` build buy offers (all listings, live
+stock) + sell offers (listings the player holds), refreshed on every state-message touching the
+trader or player; `trade_buy`/`trade_sell` UIActions dispatch `TradeBuy`/`TradeSell` by listing
+slot (the server keys both by slot). `Btn` widened to accept `disabled`. A stationary merchant
+("Edda the Trader", `wanderRadius: 0`) was placed near spawn in `tile_layout.json`. Verified with
+`scripts/testplay.mjs`: buy berries → coins −3, berries +1, server `buy:` log; sell → coins +1,
+berries −1, server `sell:` log; panel screenshot confirms both columns render.
 
 ### T-076 · Job board UI
 Effort: M   Status: todo

@@ -221,7 +221,7 @@ export function Btn({
   class: cls,
   children,
   ...rest
-}: { kind?: BtnKind; active?: boolean } & JSX.HTMLAttributes<HTMLButtonElement>) {
+}: { kind?: BtnKind; active?: boolean; disabled?: boolean } & JSX.HTMLAttributes<HTMLButtonElement>) {
   const variant = kind === "default" ? "" : `btn--${kind}`;
   return (
     <button

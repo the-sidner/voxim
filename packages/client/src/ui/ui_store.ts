@@ -114,6 +114,7 @@ export interface WorkstationPanelState {
 // ── Trader ─────────────────────────────────────────────────────────────────────
 
 export interface TraderOffer {
+  slot:        number;          // index into the trader's listings (the buy/sell command's slot)
   itemType:    string;
   displayName: string;
   priceCoin:   number;

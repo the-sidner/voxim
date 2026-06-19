@@ -17,6 +17,7 @@ import {
   statsCodec, provenanceCodec,
   gateLinkCodec,
   nameCodec,
+  traderInventoryCodec,
 } from "@voxim/codecs";
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
@@ -28,6 +29,7 @@ import type {
   StatsData, ProvenanceData,
   GateLinkData,
   NameData,
+  TraderInventoryData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
@@ -64,6 +66,8 @@ export interface EntityState {
   itemData?: ItemDataData;
   workstationBuffer?: WorkstationBufferData;
   workstationTag?: WorkstationTagData;
+  /** Trader catalogue — drives the trade panel when the player interacts (T-075). */
+  traderInventory?: TraderInventoryData;
   stats?: StatsData;
   provenance?: ProvenanceData;
   worldClock?: WorldClockState;
@@ -243,6 +247,9 @@ export class ClientWorld {
         break;
       case ComponentType.workstationTag:
         entity.workstationTag = workstationTagCodec.decode(data);
+        break;
+      case ComponentType.traderInventory:
+        entity.traderInventory = traderInventoryCodec.decode(data);
         break;
       case ComponentType.stats:
         entity.stats = statsCodec.decode(data);

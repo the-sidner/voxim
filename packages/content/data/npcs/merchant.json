@@ -4,7 +4,7 @@
   "maxHealth": 60,
   "fleeHealthRatio": 0.5,
   "behaviorTreeId": "passive",
-  "wanderRadius": 8,
+  "wanderRadius": 0,
   "wanderTicks": 120,
   "idleTicks": 100,
   "fleeTicks": 60,

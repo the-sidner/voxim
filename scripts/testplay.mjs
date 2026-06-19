@@ -82,6 +82,17 @@ for (const [kind, code, ms] of (process.env.STEPS ? JSON.parse(process.env.STEPS
 const after = await posOf();
 console.log('pos', JSON.stringify(before), '->', JSON.stringify(after));
 
+// EVAL: run an arbitrary probe in page context after join. Body is a function
+// body string with `game` (= globalThis._voxim_game) in scope; may be async.
+if (process.env.EVAL) {
+  const r = await page.evaluate((src) => {
+    const fn = new Function('game', 'return (async () => {' + src + '\n})()');
+    return fn(globalThis._voxim_game);
+  }, process.env.EVAL).catch((e) => ({ evalError: String(e) }));
+  console.log('EVAL →', JSON.stringify(r));
+  await page.waitForTimeout(700); // let any dispatched command round-trip
+}
+
 await page.waitForTimeout(1200);
 await page.screenshot({ path: OUT });
 
