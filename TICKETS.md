@@ -745,12 +745,22 @@ Crafting tool use similarly drains the tool. At zero durability, item becomes un
 Done when: weapons and tools degrade from use; reaching zero makes them inoperable.
 
 ### T-088 · Durability repair via crafting workstation
-Effort: S   Status: todo
+Effort: S   Status: done   (repair recipe step-handler restores durability + consumes material; unit-tested)
 
 Add a repair recipe type: item + repair material → restored durability. Repair at the
 appropriate workstation (anvil for metal, workbench for wood). Repair restores a fixed amount,
 not full — repeated repairs compound material cost.
 Done when: player can repair a degraded item at a workstation to partially restore durability.
+
+Landed: new `repair` recipe step-handler (`steps/repair_step.ts`, registered in
+`registerBuiltinSteps` — one handler file + one `register()`, the doctrine). On a hit at the recipe's
+`stationType` with a `stepType: "repair"` recipe selected, it finds the worn unique Durability item in
+the buffer, verifies + consumes the recipe's material inputs (reusing `tryAssignRoles` +
+`consumeFromBuffer`), and adds `repairAmount` to the item's `remaining` capped at max — the item is
+kept, only materials are spent, so repeated repairs compound the material cost without overfilling.
+`RecipeStepType` gains `"repair"`; `Recipe.repairAmount?` added; `data/recipes/repair_metal.json`
+(anvil + iron_ingot → +40, hammer-gated). Unit-tested: restore+consume+keep, max cap, no-material
+no-op, wrong-tool no-op, full-item left alone.
 
 ---
 

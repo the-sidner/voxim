@@ -1,0 +1,12 @@
+{
+  "id": "repair_metal",
+  "stepType": "repair",
+  "stationType": "anvil",
+  "requiredTools": ["hammer"],
+  "inputs": [
+    { "itemType": "iron_ingot", "role": "material", "quantity": 1 }
+  ],
+  "outputs": [],
+  "ticks": 0,
+  "repairAmount": 40
+}

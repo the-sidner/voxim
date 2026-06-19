@@ -409,7 +409,7 @@ export interface RecipeOutput {
  *   "time"     — timer starts when inputs are placed; output when ticks reach 0.
  *   "assembly" — player selects a recipe explicitly, then attacks with a requiredTool.
  */
-export type RecipeStepType = "attack" | "time" | "assembly";
+export type RecipeStepType = "attack" | "time" | "assembly" | "repair";
 
 /**
  * A crafting recipe.
@@ -443,6 +443,14 @@ export interface Recipe {
   chainNextRecipeId?: string;
   /** Timer length at 20 Hz. 0 for instant "attack" steps. */
   ticks: number;
+  /**
+   * Durability points restored to the repaired item per resolve, for
+   * `stepType: "repair"` recipes (T-088). The recipe's `inputs` are the repair
+   * materials (consumed); the item being repaired is the unique Durability-
+   * bearing item in the buffer (kept, not consumed). Capped at the item's max,
+   * so repeated repairs compound the material cost without ever overfilling.
+   */
+  repairAmount?: number;
 }
 
 // ---- weapon actions ----
