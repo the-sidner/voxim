@@ -190,12 +190,21 @@ Done when: a forging job tagged for smiths is only taken by NPCs whose archetype
 satisfy it; non-matching NPCs skip to a lower-priority job.
 
 ### T-043 · NPC social idle behaviour
-Effort: S   Status: todo
+Effort: S   Status: done   (idle NPCs drift toward a nearby fellow → emergent clustering; unit-tested)
 
 When an NPC's job queue is empty, rather than standing idle, it wanders within a home range and
 occasionally emits a `SocialIdle` event. Nearby NPCs react by moving closer briefly. Simple,
 low-cost — flavour over simulation.
 Done when: idle NPCs appear to socialise with nearby NPCs rather than standing frozen.
+
+Landed via an **emergent** model rather than the broadcast-event one — simpler and reads the same:
+`set_job_default` now, `socialIdleChance` (0.35) of the time, drifts a mobile idle NPC toward the
+nearest fellow within `socialScanRadius` (12u), stopping ~1.5u short so they gather *around* each
+other. When several idle NPCs each seek their nearest neighbour they converge into loose clusters —
+"socialising" — without any SocialIdle event or reaction plumbing. Gated on `wanderRadius > 0`, so
+stationary vendors (the merchant at its stall) never wander off. New `findNearestNpc` helper;
+`socialIdleChance` + `socialScanRadius` config. Unit-tested: nearest-fellow selection (excl.
+self/players/out-of-range), mobile drift toward a fellow, stationary NPCs staying put.
 
 ### T-144 · NPC ground-drop pickup pathway
 Effort: S   Status: done   (gather_resource collect phase; chop → sweep its drops → next node; unit-tested)

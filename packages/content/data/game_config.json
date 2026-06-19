@@ -197,6 +197,8 @@
     "attackReplanDistSq": 16.0,
     "replanBudgetPerTick": 16,
     "seekScanRadius": 48,
+    "socialIdleChance": 0.35,
+    "socialScanRadius": 12,
     "maxStamina": 80
   }
 }

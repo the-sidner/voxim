@@ -107,6 +107,34 @@ export function findNearestNonNpc(
 }
 
 /**
+ * Nearest *other* NPC within `maxDistSq` (excludes self and non-NPCs). Drives
+ * social-idle clustering (T-043): an idle NPC drifts toward a neighbour so a
+ * cluster forms and reads as socialising rather than milling at random.
+ */
+export function findNearestNpc(
+  spatial: SpatialGrid,
+  world: World,
+  selfId: EntityId,
+  px: number,
+  py: number,
+  maxDistSq: number,
+): EntityId | null {
+  const candidates = spatial.nearby(px, py, Math.sqrt(maxDistSq));
+  let best: EntityId | null = null;
+  let bestDistSq = maxDistSq;
+  for (const entityId of candidates) {
+    if (entityId === selfId) continue;
+    if (!world.get(entityId, NpcTag)) continue;
+    const pos = world.get(entityId, Position);
+    if (!pos) continue;
+    const dx = pos.x - px; const dy = pos.y - py;
+    const dSq = dx * dx + dy * dy;
+    if (dSq < bestDistSq) { bestDistSq = dSq; best = entityId; }
+  }
+  return best;
+}
+
+/**
  * Unified NPC threat detection (T-016 visual + T-014 auditory = T-015). A target
  * within `aggroRangeSq` is detected if ANY sense fires:
  *   - **sight**  — inside the forward cone (`facing` ± `coneHalfAngle`); full range.

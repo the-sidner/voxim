@@ -1527,6 +1527,12 @@ export interface GameConfig {
     replanBudgetPerTick: number;
     /** Radius (world units) used for food/water/target spatial scans. */
     seekScanRadius: number;
+    /** Chance (0..1) that an idle NPC drifts toward a nearby fellow instead of
+     * wandering at random, so idle NPCs cluster and read as socialising (T-043). */
+    socialIdleChance: number;
+    /** Radius (world units) within which an idle NPC looks for a fellow to
+     * gather near (T-043). Small — only close neighbours socialise. */
+    socialScanRadius: number;
   };
 }
 
