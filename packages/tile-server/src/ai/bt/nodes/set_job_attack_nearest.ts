@@ -7,7 +7,7 @@
  *                   in the same tick.
  */
 import type { BTNode, BTNodeFactory, BTContext, BTOutput, NodeResult } from "../behavior_tree.ts";
-import { findNearestThreatInArc } from "../../plan_helpers.ts";
+import { findDetectedThreat } from "../../plan_helpers.ts";
 import { Facing } from "../../../components/game.ts";
 
 export const setJobAttackNearestFactory: BTNodeFactory = {
@@ -15,14 +15,16 @@ export const setJobAttackNearestFactory: BTNodeFactory = {
   build(): BTNode {
     return {
       tick(ctx: BTContext, out: BTOutput): NodeResult {
-        // Directional detection (T-016): full range in the forward cone, a much
-        // shorter radius behind, so the NPC can be flanked while unaware.
+        // Unified detection (T-015): sight (forward cone) + hearing (target
+        // noise × proximity) + a short proximity sense. Frontal approach always
+        // caught; a quiet croucher can flank; a sprinter behind is heard.
         const facing = ctx.world.get(ctx.entityId, Facing)?.angle ?? 0;
-        const target = findNearestThreatInArc(
+        const target = findDetectedThreat(
           ctx.spatial, ctx.world, ctx.entityId, ctx.pos.x, ctx.pos.y, facing,
           ctx.tuning.aggroRangeSq,
           ctx.defaults.aggroConeHalfAngle,
           ctx.tuning.aggroRangeSq * ctx.defaults.aggroRearRangeRatio,
+          ctx.defaults.aggroAuditoryThreshold,
         );
         if (target) {
           out.replaceCurrent = {

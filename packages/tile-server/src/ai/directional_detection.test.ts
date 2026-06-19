@@ -1,69 +1,66 @@
 /**
- * Directional NPC threat detection (T-016): an NPC sees a target at full
- * `aggroRangeSq` only inside its forward cone; behind/flanking it only sees a
- * much shorter `rearRangeSq`. Frontal approach is always caught; flanking an
- * unaware NPC is viable.
+ * Unified NPC threat detection (T-016 sight + T-014/T-015 hearing). A target is
+ * detected within aggro range when ANY sense fires: sight (forward cone),
+ * hearing (noise × proximity ≥ threshold), or proximity (very close, any way).
  */
 import { assert, assertEquals } from "jsr:@std/assert";
 import { World, newEntityId } from "@voxim/engine";
 import { Position, Health } from "../components/game.ts";
+import { NoiseLevel } from "../components/noise.ts";
 import { SpatialGrid } from "../spatial_grid.ts";
-import { findNearestThreatInArc } from "./plan_helpers.ts";
+import { findDetectedThreat } from "./plan_helpers.ts";
 
-// game_config values under test.
-const AGGRO_SQ = 225;          // 15 units frontal
+const AGGRO_SQ = 225;          // 15 units
 const CONE = 1.2217;           // ±70°
-const REAR_SQ = AGGRO_SQ * 0.08; // ≈ 4.24 units behind
+const REAR_SQ = AGGRO_SQ * 0.08; // ≈ 4.24 units
+const HEAR = 0.15;             // auditory threshold
 
-// NPC stands at (100,100) facing +x (angle 0).
-const NX = 100, NY = 100, FACING = 0;
+const NX = 100, NY = 100, FACING = 0; // NPC at (100,100) facing +x
 
-function scan(targets: Array<{ x: number; y: number }>): string | null {
+/** Scan with a single target at (x,y) emitting `noise` (default silent). */
+function scan(x: number, y: number, noise = 0): string | null {
   const w = new World();
   const npc = newEntityId();
   w.create(npc);
   w.write(npc, Position, { x: NX, y: NY, z: 0 });
-  for (const t of targets) {
-    const id = newEntityId();
-    w.create(id);
-    w.write(id, Position, { x: t.x, y: t.y, z: 0 });
-    w.write(id, Health, { current: 100, max: 100 });
-  }
+  const t = newEntityId();
+  w.create(t);
+  w.write(t, Position, { x, y, z: 0 });
+  w.write(t, Health, { current: 100, max: 100 });
+  if (noise > 0) w.write(t, NoiseLevel, { level: noise });
   const grid = new SpatialGrid();
   grid.rebuild(w);
-  const hit = findNearestThreatInArc(grid, w, npc, NX, NY, FACING, AGGRO_SQ, CONE, REAR_SQ);
-  return hit?.entityId ?? null;
+  return findDetectedThreat(grid, w, npc, NX, NY, FACING, AGGRO_SQ, CONE, REAR_SQ, HEAR)?.entityId ?? null;
 }
 
-Deno.test("directional: a target in the forward cone is detected at full range", () => {
-  assert(scan([{ x: NX + 12, y: NY }]) !== null, "12u dead ahead → detected");
+// ── sight (T-016) — silent targets, so only sight + proximity apply ──
+Deno.test("sight: a silent target in the forward cone is seen at full range", () => {
+  assert(scan(NX + 12, NY) !== null);
+});
+Deno.test("sight: a silent target far behind is unseen", () => {
+  assertEquals(scan(NX - 12, NY), null);
+});
+Deno.test("proximity: a silent target close behind is felt", () => {
+  assert(scan(NX - 3, NY) !== null);
+});
+Deno.test("sight: a silent flanker beyond cone + rear range is unseen", () => {
+  assertEquals(scan(NX, NY + 10), null);
 });
 
-Deno.test("directional: a target far behind is NOT detected", () => {
-  assertEquals(scan([{ x: NX - 12, y: NY }]), null, "12u directly behind → unseen");
+// ── hearing (T-014/T-015) — noise extends detection omnidirectionally ──
+Deno.test("hearing: a sprinter (noise 1) behind at mid range is heard", () => {
+  // 9u behind: silent → unseen, but noise 1 × (1−9/15)=0.4 ≥ 0.15 → heard.
+  assertEquals(scan(NX - 9, NY), null, "silent at 9u behind is missed");
+  assert(scan(NX - 9, NY, 1) !== null, "but a sprinter there is heard");
 });
-
-Deno.test("directional: a target close behind (within rear range) IS detected", () => {
-  assert(scan([{ x: NX - 3, y: NY }]) !== null, "3u behind → within short rear sight");
+Deno.test("hearing: a croucher (noise 0.3) at range is NOT heard", () => {
+  // 11u behind: 0.3 × (1−11/15)=0.08 < 0.15 → below threshold.
+  assertEquals(scan(NX - 11, NY, 0.3), null);
 });
-
-Deno.test("directional: a flanking target outside the cone and beyond rear range is unseen", () => {
-  // 10u to the side: angle π/2 (90°) > cone 70°, distance 10 > rear ~4.24.
-  assertEquals(scan([{ x: NX, y: NY + 10 }]), null);
+Deno.test("hearing: a croucher close behind is still heard", () => {
+  // 5u behind (outside rear 4.24): 0.3 × (1−5/15)=0.2 ≥ 0.15 → heard.
+  assert(scan(NX - 5, NY, 0.3) !== null);
 });
-
-Deno.test("directional: nearest eligible wins across front + rear", () => {
-  // front at 12u (dSq 144), close rear at 3u (dSq 9) — both eligible, rear nearer.
-  const front = NX + 12, rear = NX - 3;
-  const w = new World();
-  const npc = newEntityId();
-  w.create(npc);
-  w.write(npc, Position, { x: NX, y: NY, z: 0 });
-  const frontId = newEntityId(); w.create(frontId);
-  w.write(frontId, Position, { x: front, y: NY, z: 0 }); w.write(frontId, Health, { current: 100, max: 100 });
-  const rearId = newEntityId(); w.create(rearId);
-  w.write(rearId, Position, { x: rear, y: NY, z: 0 }); w.write(rearId, Health, { current: 100, max: 100 });
-  const grid = new SpatialGrid(); grid.rebuild(w);
-  const hit = findNearestThreatInArc(grid, w, npc, NX, NY, FACING, AGGRO_SQ, CONE, REAR_SQ);
-  assertEquals(hit?.entityId, rearId, "the closer (rear, in-range) target is chosen");
+Deno.test("hearing: nothing is detected beyond aggro range however loud", () => {
+  assertEquals(scan(NX + 20, NY, 1), null);
 });

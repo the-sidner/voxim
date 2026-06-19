@@ -11,6 +11,7 @@ import type { PlanStep, NpcPlanData } from "../components/npcs.ts";
 import { Position, Health } from "../components/game.ts";
 import { NpcTag } from "../components/npcs.ts";
 import { ItemData } from "../components/items.ts";
+import { NoiseLevel } from "../components/noise.ts";
 
 /**
  * Build a sequence of moveTo steps along a straight line from start to end,
@@ -106,13 +107,19 @@ export function findNearestNonNpc(
 }
 
 /**
- * Directional threat scan (T-016): like `findNearestNonNpc`, but a target is
- * only seen at full `aggroRangeSq` when it falls inside the NPC's forward cone
- * (`facing` ± `coneHalfAngle`). Outside the cone — to the flank or rear — it is
- * seen only within the much shorter `rearRangeSq`. So a frontal approach is
- * always detected, while flanking or back-stabbing an unaware NPC is viable.
+ * Unified NPC threat detection (T-016 visual + T-014 auditory = T-015). A target
+ * within `aggroRangeSq` is detected if ANY sense fires:
+ *   - **sight**  — inside the forward cone (`facing` ± `coneHalfAngle`); full range.
+ *   - **hearing** — `noise × proximity ≥ auditoryThreshold`, where proximity is
+ *     `1 − dist/range`. Omnidirectional: a sprinter behind is heard, a croucher
+ *     at range is not. (`noise` is the target's `NoiseLevel`, 0 if absent.)
+ *   - **proximity** — anything within the short `rearRangeSq`, any direction,
+ *     any noise (you feel a presence at your back).
+ * Among detected targets the nearest wins. So a frontal approach is always
+ * caught, flanking a quiet crouching attacker is viable, and running up behind
+ * an NPC still alerts it.
  */
-export function findNearestThreatInArc(
+export function findDetectedThreat(
   spatial: SpatialGrid,
   world: World,
   selfId: EntityId,
@@ -122,8 +129,10 @@ export function findNearestThreatInArc(
   aggroRangeSq: number,
   coneHalfAngle: number,
   rearRangeSq: number,
+  auditoryThreshold: number,
 ): { entityId: EntityId } | null {
-  const candidates = spatial.nearby(px, py, Math.sqrt(aggroRangeSq));
+  const range = Math.sqrt(aggroRangeSq);
+  const candidates = spatial.nearby(px, py, range);
   let best: { entityId: EntityId } | null = null;
   let bestDistSq = aggroRangeSq;
   for (const entityId of candidates) {
@@ -133,11 +142,16 @@ export function findNearestThreatInArc(
     const pos = world.get(entityId, Position)!;
     const dx = pos.x - px; const dy = pos.y - py;
     const dSq = dx * dx + dy * dy;
-    // Smallest absolute angle between facing and the direction to the target.
-    const toTarget = Math.atan2(dy, dx);
-    const off = Math.abs(Math.atan2(Math.sin(toTarget - facing), Math.cos(toTarget - facing)));
-    const rangeSq = off <= coneHalfAngle ? aggroRangeSq : rearRangeSq;
-    if (dSq <= rangeSq && dSq < bestDistSq) { bestDistSq = dSq; best = { entityId }; }
+    if (dSq > aggroRangeSq) continue; // hard outer cap: nothing detected past aggro range
+
+    const off = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - facing), Math.cos(Math.atan2(dy, dx) - facing)));
+    const sight = off <= coneHalfAngle;
+    const felt = dSq <= rearRangeSq;
+    const noise = world.get(entityId, NoiseLevel)?.level ?? 0;
+    const heard = noise * (1 - Math.sqrt(dSq) / range) >= auditoryThreshold;
+
+    if (!(sight || felt || heard)) continue;
+    if (dSq < bestDistSq) { bestDistSq = dSq; best = { entityId }; }
   }
   return best;
 }

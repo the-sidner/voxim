@@ -1501,6 +1501,10 @@ export interface GameConfig {
      * A target outside the forward cone is only seen within this much shorter
      * radius. e.g. 0.08 → rear sight ≈ 28% of frontal range. */
     aggroRearRangeRatio: number;
+    /** Hearing threshold (T-015): a target is heard when `noise × (1 − dist/range)`
+     * meets this. Lower = sharper ears. e.g. 0.15 → a sprinter (noise 1) is heard
+     * out to ~85% of range, a croucher (0.3) only when quite close. */
+    aggroAuditoryThreshold: number;
     /** World units between consecutive waypoints in an NPC plan. */
     waypointSpacing: number;
     /** Distance² at which a waypoint is considered reached. */

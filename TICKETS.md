@@ -50,13 +50,22 @@ so sprint→1, crouch-walk is quiet, still→0. Consumed by NPC perception next 
 gradient). Unit-tested: sprint/still/half/crouch/clamp and actors-only gating.
 
 ### T-015 · NPC detection radius driven by noise + distance
-Effort: M   Status: todo
+Effort: M   Status: done   (unified sight+hearing+proximity detection; consumes NoiseLevel; unit-tested)
 
 In `NpcAiSystem`, replace binary proximity detection with a soft gradient: detection probability
 scales with target noise level and inverse distance. Crouching at range may not trigger detection;
 running nearby always does.
 Done when: crouching entities are harder to detect at distance than running ones; NPCs react
 proportionally.
+
+Landed: the aggro scan (`findDetectedThreat`, replacing T-016's `findNearestThreatInArc`) now folds
+three senses, target detected if ANY fires within aggro range — **sight** (forward cone, T-016),
+**hearing** (`NoiseLevel × (1 − dist/range) ≥ aggroAuditoryThreshold`, T-014's noise, omnidirectional),
+**proximity** (the short rear range, any direction). Chose a deterministic threshold over a per-tick
+probability roll — same graded gameplay (a croucher at range escapes, a sprinter behind is heard,
+frontal is always caught) without RNG flicker that would make NPCs twitch in and out of aggro.
+Config: `aggroAuditoryThreshold` 0.15. Unit-tested: silent sight/proximity cases plus sprinter-heard /
+croucher-at-range-missed / croucher-close-heard / out-of-range-however-loud.
 
 ### T-016 · Directional detection — NPC facing vs. target position
 Effort: S   Status: done   (forward-cone aggro scan via findNearestThreatInArc; unit-tested)
