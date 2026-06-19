@@ -19,12 +19,23 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 ## Combat
 
 ### T-008 · Injuries — permanent debuffs from severe damage
-Effort: M   Status: todo
+Effort: M   Status: done   (Injury component + injury ModifierSource + severe-hit roll; unit-tested. Unblocks T-009)
 
 When a single hit deals damage exceeding a configurable threshold, roll for an injury.
 Write an injury component (type, severity) that applies a stat debuff until treated.
 Example injury types: `broken_limb` (reduced speed/attack), `deep_wound` (slow health drain).
 Done when: severe hits can produce injury components that apply persistent debuffs.
+
+Landed via the Status/Modifier primitive (same pattern as species, T-084): server-only `Injury`
+component holding `{ typeId, severity }[]`; an `injury` ModifierSource resolves each to its
+`game_config.injuries[typeId]` debuff (additive penalties scale with severity), folded through
+`effective()` so it composes with equipment/encumbrance/buffs/species. The health hit handler rolls
+on any hit ≥ `combat.injuryThreshold` (25) with `combat.injuryChance` (0.35): picks an injury type,
+adds it to the victim (re-injury of the same type deepens severity). Persists until treated (T-009).
+Shipped injuries: `broken_leg` (×0.7 moveSpeed), `deep_gash` (−0.08 armorReduction → take more
+damage). Targets live-queried stats only — the `deep_wound` health-drain DoT variant is a follow-up
+(it wants the buff/Resource DoT tick, not a stat modifier). Unit-tested: each debuff via
+`effective()`, severity scaling, stacking, absent-component and unknown-id inert.
 
 ### T-009 · Injury treatment via supernatural/alchemy workstation
 Effort: S   Status: todo

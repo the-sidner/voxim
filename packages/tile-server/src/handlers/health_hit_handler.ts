@@ -6,6 +6,7 @@ import type { HitHandler, HitContext } from "../hit_handler.ts";
 import { Health } from "../components/game.ts";
 import { staminaValue } from "../combat/helpers.ts";
 import { Resource } from "../components/resource.ts";
+import { Injury } from "../components/injury.ts";
 import { adjustResourceKey, upsertResourceKey } from "../resources/mutate.ts";
 import {
   CounterReady,
@@ -155,6 +156,25 @@ export class HealthHitHandler implements HitHandler {
     const newHealth = Math.max(0, health.current - damage);
     const dmg = damage;
     world.mutate(ctx.targetId, Health, (h) => ({ ...h, current: Math.max(0, h.current - dmg) }));
+
+    // ── Severe-hit injury roll (T-008) ────────────────────────────────────────
+    // A single hit over the threshold can inflict a persistent injury whose
+    // debuff applies via the `injury` ModifierSource until treated (T-009).
+    // Re-injuring the same type deepens it (severity++).
+    if (damage >= combatCfg.injuryThreshold && Math.random() < combatCfg.injuryChance) {
+      const types = Object.keys(this.content.getGameConfig().injuries);
+      if (types.length > 0) {
+        const typeId = types[Math.floor(Math.random() * types.length)];
+        const current = world.get(ctx.targetId, Injury)?.injuries ?? [];
+        const has = current.find((i) => i.typeId === typeId);
+        const injuries = has
+          ? current.map((i) => i.typeId === typeId ? { ...i, severity: Math.min(255, i.severity + 1) } : i)
+          : [...current, { typeId, severity: 1 }];
+        world.set(ctx.targetId, Injury, { injuries });
+        log.info("injury: target=%s type=%s severity=%d (dmg=%.1f)",
+          ctx.targetId, typeId, injuries.find((i) => i.typeId === typeId)!.severity, damage);
+      }
+    }
 
     events.publish(TileEvents.DamageDealt, {
       targetId: ctx.targetId,

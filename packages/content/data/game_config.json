@@ -10,6 +10,8 @@
   "combat": {
     "counterDamageMultiplier": 1.5,
     "counterWindowTicks": 40,
+    "injuryThreshold": 25,
+    "injuryChance": 0.35,
     "blockDamageMultiplier": 0.2,
     "blockArcHalfRadians": 1.5707963267948966,
     "knockbackImpulseXY": 5,
@@ -146,6 +148,10 @@
       null
     ],
     "species": "human"
+  },
+  "injuries": {
+    "broken_leg": { "modifiers": [{ "stat": "moveSpeed", "op": "mul", "value": 0.7 }] },
+    "deep_gash":  { "modifiers": [{ "stat": "armorReduction", "op": "add", "value": -0.08 }] }
   },
   "species": {
     "human": { "modifiers": [] },

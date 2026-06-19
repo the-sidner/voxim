@@ -1268,6 +1268,16 @@ export interface SpeciesDef {
   modifiers: Array<{ stat: string; op: "add" | "mul"; value: number }>;
 }
 
+/**
+ * A persistent injury's debuff (T-008): stat modifiers applied to an injured
+ * actor through the Status/Modifier fold. Additive penalties scale with the
+ * injury's `severity`. Same shape as SpeciesDef — both are named StatModifier
+ * bundles keyed by id in game_config.
+ */
+export interface InjuryDef {
+  modifiers: Array<{ stat: string; op: "add" | "mul"; value: number }>;
+}
+
 export interface GameConfig {
   survival: {
     hungerRatePerSec: number;
@@ -1281,6 +1291,10 @@ export interface GameConfig {
     counterDamageMultiplier: number;
     /** Ticks an unconsumed counter window survives before clear_counter_ready expires it. */
     counterWindowTicks: number;
+    /** A single hit dealing ≥ this much damage can roll an injury (T-008). */
+    injuryThreshold: number;
+    /** Probability (0..1) a qualifying hit actually inflicts an injury. */
+    injuryChance: number;
     blockDamageMultiplier: number;
     blockArcHalfRadians: number;
     knockbackImpulseXY: number;
@@ -1456,6 +1470,10 @@ export interface GameConfig {
    * with equipment / encumbrance / buffs through one path.
    */
   species: Record<string, SpeciesDef>;
+  /** Persistent injuries (T-008), keyed by id. A severe hit can roll one of
+   * these onto the victim; its debuff applies via the `injury` ModifierSource
+   * until treated (T-009). */
+  injuries: Record<string, InjuryDef>;
   /** Server-side persistence tuning — autosave cadence and future knobs. */
   persistence: {
     /** Autosave cadence in server ticks. 0 disables autosave (save on shutdown only). */

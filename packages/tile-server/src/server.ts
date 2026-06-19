@@ -85,6 +85,7 @@ import { newModifierSourceRegistry } from "./modifiers/modifier.ts";
 import { equipmentSource } from "./modifiers/sources/equipment.ts";
 import { encumbranceSource } from "./modifiers/sources/encumbrance.ts";
 import { speciesSource } from "./modifiers/sources/species.ts";
+import { injurySource } from "./modifiers/sources/injury.ts";
 import { buffsSource } from "./modifiers/sources/buffs.ts";
 import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
 import { emitEventEffect } from "./resources/effects/emit_event.ts";
@@ -354,6 +355,7 @@ export class TileServer {
     modifierSources.register(encumbranceSource);
     modifierSources.register(buffsSource);
     modifierSources.register(speciesSource);
+    modifierSources.register(injurySource);
 
     // T-084: the default player species must exist in content.species, else a
     // fresh player would spawn with a Species id no source can resolve.
