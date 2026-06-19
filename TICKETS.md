@@ -38,11 +38,20 @@ damage). Targets live-queried stats only — the `deep_wound` health-drain DoT v
 `effective()`, severity scaling, stacking, absent-component and unknown-id inert.
 
 ### T-009 · Injury treatment via supernatural/alchemy workstation
-Effort: S   Status: todo
+Effort: S   Status: done   (treat recipe step heals the crafter's injury; unit-tested; pairs with T-008)
 
 Add a `treat_injury` recipe type to the supernatural/alchemy crafting stations. Using it
 removes the injury component from the target entity.
 Done when: the correct crafting interaction removes an active injury component.
+
+Landed: new `treat` recipe step-handler (`steps/treat_step.ts`, one handler + one register, mirroring
+repair T-088). A swing at the recipe's `stationType` with a `stepType: "treat"` recipe selected and
+its materials present heals the **crafter** (`ctx.hit.attackerId`): consume materials, reduce the
+first `Injury` entry by one severity, removing the entry at 0 and the whole component once the last
+injury clears. `RecipeStepType` gains `"treat"`; `data/recipes/treat_injury.json`
+(alchemist_bench + 2× plant_fiber poultice). Repeated treatment compounds the material cost,
+symmetric with repair. Unit-tested: severity decrement + material consume, last-severity clears the
+component, nothing-to-treat and no-material no-ops.
 
 ## Stealth
 

@@ -15,6 +15,7 @@ import { attackStep } from "./steps/attack_step.ts";
 import { assemblyStep } from "./steps/assembly_step.ts";
 import { timeStep } from "./steps/time_step.ts";
 import { repairStep } from "./steps/repair_step.ts";
+import { treatStep } from "./steps/treat_step.ts";
 
 export type {
   RecipeStepHandler,
@@ -36,4 +37,5 @@ export function registerBuiltinSteps(registry: Registry<RecipeStepHandler>): voi
   registry.register(attackStep);
   registry.register(timeStep);
   registry.register(repairStep);
+  registry.register(treatStep);
 }

@@ -1,0 +1,11 @@
+{
+  "id": "treat_injury",
+  "stepType": "treat",
+  "stationType": "alchemist_bench",
+  "requiredTools": [],
+  "inputs": [
+    { "itemType": "plant_fiber", "role": "poultice", "quantity": 2 }
+  ],
+  "outputs": [],
+  "ticks": 0
+}

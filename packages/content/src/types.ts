@@ -409,7 +409,7 @@ export interface RecipeOutput {
  *   "time"     — timer starts when inputs are placed; output when ticks reach 0.
  *   "assembly" — player selects a recipe explicitly, then attacks with a requiredTool.
  */
-export type RecipeStepType = "attack" | "time" | "assembly" | "repair";
+export type RecipeStepType = "attack" | "time" | "assembly" | "repair" | "treat";
 
 /**
  * A crafting recipe.
