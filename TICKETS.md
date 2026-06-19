@@ -6541,7 +6541,7 @@ Done when: unequipping a torch removes the LightEmitter component (not a sentine
 client light goes out.
 
 ### T-270 · Player respawn / heir flow (death is currently a dead end)
-Effort: M   Status: done   Commit: <pending>
+Effort: M   Status: done   Commit: d35d230
 
 **Done (heir model).** Resolved to heir: `recordDeath` already advances the dynasty generation
 gateway-side, so respawn records the death and re-fetches the (now-heir) heritage.
