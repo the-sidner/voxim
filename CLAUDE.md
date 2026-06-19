@@ -7,8 +7,12 @@ Single authoritative tile-server per 512×512 world tile, browser client over We
 
 ## Ticket system
 
-All significant engineering work is tracked in `TICKETS.md`. Source of truth for what has been
-built and what remains.
+All significant engineering work is tracked in `TICKETS.md` — the source of truth for what
+**remains**. `TICKETS.md` holds only OPEN tickets (todo / in-progress / planned); closed ones
+(done / obsolete / superseded / deferred) are archived in `CHANGELOG.md`, which doubles as the
+project changelog (shipped tickets grouped by domain + a retired/superseded appendix). When you
+close a ticket, mark its status in place; a periodic curation pass moves the closed entries to
+`CHANGELOG.md` so the open list stays readable.
 
 **When to create a ticket:** any new system, feature, or non-trivial bug fix — including work
 that comes up organically. If it's more than a one-liner, it gets a ticket. When in doubt, create one.
