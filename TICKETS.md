@@ -6539,3 +6539,38 @@ green; client bundles.
 
 Done when: unequipping a torch removes the LightEmitter component (not a sentinel write) and the
 client light goes out.
+
+### T-270 · Player respawn / heir flow (death is currently a dead end)
+Effort: M   Status: todo
+
+The death loop is broken end-to-end (found 2026-06 during live play). On health 0, `DeathSystem`
+`world.destroy()`s the player entity (`death.ts:84`) and the client opens the death panel
+(`game.ts:508`), but:
+
+- The client's `respawn` UIAction is a no-op — `// TODO: send respawn request to server`
+  (`game.ts:1084`).
+- There is no `Respawn` command in `CommandType` (the enum stops at `PickUp = 21`).
+- So a dead player is stuck on the death screen with no way back into the world.
+
+Useful finding: **the WT session survives entity death** (the client doesn't disconnect — only the
+entity is destroyed). The tick loop tolerates a session whose `playerId` has no entity. So respawn
+does NOT need a reconnect — a command can re-spawn a fresh entity into the live session.
+
+**Design fork (needs a call — this is a dynasty game):**
+1. *Revive* — re-spawn the same character at the hearth/spawn. Simple; trivializes death.
+2. *Heir* — death advances the dynasty (generation+1, lost gear/lore per the heritage rules) and
+   respawn spawns the heir. Matches the dynasty vision (backlog T-072 Respawn/heir UI, T-079 Heir
+   spawn at family workbench). Needs `recordDeath` to advance generation on in-session death (today
+   it only fires on disconnect), then respawn fetches the advanced heritage.
+
+Implementation shape (either fork):
+- `CommandType.Respawn = 22` (no payload) + codec; client sends it from the respawn action and
+  closes the death panel.
+- Extract the player-spawn block from `handleSession` (`server.ts:1486-1537`) into a reusable
+  `spawnPlayerEntity(playerId, displayName, heritage, hearthAnchor)`. Cache `heritage` +
+  `displayName` on `ClientSession` at join so respawn can spawn synchronously in-tick (fog hydrate
+  stays async fire-and-forget).
+- Server respawn handler drains the `Respawn` command, guards `!isAlive(playerId)`, re-spawns.
+
+Done when: a dead player clicks Respawn and re-enters the world (per the chosen fork), with no
+reconnect.
