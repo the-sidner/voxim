@@ -252,7 +252,14 @@ export type EquipSlot = "weapon" | "offHand" | "head" | "chest" | "legs" | "feet
 // both @voxim/content (store accessor) and @voxim/tile-server (defineComponent)
 // can share the types without creating a circular dependency.
 
-export interface EquippableData { slot: EquipSlot; }
+/**
+ * Equip-slot candidates for an item, in priority order (T-187). The equip flow
+ * lands the item in the first listed slot that is currently empty — so a weapon
+ * declaring `["weapon", "offHand"]` fills the off-hand when the main hand is
+ * taken, enabling dual-wield from the inventory. Single-element for everything
+ * that lives in exactly one slot (armour: `["chest"]`).
+ */
+export interface EquippableData { slots: EquipSlot[]; }
 
 /**
  * One step in a weapon's combo chain — Vermintide-style. A press of the

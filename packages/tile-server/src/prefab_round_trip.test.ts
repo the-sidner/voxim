@@ -78,10 +78,10 @@ Deno.test("Health — schema/codec agreement", () => {
 
 Deno.test("Equippable — schema/codec agreement", () => {
   roundTrip(Equippable, [
-    { slot: "weapon" },
-    { slot: "head" },
-    { slot: "back" },
-    { slot: "offHand" },
+    { slots: ["weapon"] },
+    { slots: ["head"] },
+    { slots: ["back"] },
+    { slots: ["weapon", "offHand"] },
   ], "Equippable");
 });
 

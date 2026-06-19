@@ -4,7 +4,7 @@
   "modelScale": 0.13,
   "components": {
     "equippable": {
-      "slot": "weapon"
+      "slots": ["weapon", "offHand"]
     },
     "swingable": {
       "chain": [

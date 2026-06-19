@@ -93,15 +93,19 @@ export class EquipmentSystem implements System {
     }
 
     const prefab = this.content.prefabs.get(prefabId);
-    const equippable = prefab?.components["equippable"] as { slot: string } | undefined;
-    if (!equippable) {
+    const equippable = prefab?.components["equippable"] as { slots: EquipSlot[] } | undefined;
+    if (!equippable || equippable.slots.length === 0) {
       log.debug("equip rejected: entity=%s item=%s has no equippable component", entityId, prefabId);
       return;
     }
 
-    const equipSlot = equippable.slot as EquipSlot;
-    if (equipment[equipSlot] !== null) {
-      log.debug("equip rejected: entity=%s slot=%s already occupied", entityId, equipSlot);
+    // Land in the first declared slot that's free (T-187), so a weapon
+    // declaring ["weapon","offHand"] fills the off-hand when the main hand is
+    // taken — dual-wield from the inventory. All candidates occupied → reject.
+    const equipSlot = equippable.slots.find((s) => equipment[s] === null);
+    if (!equipSlot) {
+      log.debug("equip rejected: entity=%s item=%s — all candidate slots [%s] occupied",
+        entityId, prefabId, equippable.slots.join(","));
       return;
     }
 

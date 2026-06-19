@@ -5,7 +5,7 @@
   "components": {
     "stackable": {},
     "equippable": {
-      "slot": "weapon"
+      "slots": ["weapon", "offHand"]
     },
     "swingable": {
       "chain": [

@@ -55,7 +55,7 @@ const itemSlotDefSchema = v.object({
 // ---------------------------------------------------------------------------
 
 const equippableSchema = v.object({
-  slot: equipSlotSchema,
+  slots: v.array(equipSlotSchema),
 });
 
 export const Equippable = defineComponent({
@@ -65,15 +65,19 @@ export const Equippable = defineComponent({
   codec: {
     encode(v: EquippableData): Uint8Array {
       const w = new WireWriter();
-      w.writeStr(v.slot);
+      w.writeU8(v.slots.length);
+      for (const s of v.slots) w.writeStr(s);
       return w.toBytes();
     },
     decode(b: Uint8Array): EquippableData {
       const r = new WireReader(b);
-      return { slot: r.readStr() as EquipSlot };
+      const n = r.readU8();
+      const slots: EquipSlot[] = [];
+      for (let i = 0; i < n; i++) slots.push(r.readStr() as EquipSlot);
+      return { slots };
     },
   },
-  default: (): EquippableData => ({ slot: "weapon" }),
+  default: (): EquippableData => ({ slots: ["weapon"] }),
 });
 
 // ---------------------------------------------------------------------------

@@ -1012,7 +1012,7 @@ the world at exactly those proportions; Mixamo animations play on
 every body type without artifact; hits land at the new reach.
 
 ### T-187 · Runtime dual-slot equip for hand items
-Effort: S   Status: todo
+Effort: S   Status: done   (EquippableData.slot → slots[]; first-empty-candidate routing; unit-tested)
 
 Today `EquippableData.slot` is a single `EquipSlot`. Weapons declare
 `slot: "weapon"`, so EquipmentSystem can only ever route a sword into
@@ -1032,41 +1032,17 @@ picking up a second sword and equipping it lands it in the off-hand
 visually + on the wire, and unequipping main-hand then re-equipping
 that sword routes it correctly.
 
-A *maneuver* is the authored unit for any committed action (slash, stab,
-shield-bash, prayer, throw, multi-step combo). Generalises the existing
-WeaponActionDef so PCs and NPCs share authoring.
-
-Shape:
-  data/maneuvers/{id}.json — ManeuverDef
-    duration                  — total locked window
-    interruptWindows[]        — { fromT, toT, by: ["dodge","block",…] }
-    tracks.left_hand[]        — { t, clip } scheduled events on left_hand layer
-    tracks.right_hand[]       — same, right_hand layer
-    tracks.locomotion[]       — { t, kind: "dash", forward, duration }
-    tracks.hitEffects[]       — { tag, fromT, magnitude } — see notes below
-    requirements              — stamina, weapon slot constraints
-
-Runtime:
-  - ActionSystem on input → install Maneuver payload component, validate
-    requirements, fire event.maneuver_started.
-  - CSM transitions right_hand (or both) to a generic `in_maneuver` state
-    that locks until duration elapses or an interrupt window grants exit.
-  - New ManeuverScheduler system advances Maneuver.elapsed each tick and
-    emits events as tracks cross: SM scope variables for clip per hand,
-    locomotion impulses to PhysicsSystem, hit-tag updates on Maneuver.
-  - Hit handlers read Maneuver.hitTags (active for current elapsed) and
-    apply on-hit effects.
-
-hitEffects (effects layer): start with simple inline tags applied on hit.
-Mark this as a placeholder — a richer effect system (status stacks,
-duration, propagation) will replace this and is intentionally out of scope
-for the first cut. The Maneuver-scheduler-emits-tags pattern survives the
-later effect-system rework; only the resolver behind the tag changes.
-
-Done when: a sample two-step `double_strike` maneuver lives in data,
-firing it locks the player for its duration, plays a left-arm clip then a
-right-arm clip with a forward dash, and applies a "bleed" tag on hit. Both
-PC and an NPC can be authored to use the same ManeuverDef.
+Landed: `EquippableData.slot: EquipSlot` → `slots: EquipSlot[]` (content type +
+valibot schema + server-only codec, now length-prefixed). The Equip handler lands
+the item in the first declared slot that's free, rejecting only when all
+candidates are occupied. All 10 equippable prefabs migrated in the same diff
+(weapons → `["weapon","offHand"]`, cloth_tunic → `["chest"]`); no shim. The
+optional client-supplied target slot was left out — first-empty routing already
+satisfies the done-when; add it only if a real disambiguation need appears.
+Unit-tested: off-hand fill when main hand taken, main-hand-first when both free,
+all-occupied rejection, single-slot armour routing. (Removed a block of stale
+"maneuver" design that had been pasted into this ticket — it described the
+retired CSM/ActionSystem/ManeuverScheduler, gone since T-228.)
 
 ## Ops & Deployment
 

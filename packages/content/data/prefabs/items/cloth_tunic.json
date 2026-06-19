@@ -3,7 +3,7 @@
   "modelId": "model_chestplate",
   "components": {
     "equippable": {
-      "slot": "chest"
+      "slots": ["chest"]
     },
     "armor": {
       "defense": 1
