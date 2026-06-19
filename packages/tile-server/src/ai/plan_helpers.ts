@@ -105,6 +105,43 @@ export function findNearestNonNpc(
   return best;
 }
 
+/**
+ * Directional threat scan (T-016): like `findNearestNonNpc`, but a target is
+ * only seen at full `aggroRangeSq` when it falls inside the NPC's forward cone
+ * (`facing` ± `coneHalfAngle`). Outside the cone — to the flank or rear — it is
+ * seen only within the much shorter `rearRangeSq`. So a frontal approach is
+ * always detected, while flanking or back-stabbing an unaware NPC is viable.
+ */
+export function findNearestThreatInArc(
+  spatial: SpatialGrid,
+  world: World,
+  selfId: EntityId,
+  px: number,
+  py: number,
+  facing: number,
+  aggroRangeSq: number,
+  coneHalfAngle: number,
+  rearRangeSq: number,
+): { entityId: EntityId } | null {
+  const candidates = spatial.nearby(px, py, Math.sqrt(aggroRangeSq));
+  let best: { entityId: EntityId } | null = null;
+  let bestDistSq = aggroRangeSq;
+  for (const entityId of candidates) {
+    if (entityId === selfId) continue;
+    if (world.get(entityId, NpcTag)) continue;
+    if (!world.get(entityId, Health)) continue;
+    const pos = world.get(entityId, Position)!;
+    const dx = pos.x - px; const dy = pos.y - py;
+    const dSq = dx * dx + dy * dy;
+    // Smallest absolute angle between facing and the direction to the target.
+    const toTarget = Math.atan2(dy, dx);
+    const off = Math.abs(Math.atan2(Math.sin(toTarget - facing), Math.cos(toTarget - facing)));
+    const rangeSq = off <= coneHalfAngle ? aggroRangeSq : rearRangeSq;
+    if (dSq <= rangeSq && dSq < bestDistSq) { bestDistSq = dSq; best = { entityId }; }
+  }
+  return best;
+}
+
 export function findNearestOther(
   spatial: SpatialGrid,
   world: World,

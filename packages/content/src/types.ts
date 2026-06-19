@@ -1487,6 +1487,14 @@ export interface GameConfig {
     arrivalThreshold: number;
     attackRangeSq: number;
     defaultAggroRangeSq: number;
+    /** Half-angle (radians) of the forward cone in which an NPC detects threats
+     * at full `aggroRangeSq` (T-016). Outside the cone, detection falls back to
+     * the short rear range below — so flanking an unaware NPC is viable. */
+    aggroConeHalfAngle: number;
+    /** Rear/flank detection range as a fraction of `aggroRangeSq` (T-016).
+     * A target outside the forward cone is only seen within this much shorter
+     * radius. e.g. 0.08 → rear sight ≈ 28% of frontal range. */
+    aggroRearRangeRatio: number;
     /** World units between consecutive waypoints in an NPC plan. */
     waypointSpacing: number;
     /** Distance² at which a waypoint is considered reached. */

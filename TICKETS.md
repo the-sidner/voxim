@@ -53,12 +53,20 @@ Done when: crouching entities are harder to detect at distance than running ones
 proportionally.
 
 ### T-016 · Directional detection — NPC facing vs. target position
-Effort: S   Status: todo
+Effort: S   Status: done   (forward-cone aggro scan via findNearestThreatInArc; unit-tested)
 
 Enemies facing away from the player have no detection. Add a facing arc check to NPC threat
 detection: enemies detect within a forward cone at full sensitivity; rear detection only at very
 short range.
 Done when: flanking unaware NPCs is viable; frontal approach is consistently detected.
+
+Landed: `findNearestThreatInArc` replaces the omnidirectional `findNearestNonNpc` in the
+`set_job_attack_nearest` BT node — a target is seen at full `aggroRangeSq` only inside the NPC's
+forward cone (`facing ± aggroConeHalfAngle`), and only within a much shorter `aggroRangeSq ×
+aggroRearRangeRatio` behind/to the flank. The NPC's facing comes from its `Facing` component. Two
+config knobs added to `npcAiDefaults` (cone half-angle 1.2217 ≈ ±70°, rear ratio 0.08 ≈ 28% of
+frontal range). Flee detection stays omnidirectional (a different trigger). Unit-tested: front
+detected, far-behind unseen, close-behind seen, flank unseen, nearest-eligible wins.
 
 ### T-017 · Light level detection modifier
 Effort: M   Status: todo
