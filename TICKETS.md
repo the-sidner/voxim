@@ -3160,7 +3160,12 @@ small wood-walled enclosures with a south door, and chamber clusters of
 3 hostile NPCs scattered across the map — same layout on every restart.
 
 ### T-161 · Persist fog of war across sessions
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: b609fed
+
+(Status corrected — the work shipped: migration `0013_user_tile_fog.sql`, `PgUserTileFogRepo`,
+the `/internal/user/:id/fog/:tileId` GET/PUT endpoints, `AccountClient.getFog`/`saveFog`, and the
+tile-server fetch-on-spawn + save-on-disconnect path all exist. T-256 further ensured saveFog
+runs before the handoff early-return.)
 
 T-157 left fog as ephemeral in-memory state — refresh / disconnect
 discarded the whole exploration map.  This ticket lifts `seenEver` to
@@ -4135,7 +4140,13 @@ compile error, and server-only components cannot have `wireId`.
 
 
 ### T-097 · Wire protocol: component removal delta
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: f8626b2 (as T-250)
+
+**Done by T-250** — the removal channel landed exactly as the "If wire removal is added" plan
+below specified: `BinaryStateMessage.removals` ([uuid, u8 typeId]), server collects
+`changeset.removals` for networked defs (`buildRemovalMap`), client `ClientWorld.applyRemoval`
+clears the field. The `LightEmitter` sentinel workaround this ticket flagged is removed in T-269.
+
 
 **The problem.** `BinaryStateMessage` currently carries `spawns`, `deltas` (component writes),
 and `destroys` (entity removals).  There is no message for removing a single component from a
@@ -6509,3 +6520,22 @@ container stops crash-looping. But residual CSM-era scaffolding remains, none of
 
 Done when: the studio animation editor reflects the current animation architecture with no
 CSM/state-machine or maneuver-runtime remnants, and `build_studio.ts` stays green.
+
+### T-269 · LightEmitter unequip via component removal, not the zero-intensity sentinel
+Effort: S   Status: done   Commit: <pending>
+
+The cleanup T-097 itself called for, now that T-250 shipped the removal channel. When no
+light-emitting item is equipped, `EquipmentSystem._updateLightEmitter` wrote a sentinel
+`{ intensity: 0, radius: 0, … }` to signal "off" (the workaround for the missing wire removal).
+
+- Server: that branch now `world.remove(entityId, LightEmitter)` — the removal travels the
+  wire removal channel (T-250) and the client clears the field via `applyRemoval`.
+- Client: `LightManager.sync` already tore the PointLight down on an absent (`!emitter`)
+  component, so no client logic change — just refreshed comments (the `intensity <= 0` branch
+  stays as defence for a deliberately-dimmed emitter, no longer the unequip path).
+
+No more garbage zero-intensity LightEmitter lingering in ECS/AoI. 154 tile/protocol/codec tests
+green; client bundles.
+
+Done when: unequipping a torch removes the LightEmitter component (not a sentinel write) and the
+client light goes out.

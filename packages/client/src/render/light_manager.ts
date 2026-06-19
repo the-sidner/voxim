@@ -5,8 +5,10 @@
  *
  * Each emitting entity gets one PointLight parented to its scene group so
  * the light follows the entity automatically every frame.  When a torch is
- * unequipped the server sends a zero-intensity delta; this manager tears down
- * the light in response.
+ * unequipped the server REMOVES the LightEmitter component (T-269) — it arrives
+ * as a wire removal (T-250), `sync` is called with `undefined`, and this manager
+ * tears down the light.  The `intensity <= 0` branch is kept as defence (e.g.
+ * an explicitly dimmed emitter) but is no longer the unequip path.
  *
  * Coordinate mapping: world(x, y, z) → three(x, z, y).
  * PointLights are parented to the entity group, so no per-frame position update
@@ -40,8 +42,8 @@ export class LightManager {
    * @param group     Three.js group to attach / detach the light from
    */
   sync(entityId: string, emitter: LightEmitterData | undefined, group: THREE.Group): void {
-    // intensity=0 is the "off" sentinel used when a torch is unequipped
-    // (workaround for missing wire component-removal delta — see T-097).
+    // Absent component (unequipped — the removal channel cleared it, T-269) or
+    // a degenerate emitter → no light.
     if (!emitter || emitter.intensity <= 0 || emitter.radius <= 0) {
       this._remove(entityId, group);
       return;

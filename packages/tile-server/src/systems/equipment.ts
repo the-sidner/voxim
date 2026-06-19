@@ -213,8 +213,12 @@ export class EquipmentSystem implements System {
     if (bestRadius > 0) {
       world.set(entityId, LightEmitter, { color: bestColor, intensity: bestIntensity, radius: bestRadius, flicker: bestFlicker });
     } else if (world.has(entityId, LightEmitter)) {
-      // Zero-intensity write — client tears down PointLight when intensity <= 0 (T-097).
-      world.set(entityId, LightEmitter, { color: 0, intensity: 0, radius: 0, flicker: 0 });
+      // No light-emitting item equipped — remove the component (T-269). The
+      // removal reaches the client over the wire's removal channel (T-250) and
+      // its LightManager tears down the PointLight on the absent component.
+      // (Was a zero-intensity sentinel write before the removal channel existed
+      // — the T-097 workaround.)
+      world.remove(entityId, LightEmitter);
     }
   }
 
