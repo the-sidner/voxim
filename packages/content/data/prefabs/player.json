@@ -41,6 +41,10 @@
         {
           "itemType": "campfire_kit",
           "quantity": 1
+        },
+        {
+          "itemType": "coins",
+          "quantity": 50
         }
       ],
       "startingEquipment": {

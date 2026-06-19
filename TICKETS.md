@@ -81,7 +81,7 @@ Done when: slot count is config-driven; codec encodes correctly at the new count
 ## Crafting & Economy
 
 ### T-031 · Currency — coins as physical inventory item with weight
-Effort: S   Status: todo   (trader machinery built; the "coins" item prefab was never authored)
+Effort: S   Status: done   (coins.json stackable prefab + 50 starting coins; trader machinery already referenced currencyItemType)
 
 Add `coin` item template with a weight value. Coins stack in inventory up to a limit.
 Trader transactions deduct/add coins from entity inventory (not an abstract balance).

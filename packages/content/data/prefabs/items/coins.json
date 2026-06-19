@@ -1,0 +1,13 @@
+{
+  "id": "coins",
+  "category": "currency",
+  "tags": [
+    "currency"
+  ],
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.02
+    }
+  }
+}
