@@ -147,11 +147,24 @@ set. Slower and with a smaller fragment ceiling than players.
 Done when: a blacksmith NPC gains crafting-related Lore over many crafting jobs.
 
 ### T-042 · NPC specialisation matching to job requirements
-Effort: S   Status: todo
+Effort: M   Status: needs-design   (original Lore-on-NPC premise is dead — T-260b removed NPC LoreLoadout)
 
-Jobs in the board have optional `skillRequirement` field. When an NPC pulls a job, it checks
-whether it has the required Lore. NPCs without the Lore skip to a lower-priority job.
-Done when: a forging job requiring smithing Lore is only taken by NPCs with that fragment.
+Original premise: jobs carry a `skillRequirement` Lore fragment; an NPC pulling a job checks its
+own `learnedFragmentIds`. That mechanism no longer exists — NPCs carry **no LoreLoadout** since
+T-260b (`spawner.ts:219`: "No LoreLoadout for NPCs"), so there is nothing to match a fragment
+requirement against. There is no `skillRequirement` field on JobBoard jobs today either.
+
+The goal still stands (a forging job should only be taken by an NPC that can smith), but the
+matching key must be redesigned around what NPCs actually carry: their `NpcTemplate`
+(archetype / `npcType`, and any future per-archetype skill tags). Concrete shape to decide:
+add an optional `requiredArchetype` (or a small `skills: string[]` tag set on the template) to
+JobBoard pending jobs; when an `AssignedJobBoard` NPC pulls a job, skip ones whose requirement
+its template doesn't satisfy. Needs the NPC job-pull-from-board path confirmed/wired first
+(JobBoard + AssignedJobBoard components exist; the admin endpoint appends jobs, but verify an
+NPC actually dequeues from its assigned board).
+
+Done when: a forging job tagged for smiths is only taken by NPCs whose archetype/skill tags
+satisfy it; non-matching NPCs skip to a lower-priority job.
 
 ### T-043 · NPC social idle behaviour
 Effort: S   Status: todo
