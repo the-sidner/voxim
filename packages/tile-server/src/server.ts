@@ -46,6 +46,7 @@ import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
 import { PhysicsSystem } from "./systems/physics.ts";
+import { NoiseSystem } from "./systems/noise.ts";
 import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
 import { ItemPhysicsSystem } from "./systems/item_physics.ts";
@@ -704,6 +705,7 @@ export class TileServer {
       new DayNightSystem(content),
       new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem, modifierSources),
       new PhysicsSystem(content, modifierSources),
+      new NoiseSystem(content),
       new FogOfWarSystem(),
       // ActionDispatcher advances every actor's slots (posture, locomotion,
       // primary, reaction) from intent + events. The CSM is gone (T-228).

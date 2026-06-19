@@ -36,12 +36,18 @@ Done when: the correct crafting interaction removes an active injury component.
 ## Stealth
 
 ### T-014 · Noise level component — run vs. crouch
-Effort: S   Status: todo
+Effort: S   Status: done   (NoiseLevel component + NoiseSystem derives it from speed × crouch; unit-tested)
 
 Add a `NoiseLevel` component derived each tick from movement speed and crouch state. Running =
 high noise; walking = medium; crouching = low. Written by `PhysicsSystem` or a new
 `StealthSystem`.
 Done when: `NoiseLevel` is present on moving entities and varies correctly with movement state.
+
+Landed: server-only `NoiseLevel { level: 0..1 }` written each tick by a new generic `NoiseSystem`
+over every actor (Velocity + InputState — players and NPCs alike). `level = min(1, speed/
+maxGroundSpeed)`, scaled by `stealth.crouchNoiseMultiplier` (0.3) while the `Crouched` tag is set —
+so sprint→1, crouch-walk is quiet, still→0. Consumed by NPC perception next (T-015 detection
+gradient). Unit-tested: sprint/still/half/crouch/clamp and actors-only gating.
 
 ### T-015 · NPC detection radius driven by noise + distance
 Effort: M   Status: todo

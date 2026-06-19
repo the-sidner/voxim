@@ -1344,6 +1344,12 @@ export interface GameConfig {
   crouch: {
     speedMultiplier: number;
   };
+  /** Stealth tuning (T-014+): how movement state maps to perceptibility. */
+  stealth: {
+    /** Multiplier applied to an actor's noise level while the Crouched tag is
+     * set — crouch-moving is much quieter than walking the same speed. */
+    crouchNoiseMultiplier: number;
+  };
   dayNight: {
     dawnStart: number;
     noonStart: number;

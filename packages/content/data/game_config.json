@@ -76,6 +76,9 @@
   "crouch": {
     "speedMultiplier": 0.45
   },
+  "stealth": {
+    "crouchNoiseMultiplier": 0.3
+  },
   "physics": {
     "gravity": 20,
     "maxGroundSpeed": 6,
