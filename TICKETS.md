@@ -711,6 +711,27 @@ when a wall is removed; interior cells are queryable by other systems.
 
 ## UI / Interaction
 
+### T-273 · Discrete commands ride unreliable datagrams — they can silently drop
+Effort: M   Status: todo
+
+`TileConnection.sendCommand` writes `CommandDatagram`s on the WebTransport **datagram** (unreliable)
+path, same as movement. For ~60 Hz latest-wins movement that's correct, but discrete one-shot
+commands — `Equip`, `Place`, `TradeBuy`/`TradeSell`, `SelectRecipe`, `LoadWorkstation`, `PickUp`,
+`Respawn` — have no delivery guarantee: a dropped datagram means the action just never happens, with
+no client feedback. Surfaced while verifying T-075 with the test-play harness: under load a buy/sell
+press would intermittently produce no server `TradeSystem` log at all (the command never arrived).
+The `CommandDatagram.seq` field exists but nothing acks or resends.
+
+Fix shape: deliver discrete commands over a **reliable** channel (a dedicated bidirectional stream,
+length-prefixed via the existing `encodeFrame`/`makeFrameReader` helpers), keeping only movement on
+datagrams. Server drains the command stream into the same per-player `commandQueue` it already uses,
+so systems are unchanged. Alternatively, an ack+resend layer keyed on `seq`, but a reliable stream is
+simpler and the command rate is low. Movement stays unreliable.
+
+Done when: a discrete command issued by the client is guaranteed to reach the server (or surfaces a
+visible failure), verified by hammering buy/equip presses through the test-play harness with zero
+silent drops.
+
 ### T-091 · Workstation recipe browser and selection UI
 Effort: M   Status: todo   (WorkstationPanel lists recipes; clickable selection + SelectRecipe dispatch missing)
 
