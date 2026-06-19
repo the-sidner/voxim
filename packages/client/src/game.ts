@@ -1086,7 +1086,10 @@ export class VoximGame {
   private _handleUIAction(action: UIAction): void {
     switch (action.type) {
       case "respawn":
-        // TODO: send respawn request to server
+        // Re-enter the world after death (T-270). The session stayed open; the
+        // server records the death (advancing the dynasty → heir) and spawns.
+        this._sendCommand({ cmd: CommandType.Respawn });
+        closePanel("death");
         break;
 
       case "debug_toggle": {

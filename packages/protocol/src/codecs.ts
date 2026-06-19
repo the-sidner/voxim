@@ -192,6 +192,9 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       new DataView(buf).setFloat32(1 + strBytes.byteLength, cmd.value, true);
       return u8;
     }
+
+    case CommandType.Respawn:
+      return new Uint8Array(0);
   }
 }
 
@@ -289,6 +292,9 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const value = new DataView(bytes.buffer, bytes.byteOffset + 1 + strLen, 4).getFloat32(0, true);
       return { cmd: CommandType.DebugSetStat, stat, value };
     }
+
+    case CommandType.Respawn:
+      return { cmd: CommandType.Respawn };
 
     default:
       // Unknown command type — forward-compatible skip (caller uses payloadLen).

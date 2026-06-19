@@ -27,6 +27,7 @@ import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 import { GatewayLink } from "./gateway_link.ts";
+import { CommandType } from "@voxim/protocol";
 import type { BinaryComponentDelta, BinaryStateMessage, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeSessionUpdate } from "./aoi.ts";
 import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
@@ -281,6 +282,10 @@ export class TileServer {
    * session unwinds for a moved-away player. Cleared on disconnect cleanup.
    */
   private handedOff = new Set<EntityId>();
+  /** Display name per connected player — cached so a respawn (no join msg) keeps the name. */
+  private playerDisplayNames = new Map<EntityId, string>();
+  /** Players with a respawn in flight — guards the async recordDeath→spawn from re-entry. */
+  private respawning = new Set<EntityId>();
 
   async start(config: TileServerConfig): Promise<void> {
     const tickRateHz = config.tickRateHz ?? 20;
@@ -990,9 +995,16 @@ export class TileServer {
         });
       }
 
-      // Drain command queue into pendingCommands map.
+      // Drain command queue into pendingCommands map. Respawn (T-270) isn't a
+      // system command — fire the async re-spawn here and keep it out of the
+      // per-system list.
       if (session.commandQueue.length > 0) {
-        pendingCommands.set(playerId, session.commandQueue.splice(0));
+        const cmds = session.commandQueue.splice(0);
+        const gameplay = cmds.filter((c) => {
+          if (c.cmd === CommandType.Respawn) { void this.respawnPlayer(playerId); return false; }
+          return true;
+        });
+        if (gameplay.length > 0) pendingCommands.set(playerId, gameplay);
       }
     }
 
@@ -1125,6 +1137,7 @@ export class TileServer {
         if (this.handingOff.has(playerId)) continue;
         this.sessions.delete(playerId);
         this.playerLastZone.delete(playerId);
+        this.playerDisplayNames.delete(playerId);
         if (this.world.isAlive(playerId)) {
           // T-252: take the carried item entities along — players respawn
           // fresh (save doctrine), so leaving them would leak forever.
@@ -1347,6 +1360,72 @@ export class TileServer {
   }
 
   /**
+   * Spawn a fresh player entity for `playerId` — the join-time spawn pipeline,
+   * shared with respawn. Fetches heritage (the account service advances the
+   * dynasty generation on death, so this returns the HEIR after a respawn),
+   * spawns at the hearth when it's on this tile, writes the cached display
+   * Name, and hydrates fog. Async (heritage + fog are HTTP).
+   */
+  private async spawnFreshPlayer(playerId: EntityId, hearthAnchor: SessionInfo["hearthAnchor"]): Promise<void> {
+    const spawn = this.content.getGameConfig().player;
+    const heritage = this.accountClient
+      ? (await this.accountClient.getHeritage(playerId).catch((err: unknown) => {
+          console.error("[TileServer] heritage fetch failed:", err);
+          return null;
+        })) ?? undefined
+      : undefined;
+    const spawnAtHearth = hearthAnchor && hearthAnchor.tileId === this.tileId;
+    const spawnX = spawnAtHearth ? hearthAnchor.position.x : spawn.defaultSpawnX;
+    const spawnY = spawnAtHearth ? hearthAnchor.position.y : spawn.defaultSpawnY;
+    const spawnZ = spawnAtHearth ? hearthAnchor.position.z : undefined;
+    if (spawnAtHearth) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} spawning at hearth (%.1f, %.1f)`, spawnX, spawnY);
+    }
+    spawnPrefab(this.world, this.content, "player", { id: playerId, x: spawnX, y: spawnY, z: spawnZ, heritage });
+
+    const displayName = this.playerDisplayNames.get(playerId) ?? `Player-${playerId.slice(0, 6)}`;
+    this.world.write(playerId, Name, { value: displayName });
+
+    // Fog of war (T-161): hydrate from the account service. Non-fatal;
+    // pendingSnapshot stays true so the next state message ships the bitmap.
+    if (this.accountClient) {
+      const fogBitmap = await this.accountClient.getFog(playerId, this.tileId).catch((err: unknown) => {
+        console.error("[TileServer] fog fetch failed:", err);
+        return null;
+      });
+      if (fogBitmap) {
+        const fog = this.world.get(playerId, FogState);
+        if (fog && fogBitmap.byteLength === fog.seenEver.byteLength) {
+          fog.seenEver.set(fogBitmap);
+          console.log(`[TileServer] fog restored for ${playerId.slice(0, 8)} on ${this.tileId}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Respawn a dead player into their still-open session (T-270). Records the
+   * death — the gateway advances the dynasty generation, so the heritage fetch
+   * in spawnFreshPlayer returns the HEIR — then spawns. Async + re-entry-guarded;
+   * a no-op if the player is already alive or the session is gone.
+   */
+  private async respawnPlayer(playerId: EntityId): Promise<void> {
+    if (this.respawning.has(playerId) || this.world.isAlive(playerId) || !this.sessions.has(playerId)) return;
+    this.respawning.add(playerId);
+    try {
+      if (this.accountClient) {
+        await this.accountClient.recordDeath(playerId, "damage").catch((err: unknown) => {
+          console.error("[TileServer] respawn recordDeath failed:", err);
+        });
+      }
+      await this.spawnFreshPlayer(playerId, null);
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} respawned (heir)`);
+    } finally {
+      this.respawning.delete(playerId);
+    }
+  }
+
+  /**
    * Encode a one-off BinaryStateMessage carrying a single GateCrossing event
    * and push it to the player's reliable stream. Sequenced through the
    * session's write queue so it is delivered before the subsequent close().
@@ -1481,59 +1560,15 @@ export class TileServer {
     // Determine spawn vs reuse: post-handoff the entity already exists; for
     // a fresh join we create it. Heritage is fetched from the account service
     // for real users and from a default (generation 0) for dev-mode spawns.
+    // Display label for the floating-name overlay; cached so a respawn (which
+    // has no join message) can reuse it. Falls back to a playerId-derived stub.
+    const displayName = (joinMsg.displayName ?? "").trim() || `Player-${playerId.slice(0, 6)}`;
+    this.playerDisplayNames.set(playerId, displayName);
+
     if (this.world.isAlive(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)} rejoining (post-handoff)`);
     } else {
-      const spawn = this.content.getGameConfig().player;
-      const heritage = this.accountClient
-        ? (await this.accountClient.getHeritage(playerId).catch((err: unknown) => {
-            console.error("[TileServer] heritage fetch failed:", err);
-            return null;
-          })) ?? undefined
-        : undefined;
-      // Use the hearth anchor as spawn point when it's on this tile; otherwise
-      // fall back to the default spawn. Cross-tile routing is the gateway's job.
-      const anchor = info?.hearthAnchor ?? null;
-      const spawnAtHearth = anchor && anchor.tileId === this.tileId;
-      const spawnX = spawnAtHearth ? anchor.position.x : spawn.defaultSpawnX;
-      const spawnY = spawnAtHearth ? anchor.position.y : spawn.defaultSpawnY;
-      const spawnZ = spawnAtHearth ? anchor.position.z : undefined;
-      if (spawnAtHearth) {
-        console.log(`[TileServer] player ${playerId.slice(0, 8)} spawning at hearth (%.1f, %.1f)`, spawnX, spawnY);
-      }
-      spawnPrefab(this.world, this.content, "player", {
-        id: playerId,
-        x: spawnX,
-        y: spawnY,
-        z: spawnZ,
-        heritage,
-      });
-
-      // Display label for floating-name overlay. Falls back to a
-      // playerId-derived stub when the client didn't ship a displayName —
-      // the AnimationSystem-style "presence as flag" rule applies, so we
-      // always write *something* (empty string suppresses the label).
-      const displayName = (joinMsg.displayName ?? "").trim()
-        || `Player-${playerId.slice(0, 6)}`;
-      this.world.write(playerId, Name, { value: displayName });
-
-      // Fog of war (T-161): hydrate the freshly-spawned player's FogState
-      // bitmap from the account service.  Failure is non-fatal — the player
-      // just starts on a fresh fog.  pendingSnapshot is left at its default
-      // (true) so the next state message ships the (now hydrated) bitmap.
-      if (this.accountClient) {
-        const fogBitmap = await this.accountClient.getFog(playerId, this.tileId).catch((err: unknown) => {
-          console.error("[TileServer] fog fetch failed:", err);
-          return null;
-        });
-        if (fogBitmap) {
-          const fog = this.world.get(playerId, FogState);
-          if (fog && fogBitmap.byteLength === fog.seenEver.byteLength) {
-            fog.seenEver.set(fogBitmap);
-            console.log(`[TileServer] fog restored for ${playerId.slice(0, 8)} on ${this.tileId}`);
-          }
-        }
-      }
+      await this.spawnFreshPlayer(playerId, info?.hearthAnchor ?? null);
     }
 
     // Send ack with canonical playerId
@@ -1652,6 +1687,7 @@ export class TileServer {
       return;
     }
     this.sessions.delete(playerId);
+    this.playerDisplayNames.delete(playerId);
     // Persist fog of war (T-161) before the entity (and its FogState) is
     // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
     // run after, so fog was dropped on the rare crossing that reaches here).

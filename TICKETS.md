@@ -6541,7 +6541,23 @@ Done when: unequipping a torch removes the LightEmitter component (not a sentine
 client light goes out.
 
 ### T-270 · Player respawn / heir flow (death is currently a dead end)
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: <pending>
+
+**Done (heir model).** Resolved to heir: `recordDeath` already advances the dynasty generation
+gateway-side, so respawn records the death and re-fetches the (now-heir) heritage.
+
+- `CommandType.Respawn = 22` (no payload) + codec; client sends it from the death-screen Respawn
+  button and closes the panel.
+- Join-time player spawn extracted to `TileServer.spawnFreshPlayer(playerId, hearthAnchor)`
+  (heritage → hearth/default spawn → Name → fog hydrate); display names cached in a `Map` so a
+  respawn (no join message) keeps the name.
+- `respawnPlayer` (async, re-entry-guarded): `recordDeath` (→ generation advance → heir) then
+  `spawnFreshPlayer`. The tick command-drain fires it for a `Respawn` command and keeps it out of
+  the per-system list; a no-op while alive or session-gone. Dev mode (no account service) respawns
+  a fresh default character.
+
+No reconnect needed — the session survives entity death. 155 server tests green; client bundles.
+(Death-stats display + a respawn delay/penalty are left as polish.)
 
 The death loop is broken end-to-end (found 2026-06 during live play). On health 0, `DeathSystem`
 `world.destroy()`s the player entity (`death.ts:84`) and the client opens the death panel

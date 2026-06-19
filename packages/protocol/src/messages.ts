@@ -140,7 +140,8 @@ export const enum CommandType {
                         //   player's inventory (first free inventory slot).
   PickUp          = 21, // payload: u8 strLen + UTF-8 entityId — picks the named ground-item
                         //   entity into the player's inventory if within reach.
-  // 22-255 reserved for future commands
+  Respawn         = 22, // no payload — re-enter the world after death (spawns the dynasty heir).
+  // 23-255 reserved for future commands
 }
 
 /**
@@ -182,7 +183,8 @@ export type CommandPayload =
   | { cmd: CommandType.DebugSpawnNpc;  npcTemplate: string; quantity: number }
   | { cmd: CommandType.DebugSetTime;   hour: number }
   | { cmd: CommandType.DebugTeleport;  worldX: number; worldY: number }
-  | { cmd: CommandType.DebugSetStat;   stat: string; value: number };
+  | { cmd: CommandType.DebugSetStat;   stat: string; value: number }
+  | { cmd: CommandType.Respawn };
 
 export interface CommandDatagram {
   /** Monotonically increasing, shared sequence space with MovementDatagram. */
