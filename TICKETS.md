@@ -162,7 +162,7 @@ low-cost — flavour over simulation.
 Done when: idle NPCs appear to socialise with nearby NPCs rather than standing frozen.
 
 ### T-144 · NPC ground-drop pickup pathway
-Effort: S   Status: todo
+Effort: S   Status: done   (gather_resource collect phase; chop → sweep its drops → next node; unit-tested)
 
 NPCs that gather resources (and any future job that produces a world ItemData entity instead of
 writing directly to the harvester's inventory) currently never collect their own drops. Background:
