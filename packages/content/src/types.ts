@@ -1243,6 +1243,16 @@ export interface LoreFragment {
  * Accessed via ContentService.getGameConfig().
  * All tuning constants that would otherwise be hardcoded in system files live here.
  */
+/**
+ * A playable species' passive trait (T-084): a list of stat modifiers applied
+ * to its members. `op` mirrors the Status/Modifier primitive's fold
+ * (`(base + Σadd) × Πmul`); `stat` must be a stat the server queries through
+ * `effective()` (currently `moveSpeed`, `armorReduction`) for the trait to bite.
+ */
+export interface SpeciesDef {
+  modifiers: Array<{ stat: string; op: "add" | "mul"; value: number }>;
+}
+
 export interface GameConfig {
   survival: {
     hungerRatePerSec: number;
@@ -1414,7 +1424,17 @@ export interface GameConfig {
      * (T-260b); null = empty slot. Cross-checked against content.actions
      * at boot. */
     startingSkills?: (string | null)[];
+    /** Species a fresh player spawns as until character creation picks one (T-084/T-071).
+     * Must be a key of `species`. Defaults to "human". */
+    species?: string;
   };
+  /**
+   * Playable species (T-084), keyed by id. Each contributes a small passive
+   * trait as `StatModifier`s applied through the Status/Modifier `effective()`
+   * query — so a species id on the server-only `Species` component composes
+   * with equipment / encumbrance / buffs through one path.
+   */
+  species: Record<string, SpeciesDef>;
   /** Server-side persistence tuning — autosave cadence and future knobs. */
   persistence: {
     /** Autosave cadence in server ticks. 0 disables autosave (save on shutdown only). */

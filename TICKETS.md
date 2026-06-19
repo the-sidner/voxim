@@ -664,12 +664,26 @@ automatically inherit them.
 ## Species
 
 ### T-084 · Species component with minor passive trait
-Effort: S   Status: todo
+Effort: S   Status: done   (Species component + game_config.species + species ModifierSource; unit-tested)
 
 Add a `Species` component: `{ speciesId: string }`. Add species definitions to a new
 `species.json` data file. Each species has a small passive trait (e.g. dwarf: +5% base health;
 human: no modifier). Species is set at character creation (T-071).
 Done when: species component is present on player entities; passive trait applies to base stats.
+
+Landed: server-only `Species { speciesId }` component, written on every player at spawn from
+`game_config.player.species` (default "human"); boot cross-checks the default exists. Species defs
+live in `game_config.species` (human/dwarf/elf) as `StatModifier` lists — the trait applies through
+the Status/Modifier primitive's `effective()` fold via a new `species` ModifierSource, composing
+with equipment/encumbrance/buffs over one path (no bespoke stat code). Chose the lighter
+game_config home over a new content category + bootstrap surface for a handful of species; promote
+to its own category when character creation (T-071) makes it player-facing.
+
+Note: traits target stats the server queries live via `effective()` — today `moveSpeed` and
+`armorReduction` (dwarf: +0.1 armorReduction, ×0.92 moveSpeed; elf: ×1.1 moveSpeed). The ticket's
+"+5% base health" example needs `maxHealth` routed through `effective()` at spawn (it's set once
+today and never re-queried) — a follow-up if health-class traits are wanted. Unit-tested:
+dwarf/elf/human folds, missing-component and unknown-id are inert.
 
 ### T-085 · Species visual variants — skeleton archetype mapping
 Effort: M   Status: todo

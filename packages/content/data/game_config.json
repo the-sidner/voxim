@@ -141,7 +141,18 @@
       "skill_fireblast",
       null,
       null
-    ]
+    ],
+    "species": "human"
+  },
+  "species": {
+    "human": { "modifiers": [] },
+    "dwarf": { "modifiers": [
+      { "stat": "armorReduction", "op": "add", "value": 0.1 },
+      { "stat": "moveSpeed", "op": "mul", "value": 0.92 }
+    ] },
+    "elf": { "modifiers": [
+      { "stat": "moveSpeed", "op": "mul", "value": 1.1 }
+    ] }
   },
   "persistence": {
     "saveIntervalTicks": 6000

@@ -83,6 +83,7 @@ import { newResourceModifierRegistry } from "./resources/modifier.ts";
 import { newModifierSourceRegistry } from "./modifiers/modifier.ts";
 import { equipmentSource } from "./modifiers/sources/equipment.ts";
 import { encumbranceSource } from "./modifiers/sources/encumbrance.ts";
+import { speciesSource } from "./modifiers/sources/species.ts";
 import { buffsSource } from "./modifiers/sources/buffs.ts";
 import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
 import { emitEventEffect } from "./resources/effects/emit_event.ts";
@@ -351,6 +352,16 @@ export class TileServer {
     modifierSources.register(equipmentSource);
     modifierSources.register(encumbranceSource);
     modifierSources.register(buffsSource);
+    modifierSources.register(speciesSource);
+
+    // T-084: the default player species must exist in content.species, else a
+    // fresh player would spawn with a Species id no source can resolve.
+    const defaultSpecies = content.getGameConfig().player.species ?? "human";
+    if (!content.getGameConfig().species[defaultSpecies]) {
+      throw new Error(
+        `game_config.player.species "${defaultSpecies}" is not defined in game_config.species`,
+      );
+    }
 
     // T-238g: ResourceDef content cross-check — every threshold `effect`
     // and rateModifier `kind` referenced from data/resources/*.json must

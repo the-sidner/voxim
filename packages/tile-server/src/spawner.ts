@@ -34,6 +34,7 @@ import { ActorSlots, ActiveActions } from "./components/action.ts";
 import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
+import { Species } from "./components/species.ts";
 import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
@@ -139,6 +140,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   writeDefaults(world, id, Velocity, Facing, InputState);
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Heritage, heritage);
+  world.write(id, Species, { speciesId: content.getGameConfig().player.species ?? "human" });
 
   const capacity = content.getGameConfig().player.inventoryCapacity;
   const slots: InventoryData["slots"] = data.startingInventory.map((s) => ({
