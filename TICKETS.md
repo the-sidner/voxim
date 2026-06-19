@@ -1042,3 +1042,25 @@ container stops crash-looping. But residual CSM-era scaffolding remains, none of
 
 Done when: the studio animation editor reflects the current animation architecture with no
 CSM/state-machine or maneuver-runtime remnants, and `build_studio.ts` stays green.
+
+### T-272 · Agent test-play harness (Playwright)
+Effort: S   Status: done   Commit: f77c28d
+
+A headless harness (`scripts/testplay.mjs`) that drives the real browser client so the agent can
+verify gameplay end-to-end instead of reasoning blind: **see** (screenshot the rendered scene +
+HUD), **drive** (keyboard input steps), **read** (live world state — own entity position, health,
+resources, AoI entity count via `window._voxim_game`), and **correlate** (merge client-console +
+tile-server + gateway `docker logs` onto one millisecond timeline, GatewayLink dial-noise filtered).
+
+Connects in gateway mode: auths against the gateway (`/account/login` → falls back to `/account/register`)
+for a real session token, injects it via `addInitScript(VOXIM_SESSION_TOKEN)`, and connects through
+the gateway → tile (the docker tile validates tokens, so direct-tile/dev-token is rejected). Env knobs:
+`STEPS` (input script), `OUT` (screenshot path), `LOG_GREP` (keep only matching log lines),
+`HEADLESS=0` (watch live), `TILE_C`/`GW_C` (container names).
+
+Proven: full join handshake visible across both sides of the wire; `W`-walk moves the player
+(`x:256→261`); skill casts consume stamina (`100→77`); the rendered scene + HUD (vitals/skill bar/
+hotbar/minimap) screenshot correctly.
+
+Done when: `node scripts/testplay.mjs` connects, screenshots the running game, and prints a correlated
+CLI/SRV/GW log timeline. ✓
