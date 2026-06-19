@@ -6576,7 +6576,7 @@ Done when: a dead player clicks Respawn and re-enters the world (per the chosen 
 reconnect.
 
 ### T-271 · Heal combat numbers (green floating +N)
-Effort: S   Status: done   Commit: <pending>
+Effort: S   Status: done   Commit: fc22b1b
 
 Damage numbers were wired (red `-N` on `DamageDealt`), but discrete heals emitted no event, so
 skill_mend (heal 40) and life-drain gave the healed entity no feedback — only continuous regen,
