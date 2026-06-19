@@ -72,7 +72,7 @@ Done when: night makes stealth meaningfully easier; NPCs detect less far in dark
 ## Lore & Skills
 
 ### T-023 · Expanded skill loadout slots (6–8)
-Effort: S   Status: todo
+Effort: S   Status: done   (loreLoadoutCodec length-prefixed; game_config.player.skillSlots seeds the count; UI maps the array so it adapts)
 
 Current `LoreLoadout` has 4 slots. Expand to 6–8 (TBD, set in `game_config.json`). Ensure codec
 and UI handle variable slot count.

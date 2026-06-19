@@ -161,8 +161,12 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   // Skill bar (T-260b): slots name skill ActionDefs; the starting kit is
   // config (cross-checked against content.actions at boot).
+  // Config-driven slot count (T-023): seed `skillSlots` slots from startingSkills,
+  // padded with null. The codec is length-prefixed, so 4/6/8 all work.
+  const slotCount = content.getGameConfig().player.skillSlots ?? 4;
+  const starting = content.getGameConfig().player.startingSkills ?? [];
   world.write(id, LoreLoadout, {
-    skills: [...(content.getGameConfig().player.startingSkills ?? [null, null, null, null])],
+    skills: Array.from({ length: slotCount }, (_, i) => starting[i] ?? null),
     learnedFragmentIds: [],
   });
 

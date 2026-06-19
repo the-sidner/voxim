@@ -133,6 +133,7 @@
     "defaultSpawnY": 256,
     "maxHealth": 100,
     "maxStamina": 100,
+    "skillSlots": 4,
     "staminaRegenPerSec": 8,
     "inventoryCapacity": 20,
     "startingSkills": [

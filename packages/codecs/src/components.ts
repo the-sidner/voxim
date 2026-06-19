@@ -852,14 +852,11 @@ export interface LoreLoadoutData {
 export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
   encode(v: LoreLoadoutData): Uint8Array {
     const w = new WireWriter();
-    for (let i = 0; i < 4; i++) {
-      const s = v.skills[i];
-      if (s !== null && s !== undefined) {
-        w.writeU8(1);
-        w.writeStr(s);
-      } else {
-        w.writeU8(0);
-      }
+    // Length-prefixed (T-023): the slot count is config-driven, not fixed at 4.
+    w.writeU8(v.skills.length);
+    for (const s of v.skills) {
+      if (s !== null && s !== undefined) { w.writeU8(1); w.writeStr(s); }
+      else w.writeU8(0);
     }
     w.writeU16(v.learnedFragmentIds.length);
     for (const id of v.learnedFragmentIds) w.writeStr(id);
@@ -867,8 +864,9 @@ export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
   },
   decode(bytes: Uint8Array): LoreLoadoutData {
     const r = new WireReader(bytes);
+    const count = r.readU8();
     const skills: (string | null)[] = [];
-    for (let i = 0; i < 4; i++) skills.push(r.readU8() ? r.readStr() : null);
+    for (let i = 0; i < count; i++) skills.push(r.readU8() ? r.readStr() : null);
     const learnedCount = r.readU16();
     const learnedFragmentIds: string[] = [];
     for (let i = 0; i < learnedCount; i++) learnedFragmentIds.push(r.readStr());

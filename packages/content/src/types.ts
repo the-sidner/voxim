@@ -1408,6 +1408,8 @@ export interface GameConfig {
     maxStamina: number;
     staminaRegenPerSec: number;
     inventoryCapacity: number;
+    /** Number of LoreLoadout skill slots (T-023, config-driven; codec is length-prefixed). Default 4. */
+    skillSlots?: number;
     /** Skill ActionDef ids seeded into a fresh player's LoreLoadout slots
      * (T-260b); null = empty slot. Cross-checked against content.actions
      * at boot. */
