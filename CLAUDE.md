@@ -14,11 +14,14 @@ built and what remains.
 that comes up organically. If it's more than a one-liner, it gets a ticket. When in doubt, create one.
 
 **When to update a ticket:** mark `Status: in-progress` when work starts. On completion, mark
-`Status: done` and add `Commit: <short hash>`. The ticket is the audit trail.
+`Status: done` and add `Commit: <short hash>`. The ticket is the audit trail. When a refactor
+retires a ticket's premise (the system it targeted no longer exists), mark `Status: obsolete`
+with a one-line reason — it records that the work will deliberately never be done, rather than
+leaving a stale `todo` that contradicts the codebase.
 
 ```
 ### T-NNN · Title
-Effort: S|M|L   Status: todo|in-progress|done   [Commit: abc1234]
+Effort: S|M|L   Status: todo|in-progress|done|obsolete   [Commit: abc1234]
 
 What needs to be built and what "done" looks like.
 ```

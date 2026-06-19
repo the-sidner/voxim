@@ -604,7 +604,7 @@ DynastySystem handles `CommandType.Internalise`: reads fragmentId from tome slot
 appends to `learnedFragmentIds`, consumes the tome. Cooldown from `lore.externaliseConsumeTicks`.
 
 ### T-021 · Balance algorithm in SkillSystem
-Effort: M   Status: todo
+Effort: M   Status: obsolete   (SkillSystem retired -- T-260b)
 
 Implement the cost/effect ratio formula from spec:
 `ratio = fragment2.magnitude / (fragment1.magnitude + action.base_magnitude)`
@@ -613,7 +613,7 @@ Done when: skills with higher-magnitude costs produce amplified effects; lower c
 reduced effects; a test case verifies the formula.
 
 ### T-022 · Full verb coverage in concept-verb matrix
-Effort: L   Status: todo
+Effort: L   Status: obsolete   (concept-verb matrix retired -- T-260b)
 
 Currently only `strike` and a few other verbs are wired. Implement all 14 verbs from the spec:
 `attack`, `throw`, `shout`, `dash`, `pray`, `harvest`, `track`, `craft`, `enchant`, `trade`,
@@ -630,7 +630,7 @@ and UI handle variable slot count.
 Done when: slot count is config-driven; codec encodes correctly at the new count.
 
 ### T-024 · Tradition naming system for skills
-Effort: S   Status: todo
+Effort: S   Status: obsolete   (verb_noun skill-naming retired with the matrix -- T-260b; the LoreDomain enum shipped)
 
 Add `domain` field to fragment definitions (`SUPERNATURAL`, `RELIGIOUS`, `ALCHEMICAL`). Add a
 tradition word bank per concept per domain to `lore_fragments.json`. Skill names are generated
@@ -688,7 +688,7 @@ CraftingSystem checks `LoreLoadout.learnedFragmentIds` before setting `activeRec
 Recipes without `requiredFragmentId` remain freely available.
 
 ### T-031 · Currency — coins as physical inventory item with weight
-Effort: S   Status: todo
+Effort: S   Status: todo   (trader machinery built; the "coins" item prefab was never authored)
 
 Add `coin` item template with a weight value. Coins stack in inventory up to a limit.
 Trader transactions deduct/add coins from entity inventory (not an abstract balance).
@@ -710,7 +710,7 @@ T-121's category + per-recipe-formula model, which is per-instance, atomic, and
 extends across multi-step chains.
 
 ### T-116 · Research pass — pre-industrial artisan crafting chains
-Effort: L   Status: in-progress
+Effort: L   Status: done   (research/crafting/ -- 8 category files + SUMMARY.md)
 
 Compile a curated catalog of real-world pre-industrial artisanal production chains (metallurgy,
 ceramics, textiles, leather, wood/pyrolysis, food/preservation, chemistry/dyes, stone/mineral)
@@ -1162,7 +1162,7 @@ that runs dry visibly pauses attacking until stamina recovers.
 ## World & Macro Simulation
 
 ### T-044 · City state data structure + persistent state file
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 8231e91 (superseded by T-142)
 
 Define a `CityState` structure: personality traits, long-term goals, relationship map
 (city→city stance), resource inventory, population count, event log (last N events).
@@ -1170,7 +1170,7 @@ Serialise to a JSON file per city; load on startup. This is the LLM's memory.
 Done when: city state persists across tile server restarts; event log accumulates.
 
 ### T-045 · World event bus (gateway-scoped)
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 2871ade (superseded by T-139)
 
 Implement the gateway-level event bus. Tile servers publish cross-tile events to it
 (`PlayerCrossedGate`, `CaravanArrived`, `CityRaided`, etc.). The macro simulation and gateway
@@ -1178,7 +1178,7 @@ subscribe. Gateway event bus is distinct from the per-tile event bus.
 Done when: a tile server can publish a world event; a gateway subscriber receives it.
 
 ### T-046 · City LLM agent interface — event-driven tool calls
-Effort: L   Status: todo
+Effort: L   Status: done   Commit: 374d7de (folded into T-143)
 
 Define the LLM call interface: context packet structure, available tool call schema
 (`post_job`, `set_priority`, `send_caravan`, `propose_trade`, `declare_hostility`, `hire_npc`).
@@ -1188,7 +1188,7 @@ Done when: a mock LLM response can be parsed and its tool calls executed by the 
 Note: actual LLM integration is a separate ticket.
 
 ### T-047 · LLM fallback utility AI for city strategy
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 8231e91 (folded into T-142)
 
 When LLM is unavailable, a simple utility AI runs: maintain food production jobs, keep guard
 posts filled, trigger `send_caravan` when a surplus threshold is crossed. Strategic decisions
@@ -1253,7 +1253,7 @@ distortion, and the rest of the UAL2 library can be imported by any caller runni
 ## Gateway & Multi-tile
 
 ### T-051 · Gateway handshake flow
-Effort: M   Status: todo
+Effort: M   Status: done   (gateway handshake -- gateway/src/server.ts handleConnect)
 
 Implement the real gateway handshake: client connects → authenticates → gateway looks up which
 tile the player is on → returns tile server address → client opens direct WebTransport connection
@@ -1261,21 +1261,21 @@ to tile server → gateway steps off the data path.
 Done when: a fresh client connects through gateway and reaches the correct tile server.
 
 ### T-052 · Tile directory — register on startup, lookup by player
-Effort: S   Status: todo
+Effort: S   Status: done   (tile directory -- gateway/src/edge/tile_orchestrator.ts)
 
 Tile servers register with the gateway on startup (tile ID, address, current population).
 Gateway maintains this directory in memory. Player→tile mapping updated on each gate crossing.
 Done when: gateway can answer "which tile is player X on?" with current data.
 
 ### T-053 · Gate entities on tile edges
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: db38b68 (superseded by T-140)
 
 Gates are physical entities in the world at fixed positions on tile edges (from world generation).
 Player approaching a gate receives a `GateApproached` event. Gate carries `destinationTileId`.
 Done when: gate entities exist; player proximity triggers the gate event.
 
 ### T-054 · Player tile traversal — entity handoff
-Effort: L   Status: todo
+Effort: L   Status: done   Commit: 1bfd43f (superseded by T-140, rebuilt T-256)
 
 On `GateApproached` event, source tile server serialises the full player entity (all components).
 Sends serialised entity + destination tile ID to gateway. Gateway forwards to destination tile
@@ -1284,7 +1284,7 @@ Done when: a player crosses a gate and continues play on the destination tile; n
 is lost.
 
 ### T-055 · Client tile transition — new WebTransport connection
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: a0eb265 (superseded by T-141)
 
 When the client receives a `GateCrossing` event in the state stream, it opens a new WebTransport
 connection to the destination tile server address (provided by gateway), closes the old one, and
@@ -1409,7 +1409,7 @@ missing secret refuses to boot instead of running open.
 ## World Generation
 
 ### T-056 · World map macro generator
-Effort: L   Status: todo
+Effort: L   Status: done   (atlas worldmap -- atlas/src/worldmap/generate.ts; superseded by T-138)
 
 Generate the world map: elevation noise → temperature/moisture gradients → biome assignment per
 tile cell. Output: a `WorldMap` structure with biome per cell, elevation, river flag, city seed
@@ -1417,7 +1417,7 @@ positions, corruption zones, road network stub.
 Done when: a deterministic world map generates from a seed; biomes are distributed correctly.
 
 ### T-057 · River tracing on world map
-Effort: M   Status: todo
+Effort: M   Status: done   (atlas rivers -- atlas/src/worldmap/rivers.ts)
 
 Trace rivers from high-elevation cells downhill to coastal or low-elevation outlets. Output a
 list of tile cells with river presence flag. River tiles get a channel cut during tile generation.
@@ -1438,14 +1438,14 @@ Select city locations from world map (flat terrain, near water, resource diversi
 Done when: world generation produces N cities at valid locations with initial state files.
 
 ### T-060 · Corruption distribution on world map
-Effort: S   Status: todo
+Effort: S   Status: obsolete   (corruption removed wholesale -- T-238e)
 
 Place one or more catastrophe ground-zero points. Compute corruption level for each tile cell
 using falloff from ground-zero points. Corrupted and Badlands biomes cluster here.
 Done when: corruption level is available per tile cell; biome assignment uses it.
 
 ### T-061 · Tile generator — biome-parameterised heightmap + resource nodes
-Effort: L   Status: todo
+Effort: L   Status: done   (atlas tilemap pipeline + procedural_spawner node seeding)
 
 Generate a tile on demand from world map inputs: biome, elevation, river flag, road flag,
 corruption level, gate positions. Produces `Heightmap`, `MaterialGrid`, and resource node
@@ -1453,7 +1453,7 @@ entities seeded by biome type and density.
 Done when: a tile loads from world map data with correct biome-appropriate terrain and nodes.
 
 ### T-062 · Corruption overlay in tile generation
-Effort: M   Status: todo
+Effort: M   Status: obsolete   (corruption removed wholesale -- T-238e)
 
 If a tile's corruption level > 0, warp terrain (increase noise amplitude) and replace normal
 spawns with corrupted variants. Higher corruption = more severe warping.
@@ -2104,7 +2104,7 @@ the X" on entry; transitions fire only on actual zone-id changes
 (not every tick); save/reload preserves names byte-identical.
 
 ### T-212 · POI runtime + wilderness-stair unlock
-Effort: L   Status: in-progress   Commit: 03525ae (v1)   Depends on: T-210, T-211
+Effort: L   Status: in-progress   (v1 PoiSystem done -- 03525ae; v2 trinket->stair-unlock + boss/wave/puzzle open)
 
 **v1 landed**: PoiTrigger component + PoiSystem with two dispatch paths:
 
@@ -2179,7 +2179,7 @@ playable end-to-end: spawn → walk → fight encounter → get trinket →
 climb stair → fight boss → terminal trinket.
 
 ### T-213 · Physical stair object — heightmap ramp + step-up walkability
-Effort: M   Status: in-progress   Commit: 867766f (v1)   Depends on: T-210
+Effort: M   Status: in-progress   (v1+v2 stair carve/props done -- 867766f; T-213b runtime unlock open)
 
 **v1 landed**: `applyStairUnlock` helper + "found" stairs (lockedBy === null)
 apply at tile boot. Wilderness plateaus reachable from boot via lerped ramps.
@@ -2415,7 +2415,7 @@ builds on. Snapshot determinism stays the invariant across every
 phase.
 
 ### T-225..T-237 · Action as the universal behavior primitive
-Effort: XL (multi-ticket arc)   Status: in-progress (T-225 done: `97a20cc`)
+Effort: XL (multi-ticket arc)   Status: done   (arc landed -- ACTION_PRIMITIVE_PLAN.md COMPLETE 2026-05-15)
 
 See [`ACTION_PRIMITIVE_PLAN.md`](ACTION_PRIMITIVE_PLAN.md) at the repo
 root for the full design + migration plan. Summary:
@@ -2997,7 +2997,7 @@ Done when: loading a complex model does not drop frames; the main thread continu
 while the worker bakes.
 
 ### T-068 · Client content cache — IndexedDB
-Effort: M   Status: todo
+Effort: M   Status: obsolete   (per-model IndexedDB cache mooted by the per-connect bootstrap blob -- T-177)
 
 Raw model definitions received from the server are persisted to IndexedDB keyed by
 `(modelId, version)`. On subsequent page loads, known models are served from cache; the server
@@ -3005,14 +3005,14 @@ is only queried for unknown or newer versions.
 Done when: a page reload reuses cached models without re-requesting them from the server.
 
 ### T-069 · Model request via reliable WebTransport stream
-Effort: S   Status: todo
+Effort: S   Status: done   (model_req over content stream; now a fallback under the T-177 bootstrap blob)
 
 Client requests model definitions via the same reliable WebTransport stream as game state.
 No separate HTTP endpoint. Server responds with a `ModelDefinition` message on that stream.
 Done when: model requests and game state share one connection; no HTTP fallback exists.
 
 ### T-070 · Render placeholder for unknown modelId
-Effort: S   Status: todo
+Effort: S   Status: done   (entity_mesh createPlaceholder + renderer prefetch/swap)
 
 When an entity with an unknown `modelId` arrives, render a bounding-box placeholder immediately.
 Replace with real geometry when baking completes (T-067). Never block the game loop.
@@ -3093,7 +3093,7 @@ sees their previously-explored area immediately on join (server-driven
 snapshot).
 
 ### T-159 · River cells render as translucent water
-Effort: S   Status: in-progress
+Effort: S   Status: done   (client/src/render/water_renderer.ts, wired in game.ts)
 
 Atlas marks rivers/ponds with `BOUNDARY_KIND_WATER` and they're already
 closed in `OpenMask`, but visually they used to be just flat blue cells —
@@ -3120,7 +3120,7 @@ translucent water surface above them; the bed (mud material) shows
 through the water; the surface ripples gently at game speed.
 
 ### T-160 · First POI primitive: room + mob placement in chambers
-Effort: M   Status: in-progress
+Effort: M   Status: done   (tile-server/src/poi_placer.ts placePois/spawnMobPois)
 
 Empty chambers feel pointless.  Atlas already detects discrete pre-network
 chambers (T-152/155 — `TileInit.chambers`); this ticket gives each chamber
@@ -3563,7 +3563,7 @@ On first connection (or after dynasty wipe), show a character creation screen: s
 Done when: new player completes character creation and spawns as a properly initialised entity.
 
 ### T-072 · Respawn / heir flow UI
-Effort: M   Status: todo
+Effort: M   Status: todo   (core respawn-as-heir done in T-270; remaining: ritual UI + library/treasury)
 
 On death, spawn heir at family workbench. Show respawn UI: walk to family library, select tomes
 to read (internalise Lore), walk to family treasury, equip stored gear. Guide the player through
@@ -3571,21 +3571,21 @@ the ritual without hard-coding it.
 Done when: death triggers the heir flow; heir spawns at workbench and can complete the ritual.
 
 ### T-073 · Inventory UI
-Effort: M   Status: todo
+Effort: M   Status: done   (InventoryPanel.tsx + EquipmentPanel.tsx)
 
 Basic inventory panel: grid of carried items, item info on hover, drag-to-equip. Weight bar
 showing current vs. max encumbrance. Must reflect real-time updates from server state.
 Done when: player can view, equip, and drop items from inventory.
 
 ### T-074 · Main menu / title screen
-Effort: S   Status: todo
+Effort: S   Status: obsolete   (title/connect screen lives in the parent app, out of client scope)
 
 Minimal title screen: connect button (triggers gateway handshake), server status indicator.
 No account system in scope for now — identity from a locally-stored player ID.
 Done when: player can start the game from a title screen without direct URL manipulation.
 
 ### T-075 · Trader interaction UI
-Effort: S   Status: todo
+Effort: S   Status: todo   (TraderPanel renders; buy/sell not dispatched to server)
 
 When interacting with a trader NPC, show a buy/sell panel: trader's goods + prices on one side,
 player's inventory on the other. Transaction deducts/adds physical coin items (T-031).
@@ -3619,7 +3619,7 @@ Same persistence model as the library (T-077). Heir equips from here during resp
 Done when: items stored in treasury persist across deaths; heir can equip them.
 
 ### T-079 · Heir spawn at family workbench
-Effort: M   Status: todo
+Effort: M   Status: todo   (happy-path heir spawn at hearth done in T-270; remaining: destroyed-hearth weakened-state fallback)
 
 On character death, instead of direct respawn, create a new character entity at the family
 workbench position. If the workbench was destroyed, heir spawns at a fallback location (tile
@@ -3691,14 +3691,14 @@ Done when: a dwarf character renders with dwarf skeleton proportions; animations
 ## Item Durability
 
 ### T-086 · Item durability scalar component
-Effort: S   Status: todo
+Effort: S   Status: todo   (Durability component+codec+drain exist but inert -- no prefab installs it)
 
 Add `Durability: { current: number; max: number }` component to all equippable items at spawn.
 This is independent of material quality — two steel swords can be at different durability states.
 Done when: equipped items have a durability component; it serialises and syncs to client.
 
 ### T-087 · Durability drain from use (combat + crafting)
-Effort: S   Status: todo
+Effort: S   Status: todo   (combat drain exists but inert until items carry Durability -- T-086)
 
 Each successful combat hit with a weapon reduces its durability by a configurable amount.
 Crafting tool use similarly drains the tool. At zero durability, item becomes unusable.
@@ -3746,7 +3746,7 @@ when a wall is removed; interior cells are queryable by other systems.
 ## UI / Interaction
 
 ### T-091 · Workstation recipe browser and selection UI
-Effort: M   Status: todo
+Effort: M   Status: todo   (WorkstationPanel lists recipes; clickable selection + SelectRecipe dispatch missing)
 
 Currently the workstation CraftingPanel only shows auto-matched items; there is no way to
 browse or select a recipe. The workstation needs a recipe list panel showing all recipes valid
@@ -5631,7 +5631,7 @@ humanoid skeleton JSONs deleted; rotten_knight's giant arm renders correctly
 without authoring a separate skeleton.
 
 ### T-181 · Behavior tree runtime in @voxim/content + first BT as data
-Effort: L   Status: todo
+Effort: L   Status: done   (BT runtime shipped: content behaviorTrees registry + NpcAiSystem BT interpreter + data/behavior_trees/)
 
 Move behavior-tree concepts from `tile-server/src/systems/npc_ai.ts` into
 `@voxim/content` as a generic engine algorithm. Schema for `BehaviorTreeDef`:
@@ -5656,7 +5656,7 @@ tree; adding "skittish" or "patrol" archetypes is a content-only change
 with no code edits.
 
 ### T-182 · State machine runtime + animation state machines as data
-Effort: M   Status: todo   Plan: ANIMATION_SM_PLAN.md
+Effort: M   Status: obsolete   (state machines superseded by the action primitive -- T-225..T-237)
 
 State machine concepts (currently buried in animation slot indirection plus
 ad-hoc velocity-checks in `animation.ts`) move to `@voxim/content` as a
@@ -5733,7 +5733,7 @@ spawns procedural sub-objects via the same registry; adding a new
 algorithm is one file in algorithms/ + zero changes elsewhere.
 
 ### T-191 · Devtools rebuild
-Effort: L   Status: todo
+Effort: L   Status: todo   (umbrella -- shell+voxel+anim Layer A shipped; closes when T-191z + T-191e land)
 
 Scrap the current voxel-editor and build a coherent two-tool suite:
 voxel/model designer + animation editor. Hard separation between data
@@ -5774,7 +5774,7 @@ text (preview placeholder for the editor that'll replace it), and
 saving the file from the tool round-trips to disk.
 
 ### T-191b · Voxel editor — Layer A (scene tree, voxels, sub-objects)
-Effort: M   Status: in-progress
+Effort: M   Status: done   (Layer A v1: studio voxel-editor scene tree + voxels + sub-objects; v2 gizmos deferred)
 
 v1 delivered: file pick → load + render model in viewport (instanced
 voxels by material), scene tree (model + voxels-by-count + sub-object
@@ -5814,7 +5814,7 @@ edit voxel cells and sub-objects, saves back to the same file, and
 the result loads cleanly into the game client.
 
 ### T-191c · Animation editor — Layer A (clip player + skeleton view)
-Effort: M   Status: in-progress
+Effort: M   Status: done   (Layer A v1: AnimationEditor clip player + skeleton_view; v2 deferred)
 
 v1 delivered: pick a SkeletonDef from skeletons/, get a clip list for
 its archetype, click a clip → loads it and plays on the rendered bone
@@ -5975,7 +5975,7 @@ health_hit_handler.ts, and the bench. No backwards-compat shim — combat
 layer is gone.
 
 ### T-185 · Maneuver system (composable per-hand actions)
-Effort: L   Status: in-progress
+Effort: L   Status: obsolete   (maneuver runtime retired -- T-228; behaviours are ActionDefs now)
 
 First cut delivered:
   - ManeuverDef type + content registry + JsonSource loader + bootstrap codec
@@ -6092,7 +6092,7 @@ voxel-scaling extension". Layer 2 (procedural body recipes) remains
 open under T-186.
 
 ### T-186 · Procedural character body generator (skeleton + voxel mesh)
-Effort: L   Status: in-progress
+Effort: L   Status: in-progress   (Layer 1 morph gen done via T-190; Layer 2 voxel recipe unbuilt)
 
 **Layer 1 delivered as part of T-190.** Sub-object voxel chunks now
 stretch alongside bones via the existing morphParams table. Remaining
