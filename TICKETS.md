@@ -655,13 +655,23 @@ Done when: a new heir faces the same NPC city attitudes as their predecessor.
 ## Territorial Control
 
 ### T-081 · Workbench ownership + NPC deauthorisation on destruction
-Effort: S   Status: todo
+Effort: S   Status: done   (already satisfied by the self-healing execute_assigned_job node; premise obsolete; now test-locked)
 
 `WorkbenchOwner` component already exists. When a workbench entity is destroyed, emit a
 `WorkbenchDestroyed` event. NPCs assigned to that workbench receive the event, clear their
 job board association, and enter idle/neutral state.
 Done when: destroying a workbench causes its NPCs to go neutral within a configurable number
 of ticks.
+
+Resolution: the premise is obsolete — `WorkbenchOwner` does not exist, and there is no
+`WorkbenchDestroyed` event. The goal is nonetheless already met by a **pull** model rather than the
+described **push** one: the `execute_assigned_job` BT node checks each tick whether its
+`AssignedJobBoard.boardId` still resolves to a live `JobBoard` entity; when it doesn't
+(`!board || !isAlive`), it removes its own `AssignedJobBoard` marker and returns failure, so the
+selector falls through to idle/wander (neutral). The NPC goes neutral on its next BT tick, however
+the board vanished (combat, despawn, AoI, reload) — strictly more robust than a one-shot event.
+Closed by adding the missing regression test (`execute_assigned_job.test.ts`): board-gone → marker
+cleared + failure; live board → assignment kept.
 
 ### T-082 · Base capture flow — place new workbench to claim
 Effort: S   Status: todo
