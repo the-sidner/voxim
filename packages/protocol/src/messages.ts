@@ -208,7 +208,8 @@ export type GameEvent =
     | TradeCompletedEvent
   | LoreExternalisedEvent
   | LoreInternalisedEvent
-  | ZoneEnteredEvent;
+  | ZoneEnteredEvent
+  | HealedEvent;
 
 /**
  * Fired when a player crosses a zone boundary or spawns (T-211). The
@@ -296,6 +297,14 @@ export interface BuildingMissingMaterialsEvent {
 export interface HungerCriticalEvent {
   type: "HungerCritical";
   entityId: EntityId;
+}
+
+/** Fired when an entity is healed a discrete amount (skill heal / life drain), for the
+ *  green floating combat number. Continuous regen does NOT emit this. */
+export interface HealedEvent {
+  type: "Healed";
+  entityId: EntityId;
+  amount: number;
 }
 
 export interface GateApproachedEvent {

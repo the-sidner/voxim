@@ -502,6 +502,11 @@ export class VoximGame {
           case "HitSpark":
             this.renderer?.spawnHitSpark(ev.x, ev.y, ev.z);
             break;
+          case "Healed": {
+            const screenPos = this.renderer?.getEntityScreenPos(ev.entityId);
+            if (screenPos) this.overlay?.showHeal(screenPos.x, screenPos.y, Math.round(ev.amount));
+            break;
+          }
           case "EntityDied":
             console.log(`[Event] EntityDied entity=${ev.entityId.slice(-6)}${ev.killerId ? ` killer=${ev.killerId.slice(-6)}` : ""}`);
             if (ev.entityId === this.playerId) {

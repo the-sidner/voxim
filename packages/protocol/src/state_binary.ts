@@ -140,6 +140,11 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeU8(EventType.HungerCritical);
       w.writeUuid(ev.entityId);
       break;
+    case "Healed":
+      w.writeU8(EventType.Healed);
+      w.writeUuid(ev.entityId);
+      w.writeF32(ev.amount);
+      break;
     case "GateApproached":
       w.writeU8(EventType.GateApproached);
       w.writeUuid(ev.entityId);
@@ -244,6 +249,8 @@ function decodeEvent(r: WireReader): GameEvent {
       };
     case EventType.HungerCritical:
       return { type: "HungerCritical", entityId: r.readUuid() };
+    case EventType.Healed:
+      return { type: "Healed", entityId: r.readUuid(), amount: r.readF32() };
     case EventType.GateApproached:
       return {
         type: "GateApproached",

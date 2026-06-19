@@ -68,6 +68,8 @@ function isEventRelevant(
       return ev.builderId === playerId || knownEntities.has(ev.blueprintId);
     case "HungerCritical":
       return ev.entityId === playerId;
+    case "Healed":
+      return knownEntities.has(ev.entityId);
     case "GateApproached":
       return ev.entityId === playerId;
     case "GateCrossing":

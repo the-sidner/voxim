@@ -42,6 +42,19 @@ Deno.test("T-250: removals round-trip through the codec", () => {
   assertEquals(decoded.removals[2], { entityId: UUID_B, componentType: 14 });
 });
 
+Deno.test("T-271: a Healed event round-trips (entityId + amount)", () => {
+  const msg = emptyMsg();
+  msg.events = [{ type: "Healed", entityId: UUID_A, amount: 42.5 }];
+  const decoded = binaryStateMessageCodec.decode(binaryStateMessageCodec.encode(msg));
+  assertEquals(decoded.events.length, 1);
+  const ev = decoded.events[0];
+  assertEquals(ev.type, "Healed");
+  if (ev.type === "Healed") {
+    assertEquals(ev.entityId, UUID_A);
+    assertEquals(ev.amount, 42.5);
+  }
+});
+
 Deno.test("T-250: an empty removals list decodes to empty and doesn't desync the stream", () => {
   const msg = emptyMsg();
   // Put something after the removals section so a mis-sized removals read

@@ -145,9 +145,12 @@ export class HealthSkillResolver implements EffectResolver {
     const overrideTargetId = (params.overrideTargetId as EntityId | null | undefined) ?? null;
 
     if (targeting === "self") {
-      if (world.has(entityId, Health)) {
+      const h0 = world.get(entityId, Health);
+      if (h0) {
+        const healed = Math.min(mag, h0.max - h0.current);
         // Composing mutate (T-249): heals stack with same-tick damage.
         world.mutate(entityId, Health, (h) => ({ ...h, current: Math.min(h.max, h.current + mag) }));
+        if (healed > 0) events.publish(TileEvents.Healed, { entityId, amount: healed });
       }
       return;
     }
@@ -178,8 +181,9 @@ export class HealthSkillResolver implements EffectResolver {
       world.mutate(targetId, Health, (h) => ({ ...h, current: Math.max(0, h.current - stolen) }));
       events.publish(TileEvents.DamageDealt, { targetId, sourceId: entityId, amount: stolen, blocked: false });
       if (next <= 0) this.deaths.request({ entityId: targetId, killerId: entityId, cause: "effect" });
-      if (drainToCaster && world.has(entityId, Health)) {
+      if (drainToCaster && world.has(entityId, Health) && stolen > 0) {
         world.mutate(entityId, Health, (h) => ({ ...h, current: Math.min(h.max, h.current + stolen) }));
+        events.publish(TileEvents.Healed, { entityId, amount: stolen });
       }
     }
   }

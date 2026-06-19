@@ -6574,3 +6574,22 @@ Implementation shape (either fork):
 
 Done when: a dead player clicks Respawn and re-enters the world (per the chosen fork), with no
 reconnect.
+
+### T-271 · Heal combat numbers (green floating +N)
+Effort: S   Status: done   Commit: <pending>
+
+Damage numbers were wired (red `-N` on `DamageDealt`), but discrete heals emitted no event, so
+skill_mend (heal 40) and life-drain gave the healed entity no feedback — only continuous regen,
+which correctly stays silent. Added the missing feedback half:
+
+- New `Healed` wire event (`EventType.Healed = 17`, `{ entityId, amount }`) + codec; `TileEvents.Healed`
+  + EventRouter translation; AoI-relevant to sessions that know the entity.
+- `HealthSkillResolver` publishes `Healed` with the *actual* clamped amount on a self-heal and on
+  drain-to-caster (skips when nothing was healed).
+- Client handles it → `WorldOverlay.showHeal` (the green `+N` companion to `showDamage`, filling
+  the long-standing TODO).
+
+Completes the combat-feedback loop (red damage / green heal). Codec round-trip test added; 154
+server tests + protocol tests green; client bundles.
+
+Done when: casting a heal shows a green +N rise off the healed entity.

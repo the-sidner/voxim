@@ -88,6 +88,10 @@ export class EventRouter {
       });
     });
 
+    bus.subscribe(TileEvents.Healed, (p: { entityId: EntityId; amount: number }) => {
+      push({ type: "Healed", entityId: p.entityId, amount: p.amount });
+    });
+
     bus.subscribe(TileEvents.BuildingCompleted, (p: {
       builderId: EntityId;
       blueprintId: EntityId;

@@ -24,4 +24,5 @@ export const EventType = {
   BuildingMissingMaterials:    14,
   GateCrossing:                15,
   ZoneEntered:                 16,
+  Healed:                      17,
 } as const;

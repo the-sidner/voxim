@@ -20,6 +20,7 @@ export const TileEvents = {
   BuildingMissingMaterials: Symbol("BuildingMissingMaterials"),
   HungerCritical: Symbol("HungerCritical"),
   ThirstCritical: Symbol("ThirstCritical"),
+  Healed: Symbol("Healed"),
   GateApproached: Symbol("GateApproached"),
   NodeDepleted: Symbol("NodeDepleted"),
   DayPhaseChanged: Symbol("DayPhaseChanged"),
@@ -75,6 +76,11 @@ export interface CraftingCompletedPayload {
 export interface HungerCriticalPayload {
   entityId: EntityId;
   value: number;
+}
+
+export interface HealedPayload {
+  entityId: EntityId;
+  amount: number;
 }
 
 export interface ThirstCriticalPayload {

@@ -166,7 +166,26 @@ export class WorldOverlay {
     setTimeout(() => el.remove(), 1400);
   }
 
-  // TODO: showHeal(sx, sy, amount) — green floating number
+  /** Show a floating heal number (green `+n`). */
+  showHeal(sx: number, sy: number, amount: number): void {
+    const el = document.createElement("div");
+    el.textContent = `+${amount}`;
+    Object.assign(el.style, {
+      position: "absolute",
+      left: `${sx}px`,
+      top:  `${sy - 40}px`,
+      transform: "translate(-50%, 0)",
+      color:      "var(--col-success)",
+      fontSize:   "var(--text-base)",
+      fontWeight: "bold",
+      textShadow: "0 1px 4px #000",
+      pointerEvents: "none",
+      animation: "floatUp 1.2s ease-out forwards",
+    });
+    this.container.appendChild(el);
+    setTimeout(() => el.remove(), 1400);
+  }
+
   // TODO: showCombatText(sx, sy, text, kind) — generic labelled events
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
