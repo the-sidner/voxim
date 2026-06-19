@@ -21,6 +21,7 @@ import type { Recipe } from "@voxim/content";
 import { contentService } from "../content_ref.ts";
 import type { UIAction } from "../ui_actions.ts";
 import { Pane, Slot, Section } from "./primitives.tsx";
+import { humanizeItemType } from "../item_names.ts";
 
 const workstation = computed(() => uiState.value.workstation);
 
@@ -76,14 +77,35 @@ function recipeMatches(recipe: Recipe, slots: readonly (WorkstationBufferSlotVie
   return true;
 }
 
-function findMatchingRecipes(panel: WorkstationPanelState): Recipe[] {
+/** Every recipe craftable at this station type — the browse list (T-091). */
+function findStationRecipes(panel: WorkstationPanelState): Recipe[] {
   const svc = contentService.value;
   if (!svc) return [];
   const out: Recipe[] = [];
   for (const r of svc.recipes.values()) {
-    if (r.stationType === panel.stationType && recipeMatches(r, panel.slots)) out.push(r);
+    if (r.stationType === panel.stationType) out.push(r);
   }
+  out.sort((a, b) => a.id.localeCompare(b.id));
   return out;
+}
+
+/** "1× Iron Ore + 1× Coal" — the recipe's inputs as a human hint. */
+function inputSummary(recipe: Recipe): string {
+  return recipe.inputs
+    .map((i) => {
+      const label = "itemType" in i && i.itemType !== undefined
+        ? humanizeItemType(i.itemType)
+        : ("category" in i && i.category !== undefined ? i.category : "any");
+      return `${i.quantity}× ${label}`;
+    })
+    .join(" + ");
+}
+
+/** "2× Iron Ingot" — the recipe's outputs as a human label. */
+function outputLabel(recipe: Recipe): string {
+  return recipe.outputs
+    .map((o) => `${o.quantity}× ${humanizeItemType(o.itemType)}`)
+    .join(", ");
 }
 
 // ---- buffer slot cell -----------------------------------------------------
@@ -145,13 +167,56 @@ function BufferSlotCell({
   );
 }
 
+// ---- recipe row -----------------------------------------------------------
+
+/**
+ * One selectable recipe in the browser. Clicking dispatches `select_recipe`
+ * (→ CommandType.SelectRecipe), locking it as the station's `activeRecipeId`.
+ * `ready` (buffer already satisfies the inputs) shows an ember dot; `active`
+ * (the locked recipe) gets a highlighted border.
+ */
+function RecipeRow({ recipe, active, ready, onSelect }: {
+  recipe: Recipe;
+  active: boolean;
+  ready: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      class="btn interactive"
+      onClick={onSelect}
+      title={inputSummary(recipe)}
+      style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        gap: "var(--s-2)", padding: "3px 8px", textAlign: "left", width: "100%",
+        fontSize: "var(--fs-body)",
+        border: active ? "1px solid var(--ember-hi)" : "1px solid var(--line)",
+        color: active ? "var(--ember-hi)" : "var(--bone)",
+      }}
+    >
+      <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {outputLabel(recipe)}
+        </span>
+        <span style={{ color: "var(--bone-faint)", fontSize: "var(--fs-eyebrow)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {inputSummary(recipe)}
+        </span>
+      </span>
+      <span style={{ color: ready ? "var(--ember-hi)" : "var(--line-strong)", flex: "0 0 auto" }}>
+        {ready ? "●" : "○"}
+      </span>
+    </button>
+  );
+}
+
 // ---- panel ----------------------------------------------------------------
 
 export function WorkstationPanel({ onAction }: { onAction: (a: UIAction) => void }) {
   const ws = workstation.value;
   if (!ws) return null;
 
-  const matches = findMatchingRecipes(ws);
+  const recipes = findStationRecipes(ws);
   const slots: (WorkstationBufferSlotView | null)[] = [...ws.slots];
   while (slots.length < ws.capacity) slots.push(null);
 
@@ -188,19 +253,23 @@ export function WorkstationPanel({ onAction }: { onAction: (a: UIAction) => void
           color: "var(--ember-hi)",
           fontFamily: "var(--font-mono)",
         }}>
-          Crafting: {ws.activeRecipeId}
+          Crafting: {humanizeItemType(ws.activeRecipeId)}
         </div>
       )}
 
-      <Section title="Recipes" hint={`${matches.length}`}>
-        {matches.length === 0
-          ? <span style={{ color: "var(--bone-faint)", fontSize: "var(--fs-body)" }}>No matching recipe.</span>
+      <Section title="Recipes" hint={`${recipes.length}`}>
+        {recipes.length === 0
+          ? <span style={{ color: "var(--bone-faint)", fontSize: "var(--fs-body)" }}>No recipes at this station.</span>
           : (
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-1)" }}>
-              {matches.map((r) => (
-                <div key={r.id} style={{ color: "var(--bone)", fontSize: "var(--fs-body)" }}>
-                  {r.id}
-                </div>
+              {recipes.map((r) => (
+                <RecipeRow
+                  key={r.id}
+                  recipe={r}
+                  active={ws.activeRecipeId === r.id}
+                  ready={recipeMatches(r, ws.slots)}
+                  onSelect={() => onAction({ type: "select_recipe", recipeId: r.id })}
+                />
               ))}
             </div>
           )

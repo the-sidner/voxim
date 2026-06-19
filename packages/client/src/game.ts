@@ -36,6 +36,7 @@ import { currentZoneName, currentZoneRole, currentZoneTraversal } from "./ui/zon
 import { setContentService } from "./ui/content_ref.ts";
 import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
+import { humanizeItemType } from "./ui/item_names.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
 import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
 import { loadLoginName } from "./ui/login.ts";
@@ -1234,6 +1235,10 @@ export class VoximGame {
         });
         break;
 
+      case "select_recipe":
+        this._sendCommand({ cmd: CommandType.SelectRecipe, recipeId: action.recipeId });
+        break;
+
       case "deploy_item":
         // Server uses forward-facing placement for kit items, so worldX/worldY
         // are ignored — we send 0/0 to satisfy the codec without a cursor pick.
@@ -1432,13 +1437,6 @@ function bresenhamCells(a: WorldCell, b: WorldCell): WorldCell[] {
  * Convert an itemType id (e.g. "wooden_sword") to a display label ("Wooden Sword").
  * Used wherever a human-readable item name is needed client-side.
  */
-function humanizeItemType(id: string): string {
-  return id
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
 /**
  * Map a server EquipmentData into the EquipmentState shape the UI expects.
  */

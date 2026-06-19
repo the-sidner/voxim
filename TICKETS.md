@@ -733,7 +733,7 @@ visible failure), verified by hammering buy/equip presses through the test-play 
 silent drops.
 
 ### T-091 · Workstation recipe browser and selection UI
-Effort: M   Status: todo   (WorkstationPanel lists recipes; clickable selection + SelectRecipe dispatch missing)
+Effort: M   Status: done   (recipe browser: all station recipes, clickable → SelectRecipe; verified via testplay harness)
 
 Currently the workstation CraftingPanel only shows auto-matched items; there is no way to
 browse or select a recipe. The workstation needs a recipe list panel showing all recipes valid
@@ -743,6 +743,15 @@ items placed that don't match the locked recipe are rejected. Time-based recipes
 auto-start once all ingredients are present.
 Done when: player can open a workstation, browse its recipe list, select one, and place
 matching items to start crafting.
+
+Landed: `findStationRecipes` lists every recipe for the open station's type (not just buffer-
+matched); each renders as a clickable `RecipeRow` showing output label + input summary + a
+ready dot (buffer satisfies inputs), the active recipe highlighted. Clicking dispatches the new
+`select_recipe` UIAction → `CommandType.SelectRecipe`; the server's existing `_handleSelectRecipe`
+locks `activeRecipeId` (range-gated, lore-gated). `humanizeItemType` extracted to
+`ui/item_names.ts` (shared by game.ts + the panel). Verified with `scripts/testplay.mjs`: walk to
+the workbench, open it, select `bowstring_assemble` → `activeRecipeId` reads back + server
+`select-recipe` log; panel screenshot shows the highlighted active recipe over the full browse list.
 
 ## Housing
 
