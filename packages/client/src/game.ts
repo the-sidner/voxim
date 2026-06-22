@@ -336,7 +336,18 @@ export class VoximGame {
       () => this.renderer!.getPlayerScreenPos(),
       (cx, cy) => this.renderer!.getCursorFacing(cx, cy),
     );
-    this.inputCapture = new InputCapture(canvas, this.input.handle);
+    this.inputCapture = new InputCapture(canvas, this.input.handle, (e) => {
+      // Take full control of the game keybindings: swallow the browser's own
+      // default for our keys (Space/arrows scroll the page, Tab steals focus,
+      // '/' opens quick-find, Digit/letter keys can trigger find-as-you-type).
+      // Skip when (a) a text field is focused — never hijack typing — or (b) a
+      // ctrl/meta/alt modifier is held, so OS/browser shortcuts (Ctrl+C/R/V,
+      // Ctrl+Shift+I, …) keep working; game keys are bare presses.
+      if (e.ctrlKey || e.metaKey || e.altKey) return false;
+      const t = e.target;
+      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return false;
+      return IntentTranslator.GAME_KEYS.has(e.code);
+    });
     // Make the canvas focusable + focused so a headless driver's real
     // page.keyboard events have a stable, non-input activeElement to bubble
     // from to the document listener (T-272). The primary harness path is the

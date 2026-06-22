@@ -61,6 +61,12 @@ export class InputCapture {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly sink: RawEventSink,
+    // Policy deciding which key events to swallow from the browser
+    // (preventDefault) so game keys don't trigger the page's own defaults —
+    // Space/arrows scrolling, Tab stealing focus, '/' quick-find, etc. Kept as
+    // an injected predicate so InputCapture stays game-agnostic; the caller owns
+    // the game-key set and the "don't hijack a focused text field" rule.
+    private readonly preventDefaultFor?: (e: KeyboardEvent) => boolean,
   ) {
     const canvasPos = (e: MouseEvent) => {
       const r = canvas.getBoundingClientRect();
@@ -79,14 +85,20 @@ export class InputCapture {
       kind: "mouse-move", ...canvasPos(e),
       clientX: e.clientX, clientY: e.clientY, target: e.target, t: performance.now(),
     });
-    this._onKeyDown = (e) => sink({
-      kind: "key-down", code: e.code, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey,
-      target: e.target, t: performance.now(),
-    });
-    this._onKeyUp = (e) => sink({
-      kind: "key-up", code: e.code, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey,
-      target: e.target, t: performance.now(),
-    });
+    this._onKeyDown = (e) => {
+      if (this.preventDefaultFor?.(e)) e.preventDefault();
+      sink({
+        kind: "key-down", code: e.code, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey,
+        target: e.target, t: performance.now(),
+      });
+    };
+    this._onKeyUp = (e) => {
+      if (this.preventDefaultFor?.(e)) e.preventDefault();
+      sink({
+        kind: "key-up", code: e.code, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey,
+        target: e.target, t: performance.now(),
+      });
+    };
     this._onContext = (e) => e.preventDefault();
 
     document.addEventListener("mousedown",   this._onMouseDown);

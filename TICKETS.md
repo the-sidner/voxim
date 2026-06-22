@@ -402,6 +402,21 @@ hold→sample→release loop runs in ONE in-page `evaluate` (cross-boundary key+
 hide the brief swing. `BLOCK_WORKER=1` routes `bake_worker.js` to abort as the regression test for
 T-276. Stable 7/7 across repeated runs in both normal and worker-blocked modes.
 
+### T-278 · Keyboard control — game keys hijacked by browser defaults
+Effort: S   Status: done
+
+The user reported "we don't have full control over the keybindings" for the browser-hosted canvas.
+`InputCapture` listened at `document` but never called `preventDefault`, so the browser ran its own
+defaults for game keys: Space and the arrow keys scrolled the page, Tab stole focus, '/' opened
+quick-find, etc. — fighting the game input.
+
+Fix: inject an optional `preventDefaultFor(e)` policy into `InputCapture` (kept game-agnostic — the
+predicate is supplied by `game.ts`). It swallows the browser default for `IntentTranslator.GAME_KEYS`
+on bare presses, and deliberately does NOT when (a) a text field is focused (never hijack typing) or
+(b) a ctrl/meta/alt modifier is held (so Ctrl+C/R/V, Ctrl+Shift+I and other OS/browser shortcuts
+keep working). Verified live: Space/ArrowDown → defaultPrevented; KeyP, Ctrl+W, and Space-in-an-input
+→ not prevented.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
