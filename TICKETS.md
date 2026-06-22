@@ -669,11 +669,19 @@ the THREE meshes from the returned arrays. Worker bundled separately to
 ## Player UX
 
 ### T-071 · Character creation screen
-Effort: M   Status: todo
+Effort: M   Status: done
 
 On first connection (or after dynasty wipe), show a character creation screen: species selection
 (visual only; minor passive trait), starting Lore fragment selection (from a small initial set).
 Done when: new player completes character creation and spawns as a properly initialised entity.
+
+Landed: optional `speciesId` / `initialFragmentIds` on `TileJoinRequest` carry the choices in the
+join handshake; the tile-server validates them (`character_creation.ts` — invalid/absent species →
+`game_config.player.species` default, lore filtered to known fragment ids) and the player installer
+writes the chosen `Species` + seeds `LoreLoadout.learnedFragmentIds`. Selections are cached per
+player so a respawned heir keeps them. Client shows a vanilla-DOM species picker
+(`ui/character_creation.ts`, traits read from bundled `game_config.species`) before a fresh
+character's first connect; existing characters skip it. Server validation + spawn wiring unit-tested.
 
 ### T-072 · Respawn / heir flow UI
 Effort: M   Status: todo   (core respawn-as-heir done in T-270; remaining: ritual UI + library/treasury)

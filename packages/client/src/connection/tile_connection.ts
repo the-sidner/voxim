@@ -20,6 +20,16 @@ import {
   encodeFrame, makeFrameReader,
 } from "@voxim/protocol";
 
+/**
+ * Character-creation selections (T-071) sent in the join handshake for a fresh
+ * spawn. Mirror of the optional `TileJoinRequest` fields — the server is
+ * authoritative and validates both against content.
+ */
+export interface CharacterCreation {
+  speciesId: string;
+  initialFragmentIds: string[];
+}
+
 export class TileConnection {
   private transport: WebTransport | null = null;
   private datagramWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
@@ -63,6 +73,10 @@ export class TileConnection {
    * @param certHashHex  SHA-256 fingerprint (hex) of the server TLS cert —
    *                     required for self-signed certs (dev/demo). Omit when
    *                     the cert is CA-signed.
+   * @param creation     Character-creation selections (T-071) for a fresh
+   *                     spawn — chosen species + lore. Carried in the join
+   *                     handshake; the server validates and falls back to its
+   *                     defaults. Omit for an existing character.
    * @returns            The canonical player ID assigned by the tile server.
    */
   async connect(
@@ -71,6 +85,7 @@ export class TileConnection {
     token: string,
     displayName: string,
     certHashHex?: string,
+    creation?: CharacterCreation,
   ): Promise<string> {
     // deno-lint-ignore no-explicit-any
     const options: Record<string, any> = {};
@@ -94,7 +109,13 @@ export class TileConnection {
     const jWriter = joinStream.writable.getWriter();
     const jReader = joinStream.readable.getReader();
 
-    const req: TileJoinRequest = { type: "join", playerId, token, displayName };
+    const req: TileJoinRequest = {
+      type: "join", playerId, token, displayName,
+      ...(creation && {
+        speciesId: creation.speciesId,
+        initialFragmentIds: creation.initialFragmentIds,
+      }),
+    };
     await jWriter.write(encodeFrame(req));
     jWriter.close().catch(() => {}); // signal FIN without blocking on remote ACK
     console.log("[TileConn] join sent, awaiting ack");

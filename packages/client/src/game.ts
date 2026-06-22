@@ -11,6 +11,7 @@
  */
 import { connectViaGateway } from "./connection/gateway_client.ts";
 import { TileConnection } from "./connection/tile_connection.ts";
+import type { CharacterCreation } from "./connection/tile_connection.ts";
 import { InputCapture } from "./input/input_capture.ts";
 import { IntentRouter } from "./input/intent_router.ts";
 import { IntentTranslator } from "./input/intent_translator.ts";
@@ -69,6 +70,13 @@ export interface GameConfig {
    * Used for demo/dev. address is "hostname:port".
    */
   directTile?: { address: string; certHashHex?: string };
+  /**
+   * Character-creation selections (T-071) for a fresh character — chosen
+   * species + lore picks. Carried in the join handshake; the server validates
+   * them against content and silently falls back to its defaults. Omit for an
+   * existing character (the server keeps the default / cached choice).
+   */
+  creation?: CharacterCreation;
 }
 
 /**
@@ -191,6 +199,7 @@ export class VoximGame {
       tileAddress, this.playerId, tileToken,
       loadLoginName() ?? "",
       certHashHex,
+      config.creation,
     );
     this.playerId = assignedId;
     console.log(`[Game] tile-assigned player ID: ${this.playerId}`);

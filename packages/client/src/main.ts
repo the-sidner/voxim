@@ -29,6 +29,8 @@
  */
 import { VoximGame } from "./game.ts";
 import { clearToken, loadToken, showLoginScreen, validateStoredToken } from "./ui/login.ts";
+import { hasCreatedCharacter, showCharacterCreation } from "./ui/character_creation.ts";
+import type { CharacterCreation } from "./connection/tile_connection.ts";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 canvas.width  = innerWidth;
@@ -53,6 +55,19 @@ addEventListener("resize", () => {
   // Expose debug helpers for playwright/devtools
   (g as Record<string, unknown>)._voxim_game = game;
 
+  const host = document.getElementById("ui") ?? document.body;
+
+  /**
+   * Run character creation (T-071) for a fresh character, then invoke `proceed`
+   * with the chosen selections. An existing character (already created on this
+   * device) skips straight to `proceed` with no selections — the server keeps
+   * its default/cached choice.
+   */
+  const withCreation = (proceed: (creation?: CharacterCreation) => void): void => {
+    if (hasCreatedCharacter()) { proceed(undefined); return; }
+    showCharacterCreation({ container: host, onCreated: (creation) => proceed(creation) });
+  };
+
   if (directTileAddress) {
     // Direct tile mode — skip gateway, used by demo server and local dev.
     let certHashHex: string | undefined =
@@ -69,8 +84,11 @@ addEventListener("resize", () => {
       }
     }
 
-    game.start({ canvas, directTile: { address: directTileAddress, certHashHex } })
-      .catch((err) => console.error("[Voxim] failed to start:", err));
+    const cert = certHashHex;
+    withCreation((creation) => {
+      game.start({ canvas, directTile: { address: directTileAddress, certHashHex: cert }, creation })
+        .catch((err) => console.error("[Voxim] failed to start:", err));
+    });
   } else {
     const gatewayUrl: string =
       (g.VOXIM_GATEWAY_URL as string | undefined) ??
@@ -98,19 +116,22 @@ addEventListener("resize", () => {
       }
     }
 
-    const host = document.getElementById("ui") ?? document.body;
     const startGame = (token: string) => {
-      game.start({ canvas, gatewayUrl, sessionToken: token }).catch((err) => {
-        // The gateway rejected us — most likely the token expired between the
-        // /account/me probe and the connect. Clear it and fall back to the
-        // login screen rather than leaving the player stuck.
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("unauthenticated")) {
-          clearToken();
-          showLoginScreen({ gatewayUrl, container: host, onAuthenticated: startGame });
-          return;
-        }
-        console.error("[Voxim] failed to start:", err);
+      // A fresh character runs creation before its first connect (T-071); an
+      // existing one skips straight through with no selections.
+      withCreation((creation) => {
+        game.start({ canvas, gatewayUrl, sessionToken: token, creation }).catch((err) => {
+          // The gateway rejected us — most likely the token expired between the
+          // /account/me probe and the connect. Clear it and fall back to the
+          // login screen rather than leaving the player stuck.
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("unauthenticated")) {
+            clearToken();
+            showLoginScreen({ gatewayUrl, container: host, onAuthenticated: startGame });
+            return;
+          }
+          console.error("[Voxim] failed to start:", err);
+        });
       });
     };
 

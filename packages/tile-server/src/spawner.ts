@@ -140,7 +140,11 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   writeDefaults(world, id, Velocity, Facing, InputState);
   world.write(id, Health, { current: maxHealth, max: maxHealth });
   world.write(id, Heritage, heritage);
-  world.write(id, Species, { speciesId: content.getGameConfig().player.species ?? "human" });
+  // Character-creation choice (T-071) wins over the config default; the join
+  // path validated it against game_config.species before passing it here.
+  world.write(id, Species, {
+    speciesId: overrides.speciesId ?? content.getGameConfig().player.species ?? "human",
+  });
 
   const capacity = content.getGameConfig().player.inventoryCapacity;
   const slots: InventoryData["slots"] = data.startingInventory.map((s) => ({
@@ -169,7 +173,8 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   const starting = content.getGameConfig().player.startingSkills ?? [];
   world.write(id, LoreLoadout, {
     skills: Array.from({ length: slotCount }, (_, i) => starting[i] ?? null),
-    learnedFragmentIds: [],
+    // Character-creation lore picks (T-071), already filtered to known ids.
+    learnedFragmentIds: [...(overrides.initialFragmentIds ?? [])],
   });
 
   // Stamina / hunger / thirst are Resources now (T-238b/c); NPCs carry
@@ -394,6 +399,18 @@ export interface SpawnPrefabOverrides {
   heritage?: HeritageData;
   /** Display-name override applied by the npc installer to NpcTag.name. */
   instanceName?: string;
+  /**
+   * Character-creation species id (T-071), already validated against
+   * `game_config.species` by the caller. Absent → the player installer falls
+   * back to `game_config.player.species`.
+   */
+  speciesId?: string;
+  /**
+   * Lore fragment ids to seed into the new player's
+   * LoreLoadout.learnedFragmentIds (T-071), already filtered to known ids by
+   * the caller. Absent → none learned.
+   */
+  initialFragmentIds?: string[];
 }
 
 /**

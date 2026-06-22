@@ -109,6 +109,22 @@ export interface TileJoinRequest {
    * service alongside session validation.
    */
   displayName?: string;
+  /**
+   * Character-creation selections (T-071), carried in the join handshake so a
+   * fresh character spawns with the chosen species + lore instead of the
+   * config defaults — no extra reliable round-trip.
+   *
+   * Both are advisory: the tile-server validates them against bootstrapped
+   * content and silently falls back (invalid/absent species → the
+   * `game_config.player.species` default; unknown fragment ids dropped). A
+   * join with neither field set spawns exactly as before — backward-compatible.
+   *
+   * Only honoured for a *fresh* spawn; ignored on a post-handoff rejoin (the
+   * entity already exists) and on respawn (the heir keeps the dynasty's choice).
+   */
+  speciesId?: string;
+  /** Lore fragment ids to seed into LoreLoadout.learnedFragmentIds on spawn. */
+  initialFragmentIds?: string[];
 }
 
 export interface TileJoinAck {
