@@ -18,121 +18,11 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 
 ## Combat
 
-### T-008 · Injuries — permanent debuffs from severe damage
-Effort: M   Status: done   (Injury component + injury ModifierSource + severe-hit roll; unit-tested. Unblocks T-009)
-
-When a single hit deals damage exceeding a configurable threshold, roll for an injury.
-Write an injury component (type, severity) that applies a stat debuff until treated.
-Example injury types: `broken_limb` (reduced speed/attack), `deep_wound` (slow health drain).
-Done when: severe hits can produce injury components that apply persistent debuffs.
-
-Landed via the Status/Modifier primitive (same pattern as species, T-084): server-only `Injury`
-component holding `{ typeId, severity }[]`; an `injury` ModifierSource resolves each to its
-`game_config.injuries[typeId]` debuff (additive penalties scale with severity), folded through
-`effective()` so it composes with equipment/encumbrance/buffs/species. The health hit handler rolls
-on any hit ≥ `combat.injuryThreshold` (25) with `combat.injuryChance` (0.35): picks an injury type,
-adds it to the victim (re-injury of the same type deepens severity). Persists until treated (T-009).
-Shipped injuries: `broken_leg` (×0.7 moveSpeed), `deep_gash` (−0.08 armorReduction → take more
-damage). Targets live-queried stats only — the `deep_wound` health-drain DoT variant is a follow-up
-(it wants the buff/Resource DoT tick, not a stat modifier). Unit-tested: each debuff via
-`effective()`, severity scaling, stacking, absent-component and unknown-id inert.
-
-### T-009 · Injury treatment via supernatural/alchemy workstation
-Effort: S   Status: done   (treat recipe step heals the crafter's injury; unit-tested; pairs with T-008)
-
-Add a `treat_injury` recipe type to the supernatural/alchemy crafting stations. Using it
-removes the injury component from the target entity.
-Done when: the correct crafting interaction removes an active injury component.
-
-Landed: new `treat` recipe step-handler (`steps/treat_step.ts`, one handler + one register, mirroring
-repair T-088). A swing at the recipe's `stationType` with a `stepType: "treat"` recipe selected and
-its materials present heals the **crafter** (`ctx.hit.attackerId`): consume materials, reduce the
-first `Injury` entry by one severity, removing the entry at 0 and the whole component once the last
-injury clears. `RecipeStepType` gains `"treat"`; `data/recipes/treat_injury.json`
-(alchemist_bench + 2× plant_fiber poultice). Repeated treatment compounds the material cost,
-symmetric with repair. Unit-tested: severity decrement + material consume, last-severity clears the
-component, nothing-to-treat and no-material no-ops.
-
 ## Stealth
-
-### T-014 · Noise level component — run vs. crouch
-Effort: S   Status: done   (NoiseLevel component + NoiseSystem derives it from speed × crouch; unit-tested)
-
-Add a `NoiseLevel` component derived each tick from movement speed and crouch state. Running =
-high noise; walking = medium; crouching = low. Written by `PhysicsSystem` or a new
-`StealthSystem`.
-Done when: `NoiseLevel` is present on moving entities and varies correctly with movement state.
-
-Landed: server-only `NoiseLevel { level: 0..1 }` written each tick by a new generic `NoiseSystem`
-over every actor (Velocity + InputState — players and NPCs alike). `level = min(1, speed/
-maxGroundSpeed)`, scaled by `stealth.crouchNoiseMultiplier` (0.3) while the `Crouched` tag is set —
-so sprint→1, crouch-walk is quiet, still→0. Consumed by NPC perception next (T-015 detection
-gradient). Unit-tested: sprint/still/half/crouch/clamp and actors-only gating.
-
-### T-015 · NPC detection radius driven by noise + distance
-Effort: M   Status: done   (unified sight+hearing+proximity detection; consumes NoiseLevel; unit-tested)
-
-In `NpcAiSystem`, replace binary proximity detection with a soft gradient: detection probability
-scales with target noise level and inverse distance. Crouching at range may not trigger detection;
-running nearby always does.
-Done when: crouching entities are harder to detect at distance than running ones; NPCs react
-proportionally.
-
-Landed: the aggro scan (`findDetectedThreat`, replacing T-016's `findNearestThreatInArc`) now folds
-three senses, target detected if ANY fires within aggro range — **sight** (forward cone, T-016),
-**hearing** (`NoiseLevel × (1 − dist/range) ≥ aggroAuditoryThreshold`, T-014's noise, omnidirectional),
-**proximity** (the short rear range, any direction). Chose a deterministic threshold over a per-tick
-probability roll — same graded gameplay (a croucher at range escapes, a sprinter behind is heard,
-frontal is always caught) without RNG flicker that would make NPCs twitch in and out of aggro.
-Config: `aggroAuditoryThreshold` 0.15. Unit-tested: silent sight/proximity cases plus sprinter-heard /
-croucher-at-range-missed / croucher-close-heard / out-of-range-however-loud.
-
-### T-016 · Directional detection — NPC facing vs. target position
-Effort: S   Status: done   (forward-cone aggro scan via findNearestThreatInArc; unit-tested)
-
-Enemies facing away from the player have no detection. Add a facing arc check to NPC threat
-detection: enemies detect within a forward cone at full sensitivity; rear detection only at very
-short range.
-Done when: flanking unaware NPCs is viable; frontal approach is consistently detected.
-
-Landed: `findNearestThreatInArc` replaces the omnidirectional `findNearestNonNpc` in the
-`set_job_attack_nearest` BT node — a target is seen at full `aggroRangeSq` only inside the NPC's
-forward cone (`facing ± aggroConeHalfAngle`), and only within a much shorter `aggroRangeSq ×
-aggroRearRangeRatio` behind/to the flank. The NPC's facing comes from its `Facing` component. Two
-config knobs added to `npcAiDefaults` (cone half-angle 1.2217 ≈ ±70°, rear ratio 0.08 ≈ 28% of
-frontal range). Flee detection stays omnidirectional (a different trigger). Unit-tested: front
-detected, far-behind unseen, close-behind seen, flank unseen, nearest-eligible wins.
-
-### T-017 · Light level detection modifier
-Effort: M   Status: done   (findDetectedThreat scales aggro + rear ranges by getLightAt(pos) via game_config.npcAiDefaults.nightDetectionRangeMultiplier; pitch dark → half range, torches/fires restore it)
-
----
 
 ## Lore & Skills
 
-### T-023 · Expanded skill loadout slots (6–8)
-Effort: S   Status: done   (loreLoadoutCodec length-prefixed; game_config.player.skillSlots seeds the count; UI maps the array so it adapts)
-
-Current `LoreLoadout` has 4 slots. Expand to 6–8 (TBD, set in `game_config.json`). Ensure codec
-and UI handle variable slot count.
-Done when: slot count is config-driven; codec encodes correctly at the new count.
-
 ## Crafting & Economy
-
-### T-031 · Currency — coins as physical inventory item with weight
-Effort: S   Status: done   (coins.json stackable prefab + 50 starting coins; trader machinery already referenced currencyItemType)
-
-Add `coin` item template with a weight value. Coins stack in inventory up to a limit.
-Trader transactions deduct/add coins from entity inventory (not an abstract balance).
-Done when: buying from a trader deducts physical coin items; selling adds them.
-
-### T-032 · NPC buy/need system — NPCs seek traders when need critical
-Effort: M   Status: obsolete   (premise dead: hunger/thirst are Resources now (T-238), no NPC currency; the intent — NPCs handling hunger/thirst emergencies — is already met by the seekFood/seekWater jobs finding ground consumables, wired into passive.json)
-
-When an NPC's hunger/thirst reaches a threshold and it has coins, add a `seek_trader` job:
-find the nearest trader NPC with food/water, buy from them if currency is sufficient.
-Same mechanic for tool needs (NPC without hammer seeks a trader selling hammers).
-Done when: hungry NPCs with coins autonomously locate and buy food from trader NPCs.
 
 ### T-036 · Blueprint as saveable/storable Lore item
 Effort: M   Status: todo
@@ -152,57 +42,6 @@ Done when: assigning a build job to an NPC causes it to navigate to the blueprin
 ---
 
 ## NPC & Society
-
-### T-038 · Hiring workbench as craftable deployable
-Effort: S   Status: done
-
-The hiring workbench is currently hardcoded at spawn. Make it a craftable deployable item that
-the player places in the world. Placed instance creates a `WorkbenchOwner` component with the
-placer's dynasty ID.
-Done when: players can craft and place hiring workbenches; ownership is tracked.
-
-Landed: `job_board_assemble` recipe (workbench assembly, wood + cloth → stackable
-`job_board_kit`); the kit deploys into the existing `job_board` prefab. New server-only
-`WorkbenchOwner {dynastyId}` component, stamped by an EntityDeployed subscriber in server.ts when
-a `job_board` is placed (reads the placer's Heritage.dynastyId). Sets up T-082 (base capture).
-
-### T-039 · NPC sleep need + bed infrastructure
-Effort: M   Status: done
-
-Add `Sleep` as an NPC need alongside `Hunger`/`Thirst`. Add a `bed` deployable. When sleep need
-is critical, NPC seeks the nearest unoccupied bed and fulfills it. No bed = NPC enters permanent
-low-performance state or eventually leaves.
-Done when: NPCs seek and use beds; missing beds cause retention problems.
-
-Landed: `sleep` ResourceDef (tiredness rises while awake, exhaustion DPS at max) seeded on
-every NPC; `seekBed` job + `check_sleep_critical`/`set_job_seek_bed` BT nodes wired into the
-passive tree (mirrors the hunger/thirst seek pattern); stateless bed (`bed` placeable prop +
-`bed_kit` deployable, found by `SpawnedFrom` prefab id, first-come proximity). Tuning in
-`game_config.npcAiDefaults` (sleepEmergency / seekBedTicks / bedSleepRestore / bedRangeSq).
-
-### T-040 · NPC sensory system — proximity event subscription
-Effort: M   Status: done
-
-NPCs currently detect threats via direct distance checks. Replace with event-bus subscriptions:
-NPCs subscribe to `DamageDealt`, `EntityDied`, `LoudNoise` events within their detection radius.
-Guards subscribe broadly; labourers subscribe narrowly.
-Done when: nearby combat events trigger NPC awareness without per-tick distance scans.
-
-Landed: a buffered `NpcSensorySystem` (the TriggerSystem shape) ALONGSIDE the
-spatial detection scan (T-015/16/17 left intact) — it collects `DamageDealt` /
-`EntityDied` / `LoudNoise` during the bus flush and at the top of its next run
-aggros every NPC within `npcAiDefaults.perceptionRadius` of the event toward the
-threat (the attacker / killer / noise source), gated on the NPC not already
-attacking and the threat being a live, non-NPC, Health-bearing entity. Added the
-`LoudNoise` TileEvent (published by NoiseSystem above `loudNoiseThreshold`).
-
-### T-041 · NPC Lore accumulation through job execution
-Effort: M   Status: obsolete   (premise dead: NPCs carry no LoreLoadout since T-260b — spawner.ts:221 "NPCs don't learn lore"; their behaviour is weapon/archetype triggers (T-259), not learned fragments. Same retirement as T-042)
-
-When an NPC completes a job of a type it can learn from (crafting, building, gathering), increment
-an internal Lore experience counter. At a threshold, add the relevant fragment to the NPC's Lore
-set. Slower and with a smaller fragment ceiling than players.
-Done when: a blacksmith NPC gains crafting-related Lore over many crafting jobs.
 
 ### T-042 · NPC specialisation matching to job requirements
 Effort: M   Status: needs-design   (original Lore-on-NPC premise is dead — T-260b removed NPC LoreLoadout)
@@ -224,73 +63,7 @@ NPC actually dequeues from its assigned board).
 Done when: a forging job tagged for smiths is only taken by NPCs whose archetype/skill tags
 satisfy it; non-matching NPCs skip to a lower-priority job.
 
-### T-043 · NPC social idle behaviour
-Effort: S   Status: done   (idle NPCs drift toward a nearby fellow → emergent clustering; unit-tested)
-
-When an NPC's job queue is empty, rather than standing idle, it wanders within a home range and
-occasionally emits a `SocialIdle` event. Nearby NPCs react by moving closer briefly. Simple,
-low-cost — flavour over simulation.
-Done when: idle NPCs appear to socialise with nearby NPCs rather than standing frozen.
-
-Landed via an **emergent** model rather than the broadcast-event one — simpler and reads the same:
-`set_job_default` now, `socialIdleChance` (0.35) of the time, drifts a mobile idle NPC toward the
-nearest fellow within `socialScanRadius` (12u), stopping ~1.5u short so they gather *around* each
-other. When several idle NPCs each seek their nearest neighbour they converge into loose clusters —
-"socialising" — without any SocialIdle event or reaction plumbing. Gated on `wanderRadius > 0`, so
-stationary vendors (the merchant at its stall) never wander off. New `findNearestNpc` helper;
-`socialIdleChance` + `socialScanRadius` config. Unit-tested: nearest-fellow selection (excl.
-self/players/out-of-range), mobile drift toward a fellow, stationary NPCs staying put.
-
-### T-144 · NPC ground-drop pickup pathway
-Effort: S   Status: done   (gather_resource collect phase; chop → sweep its drops → next node; unit-tested)
-
-NPCs that gather resources (and any future job that produces a world ItemData entity instead of
-writing directly to the harvester's inventory) currently never collect their own drops. Background:
-the player-facing `ItemPickupSystem` was deleted in favour of explicit PickUp commands; that system
-already excluded NPCs (`if (world.has(collectorId, NpcTag)) continue`), so removing it changed
-nothing for the NPC path — but the original `gather_resource` job docstring was aspirational and
-assumed pickup happened automatically. It doesn't. Today a forester chops a tree, the logs spawn
-on the ground next to it, and the NPC walks away empty-handed.
-
-The fix lives inside the existing `JobHandler` pattern. Two reasonable shapes:
-  - Extend `gather_resource` so after depleting the node it transitions into a "collect spawned
-    drops" sub-state: scan ItemData entities within a small radius of the node whose `prefabId`
-    matches the job's `itemType`, walk to each in turn, fold into Inventory, destroy the world
-    entity. Job completes when the inventory threshold is met OR no more matching drops in range.
-  - Or: a small dedicated `pickup_drops` job that `gather_resource` enqueues on depletion, with
-    args `{ near: {x,y}, itemType, radius }`. Reusable by future producers (mining, butchering).
-The implementer picks; the second is cleaner for reuse but heavier today.
-
-Two interactions worth handling:
-  - With T-129's drop-ejection physics, drops have non-zero Velocity for ~0.4s after spawn.
-    Either wait for Velocity to be removed (settled) before collecting, or accept that the first
-    pickup attempt may chase a moving target — collecting on settled-only is simpler.
-  - Inventory-full case: the NPC just leaves the drops on the ground (matches the player flow);
-    don't silently void overflow.
-
-Done when: a forester NPC depletes a tree, walks to each dropped log, and the logs appear in its
-inventory before it transitions to its next job. Verified via the NPC inventory tooltip and the
-ground entity count returning to baseline near the node.
-
 ## World & Macro Simulation
-
-### T-048 · Caravan entity — NPC group with goods + destination
-Effort: M   Status: done
-
-v1: caravan lead NPC spawns with goods + destination and walks to the matching edge gate (Caravan component + caravanEscort job); cross-tile NPC handoff, guard NPCs, and raidable goods deferred to a follow-up.
-
-A caravan is a group entity: lead NPC + guard NPCs + goods inventory + destination tile.
-The lead NPC navigates to a gate; at the gate, the caravan crosses tiles via the gate system.
-Goods are physical items in the caravan inventory — raidable.
-Done when: a caravan entity can be dispatched, navigate to a gate, and be intercepted.
-
-v1 landed: server-only `Caravan` component (`{ destinationTileId, goods[] }`,
-component_registry.ts) + a `caravanEscort` job (Job union in @voxim/codecs +
-`ai/jobs/caravan_escort.ts`, registered in ai/mod.ts) that walks the lead to the
-edge gate whose `GateLink.destinationTileId` matches the manifest and logs a
-TODO handoff on arrival. Cross-tile NPC handoff (vs. the player path in
-server.ts/handoff.ts) + guard NPCs linked via the scene graph remain a
-follow-up; goods are not yet a raidable inventory.
 
 ### T-049 · Macro simulation — trade agreement + resource exchange
 Effort: L   Status: todo
@@ -310,49 +83,6 @@ Done when: a live city reacts to a significant event with LLM-generated tool cal
 
 ## Gateway & Multi-tile
 
-### T-258 · Control-plane auth — pre-launch blocker
-Effort: M   Status: done
-
-Landed: extracted `verifyServiceSecret` / `resolveServiceSecret` /
-`SERVICE_SECRET_HEADER` into `@voxim/protocol` (`service_auth.ts`, the single
-cross-service home; `endpoints.ts` now reuses it instead of its inline copy).
-The shared secret now gates every mutating control-plane endpoint —
-gateway `/register` `/heartbeat` `/handoff` (server.ts), tile admin `/handoff`
-`/jobs` `/assign-job-board` (admin_server.ts), atlas `/world/bake`
-`/world/restart` (atlas server.ts) — returning 401 without the
-`X-Voxim-Service-Secret` header. Outbound callers (tile→gateway register/
-heartbeat/handoff, gateway→tile handoff) send the header. Player-facing
-`/gateway/connect` + `/account/*` stay public. `resolveServiceSecret()` in the
-gateway/coordinator/atlas/tile mains fails closed when `VOXIM_ENV=production`
-and the secret is unset (dev falls back to a shared default); prod compose +
-`.env.example` set `VOXIM_ENV`. Unit-tested in `protocol/src/service_auth.test.ts`.
-
-**Deliberately deferred: not relevant while dev-only. Must land before anything is publicly
-reachable.** The secret machinery exists (`X-Voxim-Service-Secret`,
-`constantTimeEqualStrings`) but only guards `/internal/*` (2026-06 review):
-
-- Tile admin `/handoff`, `/jobs`, `/assign-job-board` accept any POST — `/handoff` writes
-  attacker-supplied Health/Inventory/Equipment via `restorePlayer`; the port binds
-  `0.0.0.0` and also serves the client assets, so it is public by design
-  (`admin_server.ts:42-118`).
-- Gateway `/register`, `/heartbeat`, `/handoff` are unauthenticated
-  (`gateway/src/server.ts:156-158`) — registry poisoning routes clients (and handoff
-  payloads carrying player state) to an attacker.
-- Atlas `POST /world/bake` + `/restart` are public via Caddy with CORS `*`
-  (`atlas/src/server.ts:114`, `docker/Caddyfile:32-42`) — any third-party web page can bake
-  a new world, exiting every tile-server and the coordinator.
-- Fail-open: without `VOXIM_SERVICE_SECRET`/`GATEWAY_URL` the join path accepts any claimed
-  playerId (`server.ts:1344-1348`); the dev-secret fallback has no production guard.
-
-Fix: require the service secret on every mutating control-plane endpoint (tile admin,
-gateway register/heartbeat/handoff, atlas bake/restart); split admin off the public asset
-port or bind it non-public; fail closed in production when the secret is unset.
-
-Done when: every mutating endpoint rejects requests without the secret; production with a
-missing secret refuses to boot instead of running open.
-
----
-
 ## World Generation
 
 ### T-058 · Road network generation
@@ -368,36 +98,6 @@ Effort: M   Status: todo
 Select city locations from world map (flat terrain, near water, resource diversity). Create a
 `CityState` (T-044) for each. Seed each with a founding NPC and a starting workbench.
 Done when: world generation produces N cities at valid locations with initial state files.
-
-### T-063 · Cave instance tile type
-Effort: M   Status: done
-
-Cave instances are tiles with enclosed-rock generation (walls + floor = rock material, no open
-sky). A cave gate on a surface tile links to a cave tile ID. Cave tiles are generated with the
-same tile generator, just with different biome parameters (cave biome).
-Done when: a surface gate can link to a cave tile; cave tile generates correctly.
-
-v1 landed: rock-dominant `cave` biome (`instanceOnly` so it never wins the overworld cascade);
-`parseTileId` now discriminates overworld `cellX_cellY` from the cave instance form
-`cave_<x>_<y>_<level>`; `caveInstanceTerrain` generates an enclosed stone tile via the world
-generator with `WorldGenContent.forcedBiome` bypassing classification; `GateSpec.instanceType?:
-"cave"` lets a gate point at a cave instance. The live stair→instance→exit runtime loop is
-multi-process territory (T-212) — only the cave tile TYPE is generable + parseable here.
-
-### T-064 · Dynamic chunk loading/unloading by entity proximity
-Effort: M   Status: done
-
-Currently all chunks for a tile are loaded at startup. Load a chunk entity into the world only
-when a player or active NPC is within a configurable radius. Serialise and unload chunks with
-no nearby entities after a grace period.
-Done when: distant chunks are absent from world store; they load when an entity approaches.
-
-Landed: `ChunkLifecycleSystem` (registered late, dependsOn PhysicsSystem) streams terrain
-in/out by proximity to any Position-bearing entity — a chunk past `world.chunkLoadRadiusMultiplier
-× network.aoiRadius` of every anchor for `world.chunkUnloadGraceTicks` is cached in memory and
-destroyed; a cached chunk back in range is recreated verbatim. Pure load/unload verdict in
-`chunk_lifecycle_decision.ts` (unit-tested in isolation). Conservative v1 (2.0× radius, 600-tick
-grace) never unloads near gameplay; full grid set cached so dug/built terrain is never lost.
 
 ### T-212 · POI runtime + wilderness-stair unlock
 Effort: L   Status: in-progress   (v1 PoiSystem done -- 03525ae; v2 trinket->stair-unlock + boss/wave/puzzle open)
@@ -630,37 +330,6 @@ The T-214 IR + reducer + rasterizer split work is the substrate this
 builds on. Snapshot determinism stays the invariant across every
 phase.
 
-### T-065 · Enclosure detection on server
-Effort: L   Status: done (server-core; protocol/client roof is T-066)
-
-Server detects enclosed areas: a closed loop of wall entities forms an enclosure. Compute this
-when walls are placed or destroyed. Emit `EnclosureChanged` event with enclosure polygon.
-Client uses this to decide whether to render a roof.
-Done when: placing walls in a closed rectangle produces an `EnclosureChanged` event with correct
-polygon; destroying a wall removes the enclosure.
-
-Landed (server core): `enclosure_detector.ts` is a pure flood-fill — walls are
-derived from chunk OpenMask (a cell is a wall when impassable/closed); it floods
-the OPEN cells from the tile boundary (4-connected) and returns every OPEN cell
-the flood can't reach (sealed inside walls). `enclosure_detector.test.ts` pins it
-(full ring → enclosed; 1-cell gap → leaks; open field → none; nested rings; etc.).
-`EnclosureSystem` (`systems/enclosure.ts`) assembles a dense wall grid from the
-loaded Heightmap+OpenMask chunks' bounding box, caches the enclosed WORLD-cell set,
-recomputes only on a wall-change signal (subscribes to `BuildingCompleted`; dirty
-flag drained at the top of its next run), and exposes `isEnclosed(worldX, worldY)` /
-`enclosedCells()`. Registered in `server.ts` (`dependsOn` PlacementSystem),
-subscribers wired alongside trigger/NPC-sensory. Server-local — no wire/protocol
-touch.
-
-Follow-ups for T-066 (protocol event + client roof) to consume: read enclosure as
-the `EnclosureSystem.enclosedCells()` world-cell set (keys "wx,wy", each a 1×1
-cell) — there is no "polygon" yet; T-066 should either send the cell set or derive
-a boundary polygon from it. The recompute today fires on `BuildingCompleted` only;
-the terrain-dig path (digging a wall back open) is NOT yet wired because the dig
-handler lowers the heightmap but does not flip OpenMask — when a runtime OpenMask
-edit lands, route it through `EnclosureSystem.markDirty()`. Enclosure state is
-server-local; T-066 must add the `EnclosureChanged` protocol event + emission.
-
 ### T-066 · Client roof rendering for enclosed areas
 Effort: M   Status: todo
 
@@ -669,41 +338,7 @@ When the player entity is inside the enclosure, the roof is hidden (player sees 
 When outside, the roof is visible.
 Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
 
-### T-067 · Model baking in Web Worker
-Effort: M   Status: done
-
-Move `buildDisplacedVoxelGeo` (and the full model baking pipeline) off the main thread into a
-Web Worker. Main thread sends model definition; worker returns a baked `BufferGeometry` (or
-transferable geometry data). Game loop never stalls during baking.
-Done when: loading a complex model does not drop frames; the main thread continues rendering
-while the worker bakes.
-
-Landed: extracted the pure (three-free) bake math into `voxel_bake.ts`
-(`bakeDisplacedVoxel`/`bakeSubModel` — byte-identical to the old
-BoxGeometry+computeVertexNormals path, pinned by `voxel_bake.test.ts`); a
-module `bake_worker.ts` runs it off-thread and posts back position/normal
-arrays via Transferable ArrayBuffers; `bake_pool.ts` round-robins requests with
-a synchronous in-thread fallback (no `document` → tests/SSR). The renderer's
-skeleton/weapon/armor load paths now `await bakePool.bakeModel(...)` then build
-the THREE meshes from the returned arrays. Worker bundled separately to
-`dist/bake_worker.js` (build_client.ts + serve_client.ts).
-
 ## Player UX
-
-### T-071 · Character creation screen
-Effort: M   Status: done
-
-On first connection (or after dynasty wipe), show a character creation screen: species selection
-(visual only; minor passive trait), starting Lore fragment selection (from a small initial set).
-Done when: new player completes character creation and spawns as a properly initialised entity.
-
-Landed: optional `speciesId` / `initialFragmentIds` on `TileJoinRequest` carry the choices in the
-join handshake; the tile-server validates them (`character_creation.ts` — invalid/absent species →
-`game_config.player.species` default, lore filtered to known fragment ids) and the player installer
-writes the chosen `Species` + seeds `LoreLoadout.learnedFragmentIds`. Selections are cached per
-player so a respawned heir keeps them. Client shows a vanilla-DOM species picker
-(`ui/character_creation.ts`, traits read from bundled `game_config.species`) before a fresh
-character's first connect; existing characters skip it. Server validation + spawn wiring unit-tested.
 
 ### T-072 · Respawn / heir flow UI
 Effort: M   Status: todo   (core respawn-as-heir done in T-270; remaining: ritual UI + library/treasury)
@@ -712,43 +347,6 @@ On death, spawn heir at family workbench. Show respawn UI: walk to family librar
 to read (internalise Lore), walk to family treasury, equip stored gear. Guide the player through
 the ritual without hard-coding it.
 Done when: death triggers the heir flow; heir spawns at workbench and can complete the ritual.
-
-### T-075 · Trader interaction UI
-Effort: M   Status: done   (full interaction flow: decode→handler→panel→dispatch; merchant placed; verified end-to-end via testplay harness)
-
-When interacting with a trader NPC, show a buy/sell panel: trader's goods + prices on one side,
-player's inventory on the other. Transaction deducts/adds physical coin items (T-031).
-Done when: player can buy and sell items with a trader NPC via a UI panel.
-
-Landed: client now decodes the networked `traderInventory`; `makeTraderHandler` opens the panel
-on interact (range-gated); `_openTrader`/`_mirrorTraderToUi` build buy offers (all listings, live
-stock) + sell offers (listings the player holds), refreshed on every state-message touching the
-trader or player; `trade_buy`/`trade_sell` UIActions dispatch `TradeBuy`/`TradeSell` by listing
-slot (the server keys both by slot). `Btn` widened to accept `disabled`. A stationary merchant
-("Edda the Trader", `wanderRadius: 0`) was placed near spawn in `tile_layout.json`. Verified with
-`scripts/testplay.mjs`: buy berries → coins −3, berries +1, server `buy:` log; sell → coins +1,
-berries −1, server `sell:` log; panel screenshot confirms both columns render.
-
-### T-076 · Job board UI
-Effort: M   Status: done   (job board surfaced on the wire; interact → read-only panel listing pending jobs)
-
-Panel for the hiring workbench: list of current jobs (type, priority, status), add/remove/
-reprioritise jobs. Show which NPCs are assigned to which jobs. Simple, not real-time — refreshes
-on open.
-Done when: player can post and manage jobs via the workbench UI.
-
-Landed (mirrors the T-075 trader flow): `JobBoard` is networked now (wire id 52, codec moved to
-`@voxim/codecs` as `jobBoardCodec`, registered in `NETWORKED_DEFS`); the client decodes it in
-`client_world.ts`. `makeJobBoardHandler` (priority 11, beating the workstation handler since a
-job_board is a workbench-type prefab) opens the panel on interact, range-gated. `_openJobBoard`/
-`_mirrorJobBoardToUi` snapshot `jobBoard.pending` into `uiState.jobBoard`, refreshed on every
-state-message touching the board (a job claimed/completed by an assigned NPC) and closed on
-destroy. `JobBoardPanel.tsx` lists each job (goal · item · priority · claimed/unclaimed), sorted
-by priority. Read-only for v1 — posting/cancelling jobs (a UIAction + command) is deferred; the
-admin endpoint still appends jobs server-side. Tests: registry membership + codec round-trip
-(null claimedBy preserved) + spawn→wire round-trip of a real `job_board` prefab.
-
----
 
 ## Heritage & Dynasty
 
@@ -787,70 +385,7 @@ Done when: a new heir faces the same NPC city attitudes as their predecessor.
 
 ## Territorial Control
 
-### T-081 · Workbench ownership + NPC deauthorisation on destruction
-Effort: S   Status: done   (already satisfied by the self-healing execute_assigned_job node; premise obsolete; now test-locked)
-
-`WorkbenchOwner` component already exists. When a workbench entity is destroyed, emit a
-`WorkbenchDestroyed` event. NPCs assigned to that workbench receive the event, clear their
-job board association, and enter idle/neutral state.
-Done when: destroying a workbench causes its NPCs to go neutral within a configurable number
-of ticks.
-
-Resolution: the premise is obsolete — `WorkbenchOwner` does not exist, and there is no
-`WorkbenchDestroyed` event. The goal is nonetheless already met by a **pull** model rather than the
-described **push** one: the `execute_assigned_job` BT node checks each tick whether its
-`AssignedJobBoard.boardId` still resolves to a live `JobBoard` entity; when it doesn't
-(`!board || !isAlive`), it removes its own `AssignedJobBoard` marker and returns failure, so the
-selector falls through to idle/wander (neutral). The NPC goes neutral on its next BT tick, however
-the board vanished (combat, despawn, AoI, reload) — strictly more robust than a one-shot event.
-Closed by adding the missing regression test (`execute_assigned_job.test.ts`): board-gone → marker
-cleared + failure; live board → assignment kept.
-
-### T-082 · Base capture flow — place new workbench to claim
-Effort: S   Status: done
-
-Landed the management-layer half: a server-only `WorkbenchOwner {dynastyId}` (components/workbench.ts)
-stamped on any deployed entity carrying a `WorkstationTag` with the placer's `Heritage.dynastyId`,
-plus capture — deploying a workstation re-stamps every enemy-owned workstation within
-`building.capture.radiusWorldUnits` to the placer's dynasty. Driven by an `EntityDeployed`
-subscriber in server.ts calling `stampOwnershipAndCapture` (ownership.ts); no `BaseCaptured` event
-exists so the capture is logged server-side. Unit-tested in ownership.test.ts.
-
-### T-083 · Family-tagged asset persistence after capture
-Effort: S   Status: done   (BuiltBy provenance tag — stamped once at deploy, never re-stamped by capture; unit-tested. Builds on T-082)
-
-Deployable entities (chests, furniture, structures built by a dynasty) carry a `DynastyTag`
-component. After a base capture, tagged assets remain in the world but their dynasty tag
-persists — they are not transferred to the new owner automatically. This is a persistent
-grievance/motivation mechanic.
-Done when: a captured base still has the original dynasty's tagged assets; a new owner does not
-automatically inherit them.
-
----
-
 ## Species
-
-### T-084 · Species component with minor passive trait
-Effort: S   Status: done   (Species component + game_config.species + species ModifierSource; unit-tested)
-
-Add a `Species` component: `{ speciesId: string }`. Add species definitions to a new
-`species.json` data file. Each species has a small passive trait (e.g. dwarf: +5% base health;
-human: no modifier). Species is set at character creation (T-071).
-Done when: species component is present on player entities; passive trait applies to base stats.
-
-Landed: server-only `Species { speciesId }` component, written on every player at spawn from
-`game_config.player.species` (default "human"); boot cross-checks the default exists. Species defs
-live in `game_config.species` (human/dwarf/elf) as `StatModifier` lists — the trait applies through
-the Status/Modifier primitive's `effective()` fold via a new `species` ModifierSource, composing
-with equipment/encumbrance/buffs over one path (no bespoke stat code). Chose the lighter
-game_config home over a new content category + bootstrap surface for a handful of species; promote
-to its own category when character creation (T-071) makes it player-facing.
-
-Note: traits target stats the server queries live via `effective()` — today `moveSpeed` and
-`armorReduction` (dwarf: +0.1 armorReduction, ×0.92 moveSpeed; elf: ×1.1 moveSpeed). The ticket's
-"+5% base health" example needs `maxHealth` routed through `effective()` at spawn (it's set once
-today and never re-queried) — a follow-up if health-class traits are wanted. Unit-tested:
-dwarf/elf/human folds, missing-component and unknown-id are inert.
 
 ### T-085 · Species visual variants — skeleton archetype mapping
 Effort: M   Status: todo
@@ -864,103 +399,9 @@ Done when: a dwarf character renders with dwarf skeleton proportions; animations
 
 ## Item Durability
 
-### T-086 · Item durability scalar component
-Effort: S   Status: done   (deriveItemStats.maxDurability + installDurability at spawnEquipEntity & crafting; drain was already live)
-
-Add `Durability: { current: number; max: number }` component to all equippable items at spawn.
-This is independent of material quality — two steel swords can be at different durability states.
-Done when: equipped items have a durability component; it serialises and syncs to client.
-
-### T-087 · Durability drain from use (combat + crafting)
-Effort: S   Status: done   (combat resolver drains the equipped item 1/swing -- combat & harvest -- and destroys at 0; live once items carry Durability)
-
-Each successful combat hit with a weapon reduces its durability by a configurable amount.
-Crafting tool use similarly drains the tool. At zero durability, item becomes unusable.
-Done when: weapons and tools degrade from use; reaching zero makes them inoperable.
-
-### T-088 · Durability repair via crafting workstation
-Effort: S   Status: done   (repair recipe step-handler restores durability + consumes material; unit-tested)
-
-Add a repair recipe type: item + repair material → restored durability. Repair at the
-appropriate workstation (anvil for metal, workbench for wood). Repair restores a fixed amount,
-not full — repeated repairs compound material cost.
-Done when: player can repair a degraded item at a workstation to partially restore durability.
-
-Landed: new `repair` recipe step-handler (`steps/repair_step.ts`, registered in
-`registerBuiltinSteps` — one handler file + one `register()`, the doctrine). On a hit at the recipe's
-`stationType` with a `stepType: "repair"` recipe selected, it finds the worn unique Durability item in
-the buffer, verifies + consumes the recipe's material inputs (reusing `tryAssignRoles` +
-`consumeFromBuffer`), and adds `repairAmount` to the item's `remaining` capped at max — the item is
-kept, only materials are spent, so repeated repairs compound the material cost without overfilling.
-`RecipeStepType` gains `"repair"`; `Recipe.repairAmount?` added; `data/recipes/repair_metal.json`
-(anvil + iron_ingot → +40, hammer-gated). Unit-tested: restore+consume+keep, max cap, no-material
-no-op, wrong-tool no-op, full-item left alone.
-
----
-
 ## World / Environment
 
-### T-090 · Room detection and enclosed-wall system
-Effort: L   Status: obsolete   (its consumers are gone/superseded: the corruption "shelter bonus" was removed wholesale (T-238e), and the live server-side enclosure work is T-065. Re-spec against T-065 if room semantics are wanted again)
-
-A room is a contiguous enclosed volume formed by placed wall/floor blueprint structures.
-Room detection runs as a server-side flood-fill over the structure grid after each build event.
-Detected rooms receive a `RoomTag` entity with area, enclosure quality (0–1), and an interior
-cell set. Downstream consumers: warmth bonus (fireplaces raise interior temperature), shelter
-bonus (reduces corruption gain), NPC pathfinding prefers enclosed spaces for settling.
-Done when: placing walls that form a closed loop creates a detectable room entity; room dissolves
-when a wall is removed; interior cells are queryable by other systems.
-
----
-
 ## UI / Interaction
-
-### T-273 · Discrete commands ride unreliable datagrams — they can silently drop
-Effort: M   Status: done
-
-Landed: discrete commands now ride a dedicated reliable command bidi stream (client opens it after
-the content stream; `sendCommand` length-prefixes `commandDatagramCodec` output via `encodeFrame`).
-Server `ClientSession.serveCommands` frame-reads + decodes into the same `commandQueue`; the command
-branch is removed from `receiveInputs` so datagrams carry movement only. Movement stays unreliable.
-
-`TileConnection.sendCommand` writes `CommandDatagram`s on the WebTransport **datagram** (unreliable)
-path, same as movement. For ~60 Hz latest-wins movement that's correct, but discrete one-shot
-commands — `Equip`, `Place`, `TradeBuy`/`TradeSell`, `SelectRecipe`, `LoadWorkstation`, `PickUp`,
-`Respawn` — have no delivery guarantee: a dropped datagram means the action just never happens, with
-no client feedback. Surfaced while verifying T-075 with the test-play harness: under load a buy/sell
-press would intermittently produce no server `TradeSystem` log at all (the command never arrived).
-The `CommandDatagram.seq` field exists but nothing acks or resends.
-
-Fix shape: deliver discrete commands over a **reliable** channel (a dedicated bidirectional stream,
-length-prefixed via the existing `encodeFrame`/`makeFrameReader` helpers), keeping only movement on
-datagrams. Server drains the command stream into the same per-player `commandQueue` it already uses,
-so systems are unchanged. Alternatively, an ack+resend layer keyed on `seq`, but a reliable stream is
-simpler and the command rate is low. Movement stays unreliable.
-
-Done when: a discrete command issued by the client is guaranteed to reach the server (or surfaces a
-visible failure), verified by hammering buy/equip presses through the test-play harness with zero
-silent drops.
-
-### T-091 · Workstation recipe browser and selection UI
-Effort: M   Status: done   (recipe browser: all station recipes, clickable → SelectRecipe; verified via testplay harness)
-
-Currently the workstation CraftingPanel only shows auto-matched items; there is no way to
-browse or select a recipe. The workstation needs a recipe list panel showing all recipes valid
-for this station type. Clicking a recipe locks it as the `activeRecipeId` on WorkstationBuffer
-(server command via CommandType.SelectRecipe). Input slots then show required ingredients;
-items placed that don't match the locked recipe are rejected. Time-based recipes (smelt, cook)
-auto-start once all ingredients are present.
-Done when: player can open a workstation, browse its recipe list, select one, and place
-matching items to start crafting.
-
-Landed: `findStationRecipes` lists every recipe for the open station's type (not just buffer-
-matched); each renders as a clickable `RecipeRow` showing output label + input summary + a
-ready dot (buffer satisfies inputs), the active recipe highlighted. Clicking dispatches the new
-`select_recipe` UIAction → `CommandType.SelectRecipe`; the server's existing `_handleSelectRecipe`
-locks `activeRecipeId` (range-gated, lore-gated). `humanizeItemType` extracted to
-`ui/item_names.ts` (shared by game.ts + the panel). Verified with `scripts/testplay.mjs`: walk to
-the workbench, open it, select `bowstring_assemble` → `activeRecipeId` reads back + server
-`select-recipe` log; panel screenshot shows the highlighted active recipe over the full browse list.
 
 ## Housing
 
@@ -1084,46 +525,6 @@ The old packages/devtools/voxel-editor retires at the end (T-191z).
 
 Phasing → sub-tickets T-191a..e + T-191z.
 
-### T-191e · Weapon sweep debugger + per-clip attachment overrides
-Effort: M   Status: obsolete   (premise dead: swingPath keyframes were retired for clip-driven baseLocal/tipLocal blade geometry — zero swingPath in content; a sweep debugger would visualise a system that no longer exists)
-
-Deepest piece. Sits inside the animation editor.
-
-Per-frame visualisation of a WeaponActionDef's attachment math:
-  - swingPath keyframes as a 3D curve in hand-local space.
-  - interpolated tip position at scrubbed t.
-  - projected world-space blade capsule per tick of the active
-    window.
-  - hand bone matrix vs forearm-blended matrix side-by-side, so we
-    can compare smoothing strategies (multi-frame averaging,
-    forearm/hand weighted blend, authored override) and pick what
-    looks right per clip.
-
-Per-clip attachment override system:
-  data/clip_overrides/{clipId}.json — optional override for
-  baseLocal/tipLocal/holdHand applied when this clip is played.
-  Engine's evaluateBladeWorld falls back to the override map before
-  the weapon action's default. The animation editor lets you
-  manipulate the attachment gizmo at any frame and save it.
-
-Blocked on: T-191c (skeleton + clip player). Also waiting on user's
-weapon-smoothing investigation before locking in the smoothing
-algorithm.
-
-Done when: pick any sword+slash combo, scrub the swing, see the
-blade match what's drawn in-engine; if the hand wobbles, save an
-override frame-by-frame and the game client renders the corrected
-attachment.
-
-### T-191z · Retire old voxel-editor
-Effort: S   Status: done
-
-Deleted packages/devtools/src/voxel-editor/ + scripts/build_voxel_editor.ts
-+ VOXEL_EDITOR_PLAN.md wholesale; dropped the build-voxel-editor deno task
-and its prefix from the devtools/dev pipelines; serve_devtools now serves the
-studio at both / and /studio; devtools/mod.ts points at the studio entry. The
-studio is the only devtools app and `deno task build-studio` stays green.
-
 ### T-186 · Procedural character body generator (skeleton + voxel mesh)
 Effort: L   Status: in-progress   (Layer 1 morph gen done via T-190; Layer 2 voxel recipe unbuilt)
 
@@ -1191,39 +592,6 @@ shoulder width, hip width, head size); a saved character spawns into
 the world at exactly those proportions; Mixamo animations play on
 every body type without artifact; hits land at the new reach.
 
-### T-187 · Runtime dual-slot equip for hand items
-Effort: S   Status: done   (EquippableData.slot → slots[]; first-empty-candidate routing; unit-tested)
-
-Today `EquippableData.slot` is a single `EquipSlot`. Weapons declare
-`slot: "weapon"`, so EquipmentSystem can only ever route a sword into
-the main-hand slot — picking up a second sword from inventory cannot
-fill the off-hand. Spawn-time bypasses this (the spawner writes
-startingEquipment directly without slot validation, which is how the
-default dual-wielding player already works), but the inventory→equip
-flow doesn't.
-
-Path: change `slot: EquipSlot` to `slots: EquipSlot[]` (single-item
-arrays for everything that exists today; weapons declare `["weapon",
-"offHand"]`). EquipmentSystem iterates the list and equips into the
-first empty slot, with an optional client-supplied target slot to
-disambiguate. Migrate every existing prefab + the codec + the typed
-schema in one diff (rule: refactors replace, no shim). Done when
-picking up a second sword and equipping it lands it in the off-hand
-visually + on the wire, and unequipping main-hand then re-equipping
-that sword routes it correctly.
-
-Landed: `EquippableData.slot: EquipSlot` → `slots: EquipSlot[]` (content type +
-valibot schema + server-only codec, now length-prefixed). The Equip handler lands
-the item in the first declared slot that's free, rejecting only when all
-candidates are occupied. All 10 equippable prefabs migrated in the same diff
-(weapons → `["weapon","offHand"]`, cloth_tunic → `["chest"]`); no shim. The
-optional client-supplied target slot was left out — first-empty routing already
-satisfies the done-when; add it only if a real disambiguation need appears.
-Unit-tested: off-hand fill when main hand taken, main-hand-first when both free,
-all-occupied rejection, single-slot armour routing. (Removed a block of stale
-"maneuver" design that had been pasted into this ticket — it described the
-retired CSM/ActionSystem/ManeuverScheduler, gone since T-228.)
-
 ## Ops & Deployment
 
 ### T-261 · Place gates + arrivals at the carved corridor offset
@@ -1244,53 +612,3 @@ risks gates landing in walls (worse than the known-wrong-but-safe midpoint).
 
 Done when: a gate sits on its carved corridor and a handed-off player arrives on an open
 cell, verified against the atlas OpenMask.
-
-### T-268 · Devtools studio de-drift (CSM-era animation editor)
-Effort: M   Status: done
-
-Removed the dead CSM/maneuver scaffolding: deleted ManeuverPanel.tsx +
-StateMachineDef/loadStateMachine + ManeuverDef/listManeuvers (zero callsites,
-no data/maneuvers or data/state_machines dirs); dropped maneuvers/state_machines
-from ANIM_DIRS and the serve_devtools writable prefixes; removed the maneuver
-tab + onManeuverTick/onManeuverIdle + the SM-era loadClipById helper. The
-animation editor docstring now describes the live constraint-pipeline /
-ActionDispatcher model. `deno task build-studio` stays green.
-
-The studio animation editor was built around the retired CSM / state-machine model (T-228).
-T-267-adjacent work removed the immediate build blocker (the SMDriverPanel, which imported the
-deleted `compileStateMachine`/`smTickAll`/`initialSMState` from `@voxim/content`) so the devtools
-container stops crash-looping. But residual CSM-era scaffolding remains, none of it build-breaking
-(esbuild erases the dead type imports):
-
-- `content_loader.ts` still exports `StateMachineDef` + `loadStateMachine` (state_machines/*.json)
-  with no consumer.
-- `ANIM_DIRS` keeps `state_machines` in the browsable list though the tab is gone.
-- The maneuver tab / `ManeuverPanel` / `onManeuverTick` are likely also retired-era (the maneuver
-  runtime was removed at T-228) — verify and remove if dead.
-- The animation editor should be re-grounded on the current model (action runtime + the
-  constraint-pipeline animation), not state machines.
-
-Done when: the studio animation editor reflects the current animation architecture with no
-CSM/state-machine or maneuver-runtime remnants, and `build_studio.ts` stays green.
-
-### T-272 · Agent test-play harness (Playwright)
-Effort: S   Status: done   Commit: f77c28d
-
-A headless harness (`scripts/testplay.mjs`) that drives the real browser client so the agent can
-verify gameplay end-to-end instead of reasoning blind: **see** (screenshot the rendered scene +
-HUD), **drive** (keyboard input steps), **read** (live world state — own entity position, health,
-resources, AoI entity count via `window._voxim_game`), and **correlate** (merge client-console +
-tile-server + gateway `docker logs` onto one millisecond timeline, GatewayLink dial-noise filtered).
-
-Connects in gateway mode: auths against the gateway (`/account/login` → falls back to `/account/register`)
-for a real session token, injects it via `addInitScript(VOXIM_SESSION_TOKEN)`, and connects through
-the gateway → tile (the docker tile validates tokens, so direct-tile/dev-token is rejected). Env knobs:
-`STEPS` (input script), `OUT` (screenshot path), `LOG_GREP` (keep only matching log lines),
-`HEADLESS=0` (watch live), `TILE_C`/`GW_C` (container names).
-
-Proven: full join handshake visible across both sides of the wire; `W`-walk moves the player
-(`x:256→261`); skill casts consume stamina (`100→77`); the rendered scene + HUD (vitals/skill bar/
-hotbar/minimap) screenshot correctly.
-
-Done when: `node scripts/testplay.mjs` connects, screenshots the running game, and prints a correlated
-CLI/SRV/GW log timeline. ✓
