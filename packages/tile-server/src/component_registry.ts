@@ -168,6 +168,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // ActionCooldowns (T-265) — per-action cooldowns + GCD so the skill bar
   // draws cooldown sweeps. Only churns during the brief post-cast window.
   ActionCooldowns,
+  // JobBoard (T-076) — a hiring workbench's pending jobs, on the wire so the
+  // job-board panel can list goal/itemType/priority/claimedBy. The board is a
+  // workbench-type prefab, so it also streams workstationTag/workstationBuffer.
+  JobBoard,
   // Scene graph (T-215): the Parent hierarchy link. Networked so subtrees
   // (POIs, bones, equipment, buffs) replicate for free. Engine owns the
   // def + codec; wire id 49 is reserved in @voxim/protocol. Inert until
@@ -213,7 +217,7 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // only. Inert until start_buff spawns one (phase 2b wires the callers).
   BuffSpec,
   Hearth,
-  JobBoard,
+  // JobBoard (T-076) is networked now — listed in NETWORKED_DEFS above.
   AssignedJobBoard,
   // POI runtime marker (T-212). Server-only — placed at each
   // narrative POI's zone centroid; PoiSystem fires the activity on

@@ -28,7 +28,7 @@ import { ForestPropsRenderer } from "./render/forest_props.ts";
 import { WaterRenderer } from "./render/water_renderer.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { makeWorkstationHandler, makeTraderHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
@@ -293,6 +293,7 @@ export class VoximGame {
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);
     this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
     this.interactionSystem.register(makeTraderHandler((entityId) => this._openTrader(entityId)));
+    this.interactionSystem.register(makeJobBoardHandler((entityId) => this._openJobBoard(entityId)));
     this.interactionSystem.register(resourceNodeHandler);
     this.interactionSystem.register(makeGroundItemHandler((entityId) =>
       this._sendCommand({ cmd: CommandType.PickUp, entityId }),
@@ -476,6 +477,11 @@ export class VoximGame {
         if (traderId && (entityId === traderId || entityId === this.playerId)) {
           this._mirrorTraderToUi(traderId);
         }
+        // Job-board panel: refresh when the open board's pending jobs change
+        // (a job claimed/completed by an assigned NPC) so the list stays live.
+        if (uiState.value.jobBoard?.entityId === entityId) {
+          this._mirrorJobBoardToUi(entityId);
+        }
       }
 
       // Workstation panel cleanup: if the entity left AoI / was destroyed,
@@ -488,6 +494,10 @@ export class VoximGame {
       const trId = uiState.value.trader?.npcId;
       if (trId && msg.destroys.includes(trId)) {
         closePanel("trader");
+      }
+      const jbId = uiState.value.jobBoard?.entityId;
+      if (jbId && msg.destroys.includes(jbId)) {
+        closePanel("job_board");
       }
 
       if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
@@ -978,6 +988,51 @@ export class VoximGame {
             priceCoin: l.sellPrice, stock: have,
           }];
         }),
+      },
+    });
+  }
+
+  /**
+   * Open the job-board panel for a nearby hiring workbench (T-076). The board
+   * is a workbench-type prefab carrying the networked `jobBoard` component;
+   * range-gated like the trader/workstation handlers.
+   */
+  private _openJobBoard(entityId: string): void {
+    const jb = this.world.get(entityId);
+    if (!jb?.jobBoard || !jb.position) return;
+    const me = this.playerId ? this.world.get(this.playerId) : null;
+    if (!me?.position) return;
+    const dx = me.position.x - jb.position.x;
+    const dy = me.position.y - jb.position.y;
+    if (dx * dx + dy * dy > 3 * 3) {
+      pushToast("Too far away", "warn");
+      return;
+    }
+    this._mirrorJobBoardToUi(entityId);
+    openPanel("job_board");
+  }
+
+  /**
+   * Snapshot the board's networked `jobBoard.pending` into uiState so the panel
+   * stays purely reactive on the signal. Called on open and on every
+   * state-message touching the open board (a job claimed/completed by an
+   * assigned NPC). Read-only for v1 — no post/cancel commands yet.
+   */
+  private _mirrorJobBoardToUi(entityId: string): void {
+    const jb = this.world.get(entityId);
+    if (!jb?.jobBoard) return;
+    patchUI({
+      jobBoard: {
+        entityId,
+        stationName: jb.name?.value ?? "Job Board",
+        jobs: jb.jobBoard.pending.map((j) => ({
+          id: j.id,
+          goal: j.goal,
+          itemType: j.itemType,
+          itemName: humanizeItemType(j.itemType),
+          priority: j.priority,
+          claimedBy: j.claimedBy,
+        })),
       },
     });
   }

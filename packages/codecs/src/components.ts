@@ -670,6 +670,59 @@ export const traderInventoryCodec: Serialiser<TraderInventoryData> = {
   },
 };
 
+// ---- JobBoard ---------------------------------------------------------------
+// A hiring workbench's queue of pending jobs (T-076). Networked so the
+// job-board panel can list each job's goal/itemType/priority and which NPC
+// has claimed it. The board entity is a workbench-type prefab, so it also
+// carries workstationTag/workstationBuffer on the wire.
+//
+// Per entry: writeStr(id) + writeStr(goal) + writeStr(itemType) + writeI32(priority)
+//   + writeStr(claimedBy ?? "") — the empty string decodes back to null.
+
+export interface JobBoardEntry {
+  id: string;
+  /** MVP supports `"produce"` only — see execute_assigned_job BT node. */
+  goal: "produce";
+  itemType: string;
+  /** Higher values pull first. */
+  priority: number;
+  /** EntityId of the NPC that has claimed this job, or null when unclaimed. */
+  claimedBy: string | null;
+}
+
+export interface JobBoardData {
+  pending: JobBoardEntry[];
+}
+
+export const jobBoardCodec: Serialiser<JobBoardData> = {
+  encode(v: JobBoardData): Uint8Array {
+    const w = new WireWriter();
+    w.writeU16(v.pending.length);
+    for (const e of v.pending) {
+      w.writeStr(e.id);
+      w.writeStr(e.goal);
+      w.writeStr(e.itemType);
+      w.writeI32(e.priority);
+      w.writeStr(e.claimedBy ?? "");
+    }
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): JobBoardData {
+    const r = new WireReader(bytes);
+    const n = r.readU16();
+    const pending: JobBoardEntry[] = [];
+    for (let i = 0; i < n; i++) {
+      const id = r.readStr();
+      const goal = r.readStr() as "produce";
+      const itemType = r.readStr();
+      const priority = r.readI32();
+      const claimedByRaw = r.readStr();
+      pending.push({ id, goal, itemType, priority, claimedBy: claimedByRaw === "" ? null : claimedByRaw });
+    }
+    return { pending };
+  },
+};
+
 // ---- HeritageTrait ----------------------------------------------------------
 // { type: string, value: f32, fromGeneration: u32 }
 

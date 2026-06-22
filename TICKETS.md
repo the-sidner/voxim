@@ -708,12 +708,23 @@ slot (the server keys both by slot). `Btn` widened to accept `disabled`. A stati
 berries −1, server `sell:` log; panel screenshot confirms both columns render.
 
 ### T-076 · Job board UI
-Effort: M   Status: todo
+Effort: M   Status: done   (job board surfaced on the wire; interact → read-only panel listing pending jobs)
 
 Panel for the hiring workbench: list of current jobs (type, priority, status), add/remove/
 reprioritise jobs. Show which NPCs are assigned to which jobs. Simple, not real-time — refreshes
 on open.
 Done when: player can post and manage jobs via the workbench UI.
+
+Landed (mirrors the T-075 trader flow): `JobBoard` is networked now (wire id 52, codec moved to
+`@voxim/codecs` as `jobBoardCodec`, registered in `NETWORKED_DEFS`); the client decodes it in
+`client_world.ts`. `makeJobBoardHandler` (priority 11, beating the workstation handler since a
+job_board is a workbench-type prefab) opens the panel on interact, range-gated. `_openJobBoard`/
+`_mirrorJobBoardToUi` snapshot `jobBoard.pending` into `uiState.jobBoard`, refreshed on every
+state-message touching the board (a job claimed/completed by an assigned NPC) and closed on
+destroy. `JobBoardPanel.tsx` lists each job (goal · item · priority · claimed/unclaimed), sorted
+by priority. Read-only for v1 — posting/cancelling jobs (a UIAction + command) is deferred; the
+admin endpoint still appends jobs server-side. Tests: registry membership + codec round-trip
+(null claimedBy preserved) + spawn→wire round-trip of a real `job_board` prefab.
 
 ---
 

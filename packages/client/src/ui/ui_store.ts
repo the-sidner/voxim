@@ -129,6 +129,31 @@ export interface TraderState {
   playerCoins:  number;
 }
 
+// ── Job board ────────────────────────────────────────────────────────────────────
+//
+// Open while the player is interacting with a hiring workbench (T-076). game.ts
+// writes `entityId` on open, then mirrors the board's networked `jobBoard.pending`
+// into here on every state-message touching that entity. The panel stays purely
+// reactive on uiState — read-only for v1 (display, no post/cancel commands yet).
+
+export interface JobBoardJobView {
+  /** Stable job id (the board's queue key). */
+  id:          string;
+  goal:        string;
+  itemType:    string;
+  /** Resolved display label for itemType. */
+  itemName:    string;
+  priority:    number;
+  /** EntityId of the NPC that claimed this job, or null when unclaimed. */
+  claimedBy:   string | null;
+}
+
+export interface JobBoardState {
+  entityId:    string;
+  stationName: string;
+  jobs:        JobBoardJobView[];
+}
+
 // ── Dialogue ───────────────────────────────────────────────────────────────────
 
 export interface DialogueChoice {
@@ -202,6 +227,7 @@ export type PanelId =
   | "stats"
   | "workstation"
   | "trader"
+  | "job_board"
   | "dialogue"
   | "settings"
   | "death"
@@ -229,6 +255,7 @@ export interface UIState {
   // Active interactions (at most one of each at a time)
   workstation:  WorkstationPanelState | null;
   trader:       TraderState | null;
+  jobBoard:     JobBoardState | null;
   dialogue:     DialogueState | null;
 
   // Panel visibility
@@ -303,6 +330,7 @@ const _initial: UIState = {
   castState: null,
   workstation: null,
   trader:      null,
+  jobBoard:    null,
   dialogue:    null,
   openPanels:  new Set(),
   modalStack:  [],

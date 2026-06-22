@@ -49,6 +49,25 @@ export function makeTraderHandler(
 }
 
 /**
+ * Hiring workbench (job board). Identified by the `jobBoard` networked
+ * component (T-076). A job_board is a workbench-type prefab, so it also carries
+ * `workstationBuffer` and would otherwise match the workstation handler — this
+ * handler's higher priority (11 > 10) ensures the job-board panel wins. Click
+ * opens the panel, gated on the player being within `interactionRange` blocks.
+ */
+export function makeJobBoardHandler(
+  open: (entityId: string) => void,
+): EntityInteractionHandler {
+  return {
+    id: "job_board",
+    priority: 11,
+    interactionRange: 3,
+    canHandle: (t) => t.entityState.jobBoard !== undefined,
+    onClick: (t) => { open(t.entityId); return true; },
+  };
+}
+
+/**
  * Harvestable resource nodes — trees, rocks, ore veins, bushes, etc.
  * Identified by the "resource_node" networked component.
  * Gathering is driven by the server via the interact action; click falls through.

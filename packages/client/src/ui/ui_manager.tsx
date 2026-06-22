@@ -25,6 +25,7 @@ import { InventoryPanel }  from "./components/InventoryPanel.tsx";
 import { StatsPanel }      from "./components/StatsPanel.tsx";
 import { WorkstationPanel } from "./components/WorkstationPanel.tsx";
 import { TraderPanel }     from "./components/TraderPanel.tsx";
+import { JobBoardPanel }   from "./components/JobBoardPanel.tsx";
 import { DialoguePanel }   from "./components/DialoguePanel.tsx";
 import { SettingsPanel }   from "./components/SettingsPanel.tsx";
 import { DeathScreen }     from "./components/DeathScreen.tsx";
@@ -98,6 +99,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       {panels.has("stats")      && <StatsPanel />}
       {panels.has("workstation") && <WorkstationPanel onAction={onAction} />}
       {panels.has("trader")     && <TraderPanel      onAction={onAction} />}
+      {panels.has("job_board")  && <JobBoardPanel />}
       {panels.has("dialogue")   && <DialoguePanel    onAction={onAction} />}
       {panels.has("settings")   && <SettingsPanel    onAction={onAction} />}
 

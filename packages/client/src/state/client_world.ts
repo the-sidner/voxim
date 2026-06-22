@@ -18,6 +18,7 @@ import {
   gateLinkCodec,
   nameCodec,
   traderInventoryCodec,
+  jobBoardCodec,
 } from "@voxim/codecs";
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
@@ -30,6 +31,7 @@ import type {
   GateLinkData,
   NameData,
   TraderInventoryData,
+  JobBoardData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
@@ -68,6 +70,8 @@ export interface EntityState {
   workstationTag?: WorkstationTagData;
   /** Trader catalogue — drives the trade panel when the player interacts (T-075). */
   traderInventory?: TraderInventoryData;
+  /** Hiring board's pending jobs — drives the job-board panel when the player interacts (T-076). */
+  jobBoard?: JobBoardData;
   stats?: StatsData;
   provenance?: ProvenanceData;
   worldClock?: WorldClockState;
@@ -250,6 +254,9 @@ export class ClientWorld {
         break;
       case ComponentType.traderInventory:
         entity.traderInventory = traderInventoryCodec.decode(data);
+        break;
+      case ComponentType.jobBoard:
+        entity.jobBoard = jobBoardCodec.decode(data);
         break;
       case ComponentType.stats:
         entity.stats = statsCodec.decode(data);
