@@ -146,6 +146,14 @@ export function findNearestNpc(
  * Among detected targets the nearest wins. So a frontal approach is always
  * caught, flanking a quiet crouching attacker is viable, and running up behind
  * an NPC still alerts it.
+ *
+ * Darkness (T-017) shrinks the detection range: `lightLevel` (0..1, from
+ * `getLightAt`) scales both `aggroRangeSq` and `rearRangeSq` by an effective
+ * factor `(1 − (1 − lightLevel) × nightMul)²` (squared because the params are
+ * squared distances). Full daylight (1) leaves ranges unchanged; pitch dark (0)
+ * shrinks them to `(1 − nightMul)` of their lit value. The squeezed aggro range
+ * caps every sense, so a target that fades into the dark slips out of sight,
+ * out of hearing range, and beyond the proximity sense alike.
  */
 export function findDetectedThreat(
   spatial: SpatialGrid,
@@ -158,11 +166,20 @@ export function findDetectedThreat(
   coneHalfAngle: number,
   rearRangeSq: number,
   auditoryThreshold: number,
+  lightLevel: number,
+  nightDetectionRangeMultiplier: number,
 ): { entityId: EntityId } | null {
-  const range = Math.sqrt(aggroRangeSq);
+  // Darkness factor on squared distances: scale linear range by
+  // (1 − (1 − light) × mul), so squared range scales by that squared.
+  const linearFactor = 1 - (1 - lightLevel) * nightDetectionRangeMultiplier;
+  const darkFactor = linearFactor * linearFactor;
+  const effAggroSq = aggroRangeSq * darkFactor;
+  const effRearSq = rearRangeSq * darkFactor;
+
+  const range = Math.sqrt(effAggroSq);
   const candidates = spatial.nearby(px, py, range);
   let best: { entityId: EntityId } | null = null;
-  let bestDistSq = aggroRangeSq;
+  let bestDistSq = effAggroSq;
   for (const entityId of candidates) {
     if (entityId === selfId) continue;
     if (world.get(entityId, NpcTag)) continue;
@@ -170,11 +187,11 @@ export function findDetectedThreat(
     const pos = world.get(entityId, Position)!;
     const dx = pos.x - px; const dy = pos.y - py;
     const dSq = dx * dx + dy * dy;
-    if (dSq > aggroRangeSq) continue; // hard outer cap: nothing detected past aggro range
+    if (dSq > effAggroSq) continue; // hard outer cap: nothing detected past aggro range
 
     const off = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - facing), Math.cos(Math.atan2(dy, dx) - facing)));
     const sight = off <= coneHalfAngle;
-    const felt = dSq <= rearRangeSq;
+    const felt = dSq <= effRearSq;
     const noise = world.get(entityId, NoiseLevel)?.level ?? 0;
     const heard = noise * (1 - Math.sqrt(dSq) / range) >= auditoryThreshold;
 

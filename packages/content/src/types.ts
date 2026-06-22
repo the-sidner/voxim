@@ -1531,6 +1531,12 @@ export interface GameConfig {
      * meets this. Lower = sharper ears. e.g. 0.15 → a sprinter (noise 1) is heard
      * out to ~85% of range, a croucher (0.3) only when quite close. */
     aggroAuditoryThreshold: number;
+    /** How much darkness shrinks an NPC's detection range (T-017). The effective
+     * range factor is `1 − (1 − lightLevel) × this`, applied to both the aggro
+     * and rear ranges. lightLevel 1 (full day) → no change; lightLevel 0 (pitch
+     * dark) → range × (1 − this). e.g. 0.5 → an NPC in total darkness sees/feels
+     * threats at half range. */
+    nightDetectionRangeMultiplier: number;
     /** World units between consecutive waypoints in an NPC plan. */
     waypointSpacing: number;
     /** Distance² at which a waypoint is considered reached. */

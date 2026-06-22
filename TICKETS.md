@@ -104,11 +104,7 @@ frontal range). Flee detection stays omnidirectional (a different trigger). Unit
 detected, far-behind unseen, close-behind seen, flank unseen, nearest-eligible wins.
 
 ### T-017 · Light level detection modifier
-Effort: M   Status: todo
-
-Day/night cycle already reduces player perception radius. Extend the detection system to also
-reduce NPC detection range at night (and in caves / unlit areas if light source system exists).
-Done when: night makes stealth meaningfully easier; NPCs detect less far in darkness.
+Effort: M   Status: done   (findDetectedThreat scales aggro + rear ranges by getLightAt(pos) via game_config.npcAiDefaults.nightDetectionRangeMultiplier; pitch dark → half range, torches/fires restore it)
 
 ---
 
