@@ -74,6 +74,7 @@ import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
 import { PoiTrigger } from "./components/poi.ts";
 import { Stair } from "./components/stair.ts";
 import { NpcJobQueue, NpcTag } from "./components/npcs.ts";
+import { Caravan } from "./components/caravan.ts";
 import { ProjectileData } from "./components/projectile.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
 import {
@@ -222,6 +223,10 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   Stair,
   NpcTag,
   NpcJobQueue,
+  // Caravan (T-048) — a caravan lead NPC's manifest: destination tile +
+  // goods. Server-only; read by the caravanEscort job to pick the matching
+  // edge gate.
+  Caravan,
   ProjectileData,
   AnimationSlots,
   // SpeedModifier + EncumbrancePenalty retired (T-239) — effective()

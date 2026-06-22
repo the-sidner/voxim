@@ -275,12 +275,22 @@ ground entity count returning to baseline near the node.
 ## World & Macro Simulation
 
 ### T-048 · Caravan entity — NPC group with goods + destination
-Effort: M   Status: todo
+Effort: M   Status: done
+
+v1: caravan lead NPC spawns with goods + destination and walks to the matching edge gate (Caravan component + caravanEscort job); cross-tile NPC handoff, guard NPCs, and raidable goods deferred to a follow-up.
 
 A caravan is a group entity: lead NPC + guard NPCs + goods inventory + destination tile.
 The lead NPC navigates to a gate; at the gate, the caravan crosses tiles via the gate system.
 Goods are physical items in the caravan inventory — raidable.
 Done when: a caravan entity can be dispatched, navigate to a gate, and be intercepted.
+
+v1 landed: server-only `Caravan` component (`{ destinationTileId, goods[] }`,
+component_registry.ts) + a `caravanEscort` job (Job union in @voxim/codecs +
+`ai/jobs/caravan_escort.ts`, registered in ai/mod.ts) that walks the lead to the
+edge gate whose `GateLink.destinationTileId` matches the manifest and logs a
+TODO handoff on arrival. Cross-tile NPC handoff (vs. the player path in
+server.ts/handoff.ts) + guard NPCs linked via the scene graph remain a
+follow-up; goods are not yet a raidable inventory.
 
 ### T-049 · Macro simulation — trade agreement + resource exchange
 Effort: L   Status: todo

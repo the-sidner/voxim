@@ -931,6 +931,12 @@ export type Job =
       /** Set once the job handler has resolved a specific node entity to approach. */
       nodeId: string | null;
       expiresAt: number;
+    }
+  | {
+      type: "caravanEscort";
+      /** Tile the caravan is bound for; matched against a GateLink's destinationTileId. */
+      destinationTileId: string;
+      expiresAt: number;
     };
 
 export type PlanStep =
@@ -963,6 +969,7 @@ const JOB_ATTACK      = 5;
 const JOB_CRAFT_AT    = 6;
 const JOB_GATHER      = 7;
 const JOB_SEEK_BED    = 8;
+const JOB_CARAVAN     = 9;
 
 // craftAtWorkbench phase discriminants
 const CRAFT_APPROACH = 0;
@@ -1002,6 +1009,11 @@ function writeJob(w: WireWriter, job: Job): void {
       for (const t of job.resourceNodeTypes) w.writeStr(t);
       w.writeI32(job.expiresAt);
       break;
+    case "caravanEscort":
+      w.writeU8(JOB_CARAVAN);
+      w.writeStr(job.destinationTileId);
+      w.writeI32(job.expiresAt);
+      break;
   }
 }
 
@@ -1039,6 +1051,11 @@ function readJob(r: WireReader): Job {
       for (let i = 0; i < n; i++) resourceNodeTypes.push(r.readStr());
       const expiresAt = r.readI32();
       return { type: "gatherResource", itemType, targetQuantity, nodeId, resourceNodeTypes, expiresAt };
+    }
+    case JOB_CARAVAN: {
+      const destinationTileId = r.readStr();
+      const expiresAt = r.readI32();
+      return { type: "caravanEscort", destinationTileId, expiresAt };
     }
     default: throw new Error(`Unknown job kind: ${kind}`);
   }
