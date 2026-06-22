@@ -5,6 +5,11 @@
 #   ANY file under packages/ — including the per-item JSON content files
 #   that ContentStore loads at runtime via Deno.readTextFile (the default
 #   --watch only tracks the static import graph and would miss those).
+#   We --watch-exclude the client/devtools dist bundles: those are rewritten
+#   by the client-dev/devtools esbuild watchers on every front-end edit, and
+#   without the exclude EVERY backend service (gateway/coordinator/tiles/atlas)
+#   spuriously restarts — which made the gateway fail to rebind UDP/8080
+#   (Address already in use) and drop its WebTransport listener for good.
 #
 # We deliberately do NOT bind-mount deno.json or deno.lock:
 # Linux single-file bind mounts trip "Device or resource busy" (EBUSY) when
@@ -15,7 +20,7 @@
 services:
   gateway:
     command: >-
-      deno run --watch=./packages
+      deno run --watch=./packages --watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**
       --allow-net --allow-read --allow-env
       --unstable-net
       packages/gateway/main.ts
@@ -26,7 +31,7 @@ services:
 
   coordinator:
     command: >-
-      deno run --watch=./packages
+      deno run --watch=./packages --watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**
       --allow-net --allow-read --allow-env
       --unstable-net
       packages/coordinator/main.ts
@@ -37,7 +42,7 @@ services:
 
   atlas:
     command: >-
-      deno run --watch=./packages
+      deno run --watch=./packages --watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**
       --allow-net --allow-read --allow-env
       packages/atlas/main.ts
     volumes:
@@ -46,7 +51,7 @@ services:
 
   tile-1:
     command: >-
-      deno run --watch=./packages
+      deno run --watch=./packages --watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**
       --allow-net --allow-read --allow-write --allow-env
       --unstable-net
       packages/tile-server/main.ts
@@ -57,7 +62,7 @@ services:
 
   tile-2:
     command: >-
-      deno run --watch=./packages
+      deno run --watch=./packages --watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**
       --allow-net --allow-read --allow-write --allow-env
       --unstable-net
       packages/tile-server/main.ts
@@ -68,7 +73,7 @@ services:
 
   tile-3:
     command: >-
-      deno run --watch=./packages
+      deno run --watch=./packages --watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**
       --allow-net --allow-read --allow-write --allow-env
       --unstable-net
       packages/tile-server/main.ts
@@ -79,7 +84,7 @@ services:
 
   tile-4:
     command: >-
-      deno run --watch=./packages
+      deno run --watch=./packages --watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**
       --allow-net --allow-read --allow-write --allow-env
       --unstable-net
       packages/tile-server/main.ts

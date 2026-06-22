@@ -75,7 +75,7 @@ const CITY_AI_INTERVAL_TICKS = 10;
 export class Coordinator {
   readonly world = new World();
   private link: GatewayLink | null = null;
-  private tickTimer: number | null = null;
+  private tickTimer: ReturnType<typeof setInterval> | null = null;
   private tick = 0;
   private httpAbort: AbortController | null = null;
   /** Tracks tiles that have published at least one event recently. */

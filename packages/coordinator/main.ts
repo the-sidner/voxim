@@ -30,6 +30,24 @@ import {
 } from "@voxim/db";
 import { resolveServiceSecret } from "@voxim/protocol";
 
+// A WebTransport dial that times out can reject a promise the GatewayLink retry
+// loop never awaits, which would otherwise crash the process (Uncaught (in
+// promise) Error: timed out). Mirror the tile-server's guard (main.ts) so a
+// transient gateway hiccup degrades to a logged warning + retry instead of a
+// fatal exit. Defense-in-depth: the GatewayLink loop already retries on sync
+// dial errors; this catches the async-rejection escape.
+globalThis.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason;
+  const msg = (reason as Error)?.message ?? String(reason);
+  const stack = (reason as Error)?.stack;
+  if (stack) {
+    console.warn("[Coordinator] unhandled rejection (suppressed):", msg, "\n", stack);
+  } else {
+    console.warn("[Coordinator] unhandled rejection (suppressed):", msg);
+  }
+  event.preventDefault();
+});
+
 const gatewayWtUrl = Deno.env.get("GATEWAY_WT_URL") ?? "https://gateway:8080";
 const certPath     = Deno.env.get("TLS_CERT")       ?? "./certs/cert.pem";
 const tickRateHz   = parseInt(Deno.env.get("TICK_RATE") ?? "1");

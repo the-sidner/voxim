@@ -594,6 +594,29 @@ every body type without artifact; hits land at the new reach.
 
 ## Ops & Deployment
 
+### T-274 · Dev docker stack errors — devtools crash-loop, gateway WT rebind storm, coordinator crash
+Effort: S   Status: done   (three root-caused fixes from a bug-hunt; verified live)
+
+`deno task compose-fresh` surfaced three real errors (separate from the known GatewayLink dial
+noise). Found + fixed:
+- **devtools crash-loop**: `docker/devtools.Dockerfile` still ran the deleted `scripts/build_voxel_editor.ts`
+  (T-191z removed the script + `dev.ts`/`serve_devtools.ts` refs but missed the Dockerfile) → container
+  exited 1 → `restart: unless-stopped` looped it forever. Fix: drop it from the cache + CMD (studio only).
+- **gateway loses UDP/8080 WT listener for good**: every `deno run --watch=./packages` backend (gateway/
+  coordinator/atlas/tiles) restarted whenever the client-dev/devtools esbuild watchers rewrote their
+  `dist/` bundles (which live under the bind-mounted `./packages`). On that restart the gateway couldn't
+  rebind UDP/8080 (Address already in use) → fell back to HTTP-only permanently → killed every tile↔gateway
+  + coordinator↔gateway WT link (the permanent GatewayLink "timed out" flood was a *symptom* of this).
+  Fix: `--watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**` on every
+  watch service. NOTE: Deno's `--watch-exclude` does NOT comma-split — a single `a,b` value is one literal
+  pattern that never matches; you must pass REPEATED flags. Verified live: touching dist no longer restarts
+  the backends; the gateway keeps its WT listener.
+- **coordinator crash on WT timeout**: `packages/coordinator/main.ts` lacked the `unhandledrejection` guard
+  that `tile-server/main.ts` has, so a transient dial timeout (escaping the GatewayLink retry loop as an
+  un-awaited rejection) killed the process. Fix: mirror the tile-server guard. Also fixed a pre-existing
+  `coordinator.ts:162` TS error (`setInterval` → `ReturnType<typeof setInterval>`) so the package
+  type-checks.
+
 ### T-261 · Place gates + arrivals at the carved corridor offset
 Effort: M   Status: todo
 
