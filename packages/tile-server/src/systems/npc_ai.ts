@@ -58,6 +58,7 @@ export class NpcAiSystem implements System {
       const resVals = world.get(entityId, Resource)?.values;
       const hunger = resVals?.hunger?.value ?? 0;
       const thirst = resVals?.thirst?.value ?? 0;
+      const sleep = resVals?.sleep?.value ?? 0;
       const pos = world.get(entityId, Position);
       if (!pos) continue;
 
@@ -81,6 +82,7 @@ export class NpcAiSystem implements System {
         attackTicks:        template.attackTicks      ?? defaults.attackTicks,
         fleeTicks:          template.fleeTicks        ?? defaults.fleeTicks,
         seekFoodTicks:      template.seekFoodTicks    ?? defaults.seekFoodTicks,
+        seekBedTicks:       template.seekBedTicks     ?? defaults.seekBedTicks,
         attackRangeSq:      template.attackRange !== undefined
                               ? template.attackRange * template.attackRange
                               : defaults.attackRangeSq,
@@ -89,8 +91,10 @@ export class NpcAiSystem implements System {
                               : defaults.defaultAggroRangeSq,
         hungerEmergency:    template.hungerEmergency  ?? defaults.hungerEmergency,
         thirstEmergency:    template.thirstEmergency  ?? defaults.thirstEmergency,
+        sleepEmergency:     template.sleepEmergency   ?? defaults.sleepEmergency,
         foodHungerRestore:  template.foodHungerRestore ?? defaults.foodHungerRestore,
         waterThirstRestore: template.waterThirstRestore ?? defaults.waterThirstRestore,
+        bedSleepRestore:    template.bedSleepRestore  ?? defaults.bedSleepRestore,
         fleeHealthRatio:    template.fleeHealthRatio,
       };
 
@@ -105,6 +109,7 @@ export class NpcAiSystem implements System {
         tuning, defaults,
         hunger,
         thirst,
+        sleep,
         healthCurrent: health.current,
         healthMax: health.max,
         queue,

@@ -167,12 +167,18 @@ Landed: `job_board_assemble` recipe (workbench assembly, wood + cloth → stacka
 a `job_board` is placed (reads the placer's Heritage.dynastyId). Sets up T-082 (base capture).
 
 ### T-039 · NPC sleep need + bed infrastructure
-Effort: M   Status: todo
+Effort: M   Status: done
 
 Add `Sleep` as an NPC need alongside `Hunger`/`Thirst`. Add a `bed` deployable. When sleep need
 is critical, NPC seeks the nearest unoccupied bed and fulfills it. No bed = NPC enters permanent
 low-performance state or eventually leaves.
 Done when: NPCs seek and use beds; missing beds cause retention problems.
+
+Landed: `sleep` ResourceDef (tiredness rises while awake, exhaustion DPS at max) seeded on
+every NPC; `seekBed` job + `check_sleep_critical`/`set_job_seek_bed` BT nodes wired into the
+passive tree (mirrors the hunger/thirst seek pattern); stateless bed (`bed` placeable prop +
+`bed_kit` deployable, found by `SpawnedFrom` prefab id, first-come proximity). Tuning in
+`game_config.npcAiDefaults` (sleepEmergency / seekBedTicks / bedSleepRestore / bedRangeSq).
 
 ### T-040 · NPC sensory system — proximity event subscription
 Effort: M   Status: todo

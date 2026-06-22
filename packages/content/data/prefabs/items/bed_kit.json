@@ -1,0 +1,12 @@
+{
+  "id": "bed_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "bed"
+    },
+    "weight": {
+      "baseWeight": 10
+    }
+  }
+}

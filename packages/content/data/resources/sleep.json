@@ -1,0 +1,9 @@
+{
+  "id": "sleep",
+  "scope": "entity",
+  "bounds": { "min": 0, "max": 100 },
+  "rate": 0.005555555555555556,
+  "thresholds": [
+    { "at": 100, "dir": "above", "edge": "sustained", "effect": "modify_health", "params": { "dps": -1, "cause": "starvation" } }
+  ]
+}

@@ -239,6 +239,7 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
       stamina: { value: maxStamina, max: maxStamina },
       hunger: { value: 0, max: 100 },
       thirst: { value: 0, max: 100 },
+      sleep: { value: 0, max: 100 },
       poise: { value: maxPoise, max: maxPoise },
     },
   });

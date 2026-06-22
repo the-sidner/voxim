@@ -1,0 +1,9 @@
+{
+  "id": "bed",
+  "modelId": "model_bed",
+  "components": {
+    "placeable": {
+      "alignment": "forward-facing"
+    }
+  }
+}

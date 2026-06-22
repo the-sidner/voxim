@@ -908,6 +908,7 @@ export type Job =
   | { type: "wander";        targetX: number; targetY: number; expiresAt: number }
   | { type: "seekFood";      expiresAt: number }
   | { type: "seekWater";     expiresAt: number }
+  | { type: "seekBed";       expiresAt: number }
   | { type: "flee";          fromX: number; fromY: number; expiresAt: number }
   | { type: "attackTarget";  targetId: string; expiresAt: number }
   | {
@@ -961,6 +962,7 @@ const JOB_FLEE        = 4;
 const JOB_ATTACK      = 5;
 const JOB_CRAFT_AT    = 6;
 const JOB_GATHER      = 7;
+const JOB_SEEK_BED    = 8;
 
 // craftAtWorkbench phase discriminants
 const CRAFT_APPROACH = 0;
@@ -979,6 +981,7 @@ function writeJob(w: WireWriter, job: Job): void {
     case "wander":       w.writeU8(JOB_WANDER); w.writeF32(job.targetX); w.writeF32(job.targetY); w.writeI32(job.expiresAt); break;
     case "seekFood":     w.writeU8(JOB_SEEK_FOOD);  w.writeI32(job.expiresAt); break;
     case "seekWater":    w.writeU8(JOB_SEEK_WATER); w.writeI32(job.expiresAt); break;
+    case "seekBed":      w.writeU8(JOB_SEEK_BED);   w.writeI32(job.expiresAt); break;
     case "flee":         w.writeU8(JOB_FLEE); w.writeF32(job.fromX); w.writeF32(job.fromY); w.writeI32(job.expiresAt); break;
     case "attackTarget": w.writeU8(JOB_ATTACK); w.writeStr(job.targetId); w.writeI32(job.expiresAt); break;
     case "craftAtWorkbench":
@@ -1009,6 +1012,7 @@ function readJob(r: WireReader): Job {
     case JOB_WANDER:     return { type: "wander",        targetX: r.readF32(), targetY: r.readF32(), expiresAt: r.readI32() };
     case JOB_SEEK_FOOD:  return { type: "seekFood",      expiresAt: r.readI32() };
     case JOB_SEEK_WATER: return { type: "seekWater",     expiresAt: r.readI32() };
+    case JOB_SEEK_BED:   return { type: "seekBed",       expiresAt: r.readI32() };
     case JOB_FLEE:       return { type: "flee",          fromX: r.readF32(), fromY: r.readF32(), expiresAt: r.readI32() };
     case JOB_ATTACK:     return { type: "attackTarget",  targetId: r.readStr(), expiresAt: r.readI32() };
     case JOB_CRAFT_AT: {

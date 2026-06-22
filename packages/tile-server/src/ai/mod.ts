@@ -16,6 +16,7 @@ import { wanderJob } from "./jobs/wander.ts";
 import { fleeJob } from "./jobs/flee.ts";
 import { seekFoodJob } from "./jobs/seek_food.ts";
 import { seekWaterJob } from "./jobs/seek_water.ts";
+import { seekBedJob } from "./jobs/seek_bed.ts";
 import { attackTargetJob } from "./jobs/attack_target.ts";
 import { craftAtWorkbenchJob } from "./jobs/craft_at_workbench.ts";
 import { gatherResourceJob } from "./jobs/gather_resource.ts";
@@ -39,6 +40,7 @@ export function registerBuiltinJobs(registry: Registry<JobHandler>): void {
   registry.register(fleeJob);
   registry.register(seekFoodJob);
   registry.register(seekWaterJob);
+  registry.register(seekBedJob);
   registry.register(attackTargetJob);
   registry.register(craftAtWorkbenchJob);
   registry.register(gatherResourceJob);

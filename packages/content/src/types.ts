@@ -991,8 +991,12 @@ export interface NpcTemplate {
   hungerEmergency?: number;
   /** Thirst value (0–100) above which seek-water overrides the current job. */
   thirstEmergency?: number;
+  /** Sleep/tiredness value (0–100) above which seek-bed overrides the current job (T-039). */
+  sleepEmergency?: number;
   /** Max ticks spent on a seek-food or seek-water job before giving up. */
   seekFoodTicks?: number;
+  /** Max ticks spent on a seek-bed job before giving up (T-039). */
+  seekBedTicks?: number;
   /** Ticks to run a flee job before reevaluating. */
   fleeTicks?: number;
   /** Ticks before reevaluating the current attack target. */
@@ -1001,6 +1005,8 @@ export interface NpcTemplate {
   foodHungerRestore?: number;
   /** Thirst reduction when drinking a water item. */
   waterThirstRestore?: number;
+  /** Sleep restored per tick while resting at a bed (T-039). */
+  bedSleepRestore?: number;
   /** Movement speed multiplier applied at spawn (default 1.0). */
   speedMultiplier?: number;
   /** Item type to equip as weapon at spawn (e.g. "wolf_bite"). Null/absent = unarmed. */
@@ -1510,11 +1516,19 @@ export interface GameConfig {
     idleTicks: number;
     hungerEmergency: number;
     thirstEmergency: number;
+    /** Sleep (tiredness) value at/above which an NPC drops everything to seek a bed (T-039). */
+    sleepEmergency: number;
     seekFoodTicks: number;
+    /** Ticks before a seek-bed plan expires and is rebuilt (T-039). */
+    seekBedTicks: number;
     fleeTicks: number;
     attackTicks: number;
     foodHungerRestore: number;
     waterThirstRestore: number;
+    /** Sleep restored per tick while resting at a bed (T-039). */
+    bedSleepRestore: number;
+    /** Distance² within which a bed counts as reached, so resting begins (T-039). */
+    bedRangeSq: number;
     foodPickupRangeSq: number;
     arrivalThreshold: number;
     attackRangeSq: number;

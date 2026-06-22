@@ -20,12 +20,15 @@ export interface NpcTuning {
   readonly attackTicks: number;
   readonly fleeTicks: number;
   readonly seekFoodTicks: number;
+  readonly seekBedTicks: number;
   readonly attackRangeSq: number;
   readonly aggroRangeSq: number;
   readonly hungerEmergency: number;
   readonly thirstEmergency: number;
+  readonly sleepEmergency: number;
   readonly foodHungerRestore: number;
   readonly waterThirstRestore: number;
+  readonly bedSleepRestore: number;
   readonly fleeHealthRatio: number;
 }
 

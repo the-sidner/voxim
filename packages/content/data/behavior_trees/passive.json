@@ -22,6 +22,14 @@
       {
         "type": "sequence",
         "children": [
+          { "type": "check_sleep_critical" },
+          { "type": "check_current_job_not", "jobType": "seekBed" },
+          { "type": "set_job_seek_bed" }
+        ]
+      },
+      {
+        "type": "sequence",
+        "children": [
           { "type": "check_health_critical" },
           { "type": "check_current_job_not", "jobType": "flee" },
           { "type": "set_job_flee_from_nearest" }

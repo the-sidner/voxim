@@ -35,6 +35,7 @@ export interface BTContext {
   /** Current entity state, read eagerly before BT evaluation. */
   readonly hunger: number;
   readonly thirst: number;
+  readonly sleep: number;
   readonly healthCurrent: number;
   readonly healthMax: number;
   /** Snapshot of queue at BT entry. Action nodes MUST write to BTOutput, not mutate this. */
