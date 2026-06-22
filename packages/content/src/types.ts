@@ -1502,6 +1502,20 @@ export interface GameConfig {
   world: {
     /** Default entity model scale when no per-template override is set. */
     defaultEntityScale: number;
+    /**
+     * Terrain chunk load radius as a multiple of `network.aoiRadius` (T-064).
+     * A chunk within `aoiRadius × this` of any active (Position-bearing) entity
+     * stays loaded; one beyond it for `chunkUnloadGraceTicks` is unloaded.
+     * Keep ≥ 1.0 so terrain is always present at least as far as a client sees.
+     */
+    chunkLoadRadiusMultiplier: number;
+    /**
+     * Ticks a chunk must stay outside every active entity's load radius before
+     * it is unloaded (T-064). Its state is cached in memory first, so an entity
+     * re-entering the radius reloads it verbatim. Large values keep the unload
+     * far from live gameplay; 0 unloads the tick it falls out of range.
+     */
+    chunkUnloadGraceTicks: number;
   };
   /** Per-client network tuning. */
   network: {

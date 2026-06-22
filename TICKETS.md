@@ -385,12 +385,19 @@ generator with `WorldGenContent.forcedBiome` bypassing classification; `GateSpec
 multi-process territory (T-212) — only the cave tile TYPE is generable + parseable here.
 
 ### T-064 · Dynamic chunk loading/unloading by entity proximity
-Effort: M   Status: todo
+Effort: M   Status: done
 
 Currently all chunks for a tile are loaded at startup. Load a chunk entity into the world only
 when a player or active NPC is within a configurable radius. Serialise and unload chunks with
 no nearby entities after a grace period.
 Done when: distant chunks are absent from world store; they load when an entity approaches.
+
+Landed: `ChunkLifecycleSystem` (registered late, dependsOn PhysicsSystem) streams terrain
+in/out by proximity to any Position-bearing entity — a chunk past `world.chunkLoadRadiusMultiplier
+× network.aoiRadius` of every anchor for `world.chunkUnloadGraceTicks` is cached in memory and
+destroyed; a cached chunk back in range is recreated verbatim. Pure load/unload verdict in
+`chunk_lifecycle_decision.ts` (unit-tested in isolation). Conservative v1 (2.0× radius, 600-tick
+grace) never unloads near gameplay; full grid set cached so dug/built terrain is never lost.
 
 ### T-212 · POI runtime + wilderness-stair unlock
 Effort: L   Status: in-progress   (v1 PoiSystem done -- 03525ae; v2 trinket->stair-unlock + boss/wave/puzzle open)

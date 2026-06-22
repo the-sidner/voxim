@@ -106,6 +106,7 @@ import { DynastySystem } from "./systems/dynasty.ts";
 import { StaleSlotCleanupSystem } from "./systems/stale_slot_cleanup.ts";
 import { AnimationSystem } from "./systems/animation.ts";
 import { HitboxSystem } from "./systems/hitbox.ts";
+import { ChunkLifecycleSystem } from "./systems/chunk_lifecycle.ts";
 import { DebugCommandSystem } from "./systems/debug_commands.ts";
 import { WorldClock } from "./components/world.ts";
 import { SaveManager } from "./save_manager.ts";
@@ -757,6 +758,9 @@ export class TileServer {
       new AnimationSystem(content),
       new HitboxSystem(content),
       new PoiSystem(content, poiActivities, () => this.sessions.keys()),
+      // Streams terrain in/out by entity proximity (T-064). Late so it reads
+      // this tick's committed positions; dependsOn PhysicsSystem pins that.
+      new ChunkLifecycleSystem(content),
       new DebugCommandSystem(content, config.devMode ?? false),
       deathSystem,
     ];
