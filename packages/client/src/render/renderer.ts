@@ -221,6 +221,28 @@ export class VoximRenderer {
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
   /** Diagnostic — count of live EntityMeshGroups (animated and placeholder). */
   get entityCount(): number { return this.entityMeshes.size; }
+
+  /**
+   * Test/automation (T-272 harness): world-space translation of a bone, or null
+   * if the entity has no built skeleton or no such bone. Reads the SAME
+   * `boneGroups` the per-frame pose drives (matrixWorld is current after the
+   * render() that just ran), so sampling it twice across frames proves a clip
+   * is actually advancing — not merely selected. `boneGroups == null` here also
+   * tells the harness the skeleton was never built (the bake-pool wedge case).
+   */
+  sampleBoneWorld(entityId: string, boneId: string): [number, number, number] | null {
+    const bone = this.entityMeshes.get(entityId)?.boneGroups?.get(boneId);
+    if (!bone) return null;
+    const e = bone.matrixWorld.elements;
+    return [e[12], e[13], e[14]];
+  }
+
+  /** Test/automation: true once the entity's animated skeleton rig is built
+   * (boneGroups present). Lets the harness distinguish "no rig / bake wedged"
+   * from "rig built but motionless". */
+  hasSkeleton(entityId: string): boolean {
+    return !!this.entityMeshes.get(entityId)?.boneGroups;
+  }
   /**
    * Single owner of all procedurally-placed static instanced rendering
    * (forest decorations, server props, future rocks). See

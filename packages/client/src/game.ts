@@ -116,6 +116,55 @@ export class VoximGame {
   private inputSeq = 0;
   private commandSeq = 0;
   private serverTick = 0;
+
+  /**
+   * Test/automation hooks (T-272 harness), reached via `window._voxim_game`.
+   *
+   * `testInput.down/up` drive a key through the real IntentTranslator path
+   * (held set + one-shot action bits → buildDatagram → wire), so a headless
+   * driver exercises the genuine input pipeline without depending on canvas
+   * focus / faked DOM events. `animProbe` reads live animation state for the
+   * harness to assert clips actually play (walk while moving, idle while still,
+   * swing on attack) instead of only eyeballing a screenshot.
+   */
+  readonly testInput = {
+    down: (code: string): void => this.input?.pressKey(code),
+    up: (code: string): void => this.input?.releaseKey(code),
+  };
+
+  /**
+   * Snapshot an entity's animation for harness assertions (default = local
+   * player): the networked clip layers + weapon action, plus the world-space
+   * translation of a few bones (sampled from the same boneGroups the renderer
+   * drives each frame). `hasSkeleton` distinguishes "rig never built" (bake-pool
+   * wedge → no animation possible) from "rig built but motionless" (clip
+   * resolution / no deltas). Sampling `bones` across two frames proves motion.
+   */
+  animProbe(
+    entityId?: string,
+    bones: string[] = ["lower_leg_l", "lower_leg_r", "lower_arm_r", "hand_r"],
+  ): {
+    entityId: string;
+    hasSkeleton: boolean;
+    clips: Array<{ clipId: string; time: number; weight: number }>;
+    weaponActionId: string;
+    ticksIntoAction: number;
+    bones: Record<string, [number, number, number] | null>;
+  } | null {
+    const id = entityId ?? this.playerId;
+    if (!id) return null;
+    const anim = this.world.get(id)?.animationState ?? null;
+    const boneWorld: Record<string, [number, number, number] | null> = {};
+    for (const b of bones) boneWorld[b] = this.renderer?.sampleBoneWorld(id, b) ?? null;
+    return {
+      entityId: id,
+      hasSkeleton: this.renderer?.hasSkeleton(id) ?? false,
+      clips: (anim?.layers ?? []).map((l) => ({ clipId: l.clipId, time: l.time, weight: l.weight })),
+      weaponActionId: anim?.weaponActionId ?? "",
+      ticksIntoAction: anim?.ticksIntoAction ?? 0,
+      bones: boneWorld,
+    };
+  }
   private running = false;
   private predictor: Predictor | null = null;
   private lastFrameTime = 0;
@@ -288,6 +337,12 @@ export class VoximGame {
       (cx, cy) => this.renderer!.getCursorFacing(cx, cy),
     );
     this.inputCapture = new InputCapture(canvas, this.input.handle);
+    // Make the canvas focusable + focused so a headless driver's real
+    // page.keyboard events have a stable, non-input activeElement to bubble
+    // from to the document listener (T-272). The primary harness path is the
+    // _voxim_game.testInput hook below; this covers real-key coverage too.
+    canvas.tabIndex = 0;
+    canvas.focus();
 
     // Interaction system — entity hover highlight + click dispatch.
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);

@@ -103,22 +103,11 @@ export class IntentTranslator {
     // if any browser shortcut becomes annoying.
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-    // Edge-trigger Shift only on transition from up→down so a held Shift
-    // doesn't auto-redodge every frame.
-    const wasDown = this.keys.has(e.code);
-    this.keys.add(e.code);
+    this.applyKeyEffect(e.code);
+
+    // Keyboard-only UI dispatches — these need the live hover/mode state and so
+    // are not part of the shared (test-reachable) movement/action path.
     switch (e.code) {
-      case "Space":      this.pendingActions |= ACTION_JUMP;      break;
-      case "KeyZ":       this.pendingActions |= ACTION_USE_SKILL; break;
-      case "KeyC":       this.pendingActions |= ACTION_CONSUME;   break;
-      case "Digit1":     this.pendingActions |= ACTION_SKILL_1;   break;
-      case "Digit2":     this.pendingActions |= ACTION_SKILL_2;   break;
-      case "Digit3":     this.pendingActions |= ACTION_SKILL_3;   break;
-      case "Digit4":     this.pendingActions |= ACTION_SKILL_4;   break;
-      case "ShiftLeft":
-      case "ShiftRight":
-        if (!wasDown) this.pendingActions |= ACTION_DODGE;
-        break;
       case "KeyE":
         // Hover-driven interact. Translator emits the intent; the router
         // dispatches to whatever handler matches the current hover target.
@@ -133,6 +122,41 @@ export class IntentTranslator {
         break;
     }
   }
+
+  /**
+   * Apply a key-down's gameplay effect: track it in the held set + raise any
+   * one-shot action bit. Shared by the real keyboard (onKeyDown) and the
+   * test-input hook (`pressKey`) so both drive the exact same InputState path.
+   */
+  private applyKeyEffect(code: string): void {
+    // Edge-trigger Shift only on transition from up→down so a held Shift
+    // doesn't auto-redodge every frame.
+    const wasDown = this.keys.has(code);
+    this.keys.add(code);
+    switch (code) {
+      case "Space":      this.pendingActions |= ACTION_JUMP;      break;
+      case "KeyZ":       this.pendingActions |= ACTION_USE_SKILL; break;
+      case "KeyC":       this.pendingActions |= ACTION_CONSUME;   break;
+      case "Digit1":     this.pendingActions |= ACTION_SKILL_1;   break;
+      case "Digit2":     this.pendingActions |= ACTION_SKILL_2;   break;
+      case "Digit3":     this.pendingActions |= ACTION_SKILL_3;   break;
+      case "Digit4":     this.pendingActions |= ACTION_SKILL_4;   break;
+      case "ShiftLeft":
+      case "ShiftRight":
+        if (!wasDown) this.pendingActions |= ACTION_DODGE;
+        break;
+    }
+  }
+
+  /**
+   * Test/automation input (T-272 harness): drive a key through the SAME held-set
+   * + action-bit path the real keyboard feeds, so harness presses exercise
+   * `buildDatagram` and the wire — not a faked DOM event whose focus target the
+   * browser canvas can't reliably receive. Mirrors how `_voxim_game` exposes
+   * world/playerId for reads. Skips the E/Escape UI dispatches by design.
+   */
+  pressKey(code: string): void { this.applyKeyEffect(code); }
+  releaseKey(code: string): void { this.keys.delete(code); }
 
   // Reference for callers that still need the GAME_KEYS gate (future).
   static readonly GAME_KEYS = GAME_KEYS;

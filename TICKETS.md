@@ -338,6 +338,70 @@ When the player entity is inside the enclosure, the roof is hidden (player sees 
 When outside, the roof is visible.
 Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
 
+## Animation & Render Verification
+
+### T-275 · Animation freeze — locomotion clobbered by empty-slot idle fallback
+Effort: S   Status: done
+
+The user reported "the charactermodel is not animated." Root-caused live via the new animProbe
+(T-277): the server WAS selecting the right clip (`walking`, time advancing) and the client WAS
+translating, but the rendered skeleton pose was **byte-identical to idle** — the character slid
+around frozen.
+
+Cause in `tile-server/src/systems/animation.ts`: `projectLocomotion` is reused for all three
+action slots (locomotion / primary / reaction) and resolved `slot?.actionId || "idle"`. The
+`|| "idle"` fallback is correct for the **locomotion** slot (empty → idle, no rest-pose flash on
+the first post-spawn tick) but wrong for **primary/reaction**: when not attacking/staggered those
+slots are empty, so the fallback fabricated a **full-body, weight-1, override, unmasked** `idle`
+layer that composited ON TOP of locomotion and overwrote the walk pose every frame. (`primary`
+held `primary_idle`, which has no `animation` block → correctly projects nothing; the empty
+`reaction` slot's idle fallback was the actual clobberer.)
+
+Fix: scope the idle fallback with a `fallbackToIdle` param — only the locomotion call passes
+`true`; primary/reaction stay silent when empty. Reuses the existing bone-mask layering
+architecture (empty slots project nothing; real upper-body actions like swings/hits mask
+themselves). Verified live: walk limb-articulation (relative to root) jumped 0.03 → 1.20 (~33× idle
+baseline), layer stack dropped from `[walking, idle]` to `[walking]`. Parity test extended with the
+"empty primary/reaction projects nothing" case.
+
+### T-276 · Bake-pool resilience — worker-load failure must degrade to the sync bake
+Effort: S   Status: done
+
+Second "character not animated" failure mode (distinct from T-275; this one leaves no skeleton at
+all). `client/src/render/bake_pool.ts` only registered `worker.onmessage`. A module-LOAD failure
+(404 / wrong MIME / CSP blocking workers) does NOT throw from `new Worker()` — it fires an async
+`error` event. Unhandled, `usingWorkers` stayed true, `bakeModel` posted to a dead worker, and its
+resolve-only promise NEVER settled, so the renderer's `await bakePool.bakeModel()` hung →
+`upgradeToSkeletonModel` never ran → the entity stayed an unrigged shell, frozen in rest pose.
+
+Fix: honour the file's own contract ("the render path always has a result"). Register
+`onerror`/`onmessageerror` → `#fallbackToSync()` (terminate workers, empty the pool so all future
+bakes take the synchronous path, and resolve in-flight `#pending` entries via the same
+`bakeDisplacedVoxel` the worker runs). Plus a per-request timeout backstop for a silently-dropped
+message. Verified live via `BLOCK_WORKER=1` (T-277): with the worker aborted, `hasSkeleton` still
+flips true and the character animates.
+
+### T-277 · Headless animation test harness — animProbe + testInput + assertions
+Effort: M   Status: done
+
+`scripts/testplay.mjs ANIM=1` now asserts the character is actually animated, not just that a clip
+id is on the wire. Added client test hooks: `game.animProbe()` (live AnimationState layers +
+`renderer.sampleBoneWorld`/`hasSkeleton`), `game.testInput.down/up` → `IntentTranslator.pressKey/
+releaseKey` (drives the REAL input path, since the browser canvas can't reliably receive synthetic
+key events). Assertions: skeleton built (polled — survives the async bake), clip plays at rest,
+idle near-static, player translates, locomotion clip while moving, **limbs sweep while moving**,
+attack drives a primary action — plus walk/idle screenshots for the human "looks good" gate.
+
+Key measurement lessons baked into the harness: (1) the limb-motion metric is the
+translation-AND-rotation-invariant **inter-bone distance range** (a sliding/turning rigid body
+preserves bone gaps; only a flexing pose changes them) — centroid-subtraction was too weak and read
+walk == idle; (2) movement direction is fixed (no cursor → always one heading) and player position
+PERSISTS between runs, so the test tries W/S/A/D until one is clear of terrain; (3) the whole
+hold→sample→release loop runs in ONE in-page `evaluate` (cross-boundary key+poll raced under load);
+(4) one-shot actions (attack) are re-pressed across a dense window so a press eaten by a stall can't
+hide the brief swing. `BLOCK_WORKER=1` routes `bake_worker.js` to abort as the regression test for
+T-276. Stable 7/7 across repeated runs in both normal and worker-blocked modes.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
