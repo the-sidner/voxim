@@ -1579,6 +1579,15 @@ export interface GameConfig {
     /** Radius (world units) within which an idle NPC looks for a fellow to
      * gather near (T-043). Small — only close neighbours socialise. */
     socialScanRadius: number;
+    /** Radius (world units) within which an NPC perceives a combat / noise
+     * event (T-040) and aggros toward its source, even outside its visual
+     * cone. The event-driven aggro path that runs alongside the spatial
+     * detection scan in `set_job_attack_nearest`. */
+    perceptionRadius: number;
+    /** NoiseLevel in [0,1] at or above which NoiseSystem publishes a
+     * `LoudNoise` event (T-040) — a sprint is loud enough to be heard, a
+     * crouch-walk is not. */
+    loudNoiseThreshold: number;
   };
 }
 

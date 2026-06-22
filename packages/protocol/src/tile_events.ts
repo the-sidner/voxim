@@ -39,6 +39,15 @@ export const TileEvents = {
    * it next tick. Server-side only; DamageDealt covers the client face.
    */
   HitLanded: Symbol("HitLanded"),
+  /**
+   * A loud sound emitted at a world point (T-040): combat, a sprinting actor,
+   * a thrown object landing. Published by NoiseSystem when an actor's
+   * `NoiseLevel` crosses the perception threshold. Consumed server-side by
+   * the NPC sensory system, which aggros nearby NPCs toward the source — an
+   * NPC investigates a commotion it can hear even outside its visual cone.
+   * Server-side only; no client face.
+   */
+  LoudNoise: Symbol("LoudNoise"),
   TradeCompleted: Symbol("TradeCompleted"),
   LoreExternalised: Symbol("LoreExternalised"),
   LoreInternalised: Symbol("LoreInternalised"),
@@ -134,6 +143,16 @@ export interface HitLandedPayload {
   bodyPart: string;
   damage: number;
   blocked: boolean;
+}
+
+export interface LoudNoisePayload {
+  /** World-space origin of the sound. */
+  x: number;
+  y: number;
+  /** The actor that made the noise (the entity nearby NPCs aggro toward). */
+  sourceId: EntityId;
+  /** Loudness in [0,1] — how far the sound carries (NoiseLevel of the source). */
+  intensity: number;
 }
 
 export interface EntityDeployedPayload {

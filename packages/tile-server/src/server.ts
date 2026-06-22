@@ -46,6 +46,7 @@ import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { WorkbenchOwner } from "./components/workbench.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
+import { NpcSensorySystem } from "./systems/npc_sensory.ts";
 import { PhysicsSystem } from "./systems/physics.ts";
 import { NoiseSystem } from "./systems/noise.ts";
 import { FogOfWarSystem } from "./systems/fog_of_war.ts";
@@ -505,6 +506,12 @@ export class TileServer {
     triggerSources.register(npcTemplateTriggerSource);
     const triggerSystem = new TriggerSystem(content, triggerCatalog, triggerSources, actionGates, actionEffects);
 
+    // NPC sensory system (T-040) — the event-driven half of NPC awareness,
+    // alongside the spatial detection scan in set_job_attack_nearest. Buffers
+    // perceived combat/noise events on the bus, then aggros nearby NPCs
+    // toward the threat at the top of its next run (the TriggerSystem shape).
+    const npcSensorySystem = new NpcSensorySystem(content);
+
     // T-259 content cross-checks — every TriggerDef's `on` must be a
     // catalog kind, every condition gate and effect kind registered, and
     // every prefab `triggers[]` ref must resolve. Fail fast at boot, same
@@ -573,6 +580,9 @@ export class TileServer {
     // Trigger collectors run during the (notify-only) post-changeset flush
     // and only buffer; the TriggerSystem drains at the top of its next run.
     triggerSystem.registerSubscribers(this.eventBus);
+    // Same shape for the NPC sensory collectors (T-040): they buffer perceived
+    // combat/noise events during the flush; NpcSensorySystem drains next run.
+    npcSensorySystem.registerSubscribers(this.eventBus);
 
     // Hearth anchor subscriber — when a prefab carrying the `hearth` component
     // is placed, tell the account service so the heir spawns at the new
@@ -723,6 +733,10 @@ export class TileServer {
       // effects (procs, buffs, damage) land in this tick's changeset
       // alongside everything else (T-259).
       triggerSystem,
+      // NpcSensorySystem (T-040) drains last tick's perceived combat/noise
+      // events before NpcAiSystem runs, so the attackTarget jobs it sets are
+      // committed for the BT to honour next tick (gated like its own aggro).
+      npcSensorySystem,
       new NpcAiSystem(content, jobs, behaviorTrees),
       new EquipmentSystem(content),
       new PlacementSystem(content),

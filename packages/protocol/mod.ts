@@ -73,6 +73,7 @@ export type {
   NodeDepletedPayload,
   DayPhaseChangedPayload,
   HitLandedPayload,
+  LoudNoisePayload,
   EntityDeployedPayload,
   TradeCompletedPayload,
   LoreExternalisedPayload,

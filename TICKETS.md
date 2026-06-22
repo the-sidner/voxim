@@ -181,12 +181,20 @@ passive tree (mirrors the hunger/thirst seek pattern); stateless bed (`bed` plac
 `game_config.npcAiDefaults` (sleepEmergency / seekBedTicks / bedSleepRestore / bedRangeSq).
 
 ### T-040 · NPC sensory system — proximity event subscription
-Effort: M   Status: todo
+Effort: M   Status: done
 
 NPCs currently detect threats via direct distance checks. Replace with event-bus subscriptions:
 NPCs subscribe to `DamageDealt`, `EntityDied`, `LoudNoise` events within their detection radius.
 Guards subscribe broadly; labourers subscribe narrowly.
 Done when: nearby combat events trigger NPC awareness without per-tick distance scans.
+
+Landed: a buffered `NpcSensorySystem` (the TriggerSystem shape) ALONGSIDE the
+spatial detection scan (T-015/16/17 left intact) — it collects `DamageDealt` /
+`EntityDied` / `LoudNoise` during the bus flush and at the top of its next run
+aggros every NPC within `npcAiDefaults.perceptionRadius` of the event toward the
+threat (the attacker / killer / noise source), gated on the NPC not already
+attacking and the threat being a live, non-NPC, Health-bearing entity. Added the
+`LoudNoise` TileEvent (published by NoiseSystem above `loudNoiseThreshold`).
 
 ### T-041 · NPC Lore accumulation through job execution
 Effort: M   Status: obsolete   (premise dead: NPCs carry no LoreLoadout since T-260b — spawner.ts:221 "NPCs don't learn lore"; their behaviour is weapon/archetype triggers (T-259), not learned fragments. Same retirement as T-042)

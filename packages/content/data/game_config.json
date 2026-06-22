@@ -210,6 +210,8 @@
     "seekScanRadius": 48,
     "socialIdleChance": 0.35,
     "socialScanRadius": 12,
-    "maxStamina": 80
+    "maxStamina": 80,
+    "perceptionRadius": 24,
+    "loudNoiseThreshold": 0.7
   }
 }
