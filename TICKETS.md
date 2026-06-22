@@ -465,12 +465,33 @@ debuff (moveSpeed ×0.7 through the modifier fold) + starts the heir at `displac
 (0.5) of max HP. Server-only, no wire/save change. 6 deno tests in `heir_spawn.test.ts`.
 
 ### T-080 · Dynasty reputation persistence in NPC world
-Effort: M   Status: todo
+Effort: L (cross-service arc)   Status: todo   (premise corrected — deferred; needs the prerequisite chain below)
 
-NPC city relationship maps (T-044) store reputation by dynasty ID, not character ID. On heir
-spawn, the new character inherits the dynasty's relationship standing with all cities. Actions
-by previous characters (king-killing, trade betrayals) persist as dynasty history.
-Done when: a new heir faces the same NPC city attitudes as their predecessor.
+GOAL (unchanged): on heir spawn, the new character inherits the dynasty's standing with NPC
+cities; a predecessor's actions (king-killing, trade betrayals) persist as dynasty history, so a
+new heir faces the same city attitudes. Reputation is keyed by `Heritage.dynastyId` (stable across
+permadeath) — keying by dynastyId IS the done-condition.
+
+PREMISE CORRECTION (2026-06 scope pass): the ticket's stated dependency is **false against the
+code**. "NPC city relationship maps (T-044)" are **city→city** affinity (`CityState.relationships:
+Record<cityId, -1..1>`, `coordinator/src/city_sim.ts`), NOT dynasty-keyed reputation (CHANGELOG
+confirms T-044 shipped "city→city stance"). And the substrate this needs does not exist yet:
+- Cities live in **Postgres + the coordinator**, not the tile-server (no CityRepo/city entities on a tile).
+- NPC attitude is **dynasty-blind** — the only aggro path (`findDetectedThreat`) is proximity/sense
+  only; there is no faction/reputation/hostility component anywhere.
+- **No city-affiliated NPCs** are seeded (no guard template; `tile_layout.json` seeds a lone merchant).
+- **No kill/betrayal → city-history pipeline**; `entity_died` is tile-local, only gate-crossings +
+  a heartbeat reach the coordinator.
+
+So this is a cross-service ARC, not a single ticket. Prerequisite chain (each its own ticket when
+scheduled): (a) `CityState.dynastyReputation: Record<dynastyId, number>` in the coordinator (reuses
+the `cities.state` jsonb — no migration) + a `CityRepo.adjustDynastyReputation` server-side merge;
+(b) a `DynastyGrievance` WorldEvent + coordinator handler (tile publishes on king-kill/trade-betrayal
+keyed by killer `Heritage.dynastyId`); (c) push per-tile dynasty attitudes down via TileCommand
+(replace the log-only `onCommand`) into a server-only `DynastyAttitudes` cache; (d) a city-guard NPC
+template + `CityAffiliation` marker; (e) gate `findDetectedThreat`/`set_job_attack_nearest` on the
+attacker's dynastyId vs the city's attitude (data-driven thresholds in game_config). Deferred from
+the Heritage batch because of this span.
 
 ---
 
