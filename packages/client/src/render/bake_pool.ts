@@ -16,8 +16,12 @@ import type { BakeRequest, BakeResponse, VoxelBakeSpec } from "./bake_protocol.t
 
 interface Pending {
   resolve: (voxels: BakedVoxel[]) => void;
-  count: number;
+  /** The request's specs, kept so a worker failure can finish the bake in-thread. */
+  voxels: VoxelBakeSpec[];
 }
+
+/** Per-request safety: if a worker never answers, fall back to the sync bake. */
+const BAKE_TIMEOUT_MS = 2000;
 
 /**
  * Round-robins bake requests across a small pool of module workers and resolves
@@ -46,13 +50,36 @@ export class BakePool {
       } catch {
         // Worker construction can throw if the environment forbids it — drop to
         // the synchronous fallback rather than crash the renderer.
-        for (const w of this.#workers) w.terminate();
-        this.#workers.length = 0;
+        this.#fallbackToSync();
         return;
       }
       worker.onmessage = (e: MessageEvent<BakeResponse>) => this.#onMessage(e.data);
+      // A module-LOAD failure (404 / wrong MIME / CSP blocking workers) does NOT
+      // throw from `new Worker()` — it fires this async `error` event. Without
+      // handling it, `usingWorkers` stays true, bakeModel posts to a dead worker
+      // and its (resolve-only) promise NEVER settles, so the renderer's `await`
+      // hangs and the skeleton is never built — the character is stuck in its
+      // rest pose, unanimated. Degrade to the synchronous in-thread bake, which
+      // this pool's contract already promises ("the render path always has a
+      // result"). The worker is only ever a perf accelerator over `bakeDisplacedVoxel`.
+      worker.onerror = () => this.#fallbackToSync();
+      worker.onmessageerror = () => this.#fallbackToSync();
       this.#workers.push(worker);
     }
+  }
+
+  /**
+   * Tear down the worker pool and complete any in-flight bakes in-thread, so a
+   * worker failure (load error or forbidden construction) degrades to the
+   * synchronous path instead of wedging the model-build await. Idempotent.
+   */
+  #fallbackToSync(): void {
+    for (const w of this.#workers) w.terminate();
+    this.#workers.length = 0;
+    for (const [, p] of this.#pending) {
+      p.resolve(p.voxels.map((v) => bakeDisplacedVoxel(v.px, v.py, v.pz, v.scale)));
+    }
+    this.#pending.clear();
   }
 
   /** True when a real worker pool is driving bakes (false → synchronous fallback). */
@@ -86,7 +113,18 @@ export class BakePool {
     this.#next = (this.#next + 1) % this.#workers.length;
     const req: BakeRequest = { id, voxels };
     return new Promise<BakedVoxel[]>((resolve) => {
-      this.#pending.set(id, { resolve, count: voxels.length });
+      // Belt-and-braces: if a worker accepts the message but never answers (a
+      // silently-dropped response can't be detected via onerror), finish the
+      // bake in-thread after a generous timeout so the await can never wedge.
+      const timer = setTimeout(() => {
+        if (this.#pending.delete(id)) {
+          resolve(voxels.map((v) => bakeDisplacedVoxel(v.px, v.py, v.pz, v.scale)));
+        }
+      }, BAKE_TIMEOUT_MS);
+      this.#pending.set(id, {
+        resolve: (out) => { clearTimeout(timer); resolve(out); },
+        voxels,
+      });
       worker.postMessage(req);
     });
   }
