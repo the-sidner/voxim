@@ -1481,6 +1481,12 @@ export interface GameConfig {
     /** Species a fresh player spawns as until character creation picks one (T-084/T-071).
      * Must be a key of `species`. Defaults to "human". */
     species?: string;
+    /** T-079: horizontal radius (world units) for the live-workstation check that
+     * decides whether an heir's hearth still stands. Default 3. */
+    hearthDetectRadius?: number;
+    /** T-079: fraction of max health a displaced heir spawns at when the hearth
+     * was destroyed (the weakened state). Default 0.5. */
+    displacedHealthFraction?: number;
   };
   /**
    * Playable species (T-084), keyed by id. Each contributes a small passive

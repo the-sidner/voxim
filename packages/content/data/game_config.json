@@ -150,11 +150,14 @@
       null,
       null
     ],
-    "species": "human"
+    "species": "human",
+    "hearthDetectRadius": 3,
+    "displacedHealthFraction": 0.5
   },
   "injuries": {
     "broken_leg": { "modifiers": [{ "stat": "moveSpeed", "op": "mul", "value": 0.7 }] },
-    "deep_gash":  { "modifiers": [{ "stat": "armorReduction", "op": "add", "value": -0.08 }] }
+    "deep_gash":  { "modifiers": [{ "stat": "armorReduction", "op": "add", "value": -0.08 }] },
+    "displaced":  { "modifiers": [{ "stat": "moveSpeed", "op": "mul", "value": 0.7 }] }
   },
   "species": {
     "human": { "modifiers": [] },

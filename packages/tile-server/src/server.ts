@@ -37,7 +37,8 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
-import type { SessionInfo } from "./account_client.ts";
+import type { SessionInfo, HearthAnchor } from "./account_client.ts";
+import { resolveHeirSpawn } from "./heir_spawn.ts";
 import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
 import { stampOwnershipAndCapture } from "./ownership.ts";
 import { resolveCharacterSelections, type ResolvedCharacter } from "./character_creation.ts";
@@ -299,6 +300,12 @@ export class TileServer {
    * cached at join so a respawn (no join msg) keeps the chosen species + lore.
    */
   private playerCharacters = new Map<EntityId, ResolvedCharacter>();
+  /**
+   * Hearth anchor per connected player (T-079) — cached at join so a respawn
+   * (no join msg) can spawn the heir at the family hearth, or detect that the
+   * hearth was destroyed and spawn the heir displaced + weakened.
+   */
+  private playerHearthAnchors = new Map<EntityId, HearthAnchor | null>();
   /** Players with a respawn in flight — guards the async recordDeath→spawn from re-entry. */
   private respawning = new Set<EntityId>();
 
@@ -1220,6 +1227,7 @@ export class TileServer {
         this.playerLastZone.delete(playerId);
         this.playerDisplayNames.delete(playerId);
         this.playerCharacters.delete(playerId);
+        this.playerHearthAnchors.delete(playerId);
         if (this.world.isAlive(playerId)) {
           // T-252: take the carried item entities along — players respawn
           // fresh (save doctrine), so leaving them would leak forever.
@@ -1452,27 +1460,28 @@ export class TileServer {
    * Name, and hydrates fog. Async (heritage + fog are HTTP).
    */
   private async spawnFreshPlayer(playerId: EntityId, hearthAnchor: SessionInfo["hearthAnchor"]): Promise<void> {
-    const spawn = this.content.getGameConfig().player;
     const heritage = this.accountClient
       ? (await this.accountClient.getHeritage(playerId).catch((err: unknown) => {
           console.error("[TileServer] heritage fetch failed:", err);
           return null;
         })) ?? undefined
       : undefined;
-    const spawnAtHearth = hearthAnchor && hearthAnchor.tileId === this.tileId;
-    const spawnX = spawnAtHearth ? hearthAnchor.position.x : spawn.defaultSpawnX;
-    const spawnY = spawnAtHearth ? hearthAnchor.position.y : spawn.defaultSpawnY;
-    const spawnZ = spawnAtHearth ? hearthAnchor.position.z : undefined;
-    if (spawnAtHearth) {
-      console.log(`[TileServer] player ${playerId.slice(0, 8)} spawning at hearth (%.1f, %.1f)`, spawnX, spawnY);
+    // T-079: resolve the heir's spawn from the hearth anchor + live world —
+    // at the standing hearth, or displaced + weakened if it was destroyed.
+    const heir = resolveHeirSpawn(this.world, this.content, hearthAnchor, this.tileId);
+    if (heir.atHearth) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} spawning at hearth (%.1f, %.1f)`, heir.x, heir.y);
+    } else if (heir.weakened) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} hearth destroyed → displaced + weakened spawn`);
     }
     // Character-creation choices (T-071) resolved + cached at join; the heir
     // on respawn inherits the same species + lore picks.
     const character = this.playerCharacters.get(playerId);
     spawnPrefab(this.world, this.content, "player", {
-      id: playerId, x: spawnX, y: spawnY, z: spawnZ, heritage,
+      id: playerId, x: heir.x, y: heir.y, z: heir.z, heritage,
       speciesId: character?.speciesId,
       initialFragmentIds: character?.fragmentIds,
+      weakened: heir.weakened,
     });
 
     const displayName = this.playerDisplayNames.get(playerId) ?? `Player-${playerId.slice(0, 6)}`;
@@ -1510,7 +1519,7 @@ export class TileServer {
           console.error("[TileServer] respawn recordDeath failed:", err);
         });
       }
-      await this.spawnFreshPlayer(playerId, null);
+      await this.spawnFreshPlayer(playerId, this.playerHearthAnchors.get(playerId) ?? null);
       console.log(`[TileServer] player ${playerId.slice(0, 8)} respawned (heir)`);
     } finally {
       this.respawning.delete(playerId);
@@ -1656,6 +1665,9 @@ export class TileServer {
     // has no join message) can reuse it. Falls back to a playerId-derived stub.
     const displayName = (joinMsg.displayName ?? "").trim() || `Player-${playerId.slice(0, 6)}`;
     this.playerDisplayNames.set(playerId, displayName);
+    // Cache the hearth anchor (T-079) so an in-session respawn can spawn the
+    // heir at the hearth (or detect its destruction) — respawn has no join msg.
+    this.playerHearthAnchors.set(playerId, info?.hearthAnchor ?? null);
 
     // Character-creation selections (T-071): validate the client's join-time
     // species/lore picks against bootstrapped content and cache the resolved
@@ -1674,7 +1686,7 @@ export class TileServer {
     if (this.world.isAlive(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)} rejoining (post-handoff)`);
     } else {
-      await this.spawnFreshPlayer(playerId, info?.hearthAnchor ?? null);
+      await this.spawnFreshPlayer(playerId, this.playerHearthAnchors.get(playerId) ?? null);
     }
 
     // Send ack with canonical playerId
@@ -1801,6 +1813,7 @@ export class TileServer {
     this.sessions.delete(playerId);
     this.playerDisplayNames.delete(playerId);
     this.playerCharacters.delete(playerId);
+    this.playerHearthAnchors.delete(playerId);
     // Persist fog of war (T-161) before the entity (and its FogState) is
     // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
     // run after, so fog was dropped on the rare crossing that reaches here).

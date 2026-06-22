@@ -445,12 +445,24 @@ Same persistence model as the library (T-077). Heir equips from here during resp
 Done when: items stored in treasury persist across deaths; heir can equip them.
 
 ### T-079 · Heir spawn at family workbench
-Effort: M   Status: todo   (happy-path heir spawn at hearth done in T-270; remaining: destroyed-hearth weakened-state fallback)
+Effort: M   Status: done
 
 On character death, instead of direct respawn, create a new character entity at the family
 workbench position. If the workbench was destroyed, heir spawns at a fallback location (tile
 origin) in a weakened state.
 Done when: death spawns an heir at the workbench; no workbench = displaced spawn.
+
+Done: happy-path hearth spawn shipped in T-270; this closes the **destroyed-hearth weakened
+fallback**. `resolveHeirSpawn(world, content, hearthAnchor, tileId)` ([heir_spawn.ts]) decides
+the heir's spawn from the account `hearthAnchor` + LIVE world: standing hearth (a `WorkstationTag`
+entity within `player.hearthDetectRadius` of the anchor) → spawn there; anchor here but no
+workstation → the hearth is destroyed → displaced to default spawn + `weakened`. No destroy-event
+plumbing needed — "still standing" is derived from world state. The hearth anchor is now cached
+per-player at join (`playerHearthAnchors`) so an in-session respawn (no join msg) reaches it; this
+also fixed the prior bug where `respawnPlayer` passed `null` and always fell to default spawn.
+Weakened = the T-008 `Injury` pipeline: `installPlayer` writes the new `game_config.injuries.displaced`
+debuff (moveSpeed ×0.7 through the modifier fold) + starts the heir at `displacedHealthFraction`
+(0.5) of max HP. Server-only, no wire/save change. 6 deno tests in `heir_spawn.test.ts`.
 
 ### T-080 · Dynasty reputation persistence in NPC world
 Effort: M   Status: todo

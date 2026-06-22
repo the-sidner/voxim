@@ -35,6 +35,7 @@ import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Species } from "./components/species.ts";
+import { Injury } from "./components/injury.ts";
 import type { HeritageData, EquipmentData, InventoryData } from "@voxim/codecs";
 import { maxHealthFor } from "./account_client.ts";
 import { ResourceNode } from "./components/resource_node.ts";
@@ -138,7 +139,16 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
   const maxHealth = maxHealthFor(heritage);
 
   writeDefaults(world, id, Velocity, Facing, InputState);
-  world.write(id, Health, { current: maxHealth, max: maxHealth });
+  // T-079: a displaced heir (hearth destroyed) spawns weakened — injured + at a
+  // fraction of max health. The `displaced` injury feeds the modifier fold for
+  // the moveSpeed penalty; the reduced current HP is the visible weakness.
+  if (overrides.weakened) {
+    const frac = content.getGameConfig().player.displacedHealthFraction ?? 0.5;
+    world.write(id, Health, { current: Math.max(1, Math.round(maxHealth * frac)), max: maxHealth });
+    world.write(id, Injury, { injuries: [{ typeId: "displaced", severity: 1 }] });
+  } else {
+    world.write(id, Health, { current: maxHealth, max: maxHealth });
+  }
   world.write(id, Heritage, heritage);
   // Character-creation choice (T-071) wins over the config default; the join
   // path validated it against game_config.species before passing it here.
@@ -411,6 +421,12 @@ export interface SpawnPrefabOverrides {
    * the caller. Absent → none learned.
    */
   initialFragmentIds?: string[];
+  /**
+   * T-079: spawn this player in the weakened "displaced heir" state — the
+   * hearth was destroyed, so the heir starts injured (the `displaced` injury
+   * debuff) and at a fraction of max health. Absent/false = full-strength spawn.
+   */
+  weakened?: boolean;
 }
 
 /**
