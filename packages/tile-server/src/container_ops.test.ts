@@ -114,6 +114,33 @@ Deno.test("3f: withdraw rejects a wrong-dynasty actor and an out-of-range slot",
   assert(!withdrawFromContainer(w, a, treas, 9, a).ok, "bad slot blocked");
 });
 
+Deno.test("3g: withdraw into a wrong-dynasty holder is rejected (no cross-dynasty siphon)", () => {
+  const w = new World();
+  const treas = deployChest(w, "treasury_chest", DYN);
+  const sword = makeUniqueItem(w, "iron_sword");
+  const owner = makeActor(w, DYN, [{ kind: "unique", entityId: sword }]);
+  storeInContainer(w, content, owner, treas, sword);
+  // owner authorises, but the DESTINATION belongs to another dynasty.
+  const outsider = makeActor(w, OTHER, []);
+  const r = withdrawFromContainer(w, owner, treas, 0, outsider);
+  assert(!r.ok && r.reason === "holder-wrong-dynasty", JSON.stringify(r));
+  assertEquals(w.get(treas, Container)!.slots.length, 1, "item stayed banked");
+});
+
+Deno.test("3h: withdrawing a dead-entity slot purges it instead of handing out a dangling ref", () => {
+  const w = new World();
+  const treas = deployChest(w, "treasury_chest", DYN);
+  const sword = makeUniqueItem(w, "iron_sword");
+  const a = makeActor(w, DYN, [{ kind: "unique", entityId: sword }]);
+  storeInContainer(w, content, a, treas, sword);
+  w.destroy(sword);
+  w.applyChangeset();
+  const r = withdrawFromContainer(w, a, treas, 0, a);
+  assert(!r.ok && r.reason === "slot-item-dead", JSON.stringify(r));
+  assertEquals(w.get(treas, Container)!.slots.length, 0, "dead slot purged");
+  assertEquals(w.get(a, Inventory)!.slots.length, 0, "no dangling ref handed to the holder");
+});
+
 Deno.test("5a: chest/tome/kit prefabs load with the right wiring", () => {
   for (const id of ["tome", "blank_tome", "library_chest", "treasury_chest", "library_chest_kit", "treasury_chest_kit"]) {
     assert(content.prefabs.get(id), `${id} loads`);

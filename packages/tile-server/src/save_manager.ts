@@ -243,8 +243,10 @@ export class SaveManager {
       }
     }
 
-    // Items FIRST so they are world.create'd before the chest's Container overlay
-    // lands — keeping every slot ref resolvable to a live entity post-load.
+    // Item records are emitted as their own KIND_ITEM entries (UUID preserved),
+    // so they are re-created on load and the chest's slot ids resolve. Record
+    // order isn't load-bearing — nothing on load dereferences a slot string — but
+    // listing items first keeps the intent obvious.
     const entities: ParsedEntity[] = [...item, ...raw, ...prefab];
 
     const w = new WireWriter();

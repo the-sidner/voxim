@@ -1290,6 +1290,12 @@ export interface SpeciesDef {
  */
 export interface InjuryDef {
   modifiers: Array<{ stat: string; op: "add" | "mul"; value: number }>;
+  /**
+   * Whether a severe combat hit may randomly roll this injury (T-008). Defaults
+   * true. Set false for spawn/scripted-only states like the T-079 `displaced`
+   * heir debuff, so they never appear from ordinary combat.
+   */
+  combatEligible?: boolean;
 }
 
 export interface GameConfig {

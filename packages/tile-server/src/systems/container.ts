@@ -95,13 +95,24 @@ export function withdrawFromContainer(
   const container = world.get(containerId, Container);
   if (!container) return { ok: false, reason: "not-a-container" };
   if (!actorOwns(world, actorId, container.dynastyId)) return { ok: false, reason: "wrong-dynasty" };
+  // The destination must ALSO be of the owning dynasty — the authoriser doesn't
+  // get to deposit heritage gear into an arbitrary third entity (cross-dynasty
+  // siphon). In v1 the holder is the actor; this keeps it honest for the future
+  // command handler where the two ids could diverge.
+  if (!actorOwns(world, intoHolderId, container.dynastyId)) return { ok: false, reason: "holder-wrong-dynasty" };
   if (slotIndex < 0 || slotIndex >= container.slots.length) return { ok: false, reason: "bad-slot" };
+
+  const itemEntityId = container.slots[slotIndex].entityId;
+  if (!world.isAlive(itemEntityId)) {
+    // A dangling slot (the banked entity died) — purge it rather than hand the
+    // holder a dead ref. (Save skips dead refs but keeps the slot string.)
+    world.write(containerId, Container, { ...container, slots: container.slots.filter((_, i) => i !== slotIndex) });
+    return { ok: false, reason: "slot-item-dead" };
+  }
 
   const inv = world.get(intoHolderId, Inventory);
   if (!inv) return { ok: false, reason: "holder-has-no-inventory" };
   if (inv.slots.length >= inv.capacity) return { ok: false, reason: "inventory-full" };
-
-  const itemEntityId = container.slots[slotIndex].entityId;
 
   // Entity-ref MOVE: pull the chest ref, push the inventory unique ref.
   world.write(containerId, Container, {

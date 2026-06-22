@@ -162,7 +162,10 @@ export class HealthHitHandler implements HitHandler {
     // debuff applies via the `injury` ModifierSource until treated (T-009).
     // Re-injuring the same type deepens it (severity++).
     if (damage >= combatCfg.injuryThreshold && Math.random() < combatCfg.injuryChance) {
-      const types = Object.keys(this.content.getGameConfig().injuries);
+      // Only combat-eligible injuries roll here — spawn/scripted-only states
+      // (the T-079 `displaced` heir debuff) are excluded so a hit can't inflict them.
+      const injuryDefs = this.content.getGameConfig().injuries;
+      const types = Object.keys(injuryDefs).filter((id) => injuryDefs[id].combatEligible !== false);
       if (types.length > 0) {
         const typeId = types[Math.floor(Math.random() * types.length)];
         const current = world.get(ctx.targetId, Injury)?.injuries ?? [];

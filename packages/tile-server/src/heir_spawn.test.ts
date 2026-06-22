@@ -16,6 +16,7 @@ import { resolveHeirSpawn } from "./heir_spawn.ts";
 import { Health, Position } from "./components/game.ts";
 import { Injury } from "./components/injury.ts";
 import { WorkstationTag } from "./components/building.ts";
+import { Hearth } from "./components/hearth.ts";
 import { effective, newModifierSourceRegistry } from "./modifiers/modifier.ts";
 import { injurySource } from "./modifiers/sources/injury.ts";
 import type { HearthAnchor } from "./account_client.ts";
@@ -32,10 +33,10 @@ function injuryRegistry() {
 
 Deno.test("T-079: standing hearth → spawn at the hearth, full strength", () => {
   const world = new World();
-  // A live workstation entity at the hearth position == hearth still stands.
+  // A live Hearth entity at the anchor == hearth still stands.
   const hearth = world.create();
   world.write(hearth, Position, { x: 100, y: 120, z: 0 });
-  world.write(hearth, WorkstationTag, { stationType: "hearth", qualityTier: 1 });
+  world.write(hearth, Hearth, { claimRadius: 20 });
 
   const r = resolveHeirSpawn(world, content, anchor(100, 120), TILE);
   assertEquals(r.atHearth, true);
@@ -44,8 +45,8 @@ Deno.test("T-079: standing hearth → spawn at the hearth, full strength", () =>
   assertEquals(r.y, 120);
 });
 
-Deno.test("T-079: destroyed hearth (anchor here, no workstation) → displaced + weakened", () => {
-  const world = new World(); // no workstation entity near the anchor
+Deno.test("T-079: destroyed hearth (anchor here, no hearth entity) → displaced + weakened", () => {
+  const world = new World(); // no Hearth entity near the anchor
   const r = resolveHeirSpawn(world, content, anchor(100, 120), TILE);
   const spawn = content.getGameConfig().player;
   assertEquals(r.atHearth, false);
@@ -54,12 +55,23 @@ Deno.test("T-079: destroyed hearth (anchor here, no workstation) → displaced +
   assertEquals(r.y, spawn.defaultSpawnY);
 });
 
-Deno.test("T-079: workstation outside the detect radius still counts as destroyed", () => {
+Deno.test("T-079: a NON-hearth workstation at the anchor does NOT count as a standing hearth", () => {
+  // Regression (review HIGH): an adjacent surviving workbench must not mask the
+  // destroyed hearth — the heir must still be displaced + weakened.
+  const world = new World();
+  const bench = world.create();
+  world.write(bench, Position, { x: 100, y: 121, z: 0 }); // 1 unit from the anchor, inside radius
+  world.write(bench, WorkstationTag, { stationType: "workbench", qualityTier: 1 });
+  const r = resolveHeirSpawn(world, content, anchor(100, 120), TILE);
+  assertEquals(r.atHearth, false, "a workbench is not a hearth");
+  assertEquals(r.weakened, true);
+});
+
+Deno.test("T-079: a hearth outside the detect radius still counts as destroyed", () => {
   const world = new World();
   const far = world.create();
-  // Place a workstation well beyond hearthDetectRadius of the anchor.
   world.write(far, Position, { x: 200, y: 200, z: 0 });
-  world.write(far, WorkstationTag, { stationType: "workbench", qualityTier: 1 });
+  world.write(far, Hearth, { claimRadius: 20 });
   const r = resolveHeirSpawn(world, content, anchor(100, 120), TILE);
   assertEquals(r.atHearth, false);
   assertEquals(r.weakened, true);
@@ -90,6 +102,15 @@ Deno.test("T-079: weakened spawn → displaced injury, reduced HP, live moveSpee
   const base = 5;
   const eff = effective(injuryRegistry(), { world, content, entityId: id }, "moveSpeed", base);
   assert(eff < base, `weakened moveSpeed ${eff} < base ${base}`);
+});
+
+Deno.test("T-079: the `displaced` heir debuff is NOT in the random combat injury pool", () => {
+  // Regression (review MEDIUM): a spawn-only state must never roll from a hit.
+  const injuries = content.getGameConfig().injuries;
+  assertEquals(injuries.displaced.combatEligible, false);
+  const combatRollable = Object.keys(injuries).filter((id) => injuries[id].combatEligible !== false);
+  assert(!combatRollable.includes("displaced"), "displaced excluded from combat roll");
+  assert(combatRollable.includes("broken_leg"), "ordinary combat injuries still roll");
 });
 
 Deno.test("T-079: normal spawn → full HP, no injury, no moveSpeed debuff", () => {

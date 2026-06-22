@@ -620,12 +620,14 @@ export class TileServer {
       this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
         const prefab = content.prefabs.get(p.prefabId);
         if (!prefab?.components.hearth) return;
-        accountClient.updateHearth(p.placerId, {
-          tileId,
-          position: { x: p.worldX, y: p.worldY, z: p.worldZ },
-        }).catch((err: unknown) =>
+        const anchor = { tileId, position: { x: p.worldX, y: p.worldY, z: p.worldZ } };
+        accountClient.updateHearth(p.placerId, anchor).catch((err: unknown) =>
           console.warn(`[hearth] updateHearth failed for ${p.placerId.slice(0, 8)}:`, err)
         );
+        // Keep the in-session anchor cache (T-079) in sync with what was just
+        // persisted, so an in-session respawn spawns at a hearth built THIS
+        // session — not only one carried in via the join-time SessionInfo.
+        this.playerHearthAnchors.set(p.placerId, anchor);
         console.log(
           `[hearth] anchored player=${p.placerId.slice(0, 8)} entity=${p.entityId.slice(0, 8)} ` +
           `at (${p.worldX.toFixed(1)}, ${p.worldY.toFixed(1)}) on ${tileId}`,

@@ -11,9 +11,11 @@
  *     default spawn, full strength.
  *
  * The hearth anchor is account-side state (`SessionInfo.hearthAnchor`, set on
- * deploy); "still standing" is derived from LIVE world state — a `WorkstationTag`
- * entity near the anchor position — so no save-format or destroy-event plumbing
- * is needed: if the hearth entity is gone from the world, the heir is displaced.
+ * deploy); "still standing" is derived from LIVE world state — a `Hearth` entity
+ * near the anchor position — so no save-format or destroy-event plumbing is
+ * needed: if the hearth entity is gone from the world, the heir is displaced.
+ * (It checks the `Hearth` marker specifically, NOT any workstation — an adjacent
+ * surviving workbench must not masquerade as the destroyed hearth.)
  *
  * Pure + dependency-light so it is unit-testable without the QUIC/session stack.
  */
@@ -22,7 +24,7 @@ import type { World } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import type { HearthAnchor } from "./account_client.ts";
 import { Position } from "./components/game.ts";
-import { WorkstationTag } from "./components/building.ts";
+import { Hearth } from "./components/hearth.ts";
 
 export interface HeirSpawn {
   x: number;
@@ -35,14 +37,14 @@ export interface HeirSpawn {
   atHearth: boolean;
 }
 
-/** Is a live workstation entity within `radius` (horizontal) of `pos`? */
-function hasWorkstationNear(
+/** Is a live Hearth entity within `radius` (horizontal) of `pos`? */
+function hasHearthNear(
   world: World,
   pos: { x: number; y: number },
   radius: number,
 ): boolean {
   const r2 = radius * radius;
-  for (const { position } of world.query(Position, WorkstationTag)) {
+  for (const { position } of world.query(Position, Hearth)) {
     const dx = position.x - pos.x;
     const dy = position.y - pos.y;
     if (dx * dx + dy * dy <= r2) return true;
@@ -69,7 +71,7 @@ export function resolveHeirSpawn(
   }
 
   const radius = spawn.hearthDetectRadius ?? 3;
-  if (hasWorkstationNear(world, hearthAnchor!.position, radius)) {
+  if (hasHearthNear(world, hearthAnchor!.position, radius)) {
     const p = hearthAnchor!.position;
     return { x: p.x, y: p.y, z: p.z, weakened: false, atHearth: true };
   }
