@@ -1,0 +1,25 @@
+{
+  "id": "job_board_assemble",
+  "stationType": "workbench",
+  "stepType": "assembly",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "category": "wood",
+      "role": "frame",
+      "quantity": 4
+    },
+    {
+      "itemType": "cloth",
+      "role": "posting",
+      "quantity": 1
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "job_board_kit",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}

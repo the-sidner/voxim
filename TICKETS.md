@@ -158,12 +158,17 @@ Done when: assigning a build job to an NPC causes it to navigate to the blueprin
 ## NPC & Society
 
 ### T-038 · Hiring workbench as craftable deployable
-Effort: S   Status: todo
+Effort: S   Status: done
 
 The hiring workbench is currently hardcoded at spawn. Make it a craftable deployable item that
 the player places in the world. Placed instance creates a `WorkbenchOwner` component with the
 placer's dynasty ID.
 Done when: players can craft and place hiring workbenches; ownership is tracked.
+
+Landed: `job_board_assemble` recipe (workbench assembly, wood + cloth → stackable
+`job_board_kit`); the kit deploys into the existing `job_board` prefab. New server-only
+`WorkbenchOwner {dynastyId}` component, stamped by an EntityDeployed subscriber in server.ts when
+a `job_board` is placed (reads the placer's Heritage.dynastyId). Sets up T-082 (base capture).
 
 ### T-039 · NPC sleep need + bed infrastructure
 Effort: M   Status: todo

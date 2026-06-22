@@ -44,6 +44,7 @@ import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState, Name } from "./components/game.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
+import { WorkbenchOwner } from "./components/workbench.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
 import { PhysicsSystem } from "./systems/physics.ts";
 import { NoiseSystem } from "./systems/noise.ts";
@@ -590,6 +591,25 @@ export class TileServer {
         console.log(
           `[hearth] anchored player=${p.placerId.slice(0, 8)} entity=${p.entityId.slice(0, 8)} ` +
           `at (${p.worldX.toFixed(1)}, ${p.worldY.toFixed(1)}) on ${tileId}`,
+        );
+      });
+    }
+
+    // Workbench-ownership subscriber (T-038) — when a `job_board` prefab is
+    // deployed, stamp the placer's dynasty onto the spawned entity so hiring
+    // permission (and base capture, T-082) can answer "whose board is this?".
+    // Runs in the post-changeset flush, so the deployed entity is committed —
+    // `world.write` is the immediate stamp (no 1-tick deferral needed). Mirrors
+    // the hearth subscriber above.
+    {
+      const world = this.world;
+      this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
+        if (p.prefabId !== "job_board") return;
+        const dynastyId = world.get(p.placerId, Heritage)?.dynastyId ?? "";
+        world.write(p.entityId, WorkbenchOwner, { dynastyId });
+        console.log(
+          `[workbench] job_board entity=${p.entityId.slice(0, 8)} owned by ` +
+          `dynasty=${dynastyId.slice(0, 8)} (placer=${p.placerId.slice(0, 8)})`,
         );
       });
     }
