@@ -3,8 +3,8 @@
  *
  * Three channels:
  *   - Unreliable datagrams type=1:  MovementDatagram  (client → server, ~60 Hz)
- *   - Unreliable datagrams type=2:  CommandDatagram   (client → server, event-driven)
- *   - Reliable stream:              StateMessage       (server → client, per tick)
+ *   - Reliable command stream:      CommandDatagram   (client → server, event-driven, T-273)
+ *   - Reliable state stream:        StateMessage      (server → client, per tick)
  *
  * These are plain TypeScript interfaces — serialisation is handled by the
  * Serialiser implementations in @voxim/codecs.  The interfaces are the schema;
@@ -93,12 +93,18 @@ export function hasAction(actions: number, flag: number): boolean {
   return (actions & flag) !== 0;
 }
 
-// ---- CommandDatagram (client → server, unreliable, event-driven) ----
+// ---- CommandDatagram (client → server, reliable command stream, event-driven) ----
 
 /**
  * Discrete game commands that require slot or entity indices.
  * Sent only when the player performs an inventory/equipment/lore/trade action —
  * not every frame.
+ *
+ * Carried on the reliable command bidi stream (T-273), length-prefixed by
+ * encodeFrame, not on unreliable datagrams: a dropped equip/trade/place is a
+ * visible bug and datagrams were measured dropping under load. The leading
+ * type=2 byte (DATAGRAM_TYPE_COMMAND) is retained so the codec body stays
+ * self-describing and shared with decodeDatagram's command branch.
  *
  * Wire layout (handled by commandDatagramCodec):
  *   u8   type = 2

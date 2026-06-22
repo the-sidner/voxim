@@ -811,7 +811,12 @@ when a wall is removed; interior cells are queryable by other systems.
 ## UI / Interaction
 
 ### T-273 · Discrete commands ride unreliable datagrams — they can silently drop
-Effort: M   Status: todo
+Effort: M   Status: done
+
+Landed: discrete commands now ride a dedicated reliable command bidi stream (client opens it after
+the content stream; `sendCommand` length-prefixes `commandDatagramCodec` output via `encodeFrame`).
+Server `ClientSession.serveCommands` frame-reads + decodes into the same `commandQueue`; the command
+branch is removed from `receiveInputs` so datagrams carry movement only. Movement stays unreliable.
 
 `TileConnection.sendCommand` writes `CommandDatagram`s on the WebTransport **datagram** (unreliable)
 path, same as movement. For ~60 Hz latest-wins movement that's correct, but discrete one-shot

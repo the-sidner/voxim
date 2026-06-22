@@ -1,7 +1,7 @@
 /// <reference path="./types/webtransport.d.ts" />
 import type { EntityId } from "@voxim/engine";
 import type { CommandPayload } from "@voxim/protocol";
-import { decodeDatagram, worldSnapshotCodec, contentRequestCodec, contentResponseCodec, makeFrameReader } from "@voxim/protocol";
+import { decodeDatagram, commandDatagramCodec, worldSnapshotCodec, contentRequestCodec, contentResponseCodec, makeFrameReader } from "@voxim/protocol";
 import type { WorldSnapshot, ContentRequest, ContentResponse } from "@voxim/protocol";
 import type { ContentService } from "@voxim/content";
 import { InputRingBuffer } from "./input_buffer.ts";
@@ -9,11 +9,12 @@ import { InputRingBuffer } from "./input_buffer.ts";
 /**
  * Per-connection state for one connected client.
  *
- * Three concurrent activities:
- *   1. receiveInputs()  — reads datagrams, routes to inputBuffer (movement) or commandQueue (commands)
- *   2. sendState()      — called by tick loop, reliable unidirectional stream
- *   3. sendSnapshot()   — called by tick loop, unreliable datagram
- *   4. serveContent()   — serves the client-opened content bidi stream
+ * Concurrent activities:
+ *   1. receiveInputs()  — reads movement datagrams into inputBuffer (latest-wins)
+ *   2. serveCommands()  — reads the client-opened command bidi stream into commandQueue (T-273)
+ *   3. sendState()      — called by tick loop, reliable unidirectional stream
+ *   4. sendSnapshot()   — called by tick loop, unreliable datagram
+ *   5. serveContent()   — serves the client-opened content bidi stream
  */
 export class ClientSession {
   readonly playerId: EntityId;
@@ -103,11 +104,10 @@ export class ClientSession {
   // ── receive ──────────────────────────────────────────────────────────────
 
   /**
-   * Concurrent datagram receiver — reads datagrams from the WebTransport session
-   * and routes them by type:
-   *   - MovementDatagram (type=1) → inputBuffer (ring buffer, latest-wins)
-   *   - CommandDatagram  (type=2) → commandQueue (ordered, drained each tick)
-   *   - Unknown type              → silently discarded
+   * Concurrent datagram receiver — reads movement datagrams from the
+   * WebTransport session into the input ring buffer (latest-wins). Datagrams
+   * carry only movement now: discrete commands moved to the reliable command
+   * stream (T-273), so any non-movement datagram is silently discarded.
    */
   async receiveInputs(session: WebTransportSession): Promise<void> {
     const reader = (session.datagrams.readable as ReadableStream<Uint8Array>).getReader();
@@ -120,12 +120,42 @@ export class ClientSession {
           const decoded = decodeDatagram(value);
           if (decoded.kind === "movement") {
             this.inputBuffer.push(decoded.data);
-          } else if (decoded.kind === "command") {
-            this.enqueueCommand(decoded.data.command);
           }
-          // decoded.kind === "unknown" is silently discarded
+          // command / unknown datagrams are silently discarded
         } catch {
           // Malformed datagram — discard silently
+        }
+      }
+    } catch {
+      // Connection reset or closed
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  /**
+   * Command stream handler (T-273) — reads length-prefixed CommandDatagrams
+   * from the client-opened bidi stream and enqueues them in arrival order.
+   * Reliable + ordered, unlike the datagram path it replaced: a dropped
+   * equip/trade/place was a visible bug under load.
+   *
+   * Long-lived: runs for the lifetime of the session.
+   */
+  async serveCommands(stream: { readable: ReadableStream<Uint8Array> }): Promise<void> {
+    const reader = (stream.readable as ReadableStream<Uint8Array>).getReader();
+    // readPayload (not readFrame): the client wraps the codec body with
+    // encodeFrame, so the codec's self-describing TLV — whose first byte is the
+    // DATAGRAM_TYPE_COMMAND discriminant — starts after the frame's length
+    // prefix is stripped.
+    const { readPayload } = makeFrameReader(reader);
+    try {
+      while (!this._closed) {
+        const payload = await readPayload();
+        if (!payload) break;
+        try {
+          this.enqueueCommand(commandDatagramCodec.decode(payload).command);
+        } catch {
+          // Malformed command frame — discard, keep reading
         }
       }
     } catch {

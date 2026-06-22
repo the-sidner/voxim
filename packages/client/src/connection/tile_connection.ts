@@ -6,7 +6,9 @@
  *   1. Client opens a bidirectional stream and sends TileJoinRequest (length-prefixed JSON).
  *   2. Server responds with TileJoinAck containing the canonical playerId.
  *   3. Server opens a unidirectional stream (server → client) for state messages.
- *   4. Client sends input as unreliable datagrams.
+ *   4. Client opens a content bidi stream and a command bidi stream.
+ *   5. Client sends movement as unreliable datagrams; discrete commands go on
+ *      the reliable command stream (T-273 — datagrams dropped commands under load).
  */
 import type {
   MovementDatagram, CommandDatagram, BinaryStateMessage, BootstrapHeader, TileJoinRequest, TileJoinAck,
@@ -22,6 +24,7 @@ export class TileConnection {
   private transport: WebTransport | null = null;
   private datagramWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private contentWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  private commandWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private contentResolvers: Array<(resp: ContentResponse) => void> = [];
 
   onStateMessage: ((msg: BinaryStateMessage) => void) | null = null;
@@ -151,6 +154,14 @@ export class TileConnection {
     this.contentWriter = contentStream.writable.getWriter();
     this.drainContentStream(contentStream.readable).catch(() => {});
 
+    // --- command bidi stream (client-opened, long-lived) ---
+    // Discrete commands (equip, trade, place, debug) ride this reliable stream
+    // rather than unreliable datagrams (T-273): a dropped equip/trade/place is a
+    // visible bug, and datagrams were measured dropping under load. The server
+    // accepts incoming bidi streams in open order, so this must follow content.
+    const commandStream = await this.transport.createBidirectionalStream();
+    this.commandWriter = commandStream.writable.getWriter();
+
     return ack.playerId;
   }
 
@@ -160,8 +171,11 @@ export class TileConnection {
   }
 
   sendCommand(datagram: CommandDatagram): void {
-    if (!this.datagramWriter) return;
-    this.datagramWriter.write(commandDatagramCodec.encode(datagram)).catch(() => {});
+    // Reliable, ordered delivery over the command stream (T-273). The codec's
+    // self-describing TLV body is length-prefixed via encodeFrame so the server
+    // can frame-read it back; the seq survives for client-side bookkeeping.
+    if (!this.commandWriter) return;
+    this.commandWriter.write(encodeFrame(commandDatagramCodec.encode(datagram))).catch(() => {});
   }
 
   /** Send a content request and return the response (in-order, pipelined). */
@@ -256,10 +270,12 @@ export class TileConnection {
   close(): void {
     this.datagramWriter?.close().catch(() => {});
     this.contentWriter?.close().catch(() => {});
+    this.commandWriter?.close().catch(() => {});
     this.transport?.close();
     this.transport = null;
     this.datagramWriter = null;
     this.contentWriter = null;
+    this.commandWriter = null;
     this.contentResolvers = [];
   }
 }

@@ -1654,20 +1654,26 @@ export class TileServer {
     }
 
     // Subsequent ticks will send deltas via the normal AoI loop.
-    // Background: accept the client-opened content bidi stream (second bidi stream)
-    // and serve content requests for the lifetime of the session.
-    const contentStreamReader = (session.incomingBidirectionalStreams as ReadableStream).getReader();
-    contentStreamReader.read().then(
-      (result) => {
-        contentStreamReader.releaseLock();
-        if (!result.done && result.value) {
-          clientSession.serveContent(
-            result.value as { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> },
-            this.content,
-          ).catch(() => {});
-        }
-      },
-    ).catch(() => { contentStreamReader.releaseLock(); });
+    // Background: accept the two further client-opened bidi streams in open order —
+    // the content stream (2nd) then the command stream (3rd, T-273) — and serve
+    // each for the lifetime of the session. The client opens them in this order
+    // (tile_connection.ts connect()), so a single reader hands them out in turn.
+    const bidiReader = (session.incomingBidirectionalStreams as ReadableStream).getReader();
+    (async () => {
+      const content = await bidiReader.read();
+      if (!content.done && content.value) {
+        clientSession.serveContent(
+          content.value as { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> },
+          this.content,
+        ).catch(() => {});
+      }
+      const command = await bidiReader.read();
+      if (!command.done && command.value) {
+        clientSession.serveCommands(
+          command.value as { readable: ReadableStream<Uint8Array> },
+        ).catch(() => {});
+      }
+    })().catch(() => {}).finally(() => bidiReader.releaseLock());
 
     const heritageOnJoin = this.world.get(playerId, Heritage);
     console.log(
