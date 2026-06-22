@@ -1455,6 +1455,11 @@ export interface GameConfig {
   building: {
     /** Max distance from placer to blueprint cell centre (world units). */
     maxReachWorldUnits: number;
+    /** Base capture (T-082): deploying a workstation re-stamps owned ones nearby. */
+    capture: {
+      /** Radius around a deployed workstation that captures enemy-owned ones (world units). */
+      radiusWorldUnits: number;
+    };
   };
   items: {
     /** Auto-pickup radius (world units) — ItemData entities within this range are collected. */

@@ -749,13 +749,14 @@ Closed by adding the missing regression test (`execute_assigned_job.test.ts`): b
 cleared + failure; live board → assignment kept.
 
 ### T-082 · Base capture flow — place new workbench to claim
-Effort: S   Status: todo
+Effort: S   Status: done
 
-After an enemy workbench is destroyed (T-081), the attacker places their own workbench at the
-location. Placed workbench assigns its owner's dynasty ID. Former NPCs, now neutral, can be
-re-hired via the new workbench.
-Done when: capturing a base by destroying and replacing the workbench gives the attacker control
-of the management layer.
+Landed the management-layer half: a server-only `WorkbenchOwner {dynastyId}` (components/workbench.ts)
+stamped on any deployed entity carrying a `WorkstationTag` with the placer's `Heritage.dynastyId`,
+plus capture — deploying a workstation re-stamps every enemy-owned workstation within
+`building.capture.radiusWorldUnits` to the placer's dynasty. Driven by an `EntityDeployed`
+subscriber in server.ts calling `stampOwnershipAndCapture` (ownership.ts); no `BaseCaptured` event
+exists so the capture is logged server-side. Unit-tested in ownership.test.ts.
 
 ### T-083 · Family-tagged asset persistence after capture
 Effort: S   Status: todo

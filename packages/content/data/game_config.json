@@ -128,7 +128,10 @@
     "crouchSpeedScale": 0.4
   },
   "building": {
-    "maxReachWorldUnits": 4.0
+    "maxReachWorldUnits": 4.0,
+    "capture": {
+      "radiusWorldUnits": 12.0
+    }
   },
   "items": {
     "pickupRadius": 2.5

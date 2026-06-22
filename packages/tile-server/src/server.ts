@@ -39,12 +39,12 @@ import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
 import type { SessionInfo } from "./account_client.ts";
 import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
+import { stampOwnershipAndCapture } from "./ownership.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState, Name } from "./components/game.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
-import { WorkbenchOwner } from "./components/workbench.ts";
 import { NpcAiSystem } from "./systems/npc_ai.ts";
 import { NpcSensorySystem } from "./systems/npc_sensory.ts";
 import { PhysicsSystem } from "./systems/physics.ts";
@@ -608,24 +608,25 @@ export class TileServer {
       });
     }
 
-    // Workbench-ownership subscriber (T-038) — when a `job_board` prefab is
-    // deployed, stamp the placer's dynasty onto the spawned entity so hiring
-    // permission (and base capture, T-082) can answer "whose board is this?".
-    // Runs in the post-changeset flush, so the deployed entity is committed —
-    // `world.write` is the immediate stamp (no 1-tick deferral needed). Mirrors
-    // the hearth subscriber above.
-    {
-      const world = this.world;
-      this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
-        if (p.prefabId !== "job_board") return;
-        const dynastyId = world.get(p.placerId, Heritage)?.dynastyId ?? "";
-        world.write(p.entityId, WorkbenchOwner, { dynastyId });
-        console.log(
-          `[workbench] job_board entity=${p.entityId.slice(0, 8)} owned by ` +
-          `dynasty=${dynastyId.slice(0, 8)} (placer=${p.placerId.slice(0, 8)})`,
-        );
-      });
-    }
+    // Workstation ownership + base capture (T-082, generalises T-038's
+    // job_board-only stamp) — when a player deploys any workstation, stamp it
+    // with their dynasty and re-stamp nearby enemy-owned workstations to them.
+    // Runs in the post-changeset flush, so the freshly spawned entity and every
+    // existing owner are committed and queryable. job_board carries a
+    // WorkstationTag, so hiring-board ownership is covered by this one path.
+    const captureRadius = content.getGameConfig().building.capture.radiusWorldUnits;
+    this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
+      const result = stampOwnershipAndCapture(this.world, p, captureRadius);
+      if (!result) return;
+      console.log(
+        `[ownership] dynasty=${result.dynastyId.slice(0, 8)} claimed ` +
+        `workstation=${p.entityId.slice(0, 8)} (${p.prefabId})` +
+        (result.captured.length
+          ? ` — captured ${result.captured.length} structure(s) from ` +
+            result.captured.map((c) => c.previousDynastyId.slice(0, 8)).join(", ")
+          : ""),
+      );
+    });
 
     // One-tick event channel from gameplay systems → CSM. Cleared at the end
     // of CharacterStateMachineSystem.run each tick.
