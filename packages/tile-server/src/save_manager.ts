@@ -25,17 +25,24 @@
  *            OVERLAY the saved mutable state. `SpawnedFrom` carries the prefab
  *            id; the same re-completion the tile handoff will use (T-256).
  *
+ *   ITEM   — unique item entities referenced by a saved Container's slots (the
+ *            tomes/gear banked in a family library/treasury, T-077/T-078). They
+ *            have no Position (carried, not placed), so the fixture path never
+ *            sees them; we emit them as a raw component list (ItemData + instance
+ *            components) with the UUID preserved, so the chest's slot refs resolve
+ *            on load. Re-created via `world.create` + overlay, like RAW.
+ *
  * Components are keyed by NAME, resolved through `DEF_BY_NAME`, so server-only
  * state (the respawn/crafting Resource) persists alongside networked state —
  * the save format is independent of the wire format.
  *
  * Binary wire format (all little-endian):
  *   u32  magic   = 0x56584D32  ("VXM2")
- *   u32  version = 3
+ *   u32  version = 4
  *   f64  savedAt (ms since epoch)
  *   u32  numEntities
  *   per entity:
- *     u8         kind        (0 = RAW, 1 = PREFAB)
+ *     u8         kind        (0 = RAW, 1 = PREFAB, 2 = ITEM)
  *     bytes[16]  entityId    (UUID, raw bytes)
  *     if kind == PREFAB:
  *       str      prefabId
@@ -57,14 +64,27 @@ import { Resource } from "./components/resource.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { SpawnedFrom } from "./components/spawned_from.ts";
 import { Blueprint, WorkstationBuffer, WorkstationTag } from "./components/building.ts";
+import { Container } from "./components/container.ts";
+import { ItemData } from "./components/items.ts";
+import {
+  Durability,
+  History,
+  Inscribed,
+  ItemEffects,
+  Owned,
+  Provenance,
+  QualityStamped,
+  Stats,
+} from "./components/instance.ts";
 import { DEF_BY_NAME } from "./component_registry.ts";
 import { spawnPrefab } from "./spawner.ts";
 
 const SAVE_MAGIC   = 0x56584D32; // "VXM2"
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 
 const KIND_RAW    = 0;
 const KIND_PREFAB = 1;
+const KIND_ITEM   = 2;
 
 /** Full component set persisted for a terrain chunk (RAW). */
 // deno-lint-ignore no-explicit-any
@@ -72,7 +92,7 @@ const CHUNK_DEFS: ReadonlyArray<ComponentDef<any>> = [Heightmap, MaterialGrid, O
 
 /** Fixture marker components — an entity carrying any of these is persisted. */
 // deno-lint-ignore no-explicit-any
-const FIXTURE_MARKER_DEFS: ReadonlyArray<ComponentDef<any>> = [ResourceNode, WorkstationTag, Blueprint];
+const FIXTURE_MARKER_DEFS: ReadonlyArray<ComponentDef<any>> = [ResourceNode, WorkstationTag, Blueprint, Container];
 
 /**
  * Mutable runtime state overlaid onto a re-spawned fixture. Static prefab data
@@ -86,6 +106,30 @@ const FIXTURE_STATE_DEFS: ReadonlyArray<ComponentDef<any>> = [
   Resource,
   WorkstationBuffer,
   Blueprint,
+  // Container (T-077/T-078): {kind, dynastyId, capacity, slots[]} — the chest's
+  // owner + which unique item entities it holds. The referenced items are saved
+  // separately as KIND_ITEM records (collected from these slots in serialize()).
+  Container,
+];
+
+/**
+ * Instance components of a unique item entity banked in a Container (T-077/T-078).
+ * `collectComponents` skips absent ones, so all but `ItemData` are conditional.
+ * `ItemEffects` is here AND registered in ALL_DEFS — otherwise it silently drops
+ * on overlay. `Owned.lineage` (dynasty inheritance) and `Inscribed.fragmentId`
+ * (the tome's lore) are the per-instance state that must survive a restart.
+ */
+// deno-lint-ignore no-explicit-any
+const ITEM_STATE_DEFS: ReadonlyArray<ComponentDef<any>> = [
+  ItemData, // always present — prefabId + quantity (the item's identity)
+  Durability,
+  Inscribed,
+  QualityStamped,
+  Stats,
+  Provenance,
+  History,
+  Owned,
+  ItemEffects,
 ];
 
 interface SavedComponent {
@@ -109,7 +153,14 @@ interface PrefabEntity {
   components: SavedComponent[];
 }
 
-type ParsedEntity = RawEntity | PrefabEntity;
+/** A unique item entity referenced by a saved Container's slots (T-077/T-078). */
+interface ItemEntity {
+  kind: typeof KIND_ITEM;
+  entityId: EntityId;
+  components: SavedComponent[];
+}
+
+type ParsedEntity = RawEntity | PrefabEntity | ItemEntity;
 
 // ---- SaveManager ----
 
@@ -173,7 +224,28 @@ export class SaveManager {
       });
     }
 
-    const entities: ParsedEntity[] = [...raw, ...prefab];
+    // Unique item entities referenced by saved containers (T-077/T-078): the
+    // tomes/gear in a library/treasury chest's slots. They carry no Position /
+    // SpawnedFrom (held, not placed), so the fixture loop above never sees them;
+    // emit each as a KIND_ITEM record with its UUID preserved so the chest's slot
+    // refs resolve on load. A dangling ref (the item died) is skipped.
+    const item: ItemEntity[] = [];
+    const seenItems = new Set<EntityId>();
+    for (const entityId of fixtureIds) {
+      const container = world.get(entityId, Container);
+      if (!container) continue;
+      for (const slot of container.slots) {
+        const refId = slot.entityId as EntityId;
+        if (seenItems.has(refId)) continue;
+        seenItems.add(refId);
+        if (!world.isAlive(refId)) continue;
+        item.push({ kind: KIND_ITEM, entityId: refId, components: collectComponents(world, refId, ITEM_STATE_DEFS) });
+      }
+    }
+
+    // Items FIRST so they are world.create'd before the chest's Container overlay
+    // lands — keeping every slot ref resolvable to a live entity post-load.
+    const entities: ParsedEntity[] = [...item, ...raw, ...prefab];
 
     const w = new WireWriter();
     w.writeU32(SAVE_MAGIC);
@@ -283,6 +355,8 @@ export class SaveManager {
         const prefabId = r.readStr();
         const x = r.readF32(), y = r.readF32(), z = r.readF32();
         entities.push({ kind: KIND_PREFAB, entityId, prefabId, x, y, z, components: readComponents(r) });
+      } else if (kind === KIND_ITEM) {
+        entities.push({ kind: KIND_ITEM, entityId, components: readComponents(r) });
       } else if (kind === KIND_RAW) {
         entities.push({ kind: KIND_RAW, entityId, components: readComponents(r) });
       } else {

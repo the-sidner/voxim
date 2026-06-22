@@ -1,0 +1,12 @@
+{
+  "id": "library_chest_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "library_chest"
+    },
+    "weight": {
+      "baseWeight": 7
+    }
+  }
+}

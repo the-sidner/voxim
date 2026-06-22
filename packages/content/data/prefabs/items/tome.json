@@ -1,0 +1,10 @@
+{
+  "id": "tome",
+  "modelId": "model_cloth",
+  "modelScale": 0.4,
+  "components": {
+    "weight": {
+      "baseWeight": 0.5
+    }
+  }
+}

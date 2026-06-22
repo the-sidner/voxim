@@ -50,11 +50,13 @@ import {
   Durability,
   History,
   Inscribed,
+  ItemEffects,
   Owned,
   Provenance,
   QualityStamped,
   Stats,
 } from "./components/instance.ts";
+import { Container } from "./components/container.ts";
 import {
   Blueprint,
   WorkstationBuffer,
@@ -239,6 +241,12 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // ── Instance-lifetime components (server-only) ──────────────────────────
   History,
   Owned,
+  // ItemEffects (T-240): a unique item's per-instance generated effects.
+  // Registered so SaveManager round-trips it for items banked in a treasury
+  // (T-078); without this it silently drops on overlay.
+  ItemEffects,
+  // Container (T-077/T-078): family library/treasury slot store. Server-only.
+  Container,
   // ── Item-behaviour template defs ─────────────────────────────────────────
   // Declared on any prefab that represents a holdable/wearable/usable thing.
   // Server-only: clients reconstruct item behaviour from the prefab id they

@@ -1,0 +1,13 @@
+{
+  "id": "library_chest",
+  "modelId": "model_workbench",
+  "components": {
+    "placeable": {
+      "alignment": "forward-facing"
+    },
+    "container": {
+      "kind": "tome",
+      "capacity": 24
+    }
+  }
+}

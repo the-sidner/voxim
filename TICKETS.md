@@ -430,7 +430,7 @@ Done when: death triggers the heir flow; heir spawns at workbench and can comple
 ## Heritage & Dynasty
 
 ### T-077 · Family library — tome storage at workbench
-Effort: M   Status: todo
+Effort: M   Status: done   (server substrate; deposit/withdraw UI deferred to T-072/T-076)
 
 A special chest entity associated with the family workbench serves as the library. Stores Lore
 tome items (T-018). Persists across character deaths (it is a world entity, not character
@@ -438,11 +438,29 @@ inventory). Heir can interact with it during the respawn ritual.
 Done when: tomes placed in the library chest persist after character death; heir can access them.
 
 ### T-078 · Family treasury — gear storage across deaths
-Effort: S   Status: todo
+Effort: S   Status: done   (server substrate; equip-during-ritual UI deferred to T-072/T-076)
 
 A second chest entity at the family workbench serves as the treasury. Stores equipment items.
 Same persistence model as the library (T-077). Heir equips from here during respawn ritual.
 Done when: items stored in treasury persist across deaths; heir can equip them.
+
+Done (T-077 + T-078 share one primitive): a server-only **`Container`** component
+([components/container.ts]) — entity-ref slots holding UNIQUE item entities (so each tome's
+`Inscribed` and each weapon's `Durability`/`QualityStamped` is preserved per-instance, unlike the
+stack-only `WorkstationBuffer`), gated by `kind` (library=tome / treasury=equipment) + `dynastyId`
+(stamped from the placer's Heritage on deploy via `stampContainerOwner`). Two deployable chest
+prefabs (`library_chest`/`treasury_chest`) + kits + recipes, plus the long-missing `tome`/
+`blank_tome` prefabs the lore path already referenced (now boot-cross-checked). `storeInContainer`/
+`withdrawFromContainer` ([systems/container.ts]) are dynasty+kind+capacity-gated entity-ref MOVES
+(never copy/destroy). **Persistence** is the core work: `SaveManager` (VXM2 v4) now round-trips a
+chest fixture AND the unique item entities its slots reference — a new `KIND_ITEM` record carrying
+each item's instance components with the UUID preserved, emitted before the chest so slot refs
+re-resolve on load (`ItemEffects` was also registered so it stops silently dropping on overlay).
+"Persists across death" holds because the chest is its own world entity — `equip_cleanup`/disconnect
+only walk a holder's `Equipment`/`Inventory`, never a `Container`. 17 deno tests (`container_ops`,
+`container_persistence`): round-trip, death-survival, store/withdraw gates, heir-withdraw-and-equip.
+**Deferred (client-drift):** networked Container + the deposit/withdraw + ritual UI — server-first,
+network later, the same call buffs/modifiers/ActiveActions made.
 
 ### T-079 · Heir spawn at family workbench
 Effort: M   Status: done

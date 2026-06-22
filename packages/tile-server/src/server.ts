@@ -40,7 +40,7 @@ import { AccountClient } from "./account_client.ts";
 import type { SessionInfo, HearthAnchor } from "./account_client.ts";
 import { resolveHeirSpawn } from "./heir_spawn.ts";
 import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
-import { stampOwnershipAndCapture } from "./ownership.ts";
+import { stampOwnershipAndCapture, stampContainerOwner } from "./ownership.ts";
 import { resolveCharacterSelections, type ResolvedCharacter } from "./character_creation.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
@@ -653,6 +653,16 @@ export class TileServer {
       );
     });
 
+    // T-077/T-078: stamp a freshly deployed family chest (library/treasury) with
+    // the placer's dynasty so only that dynasty's heir can store/withdraw. Chests
+    // carry a Container, not a WorkstationTag, so the ownership stamp above skips
+    // them — this parallel subscriber handles them.
+    this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
+      const dynastyId = stampContainerOwner(this.world, p);
+      if (!dynastyId) return;
+      console.log(`[container] dynasty=${dynastyId.slice(0, 8)} claimed chest=${p.entityId.slice(0, 8)} (${p.prefabId})`);
+    });
+
     // One-tick event channel from gameplay systems → CSM. Cleared at the end
     // of CharacterStateMachineSystem.run each tick.
 
@@ -688,6 +698,36 @@ export class TileServer {
             `Registered: [${actionEffects.ids().join(", ")}]`,
           );
         }
+      }
+    }
+
+    // T-077/T-078 content cross-checks (fail-fast, mirrors the checks above):
+    //  1. the lore tome prefabs referenced by game_config exist (this also
+    //     catches the long-latent missing tome/blank_tome prefab bug);
+    //  2. every prefab with a `container` declares a valid kind + capacity;
+    //  3. every `deployable` names a prefab that actually loads (covers the
+    //     chest kits + the pre-existing workbench/job_board kits).
+    const lore = content.getGameConfig().lore;
+    for (const id of [lore.tomeItemType, lore.blankTomeItemType]) {
+      if (!content.prefabs.get(id)) {
+        throw new Error(`game_config.lore references item prefab "${id}" but no such prefab is loaded.`);
+      }
+    }
+    for (const prefab of content.prefabs.values()) {
+      const container = (prefab.components as Record<string, unknown> | undefined)?.container as
+        | { kind?: string; capacity?: number } | undefined;
+      if (container) {
+        if (container.kind !== "tome" && container.kind !== "equipment") {
+          throw new Error(`Prefab "${prefab.id}" container.kind must be "tome" or "equipment", got "${container.kind}".`);
+        }
+        if (!(typeof container.capacity === "number" && container.capacity > 0)) {
+          throw new Error(`Prefab "${prefab.id}" container.capacity must be a positive number.`);
+        }
+      }
+      const deployable = (prefab.components as Record<string, unknown> | undefined)?.deployable as
+        | { prefabId?: string } | undefined;
+      if (deployable?.prefabId && !content.prefabs.get(deployable.prefabId)) {
+        throw new Error(`Prefab "${prefab.id}" deployable.prefabId "${deployable.prefabId}" resolves to no prefab.`);
       }
     }
 

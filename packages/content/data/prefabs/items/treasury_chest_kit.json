@@ -1,0 +1,12 @@
+{
+  "id": "treasury_chest_kit",
+  "components": {
+    "stackable": {},
+    "deployable": {
+      "prefabId": "treasury_chest"
+    },
+    "weight": {
+      "baseWeight": 8
+    }
+  }
+}

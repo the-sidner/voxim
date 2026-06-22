@@ -24,6 +24,25 @@ import { Heritage } from "./components/heritage.ts";
 import { Position } from "./components/game.ts";
 import { WorkstationTag } from "./components/building.ts";
 import { BuiltBy, WorkbenchOwner } from "./components/workbench.ts";
+import { Container } from "./components/container.ts";
+
+/**
+ * Stamp the owning dynasty onto a freshly deployed family chest (T-077/T-078).
+ * Chests carry a `Container`, NOT a `WorkstationTag`, so `stampOwnershipAndCapture`
+ * is a no-op for them — this parallel stamp sets `Container.dynastyId` from the
+ * placer's Heritage so only the owning dynasty's heir can store/withdraw.
+ * Returns the stamped dynasty id, or null if the entity isn't a container / the
+ * placer has no dynasty.
+ */
+export function stampContainerOwner(world: World, payload: EntityDeployedPayload): string | null {
+  const { placerId, entityId } = payload;
+  const container = world.get(entityId, Container);
+  if (!container) return null;
+  const dynastyId = world.get(placerId, Heritage)?.dynastyId;
+  if (!dynastyId) return null;
+  world.write(entityId, Container, { ...container, dynastyId });
+  return dynastyId;
+}
 
 export interface CapturedStructure {
   entityId: string;

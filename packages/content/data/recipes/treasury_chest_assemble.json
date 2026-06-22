@@ -1,0 +1,25 @@
+{
+  "id": "treasury_chest_assemble",
+  "stationType": "workbench",
+  "stepType": "assembly",
+  "requiredTools": [],
+  "inputs": [
+    {
+      "category": "wood",
+      "role": "frame",
+      "quantity": 6
+    },
+    {
+      "itemType": "iron_ingot",
+      "role": "binding",
+      "quantity": 2
+    }
+  ],
+  "outputs": [
+    {
+      "itemType": "treasury_chest_kit",
+      "quantity": 1
+    }
+  ],
+  "ticks": 0
+}
