@@ -27,8 +27,10 @@ await esbuild.build({
   jsxImportSource: "preact",
 });
 
-// HTML entry + theme.css + devtools.css mirror what build_voxel_editor.ts does.
-// Building studio alone still produces a working dist/.
+// Copy the HTML entry point + theme.css + devtools.css into dist/ alongside
+// the bundle. theme.css is the canonical design-token source (lives in the
+// client package, consumed by every surface); devtools-specific composition
+// classes live next to it in packages/devtools/src/devtools.css.
 const htmlSrc  = new URL("packages/devtools/src/studio/index.html", root).pathname;
 const themeSrc = new URL("packages/client/src/ui/theme.css", root).pathname;
 const dtCssSrc = new URL("packages/devtools/src/devtools.css", root).pathname;

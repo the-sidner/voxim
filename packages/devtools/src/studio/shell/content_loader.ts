@@ -1,9 +1,9 @@
 /**
  * Layer B helpers — fetch specific content categories from the dev
  * server. This is where the studio crosses from pure data tools into
- * game-content knowledge: prefabs, weapon actions, state machines,
- * maneuvers. Each helper is independent so Layer-B features can pull
- * only what they need (no full ContentService load required).
+ * game-content knowledge: prefabs and weapon actions. Each helper is
+ * independent so Layer-B features can pull only what they need (no full
+ * ContentService load required).
  *
  * Listing helpers walk the per-item directory + optional sub-buckets
  * (e.g. prefabs/items/) the way the engine's JsonSource does, so the
@@ -107,45 +107,6 @@ export interface WeaponActionDef {
 export async function loadWeaponAction(id: string): Promise<WeaponActionDef | null> {
   try {
     return await readJson<WeaponActionDef>(`weapon_actions/${id}.json`);
-  } catch {
-    return null;
-  }
-}
-
-export interface ManeuverDef {
-  id: string;
-  duration: number;
-  interruptWindows: { fromT: number; toT: number; by: string[] }[];
-  tracks: {
-    right_hand: { t: number; clip: string }[];
-    left_hand:  { t: number; clip: string }[];
-    locomotion: { t: number; kind: string; forward?: number; duration?: number }[];
-    hitEffects: { tag: string; fromT: number; toT?: number; magnitude: number }[];
-  };
-  requirements: Record<string, unknown>;
-}
-
-export async function listManeuvers(): Promise<ManeuverDef[]> {
-  const raw = await readJsonTree<ManeuverDef>("maneuvers");
-  return raw.map(({ value }) => value).sort((a, b) => a.id < b.id ? -1 : 1);
-}
-
-export interface StateMachineDef {
-  id: string;
-  layers: {
-    id: string;
-    output: string;
-    mask?: string;
-    priority?: number;
-    initial: string;
-    states: Record<string, unknown>;
-    transitions: { from?: string | string[]; to: string; when: string; priority?: number }[];
-  }[];
-}
-
-export async function loadStateMachine(id: string): Promise<StateMachineDef | null> {
-  try {
-    return await readJson<StateMachineDef>(`state_machines/${id}.json`);
   } catch {
     return null;
   }

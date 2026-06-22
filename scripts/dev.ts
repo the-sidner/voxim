@@ -1,7 +1,7 @@
 /**
  * dev.ts — single entry point for local development.
  *
- * 1. Builds client bundle and voxel editor bundle in parallel.
+ * 1. Builds client bundle and devtools studio bundle in parallel.
  * 2. Starts tile server and devtools static server concurrently.
  *
  * Usage:
@@ -26,7 +26,7 @@ const buildClient = run([
   "deno", "run", "-A", "--node-modules-dir=auto", "scripts/build_client.ts",
 ]);
 const buildDevtools = run([
-  "deno", "run", "-A", "--node-modules-dir=auto", "scripts/build_voxel_editor.ts",
+  "deno", "run", "-A", "--node-modules-dir=auto", "scripts/build_studio.ts",
 ]);
 
 const [clientStatus, devtoolsStatus] = await Promise.all([

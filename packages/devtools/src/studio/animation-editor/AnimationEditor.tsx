@@ -1,20 +1,22 @@
 /// <reference lib="dom" />
 /**
  * Animation editor — Layer A. Pick a skeleton + an animation clip
- * (from the same archetype's library), play it on the rendered
- * bones. Multi-layer playback + maneuver driver + equipment overlay
- * come in T-191c next iteration / T-191d.
+ * (from the same archetype's library), play it on the rendered bones,
+ * and optionally overlay equipment to preview held weapons.
+ *
+ * Animation in-engine is a constraint pipeline (skeleton_evaluator.ts):
+ * base FK locomotion clips + weapon-action IK constraints driven by the
+ * ActionDispatcher's active action. There is no CSM / state machine /
+ * maneuver runtime (retired at T-228) — a clip is just authored keyframe
+ * data the engine samples, which is exactly what this editor scrubs.
  *
  * Today's surface:
  *   left  — file pick (skeletons/ + anim_library/), then a clip list
  *           filtered to the picked skeleton's archetype.
  *   centre — bone skeleton view, posed per render frame.
- *   right — clip details + play / pause / loop / scrub / speed.
- *
- * Pure data tooling: no game content. Imports only file IO + the
- * local Three.js shell.
+ *   right — clip details / equipment overlay + play / pause / loop / scrub / speed.
  */
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Layout } from "../shell/Layout.tsx";
 import { AssetBrowser } from "../shell/AssetBrowser.tsx";
 import { ViewportPane } from "../shell/ViewportPane.tsx";
@@ -23,16 +25,13 @@ import type { Viewport } from "../shell/viewport.ts";
 import { buildSkeletonView, type SkeletonView, type BoneLike } from "./skeleton_view.ts";
 import { sampleClipAtTime, type ClipLike } from "./clip_sampler.ts";
 import { EquipmentPanel, type SlotState } from "./EquipmentPanel.tsx";
-import { ManeuverPanel, type ManeuverTick } from "./ManeuverPanel.tsx";
 import { attachEquipment, type AttachedEquipment } from "./equip_attach.ts";
 import { loadWeaponAction, type PrefabSummary } from "../shell/content_loader.ts";
 import type { MaterialDef } from "../voxel-editor/model_types.ts";
 
-// state_machines/ kept in the dir list as legacy content; the SM-driver tab
-// was removed with the CSM (T-228) — see T-268 for the broader studio de-drift.
-const ANIM_DIRS = ["skeletons", "anim_library", "maneuvers", "weapon_actions", "clip_overrides"];
+const ANIM_DIRS = ["skeletons", "anim_library", "weapon_actions", "clip_overrides"];
 
-type RightTab = "clip" | "equipment" | "maneuver";
+type RightTab = "clip" | "equipment";
 
 interface Skeleton {
   id: string;
@@ -125,7 +124,8 @@ export function AnimationEditor() {
       }
       return;
     }
-    // Other dirs (maneuvers/) — picked up later when the maneuver driver lands.
+    // Other dirs (weapon_actions/, clip_overrides/) — handled by the
+    // weapon-sweep / attachment-override tooling (T-191e).
   };
 
   // Build / rebuild the skeleton view on skeleton change.
@@ -231,28 +231,6 @@ export function AnimationEditor() {
     view.applyPose(pose);
   }, [time, clip, skeleton, rightTab]);
 
-  // Maneuver pose driver — when the maneuver tab is firing, sample
-  // the right_hand track's active clip and apply. (Per-hand masking
-  // arrives in T-191d v3; v1 plays the right-hand clip as a whole-body
-  // override, which matches what most authored maneuvers expect when
-  // both tracks reference the same clip.)
-  const onManeuverTick = (t: ManeuverTick) => {
-    const view = skViewRef.current;
-    if (!view) return;
-    const clipId = t.rightClipId || t.leftClipId;
-    if (!clipId) { view.applyPose(new Map()); return; }
-    loadClipById(clipId, skeleton).then((c) => {
-      if (!c) return;
-      const dur = c.durationSeconds ?? 1;
-      let normT = t.elapsed / dur;
-      if (c.loop) normT = normT - Math.floor(normT); else normT = Math.min(1, normT);
-      view.applyPose(sampleClipAtTime(c, normT));
-    });
-  };
-  const onManeuverIdle = () => {
-    skViewRef.current?.applyPose(new Map());
-  };
-
   const tracksCount = clip ? Object.keys(clip.tracks).length : 0;
 
   return (
@@ -353,7 +331,6 @@ export function AnimationEditor() {
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {rightTab === "clip"      && <ClipInspector clip={clip} skeleton={skeleton} />}
             {rightTab === "equipment" && <EquipmentPanel slots={slots} onEquip={(slot, prefab) => setSlots((s) => ({ ...s, [slot]: prefab }))} />}
-            {rightTab === "maneuver"  && <ManeuverPanel active={rightTab === "maneuver"} onTick={onManeuverTick} onIdle={onManeuverIdle} />}
           </div>
         </div>
       }
@@ -380,30 +357,8 @@ function RightTabs({ current, onPick }: { current: RightTab; onPick: (t: RightTa
     <div style={{ display: "flex", borderBottom: "1px solid var(--line-strong)", background: "var(--moss)" }}>
       {tab("clip",      "Clip")}
       {tab("equipment", "Equipment")}
-      {tab("maneuver",  "Maneuver")}
     </div>
   );
-}
-
-/**
- * Best-effort clip loader keyed by clipId — SM driver doesn't know
- * which archetype directory the clip lives in, so we infer from the
- * skeleton's archetype.
- */
-const clipCache = new Map<string, Clip | null>();
-async function loadClipById(clipId: string, skeleton: Skeleton | null): Promise<Clip | null> {
-  if (!skeleton) return null;
-  const key = `${skeleton.archetype}/${clipId}`;
-  const cached = clipCache.get(key);
-  if (cached !== undefined) return cached;
-  try {
-    const c = await readJson<Clip>(`anim_library/${skeleton.archetype}/${clipId}.json`);
-    clipCache.set(key, c);
-    return c;
-  } catch {
-    clipCache.set(key, null);
-    return null;
-  }
 }
 
 function ClipInspector({ clip, skeleton }: { clip: Clip | null; skeleton: Skeleton | null }) {

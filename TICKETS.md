@@ -1006,15 +1006,13 @@ override frame-by-frame and the game client renders the corrected
 attachment.
 
 ### T-191z · Retire old voxel-editor
-Effort: S   Status: todo
+Effort: S   Status: done
 
-After T-191b reaches feature parity (cell placement + sub-object
-placement + material picker + save round-trip), delete
-packages/devtools/src/voxel-editor/ wholesale. No shim, no
-deprecation marker — refactors replace.
-
-Done when: old voxel-editor directory is gone, devtools serves only
-the new app, build still green.
+Deleted packages/devtools/src/voxel-editor/ + scripts/build_voxel_editor.ts
++ VOXEL_EDITOR_PLAN.md wholesale; dropped the build-voxel-editor deno task
+and its prefix from the devtools/dev pipelines; serve_devtools now serves the
+studio at both / and /studio; devtools/mod.ts points at the studio entry. The
+studio is the only devtools app and `deno task build-studio` stays green.
 
 ### T-186 · Procedural character body generator (skeleton + voxel mesh)
 Effort: L   Status: in-progress   (Layer 1 morph gen done via T-190; Layer 2 voxel recipe unbuilt)
@@ -1138,7 +1136,15 @@ Done when: a gate sits on its carved corridor and a handed-off player arrives on
 cell, verified against the atlas OpenMask.
 
 ### T-268 · Devtools studio de-drift (CSM-era animation editor)
-Effort: M   Status: todo
+Effort: M   Status: done
+
+Removed the dead CSM/maneuver scaffolding: deleted ManeuverPanel.tsx +
+StateMachineDef/loadStateMachine + ManeuverDef/listManeuvers (zero callsites,
+no data/maneuvers or data/state_machines dirs); dropped maneuvers/state_machines
+from ANIM_DIRS and the serve_devtools writable prefixes; removed the maneuver
+tab + onManeuverTick/onManeuverIdle + the SM-era loadClipById helper. The
+animation editor docstring now describes the live constraint-pipeline /
+ActionDispatcher model. `deno task build-studio` stays green.
 
 The studio animation editor was built around the retired CSM / state-machine model (T-228).
 T-267-adjacent work removed the immediate build blocker (the SMDriverPanel, which imported the

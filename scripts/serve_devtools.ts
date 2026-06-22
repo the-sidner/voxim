@@ -2,7 +2,7 @@
  * Static dev server for devtools on port 8888.
  *
  * Routes:
- *   /                       → packages/devtools/dist/voxel_editor.html
+ *   /                       → packages/devtools/dist/studio.html
  *   /*.js                   → packages/devtools/dist/
  *   /content/*              → packages/content/data/  (JSON game data — GET)
  *   POST /content/*         → write a JSON file under packages/content/data/
@@ -102,8 +102,6 @@ async function collectAllJson(dir: string, out: unknown[]): Promise<void> {
  * - generators/      — generator declarations (T-183) authored in the
  *                      voxel editor when spawning procedural sub-objects
  * - skeletons/       — skeleton bone/mask tweaks from the animation editor
- * - state_machines/  — SM authoring from the animation editor
- * - maneuvers/       — maneuver-track edits from the animation editor
  */
 const WRITABLE_PREFIXES = [
   "anim_library/",
@@ -112,8 +110,6 @@ const WRITABLE_PREFIXES = [
   "clip_overrides/",
   "generators/",
   "skeletons/",
-  "state_machines/",
-  "maneuvers/",
 ];
 
 function isWritablePath(file: string): boolean {
@@ -193,14 +189,13 @@ Deno.serve({ port: 8888 }, async (req) => {
     }
   }
 
-  // Studio (T-191) — new devtools shell at /studio. Old voxel-editor stays
-  // at / until parity (T-191z retires it).
-  if (pathname === "/studio" || pathname === "/studio/" || pathname === "/studio.html") {
+  // Studio (T-191) is the only devtools shell now — the old voxel-editor was
+  // retired (T-191z). `/` and `/studio` both serve it.
+  if (
+    pathname === "/" || pathname === "/index.html" ||
+    pathname === "/studio" || pathname === "/studio/" || pathname === "/studio.html"
+  ) {
     return serveFile(`${distDir}studio.html`);
-  }
-
-  if (pathname === "/" || pathname === "/index.html") {
-    return serveFile(`${distDir}voxel_editor.html`);
   }
 
   if (pathname.startsWith("/content/")) {
