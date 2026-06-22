@@ -62,7 +62,7 @@ import {
 } from "./components/building.ts";
 import { ResourceNode } from "./components/resource_node.ts";
 import { SpawnedFrom } from "./components/spawned_from.ts";
-import { WorkbenchOwner } from "./components/workbench.ts";
+import { BuiltBy, WorkbenchOwner } from "./components/workbench.ts";
 import { WorldClock } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
@@ -198,10 +198,11 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // SpawnedFrom (T-251) — prefab id stamped by spawnPrefab; the re-completion
   // key for save/load and tile handoff. Server-only.
   SpawnedFrom,
-  // WorkbenchOwner (T-038) — dynasty that deployed a job_board; stamped by the
-  // EntityDeployed subscriber. Server-only authority fact (hiring perms, T-082
-  // base capture).
+  // WorkbenchOwner (T-082) — dynasty that currently controls a workstation;
+  // re-stamped on base capture. BuiltBy (T-083) — the founding dynasty, stamped
+  // once and never overwritten (grievance/reputation provenance). Server-only.
   WorkbenchOwner,
+  BuiltBy,
   Hitbox,
   // (Combat counters all retired: T-229 IFrameActive→`iframe` tag &
   // DodgeCooldown removed; T-233 BlockHeld removed — parry window is the

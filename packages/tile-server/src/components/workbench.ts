@@ -42,3 +42,34 @@ export const WorkbenchOwner = defineComponent({
   codec: workbenchOwnerCodec,
   default: (): WorkbenchOwnerData => ({ dynastyId: "" }),
 });
+
+/**
+ * BuiltBy (T-083) — the dynasty that ORIGINALLY built a workstation. Unlike
+ * `WorkbenchOwner` (the current controller, which `base capture` re-stamps),
+ * this is stamped once at deploy and never overwritten — so a captured base
+ * still carries its founders' mark. It is the persistent provenance behind the
+ * grievance/reputation mechanics (T-080): "this used to be ours". Server-only.
+ */
+export interface BuiltByData {
+  /** Heritage dynasty id of the founder who first placed this structure. */
+  dynastyId: string;
+}
+
+const builtByCodec: Serialiser<BuiltByData> = {
+  encode(v) {
+    const w = new WireWriter();
+    w.writeStr(v.dynastyId);
+    return w.toBytes();
+  },
+  decode(b) {
+    const r = new WireReader(b);
+    return { dynastyId: r.readStr() };
+  },
+};
+
+export const BuiltBy = defineComponent({
+  name: "builtBy" as const,
+  networked: false,
+  codec: builtByCodec,
+  default: (): BuiltByData => ({ dynastyId: "" }),
+});

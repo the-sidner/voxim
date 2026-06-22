@@ -759,7 +759,7 @@ subscriber in server.ts calling `stampOwnershipAndCapture` (ownership.ts); no `B
 exists so the capture is logged server-side. Unit-tested in ownership.test.ts.
 
 ### T-083 · Family-tagged asset persistence after capture
-Effort: S   Status: todo
+Effort: S   Status: done   (BuiltBy provenance tag — stamped once at deploy, never re-stamped by capture; unit-tested. Builds on T-082)
 
 Deployable entities (chests, furniture, structures built by a dynasty) carry a `DynastyTag`
 component. After a base capture, tagged assets remain in the world but their dynasty tag

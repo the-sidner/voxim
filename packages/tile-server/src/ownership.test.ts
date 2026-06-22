@@ -13,7 +13,7 @@ import type { EntityDeployedPayload } from "@voxim/protocol";
 import { Heritage } from "./components/heritage.ts";
 import { Position } from "./components/game.ts";
 import { WorkstationTag } from "./components/building.ts";
-import { WorkbenchOwner } from "./components/workbench.ts";
+import { BuiltBy, WorkbenchOwner } from "./components/workbench.ts";
 import { stampOwnershipAndCapture } from "./ownership.ts";
 
 const content = await JsonSource.load();
@@ -91,6 +91,34 @@ Deno.test("ownership: enemy structures beyond the radius are untouched", () => {
 
   assertEquals(world.get(farEnemy, WorkbenchOwner)?.dynastyId, "dynasty-B");
   assertEquals(result?.captured.length, 0);
+});
+
+Deno.test("ownership: deploying stamps the founding dynasty (BuiltBy, T-083)", () => {
+  const world = new World();
+  const player = spawnPlayer(world, "dynasty-A");
+  const ws = spawnWorkstation(world, 100, 100);
+
+  stampOwnershipAndCapture(world, deployPayload(player, ws, 100, 100), CAPTURE_RADIUS);
+
+  assertEquals(world.get(ws, BuiltBy)?.dynastyId, "dynasty-A", "founder recorded at deploy");
+});
+
+Deno.test("ownership: capture re-stamps the owner but BuiltBy keeps the founder (T-083)", () => {
+  const world = new World();
+  // dynasty-B founds a workstation (stamp owner + builder via a deploy).
+  const founder = spawnPlayer(world, "dynasty-B");
+  const enemy = spawnWorkstation(world, 105, 100);
+  stampOwnershipAndCapture(world, deployPayload(founder, enemy, 105, 100), CAPTURE_RADIUS);
+  assertEquals(world.get(enemy, BuiltBy)?.dynastyId, "dynasty-B");
+
+  // dynasty-A captures it by deploying next to it.
+  const captor = spawnPlayer(world, "dynasty-A");
+  const ws = spawnWorkstation(world, 100, 100);
+  stampOwnershipAndCapture(world, deployPayload(captor, ws, 100, 100), CAPTURE_RADIUS);
+
+  // Control transfers; provenance does not — the grievance is recorded.
+  assertEquals(world.get(enemy, WorkbenchOwner)?.dynastyId, "dynasty-A", "controller is the captor");
+  assertEquals(world.get(enemy, BuiltBy)?.dynastyId, "dynasty-B", "founder stays the original family");
 });
 
 Deno.test("ownership: deploying a non-workstation is a no-op", () => {

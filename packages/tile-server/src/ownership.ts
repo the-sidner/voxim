@@ -23,7 +23,7 @@ import type { EntityDeployedPayload } from "@voxim/protocol";
 import { Heritage } from "./components/heritage.ts";
 import { Position } from "./components/game.ts";
 import { WorkstationTag } from "./components/building.ts";
-import { WorkbenchOwner } from "./components/workbench.ts";
+import { BuiltBy, WorkbenchOwner } from "./components/workbench.ts";
 
 export interface CapturedStructure {
   entityId: string;
@@ -57,8 +57,11 @@ export function stampOwnershipAndCapture(
   const dynastyId = world.get(placerId, Heritage)?.dynastyId;
   if (!dynastyId) return null;
 
-  // 1. Stamp the new workstation.
+  // 1. Stamp the new workstation's current owner, and — once, never overwritten
+  //    — its founding dynasty (T-083). Capture below re-stamps WorkbenchOwner
+  //    but leaves BuiltBy intact, so a seized base keeps its founders' mark.
   world.write(entityId, WorkbenchOwner, { dynastyId });
+  if (!world.has(entityId, BuiltBy)) world.write(entityId, BuiltBy, { dynastyId });
 
   // 2. Capture nearby enemy-owned workstations.
   const r2 = captureRadius * captureRadius;
