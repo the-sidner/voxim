@@ -63,6 +63,7 @@ import { notStaggeredGate, notExhaustedGate, healthBelowGate } from "./actions/r
 import { StaminaCostHandler } from "./actions/cost.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { PlacementSystem } from "./systems/placement.ts";
+import { EnclosureSystem } from "./systems/enclosure.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./actions/resolvers/item_use.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
@@ -519,6 +520,12 @@ export class TileServer {
     // toward the threat at the top of its next run (the TriggerSystem shape).
     const npcSensorySystem = new NpcSensorySystem(content);
 
+    // Enclosure detection (T-065, server core) — caches which world cells are
+    // sealed inside walls, recomputing only on a wall-change signal
+    // (BuildingCompleted). The protocol EnclosureChanged event + client roof
+    // rendering are T-066; this stays server-local for now.
+    const enclosureSystem = new EnclosureSystem();
+
     // T-259 content cross-checks — every TriggerDef's `on` must be a
     // catalog kind, every condition gate and effect kind registered, and
     // every prefab `triggers[]` ref must resolve. Fail fast at boot, same
@@ -590,6 +597,10 @@ export class TileServer {
     // Same shape for the NPC sensory collectors (T-040): they buffer perceived
     // combat/noise events during the flush; NpcSensorySystem drains next run.
     npcSensorySystem.registerSubscribers(this.eventBus);
+    // Enclosure recompute trigger (T-065): a finished wall blueprint closes a
+    // cell. The collector only flips a dirty flag at flush time; the recompute
+    // runs at the top of EnclosureSystem's next run.
+    enclosureSystem.registerSubscribers(this.eventBus);
 
     // Hearth anchor subscriber — when a prefab carrying the `hearth` component
     // is placed, tell the account service so the heir spawns at the new
@@ -748,6 +759,9 @@ export class TileServer {
       new NpcAiSystem(content, jobs, behaviorTrees),
       new EquipmentSystem(content),
       new PlacementSystem(content),
+      // Recomputes the enclosed-cell cache on wall-change (dependsOn
+      // PlacementSystem so a wall deployed this tick is committed first). T-065.
+      enclosureSystem,
       new CraftingSystem(content, recipeSteps),
       new DayNightSystem(content),
       new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem, modifierSources),

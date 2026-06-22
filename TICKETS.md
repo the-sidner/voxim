@@ -631,13 +631,35 @@ builds on. Snapshot determinism stays the invariant across every
 phase.
 
 ### T-065 · Enclosure detection on server
-Effort: L   Status: todo
+Effort: L   Status: done (server-core; protocol/client roof is T-066)
 
 Server detects enclosed areas: a closed loop of wall entities forms an enclosure. Compute this
 when walls are placed or destroyed. Emit `EnclosureChanged` event with enclosure polygon.
 Client uses this to decide whether to render a roof.
 Done when: placing walls in a closed rectangle produces an `EnclosureChanged` event with correct
 polygon; destroying a wall removes the enclosure.
+
+Landed (server core): `enclosure_detector.ts` is a pure flood-fill — walls are
+derived from chunk OpenMask (a cell is a wall when impassable/closed); it floods
+the OPEN cells from the tile boundary (4-connected) and returns every OPEN cell
+the flood can't reach (sealed inside walls). `enclosure_detector.test.ts` pins it
+(full ring → enclosed; 1-cell gap → leaks; open field → none; nested rings; etc.).
+`EnclosureSystem` (`systems/enclosure.ts`) assembles a dense wall grid from the
+loaded Heightmap+OpenMask chunks' bounding box, caches the enclosed WORLD-cell set,
+recomputes only on a wall-change signal (subscribes to `BuildingCompleted`; dirty
+flag drained at the top of its next run), and exposes `isEnclosed(worldX, worldY)` /
+`enclosedCells()`. Registered in `server.ts` (`dependsOn` PlacementSystem),
+subscribers wired alongside trigger/NPC-sensory. Server-local — no wire/protocol
+touch.
+
+Follow-ups for T-066 (protocol event + client roof) to consume: read enclosure as
+the `EnclosureSystem.enclosedCells()` world-cell set (keys "wx,wy", each a 1×1
+cell) — there is no "polygon" yet; T-066 should either send the cell set or derive
+a boundary polygon from it. The recompute today fires on `BuildingCompleted` only;
+the terrain-dig path (digging a wall back open) is NOT yet wired because the dig
+handler lowers the heightmap but does not flip OpenMask — when a runtime OpenMask
+edit lands, route it through `EnclosureSystem.markDirty()`. Enclosure state is
+server-local; T-066 must add the `EnclosureChanged` protocol event + emission.
 
 ### T-066 · Client roof rendering for enclosed areas
 Effort: M   Status: todo
