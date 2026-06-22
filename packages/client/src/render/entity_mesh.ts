@@ -18,7 +18,8 @@ import * as THREE from "three";
 import type { EntityState } from "../state/client_world.ts";
 import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject } from "@voxim/content";
 import { getVoxelTexture } from "./material_textures.ts";
-import { vertexDisp } from "./displacement.ts";
+import { type BakedVoxel, bakeDisplacedVoxel, unitBoxIndex, unitBoxUV } from "./voxel_bake.ts";
+import type { VoxelBakeSpec } from "./bake_protocol.ts";
 import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
 
 // Shared placeholder geometries — never disposed individually
@@ -26,13 +27,15 @@ const GEO_BODY  = new THREE.BoxGeometry(0.8, 1.8, 0.8);
 const GEO_DIR   = new THREE.BoxGeometry(0.2, 0.2, 0.5);
 // Shared unit cube for blueprint scaffolds — scaled per instance, never disposed
 const GEO_UNIT  = new THREE.BoxGeometry(1, 1, 1);
-// Base voxel geometry — cloned and displaced per instance, never disposed directly
-const GEO_VOXEL = new THREE.BoxGeometry(1, 1, 1);
 
 /**
- * Clone GEO_VOXEL, scale its unit-box vertices to the actual voxel size
- * (scale.x × scale.z × scale.y in Three.js space), then displace each
- * vertex by vertexDisp() keyed on its Three.js world position.
+ * Build the displaced unit-box geometry for one voxel.  The displacement +
+ * normal math runs in the three-free `voxel_bake.bakeDisplacedVoxel` (T-067 —
+ * the same code the bake worker runs); this wraps the resulting position/normal
+ * arrays in a THREE.BufferGeometry.  Index + uv are constant across voxels but
+ * copied per geometry — each per-voxel mesh owns its attributes and disposes
+ * them individually (clearMeshContent / detachModelFromSlot), so a shared
+ * BufferAttribute would have its GPU buffer freed out from under siblings.
  *
  * Scaling before displacement means adjacent voxels tile seamlessly
  * (spacing == voxel size) and displacement magnitude is 10 % of the
@@ -42,22 +45,22 @@ function buildDisplacedVoxelGeo(
   px: number, py: number, pz: number,
   scale: { x: number; y: number; z: number },
 ): THREE.BufferGeometry {
-  const geo = GEO_VOXEL.clone();
-  const pos = geo.getAttribute("position") as THREE.BufferAttribute;
-  const mag = 0.10 * Math.min(scale.x, scale.y, scale.z);
-  for (let i = 0; i < pos.count; i++) {
-    // Scale unit-box (±0.5) to actual voxel extents in Three.js space.
-    // Coordinate mapping: model x → three x (scale.x),
-    //                     model z=up → three y (scale.z),
-    //                     model y=fwd → three z (scale.y).
-    const lx = pos.getX(i) * scale.x;
-    const ly = pos.getY(i) * scale.z;
-    const lz = pos.getZ(i) * scale.y;
-    const [dx, dy, dz] = vertexDisp(px + lx, py + ly, pz + lz, mag);
-    pos.setXYZ(i, lx + dx, ly + dy, lz + dz);
-  }
-  pos.needsUpdate = true;
-  geo.computeVertexNormals();
+  return geometryFromBakedVoxel(bakeDisplacedVoxel(px, py, pz, scale));
+}
+
+/**
+ * Wrap a single voxel's baked position/normal arrays (synchronous or from the
+ * bake worker) into a THREE.BufferGeometry.  Index + uv are constant across
+ * voxels but copied per geometry — each per-voxel mesh owns its attributes and
+ * disposes them individually (clearMeshContent / detachModelFromSlot), so a
+ * shared BufferAttribute would have its GPU buffer freed out from under siblings.
+ */
+function geometryFromBakedVoxel(baked: BakedVoxel): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(baked.positions, 3));
+  geo.setAttribute("normal",   new THREE.BufferAttribute(baked.normals,   3));
+  geo.setAttribute("uv",       new THREE.BufferAttribute(unitBoxUV().slice(), 2));
+  geo.setIndex(new THREE.BufferAttribute(unitBoxIndex().slice(), 1));
   return geo;
 }
 
@@ -339,11 +342,20 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
   }
 }
 
+/**
+ * A consumable source of pre-baked per-voxel geometry, supplied by the bake
+ * pool (T-067).  `buildVoxelMesh` pulls one entry per node in the SAME order
+ * the matching `collect*BakeSpecs` produced them, so the worker's results line
+ * up with the traversal.  Undefined → bake synchronously (the fallback).
+ */
+export type BakedVoxelCursor = () => BakedVoxel | undefined;
+
 function buildVoxelMesh(
   node: { x: number; y: number; z: number; materialId: number },
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
   onTop = false,
+  baked?: BakedVoxelCursor,
 ): THREE.Mesh {
   const matDef = materials.get(node.materialId);
   const color = matDef ? matDef.color : 0x888888;
@@ -355,7 +367,10 @@ function buildVoxelMesh(
     : new THREE.Color(0x000000);
   // model(x, y, z) → three(x * sx, z * sz, y * sy)
   const px = node.x * scale.x, py = node.z * scale.z, pz = node.y * scale.y;
-  const geo = buildDisplacedVoxelGeo(px, py, pz, scale);
+  // Use the off-thread bake when the cursor yields one for this voxel;
+  // otherwise fall back to baking inline (synchronous path / cursor exhausted).
+  const pre = baked?.();
+  const geo = pre ? geometryFromBakedVoxel(pre) : buildDisplacedVoxelGeo(px, py, pz, scale);
   const tex = getVoxelTexture(node.materialId, color);
   const vox = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
     color: tex ? 0xffffff : color,
@@ -375,13 +390,56 @@ function buildVoxelMesh(
   return vox;
 }
 
+/** The bake spec (Three.js-space center + scale) for one model node. */
+function nodeBakeSpec(
+  node: { x: number; y: number; z: number },
+  scale: { x: number; y: number; z: number },
+): VoxelBakeSpec {
+  // model(x, y, z) → three(x*sx, z*sz, y*sy) — identical to buildVoxelMesh.
+  return { px: node.x * scale.x, py: node.z * scale.z, pz: node.y * scale.y, scale };
+}
+
+/** Turn a baked-voxel array into a cursor that yields one entry per call. */
+export function bakedCursor(baked: BakedVoxel[] | undefined): BakedVoxelCursor {
+  let i = 0;
+  return () => baked?.[i++];
+}
+
 // ---- upgrade to static voxel model ----
+
+/**
+ * Bake specs for `upgradeToVoxelModel`, in the EXACT order that function builds
+ * voxel meshes (main nodes, then each resolved sub-object's nodes).  The
+ * renderer feeds these to the bake pool and passes the results back as a cursor.
+ */
+export function collectVoxelModelBakeSpecs(
+  def: ModelDefinition,
+  resolvedSubs: ResolvedSubObject[],
+  subModelDefs: Map<string, ModelDefinition>,
+  scale: { x: number; y: number; z: number },
+): VoxelBakeSpec[] {
+  const specs: VoxelBakeSpec[] = [];
+  for (const node of def.nodes) specs.push(nodeBakeSpec(node, scale));
+  for (const sub of resolvedSubs) {
+    const subDef = subModelDefs.get(sub.modelId);
+    if (!subDef) continue;
+    const subScale = {
+      x: scale.x * sub.transform.scaleX,
+      y: scale.y * sub.transform.scaleY,
+      z: scale.z * sub.transform.scaleZ,
+    };
+    for (const node of subDef.nodes) specs.push(nodeBakeSpec(node, subScale));
+  }
+  return specs;
+}
 
 /**
  * Replace the placeholder/previous model with flat voxel geometry from a
  * ModelDefinition that has no skeleton.
  * resolvedSubs: output of resolveSubObjects() — sub-objects positioned by their
  * static transforms (no bone animation).
+ * baked: optional pre-baked voxels from the pool (collectVoxelModelBakeSpecs
+ * order); when absent each voxel bakes synchronously.
  */
 export function upgradeToVoxelModel(
   mesh: EntityMeshGroup,
@@ -390,12 +448,14 @@ export function upgradeToVoxelModel(
   subModelDefs: Map<string, ModelDefinition>,
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
+  baked?: BakedVoxel[],
 ): void {
   clearMeshContent(mesh);
+  const cursor = bakedCursor(baked);
 
   const voxelMeshes: THREE.Mesh[] = [];
   for (const node of def.nodes) {
-    const vox = buildVoxelMesh(node, materials, scale);
+    const vox = buildVoxelMesh(node, materials, scale, false, cursor);
     mesh.group.add(vox);
     voxelMeshes.push(vox);
   }
@@ -419,7 +479,7 @@ export function upgradeToVoxelModel(
       z: scale.z * sub.transform.scaleZ,
     };
     for (const node of subDef.nodes) {
-      const vox = buildVoxelMesh(node, materials, subScale);
+      const vox = buildVoxelMesh(node, materials, subScale, false, cursor);
       subGroup.add(vox);
       voxelMeshes.push(vox);
     }
@@ -431,6 +491,79 @@ export function upgradeToVoxelModel(
 
 // ---- upgrade to skeleton model ----
 
+/** Per-bone rest-axis morph multipliers (x/y/z), derived from morph params. */
+interface BoneMorphScales {
+  x: Map<string, number>;
+  y: Map<string, number>;
+  z: Map<string, number>;
+}
+
+/**
+ * Pre-build per-bone rest-axis multipliers from morph param declarations.
+ * Shared by the skeleton upgrade and its bake-spec collector so the per-sub
+ * subScale matches exactly between the two passes.
+ */
+function computeBoneMorphScales(
+  skeleton: SkeletonDef,
+  morphParams?: Record<string, number>,
+): BoneMorphScales {
+  const x = new Map<string, number>();
+  const y = new Map<string, number>();
+  const z = new Map<string, number>();
+  if (morphParams && skeleton.morphParams) {
+    for (const param of skeleton.morphParams) {
+      const factor = morphParams[param.id] ?? 1.0;
+      if (factor === 1.0) continue;
+      for (const boneId of param.bones) {
+        if (param.restAxis === "x") {
+          x.set(boneId, (x.get(boneId) ?? 1.0) * factor);
+        } else if (param.restAxis === "y") {
+          y.set(boneId, (y.get(boneId) ?? 1.0) * factor);
+        } else {
+          z.set(boneId, (z.get(boneId) ?? 1.0) * factor);
+        }
+      }
+    }
+  }
+  return { x, y, z };
+}
+
+/** The per-sub-object voxel scale for the skeleton path (with bone morph). */
+function skeletonSubScale(
+  sub: ResolvedSubObject,
+  scale: { x: number; y: number; z: number },
+  morph: BoneMorphScales,
+): { x: number; y: number; z: number } {
+  const subBoneId = sub.boneId ?? "";
+  return {
+    x: scale.x * sub.transform.scaleX * (morph.x.get(subBoneId) ?? 1.0),
+    y: scale.y * sub.transform.scaleY * (morph.y.get(subBoneId) ?? 1.0),
+    z: scale.z * sub.transform.scaleZ * (morph.z.get(subBoneId) ?? 1.0),
+  };
+}
+
+/**
+ * Bake specs for `upgradeToSkeletonModel`, in the EXACT order it builds voxel
+ * meshes (each resolved sub-object's nodes, sub-scale incl. bone morph).
+ */
+export function collectSkeletonModelBakeSpecs(
+  skeleton: SkeletonDef,
+  resolvedSubs: ResolvedSubObject[],
+  subModelDefs: Map<string, ModelDefinition>,
+  scale: { x: number; y: number; z: number },
+  morphParams?: Record<string, number>,
+): VoxelBakeSpec[] {
+  const morph = computeBoneMorphScales(skeleton, morphParams);
+  const specs: VoxelBakeSpec[] = [];
+  for (const sub of resolvedSubs) {
+    const subDef = subModelDefs.get(sub.modelId);
+    if (!subDef) continue;
+    const subScale = skeletonSubScale(sub, scale, morph);
+    for (const node of subDef.nodes) specs.push(nodeBakeSpec(node, subScale));
+  }
+  return specs;
+}
+
 /**
  * Build a bone Group hierarchy and attach sub-object part models.
  * Each bone becomes a Three.js Group positioned at its rest offset from its parent.
@@ -438,6 +571,9 @@ export function upgradeToVoxelModel(
  *
  * Bones in `skeleton.bones` must be ordered parent-first (root appears before
  * any of its children) — this is enforced by the content authoring convention.
+ *
+ * baked: optional pre-baked voxels from the pool (collectSkeletonModelBakeSpecs
+ * order); when absent each voxel bakes synchronously.
  */
 export function upgradeToSkeletonModel(
   mesh: EntityMeshGroup,
@@ -448,28 +584,16 @@ export function upgradeToSkeletonModel(
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
   morphParams?: Record<string, number>,
+  baked?: BakedVoxel[],
 ): void {
   clearMeshContent(mesh);
+  const cursor = bakedCursor(baked);
 
   // Pre-build per-bone rest-axis multipliers from morph param declarations.
-  const boneScaleX = new Map<string, number>();
-  const boneScaleY = new Map<string, number>();
-  const boneScaleZ = new Map<string, number>();
-  if (morphParams && skeleton.morphParams) {
-    for (const param of skeleton.morphParams) {
-      const factor = morphParams[param.id] ?? 1.0;
-      if (factor === 1.0) continue;
-      for (const boneId of param.bones) {
-        if (param.restAxis === "x") {
-          boneScaleX.set(boneId, (boneScaleX.get(boneId) ?? 1.0) * factor);
-        } else if (param.restAxis === "y") {
-          boneScaleY.set(boneId, (boneScaleY.get(boneId) ?? 1.0) * factor);
-        } else {
-          boneScaleZ.set(boneId, (boneScaleZ.get(boneId) ?? 1.0) * factor);
-        }
-      }
-    }
-  }
+  const morph = computeBoneMorphScales(skeleton, morphParams);
+  const boneScaleX = morph.x;
+  const boneScaleY = morph.y;
+  const boneScaleZ = morph.z;
 
   // Build bone Groups parent-first
   const boneGroups = new Map<string, THREE.Group>();
@@ -533,18 +657,13 @@ export function upgradeToSkeletonModel(
     // the parent bone's morph scale. Without this, stretching a bone (say
     // armLength 1.2× on lower_arm_r) just moves the wrist joint further
     // out and leaves the visible forearm chunk floating at the original
-    // length. Multiply subScale by the bone's morph factor per axis so the
+    // length. subScale multiplies by the bone's morph factor per axis so the
     // body chunk stretches in lockstep with the segment between joints.
     // Sub-objects parented to mesh.group (sub.boneId is null) get factor
     // 1.0 — they aren't part of the morphed skeleton.
-    const subBoneId = sub.boneId ?? "";
-    const subScale = {
-      x: scale.x * sub.transform.scaleX * (boneScaleX.get(subBoneId) ?? 1.0),
-      y: scale.y * sub.transform.scaleY * (boneScaleY.get(subBoneId) ?? 1.0),
-      z: scale.z * sub.transform.scaleZ * (boneScaleZ.get(subBoneId) ?? 1.0),
-    };
+    const subScale = skeletonSubScale(sub, scale, morph);
     for (const node of subDef.nodes) {
-      const vox = buildVoxelMesh(node, materials, subScale);
+      const vox = buildVoxelMesh(node, materials, subScale, false, cursor);
       subGroup.add(vox);
       voxelMeshes.push(vox);
     }
@@ -773,6 +892,14 @@ export function ensureBoneAttachment(
   return slot;
 }
 
+/** Bake specs for `attachModelToSlot` — the model's nodes at `scale`, in order. */
+export function collectSlotBakeSpecs(
+  modelDef: ModelDefinition,
+  scale: { x: number; y: number; z: number },
+): VoxelBakeSpec[] {
+  return modelDef.nodes.map((node) => nodeBakeSpec(node, scale));
+}
+
 /**
  * Build model voxels for a slot and add them as children of its anchor.
  * Replaces any previously loaded model for this slot cleanly.
@@ -781,6 +908,8 @@ export function ensureBoneAttachment(
  *
  * @param onTop  When true, enables polygonOffset so voxels render on top of
  *               any co-located body-part voxels without z-fighting.
+ * @param baked  Optional pre-baked voxels (collectSlotBakeSpecs order); when
+ *               absent each voxel bakes synchronously.
  */
 export function attachModelToSlot(
   mesh: EntityMeshGroup,
@@ -797,14 +926,16 @@ export function attachModelToSlot(
    * "attached in the middle" with half hanging off the back of the wrist.
    */
   anchorOffset?: { x: number; y: number; z: number },
+  baked?: BakedVoxel[],
 ): void {
   const slot = ensureAttachment(mesh, slotId);
   detachModelFromSlot(mesh, slotId);   // clear previous model first
+  const cursor = bakedCursor(baked);
 
   const modelGroup = new THREE.Group();
   modelGroup.name = `model:${modelDef.id}`;
   for (const node of modelDef.nodes) {
-    modelGroup.add(buildVoxelMesh(node, materials, scale, onTop));
+    modelGroup.add(buildVoxelMesh(node, materials, scale, onTop, cursor));
   }
   if (anchorOffset) modelGroup.position.set(anchorOffset.x, anchorOffset.y, anchorOffset.z);
   slot.anchor.add(modelGroup);
@@ -812,9 +943,28 @@ export function attachModelToSlot(
 }
 
 /**
+ * The armor voxel scale for a bone-parented slot: entityScale × the slot's
+ * stored armorSubScale.  Used by both `attachArmorToSlot` and its bake-spec
+ * collector so the two agree.  Returns null when the slot doesn't exist yet.
+ */
+export function armorSlotScale(
+  mesh: EntityMeshGroup,
+  slotId: string,
+  entityScale: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } | null {
+  const slot = mesh.attachments.get(slotId);
+  if (!slot) return null;
+  const subScale: number = slot.anchor.userData.armorSubScale ?? 1;
+  return { x: entityScale.x * subScale, y: entityScale.y * subScale, z: entityScale.z * subScale };
+}
+
+/**
  * Like attachModelToSlot but for bone-parented slots whose anchor was created
  * by ensureBoneAttachment.  Reads armorSubScale from anchor.userData to build
  * voxels at the correct sub-object scale.  Always enables onTop polygonOffset.
+ *
+ * @param baked  Optional pre-baked voxels (modelDef.nodes order at armorScale);
+ *               when absent each voxel bakes synchronously.
  */
 export function attachArmorToSlot(
   mesh: EntityMeshGroup,
@@ -822,22 +972,19 @@ export function attachArmorToSlot(
   modelDef: ModelDefinition,
   materials: Map<number, MaterialDef>,
   entityScale: { x: number; y: number; z: number },
+  baked?: BakedVoxel[],
 ): void {
   const slot = mesh.attachments.get(slotId);
   if (!slot) return; // ensureBoneAttachment must be called first
   detachModelFromSlot(mesh, slotId);
+  const cursor = bakedCursor(baked);
 
-  const subScale: number = slot.anchor.userData.armorSubScale ?? 1;
-  const armorScale = {
-    x: entityScale.x * subScale,
-    y: entityScale.y * subScale,
-    z: entityScale.z * subScale,
-  };
+  const armorScale = armorSlotScale(mesh, slotId, entityScale)!;
 
   const modelGroup = new THREE.Group();
   modelGroup.name = `model:${modelDef.id}`;
   for (const node of modelDef.nodes) {
-    modelGroup.add(buildVoxelMesh(node, materials, armorScale, true));
+    modelGroup.add(buildVoxelMesh(node, materials, armorScale, true, cursor));
   }
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
@@ -870,7 +1017,7 @@ export function disposeEntityMesh(mesh: EntityMeshGroup): void {
     disposeNameSprite(mesh.nameLabel);
     mesh.nameLabel = null;
   }
-  // GEO_BODY, GEO_DIR, GEO_VOXEL are shared — do NOT dispose them here
+  // GEO_BODY, GEO_DIR, GEO_UNIT are shared — do NOT dispose them here
 }
 
 

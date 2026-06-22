@@ -641,13 +641,23 @@ When outside, the roof is visible.
 Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
 
 ### T-067 · Model baking in Web Worker
-Effort: M   Status: todo
+Effort: M   Status: done
 
 Move `buildDisplacedVoxelGeo` (and the full model baking pipeline) off the main thread into a
 Web Worker. Main thread sends model definition; worker returns a baked `BufferGeometry` (or
 transferable geometry data). Game loop never stalls during baking.
 Done when: loading a complex model does not drop frames; the main thread continues rendering
 while the worker bakes.
+
+Landed: extracted the pure (three-free) bake math into `voxel_bake.ts`
+(`bakeDisplacedVoxel`/`bakeSubModel` — byte-identical to the old
+BoxGeometry+computeVertexNormals path, pinned by `voxel_bake.test.ts`); a
+module `bake_worker.ts` runs it off-thread and posts back position/normal
+arrays via Transferable ArrayBuffers; `bake_pool.ts` round-robins requests with
+a synchronous in-thread fallback (no `document` → tests/SSR). The renderer's
+skeleton/weapon/armor load paths now `await bakePool.bakeModel(...)` then build
+the THREE meshes from the returned arrays. Worker bundled separately to
+`dist/bake_worker.js` (build_client.ts + serve_client.ts).
 
 ## Player UX
 
