@@ -60,6 +60,10 @@ page.on('pageerror', (e) => cli.push({ t: Date.now(), src: 'CLI', msg: `pageerro
 const sinceUnix = Math.floor(Date.now() / 1000);
 await page.goto(CLIENT, { waitUntil: 'domcontentloaded' });
 
+// Dismiss the character-creation screen if a fresh character lands on it (T-071):
+// accept the default species and enter the world. No-op for existing characters.
+await page.getByText("Enter the world", { exact: false }).click({ timeout: 8000 }).catch(() => {});
+
 // wait until the local player entity exists (fully joined)
 const isJoined = () => page.evaluate(() => {
   const g = globalThis._voxim_game;
