@@ -111,12 +111,12 @@ export class AnimationSystem implements System {
       const slots = world.get(entityId, ActiveActions)?.states;
       const locoLayer = projectLocomotion(
         this.content, slots?.["locomotion"], world.has(entityId, Crouched),
-        slotMap, prevTime, speed, walkSpeedRef,
+        slotMap, prevTime, speed, walkSpeedRef, true, // idle fallback: locomotion only
       );
       if (locoLayer) layers.push(locoLayer);
       const primaryLayer = projectLocomotion(
         this.content, slots?.["primary"], false,
-        slotMap, prevTime, speed, walkSpeedRef,
+        slotMap, prevTime, speed, walkSpeedRef, // no idle fallback — empty = silent
       );
       if (primaryLayer) layers.push(primaryLayer);
 
@@ -220,8 +220,18 @@ export function projectLocomotion(
   prevTimeByClip: Map<string, number>,
   speed: number,
   walkSpeedRef: number,
+  fallbackToIdle = false,
 ): AnimationLayer | null {
-  const def = content.actions.get(slot?.actionId || "idle");
+  // The idle fallback is LOCOMOTION-only: an empty locomotion slot shows the
+  // idle pose (no rest-pose flash on the first post-spawn tick, before the
+  // dispatcher's deferred write commits). The primary and reaction slots must
+  // stay SILENT when empty — fabricating an idle layer there pushes a full-body,
+  // weight-1, override, unmasked `idle` on TOP of locomotion, which overwrites
+  // the walk pose every frame. That is why every moving character was frozen in
+  // its idle pose: the empty reaction slot's idle fallback clobbered "walking".
+  const actionId = slot?.actionId || (fallbackToIdle ? "idle" : "");
+  if (!actionId) return null;
+  const def = content.actions.get(actionId);
   if (!def) return null;
   const phaseName = slot?.phase && def.phases[slot.phase]
     ? slot.phase

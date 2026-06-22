@@ -74,9 +74,16 @@ Deno.test("dodge_roll dash one-shot: 5t → speedScale 4.0", () => {
   assertEquals(l?.speedScale, 1 / (5 * DT)); // 4.0
 });
 
-Deno.test("empty slot falls back to idle (no rest-pose flash on tick 1)", () => {
-  const l = projectLocomotion(content, undefined, false, SLOTS, new Map(), 0, WALK_REF);
+Deno.test("empty locomotion slot falls back to idle (no rest-pose flash on tick 1)", () => {
+  const l = projectLocomotion(content, undefined, false, SLOTS, new Map(), 0, WALK_REF, true);
   assertEquals(l?.clipId, "c_idle");
+});
+
+Deno.test("empty primary/reaction slot projects NOTHING (no idle clobber over locomotion)", () => {
+  // Without the locomotion fallback, an empty slot must be silent — a fabricated
+  // full-body idle layer here would overwrite the walk pose every frame.
+  const l = projectLocomotion(content, undefined, false, SLOTS, new Map(), 0, WALK_REF);
+  assertEquals(l, null);
 });
 
 Deno.test("clip-time accumulates from the prior tick keyed by resolved clip", () => {
