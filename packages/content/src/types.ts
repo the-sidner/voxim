@@ -885,6 +885,14 @@ export interface BiomeDef {
    * of lower priority fails.
    */
   priority: number;
+  /**
+   * When true the biome never participates in overworld classification —
+   * `classifyBiome` skips it regardless of `classifyRules`. Such a biome
+   * is only ever reached by an explicit by-id lookup that FORCES it, e.g.
+   * an instance tile (a cave) generating its enclosed terrain from a
+   * single biome rather than the noise-driven overworld cascade (T-063).
+   */
+  instanceOnly?: boolean;
   classifyRules: BiomeClassifyRule[];
   /** Ordered material rules. First match wins; last should be a fallback. */
   materialRules: BiomeMaterialRule[];

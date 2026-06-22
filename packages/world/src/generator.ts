@@ -51,6 +51,14 @@ import { classifyZone, type ZoneCell, type ZoneGridData } from "./zones.ts";
 export interface WorldGenContent {
   readonly biomes: readonly BiomeDef[];
   readonly zones: readonly ZoneDef[];
+  /**
+   * When set, the noise-driven biome cascade is bypassed: every cell uses
+   * this biome directly. This is how an INSTANCE tile (a cave) generates
+   * its enclosed terrain from a single forced biome rather than the
+   * overworld classification (T-063). `biomes` still feeds zone rules that
+   * key off biome id, so callers usually pass `[forcedBiome]` there too.
+   */
+  readonly forcedBiome?: BiomeDef;
   resolveMaterialId(name: string): number;
 }
 
@@ -176,6 +184,7 @@ function evaluateCell(
   seed: number,
   cfg: TerrainConfig,
   biomes: readonly BiomeDef[],
+  forcedBiome?: BiomeDef,
 ): CellNoise {
   // 1. Domain warp
   let wxW = wx;
@@ -219,8 +228,8 @@ function evaluateCell(
   // 6. Combined base
   const combined = clamp(continent + tectonicContrib, 0, 1);
 
-  // 7. Biome classification
-  const biome = classifyBiome(biomes, {
+  // 7. Biome classification (skipped when an instance tile forces a biome)
+  const biome = forcedBiome ?? classifyBiome(biomes, {
     temperature, moisture, normalizedAltitude: combined,
   });
 
@@ -250,6 +259,7 @@ function buildZoneGrid(
   cfg: TerrainConfig,
   biomes: readonly BiomeDef[],
   zones: readonly ZoneDef[],
+  forcedBiome?: BiomeDef,
 ): ZoneGridData {
   const gridSize = cfg.zone.gridSize;
   const cellWorldSize = TILE_SIZE / gridSize;
@@ -262,7 +272,7 @@ function buildZoneGrid(
       const wx = (zx + 0.5) * cellWorldSize;
       const wy = (zy + 0.5) * cellWorldSize;
 
-      const cn = evaluateCell(wx, wy, seed, cfg, biomes);
+      const cn = evaluateCell(wx, wy, seed, cfg, biomes, forcedBiome);
 
       const curved = applyHeightCurve(
         cn.normalizedH, hc.seaLevel, hc.shoreWidth, hc.landExponent, hc.mountainExponent,
@@ -314,7 +324,7 @@ export async function buildTerrainBuffers(
   const cfg = config;
   const hc = cfg.heightCurve;
   const spz = cfg.spawnZone;
-  const { biomes, zones } = content;
+  const { biomes, zones, forcedBiome } = content;
 
   const totalCells = TILE_SIZE * TILE_SIZE;
   const heightBuffer = new Float32Array(totalCells);
@@ -325,7 +335,7 @@ export async function buildTerrainBuffers(
       await new Promise<void>((r) => setTimeout(r, 0));
     }
     for (let wx = 0; wx < TILE_SIZE; wx++) {
-      const cn = evaluateCell(wx, wy, seed, cfg, biomes);
+      const cn = evaluateCell(wx, wy, seed, cfg, biomes, forcedBiome);
 
       const curved = applyHeightCurve(
         cn.normalizedH, hc.seaLevel, hc.shoreWidth, hc.landExponent, hc.mountainExponent,
@@ -363,7 +373,7 @@ export async function buildTerrainBuffers(
     );
   }
 
-  const zoneGrid = buildZoneGrid(seed, cfg, biomes, zones);
+  const zoneGrid = buildZoneGrid(seed, cfg, biomes, zones, forcedBiome);
 
   console.timeEnd("[world] terrain gen");
 

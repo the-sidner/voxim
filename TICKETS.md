@@ -338,12 +338,19 @@ Select city locations from world map (flat terrain, near water, resource diversi
 Done when: world generation produces N cities at valid locations with initial state files.
 
 ### T-063 · Cave instance tile type
-Effort: M   Status: todo
+Effort: M   Status: done
 
 Cave instances are tiles with enclosed-rock generation (walls + floor = rock material, no open
 sky). A cave gate on a surface tile links to a cave tile ID. Cave tiles are generated with the
 same tile generator, just with different biome parameters (cave biome).
 Done when: a surface gate can link to a cave tile; cave tile generates correctly.
+
+v1 landed: rock-dominant `cave` biome (`instanceOnly` so it never wins the overworld cascade);
+`parseTileId` now discriminates overworld `cellX_cellY` from the cave instance form
+`cave_<x>_<y>_<level>`; `caveInstanceTerrain` generates an enclosed stone tile via the world
+generator with `WorldGenContent.forcedBiome` bypassing classification; `GateSpec.instanceType?:
+"cave"` lets a gate point at a cave instance. The live stair→instance→exit runtime loop is
+multi-process territory (T-212) — only the cave tile TYPE is generable + parseable here.
 
 ### T-064 · Dynamic chunk loading/unloading by entity proximity
 Effort: M   Status: todo

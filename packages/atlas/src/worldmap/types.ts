@@ -33,6 +33,15 @@ export interface GateSpec {
   offset: number;
   toCellX: number;
   toCellY: number;
+  /**
+   * When set, this gate leads into an INSTANCE tile rather than the
+   * neighbouring overworld cell — a cave entered from a wilderness stair
+   * (T-063). The instance tile id is derived from the gate's owning cell
+   * (`cave_<cellX>_<cellY>_<level>`) and resolved by `parseTileId` to the
+   * forced cave biome instead of an atlas cell lookup. v1 only generates
+   * the cave tile TYPE; the live stair→instance→exit loop is T-212.
+   */
+  instanceType?: "cave";
 }
 
 /**

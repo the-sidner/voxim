@@ -46,6 +46,9 @@ function matchesClassifyRule(rule: BiomeClassifyRule, s: BiomeSample): boolean {
  */
 export function classifyBiome(defs: readonly BiomeDef[], s: BiomeSample): BiomeDef {
   for (const def of defs) {
+    // Instance-only biomes (caves, …) never win the overworld cascade —
+    // they are only reachable by an explicit forced by-id lookup (T-063).
+    if (def.instanceOnly) continue;
     if (def.classifyRules.length === 0) return def;
     for (const rule of def.classifyRules) {
       if (matchesClassifyRule(rule, s)) return def;

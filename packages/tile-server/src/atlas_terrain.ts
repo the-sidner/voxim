@@ -25,7 +25,13 @@ import {
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
   type TileInitWire, type LevelDef,
 } from "@voxim/atlas";
-import { TILE_SIZE } from "@voxim/world";
+import {
+  TILE_SIZE,
+  buildTerrainBuffers,
+  seedFromTileId,
+  type WorldGenContent,
+} from "@voxim/world";
+import type { ZoneGridData } from "@voxim/world";
 
 export interface AtlasTerrainResult {
   heightBuffer: Float32Array;
@@ -93,19 +99,45 @@ export interface LoadOptions {
 }
 
 /**
- * Tile id convention: `cellX_cellY`. Each tile-server process binds to
- * one tile id at boot via the TILE_ID env. The (cellX, cellY) parsed out
- * is what atlas's tile_init rows are keyed by.
+ * Tile id convention. Two forms:
+ *
+ *   OVERWORLD  `cellX_cellY`        e.g. "0_0", "2_3"
+ *     A macro-grid cell baked by atlas. The (cellX, cellY) is what atlas's
+ *     tile_init rows are keyed by; terrain comes from the atlas lookup.
+ *
+ *   INSTANCE   `cave_<x>_<y>_<level>`   e.g. "cave_2_3_0"
+ *     A cave entered from a wilderness stair (T-063). There is no atlas
+ *     bake for it — its terrain is GENERATED locally from the forced
+ *     `cave` biome (`caveInstanceTerrain`). `<x>_<y>` is the owning
+ *     overworld cell; `<level>` is the cave depth, both fed into the seed
+ *     so a given stair always opens onto the same cave.
+ *
+ * Each tile-server process binds to one tile id at boot via the TILE_ID env.
  */
-export function parseTileId(tileId: string): { cellX: number; cellY: number } {
+export type ParsedTileId =
+  | { kind: "overworld"; cellX: number; cellY: number }
+  | { kind: "instance"; instanceType: "cave"; cellX: number; cellY: number; level: number };
+
+export function parseTileId(tileId: string): ParsedTileId {
+  const cave = tileId.match(/^cave_(\d+)_(\d+)_(\d+)$/);
+  if (cave) {
+    return {
+      kind: "instance",
+      instanceType: "cave",
+      cellX: parseInt(cave[1]),
+      cellY: parseInt(cave[2]),
+      level: parseInt(cave[3]),
+    };
+  }
   const m = tileId.match(/^(\d+)_(\d+)$/);
   if (!m) {
     throw new Error(
-      `tile id "${tileId}" does not match the cellX_cellY convention ` +
-      `(e.g. "0_0" or "2_3"); cannot derive cell coords for atlas lookup`,
+      `tile id "${tileId}" matches neither the overworld cellX_cellY ` +
+      `convention (e.g. "0_0", "2_3") nor the cave instance form ` +
+      `(e.g. "cave_2_3_0"); cannot resolve terrain source`,
     );
   }
-  return { cellX: parseInt(m[1]), cellY: parseInt(m[2]) };
+  return { kind: "overworld", cellX: parseInt(m[1]), cellY: parseInt(m[2]) };
 }
 
 /**
@@ -157,7 +189,17 @@ export async function loadTerrainFromAtlas(
 ): Promise<AtlasTerrainResult> {
   const maxRetries   = opts.maxRetries   ?? 30;
   const retryDelayMs = opts.retryDelayMs ?? 1000;
-  const { cellX, cellY } = parseTileId(tileId);
+  const parsed = parseTileId(tileId);
+  if (parsed.kind !== "overworld") {
+    // Instance tiles (caves) have no atlas bake — they generate locally
+    // from a forced biome via `caveInstanceTerrain`. The boot path that
+    // wires that in is T-212; loadTerrainFromAtlas is overworld-only.
+    throw new Error(
+      `atlas terrain: tile id "${tileId}" is an instance (${parsed.instanceType}) ` +
+      `tile and has no atlas bake; use caveInstanceTerrain for it`,
+    );
+  }
+  const { cellX, cellY } = parsed;
 
   // Poll for the active world AND its tile_init row. Either may be missing
   // transiently while atlas's bootstrap bake is in flight.
@@ -269,6 +311,81 @@ export async function loadTerrainFromAtlas(
     })),
     zoneBuffer,
     level:     tile.level,
+  };
+}
+
+/** Height/material/zone buffers for a locally-generated instance tile. */
+export interface CaveInstanceResult {
+  heightBuffer: Float32Array;
+  materialBuffer: Uint16Array;
+  zoneGrid: ZoneGridData;
+  /** Seed derived from the cave instance tile id — stable per stair. */
+  tileSeed: number;
+  /** Owning overworld cell + cave depth, parsed from the tile id. */
+  cellX: number;
+  cellY: number;
+  level: number;
+}
+
+/**
+ * Generate the terrain for a cave instance tile (T-063).
+ *
+ * Unlike overworld tiles there is no atlas bake to upsample — the cave is
+ * a rock-dominant enclosed tile generated locally by FORCING the `cave`
+ * biome through the world generator. The biome cascade is bypassed: we
+ * hand `buildTerrainBuffers` a single-biome content view so every cell
+ * resolves to cave materials regardless of noise. The seed is derived
+ * from the instance tile id so a given stair always opens the same cave.
+ *
+ * v1 makes the cave tile TYPE generable; spawning the player into one and
+ * the stair→instance→exit loop is multi-process territory (T-212).
+ */
+export async function caveInstanceTerrain(
+  tileId: string,
+  content: ContentService,
+): Promise<CaveInstanceResult> {
+  const parsed = parseTileId(tileId);
+  if (parsed.kind !== "instance" || parsed.instanceType !== "cave") {
+    throw new Error(
+      `caveInstanceTerrain: tile id "${tileId}" is not a cave instance id ` +
+      `(expected "cave_<x>_<y>_<level>")`,
+    );
+  }
+
+  const biome = content.biomes.getOrThrow("cave");
+  if (!biome.instanceOnly) {
+    throw new Error(
+      `caveInstanceTerrain: biome "cave" must be instanceOnly so it never ` +
+      `hijacks overworld classification`,
+    );
+  }
+
+  // Force the cave biome onto every cell — `forcedBiome` bypasses the
+  // noise classification cascade entirely. Zones stay live (the generator
+  // still builds a zone grid for spawn weighting); `biomes` carries the
+  // cave so zone rules that key off biome id still resolve.
+  const genContent: WorldGenContent = {
+    biomes: [biome],
+    zones: content.getZonesByPriority(),
+    forcedBiome: biome,
+    resolveMaterialId: (name: string) => {
+      const m = content.materials.get(name);
+      if (!m) throw new Error(`caveInstanceTerrain: missing material "${name}"`);
+      return m.id;
+    },
+  };
+
+  const seed = seedFromTileId(tileId);
+  const { heightBuffer, materialBuffer, zoneGrid } = await buildTerrainBuffers(seed, genContent);
+
+  return {
+    heightBuffer,
+    materialBuffer,
+    zoneGrid,
+    tileSeed: seed,
+    cellX: parsed.cellX,
+    cellY: parsed.cellY,
+    level: parsed.level,
   };
 }
 
