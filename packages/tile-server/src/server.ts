@@ -22,7 +22,7 @@ import { chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { placePois, spawnMobPois } from "./poi_placer.ts";
-import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, TileEvents } from "@voxim/protocol";
+import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, SERVICE_SECRET_HEADER, TileEvents } from "@voxim/protocol";
 import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
@@ -240,6 +240,8 @@ export class TileServer {
   private saveManager: SaveManager | null = null;
   private saveTickCounter = 0;
   private gatewayUrl: string | null = null;
+  /** Shared secret presented to the gateway's control-plane endpoints (T-258). */
+  private serviceSecret = "";
   /** Privileged WT link to the gateway for world events / tile commands. */
   private gatewayLink: GatewayLink | null = null;
   /**
@@ -304,6 +306,7 @@ export class TileServer {
       .join("");
 
     this.tileId = config.tileId;
+    this.serviceSecret = config.serviceSecret ?? "";
 
     // Account service RPC — required in production, omitted in dev/demo. When
     // absent, join spawns anonymous characters and deaths/location updates
@@ -907,6 +910,10 @@ export class TileServer {
       startAdminServer(config.adminPort, {
         world: this.world,
         content,
+        // Control-plane endpoints (/handoff, /jobs, /assign-job-board) require
+        // this secret (T-258). Empty when running without a gateway → those
+        // endpoints fail closed; players are unaffected (they use WebTransport).
+        serviceSecret: config.serviceSecret ?? "",
         getCertHashHex: () => this.certHashHex,
         getWtPort: () => this.wtPort,
       });
@@ -918,7 +925,7 @@ export class TileServer {
       const adminHost = config.adminHost ?? "localhost";
       const adminUrl = `http://${adminHost}:${config.adminPort}`;
       console.log(`[TileServer] self-registering with gateway: adminUrl=${adminUrl}`);
-      registerWithGateway(config.gatewayUrl, config.tileId, config.tileAddress, adminUrl);
+      registerWithGateway(config.gatewayUrl, config.tileId, config.tileAddress, adminUrl, this.serviceSecret);
     }
 
     // Privileged WT event/command link to gateway (T-139). Independent of
@@ -1345,7 +1352,10 @@ export class TileServer {
 
     fetch(`${this.gatewayUrl}/handoff`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        [SERVICE_SECRET_HEADER]: this.serviceSecret,
+      },
       body: JSON.stringify(body),
     }).then(async (r) => {
       if (r.ok) {

@@ -17,6 +17,7 @@ import type { UserRepo, HeritageRepo, UserRow, HearthAnchor, UserTileFogRepo } f
 import type { SessionService } from "./session_service.ts";
 import { hashPassword, verifyPassword } from "./auth.ts";
 import { heritageCodec, type HeritageData, type HeritageTrait } from "@voxim/codecs";
+import { verifyServiceSecret } from "@voxim/protocol";
 import type { SessionInfo } from "./types.ts";
 
 export interface AccountEndpointsDeps {
@@ -63,15 +64,6 @@ function json(body: unknown, status = 200): Response {
 
 function textError(message: string, status: number): Response {
   return new Response(message, { status });
-}
-
-function constantTimeEqualStrings(a: string, b: string): boolean {
-  const aBytes = new TextEncoder().encode(a);
-  const bBytes = new TextEncoder().encode(b);
-  if (aBytes.length !== bBytes.length) return false;
-  let diff = 0;
-  for (let i = 0; i < aBytes.length; i++) diff |= aBytes[i] ^ bBytes[i];
-  return diff === 0;
 }
 
 function extractBearerToken(req: Request): string | null {
@@ -144,8 +136,7 @@ export class AccountEndpoints {
   }
 
   private verifyServiceSecret(req: Request): boolean {
-    const header = req.headers.get("x-voxim-service-secret") ?? "";
-    return constantTimeEqualStrings(header, this.deps.serviceSecret);
+    return verifyServiceSecret(req, this.deps.serviceSecret);
   }
 
   private async authUser(req: Request): Promise<string | null> {

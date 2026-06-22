@@ -293,7 +293,21 @@ Done when: a live city reacts to a significant event with LLM-generated tool cal
 ## Gateway & Multi-tile
 
 ### T-258 · Control-plane auth — pre-launch blocker
-Effort: M   Status: todo
+Effort: M   Status: done
+
+Landed: extracted `verifyServiceSecret` / `resolveServiceSecret` /
+`SERVICE_SECRET_HEADER` into `@voxim/protocol` (`service_auth.ts`, the single
+cross-service home; `endpoints.ts` now reuses it instead of its inline copy).
+The shared secret now gates every mutating control-plane endpoint —
+gateway `/register` `/heartbeat` `/handoff` (server.ts), tile admin `/handoff`
+`/jobs` `/assign-job-board` (admin_server.ts), atlas `/world/bake`
+`/world/restart` (atlas server.ts) — returning 401 without the
+`X-Voxim-Service-Secret` header. Outbound callers (tile→gateway register/
+heartbeat/handoff, gateway→tile handoff) send the header. Player-facing
+`/gateway/connect` + `/account/*` stay public. `resolveServiceSecret()` in the
+gateway/coordinator/atlas/tile mains fails closed when `VOXIM_ENV=production`
+and the secret is unset (dev falls back to a shared default); prod compose +
+`.env.example` set `VOXIM_ENV`. Unit-tested in `protocol/src/service_auth.test.ts`.
 
 **Deliberately deferred: not relevant while dev-only. Must land before anything is publicly
 reachable.** The secret machinery exists (`X-Voxim-Service-Secret`,

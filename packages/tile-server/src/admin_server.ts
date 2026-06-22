@@ -7,6 +7,7 @@ import { serveDir } from "@std/http/file-server";
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
+import { SERVICE_SECRET_HEADER, verifyServiceSecret } from "@voxim/protocol";
 import { restorePlayer } from "./handoff.ts";
 import { JobBoard, AssignedJobBoard } from "./components/job_board.ts";
 
@@ -14,11 +15,21 @@ export interface AdminServerDeps {
   world: World;
   /** Content service — handoff restore re-spawns the player through its prefab. */
   content: ContentService;
+  /**
+   * Shared secret gating the control-plane endpoints (/handoff, /jobs,
+   * /assign-job-board) — T-258. The gateway presents it in the
+   * X-Voxim-Service-Secret header when forwarding a handoff. Empty string
+   * means no caller can authenticate (the endpoints fail closed).
+   */
+  serviceSecret: string;
   /** Returns the current cert SHA-256 fingerprint (hex). Called per-request. */
   getCertHashHex: () => string;
   /** Returns the current WebTransport port. Called per-request. */
   getWtPort: () => number;
 }
+
+/** Control-plane endpoints requiring the shared service secret (T-258). */
+const CONTROL_PATHS = new Set(["/handoff", "/jobs", "/assign-job-board"]);
 
 export function startAdminServer(port: number, deps: AdminServerDeps): void {
   // Bounded cache of handoffIds seen recently; a second POST with the same id
@@ -41,6 +52,13 @@ async function handleAdminRequest(
   handoffCacheMax: number,
 ): Promise<Response> {
   const url = new URL(req.url);
+
+  // Control plane — gateway/coordinator-facing. Gated by the shared service
+  // secret (T-258). Everything else (/health, /cert-hash, /game, static
+  // client assets) is public.
+  if (CONTROL_PATHS.has(url.pathname) && !verifyServiceSecret(req, deps.serviceSecret)) {
+    return new Response("unauthorized", { status: 401 });
+  }
 
   if (req.method === "POST" && url.pathname === "/handoff") {
     try {
@@ -151,13 +169,18 @@ interface RegisterParams {
   tileId: string;
   tileAddress: string;
   adminUrl: string;
+  /** Shared secret for the gateway's guarded /register + /heartbeat (T-258). */
+  serviceSecret: string;
 }
 
 async function sendRegister(params: RegisterParams): Promise<boolean> {
   try {
     const r = await fetch(`${params.gatewayUrl}/register`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        [SERVICE_SECRET_HEADER]: params.serviceSecret,
+      },
       body: JSON.stringify({
         type: "register",
         tileId: params.tileId,
@@ -177,11 +200,14 @@ async function sendRegister(params: RegisterParams): Promise<boolean> {
   }
 }
 
-async function sendHeartbeat(gatewayUrl: string, tileId: string): Promise<{ known: boolean } | null> {
+async function sendHeartbeat(gatewayUrl: string, tileId: string, serviceSecret: string): Promise<{ known: boolean } | null> {
   try {
     const r = await fetch(`${gatewayUrl}/heartbeat`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        [SERVICE_SECRET_HEADER]: serviceSecret,
+      },
       body: JSON.stringify({ type: "heartbeat", tileId }),
     });
     if (!r.ok) return null;
@@ -207,14 +233,15 @@ export function registerWithGateway(
   tileId: string,
   tileAddress: string,
   adminUrl: string,
+  serviceSecret: string,
 ): void {
-  const params: RegisterParams = { gatewayUrl, tileId, tileAddress, adminUrl };
+  const params: RegisterParams = { gatewayUrl, tileId, tileAddress, adminUrl, serviceSecret };
 
   void (async () => {
     await sendRegister(params);
     while (true) {
       await new Promise((r) => setTimeout(r, HEARTBEAT_INTERVAL_MS));
-      const ack = await sendHeartbeat(gatewayUrl, tileId);
+      const ack = await sendHeartbeat(gatewayUrl, tileId, serviceSecret);
       if (ack && !ack.known) {
         console.warn(`[TileServer] gateway evicted us; re-registering`);
         await sendRegister(params);

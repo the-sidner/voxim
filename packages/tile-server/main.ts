@@ -18,6 +18,10 @@
  *   TICK_RATE       Tick rate in Hz                   default: 20
  *   TILE_ADDRESS    Address advertised to clients     default: 127.0.0.1:4434
  *   GATEWAY_URL     Gateway base URL for registration default: (none — skips self-registration)
+ *   VOXIM_SERVICE_SECRET  Shared secret for gateway control  required (>=16 chars) when
+ *                   plane + tile admin endpoints (T-258)     VOXIM_ENV=production; dev default
+ *   VOXIM_ENV       "production" → fail closed when the      default: (unset → dev)
+ *                   service secret is unset
  *   DATABASE_URL    Postgres connection string        REQUIRED — atlas terrain comes from DB
  *   WORLD_WIDTH     Macro-grid width in cells         default: 2 (must match atlas)
  *   DATA_DIR        Content data directory            default: (resolved by loader)
@@ -34,6 +38,7 @@
  */
 import { TileServer } from "./mod.ts";
 import { ensureFreshDevCert } from "../../scripts/dev_cert.ts";
+import { resolveServiceSecret } from "@voxim/protocol";
 import {
   createPool,
   PgAtlasTileInitRepo,
@@ -75,7 +80,9 @@ const tickRateHz     = parseInt(Deno.env.get("TICK_RATE")  ?? "20");
 const tileAddress    = Deno.env.get("TILE_ADDRESS") ?? `127.0.0.1:${port}`;
 const gatewayUrl     = Deno.env.get("GATEWAY_URL");      // undefined → no self-registration
 const gatewayWtUrl   = Deno.env.get("GATEWAY_WT_URL");   // undefined → no event channel
-const serviceSecret  = Deno.env.get("VOXIM_SERVICE_SECRET");
+// Control-plane shared secret (T-258) — fails closed in production (VOXIM_ENV=
+// production) when unset; dev falls back to a default matching the gateway.
+const serviceSecret  = resolveServiceSecret();
 const databaseUrl    = Deno.env.get("DATABASE_URL");     // undefined → ephemeral
 const dataDir        = Deno.env.get("DATA_DIR");         // undefined → default loader path
 const devMode        = !["0", "false"].includes(Deno.env.get("DEV_MODE") ?? "");
@@ -114,7 +121,7 @@ await server.start({
   tileAddress,
   ...(gatewayUrl     ? { gatewayUrl }     : {}),
   ...(gatewayWtUrl   ? { gatewayWtUrl }   : {}),
-  ...(serviceSecret  ? { serviceSecret }  : {}),
+  serviceSecret,
   tileSaves,
   worlds,
   atlasCells,

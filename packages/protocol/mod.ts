@@ -7,6 +7,15 @@ export type { Serialiser } from "@voxim/engine";
 export { encodeFrame, makeFrameReader } from "./src/framing.ts";
 
 export {
+  SERVICE_SECRET_HEADER,
+  MIN_SERVICE_SECRET_LENGTH,
+  constantTimeEqualStrings,
+  verifyServiceSecret,
+  isProduction,
+  resolveServiceSecret,
+} from "./src/service_auth.ts";
+
+export {
   WORLD_MAP_VERSION,
   encodeWorldMap,
   decodeWorldMap,

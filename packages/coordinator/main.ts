@@ -3,7 +3,10 @@
  *
  * Environment variables:
  *   GATEWAY_WT_URL          WebTransport URL of gateway,    default: https://gateway:8080
- *   VOXIM_SERVICE_SECRET    Shared secret matching gateway  required (>=16 chars)
+ *   VOXIM_SERVICE_SECRET    Shared secret matching gateway  required (>=16 chars) when
+ *                                                           VOXIM_ENV=production; dev default
+ *   VOXIM_ENV               "production" → fail closed when default: (unset → dev)
+ *                           VOXIM_SERVICE_SECRET is unset
  *   TLS_CERT                Path to PEM cert (gateway uses  default: ./certs/cert.pem
  *                           same cert in dev — read here
  *                           to compute the hash for pinning)
@@ -25,6 +28,7 @@ import {
   PgCityRepo,
   PgWorldsRepo,
 } from "@voxim/db";
+import { resolveServiceSecret } from "@voxim/protocol";
 
 const gatewayWtUrl = Deno.env.get("GATEWAY_WT_URL") ?? "https://gateway:8080";
 const certPath     = Deno.env.get("TLS_CERT")       ?? "./certs/cert.pem";
@@ -33,8 +37,9 @@ const databaseUrl  = Deno.env.get("DATABASE_URL");
 const aiManagerUrl = Deno.env.get("AI_MANAGER_URL");
 const httpPort     = parseInt(Deno.env.get("COORDINATOR_HTTP_PORT") ?? "8083");
 
-const serviceSecret = Deno.env.get("VOXIM_SERVICE_SECRET")
-  ?? "dev-local-only-do-not-use-in-prod-0000";
+// Control-plane shared secret (T-258) — fails closed in production (VOXIM_ENV=
+// production) when VOXIM_SERVICE_SECRET is unset; dev falls back to a default.
+const serviceSecret = resolveServiceSecret();
 
 let gatewayCertHashHex: string | undefined;
 try {

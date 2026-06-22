@@ -41,12 +41,19 @@ import { bakeWorld, tileSeedFor } from "./bake.ts";
 import type { WorldCellRecord } from "./worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, PRESETS, mergeGenParams, type DeepPartialGenParams, type GenParams } from "./genparams.ts";
 import type { ContentService } from "@voxim/content";
+import { verifyServiceSecret } from "@voxim/protocol";
 
 export interface AtlasServerConfig {
   port: number;
   worldsRepo: WorldsRepo;
   cellsRepo: AtlasWorldRepo;
   tilesRepo: AtlasTileInitRepo;
+  /**
+   * Shared secret gating the mutating control-plane endpoints
+   * (/world/bake, /world/restart) — T-258. Read endpoints + the inspector
+   * UI stay public. Empty string → those endpoints fail closed.
+   */
+  serviceSecret: string;
   /**
    * Comma-separated host:port targets for /world/restart to POST
    * /admin/restart to. Default: tile-1:14433,coordinator:8083 (compose).
@@ -112,6 +119,10 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
   }
 
   if (req.method === "POST" && url.pathname === "/world/bake") {
+    // Control plane (T-258): mutating endpoint — requires the shared secret.
+    if (!verifyServiceSecret(req, cfg.serviceSecret)) {
+      return new Response("unauthorized", { status: 401, headers: { "access-control-allow-origin": "*" } });
+    }
     // Body is optional; query string provides convenient simple-knob access
     // (?seed=&width=&height=&name=). For tuning the deeper GenParams,
     // POST a JSON body { name, seed, width, height, params: { ... } }.
@@ -161,6 +172,10 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
   }
 
   if (req.method === "POST" && url.pathname === "/world/restart") {
+    // Control plane (T-258): mutating endpoint — requires the shared secret.
+    if (!verifyServiceSecret(req, cfg.serviceSecret)) {
+      return new Response("unauthorized", { status: 401, headers: { "access-control-allow-origin": "*" } });
+    }
     const targets = cfg.restartTargets ?? [];
     const results: Array<{ target: string; ok: boolean; error?: string }> = [];
     for (const t of targets) {

@@ -30,6 +30,7 @@ import type {
   GatewayHeartbeatResponse,
   GatewayTileResponse,
 } from "@voxim/protocol";
+import { SERVICE_SECRET_HEADER, verifyServiceSecret } from "@voxim/protocol";
 import type { UserRepo, HeritageRepo, SessionRepo, TileRepo, UserTileFogRepo } from "@voxim/db";
 import { SessionService } from "./account/session_service.ts";
 import { AccountEndpoints } from "./account/endpoints.ts";
@@ -92,6 +93,8 @@ export class GatewayServer {
   private accountEndpoints!: AccountEndpoints;
   /** SHA-256 of the gateway's TLS cert (hex). Same cert as tile in dev. */
   private certHashHex = "";
+  /** Shared secret gating the control-plane endpoints (T-258). Set in start(). */
+  private serviceSecret = "";
 
   async start(config: GatewayConfig): Promise<void> {
     const b64 = config.cert.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
@@ -101,6 +104,7 @@ export class GatewayServer {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
+    this.serviceSecret = config.serviceSecret;
     this.users = config.repos.users;
     this.sessions = new SessionService(config.repos.sessions);
     this.tiles = new TileOrchestrator({
@@ -153,9 +157,17 @@ export class GatewayServer {
     const accountResponse = await this.accountEndpoints.handle(req, url);
     if (accountResponse) return accountResponse;
 
-    if (req.method === "POST" && url.pathname === "/register")  return this.handleRegister(req);
-    if (req.method === "POST" && url.pathname === "/heartbeat") return this.handleHeartbeat(req);
-    if (req.method === "POST" && url.pathname === "/handoff")   return this.handleHandoff(req);
+    // Control plane — tile/coordinator-facing. Gated by the shared service
+    // secret (T-258). The player-facing /gateway/connect + /account/* paths
+    // above are public and stay so.
+    const isControl = req.method === "POST" &&
+      (url.pathname === "/register" || url.pathname === "/heartbeat" || url.pathname === "/handoff");
+    if (isControl) {
+      if (!verifyServiceSecret(req, this.serviceSecret)) return new Response("unauthorized", { status: 401 });
+      if (url.pathname === "/register")  return this.handleRegister(req);
+      if (url.pathname === "/heartbeat") return this.handleHeartbeat(req);
+      if (url.pathname === "/handoff")   return this.handleHandoff(req);
+    }
 
     return new Response("Voxim gateway", { status: 200 });
   }
@@ -203,7 +215,10 @@ export class GatewayServer {
       try {
         resp = await fetch(`${tile.adminUrl}/handoff`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            [SERVICE_SECRET_HEADER]: this.serviceSecret,
+          },
           body: JSON.stringify(body),
         });
       } catch (err) {

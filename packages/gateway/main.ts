@@ -8,9 +8,11 @@
  *   TLS_CERT                Path to PEM cert (for cert-hash   default: ./certs/cert.pem
  *                           computation only — no TLS listener)
  *   DATABASE_URL            Postgres connection string        required
- *   VOXIM_SERVICE_SECRET    Shared secret for tile→gateway    required (>=16 chars)
- *                           /internal/* calls                 dev default provided only when
- *                                                             not in production
+ *   VOXIM_SERVICE_SECRET    Shared secret gating the control   required (>=16 chars) when
+ *                           plane (/register, /heartbeat,      VOXIM_ENV=production; dev
+ *                           /handoff, /internal/*)             falls back to a dev default
+ *   VOXIM_ENV               "production" → fail closed when    default: (unset → dev)
+ *                           VOXIM_SERVICE_SECRET is unset
  *
  * Note: the gateway intentionally serves plain HTTP. Browsers cannot pin
  * self-signed certs for fetch() (only for WebTransport via
@@ -35,6 +37,7 @@ import {
   PgTileRepo,
   PgUserTileFogRepo,
 } from "@voxim/db";
+import { resolveServiceSecret } from "@voxim/protocol";
 import { ensureFreshDevCert } from "../../scripts/dev_cert.ts";
 
 const port      = parseInt(Deno.env.get("ADMIN_PORT") ?? "8081");
@@ -42,8 +45,10 @@ const wtPort    = parseInt(Deno.env.get("WT_PORT")    ?? "8080");
 const certPath  = Deno.env.get("TLS_CERT")            ?? "./certs/cert.pem";
 const keyPath   = Deno.env.get("TLS_KEY")             ?? "./certs/key.pem";
 
-const serviceSecret = Deno.env.get("VOXIM_SERVICE_SECRET")
-  ?? "dev-local-only-do-not-use-in-prod-0000";
+// Control-plane shared secret (T-258) — fails closed in production (VOXIM_ENV=
+// production) when VOXIM_SERVICE_SECRET is unset; falls back to a dev default
+// otherwise so a single-machine stack talks to itself.
+const serviceSecret = resolveServiceSecret();
 
 // Cert hash is returned to clients so they can pin the tile's matching cert
 // via WebTransport serverCertificateHashes. The gateway also uses the same

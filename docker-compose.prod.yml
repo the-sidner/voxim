@@ -61,6 +61,8 @@ x-tile-base: &tile-base
     DATABASE_URL: ${DATABASE_URL}
     GATEWAY_URL: ${GATEWAY_URL}
     VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+    # Fail closed (T-258): if VOXIM_SERVICE_SECRET is unset the service refuses to boot.
+    VOXIM_ENV: ${VOXIM_ENV:-production}
   volumes:
     - ./data/certs:/app/certs:ro
   restart: unless-stopped
@@ -117,6 +119,7 @@ services:
       WT_PORT: 8080
       DATABASE_URL: ${DATABASE_URL}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      VOXIM_ENV: ${VOXIM_ENV:-production}
       TLS_CERT: /app/certs/cert.pem
       TLS_KEY: /app/certs/key.pem
     # No host port. 8081 is reverse-proxied by Caddy; 8080/udp is the
@@ -163,6 +166,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      VOXIM_ENV: ${VOXIM_ENV:-production}
       TLS_CERT: /app/certs/cert.pem
       TICK_RATE: ${COORDINATOR_TICK_RATE:-1}
       WORLD_SEED: ${WORLD_SEED:-1}
@@ -202,6 +206,7 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      VOXIM_ENV: ${VOXIM_ENV:-production}
       TILE_ID: "0_0"
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4433
       ADMIN_PORT: 14433
@@ -221,6 +226,7 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      VOXIM_ENV: ${VOXIM_ENV:-production}
       TILE_ID: "1_0"
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4434
       ADMIN_PORT: 14434
@@ -240,6 +246,7 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      VOXIM_ENV: ${VOXIM_ENV:-production}
       TILE_ID: "0_1"
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4435
       ADMIN_PORT: 14435
@@ -259,6 +266,7 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       GATEWAY_WT_URL: ${GATEWAY_WT_URL:-https://gateway:8080}
       VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
+      VOXIM_ENV: ${VOXIM_ENV:-production}
       TILE_ID: "1_1"
       TILE_ADDRESS: ${HOST_ADDR:-127.0.0.1}:4436
       ADMIN_PORT: 14436

@@ -11,6 +11,10 @@
  * Environment:
  *   ATLAS_PORT            HTTP port. Default 8082.
  *   DATABASE_URL          Postgres URL. Required.
+ *   VOXIM_SERVICE_SECRET  Shared secret gating /world/bake + /world/restart
+ *                         (T-258). Required (>=16 chars) when VOXIM_ENV=production;
+ *                         dev falls back to a default. Read endpoints stay public.
+ *   VOXIM_ENV             "production" → fail closed when the secret is unset.
  *   BOOTSTRAP_WORLD_NAME  Name for the auto-baked world. Default "bootstrap".
  *   BOOTSTRAP_WORLD_SEED  Seed for the auto-bake. Default 1.
  *   BOOTSTRAP_WORLD_WIDTH  / _HEIGHT  Default 2 / 2.
@@ -24,10 +28,13 @@ import {
   PgWorldsRepo,
 } from "@voxim/db";
 import { JsonSource } from "@voxim/content";
+import { resolveServiceSecret } from "@voxim/protocol";
 import { startAtlasServer } from "./mod.ts";
 import { bakeWorld } from "./src/bake.ts";
 
 const port              = parseInt(Deno.env.get("ATLAS_PORT")            ?? "8082");
+// Control-plane shared secret (T-258) — fails closed in production when unset.
+const serviceSecret     = resolveServiceSecret();
 const bootstrapName     =          Deno.env.get("BOOTSTRAP_WORLD_NAME")  ?? "bootstrap";
 const bootstrapSeed     = parseInt(Deno.env.get("BOOTSTRAP_WORLD_SEED")  ?? "1");
 const bootstrapWidth    = parseInt(Deno.env.get("BOOTSTRAP_WORLD_WIDTH") ?? "2");
@@ -66,4 +73,4 @@ if (!existing) {
   );
 }
 
-startAtlasServer({ port, worldsRepo, cellsRepo, tilesRepo, content });
+startAtlasServer({ port, serviceSecret, worldsRepo, cellsRepo, tilesRepo, content });
