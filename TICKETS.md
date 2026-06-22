@@ -131,7 +131,7 @@ Trader transactions deduct/add coins from entity inventory (not an abstract bala
 Done when: buying from a trader deducts physical coin items; selling adds them.
 
 ### T-032 · NPC buy/need system — NPCs seek traders when need critical
-Effort: M   Status: todo
+Effort: M   Status: obsolete   (premise dead: hunger/thirst are Resources now (T-238), no NPC currency; the intent — NPCs handling hunger/thirst emergencies — is already met by the seekFood/seekWater jobs finding ground consumables, wired into passive.json)
 
 When an NPC's hunger/thirst reaches a threshold and it has coins, add a `seek_trader` job:
 find the nearest trader NPC with food/water, buy from them if currency is sufficient.
@@ -182,7 +182,7 @@ Guards subscribe broadly; labourers subscribe narrowly.
 Done when: nearby combat events trigger NPC awareness without per-tick distance scans.
 
 ### T-041 · NPC Lore accumulation through job execution
-Effort: M   Status: todo
+Effort: M   Status: obsolete   (premise dead: NPCs carry no LoreLoadout since T-260b — spawner.ts:221 "NPCs don't learn lore"; their behaviour is weapon/archetype triggers (T-259), not learned fragments. Same retirement as T-042)
 
 When an NPC completes a job of a type it can learn from (crafting, building, gathering), increment
 an internal Lore experience counter. At a threshold, add the relevant fragment to the NPC's Lore
@@ -796,7 +796,7 @@ no-op, wrong-tool no-op, full-item left alone.
 ## World / Environment
 
 ### T-090 · Room detection and enclosed-wall system
-Effort: L   Status: todo
+Effort: L   Status: obsolete   (its consumers are gone/superseded: the corruption "shelter bonus" was removed wholesale (T-238e), and the live server-side enclosure work is T-065. Re-spec against T-065 if room semantics are wanted again)
 
 A room is a contiguous enclosed volume formed by placed wall/floor blueprint structures.
 Room detection runs as a server-side flood-fill over the structure grid after each build event.
@@ -975,7 +975,7 @@ The old packages/devtools/voxel-editor retires at the end (T-191z).
 Phasing → sub-tickets T-191a..e + T-191z.
 
 ### T-191e · Weapon sweep debugger + per-clip attachment overrides
-Effort: M   Status: todo
+Effort: M   Status: obsolete   (premise dead: swingPath keyframes were retired for clip-driven baseLocal/tipLocal blade geometry — zero swingPath in content; a sweep debugger would visualise a system that no longer exists)
 
 Deepest piece. Sits inside the animation editor.
 
