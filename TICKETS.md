@@ -435,11 +435,11 @@ Done when: models + props bake through one `bakeVoxels` path; an entity can carr
 mixed-size voxels; draw calls collapse; the parity test still passes.
 
 ### T-282 · Client rebuild Phase 2 — renderer breakup (scene-graph; subsumes T-223)
-Effort: L   Status: in-progress   (headline EntityMeshRegistry landed; smaller polish items remain)
+Effort: L   Status: in-progress   (renderer breakup substantively COMPLETE — 50% cut; only low-value polish remains)
 
-THREE cohesive subsystems now lifted out of the renderer god-class
-(renderer 2120 → 1223 lines; T-281 had already shrunk it by deleting the
-bake-worker pool + per-node path):
+FIVE cohesive units lifted out of the renderer god-class — renderer 2120 → 1063
+lines, a 50% cut (T-281 had already shrunk it by deleting the bake-worker pool +
+per-node path):
   · `WeaponTrailRenderer` (`render/weapon_trail.ts`, d4ee296) — owns slice/mesh
     state + scene layer, fed `update(...)`/frame.
   · `GateMarkerRenderer` (`render/gate_marker.ts`, 491b74e) — owns the gate-pillar
@@ -450,32 +450,42 @@ bake-worker pool + per-node path):
     placement + `_addStaticProp`/`computePropHalfExtents`). Hybrid boundary from
     a design panel: minimal lifecycle island so the 3 async stale guards +
     velocity-defer + 4 slot re-checks move VERBATIM; the render loop's
-    interpolation/cull/shadow/lighting stays byte-identical in the renderer
-    (it interleaves terrain + day/night, not a contiguous entity block). The
-    renderer no longer names the entity Maps — public methods are thin
-    delegations; external callers (game.ts, interaction, hover) unchanged.
-All verified: deno check (4 targets) green, grep-zero invariant, 9/9 render unit
-tests, ANIM 7/7, post-extraction screenshot identical to baseline.
+    interpolation/cull stays byte-identical in the renderer. The renderer no
+    longer names the entity Maps — public methods are thin delegations; external
+    callers (game.ts, interaction, hover) unchanged.
+  · `loadSlotModel` fold (af963cd) — syncHandSlot + syncArmorSlot's byte-identical
+    async prefetch→recheck→load→attach preambles folded into one helper; the slot
+    stale-guard is now single-sourced.
+  · `EnvironmentLighting` (`render/environment_lighting.ts`, 29eb5d1) — sun + hemi
+    + sky/fog + day-night lerp + shadow-frustum follow/snap + sun disc, driven by
+    one `update(cameraTarget, cameraPos)`/frame after the camera settles.
+    setDayPhase/toggleShadows/palette→lighting become delegations. Verbatim move
+    (shadow-snap math byte-identical); screenshot-diffed against baseline (sky,
+    sun shading, fog, tree shadows all match; shadows follow the moved player).
+All verified each step: deno check (4 targets), grep-zero invariant, 9/9 render
+unit tests, ANIM 7/7, screenshot identical to baseline.
 
-REMAINING (smaller polish, separable):
-  · `scene` → private behind a narrow `addLayer`/`removeLayer` API (the handful
-    of sibling `scene.add` callers route through it) — one scene-graph owner.
-  · Fix the `velocity={0,0,0}` / `VELOCITY_EPSILON_SQ` hack at its SOURCE: the
-    spawn wire always carries vx/vy/vz, so the clean fix is a small protocol
-    change (omit velocity for entities without a real Velocity component), not a
-    renderer edit. Now lives in the registry's prop-defer; the hack is contained
-    but not yet eliminated.
-  · OPTIONAL: lift the day-night phase lighting (sun + hemi + fog +
-    lightCur/lightTgt lerp + setDayPhase) into an `EnvironmentLighting` class —
-    MORE coupled than the three above: the `sun` carries the shadow-camera basis
-    (`_shadowCamRight/_shadowCamUp`) consumed by the per-frame shadow-follow snap
-    + the shadow toggle, and the result is visual-only (ANIM can't assert it), so
-    it needs a careful screenshot-diff pass, not a blind lift. The scene-census
-    diagnostic is a trivial follow-on.
-Done when: `scene` has one owner; the velocity hack is gone at the wire; (the
-lighting lift is optional polish, not a gate). The core goal — entity lifecycle
-out of the renderer — is MET (c5fadd6); the renderer is now scene/camera/FX +
-the day/night loop + terrain, at 1223 lines.
+REMAINING (low-value polish — the core goal is met, see below):
+  · OPTIONAL: extract terrain mesh management (terrainMeshes/Hmaps/Mats +
+    updateTerrain/_rebuildChunk/removeTerrain + the cull loop + colorForMat) into
+    a `TerrainMeshManager` to chase the ~800-line target. Note: terrain is
+    already LOW-coupling (its own maps + methods) — this is line-count cosmetics,
+    not untangling, so it's deferred unless the <800 target is wanted for its own
+    sake. (T-283 rewrites terrain into voxels anyway — may moot this.)
+  · OPTIONAL: `scene` → private behind `addLayer`/`removeLayer`. Marginal: the
+    renderer already NEWs the one scene and hands refs to its subsystems; only ~3
+    external reachers (game.ts ×2, hover_outline) touch it. Visibility nicety.
+  · NOT DOING — the `velocity={0,0,0}` "hack": on inspection it is SOUND, not a
+    hack. The synthesis is in applySnapshot (the unreliable movement datagram, a
+    flat vx/vy/vz struct); the registry's settle test asks "is it moving?" via
+    MAGNITUDE, which is the functionally-correct question (an item at rest has
+    ~zero velocity regardless of component presence). A protocol change to make
+    presence honest would be high-effort for zero behavioral gain. Closed.
+Done when: the core goal — the god-class's COUPLED responsibilities (entity
+lifecycle, trail, gates, lighting) out of the renderer — is MET. The renderer is
+now scene/camera/post-FX + the render() pipeline + (low-coupling) terrain, at
+1063 lines. The remaining items are optional line-count/visibility polish; this
+ticket can close here or carry the optional terrain extraction.
 
 ### T-283 · Client rebuild Phase 3 — terrain becomes voxels
 Effort: L   Status: todo
