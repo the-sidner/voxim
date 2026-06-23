@@ -395,25 +395,31 @@ props share a material color; a designer can retune the whole game's palette fro
 one file; the dead modules are gone; `deno check` + client bundle green.
 
 ### T-281 · Client rebuild Phase 1 — voxel atom + one bake kitchen
-Effort: L   Status: in-progress   (capability landed; entity-path/worker cleanup remaining)
+Effort: L   Status: done   (ce3cf90, c95c004, 4bc941d, dd4acd4, 55cf331)
 
-DONE (the capability): `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` in
-`@voxim/content` + `render/coords.ts` (ce3cf90); `bakeVoxels(atoms, materialId)` —
-THE bake kitchen — with per-voxel size, `bakeSubModel` now a thin nodes→atoms
-adapter so the merged prop/forest path already runs through it (c95c004).
-Per-voxel size is mechanically supported on BOTH paths (the sync core via
-`bakeVoxels`; the worker via `VoxelBakeSpec`'s already-per-spec scale) — "voxels
-of different sizes" is unlocked; it just lacks a data source until terrain (T-283)
-and placement (T-284) emit varied sizes. 3 parity tests pin byte-identical
-uniform output + that varied sizes change the geometry.
-REMAINING (architectural cleanup, not capability — and the riskiest edit in the
-rebuild, since it rewrites the character-render/animation path): swap the bake-
-worker protocol to return merged `BakedMesh` batches instead of per-voxel
-`BakedVoxel[]`; collapse `upgradeToSkeletonModel`/`attachModelToSlot` (the per-node
-`buildVoxelMesh` + the collector/cursor parallel-traversal coupling) onto
-`bakeVoxels` (one merged mesh per sub-object); route InstancePool through atoms.
-Do this fresh, verifying characters still render + animate via the animProbe +
-screenshot after each step; keep `voxel_bake.test.ts` green.
+`VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` + `render/coords.ts` (ce3cf90);
+`bakeVoxels(atoms, materialId)` — THE bake kitchen — with per-voxel size,
+`bakeSubModel` a thin adapter so the prop/forest path runs through it (c95c004);
+the character body (4bc941d) then held weapons + armor (dd4acd4) collapsed onto
+`buildMergedSubMeshes` (one merged mesh per material per sub-object via
+`bakeVoxels`) — the per-node `buildVoxelMesh` + the collector/cursor
+parallel-traversal coupling are gone, and with all baking now sync (a character is
+tens of voxels) the whole off-thread bake worker was deleted: `bake_pool`,
+`bake_protocol`, `bake_worker`, their test, and the second esbuild entry (55cf331).
+"Voxels of different sizes" is mechanically unlocked (parity-tested); a data source
+arrives with terrain (T-283) / placement (T-284). Verified live: ANIM harness 7/7
+(skeleton builds, walk articulates, swing fires) at each step.
+Deferred to T-283/T-284: routing InstancePool's archetype key off per-entity scale
+(it currently keys by scale → mixed-size props would explode archetypes; only
+matters once varied sizes are emitted).
+
+NOTE (env, T-274 follow-on): `docker restart` of a stack service DROPS the
+`./packages` dev bind-mount — the container reverts to its stale image-baked
+`/app/packages`, so the tile (which serves the client `dist/game.js` on :14433
+from the shared host dist) serves a stale bundle and live verification silently
+tests old code. Fix: recreate WITH the dev override, e.g.
+`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate --no-deps tile-1 client-dev`.
+Use `--force-recreate` (compose), never `docker restart`, for dev containers.
 
 Introduce `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` (center + per-voxel
 size + material) in `@voxim/content` + `render/coords.ts` `modelToThree` (route
