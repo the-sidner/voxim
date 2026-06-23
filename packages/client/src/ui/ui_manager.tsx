@@ -24,6 +24,7 @@ import { EquipmentPanel }  from "./components/EquipmentPanel.tsx";
 import { InventoryPanel }  from "./components/InventoryPanel.tsx";
 import { StatsPanel }      from "./components/StatsPanel.tsx";
 import { WorkstationPanel } from "./components/WorkstationPanel.tsx";
+import { ContainerPanel }   from "./components/ContainerPanel.tsx";
 import { TraderPanel }     from "./components/TraderPanel.tsx";
 import { JobBoardPanel }   from "./components/JobBoardPanel.tsx";
 import { DialoguePanel }   from "./components/DialoguePanel.tsx";
@@ -99,6 +100,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       {panels.has("equipment")  && <EquipmentPanel  onAction={onAction} />}
       {panels.has("stats")      && <StatsPanel />}
       {panels.has("workstation") && <WorkstationPanel onAction={onAction} />}
+      {panels.has("container")  && <ContainerPanel   onAction={onAction} />}
       {panels.has("trader")     && <TraderPanel      onAction={onAction} />}
       {panels.has("job_board")  && <JobBoardPanel />}
       {panels.has("dialogue")   && <DialoguePanel    onAction={onAction} />}

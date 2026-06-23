@@ -21,6 +21,7 @@ export const WIRE_LIMITS = {
   inventorySlots: 64,
   craftingQueue: 16,
   traderListings: 64,
+  containerSlots: 64,
   heritageTraits: 64,
   hitRecordsPerSwing: 32,
 } as const;
@@ -1548,6 +1549,51 @@ export const gateLinkCodec: Serialiser<GateLinkData> = {
     const edge = INT_TO_GATE_EDGE[r.readU8()] ?? "north";
     const radius = r.readF32();
     return { destinationTileId, edge, radius };
+  },
+};
+
+// ---- Container --------------------------------------------------------------
+// A deployed family-chest fixture's slot store for UNIQUE item entities: the
+// library (kind "tome") and the treasury (kind "equipment"). Unlike
+// WorkstationBuffer (stack-only), every slot is an entity ref, so each tome's
+// Inscribed and each weapon's Durability/QualityStamped ride along per-instance.
+// Networked (T-077/T-078) so the deposit/withdraw panel mirrors slot contents.
+
+export type ContainerKind = "tome" | "equipment";
+
+export interface ContainerSlot {
+  entityId: string;
+}
+
+export interface ContainerData {
+  kind: ContainerKind;
+  /** Owning dynasty; "" until deploy stamps it from the placer's Heritage. */
+  dynastyId: string;
+  capacity: number;
+  /** Dense list of occupied slots (length ≤ capacity); no holes. */
+  slots: ContainerSlot[];
+}
+
+export const containerCodec: Serialiser<ContainerData> = {
+  encode(v: ContainerData): Uint8Array {
+    assertMaxLen("Container.slots", v.slots.length, WIRE_LIMITS.containerSlots);
+    const w = new WireWriter();
+    w.writeStr(v.kind);
+    w.writeStr(v.dynastyId);
+    w.writeU16(v.capacity);
+    w.writeU16(v.slots.length);
+    for (const s of v.slots) w.writeStr(s.entityId);
+    return w.toBytes();
+  },
+  decode(b: Uint8Array): ContainerData {
+    const r = new WireReader(b);
+    const kind = r.readStr() as ContainerKind;
+    const dynastyId = r.readStr();
+    const capacity = r.readU16();
+    const n = r.readU16();
+    const slots: ContainerSlot[] = [];
+    for (let i = 0; i < n; i++) slots.push({ entityId: r.readStr() });
+    return { kind, dynastyId, capacity, slots };
   },
 };
 

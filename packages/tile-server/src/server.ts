@@ -63,6 +63,7 @@ import { dodgeImpulseResolver } from "./actions/resolvers/movement.ts";
 import { notStaggeredGate, notExhaustedGate, healthBelowGate } from "./actions/resolvers/gates.ts";
 import { StaminaCostHandler } from "./actions/cost.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
+import { ContainerSystem } from "./systems/container.ts";
 import { PlacementSystem } from "./systems/placement.ts";
 import { EnclosureSystem } from "./systems/enclosure.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
@@ -807,6 +808,7 @@ export class TileServer {
       npcSensorySystem,
       new NpcAiSystem(content, jobs, behaviorTrees),
       new EquipmentSystem(content),
+      new ContainerSystem(content),
       new PlacementSystem(content),
       // Recomputes the enclosed-cell cache on wall-change (dependsOn
       // PlacementSystem so a wall deployed this tick is committed first). T-065.

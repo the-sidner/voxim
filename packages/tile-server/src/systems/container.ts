@@ -3,11 +3,14 @@
  * entity between an actor's `Inventory` and a deployed family chest's
  * `Container`.
  *
- * These are transactional helpers, NOT a per-tick System: chests do nothing
- * between deposits, so store/withdraw are command-driven one-shot ops (the same
- * shape as `stampOwnershipAndCapture` / `destroyCarriedItemEntities`). v1 callers
- * are the tests + the future deposit/withdraw command handler; writes are
- * immediate (`world.write`) like the deploy-time ownership stamp.
+ * `storeInContainer` / `withdrawFromContainer` are transactional helpers that
+ * `ContainerSystem` (below) drives from the deposit/withdraw commands — chests
+ * do nothing between deposits, so they're command-driven one-shot ops. The
+ * mutations use `world.set` (deferred), so the Container/Inventory changes land
+ * in the tick's changeset and ship to the client as deltas — an immediate
+ * `world.write` would mutate the store but never produce a delta for an
+ * already-known chest. Read-then-set with no read-after-write, so a single op is
+ * clean; two ops to one chest in a tick last-write-win like the equipment path.
  *
  * Invariant in both directions: the op MOVES an entity ref — it never copies or
  * destroys the item entity, so the tome's `Inscribed` / the weapon's
@@ -15,12 +18,21 @@
  *
  * Gates: a chest is dynasty-locked (`Container.dynastyId`, stamped on deploy) and
  * kind-locked (a library takes only tomes; a treasury takes only equippable gear).
+ * Proximity is gated by `ContainerSystem` (the command path), not the helpers —
+ * the save/op tests deploy chests at the origin with position-less actors.
  */
 import type { World, EntityId } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
+import { CommandType } from "@voxim/protocol";
+import type { CommandPayload } from "@voxim/protocol";
+import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Container } from "../components/container.ts";
 import { Inventory, ItemData } from "../components/items.ts";
+import { Position } from "../components/game.ts";
 import { Heritage } from "../components/heritage.ts";
+import { createLogger } from "../logger.ts";
+
+const log = createLogger("ContainerSystem");
 
 export type ContainerOpResult =
   | { ok: true; slotIndex: number }
@@ -68,12 +80,12 @@ export function storeInContainer(
   if (!kindAccepts(content, container.kind, item.prefabId)) return { ok: false, reason: "wrong-kind" };
 
   // Entity-ref MOVE: drop the inventory ref, push the chest ref.
-  world.write(actorId, Inventory, {
+  world.set(actorId, Inventory, {
     ...inv,
     slots: inv.slots.filter((s) => !(s.kind === "unique" && s.entityId === itemEntityId)),
   });
   const slotIndex = container.slots.length;
-  world.write(containerId, Container, {
+  world.set(containerId, Container, {
     ...container,
     slots: [...container.slots, { entityId: itemEntityId }],
   });
@@ -106,7 +118,7 @@ export function withdrawFromContainer(
   if (!world.isAlive(itemEntityId)) {
     // A dangling slot (the banked entity died) — purge it rather than hand the
     // holder a dead ref. (Save skips dead refs but keeps the slot string.)
-    world.write(containerId, Container, { ...container, slots: container.slots.filter((_, i) => i !== slotIndex) });
+    world.set(containerId, Container, { ...container, slots: container.slots.filter((_, i) => i !== slotIndex) });
     return { ok: false, reason: "slot-item-dead" };
   }
 
@@ -115,13 +127,74 @@ export function withdrawFromContainer(
   if (inv.slots.length >= inv.capacity) return { ok: false, reason: "inventory-full" };
 
   // Entity-ref MOVE: pull the chest ref, push the inventory unique ref.
-  world.write(containerId, Container, {
+  world.set(containerId, Container, {
     ...container,
     slots: container.slots.filter((_, i) => i !== slotIndex),
   });
-  world.write(intoHolderId, Inventory, {
+  world.set(intoHolderId, Inventory, {
     ...inv,
     slots: [...inv.slots, { kind: "unique" as const, entityId: itemEntityId }],
   });
   return { ok: true, slotIndex };
+}
+
+/**
+ * ContainerSystem — drains the deposit/withdraw commands and routes them through
+ * the store/withdraw helpers, mirroring `EquipmentSystem`'s command shape. Adds a
+ * proximity gate (the helpers are position-agnostic): the actor must be within
+ * `crafting.interactRange` of the chest — the same reach the client's
+ * `_openContainer` enforces before opening the panel, so a forged far-away
+ * command is refused server-side.
+ *
+ * Deposit carries an inventory slot index (matching Equip); only a UNIQUE-entity
+ * slot can bank (chests hold entity refs, never stacks), so a stack drag no-ops.
+ * Withdraw banks the chest slot back into the acting player's own inventory.
+ */
+export class ContainerSystem implements System {
+  private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
+
+  constructor(private readonly content: ContentService) {}
+
+  prepare(_serverTick: number, ctx: TickContext): void {
+    this._commands = ctx.pendingCommands;
+  }
+
+  run(world: World, _events: EventEmitter, _dt: number): void {
+    const reach = this.content.getGameConfig().crafting.interactRange;
+    for (const [actorId, commands] of this._commands) {
+      if (!world.isAlive(actorId)) continue;
+      for (const cmd of commands) {
+        if (cmd.cmd === CommandType.ContainerDeposit) {
+          this._deposit(world, actorId, cmd.containerId, cmd.fromInventorySlot, reach);
+        } else if (cmd.cmd === CommandType.ContainerWithdraw) {
+          this._withdraw(world, actorId, cmd.containerId, cmd.slotIndex, reach);
+        }
+      }
+    }
+  }
+
+  /** True when the actor is within `reach` world units of the chest. */
+  private _inReach(world: World, actorId: EntityId, containerId: EntityId, reach: number): boolean {
+    const a = world.get(actorId, Position);
+    const c = world.get(containerId, Position);
+    if (!a || !c) return false;
+    const dx = a.x - c.x, dy = a.y - c.y;
+    return dx * dx + dy * dy <= reach * reach;
+  }
+
+  private _deposit(world: World, actorId: EntityId, containerId: string, fromInventorySlot: number, reach: number): void {
+    if (!this._inReach(world, actorId, containerId as EntityId, reach)) return;
+    const inv = world.get(actorId, Inventory);
+    const slot = inv?.slots[fromInventorySlot];
+    // Only unique-entity items bank — a stack carries no per-instance entity to move.
+    if (slot?.kind !== "unique") return;
+    const r = storeInContainer(world, this.content, actorId, containerId as EntityId, slot.entityId as EntityId);
+    if (!r.ok) log.debug("deposit rejected: actor=%s chest=%s reason=%s", actorId, containerId, r.reason);
+  }
+
+  private _withdraw(world: World, actorId: EntityId, containerId: string, slotIndex: number, reach: number): void {
+    if (!this._inReach(world, actorId, containerId as EntityId, reach)) return;
+    const r = withdrawFromContainer(world, actorId, containerId as EntityId, slotIndex, actorId);
+    if (!r.ok) log.debug("withdraw rejected: actor=%s chest=%s slot=%d reason=%s", actorId, containerId, slotIndex, r.reason);
+  }
 }

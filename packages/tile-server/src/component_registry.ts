@@ -174,6 +174,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // job-board panel can list goal/itemType/priority/claimedBy. The board is a
   // workbench-type prefab, so it also streams workstationTag/workstationBuffer.
   JobBoard,
+  // Container (T-077/T-078) — a deployed family chest's slot store, on the wire
+  // so the owning dynasty's client can render the deposit/withdraw panel. Held
+  // unique items its slots reference stream to the holder via AoI like equipment.
+  Container,
   // Scene graph (T-215): the Parent hierarchy link. Networked so subtrees
   // (POIs, bones, equipment, buffs) replicate for free. Engine owns the
   // def + codec; wire id 49 is reserved in @voxim/protocol. Inert until
@@ -245,8 +249,7 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // Registered so SaveManager round-trips it for items banked in a treasury
   // (T-078); without this it silently drops on overlay.
   ItemEffects,
-  // Container (T-077/T-078): family library/treasury slot store. Server-only.
-  Container,
+  // Container (T-077/T-078) is networked now (T-284) — listed in NETWORKED_DEFS above.
   // ── Item-behaviour template defs ─────────────────────────────────────────
   // Declared on any prefab that represents a holdable/wearable/usable thing.
   // Server-only: clients reconstruct item behaviour from the prefab id they

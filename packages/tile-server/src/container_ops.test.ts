@@ -18,6 +18,7 @@ import { Inscribed, Durability } from "./components/instance.ts";
 import { ModelRef } from "./components/game.ts";
 import { storeInContainer, withdrawFromContainer } from "./systems/container.ts";
 import { DEF_BY_NAME, NETWORKED_DEFS } from "./component_registry.ts";
+import { ComponentType } from "@voxim/protocol";
 
 const content = await JsonSource.load("packages/content/data");
 const DYN = "dynasty-A";
@@ -51,6 +52,7 @@ Deno.test("3a: owner + matching-kind store succeeds (tome into library)", () => 
   const a = makeActor(w, DYN, [{ kind: "unique", entityId: tome }]);
   const r = storeInContainer(w, content, a, lib, tome);
   assert(r.ok, JSON.stringify(r));
+  w.applyChangeset(); // store now defers via world.set (so the move ships as a delta)
   assertEquals(w.get(lib, Container)!.slots.map((s) => s.entityId), [tome]);
   assertEquals(w.get(a, Inventory)!.slots.length, 0, "item left the inventory");
   assert(w.isAlive(tome), "item entity itself is untouched");
@@ -85,6 +87,7 @@ Deno.test("3d: capacity enforced", () => {
   const s2 = makeUniqueItem(w, "iron_sword");
   const a = makeActor(w, DYN, [{ kind: "unique", entityId: s1 }, { kind: "unique", entityId: s2 }]);
   assert(storeInContainer(w, content, a, treas, s1).ok);
+  w.applyChangeset(); // commit the first deposit so the second sees the chest full
   const r2 = storeInContainer(w, content, a, treas, s2);
   assert(!r2.ok && r2.reason === "container-full", JSON.stringify(r2));
   assertEquals(w.get(treas, Container)!.slots.length, 1);
@@ -96,8 +99,10 @@ Deno.test("3e: withdraw moves the ref back into the holder, instance comps intac
   const sword = makeUniqueItem(w, "iron_sword", (id) => w.write(id, Durability, { remaining: 42, max: 60 }));
   const a = makeActor(w, DYN, [{ kind: "unique", entityId: sword }]);
   storeInContainer(w, content, a, treas, sword);
+  w.applyChangeset(); // commit the deposit so the withdraw sees the banked slot
   const r = withdrawFromContainer(w, a, treas, 0, a);
   assert(r.ok, JSON.stringify(r));
+  w.applyChangeset();
   assertEquals(w.get(treas, Container)!.slots.length, 0);
   assert(w.get(a, Inventory)!.slots.some((s) => s.kind === "unique" && s.entityId === sword));
   assertEquals(w.get(sword, Durability)!.remaining, 42, "Durability rode along, untouched");
@@ -109,6 +114,7 @@ Deno.test("3f: withdraw rejects a wrong-dynasty actor and an out-of-range slot",
   const sword = makeUniqueItem(w, "iron_sword");
   const a = makeActor(w, DYN, [{ kind: "unique", entityId: sword }]);
   storeInContainer(w, content, a, treas, sword);
+  w.applyChangeset();
   const intruder = makeActor(w, OTHER, []);
   assert(!withdrawFromContainer(w, intruder, treas, 0, intruder).ok, "wrong dynasty blocked");
   assert(!withdrawFromContainer(w, a, treas, 9, a).ok, "bad slot blocked");
@@ -120,6 +126,7 @@ Deno.test("3g: withdraw into a wrong-dynasty holder is rejected (no cross-dynast
   const sword = makeUniqueItem(w, "iron_sword");
   const owner = makeActor(w, DYN, [{ kind: "unique", entityId: sword }]);
   storeInContainer(w, content, owner, treas, sword);
+  w.applyChangeset();
   // owner authorises, but the DESTINATION belongs to another dynasty.
   const outsider = makeActor(w, OTHER, []);
   const r = withdrawFromContainer(w, owner, treas, 0, outsider);
@@ -137,6 +144,7 @@ Deno.test("3h: withdrawing a dead-entity slot purges it instead of handing out a
   w.applyChangeset();
   const r = withdrawFromContainer(w, a, treas, 0, a);
   assert(!r.ok && r.reason === "slot-item-dead", JSON.stringify(r));
+  w.applyChangeset(); // commit the dead-slot purge
   assertEquals(w.get(treas, Container)!.slots.length, 0, "dead slot purged");
   assertEquals(w.get(a, Inventory)!.slots.length, 0, "no dangling ref handed to the holder");
 });
@@ -162,10 +170,11 @@ Deno.test("5b: a chest spawns with Container + a visual shell", () => {
   assert(w.has(id, ModelRef), "got a renderable shell from modelId");
 });
 
-Deno.test("5c: Container is server-only + registered (and ItemEffects too)", () => {
+Deno.test("5c: Container is networked + registered (and ItemEffects too)", () => {
   assertEquals(DEF_BY_NAME.get("container"), Container);
-  assertEquals(Container.networked, false);
-  assert(NETWORKED_DEFS.every((d) => d.name !== "container"), "never on the wire");
+  // T-284: Container went on the wire so the chest deposit/withdraw panel can mirror slots.
+  assertEquals(Container.wireId, ComponentType.container);
+  assert(NETWORKED_DEFS.some((d) => d.name === "container"), "on the wire now");
   assert(DEF_BY_NAME.has("itemEffects"), "ItemEffects registered (save-overlay regression guard)");
 });
 

@@ -10,57 +10,20 @@
  * unique item entities its slots reference (the heritage of a dynasty outlives
  * any one heir).
  *
- * Server-only for now (no wire) — the deposit/withdraw UI is the deferred client
- * layer; networking is a later add, the same call buffs/modifiers/ActiveActions
- * made. `dynastyId` (stamped from the placer's Heritage on deploy) gates who may
- * store/withdraw; `kind` gates what may be stored.
+ * Networked (T-284): the chest streams its slots to the owning dynasty's client
+ * so the deposit/withdraw panel mirrors contents reactively. The codec lives in
+ * `@voxim/codecs` (client + server share it); `dynastyId` (stamped from the
+ * placer's Heritage on deploy) gates who may store/withdraw, `kind` gates what.
  */
 import { defineComponent } from "@voxim/engine";
-import type { Serialiser } from "@voxim/engine";
-import { WireReader, WireWriter } from "@voxim/codecs";
+import { ComponentType } from "@voxim/protocol";
+import { containerCodec, type ContainerData } from "@voxim/codecs";
 
-export type ContainerKind = "tome" | "equipment";
-
-/** One occupied slot — a ref to a unique item entity (never a stack). */
-export interface ContainerSlot {
-  entityId: string;
-}
-
-export interface ContainerData {
-  /** What this chest accepts — library (tome) vs treasury (equipment). */
-  kind: ContainerKind;
-  /** Owning dynasty; "" until deploy stamps it from the placer's Heritage. */
-  dynastyId: string;
-  capacity: number;
-  /** Dense list of occupied slots (length ≤ capacity); no holes. */
-  slots: ContainerSlot[];
-}
-
-const containerCodec: Serialiser<ContainerData> = {
-  encode(v: ContainerData): Uint8Array {
-    const w = new WireWriter();
-    w.writeStr(v.kind);
-    w.writeStr(v.dynastyId);
-    w.writeU16(v.capacity);
-    w.writeU16(v.slots.length);
-    for (const s of v.slots) w.writeStr(s.entityId);
-    return w.toBytes();
-  },
-  decode(b: Uint8Array): ContainerData {
-    const r = new WireReader(b);
-    const kind = r.readStr() as ContainerKind;
-    const dynastyId = r.readStr();
-    const capacity = r.readU16();
-    const n = r.readU16();
-    const slots: ContainerSlot[] = [];
-    for (let i = 0; i < n; i++) slots.push({ entityId: r.readStr() });
-    return { kind, dynastyId, capacity, slots };
-  },
-};
+export type { ContainerData, ContainerSlot, ContainerKind } from "@voxim/codecs";
 
 export const Container = defineComponent({
   name: "container" as const,
-  networked: false,
+  wireId: ComponentType.container,
   codec: containerCodec,
   default: (): ContainerData => ({ kind: "equipment", dynastyId: "", capacity: 12, slots: [] }),
 });

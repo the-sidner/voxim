@@ -28,6 +28,11 @@ export type UIAction =
   | { type: "take_workstation"; bufferSlot: number }
   | { type: "select_recipe";    recipeId: string }
 
+  // Family chest (library / treasury). Targets the chest the panel is open on;
+  // deposit banks the unique item in `inventorySlot`, withdraw pulls `slotIndex`.
+  | { type: "deposit_container";  containerId: string; inventorySlot: number }
+  | { type: "withdraw_container"; containerId: string; slotIndex: number }
+
   // Trading — `slot` is the index into the trader's listings (server keys both by listing slot)
   | { type: "trade_buy";  slot: number }
   | { type: "trade_sell"; slot: number }

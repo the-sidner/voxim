@@ -22,6 +22,7 @@ import {
   durabilityCodec, craftingQueueCodec, itemDataCodec,
   workstationBufferCodec, workstationTagCodec, traderInventoryCodec, jobBoardCodec,
   statsCodec, provenanceCodec, worldClockCodec, gateLinkCodec, nameCodec,
+  containerCodec,
 } from "@voxim/codecs";
 
 /** The only capability the decode loop needs — narrower than Serialiser, so each
@@ -61,5 +62,6 @@ export const CODEC_BY_WIREID: ReadonlyMap<number, WireDecoder> = new Map<number,
   [ComponentType.provenance, provenanceCodec],
   [ComponentType.worldClock, worldClockCodec],
   [ComponentType.gateLink, gateLinkCodec],
+  [ComponentType.container, containerCodec],
   [ComponentType.name, nameCodec],
 ]);

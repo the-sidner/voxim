@@ -106,6 +106,27 @@ Deno.test("T-284: PlaceVoxels with a single cell round-trips", async () => {
   });
 });
 
+Deno.test("T-284: ContainerDeposit/Withdraw round-trip the chest id + slot", async () => {
+  const s = new ClientSession("p1");
+  const deposit: CommandDatagram = {
+    seq: 7,
+    command: { cmd: CommandType.ContainerDeposit, containerId: "019ef6-chest-uuid", fromInventorySlot: 4 },
+  };
+  const withdraw: CommandDatagram = {
+    seq: 8,
+    command: { cmd: CommandType.ContainerWithdraw, containerId: "019ef6-chest-uuid", slotIndex: 2 },
+  };
+  await s.serveCommands(streamOf([concat(framed(deposit), framed(withdraw))]));
+
+  assertEquals(s.commandQueue.length, 2);
+  assertEquals(s.commandQueue[0], {
+    cmd: CommandType.ContainerDeposit, containerId: "019ef6-chest-uuid", fromInventorySlot: 4,
+  });
+  assertEquals(s.commandQueue[1], {
+    cmd: CommandType.ContainerWithdraw, containerId: "019ef6-chest-uuid", slotIndex: 2,
+  });
+});
+
 Deno.test("T-273: a malformed frame is discarded but the stream keeps serving", async () => {
   const s = new ClientSession("p1");
   const good: CommandDatagram = { seq: 1, command: { cmd: CommandType.UseItem, fromSlot: 2 } };

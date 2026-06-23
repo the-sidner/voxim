@@ -32,6 +32,24 @@ export function makeWorkstationHandler(
 }
 
 /**
+ * Family chests — the library (tomes) and treasury (gear), T-077/T-078.
+ * Identified by the `container` networked component. Click opens the
+ * deposit/withdraw panel for that entity, gated on the player being within
+ * `interactionRange` blocks (the server re-checks reach on every command).
+ */
+export function makeContainerHandler(
+  open: (entityId: string) => void,
+): EntityInteractionHandler {
+  return {
+    id: "container",
+    priority: 10,
+    interactionRange: 3,
+    canHandle: (t) => t.entityState.container !== undefined,
+    onClick: (t) => { open(t.entityId); return true; },
+  };
+}
+
+/**
  * Trader NPCs. Identified by the `traderInventory` networked component. Click
  * opens the trade panel for that entity, gated on the player being within
  * `interactionRange` blocks (the server enforces `trade.rangeWorldUnits` too).

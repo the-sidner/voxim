@@ -18,11 +18,11 @@ Deno.test("CODEC_BY_WIREID covers exactly the components the client decode loop 
     ComponentType.blueprint, ComponentType.lightEmitter, ComponentType.darknessModifier,
     ComponentType.loreLoadout, ComponentType.durability, ComponentType.craftingQueue,
     ComponentType.itemData, ComponentType.workstationBuffer, ComponentType.workstationTag,
-    ComponentType.traderInventory, ComponentType.jobBoard, ComponentType.stats,
+    ComponentType.traderInventory, ComponentType.jobBoard, ComponentType.container, ComponentType.stats,
     ComponentType.provenance, ComponentType.worldClock, ComponentType.gateLink, ComponentType.name,
   ];
   for (const id of expected) assert(CODEC_BY_WIREID.has(id), `missing codec for wire id ${id}`);
-  // No stragglers — the table is exactly the dispatch set (31 components).
+  // No stragglers — the table is exactly the dispatch set (32 components).
   assertEquals(CODEC_BY_WIREID.size, expected.length);
 });
 

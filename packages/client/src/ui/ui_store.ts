@@ -154,6 +154,29 @@ export interface JobBoardState {
   jobs:        JobBoardJobView[];
 }
 
+// ── Container (family chest) panel ────────────────────────────────────────────
+//
+// Open while the player is interacting with a deployed family chest — the
+// library (kind "tome") or treasury (kind "equipment"), T-077/T-078. game.ts
+// writes `entityId` on open, then mirrors the chest's networked `container`
+// slots into here on every state-message touching the chest, so the panel
+// stays purely reactive on uiState.
+
+export interface ContainerSlotView {
+  /** The unique item entity banked in this slot. */
+  entityId:  string;
+  /** Resolved prefab id (from the item entity's ItemData) for the label. */
+  prefabId:  string;
+}
+
+export interface ContainerPanelState {
+  entityId:  string;
+  kind:      "tome" | "equipment";
+  capacity:  number;
+  /** Dense occupied slots; the panel pads to `capacity` with nulls. */
+  slots:     (ContainerSlotView | null)[];
+}
+
 // ── Dialogue ───────────────────────────────────────────────────────────────────
 
 export interface DialogueChoice {
@@ -173,7 +196,7 @@ export interface DialogueState {
 
 // ── Drag/drop ──────────────────────────────────────────────────────────────────
 
-export type DragSourceKind = "inventory" | "equipment" | "hotbar" | "workstation";
+export type DragSourceKind = "inventory" | "equipment" | "hotbar" | "workstation" | "container";
 
 export interface DragState {
   item:        ItemStack;
@@ -226,6 +249,7 @@ export type PanelId =
   | "equipment"
   | "stats"
   | "workstation"
+  | "container"
   | "trader"
   | "job_board"
   | "dialogue"
@@ -254,6 +278,7 @@ export interface UIState {
 
   // Active interactions (at most one of each at a time)
   workstation:  WorkstationPanelState | null;
+  container:    ContainerPanelState | null;
   trader:       TraderState | null;
   jobBoard:     JobBoardState | null;
   dialogue:     DialogueState | null;
@@ -329,6 +354,7 @@ const _initial: UIState = {
   skillCooldowns: null,
   castState: null,
   workstation: null,
+  container:   null,
   trader:      null,
   jobBoard:    null,
   dialogue:    null,

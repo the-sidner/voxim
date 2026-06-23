@@ -25,6 +25,8 @@ import type { SpatialGrid } from "./spatial_grid.ts";
 import { Position } from "./components/game.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
+import { Container } from "./components/container.ts";
+import { Heritage } from "./components/heritage.ts";
 import { GateLink } from "./components/gate.ts";
 import { FogState } from "./components/fog_state.ts";
 import { NETWORKED_DEFS } from "./component_registry.ts";
@@ -168,6 +170,19 @@ export function computeSessionUpdate(
   if (equip) {
     for (const slot of [equip.weapon, equip.offHand, equip.head, equip.chest, equip.legs, equip.feet, equip.back]) {
       if (slot) inAoI.add(slot.entityId as EntityId);
+    }
+  }
+
+  // Unique items banked in a family chest (T-077/T-078) likewise have no
+  // Position. Stream the slot entities of any in-AoI chest the player's dynasty
+  // owns, so the deposit/withdraw panel can resolve each item's prefab/name —
+  // the same lifecycle the carried-item inclusion above relies on. Gated by
+  // dynasty so a player can't snoop a rival chest's contents over the wire.
+  const myDynasty = world.get(playerId, Heritage)?.dynastyId;
+  if (myDynasty) {
+    for (const { entityId, container } of world.query(Container)) {
+      if (container.dynastyId !== myDynasty || !inAoI.has(entityId)) continue;
+      for (const slot of container.slots) inAoI.add(slot.entityId as EntityId);
     }
   }
 

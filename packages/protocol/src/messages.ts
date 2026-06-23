@@ -152,7 +152,12 @@ export const enum CommandType {
                         //   place (T-284): one command stamps a single voxel or a whole line.
                         //   Server computes each voxel's z authoritatively from terrain top +
                         //   the column's stack, and validates reach per cell (stacking allowed).
-  // 24-255 reserved for future commands
+  ContainerDeposit  = 24, // payload: u8 strLen + UTF-8 containerId + u8 fromInventorySlot — bank
+                          //   the UNIQUE item in that inventory slot into the named family chest.
+                          //   Server gates dynasty/kind/capacity/reach (T-077/T-078).
+  ContainerWithdraw = 25, // payload: u8 strLen + UTF-8 containerId + u8 slotIndex — pull the chest
+                          //   slot back into the player's inventory. Server gates dynasty/reach.
+  // 26-255 reserved for future commands
 }
 
 /**
@@ -191,6 +196,8 @@ export type CommandPayload =
   | { cmd: CommandType.LoadWorkstation; inventorySlot: number; bufferSlot: number }
   | { cmd: CommandType.TakeWorkstation; bufferSlot: number }
   | { cmd: CommandType.PickUp;          entityId: string }
+  | { cmd: CommandType.ContainerDeposit;  containerId: string; fromInventorySlot: number }
+  | { cmd: CommandType.ContainerWithdraw; containerId: string; slotIndex: number }
   | { cmd: CommandType.DebugGiveItem;  itemType: string; quantity: number }
   | { cmd: CommandType.DebugSpawnNpc;  npcTemplate: string; quantity: number }
   | { cmd: CommandType.DebugSetTime;   hour: number }

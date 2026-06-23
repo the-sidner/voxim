@@ -31,7 +31,7 @@ import { ForestPropsRenderer } from "./render/forest_props.ts";
 import { WaterRenderer } from "./render/water_renderer.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { makeWorkstationHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
@@ -391,6 +391,7 @@ export class VoximGame {
     // Interaction system — entity hover highlight + click dispatch.
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);
     this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
+    this.interactionSystem.register(makeContainerHandler((entityId) => this._openContainer(entityId)));
     this.interactionSystem.register(makeTraderHandler((entityId) => this._openTrader(entityId)));
     this.interactionSystem.register(makeJobBoardHandler((entityId) => this._openJobBoard(entityId)));
     this.interactionSystem.register(resourceNodeHandler);
@@ -579,6 +580,11 @@ export class VoximGame {
         if (uiState.value.workstation?.entityId === entityId) {
           this._mirrorWorkstationToUi(entityId);
         }
+        // Family chest: refresh when the open chest's slots change (a deposit or
+        // withdraw) so the panel reflects the move without polling.
+        if (uiState.value.container?.entityId === entityId) {
+          this._mirrorContainerToUi(entityId);
+        }
         // Trade panel: refresh when the open trader's stock OR the player's
         // inventory (coins/goods) changes, so prices and the sell list stay live.
         const traderId = uiState.value.trader?.npcId;
@@ -598,6 +604,10 @@ export class VoximGame {
       const wsId = uiState.value.workstation?.entityId;
       if (wsId && msg.destroys.includes(wsId)) {
         closePanel("workstation");
+      }
+      const chId = uiState.value.container?.entityId;
+      if (chId && msg.destroys.includes(chId)) {
+        closePanel("container");
       }
       const trId = uiState.value.trader?.npcId;
       if (trId && msg.destroys.includes(trId)) {
@@ -1174,6 +1184,50 @@ export class VoximGame {
   }
 
   /**
+   * Open the deposit/withdraw panel for a nearby family chest (library/treasury,
+   * T-077/T-078). Range-gated like the workstation/trader handlers; the server
+   * re-checks reach (and dynasty/kind/capacity) on every deposit/withdraw, so
+   * the panel can never claim an interaction the server would refuse.
+   */
+  private _openContainer(entityId: string): void {
+    const ch = this.world.get(entityId);
+    if (!ch?.container || !ch.position) return;
+    const me = this.playerId ? this.world.get(this.playerId) : null;
+    if (!me?.position) return;
+    const dx = me.position.x - ch.position.x;
+    const dy = me.position.y - ch.position.y;
+    if (dx * dx + dy * dy > 3 * 3) {
+      pushToast("Too far away", "warn");
+      return;
+    }
+    this._mirrorContainerToUi(entityId);
+    openPanel("container");
+  }
+
+  /**
+   * Snapshot the open chest's networked `container` slots into uiState so the
+   * panel stays purely reactive. Each slot is an entity ref to a banked unique
+   * item; its prefab id comes from the item entity's ItemData (streamed to the
+   * owning dynasty's client via AoI). Called on open and on every state-message
+   * touching the open chest, so deposits/withdrawals reflect without polling.
+   */
+  private _mirrorContainerToUi(entityId: string): void {
+    const ch = this.world.get(entityId);
+    if (!ch?.container) return;
+    patchUI({
+      container: {
+        entityId,
+        kind:     ch.container.kind,
+        capacity: ch.container.capacity,
+        slots:    ch.container.slots.map((s) => ({
+          entityId: s.entityId,
+          prefabId: this.world.get(s.entityId)?.itemData?.prefabId ?? "",
+        })),
+      },
+    });
+  }
+
+  /**
    * Register the world-side intent handlers. UI panels and the radial menu
    * keep their Preact onClick paths and dispatch via _handleUIAction (which
    * the router will eventually subsume entirely once T-131 lands its build
@@ -1198,6 +1252,10 @@ export class VoximGame {
           const entity = this.world.get(intent.hover.entityId);
           if (entity?.workstationBuffer) {
             this._openWorkstation(intent.hover.entityId);
+            return true;
+          }
+          if (entity?.container) {
+            this._openContainer(intent.hover.entityId);
             return true;
           }
           if (entity?.itemData) {
@@ -1423,6 +1481,22 @@ export class VoximGame {
         this._sendCommand({
           cmd: CommandType.TakeWorkstation,
           bufferSlot: action.bufferSlot,
+        });
+        break;
+
+      case "deposit_container":
+        this._sendCommand({
+          cmd: CommandType.ContainerDeposit,
+          containerId: action.containerId,
+          fromInventorySlot: action.inventorySlot,
+        });
+        break;
+
+      case "withdraw_container":
+        this._sendCommand({
+          cmd: CommandType.ContainerWithdraw,
+          containerId: action.containerId,
+          slotIndex: action.slotIndex,
         });
         break;
 

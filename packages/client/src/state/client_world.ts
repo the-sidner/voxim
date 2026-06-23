@@ -21,6 +21,7 @@ import type {
   NameData,
   TraderInventoryData,
   JobBoardData,
+  ContainerData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
@@ -61,6 +62,8 @@ export interface EntityState {
   traderInventory?: TraderInventoryData;
   /** Hiring board's pending jobs — drives the job-board panel when the player interacts (T-076). */
   jobBoard?: JobBoardData;
+  /** Family chest slots — drives the deposit/withdraw panel when the player interacts (T-077/T-078). */
+  container?: ContainerData;
   stats?: StatsData;
   provenance?: ProvenanceData;
   worldClock?: WorldClockState;

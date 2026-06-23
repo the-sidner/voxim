@@ -53,6 +53,7 @@ function bankItem(world: World, chestId: string, ownerId: string, prefabId: stri
   world.write(ownerId, Inventory, { slots: [{ kind: "unique", entityId: item }], capacity: 20 });
   const r = storeInContainer(world, content, ownerId, chestId, item);
   assert(r.ok, `bankItem store failed: ${JSON.stringify(r)}`);
+  world.applyChangeset(); // store defers via world.set — commit before serialize/next bank reads live state
   return item;
 }
 function makeOwner(world: World, dynastyId: string): string {
@@ -176,6 +177,7 @@ Deno.test("4: a fresh heir (same dynasty) withdraws banked gear and equips it", 
 
   const wr = withdrawFromContainer(world, heir, treas, 0, heir);
   assert(wr.ok, `heir withdraw: ${JSON.stringify(wr)}`);
+  world.applyChangeset(); // commit the withdraw before the heir's inventory is read/equipped
   assert(world.get(heir, Inventory)!.slots.some((s) => s.kind === "unique" && s.entityId === sword));
 
   // Equip from inventory slot 0.
