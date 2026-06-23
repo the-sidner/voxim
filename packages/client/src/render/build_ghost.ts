@@ -16,6 +16,7 @@
 import * as THREE from "three";
 import { effect } from "@preact/signals";
 import { modeState, cursorCellState, type WorldCell } from "../input/context.ts";
+import { paletteToken } from "./palette.ts";
 
 const GHOST_COLOR = 0xe8c860;
 const GHOST_OPACITY = 0.35;
@@ -50,6 +51,9 @@ export class BuildGhostRenderer {
       this._setCount(0);
       return;
     }
+    // Tint from the single palette (T-280) — set on show so it's correct
+    // regardless of whether the palette arrived before this renderer was built.
+    this.mat.color.setHex(paletteToken("ghost"));
 
     const cells: WorldCell[] = [cell];
     if (mode.tool === "polyline" && mode.polyline) {

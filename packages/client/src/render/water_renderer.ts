@@ -20,6 +20,7 @@
  */
 import * as THREE from "three";
 import type { ClientWorld } from "../state/client_world.ts";
+import { paletteToken } from "./palette.ts";
 
 const CHUNK_SIDE = 32;
 
@@ -78,8 +79,8 @@ function buildWaterMaterial(): THREE.ShaderMaterial {
     fragmentShader: FRAG,
     uniforms: {
       uTime:    { value: 0 },
-      uShallow: { value: new THREE.Color(0x9ad8e8) },
-      uDeep:    { value: new THREE.Color(0x1a4080) },
+      uShallow: { value: new THREE.Color(paletteToken("waterShallow")) },
+      uDeep:    { value: new THREE.Color(paletteToken("waterDeep")) },
       uOpacity: { value: 0.62 },
     },
     transparent: true,

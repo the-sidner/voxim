@@ -21,6 +21,7 @@ import type { MaterialDef, ModelDefinition, ResolvedSubObject, WeaponActionDef, 
 import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
 import type { AabbHalfExtents } from "../interaction/interaction_system.ts";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
+import { setClientPalette, paletteToken } from "./palette.ts";
 import {
   createEntityMesh,
   updateEntityMesh,
@@ -579,6 +580,7 @@ export class VoximRenderer {
     // frame, so the swap takes effect immediately.
     const pal = cache.getPalette();
     if (pal) {
+      setClientPalette(pal);
       this.phaseLights = buildPhaseLights(pal);
       this.hemi.color.copy(this.phaseLights.noon.sky);
       (this.scene.background as THREE.Color).copy(this.phaseLights.noon.sky);
@@ -1930,22 +1932,27 @@ export class VoximRenderer {
     const colors:    number[] = [];
     const indices:   number[] = [];
 
+    // Trail color from the single palette (T-280). Hilt darkens slightly toward
+    // the base for the swept-flame gradient; tip is the full token color.
+    const tc = new THREE.Color(paletteToken("trail"));
+    const hr = tc.r * 0.85, hg = tc.g * 0.85, hb = tc.b * 0.85;
+
     // 4 verts per slice: hiltL, hiltR, tipR, tipL
     for (let i = 0; i < slices.length; i++) {
       const s = slices[i];
       const a = s.alpha;
       // hiltL
       positions.push(s.hiltX - s.perpX * s.halfW, s.hiltY, s.hiltZ - s.perpZ * s.halfW);
-      colors.push(1, 0.35, 0, a * 0.6);
+      colors.push(hr, hg, hb, a * 0.6);
       // hiltR
       positions.push(s.hiltX + s.perpX * s.halfW, s.hiltY, s.hiltZ + s.perpZ * s.halfW);
-      colors.push(1, 0.35, 0, a * 0.6);
+      colors.push(hr, hg, hb, a * 0.6);
       // tipR
       positions.push(s.tipX + s.perpX * s.halfW, s.tipY, s.tipZ + s.perpZ * s.halfW);
-      colors.push(1, 0.65, 0, a);
+      colors.push(tc.r, tc.g, tc.b, a);
       // tipL
       positions.push(s.tipX - s.perpX * s.halfW, s.tipY, s.tipZ - s.perpZ * s.halfW);
-      colors.push(1, 0.65, 0, a);
+      colors.push(tc.r, tc.g, tc.b, a);
     }
 
     // Between consecutive slices: 4 faces (left side, right side, near face, far face)
@@ -2033,21 +2040,15 @@ export class VoximRenderer {
 }
 
 /** Edge → marker accent colour. Helps the player tell which compass direction a gate faces. */
-const EDGE_COLOR: Record<string, number> = {
-  north: 0x66ccff,
-  south: 0xffaa66,
-  east:  0x99ff99,
-  west:  0xff99cc,
-};
-
 /**
  * Build the gate marker geometry: a stone-grey pillar with a coloured
  * capstone. Sized large enough to read from across the tile (≥250 units)
- * without dominating close-up framing.
+ * without dominating close-up framing. All gates share the one `gate` accent
+ * (T-280) — direction reads from placement, not from candy per-edge hues.
  */
-function buildGateMarker(edge: string): THREE.Group {
+function buildGateMarker(_edge: string): THREE.Group {
   const group = new THREE.Group();
-  const accent = EDGE_COLOR[edge] ?? 0xffffff;
+  const accent = paletteToken("gate");
 
   const pillarHeight = 8;
   const pillarRadius = 0.6;

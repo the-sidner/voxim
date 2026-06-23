@@ -18,6 +18,7 @@ import * as THREE from "three";
 import type { EntityState } from "../state/client_world.ts";
 import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject } from "@voxim/content";
 import { getVoxelTexture } from "./material_textures.ts";
+import { paletteToken } from "./palette.ts";
 import { type BakedVoxel, bakeDisplacedVoxel, unitBoxIndex, unitBoxUV } from "./voxel_bake.ts";
 import type { VoxelBakeSpec } from "./bake_protocol.ts";
 import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
@@ -65,13 +66,13 @@ function geometryFromBakedVoxel(baked: BakedVoxel): THREE.BufferGeometry {
 }
 
 function pickPlaceholderColor(state: EntityState, isLocal: boolean): THREE.ColorRepresentation {
-  if (isLocal) return 0x00ffff;
+  if (isLocal) return paletteToken("localPlayer");
   const h = state.health;
-  if (!h) return 0xffffff;
+  if (!h) return paletteToken("healthHigh");
   const ratio = h.current / h.max;
-  if (ratio < 0.3) return 0xff2222;
-  if (ratio < 0.7) return 0xff8800;
-  return 0x88cc44;
+  if (ratio < 0.3) return paletteToken("healthLow");
+  if (ratio < 0.7) return paletteToken("healthMid");
+  return paletteToken("healthHigh");
 }
 
 /** One timestamped position sample in Three.js world space. Used for interpolation. */
@@ -255,7 +256,7 @@ function createPlaceholder(
     const h = state.blueprint.heightDelta > 0 ? state.blueprint.heightDelta : 0.25;
     const geo = GEO_UNIT; // 1×1×1 unit cube, scaled to actual size below
     const body = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
-      color: 0x4488ff,
+      color: paletteToken("blueprint"),
       transparent: true,
       opacity: 0.45,
       flatShading: true,
@@ -266,12 +267,12 @@ function createPlaceholder(
     body.position.y = h / 2;
     // Wireframe overlay for scaffold edge lines
     const edges = new THREE.EdgesGeometry(geo);
-    const wf = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x88bbff, transparent: true, opacity: 0.9 }));
+    const wf = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: paletteToken("blueprintWire"), transparent: true, opacity: 0.9 }));
     wf.scale.set(1.0, h, 1.0);
     wf.position.y = h / 2;
     body.add(wf);
     // dir mesh hidden — not meaningful for blueprints
-    const dir = new THREE.Mesh(GEO_DIR, new THREE.MeshPhongMaterial({ color: 0x4488ff, transparent: true, opacity: 0 }));
+    const dir = new THREE.Mesh(GEO_DIR, new THREE.MeshPhongMaterial({ color: paletteToken("blueprint"), transparent: true, opacity: 0 }));
     dir.visible = false;
     return { body, dir };
   }
@@ -403,90 +404,6 @@ function nodeBakeSpec(
 export function bakedCursor(baked: BakedVoxel[] | undefined): BakedVoxelCursor {
   let i = 0;
   return () => baked?.[i++];
-}
-
-// ---- upgrade to static voxel model ----
-
-/**
- * Bake specs for `upgradeToVoxelModel`, in the EXACT order that function builds
- * voxel meshes (main nodes, then each resolved sub-object's nodes).  The
- * renderer feeds these to the bake pool and passes the results back as a cursor.
- */
-export function collectVoxelModelBakeSpecs(
-  def: ModelDefinition,
-  resolvedSubs: ResolvedSubObject[],
-  subModelDefs: Map<string, ModelDefinition>,
-  scale: { x: number; y: number; z: number },
-): VoxelBakeSpec[] {
-  const specs: VoxelBakeSpec[] = [];
-  for (const node of def.nodes) specs.push(nodeBakeSpec(node, scale));
-  for (const sub of resolvedSubs) {
-    const subDef = subModelDefs.get(sub.modelId);
-    if (!subDef) continue;
-    const subScale = {
-      x: scale.x * sub.transform.scaleX,
-      y: scale.y * sub.transform.scaleY,
-      z: scale.z * sub.transform.scaleZ,
-    };
-    for (const node of subDef.nodes) specs.push(nodeBakeSpec(node, subScale));
-  }
-  return specs;
-}
-
-/**
- * Replace the placeholder/previous model with flat voxel geometry from a
- * ModelDefinition that has no skeleton.
- * resolvedSubs: output of resolveSubObjects() — sub-objects positioned by their
- * static transforms (no bone animation).
- * baked: optional pre-baked voxels from the pool (collectVoxelModelBakeSpecs
- * order); when absent each voxel bakes synchronously.
- */
-export function upgradeToVoxelModel(
-  mesh: EntityMeshGroup,
-  def: ModelDefinition,
-  resolvedSubs: ResolvedSubObject[],
-  subModelDefs: Map<string, ModelDefinition>,
-  materials: Map<number, MaterialDef>,
-  scale: { x: number; y: number; z: number },
-  baked?: BakedVoxel[],
-): void {
-  clearMeshContent(mesh);
-  const cursor = bakedCursor(baked);
-
-  const voxelMeshes: THREE.Mesh[] = [];
-  for (const node of def.nodes) {
-    const vox = buildVoxelMesh(node, materials, scale, false, cursor);
-    mesh.group.add(vox);
-    voxelMeshes.push(vox);
-  }
-
-  // Sub-objects: positioned by static transform, no skeleton
-  for (const sub of resolvedSubs) {
-    const subDef = subModelDefs.get(sub.modelId);
-    if (!subDef) continue;
-    const subGroup = new THREE.Group();
-    subGroup.name = `sub:${sub.modelId}`;
-    subGroup.position.set(
-      sub.transform.x * scale.x,
-      sub.transform.z * scale.z,
-      sub.transform.y * scale.y,
-    );
-    subGroup.rotation.set(sub.transform.rotX, sub.transform.rotZ, sub.transform.rotY);
-    mesh.group.add(subGroup);
-    const subScale = {
-      x: scale.x * sub.transform.scaleX,
-      y: scale.y * sub.transform.scaleY,
-      z: scale.z * sub.transform.scaleZ,
-    };
-    for (const node of subDef.nodes) {
-      const vox = buildVoxelMesh(node, materials, subScale, false, cursor);
-      subGroup.add(vox);
-      voxelMeshes.push(vox);
-    }
-  }
-
-  mesh.voxelMeshes = voxelMeshes;
-  mesh.modelId = def.id;
 }
 
 // ---- upgrade to skeleton model ----

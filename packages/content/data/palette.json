@@ -51,7 +51,9 @@
     "healthMid": "ember",
     "healthLow": "blood",
     "gate": "aether",
-    "torchLight": "ember"
+    "torchLight": "ember",
+    "waterShallow": "shallow",
+    "waterDeep": "deep-water"
   },
   "phases": {
     "noon":     { "sky": "#9aa39e", "fog": "#9aa39e", "sun": "#fff4d8", "sunIntensity": 2.5,  "hemiIntensity": 0.25, "fogFar": 220 },
