@@ -17,20 +17,37 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { computed } from "@preact/signals";
 import { uiState, patchUI } from "../ui_store.ts";
+import { contentService } from "../content_ref.ts";
 import type { UIAction } from "../ui_actions.ts";
-
-const STRUCTURE_OPTIONS: { id: string; label: string }[] = [
-  { id: "wood_wall",  label: "Wood\nWall"  },
-  { id: "wood_door",  label: "Door\nway"   },
-  { id: "wood_floor", label: "Floor"       },
-  { id: "stone_wall", label: "Stone\nWall" },
-  { id: "dirt_ramp",  label: "Ramp"        },
-];
 
 const RADIUS    = 84;
 const ITEM_SIZE = 64;
 
+/** "wood_wall" → "Wood\nWall" — title-case each word, one word per line. */
+function labelFromId(id: string): string {
+  return id.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("\n");
+}
+
 const radialMenu = computed(() => uiState.value.radialMenu);
+
+/**
+ * Buildable structures, content-driven (T-284): every prefab carrying BOTH a
+ * `placeable` and a `blueprint` component is a build-radial option — adding a
+ * structure is a content file drop, no code change. (Deployable workstations
+ * have `placeable` without `blueprint` and deploy from inventory, so they're
+ * excluded.)
+ */
+const buildOptions = computed<{ id: string; label: string }[]>(() => {
+  const cs = contentService.value;
+  if (!cs) return [];
+  const opts: { id: string; label: string }[] = [];
+  for (const prefab of cs.prefabs.values()) {
+    if (prefab.components["placeable"] && prefab.components["blueprint"]) {
+      opts.push({ id: prefab.id, label: labelFromId(prefab.id) });
+    }
+  }
+  return opts;
+});
 
 export function RadialMenu({ onAction }: { onAction: (a: UIAction) => void }) {
   const menu = radialMenu.value;
@@ -68,11 +85,12 @@ export function RadialMenu({ onAction }: { onAction: (a: UIAction) => void }) {
 
   if (!menu) return null;
 
-  const count = STRUCTURE_OPTIONS.length;
+  const options = buildOptions.value;
+  const count = options.length;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: "var(--z-modal)", pointerEvents: "none" }}>
-      {STRUCTURE_OPTIONS.map((opt, i) => {
+      {options.map((opt, i) => {
         const angle = (2 * Math.PI * i) / count - Math.PI / 2;
         const cx    = menu.x + Math.cos(angle) * RADIUS;
         const cy    = menu.y + Math.sin(angle) * RADIUS;
