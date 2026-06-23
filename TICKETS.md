@@ -514,7 +514,7 @@ proving constant-mag welds a shared cliff corner while default mag cracks it; AN
 palette-shared terrain meeting props with no gap.
 
 ### T-284 · Client rebuild Phase 4 — build spine on the real pipeline
-Effort: L   Status: in-progress   (chunk 1 of 3 landed — the build interaction)
+Effort: L   Status: in-progress   (chunks 1-2 of 3 landed — interaction + server authority)
 
 CHUNK 1 DONE (b5cf82f) — the client build interaction, via a 3-approach design
 panel + judge (height-column cursor pick won): VoxelHit {cellX,cellY,baseZ,layer}
@@ -530,11 +530,22 @@ unit tests, ghost screenshots (single/line/spacing). NO wire/server change yet.
 Deferred (per judge scope cut): side-face placement, a layered occupancy grid,
 mid-stack picking, invalid/red ghosting (needs server validation).
 
-CHUNK 2 (server authority): grow ONE `PlaceVoxels { prefabId, voxelSize, spacing,
-baseLayer, cells:[{cellX,cellY,layer}] }` command + codec; `PlacementSystem`
-re-validates with the shared `bresenhamCells` (reach, occupancy, stack height) —
-the VoxelHit/brush already carry every field, zero pick rework. Enables invalid/red
-ghost feedback.
+CHUNK 2 DONE (d919c1e) — server authority. New `PlaceVoxels=23 { prefabId,
+voxelSize, cells:[{cellX,cellY}] }` command + codec replaces chunk 1's per-cell
+Place loop; the client sends ONE command (the spacing-decimated brushCells list).
+`PlacementSystem._handlePlaceVoxels` is authoritative over BOTH validity and
+HEIGHT: each cell's z is the terrain top (`getHeight` on the chunk's Heightmap +
+`snapHeight`) + the column's stack × voxelSize — not the placer's z (fixed a
+pre-existing ghost-vs-actual mismatch). Stacking allowed (no cellMustBeEmpty),
+out-of-reach cells skipped, tool gate reused. The ghost tints red (new palette
+`ghostInvalid`) when any cell is out of reach (`_isCellReachable` mirrors the
+server gate). Verified: deno check (5 targets), 10 tests (6 codec round-trip +
+4 placement: terrain-z/stack/reach/tool-gate), live red out-of-reach line ghost +
+tool-gate rejection. NOTE the wire sends the final cell list (server reach-gates
+each), not (anchor,end,spacing) — the "shared bresenham server-side" anti-fabrication
+is deferred (reach is the real authority; sharing bresenham needs it in a shared
+package). Mid-stack `layer`/`baseLayer` fields dropped — the server derives the
+stack itself.
 CHUNK 3 (folds): content-drive the RadialMenu (replace hardcoded
 `STRUCTURE_OPTIONS` RadialMenu.tsx:22 with a `contentService` placeable query);
 export `CODEC_BY_WIREID` from `@voxim/codecs` + replace the 31-case decode switch +
@@ -558,6 +569,44 @@ client.
 Done when: a player places single voxels and lines with size/spacing control, the
 ghost matches the commit cell-for-cell, the radial is content-driven, and decode
 is registry-dispatched.
+
+### T-285 · Procedural Model primitive — generator + per-tile variant pool
+Effort: L   Status: todo   (design: `PROCMODEL_PRIMITIVE_PLAN.md`)
+
+The fifth content-driven primitive (visual), generalizing `ForestPropsRenderer`
+into the rebuild's named "Models (entity/prop/forest)" producer — the
+`instance_pool.ts` "future rocks and litter" hook. Two locked decisions: (1)
+generator = **parametric atom-grammar** emitting `VoxelAtom[]` from a seed (SPEC
+L22), not authored `subObjects`+`pool`; (2) **all scatter is visual-only (zero
+ECS entity, collision from `OpenMask`); harvest nodes are separate invisible
+`ResourceNode` entities** co-located in scatter cells (positional link, accepted
+drift) — which frees the generator's PRNG order from any server hitbox contract.
+
+Shape: content `ProcModelDef` (`data/procmodels/`, `{generator, params}`) +
+`ScatterDef` (`data/scatter/`, `{kind, procModel, pool, stride, scaleJitter}` —
+absorbs every `FOREST_*` hardcode); a client **generator registry**
+(`register("tree_grammar", (seed,params)=>VoxelAtom[])`, boot-cross-checked, no
+`switch`); a per-tile **VariantPool** (roll `tileSeed`→K sub-seeds→K generator
+runs→K baked geometries→K archetypes `scatter:{id}:{i}|{mat}`); a
+**ScatterRenderer** replacing `ForestPropsRenderer` that picks `variantIndex =
+hash(worldPos) % pool` per cell and rides scale/rotation jitter on the instance
+matrix. The fixed-K pool IS the instancing economics (K meshes, thousands of
+instances). Scale-on-matrix (not in the archetype key) **resolves the deferred
+T-281 archetype-explosion**. Whole look inherited free via `bakeVoxels` +
+`buildVoxelMaterial` + `InstancePool`.
+
+Phasing (see plan): **T-285a** schema + registry + cross-check + fix the
+`VoxelAtom` half-extents comment (atoms are FULL edge lengths — `voxel_bake.ts:135`
+is authoritative), lands inert · **T-285b** `tree_grammar` (trunk/branch-L-system/
+foliage-blob) + bake test · **T-285c** VariantPool + ScatterRenderer, delete
+`forest_props.ts`, `FOREST_*`→content, live-verify via `scripts/testplay.mjs` ·
+**T-285d** second generator (`boulder_grammar`) + 6-variant stone scatter, zero
+engine edits. Replace-not-accrete: `tree_oak`/`branch_oak_*` retire for forests.
+Sibling ticket (not here): deterministic server harvest-node placement in scatter
+cells.
+Done when: forests render from `tree_grammar` variant pools (≥`pool` distinct
+silhouettes, stable across reloads), `ForestPropsRenderer` and the `FOREST_*`
+hardcodes are gone, and a stone ScatterDef adds 6 variants with no code change.
 
 ## Animation & Render Verification
 
