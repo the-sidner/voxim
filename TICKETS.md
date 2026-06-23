@@ -488,18 +488,30 @@ now scene/camera/post-FX + the render() pipeline + (low-coupling) terrain, at
 ticket can close here or carry the optional terrain extraction.
 
 ### T-283 · Client rebuild Phase 3 — terrain becomes voxels
-Effort: L   Status: todo
+Effort: L   Status: done   Commit: bf2ff74
 
-Client re-expresses heightmap+materialGrid as voxel atoms at decode time: per
-cell a top atom at the surface + edge atoms only where a neighbor is lower (the
-wall condition terrain_mesh.ts:142-174 already computes, emitting atoms not
-quads), greedy-merged per material per chunk through `bakeVoxels`. Cliff faces
-become baked voxel boxes sharing `vertexDisp` + palette with props — "voxels ARE
-terrain edges" becomes literally true. Heightmap stays the collision/authoring
-source (physics untouched); no wire-format change this phase. Delete the
-quad-emission path in `terrain_mesh.ts`.
-Done when: terrain renders as palette-shared voxels that don't crack against
-placed/prop voxels; physics + AoI unchanged.
+Client re-expresses heightmap+materialGrid as voxel atoms: per cell ONE COLUMN-BOX
+atom (top face at the cell height, bottom reaching the lowest of its 4 neighbours
+so the side faces ARE the exposed cliff), bucketed per material per chunk and
+baked through `bakeVoxels`. Cliff faces are baked voxel boxes sharing `vertexDisp`
++ palette with props — "voxels ARE terrain edges" is literally true. Heightmap
+stays the collision/authoring source (physics + AoI + wire UNCHANGED). The
+quad-emission path (`terrain_mesh.ts`) is deleted, not shimmed.
+
+Implemented (3-approach design panel + judge → hybrid): column-box atomization in
+a new THREE-free `terrain_voxels.ts` (`buildChunkAtoms` + `TERRAIN_DISP_MAG`);
+heights are 0.25-quantized so the per-voxel-size unlock (T-281) carries cliff
+depth — no unit-stacking. The judge's load-bearing catch: `mag = 0.10*min(scale)`
+is PER-VOXEL, so different-depth column boxes would crack at a shared cliff corner
+— fixed by an optional constant `mag` on `bakeDisplacedVoxel`/`bakeVoxels`, pinned
+to `0.10*HEIGHT_STEP` for terrain (default path byte-identical → prop parity).
+Uniform palette material via `buildVoxelMaterial` per matId (cellVariation +
+vertexColors + the renderer's `_matColor` table dropped). terrainMeshes →
+`Map<key, Mesh[]>`; all-4-neighbour rebuild.
+Verified: deno check (4 targets); 10/10 render unit tests incl an adversarial case
+proving constant-mag welds a shared cliff corner while default mag cracks it; ANIM
+7/7; 220 chunks render voxelized + crack-free; screenshot shows blocky
+palette-shared terrain meeting props with no gap.
 
 ### T-284 · Client rebuild Phase 4 — build spine on the real pipeline
 Effort: L   Status: todo
