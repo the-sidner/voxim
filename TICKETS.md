@@ -546,11 +546,20 @@ each), not (anchor,end,spacing) — the "shared bresenham server-side" anti-fabr
 is deferred (reach is the real authority; sharing bresenham needs it in a shared
 package). Mid-stack `layer`/`baseLayer` fields dropped — the server derives the
 stack itself.
-CHUNK 3 (folds): content-drive the RadialMenu (replace hardcoded
-`STRUCTURE_OPTIONS` RadialMenu.tsx:22 with a `contentService` placeable query);
-export `CODEC_BY_WIREID` from `@voxim/codecs` + replace the 31-case decode switch +
-hand-rolled DataView decodes (client_world.ts:155-283); land the deferred
-networked-`Container` chest UI (T-077/T-078) once Container gets a wire id.
+CHUNK 3 (folds) — 2 of 3 done:
+  · DONE (d170c42) RadialMenu content-driven: the hardcoded STRUCTURE_OPTIONS
+    (which listed non-existent wood_door/wood_floor/dirt_ramp) is now a
+    `contentService` query over prefabs with BOTH `placeable` + `blueprint`.
+  · DONE (f7b0976) Decode registry-dispatch: new `CODEC_BY_WIREID` (in
+    @voxim/protocol — NOT @voxim/codecs as guessed; protocol→codecs dep direction
+    forbids it) replaces client_world's 31-case switch + the hand-rolled
+    health/worldClock DataView decodes (new worldClockCodec). The 3 terrain-grid
+    components keep explicit cases (chunk-binding side effects). Coverage test +
+    ANIM 7/7 confirm behaviour-identical decoding.
+  · REMAINING: the deferred networked-`Container` chest UI (T-077/T-078) — give
+    Container a wire id + codec, decode it client-side, build the deposit/withdraw
+    panel on the rebuilt client. This is a FEATURE (not a fold) — the largest
+    remaining T-284 piece; best as its own focused effort.
 
 ORIGINAL SCOPE (full ticket): Brush descriptor on `modeState` (`tool:"single"|"line"`,
 `voxelSize`, `spacing`) + `ui_store` fields + a build HUD (size/spacing). Content-
