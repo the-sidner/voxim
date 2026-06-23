@@ -514,9 +514,34 @@ proving constant-mag welds a shared cliff corner while default mag cracks it; AN
 palette-shared terrain meeting props with no gap.
 
 ### T-284 · Client rebuild Phase 4 — build spine on the real pipeline
-Effort: L   Status: todo
+Effort: L   Status: in-progress   (chunk 1 of 3 landed — the build interaction)
 
-The owner's core mechanic. Brush descriptor on `modeState` (`tool:"single"|"line"`,
+CHUNK 1 DONE (b5cf82f) — the client build interaction, via a 3-approach design
+panel + judge (height-column cursor pick won): VoxelHit {cellX,cellY,baseZ,layer}
+replaces WorldCell; `_resolveVoxelHit` = flat-plane ray + terrain-top + per-column
+stack count (top-of-column placement, vertical stacking). New `input/build_line.ts`
+holds the ONE shared `bresenhamCells`+`brushCells` (deletes both dups; ghost +
+commit share it → WYSIWYG). New `state/build_occupancy.ts` mirrors placed
+blueprint entities per column (drift-free). `build_ghost.ts` bakes the preview
+through `bakeVoxels` at the brush voxelSize, palette-tinted. New `BuildHud.tsx`
+(size/spacing steppers). `Placeable.tool` "polyline"→"line" across content +
+game_config building.defaultVoxelSize/defaultSpacing. Verified: deno check, 25
+unit tests, ghost screenshots (single/line/spacing). NO wire/server change yet.
+Deferred (per judge scope cut): side-face placement, a layered occupancy grid,
+mid-stack picking, invalid/red ghosting (needs server validation).
+
+CHUNK 2 (server authority): grow ONE `PlaceVoxels { prefabId, voxelSize, spacing,
+baseLayer, cells:[{cellX,cellY,layer}] }` command + codec; `PlacementSystem`
+re-validates with the shared `bresenhamCells` (reach, occupancy, stack height) —
+the VoxelHit/brush already carry every field, zero pick rework. Enables invalid/red
+ghost feedback.
+CHUNK 3 (folds): content-drive the RadialMenu (replace hardcoded
+`STRUCTURE_OPTIONS` RadialMenu.tsx:22 with a `contentService` placeable query);
+export `CODEC_BY_WIREID` from `@voxim/codecs` + replace the 31-case decode switch +
+hand-rolled DataView decodes (client_world.ts:155-283); land the deferred
+networked-`Container` chest UI (T-077/T-078) once Container gets a wire id.
+
+ORIGINAL SCOPE (full ticket): Brush descriptor on `modeState` (`tool:"single"|"line"`,
 `voxelSize`, `spacing`) + `ui_store` fields + a build HUD (size/spacing). Content-
 drive the RadialMenu (replace hardcoded `STRUCTURE_OPTIONS` RadialMenu.tsx:22 with
 a `contentService` query over placeable prefabs). De-duplicate `bresenhamCells` to
