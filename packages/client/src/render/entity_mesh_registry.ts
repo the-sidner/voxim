@@ -472,21 +472,7 @@ export class EntityMeshRegistry {
     const weaponScale = prefab?.modelScale ?? 1.0;
     const voxelScale = { x: weaponScale, y: weaponScale, z: weaponScale };
 
-    this.content!.prefetchModel(modelId).then(async () => {
-      const currentSlot = mesh.attachments.get(slotId);
-      if (currentSlot?.modelId !== modelId || !mesh.boneGroups) return;
-      const def = this.content!.getModelSync(modelId);
-      if (!def) { if (currentSlot) currentSlot.modelId = null; return; }
-
-      const mats = new Map<number, MaterialDef>();
-      for (const id of def.materials) {
-        const m = this.content!.getMaterialSync(id);
-        if (m) mats.set(id, m);
-      }
-
-      // Re-check the slot still wants this model after the async model prefetch.
-      if (mesh.attachments.get(slotId)?.modelId !== modelId || !mesh.boneGroups) return;
-
+    this.loadSlotModel(mesh, slotId, modelId, (def, mats) => {
       // AABB scan in model coords. Model Z is the blade-axis (voxel-rendered
       // → three.js Y). For hand slots we anchor the model's BOTTOM (minZ) at
       // the hand bone so the pommel sits in the fist and the blade extends
@@ -539,9 +525,6 @@ export class EntityMeshRegistry {
           holdBone: slotHoldBone,
         };
       }
-    }).catch(() => {
-      const currentSlot = mesh.attachments.get(slotId);
-      if (currentSlot?.modelId === modelId) currentSlot.modelId = null;
     });
   }
 
@@ -578,8 +561,31 @@ export class EntityMeshRegistry {
     );
     pendingSlot.modelId = modelId;  // reserve
 
-    this.content!.prefetchModel(modelId).then(async () => {
-      const currentSlot = mesh.attachments.get(renderSlotId);
+    this.loadSlotModel(mesh, renderSlotId, modelId, (def, mats) => {
+      // Armor voxels bake synchronously through the bakeVoxels kitchen (T-281),
+      // one merged mesh per material at the slot's armor scale.
+      attachArmorToSlot(mesh, renderSlotId, def, mats, entityScale);
+    });
+  }
+
+  /**
+   * Shared async slot-model load (T-282) — the one place the slot stale-guard
+   * lives. Prefetch the model, then re-check the slot STILL wants `modelId` both
+   * before and after the await (the entity may be re-equipped or its skeleton
+   * torn down mid-fetch); load the model def + its materials; hand to `attach`.
+   * Any stale/missing condition clears the slot's `modelId` reservation. Callers
+   * (syncHandSlot / syncArmorSlot) reserve `slot.modelId` first and supply their
+   * own attach step — the only part that differs between an entity-root weapon
+   * and a bone-parented armour piece.
+   */
+  private loadSlotModel(
+    mesh: EntityMeshGroup,
+    slot: string,
+    modelId: string,
+    attach: (def: ModelDefinition, mats: Map<number, MaterialDef>) => void,
+  ): void {
+    this.content!.prefetchModel(modelId).then(() => {
+      const currentSlot = mesh.attachments.get(slot);
       if (currentSlot?.modelId !== modelId || !mesh.boneGroups) return;
       const def = this.content!.getModelSync(modelId);
       if (!def) { if (currentSlot) currentSlot.modelId = null; return; }
@@ -591,12 +597,10 @@ export class EntityMeshRegistry {
       }
 
       // Re-check the slot still wants this model after the async model prefetch.
-      if (mesh.attachments.get(renderSlotId)?.modelId !== modelId || !mesh.boneGroups) return;
-      // Armor voxels bake synchronously through the bakeVoxels kitchen (T-281),
-      // one merged mesh per material at the slot's armor scale.
-      attachArmorToSlot(mesh, renderSlotId, def, mats, entityScale);
+      if (mesh.attachments.get(slot)?.modelId !== modelId || !mesh.boneGroups) return;
+      attach(def, mats);
     }).catch(() => {
-      const currentSlot = mesh.attachments.get(renderSlotId);
+      const currentSlot = mesh.attachments.get(slot);
       if (currentSlot?.modelId === modelId) currentSlot.modelId = null;
     });
   }
