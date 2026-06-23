@@ -637,6 +637,33 @@ ZERO renderer edits — one handler + one register() + two data files. Deferred
 clean-up (still open): retire the now-unused authored `tree_oak`/`branch_oak_*`
 models for forests, and the sibling server harvest-node placement.
 
+### T-286 · Artistic sweep — filmic grim grade + readable lighting
+Effort: M   Status: done   Commit: 0a98014
+
+The grim palette ("a green-grey world the ash fell on") was invisible — even at
+noon the world rendered as a near-black void; the desaturated earth tones never
+read. An art pass to make the world readable AND more cinematic, without losing
+the grim, low-chroma identity. All in lighting + the EdgePass post (no LUT):
+
+- **Filmic tone** — the EdgePass renderer was `NoToneMapping` + a raw linear→sRGB
+  clamp; added an in-shader ACES curve + exposure (1.5) on the LIT radiance
+  (before the fog-of-war dim), so lifted midtones read while sunlit/ember patches
+  roll off instead of clipping.
+- **Readable fill** — hemisphere intensity bumped across phases (noon 0.25→0.5,
+  …, midnight 0.04→0.16 + moonlit sun 0.06→0.18) so shadowed faces aren't black.
+  Explored-but-unseen fog dim lifted 0.55→0.66.
+- **Split-tone grade** — cool shadows / warm highlights by luminance (±~6%),
+  reinforcing the palette's own deep-water/frost ↔ timber/sand axis — painterly
+  depth for the flat grey, no recolour.
+- **Vignette** — a subtle corner falloff for focus (0.12), sitting on top of the
+  fog-of-war (not fighting it).
+- **edgeInk plumbed** — EdgePass no longer hardcodes `0x0d0d0d`; the silhouette/
+  crease ink reads the `edgeInk` palette token (peat `#161611`, warmer) via
+  `setEdgeColor`, wired where the palette applies (the PROCMODEL §6.4 fix).
+
+Verified with a true before/after at snapped-noon (sun 2.5, hemi 0.25→0.5): the
+lit world reads with tonal depth where it was a muted void, grim mood intact.
+
 ## Animation & Render Verification
 
 ### T-275 · Animation freeze — locomotion clobbered by empty-slot idle fallback
