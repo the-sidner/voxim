@@ -361,21 +361,19 @@ T-280..T-284 land; Phase 5 (sparse-voxel chunk wire) stays deferred until volume
 editing demands it.
 
 ### T-280 · Client rebuild Phase 0 — cleanup + palette authority
-Effort: M   Status: in-progress   (core landed — dead-code, palette authority, material snap, terrain unfork, lighting; remaining: literals, builder-collapse, UI shim)
+Effort: M   Status: done   (8 commits 20efcb4..fc67344)
 
-DONE: dead static-voxel + IK paths deleted (20efcb4); `palette.json` single color
-authority + CIELAB material snap-on-load with reserved signal swatches +
-intent-override map, shipped in the bootstrap blob (d330699); terrain reads the
-one palette source — drifted `MAT_COLORS` deleted (5e58043); day-night lighting +
-sky/fog built from the palette `phases` — cyan sky gone (438b195). The headline
-color-identity win (materials + terrain + lighting on one ash-hazed palette) is
-landed and screenshot-verified.
-REMAINING: migrate the ~23 ad-hoc render hex literals (build ghost, blueprint
-scaffold, gate accents, weapon trail, placeholder health tints, water_renderer)
-to `palette.*` tokens via a `render/palette.ts` accessor; collapse the four
-`MaterialDef→Material` builders into one `buildVoxelMaterial`; collapse the UI's
-two token generations (theme.css Dreamborn + the legacy `--col-*` alias shim) to
-one source and delete the shim.
+Every on-screen color now resolves from one `palette.json`: dead static-voxel + IK
+paths deleted (20efcb4); the palette authority + CIELAB material snap-on-load
+(reserved signal swatches + intent-override map), shipped in the bootstrap blob
+(d330699); terrain reads the one source — drifted `MAT_COLORS` gone (5e58043);
+day-night lighting/sky/fog from the palette `phases` — cyan sky gone (438b195);
+the ~23 ad-hoc render hex literals routed through a `render/palette.ts` token
+accessor (782c9ab); the four `MaterialDef→Material` builders collapsed into one
+`buildVoxelMaterial` (28c3174); the UI's legacy `--col-*` alias shim inlined onto
+the Dreamborn tokens and deleted (fc67344). A designer retunes the whole game —
+chrome and world, ground and ghost — from `palette.json`. Headline screenshot-
+verified: candy spring-green world → cohesive ash-hazed identity.
 
 Highest identity-per-effort, no new capability. Delete dead code
 (`upgradeToVoxelModel`/`collectVoxelModelBakeSpecs` entity_mesh.ts:415-490,
@@ -397,7 +395,19 @@ props share a material color; a designer can retune the whole game's palette fro
 one file; the dead modules are gone; `deno check` + client bundle green.
 
 ### T-281 · Client rebuild Phase 1 — voxel atom + one bake kitchen
-Effort: L   Status: todo
+Effort: L   Status: in-progress   (foundation landed ce3cf90; bake-kitchen core remaining)
+
+DONE: `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` in `@voxim/content`
+(per-voxel size = the "different sizes" unlock; center+extents; materialId the
+only color carrier) + `render/coords.ts` `modelToThree`/`modelScaleToThree` — the
+model→three swap now has one definition, stable sub-object sites routed through it.
+REMAINING (the core): add per-voxel `size` to the bake spec; promote `bakeSubModel`
+→ `bakeVoxels(atoms, materialId)`; swap the bake-worker protocol from
+`VoxelBakeSpec[]` to `VoxelAtom[]` returning merged `BakedMesh` batches; route
+InstancePool through atoms; then collapse the per-node entity path
+(`buildVoxelMesh` + the collector/cursor parallel-traversal coupling) onto the
+merged path. This is a wire-format-touching change (main thread ↔ bake worker) —
+keep the `voxel_bake.test.ts` parity green through it.
 
 Introduce `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` (center + per-voxel
 size + material) in `@voxim/content` + `render/coords.ts` `modelToThree` (route
