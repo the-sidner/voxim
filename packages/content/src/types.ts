@@ -1298,6 +1298,34 @@ export interface InjuryDef {
   combatEligible?: boolean;
 }
 
+/** One day-night lighting phase (T-280). Colors are `#rrggbb` strings. */
+export interface PalettePhase {
+  sky: string;
+  fog: string;
+  sun: string;
+  sunIntensity: number;
+  hemiIntensity: number;
+  fogFar: number;
+}
+
+/**
+ * The single color authority (T-280). `ramp` is the named swatch set every
+ * material color snaps to at load; `tokens` alias render-literal roles to a ramp
+ * swatch; `phases` is the day-night lighting. Ships in the bootstrap blob.
+ */
+export interface Palette {
+  ramp: Record<string, string>;
+  /** Swatch names reserved from material auto-snap (fire/corruption/vitals).
+   * Ordinary materials never snap onto these; only explicit `materials`
+   * overrides or `tokens` may reference them. */
+  signal?: string[];
+  /** Explicit material-name → swatch-name overrides (authored intent that
+   * nearest-color can't infer, e.g. water → deep-water, torch → ember). */
+  materials?: Record<string, string>;
+  tokens: Record<string, string>;
+  phases: Record<string, PalettePhase>;
+}
+
 export interface GameConfig {
   survival: {
     hungerRatePerSec: number;

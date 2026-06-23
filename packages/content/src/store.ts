@@ -45,6 +45,7 @@ import type {
   LoreFragment,
   Prefab,
   GameConfig,
+  Palette,
   TileLayout,
   WeaponActionDef,
   ActionDef,
@@ -159,6 +160,7 @@ export interface ContentService {
   // ---- singletons ----
   getGameConfig(): GameConfig;
   getTileLayout(): TileLayout | null;
+  getPalette(): Palette;
 }
 
 export class StaticContentStore implements ContentService {
@@ -245,6 +247,7 @@ export class StaticContentStore implements ContentService {
   // ---- singletons ----
   private gameConfig: GameConfig | null = null;
   private tileLayout: TileLayout | null = null;
+  private palette: Palette | null = null;
 
   // ---- derived caches ----
   private boneIndexCache = new Map<string, ReadonlyMap<string, BoneDef>>();
@@ -350,6 +353,10 @@ export class StaticContentStore implements ContentService {
 
   setTileLayout(layout: TileLayout): void {
     this.tileLayout = layout;
+  }
+
+  setPalette(palette: Palette): void {
+    this.palette = palette;
   }
 
   // ---- specialized lookups ----
@@ -536,6 +543,11 @@ export class StaticContentStore implements ContentService {
 
   getTileLayout(): TileLayout | null {
     return this.tileLayout;
+  }
+
+  getPalette(): Palette {
+    if (!this.palette) throw new Error("Palette not loaded");
+    return this.palette;
   }
 }
 

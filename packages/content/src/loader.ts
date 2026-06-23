@@ -21,7 +21,8 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, Palette } from "./types.ts";
+import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
 
@@ -72,8 +73,35 @@ async function loadContentStoreInternal(
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
   ]);
 
+  // Palette (T-280): the single color authority. Load it before materials so
+  // each material color snaps to the nearest ramp swatch at registration —
+  // cohesion enforced by the pipeline, not authoring discipline.
+  const palette = await readJsonObject(dataDir, "palette.json") as unknown as Palette;
+  store.setPalette(palette);
+  // Auto-snap targets exclude the reserved `signal` swatches (fire/corruption/
+  // vitals) so an ordinary earth material can't be pulled onto, say, blood or
+  // rot. Materials that ARE signal (torch, corrupted) or whose nearest-color
+  // misses intent (water → deep-water) are pinned by the `materials` overrides.
+  const signal = new Set(palette.signal ?? []);
+  const worldRamp = Object.entries(palette.ramp)
+    .filter(([name]) => !signal.has(name))
+    .map(([, hex]) => hexStrToNum(hex));
+  const overrides = palette.materials ?? {};
+  const swatchName = new Map<number, string>();
+  for (const [name, hex] of Object.entries(palette.ramp)) swatchName.set(hexStrToNum(hex), name);
+  const logSnaps = (() => { try { return !!Deno.env.get("VOXIM_PALETTE_LOG"); } catch { return false; } })();
+  const hexOf = (c: number) => "#" + c.toString(16).padStart(6, "0");
   for (const raw of materialsRaw as RawMaterialDef[]) {
-    store.registerMaterial(parseMaterial(raw));
+    const mat = parseMaterial(raw);
+    const override = overrides[mat.name];
+    const snapped = override !== undefined && palette.ramp[override] !== undefined
+      ? hexStrToNum(palette.ramp[override])
+      : snapColorToRamp(mat.color, worldRamp);
+    if (logSnaps && snapped !== mat.color) {
+      console.log(`[palette] ${mat.name.padEnd(14)} ${hexOf(mat.color)} → ${(swatchName.get(snapped) ?? "?").padEnd(11)} ${hexOf(snapped)}${override ? " (override)" : ""}`);
+    }
+    mat.color = snapped;
+    store.registerMaterial(mat);
   }
 
   for (const raw of modelsRaw as ModelDefinition[]) {

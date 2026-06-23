@@ -28,11 +28,11 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, GameConfig, TileLayout, Prefab,
-  ResourceDef, TriggerDef,
+  ResourceDef, TriggerDef, Palette,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 13;
+export const BOOTSTRAP_VERSION = 14;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -54,6 +54,7 @@ interface ContentBootstrapJson {
   triggers:            TriggerDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
+  palette:             Palette;
 }
 
 async function gzip(input: Uint8Array): Promise<Uint8Array> {
@@ -123,6 +124,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     triggers:            [...service.triggers.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
+    palette:             service.getPalette(),
   };
 
   const jsonBytes = new TextEncoder().encode(JSON.stringify(jsonBody));
@@ -204,6 +206,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const t of body.triggers)             store.registerTrigger(t);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
+  store.setPalette(body.palette);
 
   return store;
 }
