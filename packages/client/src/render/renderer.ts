@@ -42,7 +42,7 @@ import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool, type InstanceSlot } from "./instance_pool.ts";
 import { buildSubModelGeo } from "./voxel_geo.ts";
 import { BakePool } from "./bake_pool.ts";
-import { getVoxelTexture } from "./material_textures.ts";
+import { buildVoxelMaterial } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
 import { evaluatePose, evaluateBladeWorld } from "./skeleton_evaluator.ts";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
@@ -881,20 +881,7 @@ export class VoximRenderer {
    *  across the two systems because they may diverge over time and the
    *  shared-cache complexity isn't worth it for a few extra materials. */
   private _buildPropMaterial(matId: number, mats: Map<number, MaterialDef>): THREE.Material {
-    const matDef = mats.get(matId);
-    const color = matDef?.color ?? 0x888888;
-    const shininess = matDef ? Math.round((1 - matDef.roughness) * 80) : 0;
-    const emissive = matDef && matDef.emissive > 0
-      ? new THREE.Color(color).multiplyScalar(matDef.emissive * 0.7)
-      : new THREE.Color(0);
-    const tex = getVoxelTexture(matId, color);
-    const mat = new THREE.MeshPhongMaterial({
-      color: tex ? 0xffffff : color,
-      map: tex ?? undefined,
-      flatShading: true,
-      shininess,
-      emissive,
-    });
+    const mat = buildVoxelMaterial(mats.get(matId), matId);
     canopyFade.register(mat, { voxelMode: true });
     return mat;
   }

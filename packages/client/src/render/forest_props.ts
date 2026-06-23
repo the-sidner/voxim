@@ -22,10 +22,10 @@
 import * as THREE from "three";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { ClientWorld } from "../state/client_world.ts";
-import type { MaterialDef, ModelDefinition } from "@voxim/content";
+import type { ModelDefinition } from "@voxim/content";
 import { resolveSubObjects } from "@voxim/content";
 import { buildSubModelGeo } from "./voxel_geo.ts";
-import { getVoxelTexture } from "./material_textures.ts";
+import { buildVoxelMaterial } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
 import type { InstancePool, InstanceSlot } from "./instance_pool.ts";
 
@@ -189,20 +189,7 @@ export class ForestPropsRenderer {
   }
 
   private buildMaterial(matId: number): THREE.Material {
-    const matDef: MaterialDef | undefined = this.content.getMaterialSync(matId);
-    const color = matDef?.color ?? 0x888888;
-    const shininess = matDef ? Math.round((1 - matDef.roughness) * 80) : 0;
-    const emissive = matDef && matDef.emissive > 0
-      ? new THREE.Color(color).multiplyScalar(matDef.emissive * 0.7)
-      : new THREE.Color(0);
-    const tex = getVoxelTexture(matId, color);
-    const mat = new THREE.MeshPhongMaterial({
-      color: tex ? 0xffffff : color,
-      map: tex ?? undefined,
-      flatShading: true,
-      shininess,
-      emissive,
-    });
+    const mat = buildVoxelMaterial(this.content.getMaterialSync(matId), matId);
     canopyFade.register(mat, { voxelMode: true });
     return mat;
   }

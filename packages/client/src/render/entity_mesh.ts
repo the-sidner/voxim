@@ -17,7 +17,7 @@
 import * as THREE from "three";
 import type { EntityState } from "../state/client_world.ts";
 import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject } from "@voxim/content";
-import { getVoxelTexture } from "./material_textures.ts";
+import { buildVoxelMaterial } from "./voxel_material.ts";
 import { paletteToken } from "./palette.ts";
 import { type BakedVoxel, bakeDisplacedVoxel, unitBoxIndex, unitBoxUV } from "./voxel_bake.ts";
 import type { VoxelBakeSpec } from "./bake_protocol.ts";
@@ -359,32 +359,13 @@ function buildVoxelMesh(
   baked?: BakedVoxelCursor,
 ): THREE.Mesh {
   const matDef = materials.get(node.materialId);
-  const color = matDef ? matDef.color : 0x888888;
-  // roughness (0–1) → shininess: rough surfaces have no specular highlight
-  const shininess = matDef ? Math.round((1 - matDef.roughness) * 80) : 0;
-  // emissive: glow in the material's own color, scaled by emissive factor
-  const emissive = matDef && matDef.emissive > 0
-    ? new THREE.Color(color).multiplyScalar(matDef.emissive * 0.7)
-    : new THREE.Color(0x000000);
   // model(x, y, z) → three(x * sx, z * sz, y * sy)
   const px = node.x * scale.x, py = node.z * scale.z, pz = node.y * scale.y;
   // Use the off-thread bake when the cursor yields one for this voxel;
   // otherwise fall back to baking inline (synchronous path / cursor exhausted).
   const pre = baked?.();
   const geo = pre ? geometryFromBakedVoxel(pre) : buildDisplacedVoxelGeo(px, py, pz, scale);
-  const tex = getVoxelTexture(node.materialId, color);
-  const vox = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
-    color: tex ? 0xffffff : color,
-    map: tex ?? undefined,
-    flatShading: true,
-    shininess,
-    emissive,
-    // Armor voxels that overlay body-part voxels at the same position use
-    // polygonOffset so they render cleanly on top without z-fighting.
-    polygonOffset: onTop,
-    polygonOffsetFactor: onTop ? -1 : 0,
-    polygonOffsetUnits:  onTop ? -4 : 0,
-  }));
+  const vox = new THREE.Mesh(geo, buildVoxelMaterial(matDef, node.materialId, onTop));
   vox.position.set(px, py, pz);
   vox.castShadow = true;
   vox.receiveShadow = true;
