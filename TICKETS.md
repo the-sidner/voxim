@@ -435,7 +435,26 @@ Done when: models + props bake through one `bakeVoxels` path; an entity can carr
 mixed-size voxels; draw calls collapse; the parity test still passes.
 
 ### T-282 · Client rebuild Phase 2 — renderer breakup (scene-graph; subsumes T-223)
-Effort: L   Status: todo
+Effort: L   Status: in-progress   (first subsystem extracted; the EntityMeshRegistry extraction remains)
+
+STARTED: `WeaponTrailRenderer` lifted out of the renderer god-class into
+`render/weapon_trail.ts` — owns its slice/mesh state + scene layer, fed
+`update(entityMeshes, weaponActionsMap, now)` per frame (d4ee296). Renderer 2120
+→ 1922 lines; ANIM 7/7. (T-281 already shrank it by deleting the bake-worker pool
++ per-node path.)
+REMAINING (the headline + riskiest): extract the entity-mesh lifecycle — the
+`entityMeshes` map + the async prefetch→build→placeholder/prop-handoff state
+machine + `_addStaticProp` — into an `EntityMeshRegistry`, leaving the renderer
+scene/camera/post-FX/lighting only. Plus: fold the (now sync) prefetch+stale-guard
+blocks (body/hand/armor) into one `loadAndBakeModel` helper; make `scene` private
+behind `addLayer`/`removeLayer` (the ~handful of sibling `scene.add` callers route
+through it); and fix the `velocity={0,0,0}` epsilon hack — its real cause is the
+spawn wire ALWAYS carrying vx/vy/vz, so the clean fix is a small protocol change
+(omit velocity for entities without a real Velocity component), not just a
+renderer edit. Verify characters render + animate (animProbe + screenshot) after
+each step. Further cleanly-separable subsystems to lift next: gate markers, the
+day-night phase lighting (consolidate into LightManager), the scene-census
+diagnostic.
 
 `VoximRenderer` is a 2111-line god-class. Extract an `EntityMeshRegistry` owning
 the `entityMeshes` map, the async prefetch→bake→upgrade state machine, and the
