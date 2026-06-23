@@ -33,15 +33,15 @@ type DirFilter = "all" | CaptureDir;
 // ── Colour maps ────────────────────────────────────────────────────────────────
 
 const CHANNEL_COLOR: Record<CaptureChannel, string> = {
-  input:    "var(--col-accent)",
-  state:    "var(--col-info)",
-  event:    "var(--col-success)",
-  snapshot: "var(--col-warn)",
+  input:    "var(--ember)",
+  state:    "var(--aether-dim)",
+  event:    "var(--lichen-hi)",
+  snapshot: "var(--ember-warm)",
 };
 
 const DIR_COLOR: Record<CaptureDir, string> = {
-  in:  "var(--col-success)",
-  out: "var(--col-accent)",
+  in:  "var(--lichen-hi)",
+  out: "var(--ember)",
 };
 
 // ── FieldTree — recursive JSON-style detail renderer ──────────────────────────
@@ -50,19 +50,19 @@ function FieldTree({ data, depth = 0 }: { data: unknown; depth?: number }) {
   const [collapsed, setCollapsed] = useState(depth > 1);
   const indent = depth * 12;
 
-  if (data === null)      return <span style={{ color: "var(--col-text-dim)" }}>null</span>;
-  if (data === undefined) return <span style={{ color: "var(--col-text-dim)" }}>undefined</span>;
-  if (typeof data === "boolean") return <span style={{ color: "var(--col-accent)" }}>{String(data)}</span>;
-  if (typeof data === "number")  return <span style={{ color: "var(--col-info)" }}>{data}</span>;
-  if (typeof data === "string")  return <span style={{ color: "var(--col-success)" }}>"{data}"</span>;
+  if (data === null)      return <span style={{ color: "var(--bone-dim)" }}>null</span>;
+  if (data === undefined) return <span style={{ color: "var(--bone-dim)" }}>undefined</span>;
+  if (typeof data === "boolean") return <span style={{ color: "var(--ember)" }}>{String(data)}</span>;
+  if (typeof data === "number")  return <span style={{ color: "var(--aether-dim)" }}>{data}</span>;
+  if (typeof data === "string")  return <span style={{ color: "var(--lichen-hi)" }}>"{data}"</span>;
 
   if (Array.isArray(data)) {
-    if (data.length === 0) return <span style={{ color: "var(--col-text-dim)" }}>[]</span>;
+    if (data.length === 0) return <span style={{ color: "var(--bone-dim)" }}>[]</span>;
     return (
       <span>
         <span
           class="interactive"
-          style={{ cursor: "pointer", color: "var(--col-text-dim)" }}
+          style={{ cursor: "pointer", color: "var(--bone-dim)" }}
           onClick={() => setCollapsed((c) => !c)}
         >
           {collapsed ? "▶" : "▼"} [{data.length}]
@@ -70,8 +70,8 @@ function FieldTree({ data, depth = 0 }: { data: unknown; depth?: number }) {
         {!collapsed && (
           <div style={{ marginLeft: `${indent + 12}px` }}>
             {data.map((item, i) => (
-              <div key={i} style={{ fontSize: "var(--text-xs)" }}>
-                <span style={{ color: "var(--col-text-dim)" }}>{i}: </span>
+              <div key={i} style={{ fontSize: "11px" }}>
+                <span style={{ color: "var(--bone-dim)" }}>{i}: </span>
                 <FieldTree data={item} depth={depth + 1} />
               </div>
             ))}
@@ -83,12 +83,12 @@ function FieldTree({ data, depth = 0 }: { data: unknown; depth?: number }) {
 
   if (typeof data === "object") {
     const entries = Object.entries(data as Record<string, unknown>);
-    if (entries.length === 0) return <span style={{ color: "var(--col-text-dim)" }}>{"{}"}</span>;
+    if (entries.length === 0) return <span style={{ color: "var(--bone-dim)" }}>{"{}"}</span>;
     return (
       <span>
         <span
           class="interactive"
-          style={{ cursor: "pointer", color: "var(--col-text-dim)" }}
+          style={{ cursor: "pointer", color: "var(--bone-dim)" }}
           onClick={() => setCollapsed((c) => !c)}
         >
           {collapsed ? "▶" : "▼"} {"{" + entries.length + "}"}
@@ -96,8 +96,8 @@ function FieldTree({ data, depth = 0 }: { data: unknown; depth?: number }) {
         {!collapsed && (
           <div style={{ marginLeft: `${indent + 12}px` }}>
             {entries.map(([k, v]) => (
-              <div key={k} style={{ fontSize: "var(--text-xs)", lineHeight: "1.8" }}>
-                <span style={{ color: "var(--col-text-dim)" }}>{k}: </span>
+              <div key={k} style={{ fontSize: "11px", lineHeight: "1.8" }}>
+                <span style={{ color: "var(--bone-dim)" }}>{k}: </span>
                 <FieldTree data={v} depth={depth + 1} />
               </div>
             ))}
@@ -127,18 +127,18 @@ function MessageRow({ msg, isSelected, t0, onClick }: {
       style={{
         display: "grid",
         gridTemplateColumns: "40px 52px 28px 58px 1fr 42px",
-        gap: "var(--gap-xs)",
-        padding: "2px var(--gap-xs)",
-        fontSize: "var(--text-xs)",
-        borderBottom: "1px solid var(--col-border)",
-        background: isSelected ? "var(--col-bg-hover)" : "transparent",
+        gap: "var(--s-1)",
+        padding: "2px var(--s-1)",
+        fontSize: "11px",
+        borderBottom: "1px solid var(--line-strong)",
+        background: isSelected ? "var(--moss-hov)" : "transparent",
         cursor: "pointer",
         alignItems: "center",
-        fontFamily: "var(--font-ui)",
+        fontFamily: "var(--font-body)",
       }}
     >
-      <span style={{ color: "var(--col-text-dim)" }}>{msg.id}</span>
-      <span style={{ color: "var(--col-text-dim)" }}>+{relMs}ms</span>
+      <span style={{ color: "var(--bone-dim)" }}>{msg.id}</span>
+      <span style={{ color: "var(--bone-dim)" }}>+{relMs}ms</span>
       <span style={{ color: DIR_COLOR[msg.dir], fontWeight: "bold" }}>
         {msg.dir === "in" ? "↓" : "↑"}
       </span>
@@ -146,7 +146,7 @@ function MessageRow({ msg, isSelected, t0, onClick }: {
         color: CHANNEL_COLOR[msg.channel],
         background: "rgba(0,0,0,0.25)",
         padding: "1px 4px",
-        borderRadius: "var(--radius-sm)",
+        borderRadius: "0",
         fontSize: "9px",
         textTransform: "uppercase",
         letterSpacing: "0.08em",
@@ -154,14 +154,14 @@ function MessageRow({ msg, isSelected, t0, onClick }: {
         {msg.channel}
       </span>
       <span style={{
-        color: "var(--col-text)",
+        color: "var(--bone)",
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap",
       }}>
         {msg.summary}
       </span>
-      <span style={{ color: "var(--col-text-dim)", textAlign: "right" }}>
+      <span style={{ color: "var(--bone-dim)", textAlign: "right" }}>
         {msg.bytes > 0 ? `${msg.bytes}B` : "—"}
       </span>
     </div>
@@ -209,14 +209,14 @@ export function NetworkPanel() {
         onClick={() => setTab(id)}
         style={{
           padding: "3px 10px",
-          fontSize: "var(--text-xs)",
+          fontSize: "11px",
           cursor: "pointer",
-          background: tab === id ? "var(--col-bg-hover)" : "transparent",
+          background: tab === id ? "var(--moss-hov)" : "transparent",
           border: "none",
-          borderBottom: tab === id ? `2px solid var(--col-accent)` : "2px solid transparent",
-          color: tab === id ? "var(--col-text)" : "var(--col-text-dim)",
-          fontFamily: "var(--font-ui)",
-          letterSpacing: "var(--tracking)",
+          borderBottom: tab === id ? `2px solid var(--ember)` : "2px solid transparent",
+          color: tab === id ? "var(--bone)" : "var(--bone-dim)",
+          fontFamily: "var(--font-body)",
+          letterSpacing: "var(--ls-mono)",
         }}
       >
         {label}
@@ -231,13 +231,13 @@ export function NetworkPanel() {
         onClick={() => setDirFilter(id)}
         style={{
           padding: "2px 8px",
-          fontSize: "var(--text-xs)",
+          fontSize: "11px",
           cursor: "pointer",
-          background: dirFilter === id ? "var(--col-bg-hover)" : "transparent",
-          border: `1px solid ${dirFilter === id ? "var(--col-border-bright)" : "var(--col-border)"}`,
-          borderRadius: "var(--radius-sm)",
-          color: dirFilter === id ? "var(--col-text)" : "var(--col-text-dim)",
-          fontFamily: "var(--font-ui)",
+          background: dirFilter === id ? "var(--moss-hov)" : "transparent",
+          border: `1px solid ${dirFilter === id ? "var(--line-bright)" : "var(--line-strong)"}`,
+          borderRadius: "0",
+          color: dirFilter === id ? "var(--bone)" : "var(--bone-dim)",
+          fontFamily: "var(--font-body)",
         }}
       >
         {label}
@@ -252,21 +252,21 @@ export function NetworkPanel() {
         position: "fixed",
         bottom: 0, left: 0, right: 0,
         height: "42vh",
-        background: "var(--col-bg)",
-        borderTop: "2px solid var(--col-border)",
+        background: "var(--moss)",
+        borderTop: "2px solid var(--line-strong)",
         zIndex: "var(--z-panel)",
         display: "flex",
         flexDirection: "column",
-        fontFamily: "var(--font-ui)",
+        fontFamily: "var(--font-body)",
       }}
     >
       {/* ── Toolbar ────────────────────────────────────────────────────────── */}
       <div style={{
         display: "flex",
         alignItems: "center",
-        gap: "var(--gap-xs)",
-        borderBottom: "1px solid var(--col-border)",
-        padding: "0 var(--gap-sm)",
+        gap: "var(--s-1)",
+        borderBottom: "1px solid var(--line-strong)",
+        padding: "0 var(--s-3)",
         flexShrink: 0,
         height: "32px",
       }}>
@@ -284,17 +284,17 @@ export function NetworkPanel() {
         <DirBtn id="in"  label="↓ In" />
         <DirBtn id="out" label="↑ Out" />
 
-        <div style={{ width: "1px", height: "16px", background: "var(--col-border)", margin: "0 var(--gap-xs)" }} />
+        <div style={{ width: "1px", height: "16px", background: "var(--line-strong)", margin: "0 var(--s-1)" }} />
 
         {/* Count */}
-        <span style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>
+        <span style={{ fontSize: "11px", color: "var(--bone-dim)" }}>
           {filtered.length}/{messages.length}
         </span>
 
         {/* Pause/resume */}
         <button
           class="btn interactive"
-          style={{ fontSize: "var(--text-xs)", padding: "2px 8px" }}
+          style={{ fontSize: "11px", padding: "2px 8px" }}
           onClick={() => { capturePaused.value = !paused; }}
         >
           {paused ? "▶ Resume" : "⏸ Pause"}
@@ -303,7 +303,7 @@ export function NetworkPanel() {
         {/* Clear */}
         <button
           class="btn interactive"
-          style={{ fontSize: "var(--text-xs)", padding: "2px 8px" }}
+          style={{ fontSize: "11px", padding: "2px 8px" }}
           onClick={() => { clearCapture(); selectedId.value = null; }}
         >
           Clear
@@ -320,21 +320,21 @@ export function NetworkPanel() {
           style={{
             width: selected ? "55%" : "100%",
             overflow: "auto",
-            borderRight: selected ? "1px solid var(--col-border)" : "none",
+            borderRight: selected ? "1px solid var(--line-strong)" : "none",
           }}
         >
           {/* Column header */}
           <div style={{
             display: "grid",
             gridTemplateColumns: "40px 52px 28px 58px 1fr 42px",
-            gap: "var(--gap-xs)",
-            padding: "3px var(--gap-xs)",
+            gap: "var(--s-1)",
+            padding: "3px var(--s-1)",
             fontSize: "9px",
-            color: "var(--col-text-dim)",
+            color: "var(--bone-dim)",
             textTransform: "uppercase",
             letterSpacing: "0.1em",
-            background: "var(--col-bg-raised)",
-            borderBottom: "1px solid var(--col-border)",
+            background: "var(--moss-hi)",
+            borderBottom: "1px solid var(--line-strong)",
             position: "sticky",
             top: 0,
           }}>
@@ -348,9 +348,9 @@ export function NetworkPanel() {
 
           {filtered.length === 0 ? (
             <div style={{
-              padding: "var(--gap-lg)",
-              color: "var(--col-text-dim)",
-              fontSize: "var(--text-sm)",
+              padding: "var(--s-6)",
+              color: "var(--bone-dim)",
+              fontSize: "12px",
               textAlign: "center",
             }}>
               No messages captured yet.
@@ -375,19 +375,19 @@ export function NetworkPanel() {
           <div style={{
             width: "45%",
             overflow: "auto",
-            padding: "var(--gap-sm)",
-            fontSize: "var(--text-xs)",
+            padding: "var(--s-3)",
+            fontSize: "11px",
           }}>
             {/* Detail header */}
             <div style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: "var(--gap-sm)",
-              paddingBottom: "var(--gap-xs)",
-              borderBottom: "1px solid var(--col-border)",
+              marginBottom: "var(--s-3)",
+              paddingBottom: "var(--s-1)",
+              borderBottom: "1px solid var(--line-strong)",
             }}>
-              <div style={{ display: "flex", gap: "var(--gap-sm)", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "var(--s-3)", alignItems: "center" }}>
                 <span style={{ color: DIR_COLOR[selected.dir], fontWeight: "bold" }}>
                   {selected.dir === "in" ? "↓ incoming" : "↑ outgoing"}
                 </span>
@@ -397,34 +397,34 @@ export function NetworkPanel() {
               </div>
               <button
                 class="interactive"
-                style={{ background: "none", border: "none", color: "var(--col-text-dim)", cursor: "pointer", fontSize: "var(--text-sm)" }}
+                style={{ background: "none", border: "none", color: "var(--bone-dim)", cursor: "pointer", fontSize: "12px" }}
                 onClick={() => { selectedId.value = null; }}
               >
                 ✕
               </button>
             </div>
 
-            <div style={{ marginBottom: "var(--gap-xs)", color: "var(--col-text-dim)" }}>
+            <div style={{ marginBottom: "var(--s-1)", color: "var(--bone-dim)" }}>
               #{selected.id} · +{(selected.t - t0).toFixed(1)}ms
               {selected.bytes > 0 && ` · ${selected.bytes}B`}
             </div>
             <div style={{
-              marginBottom: "var(--gap-sm)",
-              padding: "var(--gap-xs)",
-              background: "var(--col-bg-raised)",
-              borderRadius: "var(--radius-sm)",
+              marginBottom: "var(--s-3)",
+              padding: "var(--s-1)",
+              background: "var(--moss-hi)",
+              borderRadius: "0",
               fontFamily: "monospace",
-              color: "var(--col-text)",
+              color: "var(--bone)",
               wordBreak: "break-all",
             }}>
               {selected.summary}
             </div>
 
             {/* Field tree */}
-            <div style={{ paddingLeft: "var(--gap-xs)" }}>
+            <div style={{ paddingLeft: "var(--s-1)" }}>
               {Object.entries(selected.fields).map(([k, v]) => (
-                <div key={k} style={{ lineHeight: "1.9", fontSize: "var(--text-xs)" }}>
-                  <span style={{ color: "var(--col-text-dim)" }}>{k}: </span>
+                <div key={k} style={{ lineHeight: "1.9", fontSize: "11px" }}>
+                  <span style={{ color: "var(--bone-dim)" }}>{k}: </span>
                   <FieldTree data={v} depth={0} />
                 </div>
               ))}

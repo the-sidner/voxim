@@ -100,16 +100,16 @@ const STYLES = `
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--col-bg, #16130e);
+  background: var(--moss, #16130e);
   font-family: var(--font-body, 'Manrope', system-ui, sans-serif);
-  color: var(--col-text, #d4c9a8);
+  color: var(--bone, #d4c9a8);
   z-index: 100;
   /* Mounted inside #ui which sets pointer-events:none; opt back in here. */
   pointer-events: auto;
 }
 .login-card {
-  background: var(--col-bg-raised, #1f1b14);
-  border: 1px solid var(--col-border, #3d3428);
+  background: var(--moss-hi, #1f1b14);
+  border: 1px solid var(--line-strong, #3d3428);
   border-radius: 0;
   padding: 32px;
   width: 360px;
@@ -125,20 +125,20 @@ const STYLES = `
 }
 .login-tabs {
   display: flex;
-  border-bottom: 1px solid var(--col-border, #3d3428);
+  border-bottom: 1px solid var(--line-strong, #3d3428);
 }
 .login-tab {
   flex: 1;
   padding: 8px 0;
   background: transparent;
   border: none;
-  color: var(--col-text-dim, #7a6f58);
+  color: var(--bone-dim, #7a6f58);
   cursor: pointer;
   font: inherit;
 }
 .login-tab.active {
-  color: var(--col-text, #d4c9a8);
-  border-bottom: 2px solid var(--col-accent, #c8953a);
+  color: var(--bone, #d4c9a8);
+  border-bottom: 2px solid var(--ember, #c8953a);
   margin-bottom: -1px;
 }
 .login-field {
@@ -146,26 +146,26 @@ const STYLES = `
   flex-direction: column;
   gap: 4px;
   font-size: 12px;
-  color: var(--col-text-dim, #7a6f58);
+  color: var(--bone-dim, #7a6f58);
 }
 .login-field input {
   padding: 8px;
-  background: var(--col-bg, #16130e);
-  border: 1px solid var(--col-border, #3d3428);
+  background: var(--moss, #16130e);
+  border: 1px solid var(--line-strong, #3d3428);
   border-radius: 0;
-  color: var(--col-text, #d4c9a8);
+  color: var(--bone, #d4c9a8);
   font-size: 14px;
 }
 .login-field input:focus {
   outline: none;
-  border-color: var(--col-border-bright, #5c4f38);
+  border-color: var(--line-bright, #5c4f38);
 }
 .login-submit {
   padding: 10px;
-  background: var(--col-accent, #c8953a);
+  background: var(--ember, #c8953a);
   border: none;
   border-radius: 0;
-  color: var(--col-bg, #16130e);
+  color: var(--moss, #16130e);
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
@@ -175,7 +175,7 @@ const STYLES = `
   cursor: not-allowed;
 }
 .login-error {
-  color: var(--col-danger, #c04040);
+  color: var(--rot, #c04040);
   font-size: 12px;
   min-height: 16px;
 }

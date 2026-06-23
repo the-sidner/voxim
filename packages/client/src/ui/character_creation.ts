@@ -92,15 +92,15 @@ const STYLES = `
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--col-bg, #16130e);
+  background: var(--moss, #16130e);
   font-family: var(--font-body, 'Manrope', system-ui, sans-serif);
-  color: var(--col-text, #d4c9a8);
+  color: var(--bone, #d4c9a8);
   z-index: 100;
   pointer-events: auto;
 }
 .cc-card {
-  background: var(--col-bg-raised, #1f1b14);
-  border: 1px solid var(--col-border, #3d3428);
+  background: var(--moss-hi, #1f1b14);
+  border: 1px solid var(--line-strong, #3d3428);
   padding: 32px;
   width: 420px;
   display: flex;
@@ -116,7 +116,7 @@ const STYLES = `
 .cc-sub {
   margin: 0;
   font-size: 12px;
-  color: var(--col-text-dim, #7a6f58);
+  color: var(--bone-dim, #7a6f58);
 }
 .cc-species-list {
   display: flex;
@@ -126,9 +126,9 @@ const STYLES = `
 .cc-species {
   text-align: left;
   padding: 10px 12px;
-  background: var(--col-bg, #16130e);
-  border: 1px solid var(--col-border, #3d3428);
-  color: var(--col-text, #d4c9a8);
+  background: var(--moss, #16130e);
+  border: 1px solid var(--line-strong, #3d3428);
+  color: var(--bone, #d4c9a8);
   cursor: pointer;
   font: inherit;
   display: flex;
@@ -136,7 +136,7 @@ const STYLES = `
   gap: 2px;
 }
 .cc-species.selected {
-  border-color: var(--col-accent, #c8953a);
+  border-color: var(--ember, #c8953a);
 }
 .cc-species-name {
   font-size: 14px;
@@ -144,13 +144,13 @@ const STYLES = `
 }
 .cc-species-trait {
   font-size: 12px;
-  color: var(--col-text-dim, #7a6f58);
+  color: var(--bone-dim, #7a6f58);
 }
 .cc-submit {
   padding: 10px;
-  background: var(--col-accent, #c8953a);
+  background: var(--ember, #c8953a);
   border: none;
-  color: var(--col-bg, #16130e);
+  color: var(--moss, #16130e);
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;

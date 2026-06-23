@@ -104,7 +104,7 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
           type="button"
           class="btn interactive"
           onClick={() => onAction({ type: "debug_scene_census" })}
-          style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)", marginTop: "var(--gap-xs)" }}
+          style={{ width: "100%", padding: "3px 8px", fontSize: "11px", marginTop: "var(--s-1)" }}
         >
           Log scene census
         </button>
@@ -155,7 +155,7 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
 
       {/* ── Network inspector ─────────────────────────────────────────────── */}
       <Section title="Network">
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--gap-xs)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-1)" }}>
           <ToggleRow
             label="Network panel"
             on={networkOpen.value}
@@ -167,12 +167,12 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
             onToggle={() => { captureEnabled.value = !captureEnabled.value; }}
           />
           <div style={{
-            fontSize: "var(--text-xs)",
-            color: "var(--col-text-dim)",
-            paddingTop: "var(--gap-xs)",
+            fontSize: "11px",
+            color: "var(--bone-dim)",
+            paddingTop: "var(--s-1)",
           }}>
             {captureSignal.value.length} messages buffered
-            {capturePaused.value && <span style={{ color: "var(--col-warn)", marginLeft: "var(--gap-xs)" }}>⏸ paused</span>}
+            {capturePaused.value && <span style={{ color: "var(--ember-warm)", marginLeft: "var(--s-1)" }}>⏸ paused</span>}
           </div>
         </div>
       </Section>
@@ -217,20 +217,20 @@ function CSMSection() {
   if (!anim) {
     return (
       <Section title="Animation">
-        <div style={{ fontSize: "var(--text-xs)", color: "var(--col-text-dim)" }}>(no animation state)</div>
+        <div style={{ fontSize: "11px", color: "var(--bone-dim)" }}>(no animation state)</div>
       </Section>
     );
   }
 
   return (
     <Section title="Animation">
-      <div style={{ fontSize: "var(--text-xs)", fontFamily: "monospace" }}>
+      <div style={{ fontSize: "11px", fontFamily: "monospace" }}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span style={{ color: "var(--col-text-dim)" }}>action</span>
-          <span style={{ color: "var(--col-accent)" }}>{anim.weaponActionId || "—"}</span>
+          <span style={{ color: "var(--bone-dim)" }}>action</span>
+          <span style={{ color: "var(--ember)" }}>{anim.weaponActionId || "—"}</span>
         </div>
         {anim.layers.length > 0 && (
-          <div style={{ marginTop: "var(--gap-xs)", color: "var(--col-text-dim)" }}>
+          <div style={{ marginTop: "var(--s-1)", color: "var(--bone-dim)" }}>
             playing: {anim.layers.map((l) => l.clipId || "—").join(" + ")}
           </div>
         )}
@@ -253,7 +253,7 @@ function GiveItemSection({ onAction }: { onAction: (a: UIAction) => void }) {
 
   return (
     <Section title="Give item">
-      <div style={{ display: "flex", gap: "var(--gap-xs)", marginBottom: "var(--gap-xs)" }}>
+      <div style={{ display: "flex", gap: "var(--s-1)", marginBottom: "var(--s-1)" }}>
         <input
           type="text"
           placeholder="filter…"
@@ -261,12 +261,12 @@ function GiveItemSection({ onAction }: { onAction: (a: UIAction) => void }) {
           onInput={(e) => { giveFilter.value = (e.target as HTMLInputElement).value; }}
           style={{
             flex: 1,
-            background: "var(--col-bg-panel)",
-            border: "1px solid var(--col-border)",
-            color: "var(--col-text)",
+            background: "var(--moss)",
+            border: "1px solid var(--line-strong)",
+            color: "var(--bone)",
             borderRadius: "3px",
             padding: "2px 6px",
-            fontSize: "var(--text-xs)",
+            fontSize: "11px",
           }}
         />
         <input
@@ -280,12 +280,12 @@ function GiveItemSection({ onAction }: { onAction: (a: UIAction) => void }) {
           }}
           style={{
             width: "44px",
-            background: "var(--col-bg-panel)",
-            border: "1px solid var(--col-border)",
-            color: "var(--col-text)",
+            background: "var(--moss)",
+            border: "1px solid var(--line-strong)",
+            color: "var(--bone)",
             borderRadius: "3px",
             padding: "2px 4px",
-            fontSize: "var(--text-xs)",
+            fontSize: "11px",
             textAlign: "right",
           }}
         />
@@ -305,22 +305,22 @@ function GiveItemSection({ onAction }: { onAction: (a: UIAction) => void }) {
             style={{
               textAlign: "left",
               padding: "3px 6px",
-              fontSize: "var(--text-xs)",
+              fontSize: "11px",
               display: "flex",
               justifyContent: "space-between",
-              gap: "var(--gap-xs)",
+              gap: "var(--s-1)",
             }}
           >
             <span>{item.id}</span>
           </button>
         ))}
         {filtered.length === 0 && (
-          <div style={{ color: "var(--col-text-dim)", fontSize: "var(--text-xs)", padding: "4px 0" }}>
+          <div style={{ color: "var(--bone-dim)", fontSize: "11px", padding: "4px 0" }}>
             no items match
           </div>
         )}
         {filtered.length > 60 && (
-          <div style={{ color: "var(--col-text-dim)", fontSize: "var(--text-xs)", padding: "4px 0" }}>
+          <div style={{ color: "var(--bone-dim)", fontSize: "11px", padding: "4px 0" }}>
             {filtered.length - 60} more — refine filter
           </div>
         )}
@@ -337,7 +337,7 @@ const spawnNpcQty      = signal(1);
 function SpawnNpcSection({ onAction }: ActionProps) {
   return (
     <Section title="Spawn NPC">
-      <div style={{ display: "flex", gap: "var(--gap-xs)", marginBottom: "var(--gap-xs)" }}>
+      <div style={{ display: "flex", gap: "var(--s-1)", marginBottom: "var(--s-1)" }}>
         <input
           type="text"
           placeholder="template id…"
@@ -362,7 +362,7 @@ function SpawnNpcSection({ onAction }: ActionProps) {
         class="btn interactive"
         disabled={!spawnNpcTemplate.value}
         onClick={() => onAction({ type: "debug_spawn_npc", npcTemplate: spawnNpcTemplate.value, quantity: spawnNpcQty.value })}
-        style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)" }}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "11px" }}
       >
         Spawn
       </button>
@@ -377,7 +377,7 @@ const setTimeHour = signal(12);
 function SetTimeSection({ onAction }: ActionProps) {
   return (
     <Section title="Set time">
-      <div style={{ display: "flex", gap: "var(--gap-xs)", alignItems: "center", marginBottom: "var(--gap-xs)" }}>
+      <div style={{ display: "flex", gap: "var(--s-1)", alignItems: "center", marginBottom: "var(--s-1)" }}>
         <input
           type="range"
           min={0}
@@ -387,7 +387,7 @@ function SetTimeSection({ onAction }: ActionProps) {
           onInput={(e) => { setTimeHour.value = parseFloat((e.target as HTMLInputElement).value); }}
           style={{ flex: 1 }}
         />
-        <span style={{ fontSize: "var(--text-xs)", minWidth: "32px", textAlign: "right", color: "var(--col-text-dim)" }}>
+        <span style={{ fontSize: "11px", minWidth: "32px", textAlign: "right", color: "var(--bone-dim)" }}>
           {setTimeHour.value.toFixed(1)}h
         </span>
       </div>
@@ -395,7 +395,7 @@ function SetTimeSection({ onAction }: ActionProps) {
         type="button"
         class="btn interactive"
         onClick={() => onAction({ type: "debug_set_time", hour: setTimeHour.value })}
-        style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)" }}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "11px" }}
       >
         Set time
       </button>
@@ -416,7 +416,7 @@ function TeleportSection({ onAction }: ActionProps) {
 
   return (
     <Section title="Teleport">
-      <div style={{ display: "flex", gap: "var(--gap-xs)", marginBottom: "var(--gap-xs)" }}>
+      <div style={{ display: "flex", gap: "var(--s-1)", marginBottom: "var(--s-1)" }}>
         <input
           type="number"
           placeholder="X"
@@ -436,7 +436,7 @@ function TeleportSection({ onAction }: ActionProps) {
         type="button"
         class="btn interactive"
         onClick={() => onAction({ type: "debug_teleport", worldX: teleportX.value, worldY: teleportY.value })}
-        style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)" }}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "11px" }}
       >
         Go
       </button>
@@ -452,7 +452,7 @@ const setStatValue = signal(100);
 function SetStatSection({ onAction }: ActionProps) {
   return (
     <Section title="Set stat">
-      <div style={{ display: "flex", gap: "var(--gap-xs)", marginBottom: "var(--gap-xs)" }}>
+      <div style={{ display: "flex", gap: "var(--s-1)", marginBottom: "var(--s-1)" }}>
         <select
           value={setStatStat.value}
           onChange={(e) => { setStatStat.value = (e.target as HTMLSelectElement).value as "health" | "stamina"; }}
@@ -476,7 +476,7 @@ function SetStatSection({ onAction }: ActionProps) {
         type="button"
         class="btn interactive"
         onClick={() => onAction({ type: "debug_set_stat", stat: setStatStat.value, value: setStatValue.value })}
-        style={{ width: "100%", padding: "3px 8px", fontSize: "var(--text-xs)" }}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "11px" }}
       >
         Set
       </button>

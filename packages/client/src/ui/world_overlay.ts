@@ -69,15 +69,15 @@ export class WorldOverlay {
       Object.assign(wrap.style, {
         position: "absolute",
         width: "48px", height: "5px",
-        background: "var(--col-bg)",
-        border: "1px solid var(--col-border)",
-        borderRadius: "var(--radius-sm)",
+        background: "var(--moss)",
+        border: "1px solid var(--line-strong)",
+        borderRadius: "0",
         overflow: "hidden",
       });
       const fill = document.createElement("div");
       Object.assign(fill.style, {
         height: "100%",
-        background: "var(--col-health)",
+        background: "var(--blood)",
         transition: "width 0.1s, background 0.2s",
       });
       wrap.appendChild(fill);
@@ -91,8 +91,8 @@ export class WorldOverlay {
 
     bar.fill.style.width = `${Math.round(ratio * 100)}%`;
     bar.fill.style.background = ratio < 0.3
-      ? "var(--col-health-low)"
-      : "var(--col-health)";
+      ? "var(--rot)"
+      : "var(--blood)";
     bar.wrap.style.left = `${sx - 24}px`;
     bar.wrap.style.top  = `${sy - 60}px`;
     bar.wrap.style.display = "block";
@@ -119,9 +119,9 @@ export class WorldOverlay {
         position: "absolute",
         padding: "2px 6px",
         background: "rgba(0,0,0,0.55)",
-        color: "var(--col-text)",
-        font: "12px var(--font-ui, sans-serif)",
-        borderRadius: "var(--radius-sm)",
+        color: "var(--bone)",
+        font: "12px var(--font-body, sans-serif)",
+        borderRadius: "0",
         whiteSpace: "nowrap",
         transform: "translate(-50%, -100%)",
         pointerEvents: "none",
@@ -155,8 +155,8 @@ export class WorldOverlay {
       left: `${sx}px`,
       top:  `${sy - 40}px`,
       transform: "translate(-50%, 0)",
-      color:      blocked ? "var(--col-info)" : "var(--col-danger)",
-      fontSize:   blocked ? "var(--text-sm)"  : "var(--text-base)",
+      color:      blocked ? "var(--aether-dim)" : "var(--rot)",
+      fontSize:   blocked ? "12px"  : "13px",
       fontWeight: "bold",
       textShadow: "0 1px 4px #000",
       pointerEvents: "none",
@@ -175,8 +175,8 @@ export class WorldOverlay {
       left: `${sx}px`,
       top:  `${sy - 40}px`,
       transform: "translate(-50%, 0)",
-      color:      "var(--col-success)",
-      fontSize:   "var(--text-base)",
+      color:      "var(--lichen-hi)",
+      fontSize:   "13px",
       fontWeight: "bold",
       textShadow: "0 1px 4px #000",
       pointerEvents: "none",
