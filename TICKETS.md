@@ -361,7 +361,21 @@ T-280..T-284 land; Phase 5 (sparse-voxel chunk wire) stays deferred until volume
 editing demands it.
 
 ### T-280 · Client rebuild Phase 0 — cleanup + palette authority
-Effort: M   Status: todo
+Effort: M   Status: in-progress   (core landed — dead-code, palette authority, material snap, terrain unfork, lighting; remaining: literals, builder-collapse, UI shim)
+
+DONE: dead static-voxel + IK paths deleted (20efcb4); `palette.json` single color
+authority + CIELAB material snap-on-load with reserved signal swatches +
+intent-override map, shipped in the bootstrap blob (d330699); terrain reads the
+one palette source — drifted `MAT_COLORS` deleted (5e58043); day-night lighting +
+sky/fog built from the palette `phases` — cyan sky gone (438b195). The headline
+color-identity win (materials + terrain + lighting on one ash-hazed palette) is
+landed and screenshot-verified.
+REMAINING: migrate the ~23 ad-hoc render hex literals (build ghost, blueprint
+scaffold, gate accents, weapon trail, placeholder health tints, water_renderer)
+to `palette.*` tokens via a `render/palette.ts` accessor; collapse the four
+`MaterialDef→Material` builders into one `buildVoxelMaterial`; collapse the UI's
+two token generations (theme.css Dreamborn + the legacy `--col-*` alias shim) to
+one source and delete the shim.
 
 Highest identity-per-effort, no new capability. Delete dead code
 (`upgradeToVoxelModel`/`collectVoxelModelBakeSpecs` entity_mesh.ts:415-490,
