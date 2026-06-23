@@ -101,10 +101,13 @@ export type {
   ResourceRateModifierRef,
   ResourceThreshold,
   GameConfig,
+  Palette,
+  PalettePhase,
   TileLayout,
   TileEntityConfig,
   TileTraderListing,
 } from "./src/types.ts";
+export { snapColorToRamp, hexStrToNum } from "./src/palette_snap.ts";
 
 // ---- hitbox derivation and application ----
 export type { HitboxPartTemplate, HitboxContentAdapter } from "./src/hitbox_derive.ts";

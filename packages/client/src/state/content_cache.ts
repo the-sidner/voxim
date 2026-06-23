@@ -8,7 +8,7 @@
  * via T-178). A future ticket will retire the cache entirely once the
  * renderer reads from ContentService directly.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette } from "@voxim/content";
 import { buildMaskIndex, deriveHitboxTemplate } from "@voxim/content";
 import type { HitboxContentAdapter } from "@voxim/content";
 import type { TileConnection } from "../connection/tile_connection.ts";
@@ -154,6 +154,12 @@ export class ContentCache {
 
   getMaterialSync(materialId: number): MaterialDef | undefined {
     return this.materials.get(materialId);
+  }
+
+  /** The single color palette (T-280), from the bootstrap blob. Null until the
+   *  bootstrap service is wired. */
+  getPalette(): Palette | null {
+    return this.bootstrapService?.getPalette() ?? null;
   }
 
   getSkeletonSync(skeletonId: string): SkeletonDef | undefined {

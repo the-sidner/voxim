@@ -17,7 +17,7 @@ import * as THREE from "three";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { MaterialDef, ModelDefinition, ResolvedSubObject, WeaponActionDef, Prefab, AnimationStateData } from "@voxim/content";
+import type { MaterialDef, ModelDefinition, ResolvedSubObject, WeaponActionDef, Prefab, AnimationStateData, Palette } from "@voxim/content";
 import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
 import type { AabbHalfExtents } from "../interaction/interaction_system.ts";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
@@ -155,6 +155,23 @@ function makePhaseLights(): Record<string, DayPhaseLight> {
     dusk:     { sky: new THREE.Color(0xa04828), fog: new THREE.Color(0x883820), sun: new THREE.Color(0xff7030), sunIntensity: 1.1,  hemiIntensity: 0.11, fogFar: 150 },
     midnight: { sky: new THREE.Color(0x08091a), fog: new THREE.Color(0x060714), sun: new THREE.Color(0x2030a0), sunIntensity: 0.06, hemiIntensity: 0.04, fogFar: 100 },
   };
+}
+
+/**
+ * Build the day-night phase lights from the content palette (T-280) — replaces
+ * the hardcoded cyan-sky defaults in makePhaseLights with the ash-hazed `phases`
+ * block. Starts from the defaults so a palette missing a phase still resolves.
+ */
+function buildPhaseLights(palette: Palette): Record<string, DayPhaseLight> {
+  const col = (h: string) => new THREE.Color(parseInt(h.replace("#", ""), 16) >>> 0);
+  const out = makePhaseLights();
+  for (const [name, p] of Object.entries(palette.phases)) {
+    out[name] = {
+      sky: col(p.sky), fog: col(p.fog), sun: col(p.sun),
+      sunIntensity: p.sunIntensity, hemiIntensity: p.hemiIntensity, fogFar: p.fogFar,
+    };
+  }
+  return out;
 }
 
 /** Lerp a number toward target, returning new value. */
@@ -378,7 +395,7 @@ export class VoximRenderer {
   private readonly hemi: THREE.HemisphereLight;
 
   // ---- day/night lighting ----
-  private readonly phaseLights = makePhaseLights();
+  private phaseLights = makePhaseLights();
   /** Current interpolated lighting values (mutated every frame). */
   private readonly lightCur: DayPhaseLight = {
     sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc),
@@ -556,6 +573,17 @@ export class VoximRenderer {
   setContentCache(cache: ContentCache): void {
     this.content = cache;
     this._matColorCache.clear();
+    // Lighting + sky/fog come from the single palette source (T-280) once the
+    // bootstrap arrives — replaces the hardcoded cyan noon sky with the
+    // ash-hazed phase colors. The day/night update reads phaseLights fresh each
+    // frame, so the swap takes effect immediately.
+    const pal = cache.getPalette();
+    if (pal) {
+      this.phaseLights = buildPhaseLights(pal);
+      this.hemi.color.copy(this.phaseLights.noon.sky);
+      (this.scene.background as THREE.Color).copy(this.phaseLights.noon.sky);
+      (this.scene.fog as THREE.Fog).color.copy(this.phaseLights.noon.fog);
+    }
   }
 
   /** Material id → THREE.Color from the single content palette (T-280), cached.
