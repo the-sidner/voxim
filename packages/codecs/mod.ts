@@ -6,7 +6,7 @@ export { buildCodec, encodeF64, decodeF64, encodeF32, decodeF32, encodeI32, deco
 export type {
   PositionData, VelocityData, FacingData, HeightmapData, MaterialGridData, OpenMaskData, KindGridData,
   ItemPart, ModelRefData, AnimationStateData,
-  InputStateData, HealthData,
+  InputStateData, HealthData, WorldClockData,
   InventorySlot, EquipmentSlot, EquipmentData, InventoryData,
   ResourceValue, ResourceData,
   ActionCooldownsData,
@@ -29,7 +29,7 @@ export type {
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
   itemPartCodec, inventorySlotCodec,
-  inputStateCodec, healthCodec,
+  inputStateCodec, healthCodec, worldClockCodec,
   resourceCodec, actionCooldownsCodec,
   modelRefCodec, animationStateCodec,
   equipmentCodec, inventoryCodec, itemDataCodec, craftingQueueCodec,

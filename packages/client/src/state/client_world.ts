@@ -5,21 +5,10 @@
  * plus unreliable WorldSnapshot datagrams for position interpolation.
  */
 import type { BinaryComponentDelta, BinaryEntitySpawn, WorldSnapshot } from "@voxim/protocol";
-import { ComponentType, COMPONENT_TYPE_TO_NAME } from "@voxim/protocol";
-import {
-  positionCodec, velocityCodec, facingCodec,
-  heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
-  resourceCodec, actionCooldownsCodec, activeActionsCodec, modelRefCodec, animationStateCodec, equipmentCodec, inventoryCodec,
-  blueprintCodec, lightEmitterCodec, darknessModifierCodec,
-  loreLoadoutCodec,
-  durabilityCodec, craftingQueueCodec, itemDataCodec,
-  workstationBufferCodec, workstationTagCodec,
-  statsCodec, provenanceCodec,
-  gateLinkCodec,
-  nameCodec,
-  traderInventoryCodec,
-  jobBoardCodec,
-} from "@voxim/codecs";
+import { ComponentType, COMPONENT_TYPE_TO_NAME, CODEC_BY_WIREID } from "@voxim/protocol";
+// Only the terrain-grid codecs are referenced directly (their decode has chunk-
+// binding side effects); every other component decodes through CODEC_BY_WIREID.
+import { heightmapCodec, openMaskCodec, kindGridCodec } from "@voxim/codecs";
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
@@ -152,134 +141,50 @@ export class ClientWorld {
     }
     entity.versions.set(typeId, version);
 
+    // Terrain-grid components have decode SIDE EFFECTS (binding chunk data into
+    // this.chunk* maps, with a back-reference dance because openMask/kindGrid
+    // arrive without chunk coords) beyond setting entity.X — so they stay
+    // explicit. Everything else is registry-dispatched (T-284): one codec lookup
+    // by wire id, assigned to the same-named EntityState field.
     switch (typeId) {
-      case ComponentType.position:
-        entity.position = positionCodec.decode(data);
-        break;
-      case ComponentType.velocity:
-        entity.velocity = velocityCodec.decode(data);
-        break;
-      case ComponentType.facing:
-        entity.facing = facingCodec.decode(data);
-        break;
-      case ComponentType.health: {
-        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
-        entity.health = { current: v.getFloat32(0, true), max: v.getFloat32(4, true) };
-        break;
-      }
-      case ComponentType.resource:
-        entity.resource = resourceCodec.decode(data);
-        break;
-      case ComponentType.actionCooldowns:
-        entity.actionCooldowns = actionCooldownsCodec.decode(data);
-        break;
-      case ComponentType.activeActions:
-        entity.activeActions = activeActionsCodec.decode(data);
-        break;
       case ComponentType.heightmap: {
         const hm = heightmapCodec.decode(data);
         entity.heightmap = hm;
         const key = `${hm.chunkX},${hm.chunkY}`;
         this.chunkHeightmaps.set(key, hm.data);
-        // Note the entity → coord mapping so an OpenMask delivery on the
-        // same entity (which lacks chunkX/chunkY) can find its slot.
         this.chunkCoordByEntity.set(entityId, key);
-        // If the openMask arrived earlier on this same entity but its
-        // chunk coord wasn't known yet, bind it now.
         if (entity.openMask) this.chunkOpenMasks.set(key, entity.openMask.data);
         if (entity.kindGrid) this.bindKinds(key, entity.kindGrid.data);
-        break;
+        return;
       }
-      case ComponentType.materialGrid:
-        entity.materialGrid = materialGridCodec.decode(data);
-        break;
       case ComponentType.openMask: {
         const om = openMaskCodec.decode(data);
         entity.openMask = om;
-        // Bind to the chunk coord we recorded when the heightmap arrived.
-        // If the heightmap hasn't arrived yet (mask first on the same
-        // spawn), the heightmap branch will pick this up via the
-        // entity.openMask back-reference.
         const key = this.chunkCoordByEntity.get(entityId);
         if (key) this.chunkOpenMasks.set(key, om.data);
-        break;
+        return;
       }
       case ComponentType.kindGrid: {
         const kg = kindGridCodec.decode(data);
         entity.kindGrid = kg;
-        // Same back-reference dance as openMask: bind once we know the
-        // chunk coord, otherwise the heightmap branch will pick it up.
         const key = this.chunkCoordByEntity.get(entityId);
         if (key) this.bindKinds(key, kg.data);
-        break;
+        return;
       }
-      case ComponentType.modelRef:
-        entity.modelRef = modelRefCodec.decode(data);
-        break;
-      case ComponentType.animationState:
-        entity.animationState = animationStateCodec.decode(data);
-        break;
-      case ComponentType.equipment:
-        entity.equipment = equipmentCodec.decode(data);
-        break;
-      case ComponentType.inventory:
-        entity.inventory = inventoryCodec.decode(data);
-        break;
-      case ComponentType.blueprint:
-        entity.blueprint = blueprintCodec.decode(data);
-        break;
-      case ComponentType.lightEmitter:
-        entity.lightEmitter = lightEmitterCodec.decode(data);
-        break;
-      case ComponentType.darknessModifier:
-        entity.darknessModifier = darknessModifierCodec.decode(data);
-        break;
-      case ComponentType.loreLoadout:
-        entity.loreLoadout = loreLoadoutCodec.decode(data);
-        break;
-      case ComponentType.durability:
-        entity.durability = durabilityCodec.decode(data);
-        break;
-      case ComponentType.craftingQueue:
-        entity.craftingQueue = craftingQueueCodec.decode(data);
-        break;
-      case ComponentType.itemData:
-        entity.itemData = itemDataCodec.decode(data);
-        break;
-      case ComponentType.workstationBuffer:
-        entity.workstationBuffer = workstationBufferCodec.decode(data);
-        break;
-      case ComponentType.workstationTag:
-        entity.workstationTag = workstationTagCodec.decode(data);
-        break;
-      case ComponentType.traderInventory:
-        entity.traderInventory = traderInventoryCodec.decode(data);
-        break;
-      case ComponentType.jobBoard:
-        entity.jobBoard = jobBoardCodec.decode(data);
-        break;
-      case ComponentType.stats:
-        entity.stats = statsCodec.decode(data);
-        break;
-      case ComponentType.provenance:
-        entity.provenance = provenanceCodec.decode(data);
-        break;
-      case ComponentType.worldClock: {
-        const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
-        entity.worldClock = { ticksElapsed: v.getInt32(0, true), dayLengthTicks: v.getInt32(4, true) };
-        break;
-      }
-      case ComponentType.gateLink:
-        entity.gateLink = gateLinkCodec.decode(data);
-        break;
-      case ComponentType.name:
-        entity.name = nameCodec.decode(data);
-        break;
-      default: {
-        const name = COMPONENT_TYPE_TO_NAME.get(typeId);
-        if (name) entity.raw.set(name, data);
-        break;
-      }
+    }
+
+    // Registry dispatch — the ComponentType key IS the EntityState field name,
+    // so a wire-id → codec lookup + a same-named assignment replaces the old
+    // 31-case switch (incl. the hand-rolled health/worldClock DataView decodes,
+    // now healthCodec/worldClockCodec). Unknown ids fall through to `raw` for
+    // forward-compat.
+    const name = COMPONENT_TYPE_TO_NAME.get(typeId);
+    if (!name) return;
+    const codec = CODEC_BY_WIREID.get(typeId);
+    if (codec) {
+      (entity as unknown as Record<string, unknown>)[name] = codec.decode(data);
+    } else {
+      entity.raw.set(name, data);
     }
   }
 

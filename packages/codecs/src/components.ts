@@ -285,6 +285,16 @@ export const healthCodec: Serialiser<HealthData> = buildCodec<HealthData>({
   max: { type: "f32" },
 });
 
+export interface WorldClockData {
+  ticksElapsed: number;
+  dayLengthTicks: number;
+}
+
+export const worldClockCodec: Serialiser<WorldClockData> = buildCodec<WorldClockData>({
+  ticksElapsed: { type: "i32" },
+  dayLengthTicks: { type: "i32" },
+});
+
 // (Hunger / Thirst codecs retired — they're server-only Resources now
 // (tile-server/components/resource.ts). Wire ids 7/8 retired in
 // @voxim/protocol; never reuse. T-238c.)

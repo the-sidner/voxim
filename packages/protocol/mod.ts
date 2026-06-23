@@ -105,6 +105,7 @@ export type {
 export { contentRequestCodec, contentResponseCodec } from "./src/content.ts";
 
 export { ComponentType, COMPONENT_TYPE_TO_NAME } from "./src/component_types.ts";
+export { CODEC_BY_WIREID, type WireDecoder } from "./src/codec_registry.ts";
 export { EventType } from "./src/event_types.ts";
 export { binaryStateMessageCodec } from "./src/state_binary.ts";
 export type {
