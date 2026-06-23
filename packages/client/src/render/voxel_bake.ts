@@ -119,10 +119,14 @@ export interface BakedVoxel {
 export function bakeDisplacedVoxel(
   px: number, py: number, pz: number,
   scale: { x: number; y: number; z: number },
+  mag?: number,
 ): BakedVoxel {
   const positions = new Float32Array(BOX_VERT_COUNT * 3);
   const normals = new Float32Array(BOX_VERT_COUNT * 3);
-  const mag = 0.10 * Math.min(scale.x, scale.y, scale.z);
+  // Default: 10 % of the smallest edge (per-voxel). Terrain pins a CONSTANT mag
+  // across all its atoms (T-283) — variable-`sz` column boxes would otherwise get
+  // different per-voxel mag at a shared cliff-edge corner and crack hairline-wide.
+  const m = mag ?? 0.10 * Math.min(scale.x, scale.y, scale.z);
   for (let i = 0; i < BOX_VERT_COUNT; i++) {
     // Scale unit-box (±0.5) to actual voxel extents in Three.js space.
     // Coordinate mapping: model x → three x (scale.x),
@@ -131,7 +135,7 @@ export function bakeDisplacedVoxel(
     const lx = UNIT_BOX_POSITIONS[i * 3]     * scale.x;
     const ly = UNIT_BOX_POSITIONS[i * 3 + 1] * scale.z;
     const lz = UNIT_BOX_POSITIONS[i * 3 + 2] * scale.y;
-    const [dx, dy, dz] = vertexDisp(px + lx, py + ly, pz + lz, mag);
+    const [dx, dy, dz] = vertexDisp(px + lx, py + ly, pz + lz, m);
     positions[i * 3]     = lx + dx;
     positions[i * 3 + 1] = ly + dy;
     positions[i * 3 + 2] = lz + dz;
@@ -161,6 +165,9 @@ export interface BakedMesh {
 export function bakeVoxels(
   atoms: ReadonlyArray<VoxelAtom>,
   materialId: number,
+  /** Optional constant displacement magnitude for every atom (T-283 terrain);
+   *  omitted → each voxel uses 10 % of its own smallest edge. */
+  mag?: number,
 ): BakedMesh {
   const voxels: { px: number; py: number; pz: number; baked: BakedVoxel }[] = [];
   for (const a of atoms) {
@@ -168,7 +175,7 @@ export function bakeVoxels(
     // model center → three center (x, z, y); size stays in model axes — the
     // displaced-box bake applies the same swap to the extents internally.
     const px = a.cx, py = a.cz, pz = a.cy;
-    voxels.push({ px, py, pz, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }) });
+    voxels.push({ px, py, pz, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, mag) });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;

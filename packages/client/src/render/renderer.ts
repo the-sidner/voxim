@@ -18,7 +18,11 @@ import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab } from "@voxim/content";
-import { buildTerrainMesh } from "./terrain_mesh.ts";
+import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
+import { bakeVoxels } from "./voxel_bake.ts";
+import { geometryFromBaked } from "./voxel_geo.ts";
+import { buildVoxelMaterial } from "./voxel_material.ts";
+import { canopyFade } from "./canopy_fade.ts";
 import { setClientPalette } from "./palette.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import { GateMarkerRenderer } from "./gate_marker.ts";
@@ -149,7 +153,8 @@ export class VoximRenderer {
   readonly cameraRig: CameraRig;
   readonly camera: THREE.PerspectiveCamera;
 
-  private readonly terrainMeshes  = new Map<string, THREE.Mesh>();
+  /** Per-chunk terrain: one voxel Mesh per material present in the chunk (T-283). */
+  private readonly terrainMeshes  = new Map<string, THREE.Mesh[]>();
   /** Gate marker pillars (T-145), keyed by entityId. World-space group containing pillar mesh. */
   private gateMarkers!: GateMarkerRenderer; // set in constructor (needs camera + renderer)
   private readonly terrainHmaps   = new Map<string, HeightmapData>();
@@ -391,7 +396,6 @@ export class VoximRenderer {
   setContentCache(cache: ContentCache): void {
     this.content = cache;
     this.entities.setContent(cache);
-    this._matColorCache.clear();
     // Lighting + sky/fog come from the single palette source (T-280) once the
     // bootstrap arrives — replaces the hardcoded cyan noon sky with the
     // ash-hazed phase colors (EnvironmentLighting rebuilds its phase table).
@@ -402,18 +406,6 @@ export class VoximRenderer {
     }
   }
 
-  /** Material id → THREE.Color from the single content palette (T-280), cached.
-   *  Terrain, props, and entities all resolve color from here — no per-surface
-   *  color table. */
-  private readonly _matColorCache = new Map<number, THREE.Color>();
-  private readonly _matColor = (id: number): THREE.Color => {
-    let c = this._matColorCache.get(id);
-    if (!c) {
-      c = new THREE.Color(this.content?.getMaterialSync(id)?.color ?? 0x808080);
-      this._matColorCache.set(id, c);
-    }
-    return c;
-  };
 
   // ---- terrain ----
 
@@ -424,11 +416,14 @@ export class VoximRenderer {
     this.terrainHmaps.set(key, heightmap);
     this.terrainMats.set(key, materials);
 
+    // Each cell's column floors to the lowest of its FOUR neighbours, so the new
+    // chunk changes the cliff depth along every shared edge — rebuild all four
+    // cardinal neighbours, not just W/N.
     this._rebuildChunk(cx, cy);
-
-    // Neighbors whose east/south boundary wall now references this chunk need rebuilding too.
-    this._rebuildChunk(cx - 1, cy);  // west neighbor — its east boundary faces us
-    this._rebuildChunk(cx, cy - 1);  // north neighbor — its south boundary faces us
+    this._rebuildChunk(cx - 1, cy);
+    this._rebuildChunk(cx + 1, cy);
+    this._rebuildChunk(cx, cy - 1);
+    this._rebuildChunk(cx, cy + 1);
   }
 
   private _rebuildChunk(cx: number, cy: number): void {
@@ -437,29 +432,52 @@ export class VoximRenderer {
     const mat = this.terrainMats.get(key);
     if (!hm || !mat) return;
 
-    const existing = this.terrainMeshes.get(key);
-    const mesh = buildTerrainMesh(
-      hm, mat, this._matColor, existing,
-      this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
-      this.terrainMats.get(`${cx + 1},${cy}`) ?? null,
-      this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
-      this.terrainMats.get(`${cx},${cy + 1}`) ?? null,
-    );
-    if (!existing) {
-      mesh.name = "terrain";
-      this.scene.add(mesh);
-      this.terrainMeshes.set(key, mesh);
-      this._chunkOverlay.addChunk(cx, cy, this.debugOverlayManager.isOn("chunks"));
+    // Tear down the chunk's previous mesh set as a unit — a rebuild can add or
+    // drop a material, so the whole multi-material set is replaced.
+    const old = this.terrainMeshes.get(key);
+    if (old) {
+      for (const me of old) {
+        this.scene.remove(me);
+        me.geometry.dispose();
+        (me.material as THREE.Material).dispose();
+      }
     }
+
+    // Re-express the chunk as voxel atoms (column boxes) bucketed by material,
+    // then bake one mesh per material through the shared voxel pipeline (T-283).
+    const byMat = buildChunkAtoms(hm, mat, {
+      N: this.terrainHmaps.get(`${cx},${cy - 1}`) ?? null,
+      E: this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
+      S: this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
+      W: this.terrainHmaps.get(`${cx - 1},${cy}`) ?? null,
+    });
+    const meshes: THREE.Mesh[] = [];
+    for (const [matId, atoms] of byMat) {
+      const geo = geometryFromBaked(bakeVoxels(atoms, matId, TERRAIN_DISP_MAG));
+      const m = buildVoxelMaterial(this.content?.getMaterialSync(matId), matId);
+      canopyFade.register(m, { voxelMode: true });
+      const me = new THREE.Mesh(geo, m);
+      me.name = "terrain";
+      me.castShadow = true;
+      me.receiveShadow = true;
+      this.scene.add(me);
+      meshes.push(me);
+    }
+
+    const isNew = !this.terrainMeshes.has(key);
+    this.terrainMeshes.set(key, meshes);
+    if (isNew) this._chunkOverlay.addChunk(cx, cy, this.debugOverlayManager.isOn("chunks"));
   }
 
   removeTerrain(chunkX: number, chunkY: number): void {
     const key = `${chunkX},${chunkY}`;
-    const mesh = this.terrainMeshes.get(key);
-    if (mesh) {
-      this.scene.remove(mesh);
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
+    const meshes = this.terrainMeshes.get(key);
+    if (meshes) {
+      for (const me of meshes) {
+        this.scene.remove(me);
+        me.geometry.dispose();
+        (me.material as THREE.Material).dispose();
+      }
       this.terrainMeshes.delete(key);
       this.terrainHmaps.delete(key);
       this.terrainMats.delete(key);
@@ -903,9 +921,10 @@ export class VoximRenderer {
         propVisibleChunks.add(`${pChunkX + dx},${pChunkY + dy}`);
       }
     }
-    for (const [key, tmesh] of this.terrainMeshes) {
+    for (const [key, tmeshes] of this.terrainMeshes) {
       const [cx, cy] = key.split(",").map(Number);
-      tmesh.visible = Math.abs(cx - pChunkX) <= 4 && Math.abs(cy - pChunkY) <= 4;
+      const vis = Math.abs(cx - pChunkX) <= 4 && Math.abs(cy - pChunkY) <= 4;
+      for (const me of tmeshes) me.visible = vis;
     }
     this.instancePool.update(propVisibleChunks);
     // Entity culling — hide entities beyond CULL_RADIUS_SQ
@@ -1053,9 +1072,11 @@ export class VoximRenderer {
     this.depthBlitMat.dispose();
     this.renderer.dispose();
     this.entities.disposeAll();
-    for (const [, mesh] of this.terrainMeshes) {
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
+    for (const [, meshes] of this.terrainMeshes) {
+      for (const me of meshes) {
+        me.geometry.dispose();
+        (me.material as THREE.Material).dispose();
+      }
     }
     this.gateMarkers.dispose();
   }

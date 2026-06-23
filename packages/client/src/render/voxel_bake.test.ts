@@ -262,3 +262,37 @@ Deno.test("bakeVoxels mixes sizes within one mesh (non-uniform per axis)", () =>
   assertEquals(mesh.positions.length, 2 * BOX_VERT_COUNT * 3);
   assertEquals(mesh.indices.length, 2 * BOX_INDEX_COUNT);
 });
+
+Deno.test("bakeVoxels constant-mag keeps a shared cliff-edge corner crack-free (T-283)", () => {
+  // Two adjacent terrain column boxes at a cliff: a DEEP one (sz=3) and a SHALLOW
+  // one (sz=0.25), centers 1 apart in x, both with their TOP face at height h=4.
+  // Their boundary face is at three.x=1.0; the two TOP corners of that face
+  // coincide at (1.0, 4, 0) and (1.0, 4, 1) — exactly the seam terrain must not crack.
+  const deep:    VoxelAtom = { cx: 0.5, cy: 0.5, cz: 2.5,   sx: 1, sy: 1, sz: 3,    materialId: 1 };
+  const shallow: VoxelAtom = { cx: 1.5, cy: 0.5, cz: 3.875, sx: 1, sy: 1, sz: 0.25, materialId: 1 };
+  const TERRAIN_MAG = 0.10 * 0.25; // = TERRAIN_DISP_MAG (0.10 * HEIGHT_STEP)
+
+  // Count vertices of A that EXACTLY equal some vertex of B (merged positions are
+  // already translated to three-world space, so coincidence = shared world corner).
+  const countShared = (a: Float32Array, b: Float32Array): number => {
+    let n = 0;
+    for (let i = 0; i < a.length; i += 3) {
+      for (let j = 0; j < b.length; j += 3) {
+        if (a[i] === b[j] && a[i + 1] === b[j + 1] && a[i + 2] === b[j + 2]) { n++; break; }
+      }
+    }
+    return n;
+  };
+
+  // Constant mag: both boxes displace the shared top corners identically → they
+  // stay welded. At least the 2 top corners of the boundary face coincide.
+  const aC = bakeVoxels([deep], 1, TERRAIN_MAG);
+  const bC = bakeVoxels([shallow], 1, TERRAIN_MAG);
+  assertEquals(countShared(aC.positions, bC.positions) >= 2, true, "constant mag must weld the shared cliff-top corners");
+
+  // Default per-voxel mag: deep→0.10*1, shallow→0.10*0.25 differ, so the shared
+  // corners displace apart → the seam cracks (this is the bug the override fixes).
+  const aD = bakeVoxels([deep], 1);
+  const bD = bakeVoxels([shallow], 1);
+  assertEquals(countShared(aD.positions, bD.positions), 0, "default per-voxel mag cracks the seam (no shared corner survives)");
+});
