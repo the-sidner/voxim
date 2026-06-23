@@ -19,6 +19,7 @@ import type { EntityState } from "../state/client_world.ts";
 import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject } from "@voxim/content";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { paletteToken } from "./palette.ts";
+import { modelToThree } from "./coords.ts";
 import { type BakedVoxel, bakeDisplacedVoxel, unitBoxIndex, unitBoxUV } from "./voxel_bake.ts";
 import type { VoxelBakeSpec } from "./bake_protocol.ts";
 import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
@@ -535,11 +536,8 @@ export function upgradeToSkeletonModel(
 
     const subGroup = new THREE.Group();
     subGroup.name = `sub:${sub.modelId}`;
-    subGroup.position.set(
-      sub.transform.x * scale.x,
-      sub.transform.z * scale.z,
-      sub.transform.y * scale.y,
-    );
+    const subPos = modelToThree(sub.transform.x, sub.transform.y, sub.transform.z, scale);
+    subGroup.position.set(subPos.x, subPos.y, subPos.z);
     // Apply per-sub-object rotation with the same entity→three.js axis swap
     // used for position. Previously this path (bone-attached sub-objects)
     // skipped rotation entirely, so any sub-object meant to be reoriented

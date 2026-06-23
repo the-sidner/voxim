@@ -22,6 +22,7 @@ import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
 import type { AabbHalfExtents } from "../interaction/interaction_system.ts";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import { setClientPalette, paletteToken } from "./palette.ts";
+import { modelToThree } from "./coords.ts";
 import {
   createEntityMesh,
   updateEntityMesh,
@@ -862,8 +863,8 @@ export class VoximRenderer {
       const subDef = subModelDefs.get(sub.modelId);
       if (!subDef) continue;
       const t = sub.transform;
-      // Three.js coord mapping for sub-object position: model(x,y,z) → three(x*sx, z*sz, y*sy)
-      const subPos = new THREE.Vector3(t.x * scale.x, t.z * scale.z, t.y * scale.y);
+      const sp = modelToThree(t.x, t.y, t.z, scale);
+      const subPos = new THREE.Vector3(sp.x, sp.y, sp.z);
       const subQuat = new THREE.Quaternion()
         .setFromEuler(new THREE.Euler(t.rotX, t.rotZ, t.rotY, "XYZ"));
       const subMatrix = new THREE.Matrix4().compose(subPos, subQuat, new THREE.Vector3(1, 1, 1));
