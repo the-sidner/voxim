@@ -16,7 +16,10 @@ import { InputCapture } from "./input/input_capture.ts";
 import { IntentRouter } from "./input/intent_router.ts";
 import { IntentTranslator } from "./input/intent_translator.ts";
 import type { Intent } from "./input/intents.ts";
-import { modeState, cursorCellState, type WorldCell } from "./input/context.ts";
+import { modeState, cursorVoxelState, type VoxelHit } from "./input/context.ts";
+import { brushCells, type Cell } from "./input/build_line.ts";
+import { BuildOccupancy } from "./state/build_occupancy.ts";
+import { snapHeight } from "@voxim/world";
 import { ClientWorld } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { FogOfWar } from "./state/fog_of_war.ts";
@@ -133,6 +136,34 @@ export class VoximGame {
   };
 
   /**
+   * Build-mode test hook (T-284): enter build mode for a blueprint so the harness
+   * can screenshot the ghost (the per-frame cursor resolve then populates the
+   * preview from the mouse position). Mirrors the `select_blueprint` UI action.
+   */
+  readonly buildProbe = {
+    enter: (blueprintId: string): void => {
+      const placeable = this.contentService?.prefabs.get(blueprintId)?.components.placeable as
+        | { tool?: "single" | "line" }
+        | undefined;
+      const bld = this.contentService?.getGameConfig().building;
+      modeState.value = {
+        kind: "build",
+        blueprintId,
+        brush: {
+          tool: placeable?.tool ?? "single",
+          voxelSize: bld?.defaultVoxelSize ?? 1.0,
+          spacing: bld?.defaultSpacing ?? 0,
+        },
+      };
+    },
+    setSpacing: (spacing: number): void => {
+      const m = modeState.value;
+      if (m.kind === "build") modeState.value = { ...m, brush: { ...m.brush, spacing } };
+    },
+    exit: (): void => { modeState.value = { kind: "normal" }; },
+  };
+
+  /**
    * Snapshot an entity's animation for harness assertions (default = local
    * player): the networked clip layers + weapon action, plus the world-space
    * translation of a few bones (sampled from the same boneGroups the renderer
@@ -170,6 +201,8 @@ export class VoximGame {
   private lastFrameTime = 0;
   private interactionSystem: InteractionSystem | null = null;
   private buildGhost: BuildGhostRenderer | null = null;
+  /** Per-column stack counter feeding the build cursor's vertical stacking (T-284). */
+  private readonly buildOccupancy = new BuildOccupancy();
   private hoverOutline: HoverOutlineRenderer | null = null;
   private forestProps: ForestPropsRenderer | null = null;
   private waterRenderer: WaterRenderer | null = null;
@@ -368,10 +401,11 @@ export class VoximGame {
 
     this._registerIntentHandlers();
 
-    // Build-mode ghost renderer — subscribes to modeState + cursorCellState.
+    // Build-mode ghost renderer — subscribes to modeState + cursorVoxelState.
     this.buildGhost = new BuildGhostRenderer(
       this.renderer.scene,
       (x, y) => this.world.getTerrainHeight(x, y),
+      (cx, cy) => this.buildOccupancy.stackHeight(cx, cy),
     );
 
     // Hover outline — subscribes to hoverState; decides outline tint per
@@ -462,6 +496,12 @@ export class VoximGame {
       for (const spawn of msg.spawns) {
         this.world.applySpawn(spawn);
         updated.add(spawn.entityId);
+        // Mirror placed voxels (blueprint entities) into the build occupancy so
+        // the cursor stacks on top of them (T-284). Single source = ClientWorld.
+        const e = this.world.get(spawn.entityId);
+        if (e?.blueprint && e.position) {
+          this.buildOccupancy.add(spawn.entityId, e.position.x, e.position.y);
+        }
       }
       for (const delta of msg.deltas) {
         this.world.applyDelta(delta);
@@ -472,6 +512,7 @@ export class VoximGame {
         updated.add(rm.entityId);
       }
       for (const entityId of msg.destroys) {
+        this.buildOccupancy.remove(entityId);
         this.world.applyDestroy(entityId);
         this.renderer?.removeEntity(entityId);
         this.renderer?.removeGateMarker(entityId);
@@ -734,6 +775,7 @@ export class VoximGame {
     this.forestProps?.reset();
     this.waterRenderer?.clear();
     this.world.clear();
+    this.buildOccupancy.clear();
     this.renderer?.clearWorld();
     this.terrainChunksReceived = 0;
     this.loadingComplete = false;
@@ -872,16 +914,19 @@ export class VoximGame {
     if (this.input && this.interactionSystem) {
       this.interactionSystem.update(this.input.mouseX, this.input.mouseY);
     }
-    // Publish the cursor's world cell so build-mode subscribers (ghost
-    // renderer) can read it reactively. Done every frame so the ghost
-    // tracks cursor movement without a per-frame poll on each subscriber.
+    // Publish the cursor's resolved voxel target so build-mode subscribers
+    // (ghost renderer) read it reactively. Done every frame so the ghost tracks
+    // cursor movement + column stacking without a per-frame poll per subscriber.
     if (this.input) {
-      const cell = this._cellFromCanvas(this.input.mouseX, this.input.mouseY);
-      const prev = cursorCellState.value;
-      if (!cell) {
-        if (prev !== null) cursorCellState.value = null;
-      } else if (!prev || prev.cellX !== cell.cellX || prev.cellY !== cell.cellY) {
-        cursorCellState.value = cell;
+      const hit = this._resolveVoxelHit(this.input.mouseX, this.input.mouseY);
+      const prev = cursorVoxelState.value;
+      const same = !!hit && !!prev &&
+        prev.cellX === hit.cellX && prev.cellY === hit.cellY &&
+        prev.baseZ === hit.baseZ && prev.layer === hit.layer;
+      if (!hit) {
+        if (prev !== null) cursorVoxelState.value = null;
+      } else if (!same) {
+        cursorVoxelState.value = hit;
       }
     }
     // Camera-occlusion fade — push the player's world position into the
@@ -1191,10 +1236,10 @@ export class VoximGame {
       },
     });
 
-    // Build-mode actions (T-131). Single-tool blueprints place one cell per
-    // LMB. Polyline-tool blueprints anchor the chain on the first LMB and
-    // commit a Bresenham-stamped wall on each subsequent LMB, leaving the
-    // cursor cell as the new anchor for the next segment.
+    // Build-mode actions (T-284). Single-tool: each LMB places one voxel at the
+    // cursor column's top (stacking). Line-tool: first LMB stages the anchor (the
+    // ghost previews anchor→cursor), second LMB commits the whole spacing-decimated
+    // line and clears the anchor. The ghost + commit share brushCells, so WYSIWYG.
     router.register({
       id: "build-action",
       priority: 30,
@@ -1202,28 +1247,23 @@ export class VoximGame {
         if (intent.kind !== "build-action") return false;
         const mode = modeState.value;
         if (mode.kind !== "build") return true;
-        const cell = this._cellFromCanvas(intent.canvasX, intent.canvasY);
-        if (!cell) return true;
-        if (mode.tool === "single") {
-          this._sendPlace(mode.blueprintId, cell);
+        const hit = this._resolveVoxelHit(intent.canvasX, intent.canvasY);
+        if (!hit) return true;
+        if (mode.brush.tool === "single") {
+          this._sendPlace(mode.blueprintId, hit);
+        } else if (!mode.line) {
+          modeState.value = { ...mode, line: { anchor: hit } };
         } else {
-          // Polyline: first click places the corner and anchors. Subsequent
-          // clicks stamp every cell from the previous anchor up to the new
-          // one (start exclusive — already placed) and re-anchor at the new.
-          if (!mode.polyline) {
-            this._sendPlace(mode.blueprintId, cell);
-          } else {
-            for (const c of bresenhamCells(mode.polyline.lastAnchor, cell)) {
-              this._sendPlace(mode.blueprintId, c);
-            }
+          for (const c of brushCells(mode.brush, mode.line.anchor, hit)) {
+            this._sendPlace(mode.blueprintId, c);
           }
-          modeState.value = { ...mode, polyline: { lastAnchor: cell } };
+          modeState.value = { ...mode, line: undefined };
         }
         return true;
       },
     });
 
-    // Build-undo: pop the polyline anchor; if there's nothing staged, exit
+    // Build-undo: clear a staged line anchor; if there's nothing staged, exit
     // build mode entirely (same effect as build-cancel).
     router.register({
       id: "build-undo",
@@ -1232,8 +1272,8 @@ export class VoximGame {
         if (intent.kind !== "build-undo") return false;
         const mode = modeState.value;
         if (mode.kind !== "build") return true;
-        if (mode.tool === "polyline" && mode.polyline) {
-          modeState.value = { ...mode, polyline: undefined };
+        if (mode.brush.tool === "line" && mode.line) {
+          modeState.value = { ...mode, line: undefined };
         } else {
           modeState.value = { kind: "normal" };
           patchUI({ selectedBlueprint: "" });
@@ -1264,16 +1304,25 @@ export class VoximGame {
     });
   }
 
-  /** Map the canvas-space cursor to the integer world cell beneath it. */
-  private _cellFromCanvas(canvasX: number, canvasY: number): WorldCell | null {
+  /**
+   * Resolve the canvas cursor to a voxel placement target (T-284): flat-plane ray
+   * → column (cellX,cellY), then the terrain top (baseZ, snapped to the 0.25
+   * lattice) and the column's current stack height. One resolve feeds both the
+   * ghost and the commit; `placeZ` is derived per brush, never stored.
+   */
+  private _resolveVoxelHit(canvasX: number, canvasY: number): VoxelHit | null {
     const me = this.playerId ? this.world.get(this.playerId) : null;
     const groundZ = me?.position?.z ?? 4.0;
     const worldPos = this.renderer?.getCursorWorldPos(canvasX, canvasY, groundZ);
     if (!worldPos) return null;
-    return { cellX: Math.floor(worldPos.x), cellY: Math.floor(worldPos.y) };
+    const cellX = Math.floor(worldPos.x);
+    const cellY = Math.floor(worldPos.y);
+    const baseZ = snapHeight(this.world.getTerrainHeight(cellX + 0.5, cellY + 0.5));
+    const layer = this.buildOccupancy.stackHeight(cellX, cellY);
+    return { cellX, cellY, baseZ, layer };
   }
 
-  private _sendPlace(blueprintId: string, cell: WorldCell): void {
+  private _sendPlace(blueprintId: string, cell: Cell): void {
     this._sendCommand({
       cmd: CommandType.Place,
       source: "prefab",
@@ -1402,9 +1451,18 @@ export class VoximGame {
         console.log(`[Build] selected blueprint type=${action.structureType}`);
         patchUI({ selectedBlueprint: action.structureType, radialMenu: null });
         const prefab = this.contentService?.prefabs.get(action.structureType);
-        const placeable = prefab?.components.placeable as { tool?: "single" | "polyline" } | undefined;
+        const placeable = prefab?.components.placeable as { tool?: "single" | "line" } | undefined;
         const tool = placeable?.tool ?? "single";
-        modeState.value = { kind: "build", blueprintId: action.structureType, tool };
+        const bld = this.contentService?.getGameConfig().building;
+        modeState.value = {
+          kind: "build",
+          blueprintId: action.structureType,
+          brush: {
+            tool,
+            voxelSize: bld?.defaultVoxelSize ?? 1.0,
+            spacing: bld?.defaultSpacing ?? 0,
+          },
+        };
         break;
       }
 
@@ -1535,33 +1593,6 @@ export class VoximGame {
 }
 
 // ---- helpers ----
-
-/**
- * Bresenham line in cell space, inclusive of both endpoints. Used by polyline
- * blueprints to stamp a wall across every cell between two corners with one
- * Place command per cell.
- */
-function bresenhamCells(a: WorldCell, b: WorldCell): WorldCell[] {
-  const cells: WorldCell[] = [];
-  let x0 = a.cellX, y0 = a.cellY;
-  const x1 = b.cellX, y1 = b.cellY;
-  const dx = Math.abs(x1 - x0);
-  const dy = -Math.abs(y1 - y0);
-  const sx = x0 < x1 ? 1 : -1;
-  const sy = y0 < y1 ? 1 : -1;
-  let err = dx + dy;
-  // Skip the starting cell — it's the previous anchor and already placed.
-  let first = true;
-  while (true) {
-    if (!first) cells.push({ cellX: x0, cellY: y0 });
-    first = false;
-    if (x0 === x1 && y0 === y1) break;
-    const e2 = 2 * err;
-    if (e2 >= dy) { err += dy; x0 += sx; }
-    if (e2 <= dx) { err += dx; y0 += sy; }
-  }
-  return cells;
-}
 
 /**
  * Convert an itemType id (e.g. "wooden_sword") to a display label ("Wooden Sword").

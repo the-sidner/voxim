@@ -129,6 +129,8 @@
   },
   "building": {
     "maxReachWorldUnits": 4.0,
+    "defaultVoxelSize": 1.0,
+    "defaultSpacing": 0,
     "capture": {
       "radiusWorldUnits": 12.0
     }

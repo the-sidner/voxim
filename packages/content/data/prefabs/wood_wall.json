@@ -5,7 +5,7 @@
       "alignment": "cell-aligned",
       "requiresToolType": "hammer",
       "cellMustBeEmpty": true,
-      "tool": "polyline"
+      "tool": "line"
     },
     "blueprint": {
       "structureType": "wood_wall",

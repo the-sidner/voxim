@@ -1,117 +1,93 @@
 /**
- * BuildGhostRenderer — translucent preview of where the next blueprint will
- * land. Subscribes to modeState + cursorCellState; redraws on signal change.
+ * BuildGhostRenderer (T-284) — translucent preview of the voxels the brush will
+ * place. Subscribes to modeState + cursorVoxelState; rebakes on change.
  *
- * Single-tool blueprints render one ghost block at the cursor cell.
- * Polyline blueprints render a chain of ghosts along the Bresenham line from
- * the staged anchor to the cursor cell, so the player can see the whole wall
- * before committing.
+ * The ghost geometry now comes through the SAME bakeVoxels kitchen as props and
+ * terrain, so the preview's displaced-box silhouette matches what actually
+ * commits — single tool bakes one voxel at the cursor column's top; the line
+ * tool bakes one merged mesh of voxels along the shared brushCells list, each
+ * sitting on ITS OWN column top (stair-steps across slopes / pre-stacked cells).
  *
- * Three.js coordinate mapping mirrors the rest of the renderer:
- *   world(x, y, z) → three(x, z, y).
- *
- * The ghost reads terrain height via the supplied callback so each cell sits
- * on the ground rather than at z=0.
+ * Only the geometry is the real kitchen; the shading is a flat translucent
+ * palette 'ghost' tint so it reads unambiguously as a preview, not a placed block.
  */
 import * as THREE from "three";
 import { effect } from "@preact/signals";
-import { modeState, cursorCellState, type WorldCell } from "../input/context.ts";
+import { snapHeight } from "@voxim/world";
+import { modeState, cursorVoxelState } from "../input/context.ts";
+import { brushCells, type Cell } from "../input/build_line.ts";
+import type { VoxelAtom } from "@voxim/content";
+import { bakeVoxels } from "./voxel_bake.ts";
+import { geometryFromBaked } from "./voxel_geo.ts";
 import { paletteToken } from "./palette.ts";
 
-const GHOST_COLOR = 0xe8c860;
 const GHOST_OPACITY = 0.35;
-const GHOST_HEIGHT = 1.0;
+/** All ghost atoms share one material id — the ghost is tinted uniformly. */
+const GHOST_MAT_ID = 0;
 
 export class BuildGhostRenderer {
-  private readonly group = new THREE.Group();
-  private readonly geom = new THREE.BoxGeometry(1, GHOST_HEIGHT, 1);
+  private readonly mesh: THREE.Mesh;
   private readonly mat: THREE.MeshBasicMaterial;
   private readonly disposeEffect: () => void;
-  /** Pool of meshes reused across redraws to keep GC churn low. */
-  private readonly pool: THREE.Mesh[] = [];
 
   constructor(
     private readonly scene: THREE.Scene,
     private readonly getTerrainHeight: (wx: number, wy: number) => number,
+    private readonly getStackHeight: (cellX: number, cellY: number) => number,
   ) {
     this.mat = new THREE.MeshBasicMaterial({
-      color: GHOST_COLOR,
+      color: 0xffffff,
       transparent: true,
       opacity: GHOST_OPACITY,
       depthWrite: false,
     });
-    this.scene.add(this.group);
+    this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.mat);
+    this.mesh.visible = false;
+    this.mesh.name = "build-ghost";
+    this.scene.add(this.mesh);
     this.disposeEffect = effect(() => this._update());
   }
 
   private _update(): void {
     const mode = modeState.value;
-    const cell = cursorCellState.value;
-    if (mode.kind !== "build" || !cell) {
-      this._setCount(0);
+    const hit = cursorVoxelState.value;
+    if (mode.kind !== "build" || !hit) {
+      this.mesh.visible = false;
       return;
     }
-    // Tint from the single palette (T-280) — set on show so it's correct
-    // regardless of whether the palette arrived before this renderer was built.
+    // Tint from the single palette (T-280) on each show, so it's correct even if
+    // the palette arrived after this renderer was constructed.
     this.mat.color.setHex(paletteToken("ghost"));
 
-    const cells: WorldCell[] = [cell];
-    if (mode.tool === "polyline" && mode.polyline) {
-      const a = mode.polyline.lastAnchor;
-      cells.length = 0;
-      cells.push(a);
-      for (const c of bresenhamCells(a, cell)) cells.push(c);
-    }
+    const voxelSize = mode.brush.voxelSize;
+    const cells: Cell[] = brushCells(mode.brush, mode.line?.anchor ?? null, hit);
 
-    this._setCount(cells.length);
-    for (let i = 0; i < cells.length; i++) {
-      const c = cells[i];
-      const wx = c.cellX + 0.5;
-      const wy = c.cellY + 0.5;
-      const h = this.getTerrainHeight(wx, wy);
-      const mesh = this.group.children[i] as THREE.Mesh;
-      mesh.position.set(wx, h + GHOST_HEIGHT / 2, wy);
-    }
-  }
+    // One atom per ghost cell, each at its OWN column top (per-cell baseZ + stack).
+    const atoms: VoxelAtom[] = cells.map((c) => {
+      const baseZ = snapHeight(this.getTerrainHeight(c.cellX + 0.5, c.cellY + 0.5));
+      const layer = this.getStackHeight(c.cellX, c.cellY);
+      const placeZ = baseZ + layer * voxelSize + voxelSize / 2;
+      return {
+        cx: c.cellX + 0.5,  // model east
+        cy: c.cellY + 0.5,  // model south
+        cz: placeZ,         // model up (height)
+        sx: voxelSize, sy: voxelSize, sz: voxelSize,
+        materialId: GHOST_MAT_ID,
+      };
+    });
 
-  private _setCount(n: number): void {
-    while (this.group.children.length < n) {
-      const m = this.pool.pop() ?? new THREE.Mesh(this.geom, this.mat);
-      this.group.add(m);
-    }
-    while (this.group.children.length > n) {
-      const m = this.group.children[this.group.children.length - 1] as THREE.Mesh;
-      this.group.remove(m);
-      this.pool.push(m);
-    }
+    // Rebake the merged geometry (cheap — a handful of voxels); the baked
+    // positions are absolute world/three coords, so the mesh stays at origin.
+    const baked = bakeVoxels(atoms, GHOST_MAT_ID);
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = geometryFromBaked(baked);
+    this.mesh.visible = true;
   }
 
   dispose(): void {
     this.disposeEffect();
-    this.scene.remove(this.group);
-    this.geom.dispose();
+    this.scene.remove(this.mesh);
+    this.mesh.geometry.dispose();
     this.mat.dispose();
   }
-}
-
-/** Bresenham line in cell space, exclusive of the start cell. */
-function bresenhamCells(a: WorldCell, b: WorldCell): WorldCell[] {
-  const cells: WorldCell[] = [];
-  let x0 = a.cellX, y0 = a.cellY;
-  const x1 = b.cellX, y1 = b.cellY;
-  const dx = Math.abs(x1 - x0);
-  const dy = -Math.abs(y1 - y0);
-  const sx = x0 < x1 ? 1 : -1;
-  const sy = y0 < y1 ? 1 : -1;
-  let err = dx + dy;
-  let first = true;
-  while (true) {
-    if (!first) cells.push({ cellX: x0, cellY: y0 });
-    first = false;
-    if (x0 === x1 && y0 === y1) break;
-    const e2 = 2 * err;
-    if (e2 >= dy) { err += dy; x0 += sx; }
-    if (e2 <= dx) { err += dx; y0 += sy; }
-  }
-  return cells;
 }

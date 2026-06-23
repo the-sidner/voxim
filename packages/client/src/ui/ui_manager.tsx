@@ -35,6 +35,7 @@ import { ChargeBar }       from "./components/ChargeBar.tsx";
 import { ContextMenu }     from "./components/ContextMenu.tsx";
 import { ToastQueue }      from "./components/ToastQueue.tsx";
 import { RadialMenu }      from "./components/RadialMenu.tsx";
+import { BuildHud }        from "./components/BuildHud.tsx";
 import { DebugPanel }      from "./components/DebugPanel.tsx";
 import { NetworkPanel }    from "./components/NetworkPanel.tsx";
 import { Minimap }         from "./components/Minimap.tsx";
@@ -115,6 +116,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       <TooltipPortal />
       <ContextMenu onAction={onAction} />
       <RadialMenu onAction={onAction} />
+      <BuildHud />
     </>
   );
 }

@@ -217,7 +217,7 @@ const placeableSchema = v.object({
   requiresToolType: v.optional(v.string()),
   reach: v.optional(v.number()),
   cellMustBeEmpty: v.optional(v.boolean()),
-  tool: v.optional(v.picklist(["single", "polyline"])),
+  tool: v.optional(v.picklist(["single", "line"])),
 });
 
 export const Placeable = defineComponent({

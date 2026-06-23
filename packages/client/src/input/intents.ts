@@ -36,14 +36,14 @@ export type Intent =
   | { kind: "open-build-radial"; canvasX: number; canvasY: number }
   | { kind: "select-blueprint";  blueprintId: string }
   /**
-   * LMB while in build mode. Single-tool blueprints place at the cursor cell;
-   * polyline-tool blueprints either set the first anchor or commit a wall
-   * line of segments from the previous anchor and re-anchor at the new cell.
+   * LMB while in build mode. Single-tool blueprints place a voxel at the cursor
+   * column's top; line-tool blueprints set the anchor on the first click and
+   * commit the spacing-decimated line on the second.
    */
   | { kind: "build-action";      canvasX: number; canvasY: number }
   /**
-   * RMB tap in build mode. Polyline tools pop the last anchor; if no anchor
-   * is staged, exits build mode (same effect as build-cancel).
+   * RMB tap in build mode. The line tool clears a staged anchor; if nothing is
+   * staged, exits build mode (same effect as build-cancel).
    */
   | { kind: "build-undo" }
   /** ESC / hammer unequip: clear chain and exit build mode. */

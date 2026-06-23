@@ -337,15 +337,16 @@ export interface PlaceableData {
   cellMustBeEmpty?: boolean;
   /**
    * Client-side build-mode tool used for this blueprint:
-   *   "single"   — LMB places one instance at the cursor cell. Default.
-   *   "polyline" — LMB sets corner anchors; segments commit immediately
-   *                 along the line between the previous anchor and the new
-   *                 one. RMB pops the last anchor, ESC clears the chain.
+   *   "single" — LMB places one voxel at the cursor cell (stacking on the
+   *              column top). Default.
+   *   "line"   — LMB sets an anchor, then commits a Bresenham line of voxels
+   *              from the anchor to the cursor cell (spacing-controlled). RMB
+   *              clears the anchor, ESC exits build mode.
    *
    * The server doesn't read this field — placement is one Place command per
-   * cell either way. The client renders ghost previews accordingly.
+   * cell either way. The client renders ghost previews + the brush from it.
    */
-  tool?: "single" | "polyline";
+  tool?: "single" | "line";
 }
 /**
  * One entry in an item's effect payload (T-240). `id` names an action
@@ -1489,6 +1490,11 @@ export interface GameConfig {
   building: {
     /** Max distance from placer to blueprint cell centre (world units). */
     maxReachWorldUnits: number;
+    /** Build-brush default voxel edge size (world units; keep a 0.25 multiple to
+     *  stay on the terrain lattice). The HUD adjusts the live brush from here. */
+    defaultVoxelSize: number;
+    /** Build-brush default line spacing (cells skipped between stamps; 0 = solid). */
+    defaultSpacing: number;
     /** Base capture (T-082): deploying a workstation re-stamps owned ones nearby. */
     capture: {
       /** Radius around a deployed workstation that captures enemy-owned ones (world units). */

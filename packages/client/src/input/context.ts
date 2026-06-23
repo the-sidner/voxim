@@ -32,37 +32,63 @@ export const holdState = signal<{ lmb: LmbHold | null }>({ lmb: null });
 // ---- Mode ----------------------------------------------------------------
 
 /**
+ * The cursor's resolved voxel placement target (T-284). The flat-plane ray gives
+ * the column (cellX,cellY); the renderer then samples the terrain top (`baseZ`,
+ * snapped to the 0.25 lattice) and the column's current stack height (`layer`).
+ * The voxel CENTER z is DERIVED per brush, never stored here:
+ *   placeZ(hit, voxelSize) = hit.baseZ + hit.layer * voxelSize + voxelSize/2
+ * `layer` is the load-bearing field chunk 2 will validate server-side; the hit
+ * stays brush-agnostic (voxelSize lives on the brush, not the hit).
+ */
+export interface VoxelHit {
+  /** Integer column under the cursor (floor of the ground-plane hit). */
+  cellX: number;
+  cellY: number;
+  /** Terrain top for this column, snapHeight-quantized — what layer 0 rests on. */
+  baseZ: number;
+  /** Voxels already stacked in this column (0 = bare terrain). */
+  layer: number;
+}
+
+/**
+ * The build brush — the "single voxel or line, with size + spacing" descriptor.
+ * `tool` comes from the blueprint's `placeable.tool`; voxelSize/spacing default
+ * from game_config and are adjusted live via the build HUD.
+ */
+export interface BuildBrush {
+  tool: "single" | "line";
+  /** Voxel edge size in world units (a 0.25 multiple keeps voxels on-lattice). */
+  voxelSize: number;
+  /** Cells skipped between line stamps (0 = solid). */
+  spacing: number;
+}
+
+/**
  * Persistent mode the player is in. "normal" is the default — combat,
  * harvesting, etc. "build" is entered via the radial menu when a hammer
  * is equipped, exited on ESC / hammer unequip / explicit cancel.
  *
- * Build mode carries the chosen blueprint id, the placement tool inferred
- * from the blueprint's `placeable.tool` field, and (for polyline tools)
- * the running anchor position. The build ghost renderer subscribes to
- * this signal + the cursor cell to draw the preview.
+ * Build mode carries the chosen blueprint id, the brush, and (for the line
+ * tool) the staged anchor hit. The build ghost renderer subscribes to this
+ * signal + the cursor voxel to draw the preview.
  *
  * Mode transitions are fired as Intents; this signal snapshots the
  * current state for translator + renderer reads.
  */
-export interface WorldCell {
-  cellX: number;
-  cellY: number;
-}
-
 export type Mode =
   | { kind: "normal" }
   | {
       kind: "build";
       blueprintId: string;
-      tool: "single" | "polyline";
-      polyline?: { lastAnchor: WorldCell };
+      brush: BuildBrush;
+      line?: { anchor: VoxelHit };
     };
 
 export const modeState = signal<Mode>({ kind: "normal" });
 
 /**
- * Cursor's world cell, mirrored every frame from the renderer's
- * cursor-projection so the build ghost reads it reactively. Null when
- * the cursor isn't over the playable terrain.
+ * Cursor's resolved voxel target, mirrored every frame from the renderer's
+ * cursor pick so the build ghost reads it reactively. Null when the cursor
+ * isn't over the playable terrain.
  */
-export const cursorCellState = signal<WorldCell | null>(null);
+export const cursorVoxelState = signal<VoxelHit | null>(null);
