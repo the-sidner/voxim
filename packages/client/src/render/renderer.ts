@@ -31,9 +31,7 @@ import {
   ensureAttachment,
   ensureBoneAttachment,
   attachModelToSlot,
-  collectSlotBakeSpecs,
   attachArmorToSlot,
-  armorSlotScale,
   detachModelFromSlot,
   disposeEntityMesh,
   type EntityMeshGroup,
@@ -41,7 +39,6 @@ import {
 import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool, type InstanceSlot } from "./instance_pool.ts";
 import { buildSubModelGeo } from "./voxel_geo.ts";
-import { BakePool } from "./bake_pool.ts";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
 import { evaluatePose, evaluateBladeWorld } from "./skeleton_evaluator.ts";
@@ -284,8 +281,6 @@ export class VoximRenderer {
   private cameraTarget = new THREE.Vector3(256, 4, 256);
   private localPlayerId: string | null = null;
   private content: ContentCache | null = null;
-  /** Off-thread voxel geometry baking (T-067); falls back to sync in-thread. */
-  private readonly bakePool = new BakePool();
   private interactionSystem: InteractionSystem | null = null;
   private hoverOutline: HoverOutlineSink | null = null;
 
@@ -1603,9 +1598,7 @@ export class VoximRenderer {
         if (m) mats.set(id, m);
       }
 
-      // Bake the weapon/held-item voxels off the render thread (T-067).
-      const baked = await this.bakePool.bakeModel(collectSlotBakeSpecs(def, voxelScale));
-      // Re-check the slot still wants this model after the async bake.
+      // Re-check the slot still wants this model after the async model prefetch.
       if (mesh.attachments.get(slotId)?.modelId !== modelId || !mesh.boneGroups) return;
 
       // AABB scan in model coords. Model Z is the blade-axis (voxel-rendered
@@ -1625,7 +1618,7 @@ export class VoximRenderer {
       // three.js (x*sx, z*sz, y*sy). To shift the lowest model-Z voxel to
       // three.js y=0, translate modelGroup by +(-minZ * sz) on three.js Y.
       const anchorOffset = { x: 0, y: -minZ * weaponScale, z: 0 };
-      attachModelToSlot(mesh, slotId, def, mats, voxelScale, false, anchorOffset, baked);
+      attachModelToSlot(mesh, slotId, def, mats, voxelScale, false, anchorOffset);
 
       if (slotId === "main_hand" && def.nodes.length > 0) {
         // Trail/hit-volume dimensions come from the model AABB after the
@@ -1711,16 +1704,11 @@ export class VoximRenderer {
         if (m) mats.set(id, m);
       }
 
-      // Bake the armor voxels off the render thread at the slot's armor scale
-      // (T-067).  The slot was created above via ensureBoneAttachment, so its
-      // armorSubScale is available.
-      const armorScale = armorSlotScale(mesh, renderSlotId, entityScale);
-      const baked = armorScale
-        ? await this.bakePool.bakeModel(collectSlotBakeSpecs(def, armorScale))
-        : undefined;
-      // Re-check the slot still wants this model after the async bake.
+      // Re-check the slot still wants this model after the async model prefetch.
       if (mesh.attachments.get(renderSlotId)?.modelId !== modelId || !mesh.boneGroups) return;
-      attachArmorToSlot(mesh, renderSlotId, def, mats, entityScale, baked);
+      // Armor voxels bake synchronously through the bakeVoxels kitchen (T-281),
+      // one merged mesh per material at the slot's armor scale.
+      attachArmorToSlot(mesh, renderSlotId, def, mats, entityScale);
     }).catch(() => {
       const currentSlot = mesh.attachments.get(renderSlotId);
       if (currentSlot?.modelId === modelId) currentSlot.modelId = null;
@@ -2005,7 +1993,6 @@ export class VoximRenderer {
     this.debugOverlayManager.dispose();
     this.hitSparkRenderer.dispose();
     this.lightManager.dispose();
-    this.bakePool.dispose();
     this.instancePool.dispose();
     this.edgePass.dispose();
     this.pixelTarget.dispose();

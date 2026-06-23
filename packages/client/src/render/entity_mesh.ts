@@ -831,17 +831,13 @@ export function attachModelToSlot(
    * "attached in the middle" with half hanging off the back of the wrist.
    */
   anchorOffset?: { x: number; y: number; z: number },
-  baked?: BakedVoxel[],
 ): void {
   const slot = ensureAttachment(mesh, slotId);
   detachModelFromSlot(mesh, slotId);   // clear previous model first
-  const cursor = bakedCursor(baked);
 
   const modelGroup = new THREE.Group();
   modelGroup.name = `model:${modelDef.id}`;
-  for (const node of modelDef.nodes) {
-    modelGroup.add(buildVoxelMesh(node, materials, scale, onTop, cursor));
-  }
+  for (const m of buildMergedSubMeshes(modelDef.nodes, scale, materials, onTop)) modelGroup.add(m);
   if (anchorOffset) modelGroup.position.set(anchorOffset.x, anchorOffset.y, anchorOffset.z);
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
@@ -868,8 +864,7 @@ export function armorSlotScale(
  * by ensureBoneAttachment.  Reads armorSubScale from anchor.userData to build
  * voxels at the correct sub-object scale.  Always enables onTop polygonOffset.
  *
- * @param baked  Optional pre-baked voxels (modelDef.nodes order at armorScale);
- *               when absent each voxel bakes synchronously.
+ * Voxels bake synchronously through the bakeVoxels kitchen (T-281).
  */
 export function attachArmorToSlot(
   mesh: EntityMeshGroup,
@@ -877,20 +872,16 @@ export function attachArmorToSlot(
   modelDef: ModelDefinition,
   materials: Map<number, MaterialDef>,
   entityScale: { x: number; y: number; z: number },
-  baked?: BakedVoxel[],
 ): void {
   const slot = mesh.attachments.get(slotId);
   if (!slot) return; // ensureBoneAttachment must be called first
   detachModelFromSlot(mesh, slotId);
-  const cursor = bakedCursor(baked);
 
   const armorScale = armorSlotScale(mesh, slotId, entityScale)!;
 
   const modelGroup = new THREE.Group();
   modelGroup.name = `model:${modelDef.id}`;
-  for (const node of modelDef.nodes) {
-    modelGroup.add(buildVoxelMesh(node, materials, armorScale, true, cursor));
-  }
+  for (const m of buildMergedSubMeshes(modelDef.nodes, armorScale, materials, true)) modelGroup.add(m);
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
 }
