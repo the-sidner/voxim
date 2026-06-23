@@ -23,6 +23,7 @@ import type { AabbHalfExtents } from "../interaction/interaction_system.ts";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import { setClientPalette, paletteToken } from "./palette.ts";
 import { modelToThree } from "./coords.ts";
+import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import {
   createEntityMesh,
   updateEntityMesh,
@@ -55,20 +56,6 @@ import { CameraRig } from "./camera_rig.ts";
 import type { FogOfWar } from "../state/fog_of_war.ts";
 import { FOG_GRID_SIZE, FOG_CELL_SIZE } from "@voxim/protocol";
 
-/**
- * One recorded frame of the weapon blade during an attack's active phase.
- * Stores the world-space blade segment (hilt → tip) plus a perpendicular
- * direction and half-width so the trail can render the full swept volume.
- */
-interface TrailSlice {
-  hiltX: number; hiltY: number; hiltZ: number;
-  tipX:  number; tipY:  number; tipZ:  number;
-  /** World-space unit vector perpendicular to the blade (horizontal plane). */
-  perpX: number; perpY: number; perpZ: number;
-  /** Half cross-section width in world units (from model AABB). */
-  halfW: number;
-  alpha: number;
-}
 
 /**
  * Depth → world-Y blit pass.
@@ -330,16 +317,8 @@ export class VoximRenderer {
    */
   private attachedFog: FogOfWar | null = null;
 
-  /**
-   * Weapon tip trail system.
-   *
-   * During an attack's active phase the weapon blade traces a path through world
-   * space.  Each frame we record a (hilt, tip) slice and render consecutive slices
-   * as a ribbon mesh.  Slices fade out at 0.04 alpha/frame and are culled when
-   * they reach zero.
-   */
-  private readonly trailSlices = new Map<string, TrailSlice[]>();
-  private readonly trailMeshes = new Map<string, THREE.Mesh>();
+  /** Weapon tip trail ribbons — owns its own slice/mesh state + scene layer. */
+  private readonly weaponTrail = new WeaponTrailRenderer(this.scene);
 
   /**
    * Entity-root slots that follow a rest bone each frame (position + rotation).
@@ -1421,7 +1400,7 @@ export class VoximRenderer {
 
     // Update weapon tip trail ribbons for all currently attacking entities.
     const tTrailStart = performance.now();
-    this.updateWeaponTrails(now);
+    this.weaponTrail.update(this.entityMeshes, this.weaponActionsMap, now);
     this.frameTimings.trailMs = performance.now() - tTrailStart;
 
     // Advance hit spark particles and flicker lights.
@@ -1796,184 +1775,6 @@ export class VoximRenderer {
     }
   }
 
-  /**
-   * Append a weapon trail slice for each entity currently in the active attack phase,
-   * decay existing slices, and rebuild ribbon meshes.
-   * Called once per render frame before the scene draw.
-   */
-  private updateWeaponTrails(now: number): void {
-    const ppu = globalThis.innerHeight / 40; // pixels per world unit (approx)
-
-    for (const [entityId, mesh] of this.entityMeshes) {
-      const anim = mesh.animationState;
-      if (!anim || !anim.weaponActionId) {
-        // Decay-only: let existing trail finish fading even after attack ends
-        const slices = this.trailSlices.get(entityId);
-        if (slices && slices.length > 0) {
-          for (const s of slices) s.alpha -= 0.04;
-          this.trailSlices.set(entityId, slices.filter((s) => s.alpha > 0));
-          this.rebuildTrailMesh(entityId, ppu);
-        }
-        continue;
-      }
-
-      const weaponAction = this.weaponActionsMap.get(anim.weaponActionId);
-      const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
-      const total = weaponAction
-        ? weaponAction.windupTicks + weaponAction.activeTicks + weaponAction.winddownTicks
-        : 0;
-      const ticks = Math.min(anim.ticksIntoAction + elapsed, total);
-      const inActive = weaponAction
-        ? ticks >= weaponAction.windupTicks && ticks < weaponAction.windupTicks + weaponAction.activeTicks
-        : false;
-
-      let slices = this.trailSlices.get(entityId) ?? [];
-
-      const blade = weaponAction?.blade;
-      const holdBone = weaponAction?.holdHand ?? "hand_r";
-      // Force entity matrix recompute so the bone matrixWorld pulled inside
-      // evaluateBladeWorld reflects this frame's pose, not last frame's.
-      // (updateWeaponTrails runs before renderer.render's own update pass.)
-      if (inActive && blade) mesh.group.updateWorldMatrix(true, false);
-      const bw = inActive && blade ? evaluateBladeWorld(mesh, blade, holdBone) : null;
-
-      if (bw) {
-        const halfW = mesh.bladeDimensions?.halfCross ?? 0.1;
-        const wHilt = bw.base;
-        const wTip  = bw.tip;
-
-        // Perpendicular to blade in the horizontal plane — gives the trail width.
-        const bx = wTip.x - wHilt.x, by = wTip.y - wHilt.y, bz = wTip.z - wHilt.z;
-        const bLen = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
-        // cross(bladeDir, world-up=(0,1,0)): px = bz/bLen, py = 0, pz = -bx/bLen
-        let px = bz / bLen, pz = -bx / bLen;
-        const pLen = Math.sqrt(px * px + pz * pz) || 1;
-        px /= pLen; pz /= pLen;
-
-        slices.push({
-          hiltX: wHilt.x, hiltY: wHilt.y, hiltZ: wHilt.z,
-          tipX:  wTip.x,  tipY:  wTip.y,  tipZ:  wTip.z,
-          perpX: px, perpY: 0, perpZ: pz,
-          halfW, alpha: 0.5,
-        });
-      }
-
-      // Decay all slices
-      for (const s of slices) s.alpha -= 0.04;
-      slices = slices.filter((s) => s.alpha > 0);
-      this.trailSlices.set(entityId, slices);
-
-      this.rebuildTrailMesh(entityId, ppu);
-    }
-
-    // Remove trail meshes for entities no longer tracked
-    for (const [entityId] of this.trailMeshes) {
-      if (!this.entityMeshes.has(entityId)) {
-        this.removeTrailMesh(entityId);
-      }
-    }
-  }
-
-  /**
-   * Rebuild the volumetric trail mesh from the current slice buffer.
-   *
-   * Each slice contributes 4 vertices — the corners of the blade's cross-section
-   * at that moment:
-   *   [0] hilt - perp*halfW   [1] hilt + perp*halfW
-   *   [2] tip  + perp*halfW   [3] tip  - perp*halfW
-   *
-   * Consecutive slice quads are connected with 2 side ribbons (hilt-edge and
-   * tip-edge) + 2 face quads (near and far sides), forming a closed tube that
-   * shows the physical volume swept by the blade.
-   */
-  private rebuildTrailMesh(entityId: string, _ppu: number): void {
-    const slices = this.trailSlices.get(entityId) ?? [];
-
-    if (slices.length < 2) {
-      // Remove the visual mesh but keep slices so they can accumulate.
-      const existing = this.trailMeshes.get(entityId);
-      if (existing) {
-        this.scene.remove(existing);
-        existing.geometry.dispose();
-        (existing.material as THREE.Material).dispose();
-        this.trailMeshes.delete(entityId);
-      }
-      return;
-    }
-
-    const positions: number[] = [];
-    const colors:    number[] = [];
-    const indices:   number[] = [];
-
-    // Trail color from the single palette (T-280). Hilt darkens slightly toward
-    // the base for the swept-flame gradient; tip is the full token color.
-    const tc = new THREE.Color(paletteToken("trail"));
-    const hr = tc.r * 0.85, hg = tc.g * 0.85, hb = tc.b * 0.85;
-
-    // 4 verts per slice: hiltL, hiltR, tipR, tipL
-    for (let i = 0; i < slices.length; i++) {
-      const s = slices[i];
-      const a = s.alpha;
-      // hiltL
-      positions.push(s.hiltX - s.perpX * s.halfW, s.hiltY, s.hiltZ - s.perpZ * s.halfW);
-      colors.push(hr, hg, hb, a * 0.6);
-      // hiltR
-      positions.push(s.hiltX + s.perpX * s.halfW, s.hiltY, s.hiltZ + s.perpZ * s.halfW);
-      colors.push(hr, hg, hb, a * 0.6);
-      // tipR
-      positions.push(s.tipX + s.perpX * s.halfW, s.tipY, s.tipZ + s.perpZ * s.halfW);
-      colors.push(tc.r, tc.g, tc.b, a);
-      // tipL
-      positions.push(s.tipX - s.perpX * s.halfW, s.tipY, s.tipZ - s.perpZ * s.halfW);
-      colors.push(tc.r, tc.g, tc.b, a);
-    }
-
-    // Between consecutive slices: 4 faces (left side, right side, near face, far face)
-    for (let i = 0; i < slices.length - 1; i++) {
-      const b0 = i * 4,     b1 = (i + 1) * 4;
-      const hL0 = b0, hR0 = b0+1, tR0 = b0+2, tL0 = b0+3;
-      const hL1 = b1, hR1 = b1+1, tR1 = b1+2, tL1 = b1+3;
-      // Left side: hiltL[i] → hiltL[i+1] → tipL[i+1] → tipL[i]
-      indices.push(hL0, hL1, tL1,  hL0, tL1, tL0);
-      // Right side: hiltR[i] → tipR[i] → tipR[i+1] → hiltR[i+1]
-      indices.push(hR0, tR0, tR1,  hR0, tR1, hR1);
-      // Near face (hilt edge): hiltL[i] → hiltR[i] → hiltR[i+1] → hiltL[i+1]
-      indices.push(hL0, hR0, hR1,  hL0, hR1, hL1);
-      // Far face (tip edge): tipL[i] → tipR[i+1] → tipR[i] ... tipL[i] → tipL[i+1] → tipR[i+1]
-      indices.push(tL0, tR1, tR0,  tL0, tL1, tR1);
-    }
-
-    let trailMesh = this.trailMeshes.get(entityId);
-    if (!trailMesh) {
-      const geo = new THREE.BufferGeometry();
-      const mat = new THREE.MeshBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      });
-      trailMesh = new THREE.Mesh(geo, mat);
-      this.scene.add(trailMesh);
-      this.trailMeshes.set(entityId, trailMesh);
-    }
-
-    const geo = trailMesh.geometry;
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 4));
-    geo.setIndex(indices);
-    geo.computeBoundingSphere();
-  }
-
-  private removeTrailMesh(entityId: string): void {
-    const mesh = this.trailMeshes.get(entityId);
-    if (mesh) {
-      this.scene.remove(mesh);
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
-      this.trailMeshes.delete(entityId);
-    }
-    this.trailSlices.delete(entityId);
-  }
 
   private onResize(canvas: HTMLCanvasElement): void {
     const w = canvas.clientWidth;
@@ -1993,6 +1794,7 @@ export class VoximRenderer {
     this.debugOverlayManager.dispose();
     this.hitSparkRenderer.dispose();
     this.lightManager.dispose();
+    this.weaponTrail.dispose();
     this.instancePool.dispose();
     this.edgePass.dispose();
     this.pixelTarget.dispose();
@@ -2001,7 +1803,6 @@ export class VoximRenderer {
     this.hoverMaskMat.dispose();
     this.depthBlitMat.dispose();
     this.renderer.dispose();
-    for (const [entityId] of this.trailMeshes) this.removeTrailMesh(entityId);
     for (const [, mesh] of this.entityMeshes) disposeEntityMesh(mesh);
     for (const [, mesh] of this.terrainMeshes) {
       mesh.geometry.dispose();
