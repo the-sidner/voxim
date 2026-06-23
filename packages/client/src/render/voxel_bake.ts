@@ -17,6 +17,7 @@
  */
 
 import { vertexDisp } from "./displacement.ts";
+import type { VoxelAtom } from "@voxim/content";
 
 /** A unit (1×1×1) cube's vertex positions, exactly as THREE.BoxGeometry emits. */
 // deno-fmt-ignore
@@ -149,24 +150,25 @@ export interface BakedMesh {
 }
 
 /**
- * Bake all voxels of one materialId in a node list into a single merged set of
- * arrays — the array-producing core of `buildSubModelGeo` + `mergeGeos`, math
- * identical.  Each voxel contributes the displaced unit box translated to its
- * Three.js center, plus a per-vertex `voxelCenter` tag.
+ * THE bake kitchen (T-281): merge every atom of one materialId into a single set
+ * of arrays. Each atom is a fully-resolved voxel — `c*` is its CENTER in model
+ * space (already grid-scaled), `s*` its PER-VOXEL size (so terrain columns,
+ * model nodes, and placed voxels of different sizes all bake through this one
+ * path). Center maps model→three (x, z, y); the ±0.5 box scales by the atom's
+ * per-axis size. `bakeSubModel` is now a thin nodes→atoms adapter over this, so
+ * the merged geometry is byte-identical for uniform sizes (parity-tested).
  */
-export function bakeSubModel(
-  nodes: ReadonlyArray<{ x: number; y: number; z: number; materialId: number }>,
+export function bakeVoxels(
+  atoms: ReadonlyArray<VoxelAtom>,
   materialId: number,
-  scale: { x: number; y: number; z: number },
 ): BakedMesh {
   const voxels: { px: number; py: number; pz: number; baked: BakedVoxel }[] = [];
-  for (const node of nodes) {
-    if (node.materialId !== materialId) continue;
-    // Three.js space: model(x, y, z) → three(x*sx, z*sz, y*sy)
-    const px = node.x * scale.x;
-    const py = node.z * scale.z;
-    const pz = node.y * scale.y;
-    voxels.push({ px, py, pz, baked: bakeDisplacedVoxel(px, py, pz, scale) });
+  for (const a of atoms) {
+    if (a.materialId !== materialId) continue;
+    // model center → three center (x, z, y); size stays in model axes — the
+    // displaced-box bake applies the same swap to the extents internally.
+    const px = a.cx, py = a.cz, pz = a.cy;
+    voxels.push({ px, py, pz, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }) });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;
@@ -201,4 +203,24 @@ export function bakeSubModel(
   }
 
   return { positions, normals, uvs, voxelCenter, indices };
+}
+
+/**
+ * Adapter: bake a model's nodes at one uniform entity `scale` through the atom
+ * kitchen. Each node becomes an atom whose center is the grid position scaled
+ * into model space and whose size is the entity scale (uniform). Kept so the
+ * existing merged-prop path (`voxel_geo.buildSubModelGeo`) is one call away from
+ * the unified pipeline; byte-identical to the pre-T-281 bakeSubModel.
+ */
+export function bakeSubModel(
+  nodes: ReadonlyArray<{ x: number; y: number; z: number; materialId: number }>,
+  materialId: number,
+  scale: { x: number; y: number; z: number },
+): BakedMesh {
+  const atoms: VoxelAtom[] = nodes.map((n) => ({
+    cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
+    sx: scale.x, sy: scale.y, sz: scale.z,
+    materialId: n.materialId,
+  }));
+  return bakeVoxels(atoms, materialId);
 }

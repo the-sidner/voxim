@@ -11,12 +11,14 @@ import { vertexDisp } from "./displacement.ts";
 import {
   bakeDisplacedVoxel,
   bakeSubModel,
+  bakeVoxels,
   BOX_INDEX_COUNT,
   BOX_VERT_COUNT,
   computeVertexNormals,
   unitBoxIndex,
   unitBoxUV,
 } from "./voxel_bake.ts";
+import type { VoxelAtom } from "@voxim/content";
 
 // ---- THREE reference implementations (the pre-T-067 synchronous path) ----
 
@@ -213,4 +215,50 @@ Deno.test("computeVertexNormals matches THREE for the merged geometry", () => {
 
   assertEquals(maxAbsDiff(ref.getAttribute("normal").array, recomputed), 0);
   ref.dispose();
+});
+
+// ---- T-281: bakeVoxels (the one kitchen) ----
+
+Deno.test("bakeVoxels with uniform-size atoms == bakeSubModel (adapter parity)", () => {
+  const nodes = [
+    { x: 0, y: 0, z: 0, materialId: 1 },
+    { x: 1, y: 2, z: 3, materialId: 1 },
+    { x: -2, y: 1, z: 0, materialId: 2 },
+  ];
+  const scale = { x: 1.3, y: 0.7, z: 1.1 };
+  const viaSub = bakeSubModel(nodes, 1, scale);
+  // Same nodes hand-built as atoms (center grid-scaled, size = entity scale).
+  const atoms: VoxelAtom[] = nodes.map((n) => ({
+    cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
+    sx: scale.x, sy: scale.y, sz: scale.z, materialId: n.materialId,
+  }));
+  const viaAtoms = bakeVoxels(atoms, 1);
+  assertEquals(maxAbsDiff(viaAtoms.positions, viaSub.positions), 0);
+  assertEquals(maxAbsDiff(viaAtoms.normals, viaSub.normals), 0);
+  assertEquals(maxAbsDiff(viaAtoms.indices, viaSub.indices), 0);
+  assertEquals(maxAbsDiff(viaAtoms.voxelCenter, viaSub.voxelCenter), 0);
+});
+
+Deno.test("bakeVoxels honors PER-VOXEL size — different sizes produce different extents", () => {
+  // Two atoms, same material, at the same center, different sizes.
+  const small = bakeVoxels([{ cx: 0, cy: 0, cz: 0, sx: 0.5, sy: 0.5, sz: 0.5, materialId: 1 }], 1);
+  const big = bakeVoxels([{ cx: 0, cy: 0, cz: 0, sx: 2.0, sy: 2.0, sz: 2.0, materialId: 1 }], 1);
+  const extent = (m: { positions: Float32Array }) => {
+    let max = 0;
+    for (const p of m.positions) if (Math.abs(p) > max) max = Math.abs(p);
+    return max;
+  };
+  // The big voxel's half-extent (~1.0 + disp) must clearly exceed the small one's (~0.25 + disp).
+  const eSmall = extent(small), eBig = extent(big);
+  assertEquals(eBig > eSmall * 2.5, true, `big extent ${eBig} should dwarf small ${eSmall}`);
+});
+
+Deno.test("bakeVoxels mixes sizes within one mesh (non-uniform per axis)", () => {
+  // A wide-flat voxel next to a tall-thin one — the 'voxels of different sizes' case.
+  const mesh = bakeVoxels([
+    { cx: 0, cy: 0, cz: 0, sx: 3, sy: 3, sz: 0.2, materialId: 1 },
+    { cx: 5, cy: 0, cz: 0, sx: 0.2, sy: 0.2, sz: 3, materialId: 1 },
+  ], 1);
+  assertEquals(mesh.positions.length, 2 * BOX_VERT_COUNT * 3);
+  assertEquals(mesh.indices.length, 2 * BOX_INDEX_COUNT);
 });
