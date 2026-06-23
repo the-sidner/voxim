@@ -514,7 +514,7 @@ proving constant-mag welds a shared cliff corner while default mag cracks it; AN
 palette-shared terrain meeting props with no gap.
 
 ### T-284 · Client rebuild Phase 4 — build spine on the real pipeline
-Effort: L   Status: in-progress   (chunks 1-2 of 3 landed — interaction + server authority)
+Effort: L   Status: done   Commit: d0cca73   (all 3 chunks landed; the client-rebuild arc is complete)
 
 CHUNK 1 DONE (b5cf82f) — the client build interaction, via a 3-approach design
 panel + judge (height-column cursor pick won): VoxelHit {cellX,cellY,baseZ,layer}
@@ -556,10 +556,16 @@ CHUNK 3 (folds) — 2 of 3 done:
     health/worldClock DataView decodes (new worldClockCodec). The 3 terrain-grid
     components keep explicit cases (chunk-binding side effects). Coverage test +
     ANIM 7/7 confirm behaviour-identical decoding.
-  · REMAINING: the deferred networked-`Container` chest UI (T-077/T-078) — give
-    Container a wire id + codec, decode it client-side, build the deposit/withdraw
-    panel on the rebuilt client. This is a FEATURE (not a fold) — the largest
-    remaining T-284 piece; best as its own focused effort.
+  · DONE (d0cca73) networked-`Container` chest UI (T-077/T-078): Container went
+    on the wire (id 53, codec → @voxim/codecs, CODEC_BY_WIREID dispatch); aoi.ts
+    streams a chest's banked unique items to the owning dynasty's client.
+    ContainerDeposit/Withdraw commands (24/25) + a new ContainerSystem (mirrors
+    EquipmentSystem; proximity-gated; helpers switched world.write→world.set so
+    the move ships as a delta). ContainerPanel mirrors WorkstationPanel (slot =
+    deposit drop-target + withdraw drag-source); makeContainerHandler + E-key
+    open it range-gated. Verified: deno check, 335 server/protocol tests, client
+    bundle, and a live headless E2E (deploy chest → decode container → deposit a
+    unique sword → withdraw it round-trips on client+server).
 
 ORIGINAL SCOPE (full ticket): Brush descriptor on `modeState` (`tool:"single"|"line"`,
 `voxelSize`, `spacing`) + `ui_store` fields + a build HUD (size/spacing). Content-
