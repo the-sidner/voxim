@@ -47,26 +47,12 @@ const ctx = await esbuild.context({
   logLevel: "info",
 });
 
-// Voxel-bake Web Worker (T-067) — built as its own bundle so the browser can
-// load dist/bake_worker.js at runtime (bake_pool.ts references it by URL).
-const workerCtx = await esbuild.context({
-  plugins,
-  entryPoints: [new URL("packages/client/src/render/bake_worker.ts", root).pathname],
-  outfile: new URL("packages/client/dist/bake_worker.js", root).pathname,
-  bundle: true,
-  format: "esm",
-  platform: "browser",
-  target: "es2022",
-  minify: false,
-  jsx: "automatic",
-  jsxImportSource: "preact",
-  logLevel: "info",
-});
+// (The voxel-bake Web Worker was retired in T-281 — every voxel surface now
+// bakes synchronously through the bakeVoxels kitchen, so there is no second
+// worker bundle to watch. Mirrors build_client.ts.)
 
 await ctx.rebuild();
-await workerCtx.rebuild();
 await ctx.watch();
-await workerCtx.watch();
 console.log("[client-dev] esbuild watching for changes");
 
 // ---- static server ----
