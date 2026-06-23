@@ -27,7 +27,8 @@ import { VoximRenderer } from "./render/renderer.ts";
 import { SwingPredictor } from "./render/swing_predictor.ts";
 import { BuildGhostRenderer } from "./render/build_ghost.ts";
 import { HoverOutlineRenderer } from "./render/hover_outline.ts";
-import { ForestPropsRenderer } from "./render/forest_props.ts";
+import { ScatterRenderer } from "./render/scatter_renderer.ts";
+import { seedFromTileId } from "@voxim/world";
 import { WaterRenderer } from "./render/water_renderer.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
@@ -205,7 +206,10 @@ export class VoximGame {
   /** Per-column stack counter feeding the build cursor's vertical stacking (T-284). */
   private readonly buildOccupancy = new BuildOccupancy();
   private hoverOutline: HoverOutlineRenderer | null = null;
-  private forestProps: ForestPropsRenderer | null = null;
+  private scatter: ScatterRenderer | null = null;
+  /** Per-tile id for the scatter VariantPool's deterministic seed. Defaults to
+   *  the single-tile world; the gateway path overrides it. */
+  private tileId = "0_0";
   private waterRenderer: WaterRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
@@ -270,6 +274,7 @@ export class VoximGame {
       }
       const gatewayResult = await connectViaGateway(config.gatewayUrl!, config.sessionToken);
       this.playerId = gatewayResult.playerId;
+      this.tileId = gatewayResult.tileId;
       tileAddress = gatewayResult.tileAddress;
       tileToken = config.sessionToken;
       certHashHex = gatewayResult.tileCertHashHex;
@@ -419,14 +424,19 @@ export class VoximGame {
     // entity category and feeds the silhouette into the EdgePass mask.
     this.hoverOutline = new HoverOutlineRenderer(this.renderer, this.world);
 
-    // Forest decoration — subscribes to chunk KindGrid arrivals and spawns
-    // synthetic tree props at every FOREST pixel via the same instanced
-    // pool the regular entity props use. Entirely client-side; the server
-    // never carries individual tree entities. Replays already-loaded chunks
-    // on registration so chunks that arrived during connect() get decorated.
-    this.forestProps = new ForestPropsRenderer(
-      this.renderer.instancePool, this.content, this.world,
-    );
+    // Procedural scatter (T-285) — subscribes to chunk KindGrid arrivals and
+    // renders a per-tile VariantPool of generated voxel props at every cell
+    // whose boundary kind matches a ScatterDef (forests today; rocks/litter as
+    // content). Entirely client-side via the shared instanced pool; the server
+    // carries no individual prop entities. Replays already-loaded chunks on
+    // registration so chunks that arrived during connect() get decorated. The
+    // tile seed makes the pool deterministic (same tile → same props on reload).
+    if (this.contentService) {
+      this.scatter = new ScatterRenderer(
+        this.renderer.instancePool, this.contentService, this.world,
+        seedFromTileId(this.tileId),
+      );
+    }
 
     // Water surface (T-159) — translucent overlay over WATER cells, animated
     // via a uTime-driven shader.  Same KindGrid hook the forest renderer
@@ -788,7 +798,7 @@ export class VoximGame {
 
     // Wipe per-tile state. The renderer instance is kept; only its scene
     // contents go.
-    this.forestProps?.reset();
+    this.scatter?.reset();
     this.waterRenderer?.clear();
     this.world.clear();
     this.buildOccupancy.clear();
@@ -1650,10 +1660,10 @@ export class VoximGame {
       // would have starved the WebTransport read loop and stalled chunk
       // delivery. Now that the screen is gone and the message stream is
       // quiet, drain the queued chunks across animation frames.
-      this.forestProps?.start();
+      this.scatter?.start();
     }).catch(() => {
       patchUI({ loading: false });
-      this.forestProps?.start();
+      this.scatter?.start();
     });
   }
 
@@ -1669,7 +1679,7 @@ export class VoximGame {
     this.buildGhost = null;
     this.hoverOutline?.dispose();
     this.hoverOutline = null;
-    this.forestProps = null;
+    this.scatter = null;
     this.waterRenderer?.clear();
     this.waterRenderer = null;
     this.inputCapture?.dispose();

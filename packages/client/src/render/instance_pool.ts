@@ -149,8 +149,8 @@ export class InstancePool {
 
   /**
    * Drop every handle whose key starts with `prefix`. Used by callers
-   * that namespace their handles (e.g. ForestPropsRenderer keys all its
-   * handles with "forest:" so it can clear them all on tile transition).
+   * that namespace their handles (e.g. ScatterRenderer keys all its
+   * handles with "scatter:" so it can clear them all on tile transition).
    */
   removeByPrefix(prefix: string): void {
     for (const handleKey of [...this.handles.keys()]) {

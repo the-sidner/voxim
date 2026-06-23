@@ -21,18 +21,16 @@ Deno.test("T-285a: crossCheckProcModels passes on the real content", () => {
   crossCheckProcModels(content); // throws on a typo — reaching here is the pass
 });
 
-Deno.test("T-285a: the stub generator emits a deterministic trunk column in FULL edge lengths", () => {
+Deno.test("T-285a: the registered generator runs deterministically off a seed", () => {
+  // Registry-level smoke check; the full trunk/branch/foliage grammar is pinned
+  // by tree_grammar.test.ts (T-285b).
   const gen = getGenerator("tree_grammar")!;
   const ctx = { resolveMaterial: (name: string) => content.materials.get(name)!.id };
   const params = content.procModels.get("oak")!.params;
   const a = gen(12345, params, ctx);
   const b = gen(12345, params, ctx);
   assertEquals(a, b, "same seed → same atoms (deterministic)");
-  assert(a.length >= 6 && a.length <= 11, `trunk height in [6,11], got ${a.length}`);
-  for (const atom of a) {
-    assertEquals([atom.sx, atom.sy, atom.sz], [1, 1, 1], "unit voxels (full edge length 1)");
-    assertEquals(atom.materialId, content.materials.get("wood")!.id, "trunk is wood");
-  }
+  assert(a.length > 0, "produces atoms");
 });
 
 Deno.test("T-285a: cross-check throws on an unknown generator", () => {

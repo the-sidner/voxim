@@ -354,7 +354,7 @@ export class EntityMeshRegistry {
   }
 
   /** Build a Three.js material for a prop voxel.  Mirrors what
-   *  ForestPropsRenderer does for forest archetypes — same Phong + flat
+   *  ScatterRenderer does for scatter archetypes — same Phong + flat
    *  shading + canopyFade registration, but materials are not shared
    *  across the two systems because they may diverge over time and the
    *  shared-cache complexity isn't worth it for a few extra materials. */
