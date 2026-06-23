@@ -20,10 +20,9 @@ import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, Res
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { paletteToken } from "./palette.ts";
 import { modelToThree } from "./coords.ts";
-import { type BakedVoxel, bakeDisplacedVoxel, bakeVoxels, unitBoxIndex, unitBoxUV } from "./voxel_bake.ts";
+import { bakeVoxels } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import type { VoxelAtom } from "@voxim/content";
-import type { VoxelBakeSpec } from "./bake_protocol.ts";
 import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
 
 // Shared placeholder geometries — never disposed individually
@@ -31,42 +30,6 @@ const GEO_BODY  = new THREE.BoxGeometry(0.8, 1.8, 0.8);
 const GEO_DIR   = new THREE.BoxGeometry(0.2, 0.2, 0.5);
 // Shared unit cube for blueprint scaffolds — scaled per instance, never disposed
 const GEO_UNIT  = new THREE.BoxGeometry(1, 1, 1);
-
-/**
- * Build the displaced unit-box geometry for one voxel.  The displacement +
- * normal math runs in the three-free `voxel_bake.bakeDisplacedVoxel` (T-067 —
- * the same code the bake worker runs); this wraps the resulting position/normal
- * arrays in a THREE.BufferGeometry.  Index + uv are constant across voxels but
- * copied per geometry — each per-voxel mesh owns its attributes and disposes
- * them individually (clearMeshContent / detachModelFromSlot), so a shared
- * BufferAttribute would have its GPU buffer freed out from under siblings.
- *
- * Scaling before displacement means adjacent voxels tile seamlessly
- * (spacing == voxel size) and displacement magnitude is 10 % of the
- * voxel face width as specified.
- */
-function buildDisplacedVoxelGeo(
-  px: number, py: number, pz: number,
-  scale: { x: number; y: number; z: number },
-): THREE.BufferGeometry {
-  return geometryFromBakedVoxel(bakeDisplacedVoxel(px, py, pz, scale));
-}
-
-/**
- * Wrap a single voxel's baked position/normal arrays (synchronous or from the
- * bake worker) into a THREE.BufferGeometry.  Index + uv are constant across
- * voxels but copied per geometry — each per-voxel mesh owns its attributes and
- * disposes them individually (clearMeshContent / detachModelFromSlot), so a
- * shared BufferAttribute would have its GPU buffer freed out from under siblings.
- */
-function geometryFromBakedVoxel(baked: BakedVoxel): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(baked.positions, 3));
-  geo.setAttribute("normal",   new THREE.BufferAttribute(baked.normals,   3));
-  geo.setAttribute("uv",       new THREE.BufferAttribute(unitBoxUV().slice(), 2));
-  geo.setIndex(new THREE.BufferAttribute(unitBoxIndex().slice(), 1));
-  return geo;
-}
 
 function pickPlaceholderColor(state: EntityState, isLocal: boolean): THREE.ColorRepresentation {
   if (isLocal) return paletteToken("localPlayer");
@@ -344,50 +307,6 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
     (mesh.placeholder.dir.material as THREE.Material).dispose();
     mesh.placeholder = null;
   }
-}
-
-/**
- * A consumable source of pre-baked per-voxel geometry, supplied by the bake
- * pool (T-067).  `buildVoxelMesh` pulls one entry per node in the SAME order
- * the matching `collect*BakeSpecs` produced them, so the worker's results line
- * up with the traversal.  Undefined → bake synchronously (the fallback).
- */
-export type BakedVoxelCursor = () => BakedVoxel | undefined;
-
-function buildVoxelMesh(
-  node: { x: number; y: number; z: number; materialId: number },
-  materials: Map<number, MaterialDef>,
-  scale: { x: number; y: number; z: number },
-  onTop = false,
-  baked?: BakedVoxelCursor,
-): THREE.Mesh {
-  const matDef = materials.get(node.materialId);
-  // model(x, y, z) → three(x * sx, z * sz, y * sy)
-  const px = node.x * scale.x, py = node.z * scale.z, pz = node.y * scale.y;
-  // Use the off-thread bake when the cursor yields one for this voxel;
-  // otherwise fall back to baking inline (synchronous path / cursor exhausted).
-  const pre = baked?.();
-  const geo = pre ? geometryFromBakedVoxel(pre) : buildDisplacedVoxelGeo(px, py, pz, scale);
-  const vox = new THREE.Mesh(geo, buildVoxelMaterial(matDef, node.materialId, onTop));
-  vox.position.set(px, py, pz);
-  vox.castShadow = true;
-  vox.receiveShadow = true;
-  return vox;
-}
-
-/** The bake spec (Three.js-space center + scale) for one model node. */
-function nodeBakeSpec(
-  node: { x: number; y: number; z: number },
-  scale: { x: number; y: number; z: number },
-): VoxelBakeSpec {
-  // model(x, y, z) → three(x*sx, z*sz, y*sy) — identical to buildVoxelMesh.
-  return { px: node.x * scale.x, py: node.z * scale.z, pz: node.y * scale.y, scale };
-}
-
-/** Turn a baked-voxel array into a cursor that yields one entry per call. */
-export function bakedCursor(baked: BakedVoxel[] | undefined): BakedVoxelCursor {
-  let i = 0;
-  return () => baked?.[i++];
 }
 
 /**
@@ -795,14 +714,6 @@ export function ensureBoneAttachment(
     mesh.attachments.set(slotId, slot);
   }
   return slot;
-}
-
-/** Bake specs for `attachModelToSlot` — the model's nodes at `scale`, in order. */
-export function collectSlotBakeSpecs(
-  modelDef: ModelDefinition,
-  scale: { x: number; y: number; z: number },
-): VoxelBakeSpec[] {
-  return modelDef.nodes.map((node) => nodeBakeSpec(node, scale));
 }
 
 /**
