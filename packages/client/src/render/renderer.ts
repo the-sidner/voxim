@@ -23,7 +23,7 @@ import { bakeVoxels } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
-import { setClientPalette } from "./palette.ts";
+import { setClientPalette, paletteToken } from "./palette.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import { GateMarkerRenderer } from "./gate_marker.ts";
 import { EntityMeshRegistry } from "./entity_mesh_registry.ts";
@@ -403,6 +403,9 @@ export class VoximRenderer {
     if (pal) {
       setClientPalette(pal);
       this.envLighting.applyPalette(pal);
+      // Edge ink is content-driven now (T-285 art sweep): the silhouette/crease
+      // tint reads the `edgeInk` palette token instead of a hardcoded literal.
+      this.edgePass.setEdgeColor(paletteToken("edgeInk"));
     }
   }
 

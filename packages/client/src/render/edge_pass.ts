@@ -58,6 +58,9 @@ const FRAG = /* glsl */`
   uniform float     uHoverActive;
   uniform vec3      uHoverColor;
   uniform float     uHoverRadius;
+  uniform float     uExposure;            // pre-tonemap radiance lift
+  uniform float     uVignetteStart;       // radius where corner darkening begins
+  uniform float     uVignetteStrength;    // max corner darkening (0 = off)
 
   // View-space position from a (uv, raw-depth) sample. Garbage at the far
   // plane (w → 0); callers must skip sky pixels via the depth >= 0.9999 test.
@@ -73,6 +76,14 @@ const FRAG = /* glsl */`
     if (v > 0.75) return uFogVisible;   // 1.0
     if (v > 0.25) return uFogSeen;      // ~0.5
     return uFogUnseen;                  // 0
+  }
+
+  // Narkowicz ACES filmic curve — maps the lit linear radiance through an S-shape
+  // so lifted midtones read while the few bright (sunlit / ember) patches roll off
+  // instead of clipping. Richer grim tonality than the raw linear clamp.
+  vec3 aces(vec3 x) {
+    const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e2 = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e2), 0.0, 1.0);
   }
 
   void main() {
@@ -182,6 +193,19 @@ const FRAG = /* glsl */`
     float hRim = hDil * (1.0 - hMask) * uHoverActive;
     color.rgb = mix(color.rgb, uHoverColor, hRim);
 
+    // ---- Tone (lit radiance) --------------------------------------------
+    // Exposure lift then the ACES curve, applied to the LIT scene BEFORE the
+    // fog-of-war dim — so tone-mapping shapes the world's light, and fog-of-war
+    // stays a clean gameplay multiply on top (a tone-mapped image, not raw HDR).
+    color.rgb = aces(color.rgb * uExposure);
+
+    // Split-tone grade: nudge shadows cool, highlights warm — painterly depth
+    // for the desaturated world, reinforcing the palette's own cool (deep-water/
+    // frost) vs warm (timber/sand) axis. Subtle (±~6%); never recolours, only
+    // tints by luminance so the grim low-chroma identity holds.
+    float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    color.rgb *= mix(vec3(0.94, 0.98, 1.06), vec3(1.06, 1.01, 0.92), smoothstep(0.0, 0.6, luma));
+
     // ---- Fog of war (T-157) ---------------------------------------------
     // Reconstruct world position from depth + inverse camera matrices.
     // Sky pixels have depth = 1.0; skip them.
@@ -200,6 +224,12 @@ const FRAG = /* glsl */`
         : texture2D(tFog, fogUv).r;
       color.rgb *= fogBrightness(fogVal);
     }
+
+    // ---- Vignette (presentation) ----------------------------------------
+    // A gentle corner falloff focuses the eye on the player and keeps the
+    // lifted scene feeling close and grim. Subtle — never a hard black frame.
+    float vigD = distance(vUv, vec2(0.5));
+    color.rgb *= 1.0 - uVignetteStrength * smoothstep(uVignetteStart, 0.75, vigD);
 
     // Linear → sRGB for canvas output.
     color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
@@ -230,12 +260,14 @@ export class EdgePass {
         uProjInv:      { value: new THREE.Matrix4() },
         uViewInv:      { value: new THREE.Matrix4() },
         uTileSize:     { value: 0.0 },           // 0 disables fog (no tile yet)
-        uFogUnseen:    { value: 0.05 },
-        uFogSeen:      { value: 0.55 },
+        uFogUnseen:    { value: 0.06 },
+        uFogSeen:      { value: 0.66 },
         uFogVisible:   { value: 1.0 },
         texelSize:     { value: new THREE.Vector2(1 / width, 1 / height) },
         edgeStrength:     { value: 1.0 },
-        edgeColor:        { value: new THREE.Color(0x0d0d0d) },
+        // edgeInk palette token (peat #161611) — warmer near-black than the old
+        // hardcoded 0x0d0d0d; overwritten from the live palette via setEdgeColor.
+        edgeColor:        { value: new THREE.Color(0x161611) },
         // Tuned for the isometric camera and 1-unit voxel cells:
         //   depthEdge of ~0.04 ≈ a 1-unit z-step at typical camera distance,
         //   normalEdge of ~0.10 ≈ a ~25° crease (1 - cos 25° ≈ 0.094).
@@ -244,6 +276,12 @@ export class EdgePass {
         uHoverActive:  { value: 0.0 },
         uHoverColor:   { value: new THREE.Color().setRGB(1.0, 0.96, 0.78) },
         uHoverRadius:  { value: 2.0 },
+        // Tone + mood. Exposure lifts the grim-dark scene into a readable
+        // midtone; ACES (in-shader) rolls off the highlights; the vignette pulls
+        // the corners back for focus. Tuned by eye against the ash-grey world.
+        uExposure:         { value: 1.5 },
+        uVignetteStart:    { value: 0.45 },
+        uVignetteStrength: { value: 0.12 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -277,6 +315,12 @@ export class EdgePass {
   /** Tint color for the rim and the interior wash (sRGB; converted in shader). */
   setHoverColor(color: THREE.ColorRepresentation): void {
     (this.material.uniforms.uHoverColor.value as THREE.Color).set(color);
+  }
+
+  /** Edge-ink color — the silhouette/crease tint (sRGB; converted in shader).
+   *  Wired from the palette `edgeInk` token so the outline ink is content-driven. */
+  setEdgeColor(color: THREE.ColorRepresentation): void {
+    (this.material.uniforms.edgeColor.value as THREE.Color).set(color);
   }
 
   /**
