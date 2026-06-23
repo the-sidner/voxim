@@ -27,7 +27,6 @@ import {
   createEntityMesh,
   updateEntityMesh,
   upgradeToSkeletonModel,
-  collectSkeletonModelBakeSpecs,
   updateSkeletonPose,
   ensureAttachment,
   ensureBoneAttachment,
@@ -711,17 +710,15 @@ export class VoximRenderer {
         }
 
         if (skeleton) {
-          const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
-          // Bake the (5–27+) sub-object voxel geometries off the render thread,
-          // then build the meshes from the returned arrays on the main thread
-          // (T-067).  THREE objects can't cross the worker boundary; only the
-          // raw typed arrays do.
-          const specs = collectSkeletonModelBakeSpecs(skeleton, resolvedSubs, subModelDefs, scale, morphParams);
-          const baked = await this.bakePool.bakeModel(specs);
-          // Re-check the stale guard after the async bake — the entity may have
-          // transitioned to a prop or been disposed while we waited.
+          // Stale guard: the entity may have transitioned to a prop or been
+          // disposed during the async model prefetch above.
           if (this.instancePool.has(entityId) || this.entityMeshes.get(entityId) !== capture) return;
-          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams, baked);
+          const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
+          // Build the skeleton's per-sub-object meshes — one merged mesh per
+          // material through the bakeVoxels kitchen (T-281). A character is tens
+          // of voxels, so the bake is sub-millisecond on the main thread; the
+          // off-thread pool + collector/cursor coupling it replaced is gone.
+          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams);
           // Re-attach hover outline + resize the pick box to fit the freshly
           // built meshes — both attach via the entity's group, which now
           // holds real geometry instead of the placeholder.

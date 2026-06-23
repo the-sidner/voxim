@@ -20,7 +20,9 @@ import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, Res
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { paletteToken } from "./palette.ts";
 import { modelToThree } from "./coords.ts";
-import { type BakedVoxel, bakeDisplacedVoxel, unitBoxIndex, unitBoxUV } from "./voxel_bake.ts";
+import { type BakedVoxel, bakeDisplacedVoxel, bakeVoxels, unitBoxIndex, unitBoxUV } from "./voxel_bake.ts";
+import { geometryFromBaked } from "./voxel_geo.ts";
+import type { VoxelAtom } from "@voxim/content";
 import type { VoxelBakeSpec } from "./bake_protocol.ts";
 import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
 
@@ -388,6 +390,38 @@ export function bakedCursor(baked: BakedVoxel[] | undefined): BakedVoxelCursor {
   return () => baked?.[i++];
 }
 
+/**
+ * Build one MERGED THREE.Mesh per material for a sub-object's voxels (T-281) —
+ * replaces the N-per-node `buildVoxelMesh` path through the `bakeVoxels` kitchen.
+ * Geometrically identical (each voxel bakes to the same absolute model→three
+ * position) but collapses a sub-object into ~1 draw per material and drops the
+ * fragile bake-cursor coupling. `scale` is the sub-object's voxel size.
+ */
+function buildMergedSubMeshes(
+  nodes: ReadonlyArray<{ x: number; y: number; z: number; materialId: number }>,
+  scale: { x: number; y: number; z: number },
+  materials: Map<number, MaterialDef>,
+  onTop: boolean,
+): THREE.Mesh[] {
+  const atoms: VoxelAtom[] = nodes.map((n) => ({
+    cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
+    sx: scale.x, sy: scale.y, sz: scale.z,
+    materialId: n.materialId,
+  }));
+  const matIds = new Set<number>();
+  for (const n of nodes) matIds.add(n.materialId);
+  const meshes: THREE.Mesh[] = [];
+  for (const matId of matIds) {
+    const baked = bakeVoxels(atoms, matId);
+    if (baked.indices.length === 0) continue;
+    const mesh = new THREE.Mesh(geometryFromBaked(baked), buildVoxelMaterial(materials.get(matId), matId, onTop));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    meshes.push(mesh);
+  }
+  return meshes;
+}
+
 // ---- upgrade to skeleton model ----
 
 /** Per-bone rest-axis morph multipliers (x/y/z), derived from morph params. */
@@ -442,28 +476,6 @@ function skeletonSubScale(
 }
 
 /**
- * Bake specs for `upgradeToSkeletonModel`, in the EXACT order it builds voxel
- * meshes (each resolved sub-object's nodes, sub-scale incl. bone morph).
- */
-export function collectSkeletonModelBakeSpecs(
-  skeleton: SkeletonDef,
-  resolvedSubs: ResolvedSubObject[],
-  subModelDefs: Map<string, ModelDefinition>,
-  scale: { x: number; y: number; z: number },
-  morphParams?: Record<string, number>,
-): VoxelBakeSpec[] {
-  const morph = computeBoneMorphScales(skeleton, morphParams);
-  const specs: VoxelBakeSpec[] = [];
-  for (const sub of resolvedSubs) {
-    const subDef = subModelDefs.get(sub.modelId);
-    if (!subDef) continue;
-    const subScale = skeletonSubScale(sub, scale, morph);
-    for (const node of subDef.nodes) specs.push(nodeBakeSpec(node, subScale));
-  }
-  return specs;
-}
-
-/**
  * Build a bone Group hierarchy and attach sub-object part models.
  * Each bone becomes a Three.js Group positioned at its rest offset from its parent.
  * Sub-objects with a boneId are children of that bone's Group.
@@ -471,8 +483,8 @@ export function collectSkeletonModelBakeSpecs(
  * Bones in `skeleton.bones` must be ordered parent-first (root appears before
  * any of its children) — this is enforced by the content authoring convention.
  *
- * baked: optional pre-baked voxels from the pool (collectSkeletonModelBakeSpecs
- * order); when absent each voxel bakes synchronously.
+ * Sub-object voxels bake synchronously through the `bakeVoxels` kitchen (T-281),
+ * one merged mesh per material per sub-object — no off-thread pre-bake + cursor.
  */
 export function upgradeToSkeletonModel(
   mesh: EntityMeshGroup,
@@ -483,10 +495,8 @@ export function upgradeToSkeletonModel(
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
   morphParams?: Record<string, number>,
-  baked?: BakedVoxel[],
 ): void {
   clearMeshContent(mesh);
-  const cursor = bakedCursor(baked);
 
   // Pre-build per-bone rest-axis multipliers from morph param declarations.
   const morph = computeBoneMorphScales(skeleton, morphParams);
@@ -558,10 +568,9 @@ export function upgradeToSkeletonModel(
     // Sub-objects parented to mesh.group (sub.boneId is null) get factor
     // 1.0 — they aren't part of the morphed skeleton.
     const subScale = skeletonSubScale(sub, scale, morph);
-    for (const node of subDef.nodes) {
-      const vox = buildVoxelMesh(node, materials, subScale, false, cursor);
-      subGroup.add(vox);
-      voxelMeshes.push(vox);
+    for (const m of buildMergedSubMeshes(subDef.nodes, subScale, materials, false)) {
+      subGroup.add(m);
+      voxelMeshes.push(m);
     }
   }
 
