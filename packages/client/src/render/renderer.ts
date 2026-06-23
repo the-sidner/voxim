@@ -21,9 +21,10 @@ import type { MaterialDef, ModelDefinition, ResolvedSubObject, WeaponActionDef, 
 import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
 import type { AabbHalfExtents } from "../interaction/interaction_system.ts";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
-import { setClientPalette, paletteToken } from "./palette.ts";
+import { setClientPalette } from "./palette.ts";
 import { modelToThree } from "./coords.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
+import { GateMarkerRenderer } from "./gate_marker.ts";
 import {
   createEntityMesh,
   updateEntityMesh,
@@ -217,7 +218,7 @@ export class VoximRenderer {
 
   private readonly terrainMeshes  = new Map<string, THREE.Mesh>();
   /** Gate marker pillars (T-145), keyed by entityId. World-space group containing pillar mesh. */
-  private readonly gateMeshes     = new Map<string, THREE.Group>();
+  private gateMarkers!: GateMarkerRenderer; // set in constructor (needs camera + renderer)
   private readonly terrainHmaps   = new Map<string, HeightmapData>();
   private readonly terrainMats    = new Map<string, MaterialGridData>();
   private readonly entityMeshes   = new Map<string, EntityMeshGroup>();
@@ -410,6 +411,7 @@ export class VoximRenderer {
     this.cameraRig = new CameraRig(aspect);
     this.camera = this.cameraRig.camera;
     this.cameraRig.update(this.cameraTarget);
+    this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera, this.renderer.domElement);
 
     // ---- render target (with depth texture for the depth-blit pass) ----
     const pw = Math.max(1, canvas.clientWidth  || canvas.width  || 320);
@@ -886,7 +888,7 @@ export class VoximRenderer {
   clearWorld(): void {
     for (const id of [...this.entityMeshes.keys()]) this.removeEntity(id);
     for (const id of [...this.propPositions.keys()]) this.removeEntity(id);
-    for (const id of [...this.gateMeshes.keys()]) this.removeGateMarker(id);
+    this.gateMarkers.dispose();
     for (const key of [...this.terrainMeshes.keys()]) {
       const [cx, cy] = key.split(",").map(Number);
       this.removeTerrain(cx, cy);
@@ -904,52 +906,15 @@ export class VoximRenderer {
    * pillar's screen position.
    */
   updateGateMarker(entityId: string, x: number, y: number, z: number, edge: string): void {
-    let group = this.gateMeshes.get(entityId);
-    if (!group) {
-      group = buildGateMarker(edge);
-      group.name = "gate";
-      this.scene.add(group);
-      this.gateMeshes.set(entityId, group);
-    }
-    // Server convention: x/y horizontal, z vertical. Three convention:
-    // x/z horizontal, y vertical. Map server (x, y, z) → three (x, z, y).
-    // Caller passes z = local terrain height so the pillar sits on the ground.
-    group.position.set(x, z, y);
+    this.gateMarkers.update(entityId, x, y, z, edge);
   }
 
-  /** Tear down a gate marker (gate left AoI / world cleared). */
   removeGateMarker(entityId: string): void {
-    const group = this.gateMeshes.get(entityId);
-    if (!group) return;
-    this.scene.remove(group);
-    group.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose();
-        const m = obj.material;
-        if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
-        else (m as THREE.Material).dispose();
-      }
-    });
-    this.gateMeshes.delete(entityId);
+    this.gateMarkers.remove(entityId);
   }
 
-  /**
-   * Project a gate's world position to screen space. WorldOverlay calls this
-   * each frame to anchor the destination label above the pillar.
-   */
   getGateScreenPos(entityId: string): { x: number; y: number } | null {
-    const group = this.gateMeshes.get(entityId);
-    if (!group) return null;
-    const top = group.position.clone();
-    top.y += 8; // top of the pillar in renderer coords
-    top.project(this.camera);
-    if (top.z > 1) return null; // behind camera
-    const w = this.renderer.domElement.clientWidth;
-    const h = this.renderer.domElement.clientHeight;
-    return {
-      x: (top.x * 0.5 + 0.5) * w,
-      y: (-top.y * 0.5 + 0.5) * h,
-    };
+    return this.gateMarkers.screenPos(entityId);
   }
 
   // ---- interaction system ----
@@ -1808,44 +1773,8 @@ export class VoximRenderer {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     }
-    for (const id of [...this.gateMeshes.keys()]) this.removeGateMarker(id);
+    this.gateMarkers.dispose();
   }
-}
-
-/** Edge → marker accent colour. Helps the player tell which compass direction a gate faces. */
-/**
- * Build the gate marker geometry: a stone-grey pillar with a coloured
- * capstone. Sized large enough to read from across the tile (≥250 units)
- * without dominating close-up framing. All gates share the one `gate` accent
- * (T-280) — direction reads from placement, not from candy per-edge hues.
- */
-function buildGateMarker(_edge: string): THREE.Group {
-  const group = new THREE.Group();
-  const accent = paletteToken("gate");
-
-  const pillarHeight = 8;
-  const pillarRadius = 0.6;
-  const pillar = new THREE.Mesh(
-    new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 8),
-    new THREE.MeshStandardMaterial({ color: 0x6a6a72, roughness: 0.85 }),
-  );
-  pillar.position.y = pillarHeight / 2;
-  group.add(pillar);
-
-  const capHeight = 1.2;
-  const cap = new THREE.Mesh(
-    new THREE.CylinderGeometry(pillarRadius * 1.4, pillarRadius * 1.4, capHeight, 8),
-    new THREE.MeshStandardMaterial({
-      color: accent,
-      emissive: accent,
-      emissiveIntensity: 0.6,
-      roughness: 0.4,
-    }),
-  );
-  cap.position.y = pillarHeight + capHeight / 2;
-  group.add(cap);
-
-  return group;
 }
 
 /**
