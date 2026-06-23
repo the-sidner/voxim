@@ -586,7 +586,8 @@ ghost matches the commit cell-for-cell, the radial is content-driven, and decode
 is registry-dispatched.
 
 ### T-285 · Procedural Model primitive — generator + per-tile variant pool
-Effort: L   Status: todo   (design: `PROCMODEL_PRIMITIVE_PLAN.md`)
+Effort: L   Status: done   Commits: b2391ed (a) · 399ab7c (b) · 7d2925e (c) · 8ee1576 (d)
+(design: `PROCMODEL_PRIMITIVE_PLAN.md`; all four phases landed)
 
 The fifth content-driven primitive (visual), generalizing `ForestPropsRenderer`
 into the rebuild's named "Models (entity/prop/forest)" producer — the
@@ -622,6 +623,19 @@ cells.
 Done when: forests render from `tree_grammar` variant pools (≥`pool` distinct
 silhouettes, stable across reloads), `ForestPropsRenderer` and the `FOREST_*`
 hardcodes are gone, and a stone ScatterDef adds 6 variants with no code change.
+
+DONE (all four phases). Foundation (a): `ProcModelDef`/`ScatterDef` categories,
+client generator registry + cross-check (the client twin of server.ts's checks),
+bootstrap v14→15, VoxelAtom comment fixed. Generator (b): `tree_grammar`
+(trunk taper + recursive whorl branches + hash-gated foliage), deterministic,
+bakes crack-free. Integration (c): `ScatterRenderer` + per-tile `VariantPool`
+replaced `ForestPropsRenderer` wholesale (deleted) — scale rides the instance
+matrix, not the archetype key (resolves the deferred T-281 explosion); verified
+live (8 archetypes / 4 variants / 4653 instances, frame budget intact).
+Generalization (d): `boulder_grammar` + stone scatter (6 variants) added with
+ZERO renderer edits — one handler + one register() + two data files. Deferred
+clean-up (still open): retire the now-unused authored `tree_oak`/`branch_oak_*`
+models for forests, and the sibling server harvest-node placement.
 
 ## Animation & Render Verification
 

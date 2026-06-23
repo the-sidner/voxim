@@ -1,6 +1,7 @@
 # Procedural Model — a Generator + Per-Tile Variant Pool Primitive — Implementation Plan
 
-**Status:** DESIGN (T-285). The fifth content-driven primitive over the
+**Status:** DONE (T-285, all four phases a–d landed — commits b2391ed / 399ab7c /
+7d2925e / 8ee1576). The fifth content-driven primitive over the
 voxel substrate — the *visual* sibling of Actions/Resources/Modifier/
 Triggers. It is the anticipated generalization the client rebuild already
 named: `CLIENT_REBUILD_PLAN.md` §2.2 lists **"Models (entity/prop/forest)"**
