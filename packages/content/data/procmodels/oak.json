@@ -1,0 +1,19 @@
+{
+  "id": "oak",
+  "generator": "tree_grammar",
+  "params": {
+    "trunk": { "heightRange": [6, 11], "radiusBase": 1.0, "taper": 0.6, "material": "wood" },
+    "branches": {
+      "whorlHeights": [5, 7, 9, 11],
+      "perWhorl": [2, 4],
+      "depth": 2,
+      "angleDeg": 50,
+      "angleJitterDeg": 20,
+      "lengthBase": 4,
+      "lengthDecay": 0.6,
+      "radiusDecay": 0.5,
+      "material": "wood"
+    },
+    "foliage": { "style": "clumps", "radius": 2.5, "density": 0.7, "material": "grass" }
+  }
+}

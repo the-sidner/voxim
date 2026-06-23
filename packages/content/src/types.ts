@@ -852,6 +852,53 @@ export interface TriggerDef {
   effects: TriggerEffect[];
 }
 
+// ---- procedural models (T-285) ----
+
+/**
+ * A recipe for a *family* of procedural voxel models (the fifth content-driven
+ * primitive — the visual one). The `generator` id dispatches to a registered
+ * client generator (`packages/client/src/render/procmodel/`); `params` is that
+ * generator's closed, opaque parameter object (the loader never inspects it —
+ * the generator interprets its own shape and resolves any material names).
+ * Consumed only by the client (visual-only); the server ships it in the
+ * bootstrap blob and otherwise ignores it. See PROCMODEL_PRIMITIVE_PLAN.md.
+ */
+export interface ProcModelDef {
+  id: string;
+  /** Generator id → client generator registry; boot-cross-checked (client). */
+  generator: string;
+  /** Generator-specific parameter object — opaque to the loader. */
+  // deno-lint-ignore no-explicit-any
+  params: any;
+}
+
+/**
+ * Where a `ProcModelDef` scatters per tile and how big its variant pool is.
+ * This is the file that replaces every `FOREST_*` hardcode (model id / stride /
+ * scale / the forest boundary-kind literal). A per-tile VariantPool rolls
+ * `pool` deterministic sub-seeds → runs the generator that many times → bakes K
+ * geometries; each cell picks `variantIndex = hash(worldPos) % pool`, and the
+ * subtle per-instance scale/rotation jitter rides the instance matrix (so scale
+ * stays out of the archetype key — the resolution of the T-281 explosion).
+ */
+export interface ScatterDef {
+  id: string;
+  /** KindGrid boundary kind that drives the cell walk (e.g. forest = 2). */
+  kind: number;
+  /** ProcModelDef id → boot-cross-checked. */
+  procModel: string;
+  /** Variant pool size K — the tile-declared "I need K variants". */
+  pool: number;
+  /** One prop per stride×stride cell block. */
+  stride: number;
+  /** Base uniform scale applied to every instance. */
+  baseScale: number;
+  /** [min,max] per-instance scale jitter, multiplied onto baseScale. */
+  scaleJitter: [number, number];
+  /** Whether each instance gets a random Y rotation. */
+  rotate: boolean;
+}
+
 // ---- biomes ----
 
 /**

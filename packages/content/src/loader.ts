@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, Palette } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, Palette } from "./types.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
@@ -51,7 +51,8 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, animLibraryArchetypes,
+    biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw,
+    procModelsRaw, scatterRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -68,6 +69,8 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "pois"),
     readJsonDirOptional(dataDir, "resources"),
     readJsonDirOptional(dataDir, "triggers"),
+    readJsonDirOptional(dataDir, "procmodels"),
+    readJsonDirOptional(dataDir, "scatter"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -189,6 +192,24 @@ async function loadContentStoreInternal(
   for (const raw of triggersRaw as TriggerDef[]) {
     validateTriggerDef(raw);
     store.registerTrigger(raw);
+  }
+
+  // Procedural models + scatter (T-285) — visual-only content the client's
+  // ScatterRenderer consumes. Register first, then cross-check scatter→procModel
+  // once all procmodels are loaded (the generator id is checked client-side,
+  // where the generator registry lives).
+  for (const raw of procModelsRaw as ProcModelDef[]) {
+    validateProcModelDef(raw);
+    store.registerProcModel(raw);
+  }
+  for (const raw of scatterRaw as ScatterDef[]) {
+    validateScatterDef(raw);
+    store.registerScatter(raw);
+  }
+  for (const s of store.scatter.values()) {
+    if (!store.procModels.get(s.procModel)) {
+      throw new Error(`[content] scatter "${s.id}" references unknown procModel "${s.procModel}"`);
+    }
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
@@ -588,6 +609,46 @@ export function validateTriggerDef(def: TriggerDef): void {
     if (!e || typeof e.kind !== "string" || e.kind.length === 0) {
       throw new Error(`Trigger '${def.id}': every effect needs a non-empty 'kind'`);
     }
+  }
+}
+
+/**
+ * Shape-validate one ProcModelDef (T-285). `generator` membership in the
+ * client generator registry is the CLIENT's boot cross-check (generators are
+ * client-side); `params` is opaque (the generator interprets its own shape).
+ */
+export function validateProcModelDef(def: ProcModelDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`ProcModelDef: missing or empty id`);
+  }
+  if (typeof def.generator !== "string" || def.generator.length === 0) {
+    throw new Error(`ProcModel '${def.id}': 'generator' must be a non-empty id`);
+  }
+  if (def.params === null || typeof def.params !== "object") {
+    throw new Error(`ProcModel '${def.id}': 'params' must be an object`);
+  }
+}
+
+/** Shape-validate one ScatterDef (T-285). procModel→ProcModelDef membership is
+ *  cross-checked after all are loaded (loader + client). */
+export function validateScatterDef(def: ScatterDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`ScatterDef: missing or empty id`);
+  }
+  if (typeof def.procModel !== "string" || def.procModel.length === 0) {
+    throw new Error(`Scatter '${def.id}': 'procModel' must be a non-empty id`);
+  }
+  if (typeof def.kind !== "number" || !Number.isInteger(def.kind) || def.kind < 0) {
+    throw new Error(`Scatter '${def.id}': 'kind' must be a non-negative integer boundary kind`);
+  }
+  if (typeof def.pool !== "number" || def.pool < 1 || !Number.isInteger(def.pool)) {
+    throw new Error(`Scatter '${def.id}': 'pool' must be a positive integer`);
+  }
+  if (typeof def.stride !== "number" || def.stride < 1) {
+    throw new Error(`Scatter '${def.id}': 'stride' must be ≥ 1`);
+  }
+  if (!Array.isArray(def.scaleJitter) || def.scaleJitter.length !== 2) {
+    throw new Error(`Scatter '${def.id}': 'scaleJitter' must be a [min,max] pair`);
   }
 }
 

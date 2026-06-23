@@ -100,6 +100,8 @@ export type {
   ResourceDef,
   ResourceRateModifierRef,
   ResourceThreshold,
+  ProcModelDef,
+  ScatterDef,
   GameConfig,
   Palette,
   PalettePhase,
@@ -141,7 +143,7 @@ export { ModelRef } from "./src/component.ts";
 
 // ---- content store ----
 export type { ContentService } from "./src/store.ts";
-export { StaticContentStore, resolveSubObjects, resolveMorphParams } from "./src/store.ts";
+export { StaticContentStore, resolveSubObjects, resolveMorphParams, makePrng } from "./src/store.ts";
 
 // ---- generic content registry primitive (T-174) ----
 // Building block for the federated ContentService (T-175). Replaces the

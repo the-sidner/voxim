@@ -28,11 +28,11 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, GameConfig, TileLayout, Prefab,
-  ResourceDef, TriggerDef, Palette,
+  ResourceDef, TriggerDef, ProcModelDef, ScatterDef, Palette,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 14;
+export const BOOTSTRAP_VERSION = 15;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -52,6 +52,8 @@ interface ContentBootstrapJson {
   actions:             ActionDef[];
   resources:           ResourceDef[];
   triggers:            TriggerDef[];
+  procModels:          ProcModelDef[];
+  scatter:             ScatterDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
   palette:             Palette;
@@ -122,6 +124,8 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     actions:             [...service.actions.values()],
     resources:           [...service.resources.values()],
     triggers:            [...service.triggers.values()],
+    procModels:          [...service.procModels.values()],
+    scatter:             [...service.scatter.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
     palette:             service.getPalette(),
@@ -204,6 +208,8 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   // (those were transitional and are settled now, T-238g).
   for (const r of body.resources)            store.registerResource(r);
   for (const t of body.triggers)             store.registerTrigger(t);
+  for (const p of body.procModels ?? [])     store.registerProcModel(p);
+  for (const s of body.scatter ?? [])        store.registerScatter(s);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
   store.setPalette(body.palette);

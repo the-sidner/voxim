@@ -6,8 +6,9 @@
  * the single `bakeVoxels` kitchen.
  *
  * Two deliberate decisions (see CLIENT_REBUILD_PLAN.md §2.1):
- *   - CENTER + half-extents, not min-corner + size — the bake math already scales
- *     the ±0.5 unit-box template about the voxel center.
+ *   - CENTER + FULL edge lengths, not min-corner + size — the bake math scales the
+ *     ±0.5 unit-box template by sx/sy/sz about the voxel center, so sx=1 spans
+ *     [−0.5,+0.5] (an edge length of 1, NOT a half-extent).
  *   - PER-VOXEL size on the atom (sx/sy/sz), not a single per-entity scale — this
  *     is the mechanical unlock for "voxels of different sizes": coarse terrain and
  *     fine detail bake through the exact same path with different extents.
@@ -21,7 +22,11 @@ export interface VoxelAtom {
   cx: number;
   cy: number;
   cz: number;
-  /** Per-voxel half-extents in model space (the "different sizes" axis). */
+  /**
+   * Per-voxel FULL edge lengths in model space (the "different sizes" axis):
+   * `bakeDisplacedVoxel` scales the ±0.5 unit box by these directly, so sx=1
+   * spans [−0.5,+0.5]. (NOT half-extents — the math is authoritative; T-285a.)
+   */
   sx: number;
   sy: number;
   sz: number;

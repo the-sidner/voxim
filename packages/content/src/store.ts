@@ -51,6 +51,8 @@ import type {
   ActionDef,
   ResourceDef,
   TriggerDef,
+  ProcModelDef,
+  ScatterDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
@@ -117,6 +119,21 @@ export interface ContentService {
    * See TRIGGER_PRIMITIVE_PLAN.md.
    */
   readonly triggers: ContentRegistryReadonly<TriggerDef>;
+
+  /**
+   * Procedural model families keyed by id (T-285). Each names a client
+   * generator + its params; the per-tile VariantPool bakes K variants from it.
+   * Visual-only — shipped in the bootstrap blob, consumed by the client's
+   * ScatterRenderer. See PROCMODEL_PRIMITIVE_PLAN.md.
+   */
+  readonly procModels: ContentRegistryReadonly<ProcModelDef>;
+
+  /**
+   * Scatter declarations keyed by id (T-285): where a procmodel scatters (by
+   * KindGrid boundary kind) and how big its variant pool is. Replaces the
+   * `FOREST_*` hardcodes. Visual-only; consumed by the client.
+   */
+  readonly scatter: ContentRegistryReadonly<ScatterDef>;
 
   // ---- specialized lookups ----
   /** Resolve a material by its numeric MaterialId (the wire/storage key). */
@@ -230,6 +247,14 @@ export class StaticContentStore implements ContentService {
   public readonly triggers = new ContentRegistry<TriggerDef>({
     kind: "trigger",
     idOf: (t) => t.id,
+  });
+  public readonly procModels = new ContentRegistry<ProcModelDef>({
+    kind: "procModel",
+    idOf: (p) => p.id,
+  });
+  public readonly scatter = new ContentRegistry<ScatterDef>({
+    kind: "scatter",
+    idOf: (s) => s.id,
   });
 
   // ---- secondary indices ----
@@ -345,6 +370,14 @@ export class StaticContentStore implements ContentService {
 
   registerTrigger(def: TriggerDef): void {
     this.triggers.register(def);
+  }
+
+  registerProcModel(def: ProcModelDef): void {
+    this.procModels.register(def);
+  }
+
+  registerScatter(def: ScatterDef): void {
+    this.scatter.register(def);
   }
 
   setGameConfig(config: GameConfig): void {
@@ -556,8 +589,9 @@ export class StaticContentStore implements ContentService {
 /**
  * Tiny seeded PRNG (mulberry32).  Produces values in [0, 1).
  * Same seed always produces the same sequence — deterministic across server and client.
+ * Exported (T-285) so client procmodel generators draw from the same stream.
  */
-function makePrng(seed: number): () => number {
+export function makePrng(seed: number): () => number {
   let s = seed >>> 0;
   return (): number => {
     s = (s + 0x6D2B79F5) >>> 0;

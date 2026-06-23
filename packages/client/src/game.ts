@@ -51,6 +51,7 @@ import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } fro
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { BootstrapSource } from "@voxim/content";
+import { crossCheckProcModels } from "./render/procmodel/mod.ts";
 import type { ContentService, Prefab, ToolData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
@@ -299,6 +300,10 @@ export class VoximGame {
       this.contentService = await BootstrapSource.load(blob);
       setContentService(this.contentService);
       this.content.setBootstrapService(this.contentService);
+      // T-285: fail-fast cross-check that every ProcModelDef.generator resolves
+      // to a registered generator and every ScatterDef.procModel resolves — the
+      // client twin of server.ts's content cross-checks (generators live here).
+      crossCheckProcModels(this.contentService);
       console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons, ${this.contentService.animationLibraries.size} animation libraries`);
     } else {
       console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");
