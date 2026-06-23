@@ -1,0 +1,10 @@
+{
+  "id": "boulder",
+  "generator": "boulder_grammar",
+  "params": {
+    "radiusRange": [2, 4],
+    "flatten": 0.6,
+    "lumpiness": 0.4,
+    "material": "stone"
+  }
+}
