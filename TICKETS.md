@@ -435,47 +435,47 @@ Done when: models + props bake through one `bakeVoxels` path; an entity can carr
 mixed-size voxels; draw calls collapse; the parity test still passes.
 
 ### T-282 · Client rebuild Phase 2 — renderer breakup (scene-graph; subsumes T-223)
-Effort: L   Status: in-progress   (first subsystem extracted; the EntityMeshRegistry extraction remains)
+Effort: L   Status: in-progress   (headline EntityMeshRegistry landed; smaller polish items remain)
 
-STARTED — two cohesive subsystems lifted out of the renderer god-class so far
-(renderer 2120 → 1850 lines; T-281 had already shrunk it by deleting the
+THREE cohesive subsystems now lifted out of the renderer god-class
+(renderer 2120 → 1223 lines; T-281 had already shrunk it by deleting the
 bake-worker pool + per-node path):
   · `WeaponTrailRenderer` (`render/weapon_trail.ts`, d4ee296) — owns slice/mesh
-    state + scene layer, fed `update(entityMeshes, weaponActionsMap, now)`/frame.
+    state + scene layer, fed `update(...)`/frame.
   · `GateMarkerRenderer` (`render/gate_marker.ts`, 491b74e) — owns the gate-pillar
     Groups + buildGateMarker; `screenPos()` takes camera+canvas at construction.
-Both verified: deno check green, ANIM 7/7, live run exercised each path.
-REMAINING (the headline + riskiest): extract the entity-mesh lifecycle — the
-`entityMeshes` map + the async prefetch→build→placeholder/prop-handoff state
-machine + `_addStaticProp` — into an `EntityMeshRegistry`, leaving the renderer
-scene/camera/post-FX/lighting only. Plus: fold the (now sync) prefetch+stale-guard
-blocks (body/hand/armor) into one `loadAndBakeModel` helper; make `scene` private
-behind `addLayer`/`removeLayer` (the ~handful of sibling `scene.add` callers route
-through it); and fix the `velocity={0,0,0}` epsilon hack — its real cause is the
-spawn wire ALWAYS carrying vx/vy/vz, so the clean fix is a small protocol change
-(omit velocity for entities without a real Velocity component), not just a
-renderer edit. Verify characters render + animate (animProbe + screenshot) after
-each step. Next cleanly-separable subsystem: the day-night phase lighting
-(sun + hemi + fog + lightCur/lightTgt lerp + setDayPhase) into an
-`EnvironmentLighting` class — but note it is MORE coupled than trail/gate: the
-`sun` carries the shadow-camera basis (`_shadowCamRight/_shadowCamUp`) consumed by
-the per-frame shadow-follow snap in the render loop + the shadow toggle, and the
-result is visual-only (the ANIM harness can't assert it), so it needs a careful
-screenshot-diff pass, not a blind lift. The scene-census diagnostic is a trivial
-follow-on.
+  · `EntityMeshRegistry` (`render/entity_mesh_registry.ts`, c5fadd6) — THE
+    headline: the entity-mesh lifecycle (live-mesh map + pooled-prop positions +
+    the async spawn→build state machine + equipment sync + per-frame attachment
+    placement + `_addStaticProp`/`computePropHalfExtents`). Hybrid boundary from
+    a design panel: minimal lifecycle island so the 3 async stale guards +
+    velocity-defer + 4 slot re-checks move VERBATIM; the render loop's
+    interpolation/cull/shadow/lighting stays byte-identical in the renderer
+    (it interleaves terrain + day/night, not a contiguous entity block). The
+    renderer no longer names the entity Maps — public methods are thin
+    delegations; external callers (game.ts, interaction, hover) unchanged.
+All verified: deno check (4 targets) green, grep-zero invariant, 9/9 render unit
+tests, ANIM 7/7, post-extraction screenshot identical to baseline.
 
-`VoximRenderer` is a 2111-line god-class. Extract an `EntityMeshRegistry` owning
-the `entityMeshes` map, the async prefetch→bake→upgrade state machine, and the
-placeholder→prop-pool handoff; the renderer keeps only scene/camera/post-FX/
-lighting + a `render()` that iterates the registry. This is the same move T-223
-(client render-scope scene graph) calls for — do them together. Fold the three
-near-identical async-bake-with-stale-guard blocks (entity, hand slot, armor slot)
-into one `loadAndBakeModel` helper. Fix the `velocity={0,0,0}`/`VELOCITY_EPSILON_SQ`
-hack at its source (`applySnapshot`). Make `scene` private with a narrow
-`addLayer`/`removeLayer` API — one scene-graph owner (the 6 sibling `scene.add`
-callers route through it).
-Done when: the renderer is under ~800 lines of scene/camera/FX only; entity
-lifecycle lives in the registry; one async-bake helper; one scene owner.
+REMAINING (smaller polish, separable):
+  · `scene` → private behind a narrow `addLayer`/`removeLayer` API (the handful
+    of sibling `scene.add` callers route through it) — one scene-graph owner.
+  · Fix the `velocity={0,0,0}` / `VELOCITY_EPSILON_SQ` hack at its SOURCE: the
+    spawn wire always carries vx/vy/vz, so the clean fix is a small protocol
+    change (omit velocity for entities without a real Velocity component), not a
+    renderer edit. Now lives in the registry's prop-defer; the hack is contained
+    but not yet eliminated.
+  · OPTIONAL: lift the day-night phase lighting (sun + hemi + fog +
+    lightCur/lightTgt lerp + setDayPhase) into an `EnvironmentLighting` class —
+    MORE coupled than the three above: the `sun` carries the shadow-camera basis
+    (`_shadowCamRight/_shadowCamUp`) consumed by the per-frame shadow-follow snap
+    + the shadow toggle, and the result is visual-only (ANIM can't assert it), so
+    it needs a careful screenshot-diff pass, not a blind lift. The scene-census
+    diagnostic is a trivial follow-on.
+Done when: `scene` has one owner; the velocity hack is gone at the wire; (the
+lighting lift is optional polish, not a gate). The core goal — entity lifecycle
+out of the renderer — is MET (c5fadd6); the renderer is now scene/camera/FX +
+the day/night loop + terrain, at 1223 lines.
 
 ### T-283 · Client rebuild Phase 3 — terrain becomes voxels
 Effort: L   Status: todo
