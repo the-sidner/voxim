@@ -37,7 +37,7 @@ export class WeaponTrailRenderer {
    * slices, and rebuild the ribbon meshes. Called once per frame before draw.
    */
   update(
-    entityMeshes: Map<string, EntityMeshGroup>,
+    entityMeshes: ReadonlyMap<string, EntityMeshGroup>,
     weaponActions: Map<string, WeaponActionDef>,
     now: number,
   ): void {
