@@ -555,7 +555,21 @@ export class VoximRenderer {
 
   setContentCache(cache: ContentCache): void {
     this.content = cache;
+    this._matColorCache.clear();
   }
+
+  /** Material id → THREE.Color from the single content palette (T-280), cached.
+   *  Terrain, props, and entities all resolve color from here — no per-surface
+   *  color table. */
+  private readonly _matColorCache = new Map<number, THREE.Color>();
+  private readonly _matColor = (id: number): THREE.Color => {
+    let c = this._matColorCache.get(id);
+    if (!c) {
+      c = new THREE.Color(this.content?.getMaterialSync(id)?.color ?? 0x808080);
+      this._matColorCache.set(id, c);
+    }
+    return c;
+  };
 
   // ---- terrain ----
 
@@ -581,7 +595,7 @@ export class VoximRenderer {
 
     const existing = this.terrainMeshes.get(key);
     const mesh = buildTerrainMesh(
-      hm, mat, existing,
+      hm, mat, this._matColor, existing,
       this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
       this.terrainMats.get(`${cx + 1},${cy}`) ?? null,
       this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
@@ -735,7 +749,6 @@ export class VoximRenderer {
           this.propPositions.set(entityId, worldPos);
           const halfExtents = computePropHalfExtents(def, resolvedSubs, subModelDefs, scale);
           this.interactionSystem?.addStaticEntity(entityId, worldPos, this.scene, halfExtents);
-          // TODO Step 7: re-wire hitbox debug overlay using local computeHitboxDebug()
         }
       }).catch(() => {});
     }
@@ -1230,11 +1243,6 @@ export class VoximRenderer {
 
         // Elapsed fractional ticks since last server update — used for 60fps extrapolation.
         const elapsed = (now - mesh.lastAnimUpdateMs) / 50;
-
-        // T-182 step 6: the IK-during-swing arm post-pass is gone — swings now
-        // come from the CSM combat layer's clip-driven animation, so the arms
-        // are part of the FK pose like every other bone. No per-weapon arm
-        // override is needed at render time.
 
         // Compute normalised action time t for attachment and trail positioning.
         const totalTicks = weaponAction

@@ -30,23 +30,6 @@ const CHUNK = 32;
 /** ±10 % of voxel face width — spec open question, tunable here. */
 const DISP_MAG = 0.10;
 
-// Material ID → RGB hex (matches generator.ts zone assignments)
-const MAT_COLORS: Record<number, number> = {
-  0: 0x111111, // void / air
-  1: 0x4a7c3f, // grass
-  2: 0x6b6b6b, // (unused, default stone)
-  3: 0x888888, // stone
-  4: 0x7a4f2a, // dirt
-  5: 0xc2a05e, // sand
-  6: 0x555555, // dark stone
-  7: 0x333333, // deep stone
-  8: 0x2244cc, // water
-};
-
-function colorForMat(id: number): THREE.Color {
-  return new THREE.Color(MAT_COLORS[id] ?? 0x888888);
-}
-
 /**
  * Per-cell brightness micro-variation — the flat-shading equivalent of bump mapping.
  * Each cell gets a deterministic ±8 % brightness offset based on its world position,
@@ -72,6 +55,9 @@ function cellVariation(wx: number, wz: number): number {
 export function buildTerrainMesh(
   heightmap: HeightmapData,
   materials: MaterialGridData,
+  /** Material id → color, from the SINGLE content palette source (T-280). The
+   *  caller caches; this replaces the old drifted in-file MAT_COLORS table. */
+  colorForMat: (id: number) => THREE.Color,
   existing?: THREE.Mesh,
   neighborEast?: HeightmapData | null,
   neighborEastMat?: MaterialGridData | null,
