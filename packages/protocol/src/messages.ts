@@ -147,7 +147,12 @@ export const enum CommandType {
   PickUp          = 21, // payload: u8 strLen + UTF-8 entityId — picks the named ground-item
                         //   entity into the player's inventory if within reach.
   Respawn         = 22, // no payload — re-enter the world after death (spawns the dynasty heir).
-  // 23-255 reserved for future commands
+  PlaceVoxels     = 23, // payload: u8 strLen + UTF-8 prefabId + f32 voxelSize + u16 cellCount
+                        //   + cellCount × (i32 cellX + i32 cellY). The build-spine multi-voxel
+                        //   place (T-284): one command stamps a single voxel or a whole line.
+                        //   Server computes each voxel's z authoritatively from terrain top +
+                        //   the column's stack, and validates reach per cell (stacking allowed).
+  // 24-255 reserved for future commands
 }
 
 /**
@@ -181,6 +186,7 @@ export type CommandPayload =
   | { cmd: CommandType.TradeSell;      inventorySlot: number }
   | { cmd: CommandType.Place;          source: "prefab";    prefabId: string;        worldX: number; worldY: number }
   | { cmd: CommandType.Place;          source: "inventory"; fromInventorySlot: number; worldX: number; worldY: number }
+  | { cmd: CommandType.PlaceVoxels;    prefabId: string; voxelSize: number; cells: ReadonlyArray<{ cellX: number; cellY: number }> }
   | { cmd: CommandType.SelectRecipe;   recipeId: string }
   | { cmd: CommandType.LoadWorkstation; inventorySlot: number; bufferSlot: number }
   | { cmd: CommandType.TakeWorkstation; bufferSlot: number }

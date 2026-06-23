@@ -406,6 +406,7 @@ export class VoximGame {
       this.renderer.scene,
       (x, y) => this.world.getTerrainHeight(x, y),
       (cx, cy) => this.buildOccupancy.stackHeight(cx, cy),
+      (cx, cy) => this._isCellReachable(cx, cy),
     );
 
     // Hover outline — subscribes to hoverState; decides outline tint per
@@ -1250,13 +1251,11 @@ export class VoximGame {
         const hit = this._resolveVoxelHit(intent.canvasX, intent.canvasY);
         if (!hit) return true;
         if (mode.brush.tool === "single") {
-          this._sendPlace(mode.blueprintId, hit);
+          this._sendPlaceVoxels(mode.blueprintId, mode.brush.voxelSize, [{ cellX: hit.cellX, cellY: hit.cellY }]);
         } else if (!mode.line) {
           modeState.value = { ...mode, line: { anchor: hit } };
         } else {
-          for (const c of brushCells(mode.brush, mode.line.anchor, hit)) {
-            this._sendPlace(mode.blueprintId, c);
-          }
+          this._sendPlaceVoxels(mode.blueprintId, mode.brush.voxelSize, brushCells(mode.brush, mode.line.anchor, hit));
           modeState.value = { ...mode, line: undefined };
         }
         return true;
@@ -1322,13 +1321,26 @@ export class VoximGame {
     return { cellX, cellY, baseZ, layer };
   }
 
-  private _sendPlace(blueprintId: string, cell: Cell): void {
+  /** Whether a build cell is within the player's reach — mirrors the server's
+   *  per-cell reach gate so the ghost can warn (red) before the player commits. */
+  private _isCellReachable(cellX: number, cellY: number): boolean {
+    const me = this.playerId ? this.world.get(this.playerId) : null;
+    if (!me?.position) return false;
+    const maxReach = this.contentService?.getGameConfig().building.maxReachWorldUnits ?? 4.0;
+    const dx = me.position.x - (cellX + 0.5);
+    const dy = me.position.y - (cellY + 0.5);
+    return dx * dx + dy * dy <= maxReach * maxReach;
+  }
+
+  /** One command stamps the brush's whole cell footprint (T-284 chunk 2). The
+   *  server computes each voxel's z (terrain + stack) + validates reach. */
+  private _sendPlaceVoxels(blueprintId: string, voxelSize: number, cells: Cell[]): void {
+    if (cells.length === 0) return;
     this._sendCommand({
-      cmd: CommandType.Place,
-      source: "prefab",
+      cmd: CommandType.PlaceVoxels,
       prefabId: blueprintId,
-      worldX: cell.cellX + 0.5,
-      worldY: cell.cellY + 0.5,
+      voxelSize,
+      cells,
     });
   }
 

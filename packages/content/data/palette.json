@@ -42,6 +42,7 @@
   },
   "tokens": {
     "ghost": "ember",
+    "ghostInvalid": "blood",
     "blueprint": "aether",
     "blueprintWire": "frost",
     "trail": "ember-hi",

@@ -125,6 +125,26 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       return new Uint8Array(buf);
     }
 
+    case CommandType.PlaceVoxels: {
+      // Layout: u8 strLen + UTF-8 prefabId + f32 voxelSize + u16 cellCount
+      //         + cellCount × (i32 cellX + i32 cellY).
+      const strBytes = new TextEncoder().encode(cmd.prefabId);
+      const n = cmd.cells.length;
+      const buf = new ArrayBuffer(1 + strBytes.byteLength + 4 + 2 + n * 8);
+      const dv = new DataView(buf);
+      const u8 = new Uint8Array(buf);
+      dv.setUint8(0, strBytes.byteLength);
+      u8.set(strBytes, 1);
+      let off = 1 + strBytes.byteLength;
+      dv.setFloat32(off, cmd.voxelSize, true); off += 4;
+      dv.setUint16(off, n, true); off += 2;
+      for (const c of cmd.cells) {
+        dv.setInt32(off, c.cellX, true); off += 4;
+        dv.setInt32(off, c.cellY, true); off += 4;
+      }
+      return u8;
+    }
+
     case CommandType.SelectRecipe: {
       const strBytes = new TextEncoder().encode(cmd.recipeId);
       const buf = new ArrayBuffer(1 + strBytes.byteLength);
@@ -241,6 +261,23 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
         return { cmd: CommandType.Place, source: "prefab", prefabId, worldX, worldY };
       }
       return { cmd: CommandType.Place, source: "inventory", fromInventorySlot: bytes[9], worldX, worldY };
+    }
+
+    case CommandType.PlaceVoxels: {
+      // See encodeCommandPayload for the wire layout.
+      const strLen = bytes[0];
+      const prefabId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      let off = 1 + strLen;
+      const voxelSize = dv.getFloat32(off, true); off += 4;
+      const n = dv.getUint16(off, true); off += 2;
+      const cells: Array<{ cellX: number; cellY: number }> = [];
+      for (let i = 0; i < n; i++) {
+        const cellX = dv.getInt32(off, true); off += 4;
+        const cellY = dv.getInt32(off, true); off += 4;
+        cells.push({ cellX, cellY });
+      }
+      return { cmd: CommandType.PlaceVoxels, prefabId, voxelSize, cells };
     }
 
     case CommandType.SelectRecipe: {

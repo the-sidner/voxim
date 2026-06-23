@@ -34,6 +34,7 @@ export class BuildGhostRenderer {
     private readonly scene: THREE.Scene,
     private readonly getTerrainHeight: (wx: number, wy: number) => number,
     private readonly getStackHeight: (cellX: number, cellY: number) => number,
+    private readonly isReachable: (cellX: number, cellY: number) => boolean,
   ) {
     this.mat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
@@ -55,12 +56,13 @@ export class BuildGhostRenderer {
       this.mesh.visible = false;
       return;
     }
-    // Tint from the single palette (T-280) on each show, so it's correct even if
-    // the palette arrived after this renderer was constructed.
-    this.mat.color.setHex(paletteToken("ghost"));
-
     const voxelSize = mode.brush.voxelSize;
     const cells: Cell[] = brushCells(mode.brush, mode.line?.anchor ?? null, hit);
+
+    // Tint red (palette 'ghostInvalid') when any cell is beyond reach — the same
+    // gate the server enforces, so the preview tells the player it'll be rejected.
+    const anyOutOfReach = cells.some((c) => !this.isReachable(c.cellX, c.cellY));
+    this.mat.color.setHex(paletteToken(anyOutOfReach ? "ghostInvalid" : "ghost"));
 
     // One atom per ghost cell, each at its OWN column top (per-cell baseZ + stack).
     const atoms: VoxelAtom[] = cells.map((c) => {

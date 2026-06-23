@@ -72,6 +72,40 @@ Deno.test("T-273: a command split across stream chunks is reassembled", async ()
   });
 });
 
+Deno.test("T-284: PlaceVoxels round-trips prefabId + voxelSize + the cell list", async () => {
+  const s = new ClientSession("p1");
+  const place: CommandDatagram = {
+    seq: 5,
+    command: {
+      cmd: CommandType.PlaceVoxels,
+      prefabId: "wood_wall",
+      voxelSize: 1.0,
+      cells: [{ cellX: 12, cellY: -3 }, { cellX: 13, cellY: -3 }, { cellX: 14, cellY: -4 }],
+    },
+  };
+  await s.serveCommands(streamOf([framed(place)]));
+
+  assertEquals(s.commandQueue.length, 1);
+  assertEquals(s.commandQueue[0], {
+    cmd: CommandType.PlaceVoxels,
+    prefabId: "wood_wall",
+    voxelSize: 1.0,
+    cells: [{ cellX: 12, cellY: -3 }, { cellX: 13, cellY: -3 }, { cellX: 14, cellY: -4 }],
+  });
+});
+
+Deno.test("T-284: PlaceVoxels with a single cell round-trips", async () => {
+  const s = new ClientSession("p1");
+  const place: CommandDatagram = {
+    seq: 6,
+    command: { cmd: CommandType.PlaceVoxels, prefabId: "stone_wall", voxelSize: 0.5, cells: [{ cellX: 0, cellY: 0 }] },
+  };
+  await s.serveCommands(streamOf([framed(place)]));
+  assertEquals(s.commandQueue[0], {
+    cmd: CommandType.PlaceVoxels, prefabId: "stone_wall", voxelSize: 0.5, cells: [{ cellX: 0, cellY: 0 }],
+  });
+});
+
 Deno.test("T-273: a malformed frame is discarded but the stream keeps serving", async () => {
   const s = new ClientSession("p1");
   const good: CommandDatagram = { seq: 1, command: { cmd: CommandType.UseItem, fromSlot: 2 } };
