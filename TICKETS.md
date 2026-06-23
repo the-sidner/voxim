@@ -338,6 +338,117 @@ When the player entity is inside the enclosure, the roof is hidden (player sees 
 When outside, the roof is visible.
 Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
 
+## Client Rebuild
+
+The full plan lives in `CLIENT_REBUILD_PLAN.md` (grounded in an 8-subsystem audit).
+Spine: one **voxel pipeline** (`VoxelAtom` → `bakeVoxels` → `buildVoxelMaterial` →
+InstancePool, fed by models/terrain/placement/ghost), one **palette authority**
+(`palette/world.json` snapping every material at load), and one **scene owner**
+(renderer god-class → `EntityMeshRegistry`). Each phase deletes the old path with
+the new (replace, don't accrete). Phases are ordered cheapest-identity-win first.
+
+### T-279 · Client rebuild (umbrella)
+Effort: XL (multi-phase arc)   Status: planned
+
+Tracks the arc in `CLIENT_REBUILD_PLAN.md`: a general internal-architecture sweep
++ a central voxel-build pipeline (place single voxel / line of voxels with
+scaling/spacing, voxels of different sizes, voxels as terrain edges) + a strict
+cohesive color palette for visual identity. Keep-grade core (`voxel_bake`,
+`displacement`, `bake_pool`, `InstancePool`, input/intent spine, `Place`-command
+authority, post-FX edge-ink) is preserved; the mess (renderer god-class, terrain
+height-quads, five color authorities, drifted dead code) is replaced. Closes when
+T-280..T-284 land; Phase 5 (sparse-voxel chunk wire) stays deferred until volume
+editing demands it.
+
+### T-280 · Client rebuild Phase 0 — cleanup + palette authority
+Effort: M   Status: todo
+
+Highest identity-per-effort, no new capability. Delete dead code
+(`upgradeToVoxelModel`/`collectVoxelModelBakeSpecs` entity_mesh.ts:415-490,
+`ik_solver.ts`, `swing_predictor.ts`, stale T-182/CSM comment scaffolds). Create
+`packages/content/data/palette/world.json` (the ~22-swatch ash-hazed ramp + a
+`phases` lighting block) + a CIELAB load-snap in the content loader + a boot
+cross-check (every `MaterialDef.color` on-ramp, fail-fast) + `render/palette.ts`
+exposing named tokens. **Delete terrain `MAT_COLORS`/`colorForMat`
+(terrain_mesh.ts:34-48)** and read `content.getMaterialSync().color` — closes the
+ground-vs-prop drift, the single biggest cohesion defect. Collapse the four
+`MaterialDef→Material` builders (entity_mesh/forest_props/renderer/terrain) into
+one `buildVoxelMaterial`. Lift `makePhaseLights` into the palette `phases` block;
+retune sky off cyan `#7aa4cc` onto ash-grey. Migrate the ~23 ad-hoc render hex
+literals to `palette.*` (no raw hex in `render/`). Collapse the UI's two token
+generations (theme.css Dreamborn + legacy `--col-*` alias shim) to one source;
+delete the shim.
+Done when: every on-screen color resolves from `palette/world.json`; terrain and
+props share a material color; a designer can retune the whole game's palette from
+one file; the dead modules are gone; `deno check` + client bundle green.
+
+### T-281 · Client rebuild Phase 1 — voxel atom + one bake kitchen
+Effort: L   Status: todo
+
+Introduce `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` (center + per-voxel
+size + material) in `@voxim/content` + `render/coords.ts` `modelToThree` (route
+the 6 inline coordinate-swap derivations through it). Promote `bakeSubModel` →
+`bakeVoxels(atoms, materialId)`; swap the bake-worker protocol from
+`VoxelBakeSpec[]` to `VoxelAtom[]` returning merged `BakedMesh` batches; route
+InstancePool through atoms. Collapse the per-node entity path onto the merged
+path — delete `buildVoxelMesh`/`buildDisplacedVoxelGeo` and the
+collector/cursor parallel-traversal coupling (entity_mesh.ts:403-434). Per-voxel
+size mechanically unlocks "voxels of different sizes" (the unit-box template
+already scales).
+Done when: models + props bake through one `bakeVoxels` path; an entity can carry
+mixed-size voxels; draw calls collapse; the parity test still passes.
+
+### T-282 · Client rebuild Phase 2 — renderer breakup (scene-graph; subsumes T-223)
+Effort: L   Status: todo
+
+`VoximRenderer` is a 2111-line god-class. Extract an `EntityMeshRegistry` owning
+the `entityMeshes` map, the async prefetch→bake→upgrade state machine, and the
+placeholder→prop-pool handoff; the renderer keeps only scene/camera/post-FX/
+lighting + a `render()` that iterates the registry. This is the same move T-223
+(client render-scope scene graph) calls for — do them together. Fold the three
+near-identical async-bake-with-stale-guard blocks (entity, hand slot, armor slot)
+into one `loadAndBakeModel` helper. Fix the `velocity={0,0,0}`/`VELOCITY_EPSILON_SQ`
+hack at its source (`applySnapshot`). Make `scene` private with a narrow
+`addLayer`/`removeLayer` API — one scene-graph owner (the 6 sibling `scene.add`
+callers route through it).
+Done when: the renderer is under ~800 lines of scene/camera/FX only; entity
+lifecycle lives in the registry; one async-bake helper; one scene owner.
+
+### T-283 · Client rebuild Phase 3 — terrain becomes voxels
+Effort: L   Status: todo
+
+Client re-expresses heightmap+materialGrid as voxel atoms at decode time: per
+cell a top atom at the surface + edge atoms only where a neighbor is lower (the
+wall condition terrain_mesh.ts:142-174 already computes, emitting atoms not
+quads), greedy-merged per material per chunk through `bakeVoxels`. Cliff faces
+become baked voxel boxes sharing `vertexDisp` + palette with props — "voxels ARE
+terrain edges" becomes literally true. Heightmap stays the collision/authoring
+source (physics untouched); no wire-format change this phase. Delete the
+quad-emission path in `terrain_mesh.ts`.
+Done when: terrain renders as palette-shared voxels that don't crack against
+placed/prop voxels; physics + AoI unchanged.
+
+### T-284 · Client rebuild Phase 4 — build spine on the real pipeline
+Effort: L   Status: todo
+
+The owner's core mechanic. Brush descriptor on `modeState` (`tool:"single"|"line"`,
+`voxelSize`, `spacing`) + `ui_store` fields + a build HUD (size/spacing). Content-
+drive the RadialMenu (replace hardcoded `STRUCTURE_OPTIONS` RadialMenu.tsx:22 with
+a `contentService` query over placeable prefabs). De-duplicate `bresenhamCells` to
+one shared helper consumed by ghost-preview AND commit. Swap the `BoxGeometry`
+ghost for `bakeVoxels` at the brush size, palette-tinted. Voxel-face-aware cursor
+pick with vertical stacking (one `cursor→voxelHit` resolve feeding ghost + facing).
+The `Place` command grows `voxelSize`/`spacing`/cell-list; `PlacementSystem`
+validates with the shared `bresenhamCells` (server authority unchanged). Fold in
+the networking cleanup: export `CODEC_BY_WIREID` from `@voxim/codecs` and replace
+the 31-case decode switch + hand-rolled DataView decodes (client_world.ts:155-283).
+**The deferred networked-`Container` chest UI (T-077/T-078) lands here** once
+Container is given a wire id + the deposit/withdraw UI is built on the rebuilt
+client.
+Done when: a player places single voxels and lines with size/spacing control, the
+ghost matches the commit cell-for-cell, the radial is content-driven, and decode
+is registry-dispatched.
+
 ## Animation & Render Verification
 
 ### T-275 · Animation freeze — locomotion clobbered by empty-slot idle fallback
