@@ -437,11 +437,14 @@ mixed-size voxels; draw calls collapse; the parity test still passes.
 ### T-282 · Client rebuild Phase 2 — renderer breakup (scene-graph; subsumes T-223)
 Effort: L   Status: in-progress   (first subsystem extracted; the EntityMeshRegistry extraction remains)
 
-STARTED: `WeaponTrailRenderer` lifted out of the renderer god-class into
-`render/weapon_trail.ts` — owns its slice/mesh state + scene layer, fed
-`update(entityMeshes, weaponActionsMap, now)` per frame (d4ee296). Renderer 2120
-→ 1922 lines; ANIM 7/7. (T-281 already shrank it by deleting the bake-worker pool
-+ per-node path.)
+STARTED — two cohesive subsystems lifted out of the renderer god-class so far
+(renderer 2120 → 1850 lines; T-281 had already shrunk it by deleting the
+bake-worker pool + per-node path):
+  · `WeaponTrailRenderer` (`render/weapon_trail.ts`, d4ee296) — owns slice/mesh
+    state + scene layer, fed `update(entityMeshes, weaponActionsMap, now)`/frame.
+  · `GateMarkerRenderer` (`render/gate_marker.ts`, 491b74e) — owns the gate-pillar
+    Groups + buildGateMarker; `screenPos()` takes camera+canvas at construction.
+Both verified: deno check green, ANIM 7/7, live run exercised each path.
 REMAINING (the headline + riskiest): extract the entity-mesh lifecycle — the
 `entityMeshes` map + the async prefetch→build→placeholder/prop-handoff state
 machine + `_addStaticProp` — into an `EntityMeshRegistry`, leaving the renderer
@@ -452,9 +455,14 @@ through it); and fix the `velocity={0,0,0}` epsilon hack — its real cause is t
 spawn wire ALWAYS carrying vx/vy/vz, so the clean fix is a small protocol change
 (omit velocity for entities without a real Velocity component), not just a
 renderer edit. Verify characters render + animate (animProbe + screenshot) after
-each step. Further cleanly-separable subsystems to lift next: gate markers, the
-day-night phase lighting (consolidate into LightManager), the scene-census
-diagnostic.
+each step. Next cleanly-separable subsystem: the day-night phase lighting
+(sun + hemi + fog + lightCur/lightTgt lerp + setDayPhase) into an
+`EnvironmentLighting` class — but note it is MORE coupled than trail/gate: the
+`sun` carries the shadow-camera basis (`_shadowCamRight/_shadowCamUp`) consumed by
+the per-frame shadow-follow snap in the render loop + the shadow toggle, and the
+result is visual-only (the ANIM harness can't assert it), so it needs a careful
+screenshot-diff pass, not a blind lift. The scene-census diagnostic is a trivial
+follow-on.
 
 `VoximRenderer` is a 2111-line god-class. Extract an `EntityMeshRegistry` owning
 the `entityMeshes` map, the async prefetch→bake→upgrade state machine, and the
