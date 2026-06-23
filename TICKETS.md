@@ -395,19 +395,25 @@ props share a material color; a designer can retune the whole game's palette fro
 one file; the dead modules are gone; `deno check` + client bundle green.
 
 ### T-281 · Client rebuild Phase 1 — voxel atom + one bake kitchen
-Effort: L   Status: in-progress   (foundation landed ce3cf90; bake-kitchen core remaining)
+Effort: L   Status: in-progress   (capability landed; entity-path/worker cleanup remaining)
 
-DONE: `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` in `@voxim/content`
-(per-voxel size = the "different sizes" unlock; center+extents; materialId the
-only color carrier) + `render/coords.ts` `modelToThree`/`modelScaleToThree` — the
-model→three swap now has one definition, stable sub-object sites routed through it.
-REMAINING (the core): add per-voxel `size` to the bake spec; promote `bakeSubModel`
-→ `bakeVoxels(atoms, materialId)`; swap the bake-worker protocol from
-`VoxelBakeSpec[]` to `VoxelAtom[]` returning merged `BakedMesh` batches; route
-InstancePool through atoms; then collapse the per-node entity path
-(`buildVoxelMesh` + the collector/cursor parallel-traversal coupling) onto the
-merged path. This is a wire-format-touching change (main thread ↔ bake worker) —
-keep the `voxel_bake.test.ts` parity green through it.
+DONE (the capability): `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` in
+`@voxim/content` + `render/coords.ts` (ce3cf90); `bakeVoxels(atoms, materialId)` —
+THE bake kitchen — with per-voxel size, `bakeSubModel` now a thin nodes→atoms
+adapter so the merged prop/forest path already runs through it (c95c004).
+Per-voxel size is mechanically supported on BOTH paths (the sync core via
+`bakeVoxels`; the worker via `VoxelBakeSpec`'s already-per-spec scale) — "voxels
+of different sizes" is unlocked; it just lacks a data source until terrain (T-283)
+and placement (T-284) emit varied sizes. 3 parity tests pin byte-identical
+uniform output + that varied sizes change the geometry.
+REMAINING (architectural cleanup, not capability — and the riskiest edit in the
+rebuild, since it rewrites the character-render/animation path): swap the bake-
+worker protocol to return merged `BakedMesh` batches instead of per-voxel
+`BakedVoxel[]`; collapse `upgradeToSkeletonModel`/`attachModelToSlot` (the per-node
+`buildVoxelMesh` + the collector/cursor parallel-traversal coupling) onto
+`bakeVoxels` (one merged mesh per sub-object); route InstancePool through atoms.
+Do this fresh, verifying characters still render + animate via the animProbe +
+screenshot after each step; keep `voxel_bake.test.ts` green.
 
 Introduce `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` (center + per-voxel
 size + material) in `@voxim/content` + `render/coords.ts` `modelToThree` (route
