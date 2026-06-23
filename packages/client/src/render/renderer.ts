@@ -17,12 +17,13 @@ import * as THREE from "three";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { WeaponActionDef, Prefab, Palette } from "@voxim/content";
+import type { WeaponActionDef, Prefab } from "@voxim/content";
 import { buildTerrainMesh } from "./terrain_mesh.ts";
 import { setClientPalette } from "./palette.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import { GateMarkerRenderer } from "./gate_marker.ts";
 import { EntityMeshRegistry } from "./entity_mesh_registry.ts";
+import { EnvironmentLighting } from "./environment_lighting.ts";
 import { updateSkeletonPose, type EntityMeshGroup } from "./entity_mesh.ts";
 import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool } from "./instance_pool.ts";
@@ -111,38 +112,6 @@ const HEIGHT_SHADE_ABOVE = 24.0;
  */
 const INTERP_DELAY_MS = 100;
 
-/** Lighting definition for a given time-of-day phase. */
-interface DayPhaseLight {
-  sky: THREE.Color; fog: THREE.Color; sun: THREE.Color;
-  sunIntensity: number; hemiIntensity: number; fogFar: number;
-}
-
-function makePhaseLights(): Record<string, DayPhaseLight> {
-  return {
-    noon:     { sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc), sun: new THREE.Color(0xfffde0), sunIntensity: 2.5,  hemiIntensity: 0.25, fogFar: 220 },
-    dawn:     { sky: new THREE.Color(0xd8846a), fog: new THREE.Color(0xb06848), sun: new THREE.Color(0xffb060), sunIntensity: 1.4,  hemiIntensity: 0.14, fogFar: 160 },
-    dusk:     { sky: new THREE.Color(0xa04828), fog: new THREE.Color(0x883820), sun: new THREE.Color(0xff7030), sunIntensity: 1.1,  hemiIntensity: 0.11, fogFar: 150 },
-    midnight: { sky: new THREE.Color(0x08091a), fog: new THREE.Color(0x060714), sun: new THREE.Color(0x2030a0), sunIntensity: 0.06, hemiIntensity: 0.04, fogFar: 100 },
-  };
-}
-
-/**
- * Build the day-night phase lights from the content palette (T-280) — replaces
- * the hardcoded cyan-sky defaults in makePhaseLights with the ash-hazed `phases`
- * block. Starts from the defaults so a palette missing a phase still resolves.
- */
-function buildPhaseLights(palette: Palette): Record<string, DayPhaseLight> {
-  const col = (h: string) => new THREE.Color(parseInt(h.replace("#", ""), 16) >>> 0);
-  const out = makePhaseLights();
-  for (const [name, p] of Object.entries(palette.phases)) {
-    out[name] = {
-      sky: col(p.sky), fog: col(p.fog), sun: col(p.sun),
-      sunIntensity: p.sunIntensity, hemiIntensity: p.hemiIntensity, fogFar: p.fogFar,
-    };
-  }
-  return out;
-}
-
 /** Lerp a number toward target, returning new value. */
 function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t; }
 
@@ -152,11 +121,6 @@ function lerpAngle(a: number, b: number, t: number): number {
   return a + d * t;
 }
 
-/**
- * Normalized direction FROM the world origin TOWARD the sun.
- * Used for both the DirectionalLight position and the visible sun sphere.
- */
-const SUN_DIR = new THREE.Vector3(20, 100, -15).normalize();
 
 /**
  * Minimal contract VoximRenderer needs from HoverOutlineRenderer — declared
@@ -290,33 +254,9 @@ export class VoximRenderer {
   /** Item prefab definitions — set by setItemPrefabs() from game.ts. Used to resolve modelId for equipped items. */
   private itemPrefabMap = new Map<string, Prefab>();
 
-  /** Directional sun — its target tracks the camera center each frame. */
-  private readonly sun: THREE.DirectionalLight;
-  /**
-   * Shadow camera basis vectors (pre-computed from the fixed SUN_DIR).
-   * Used to snap the shadow frustum in shadow-UV space rather than world X/Z —
-   * world-axis snapping leaves residual swimming along the perpendicular axis
-   * whenever the shadow camera isn't aligned with the world grid.
-   */
-  private readonly _shadowCamRight: THREE.Vector3;
-  private readonly _shadowCamUp: THREE.Vector3;
-  /** Visible sun disc in the sky. */
-  private readonly sunMesh: THREE.Mesh;
-  /** Hemisphere sky/ground ambient. */
-  private readonly hemi: THREE.HemisphereLight;
-
-  // ---- day/night lighting ----
-  private phaseLights = makePhaseLights();
-  /** Current interpolated lighting values (mutated every frame). */
-  private readonly lightCur: DayPhaseLight = {
-    sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc),
-    sun: new THREE.Color(0xfffde0), sunIntensity: 2.5, hemiIntensity: 0.25, fogFar: 220,
-  };
-  /** Target lighting values set by setDayPhase(). */
-  private readonly lightTgt: DayPhaseLight = {
-    sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc),
-    sun: new THREE.Color(0xfffde0), sunIntensity: 2.5, hemiIntensity: 0.25, fogFar: 220,
-  };
+  /** Sun + hemisphere ambient + sky/fog + day-night phase lerp + shadow follow.
+   *  Set in the constructor (mutates this.scene's lights + fog/background). */
+  private envLighting!: EnvironmentLighting;
 
   constructor(canvas: HTMLCanvasElement) {
     this.instancePool = new InstancePool(this.scene);
@@ -426,47 +366,8 @@ export class VoximRenderer {
     this.blitMesh = new THREE.Mesh(blitGeo, this.edgePass.material);
     this.blitScene.add(this.blitMesh);
 
-    // ---- lighting ----
-    // Strong directional sun — dominates shading so flat-shaded faces read clearly.
-    this.sun = new THREE.DirectionalLight(0xfffde0, 2.5);
-    this.sun.position.copy(SUN_DIR).multiplyScalar(100);
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(1024, 1024);
-    this.sun.shadow.camera.near   = 0.5;
-    this.sun.shadow.camera.far    = 400;
-    this.sun.shadow.camera.left   = -60;
-    this.sun.shadow.camera.right  =  60;
-    this.sun.shadow.camera.top    =  60;
-    this.sun.shadow.camera.bottom = -60;
-    this.sun.shadow.bias = -0.001; // prevent self-shadow acne on flat faces
-    this.scene.add(this.sun);
-    // Target must be in the scene so Three.js updates its world matrix each frame.
-    this.scene.add(this.sun.target);
-
-    // Pre-compute shadow camera basis vectors from the fixed SUN_DIR.
-    // Three.js lookAt: camLocalZ = normalize(eye - target) = SUN_DIR.
-    // camLocalX = normalize(cross(worldUp, SUN_DIR)); camLocalY = cross(SUN_DIR, camLocalX).
-    // Snapping in these axes (not world X/Z) eliminates shadow swimming on non-axis geometry.
-    {
-      const up = new THREE.Vector3(0, 1, 0);
-      this._shadowCamRight = new THREE.Vector3().crossVectors(up, SUN_DIR).normalize();
-      this._shadowCamUp    = new THREE.Vector3().crossVectors(SUN_DIR, this._shadowCamRight).normalize();
-    }
-
-    // Ambient fill — brightened so shadowed cliff walls are readable, not black voids.
-    this.hemi = new THREE.HemisphereLight(0x99bbdd, 0x334433, 0.55);
-    this.scene.add(this.hemi);
-
-    // ---- visible sun sphere ----
-    this.sunMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(10, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xfffce0 }),
-    );
-    this.scene.add(this.sunMesh);
-
-    // ---- sky ----
-    this.scene.fog = new THREE.Fog(0x7aa4cc, 80, 220);
-    this.scene.background = new THREE.Color(0x7aa4cc);
+    // ---- environment lighting (sun + hemi + sky/fog + day-night) ----
+    this.envLighting = new EnvironmentLighting(this.scene);
 
     globalThis.addEventListener("resize", () => this.onResize(canvas));
   }
@@ -493,15 +394,11 @@ export class VoximRenderer {
     this._matColorCache.clear();
     // Lighting + sky/fog come from the single palette source (T-280) once the
     // bootstrap arrives — replaces the hardcoded cyan noon sky with the
-    // ash-hazed phase colors. The day/night update reads phaseLights fresh each
-    // frame, so the swap takes effect immediately.
+    // ash-hazed phase colors (EnvironmentLighting rebuilds its phase table).
     const pal = cache.getPalette();
     if (pal) {
       setClientPalette(pal);
-      this.phaseLights = buildPhaseLights(pal);
-      this.hemi.color.copy(this.phaseLights.noon.sky);
-      (this.scene.background as THREE.Color).copy(this.phaseLights.noon.sky);
-      (this.scene.fog as THREE.Fog).color.copy(this.phaseLights.noon.fog);
+      this.envLighting.applyPalette(pal);
     }
   }
 
@@ -746,13 +643,7 @@ export class VoximRenderer {
    * Lighting smoothly interpolates toward the target values each render frame.
    */
   setDayPhase(phase: string): void {
-    const p = this.phaseLights[phase] ?? this.phaseLights.noon;
-    this.lightTgt.sky.copy(p.sky);
-    this.lightTgt.fog.copy(p.fog);
-    this.lightTgt.sun.copy(p.sun);
-    this.lightTgt.sunIntensity = p.sunIntensity;
-    this.lightTgt.hemiIntensity = p.hemiIntensity;
-    this.lightTgt.fogFar = p.fogFar;
+    this.envLighting.setPhase(phase);
   }
 
   // ---- debug ----
@@ -808,8 +699,7 @@ export class VoximRenderer {
    * Returns the new enabled state.
    */
   toggleShadows(): boolean {
-    this.sun.castShadow = !this.sun.castShadow;
-    return this.sun.castShadow;
+    return this.envLighting.toggleShadows();
   }
 
   /**
@@ -982,22 +872,6 @@ export class VoximRenderer {
     };
     this.debugOverlayManager.update(debugCtx);
 
-    // Smoothly transition day/night lighting (per-frame lerp toward target)
-    const L = 0.015; // lerp speed — full transition over ~4 s at 60 fps
-    this.lightCur.sky.lerp(this.lightTgt.sky, L);
-    this.lightCur.fog.lerp(this.lightTgt.fog, L);
-    this.lightCur.sun.lerp(this.lightTgt.sun, L);
-    this.lightCur.sunIntensity  = lerpN(this.lightCur.sunIntensity,  this.lightTgt.sunIntensity,  L);
-    this.lightCur.hemiIntensity = lerpN(this.lightCur.hemiIntensity, this.lightTgt.hemiIntensity, L);
-    this.lightCur.fogFar        = lerpN(this.lightCur.fogFar,        this.lightTgt.fogFar,        L);
-    (this.scene.background as THREE.Color).copy(this.lightCur.sky);
-    (this.scene.fog as THREE.Fog).color.copy(this.lightCur.fog);
-    (this.scene.fog as THREE.Fog).far = this.lightCur.fogFar;
-    this.sun.color.copy(this.lightCur.sun);
-    this.sun.intensity   = this.lightCur.sunIntensity;
-    this.hemi.intensity  = this.lightCur.hemiIntensity;
-    this.sunMesh.visible = this.lightCur.sunIntensity > 0.15;
-
     // Smoothly track local player
     const localMesh = this.localPlayerId
       ? this.entities.all.get(this.localPlayerId)
@@ -1044,45 +918,10 @@ export class VoximRenderer {
 
     this.cameraRig.update(this.cameraTarget);
 
-    // Keep sun shadow frustum centered on the player area.
-    // Both position and target must move together — only the direction between
-    // them (SUN_DIR) defines where shadows fall, not the absolute world position.
-    this.sun.target.position.copy(this.cameraTarget);
-    this.sun.position.copy(this.cameraTarget).addScaledVector(SUN_DIR, 100);
-
-    // Snap shadow frustum to its own texel grid (in shadow-camera UV space) to
-    // eliminate shadow swimming.  Snapping in world X/Z leaves residual drift
-    // along the axes not aligned with the shadow camera — visible on tall objects
-    // like trees.  Projecting onto the shadow camera's right/up vectors and
-    // rounding there keeps the shadow projection pixel-stable in all directions.
-    {
-      const sc = this.sun.shadow.camera;
-      const texelX = (sc.right - sc.left) / this.sun.shadow.mapSize.x;
-      const texelY = (sc.top   - sc.bottom) / this.sun.shadow.mapSize.y;
-
-      const t   = this.sun.target.position;
-      const dotX = t.dot(this._shadowCamRight);
-      const dotY = t.dot(this._shadowCamUp);
-
-      const snapX = Math.round(dotX / texelX) * texelX - dotX;
-      const snapY = Math.round(dotY / texelY) * texelY - dotY;
-
-      const cx = this._shadowCamRight.x * snapX + this._shadowCamUp.x * snapY;
-      const cy = this._shadowCamRight.y * snapX + this._shadowCamUp.y * snapY;
-      const cz = this._shadowCamRight.z * snapX + this._shadowCamUp.z * snapY;
-
-      this.sun.target.position.x += cx;
-      this.sun.target.position.y += cy;
-      this.sun.target.position.z += cz;
-      this.sun.position.x += cx;
-      this.sun.position.y += cy;
-      this.sun.position.z += cz;
-    }
-
-    // Keep the sun sphere fixed in the sky relative to the camera
-    this.sunMesh.position
-      .copy(this.camera.position)
-      .addScaledVector(SUN_DIR, 350);
+    // Day/night lerp + shadow-frustum follow/snap + sky-locked sun disc — all
+    // off the now-settled camera target. (After cameraRig.update so the sun disc
+    // tracks this frame's camera position.)
+    this.envLighting.update(this.cameraTarget, this.camera.position);
 
     // Update weapon tip trail ribbons for all currently attacking entities.
     const tTrailStart = performance.now();
