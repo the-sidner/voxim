@@ -18,9 +18,14 @@ import {
 import type { ContentService, SwingableData } from "@voxim/content";
 import { InputState, Health } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
-import { ActiveActions, PendingReaction, PendingItemUse, RequestedActions } from "../components/action.ts";
+import { ActiveActions, PendingReaction, PendingItemUse, RequestedActions, SwingChain } from "../components/action.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { IntentResolver } from "./dispatcher.ts";
+
+/** Ticks the primary slot may sit idle before a combo lapses back to index 0
+ *  (~0.6s at 20Hz). Long enough to chain through a winddown, short enough that
+ *  a real pause restarts the string. */
+const COMBO_WINDOW_TICKS = 12;
 
 export const PostureIntentResolver: IntentResolver = {
   resolve(world: World, entityId: EntityId, slots: readonly string[]): Map<string, string | null> {
@@ -72,11 +77,31 @@ export class PrimaryIntentResolver implements IntentResolver {
       const swingable = weaponPrefab
         ? this.content.prefabs.get(weaponPrefab)?.components["swingable"] as SwingableData | undefined
         : undefined;
-      want = swingable?.swingActionId ?? "swing_light";
+      const chainLen = swingable?.chain.length ?? 0;
+      // Heavy = the press was charged past the weapon's threshold. Recorded on
+      // SwingChain so animation + the weapon_trace resolver play/trace the same
+      // variant for this swing's whole duration.
+      const chargeMs = world.get(entityId, InputState)?.chargeMs ?? 0;
+      const heavy = chainLen > 0 && !!swingable && chargeMs >= swingable.heavyChargeMs;
+      if (chainLen > 0) {
+        // Advance the combo: a fresh or lapsed chain starts at 0, a continued
+        // one steps to the next entry so consecutive swings alternate.
+        const prev = world.get(entityId, SwingChain);
+        const reset = !prev || prev.idleTicks > COMBO_WINDOW_TICKS;
+        const index = reset ? 0 : (prev.index + 1) % chainLen;
+        world.write(entityId, SwingChain, { index, heavy, idleTicks: 0 });
+      }
+      want = heavy ? "swing_heavy" : (swingable?.swingActionId ?? "swing_light");
     } else if (swinging) {
       want = null;
     } else {
       want = "primary_idle";
+      // Count idle ticks (slot free, not attacking) so a paused combo lapses
+      // back to index 0 on the next swing. Capped so it can't overflow.
+      const sc = world.get(entityId, SwingChain);
+      if (sc && sc.idleTicks <= COMBO_WINDOW_TICKS) {
+        world.write(entityId, SwingChain, { ...sc, idleTicks: sc.idleTicks + 1 });
+      }
     }
     out.set("primary", want);
     return out;

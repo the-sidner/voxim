@@ -26,7 +26,7 @@
     "crouch_strafe_right":  "crouch_walk_right",
     "combat_idle":      "idle",
     "weapon.swing_clip": "great_sword_slash",
-    "weapon.block_clip": "great_sword_blocking",
+    "weapon.block_clip": "standing_block_idle",
     "weapon.aim_clip":   "standing_aim_overdraw",
     "weapon.shoot_clip": "standing_aim_recoil",
     "hit_front":        "standing_react_small_from_front",

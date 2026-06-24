@@ -36,6 +36,7 @@ import type {
 import { Position, Facing, Velocity, InputState, ModelRef } from "../../components/game.ts";
 import { Resource } from "../../components/resource.ts";
 import { Equipment } from "../../components/equipment.ts";
+import { SwingChain } from "../../components/action.ts";
 import { QualityStamped, Durability } from "../../components/instance.ts";
 import { ItemData } from "../../components/items.ts";
 import { Hitbox } from "../../components/hitbox.ts";
@@ -70,12 +71,16 @@ function weaponContext(world: World, entityId: EntityId, content: ContentService
   const swingable = prefabId
     ? content.prefabs.get(prefabId)?.components["swingable"] as SwingableData | undefined
     : undefined;
-  // Universal swing actions carry timing; the weapon supplies geometry via
-  // its swingable chain (step 0's light variant for now — chain-step
-  // selection is a later refinement). Unarmed falls back to config.
-  const weaponActionId = (swingable && swingable.chain.length > 0)
-    ? swingable.chain[0].light
-    : (cfg.unarmedWeaponAction ?? "unarmed");
+  // Universal swing actions carry timing; the weapon supplies geometry via its
+  // swingable chain. The combo step + heavy flag (SwingChain) select which
+  // entry — same selection animation.ts makes, so the traced hitbox matches the
+  // played clip. Unarmed falls back to config.
+  let weaponActionId = cfg.unarmedWeaponAction ?? "unarmed";
+  if (swingable && swingable.chain.length > 0) {
+    const sc = world.get(entityId, SwingChain);
+    const entry = swingable.chain[(sc?.index ?? 0) % swingable.chain.length];
+    weaponActionId = sc?.heavy ? entry.heavy : entry.light;
+  }
   return { stats, prefabId, weaponActionId };
 }
 

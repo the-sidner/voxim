@@ -130,3 +130,37 @@ export const RequestedActions = defineComponent({
   codec: requestedActionsCodec,
   default: (): RequestedActionsData => ({ requests: {} }),
 });
+
+/**
+ * SwingChain (T-295 follow-up — combo wiring) — per-actor melee combo state.
+ * The weapon's `swingable.chain` defines a sequence of `{light, heavy}`
+ * WeaponActionDefs; each new swing advances `index` (mod chain length) so
+ * consecutive attacks alternate animation + geometry. `heavy` records whether
+ * THIS swing was charged (chargeMs >= heavyChargeMs) so animation + the
+ * weapon_trace resolver agree on which variant to play/trace. `idleTicks`
+ * counts ticks the primary slot has been idle; once it exceeds the combo
+ * window the next swing resets to index 0 (the documented "chain resets when
+ * the actor reaches idle" behaviour). Server-only — the chosen WeaponActionDef
+ * reaches the client via AnimationState.weaponActionId, so the chain index
+ * itself never needs to be networked.
+ */
+export interface SwingChainData { index: number; heavy: boolean; idleTicks: number }
+
+const swingChainCodec: Serialiser<SwingChainData> = {
+  encode(v) {
+    const w = new WireWriter();
+    w.writeU16(v.index); w.writeU8(v.heavy ? 1 : 0); w.writeU16(v.idleTicks);
+    return w.toBytes();
+  },
+  decode(b) {
+    const r = new WireReader(b);
+    return { index: r.readU16(), heavy: r.readU8() === 1, idleTicks: r.readU16() };
+  },
+};
+
+export const SwingChain = defineComponent({
+  name: "swingChain" as const,
+  networked: false,
+  codec: swingChainCodec,
+  default: (): SwingChainData => ({ index: 0, heavy: false, idleTicks: 0 }),
+});

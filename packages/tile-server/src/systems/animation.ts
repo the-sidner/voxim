@@ -20,7 +20,7 @@ import type {
   AnimationLayer,
 } from "@voxim/content";
 import { Velocity, AnimationState } from "../components/game.ts";
-import { ActiveActions } from "../components/action.ts";
+import { ActiveActions, SwingChain } from "../components/action.ts";
 import type { ActiveActionState } from "../components/action.ts";
 import { Crouched } from "../components/tags.ts";
 import { Equipment } from "../components/equipment.ts";
@@ -90,8 +90,13 @@ export class AnimationSystem implements System {
       const swingable = equipped
         ? this.content.prefabs.get(equipped)?.components["swingable"] as SwingableData | undefined
         : undefined;
-      const geomAction = swingable?.chain?.[0]?.light
-        ? this.content.weaponActions.get(swingable.chain[0].light)
+      // The combo's current step (SwingChain) selects which chain entry's
+      // WeaponActionDef supplies the clip + geometry — so consecutive swings
+      // alternate, and a charged swing plays its `.heavy` variant. (T-295
+      // follow-up; replaces the hardcoded chain[0].)
+      const chainActionId = pickChainWeaponAction(world, entityId, swingable);
+      const geomAction = chainActionId
+        ? this.content.weaponActions.get(chainActionId)
         : undefined;
       const slotMap = geomAction?.clipId
         ? { ...baseSlots, "weapon.swing_clip": geomAction.clipId }
@@ -159,6 +164,20 @@ function velocityMagnitude(world: World, entityId: string): number {
   const v = world.get(entityId, Velocity);
   if (!v) return 0;
   return Math.sqrt(v.x * v.x + v.y * v.y);
+}
+
+/** The WeaponActionDef id for this actor's current combo step + heavy flag
+ *  (SwingChain). Undefined when unarmed / chainless — callers fall back. */
+function pickChainWeaponAction(
+  world: World,
+  entityId: string,
+  swingable: SwingableData | undefined,
+): string | undefined {
+  const len = swingable?.chain.length ?? 0;
+  if (!swingable || len === 0) return undefined;
+  const sc = world.get(entityId, SwingChain);
+  const entry = swingable.chain[(sc?.index ?? 0) % len];
+  return sc?.heavy ? entry.heavy : entry.light;
 }
 
 /**
