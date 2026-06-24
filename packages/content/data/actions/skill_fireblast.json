@@ -17,5 +17,10 @@
   "effects": [
     { "phase": "active:enter", "kind": "health",
       "params": { "magnitude": 18, "targeting": "area", "range": 4.0 } }
-  ]
+  ],
+  "animation": {
+    "windup":   { "clipId": "standing_2h_cast_spell_01", "loop": true },
+    "active":   { "clipId": "standing_2h_magic_area_attack_01", "loop": false },
+    "winddown": { "clipId": "standing_2h_magic_area_attack_01", "loop": false }
+  }
 }
