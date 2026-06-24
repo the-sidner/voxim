@@ -781,7 +781,7 @@ relative to the camera, not the cursor. No server change. Verify via the testpla
 (local mesh `rotation.y` tracks the cursor angle within one frame).
 
 ### T-288 · Single saturated lighting authority — de-grey the atmosphere
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 4917ad5
 
 The world reads grey because the palette's own atmosphere is near-grey: noon `sky` and `fog`
 are both `#9aa39e` (~5% saturation), and fog color = sky color washes the whole scene toward
@@ -796,7 +796,7 @@ real color (oak/sand/ember are colored, not grey); exactly one phase table; remo
 from `palette.json` errors at boot. Final values dialed on screen with the user.
 
 ### T-289 · Replace dead split-tone tint with a real saturation control
-Effort: S   Status: todo   Depends: T-288
+Effort: S   Status: done   Commit: 2ddeab1   Depends: T-288
 
 The post-process split-tone tint (`edge_pass.ts:202-207`) is ±6% RGB on an already-desaturated
 base — below perceptual threshold (ΔE<2 from neutral), pure cognitive noise. Delete it and add a
@@ -819,7 +819,7 @@ visible cast animation for the action's full duration on local and remote charac
 the animation harness. (Cast-bar UI off `ui_store.castState` is a separate nicety, not required.)
 
 ### T-291 · Client-side layer crossfade — kill the pose snap on every server delta
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 1248bed
 
 `AnimationState` arrives as a full layer snapshot at 20Hz and is applied raw each frame with no
 blend — idle→swing / idle→walk hard-cut the pose in one frame and layer weights jump 0↔1. Add a
@@ -830,25 +830,31 @@ client derives the blend schedule from layer-presence deltas. DONE: idle→walk�
 transitions are visibly smoothed (no single-frame limb snap), verified frame-by-frame on the
 harness. Optional follow-up: sync locomotion clip time to fractional ticks for 60fps-smooth walk.
 
-### T-292 · Combat reactions on the wire — block/dodge/stagger/knockback presentation
-Effort: L   Status: todo   Depends: T-287
+### T-292 · Combat impact juice — hit feedback, hitstop, knockback emphasis
+Effort: M   Status: todo   Depends: T-287
 
-Block, dodge i-frames, stagger, knockback, parry, and counter-window are fully implemented
-server-side (actions + tags + impulses) but carry ZERO networked presentation — the tags are
-`networked:false` (T-250) and `AnimationState` only carries clip layers + weaponActionId, so real
-working mechanics are invisible and combat reads floaty. Per the T-250 rule (wire carries DATA,
-client derives presentation), add a derived combat-state enum to networked `AnimationState`
-(`idle | blocking | staggered_light | staggered_heavy | dodging | counter_ready`), computed in
-`AnimationSystem` from tag presence at apply-changeset time; the client maps it to reaction
-poses/clips in the constraint pipeline (registry/projection, no per-state switch). Separately,
-give the hit-feedback event a knockback direction so the client adds a brief reactive flinch + a
-small screen-space push; consider unifying HitSpark/DamageDealt into one `HitResult` event
-`{attacker,target,amount,blocked,knockback,reaction}`. Enum (not flag set) for v1. DONE: blocking
-holds guard, dodging rolls, staggered recoils, knockback shows a push, parry shows attacker-stagger
-+ defender counter-ready — all off networked data, no presence-flags reintroduced.
+CORRECTED 2026-06-24 after verifying the code (the analysis reader was wrong here, as it was on
+lighting): the combat mechanics are NOT invisible. `health_hit_handler` already installs
+`hit_front`/`hit_back`/`stagger_light`/`stagger_heavy` into the `reaction` slot on a weapon_trace
+hit (and `stagger_heavy` on the attacker for a parry); `block` (primary/ambient), `dodge_roll`
+(locomotion) and the reactions all carry `animation` blocks and project into `AnimationState.layers`
+via `AnimationSystem`, so they ALREADY animate and reach the client over the existing wire. A
+parallel combat-state enum would duplicate a working mechanism (anti-accretion doctrine) — do NOT.
+
+The real gap is impact JUICE — client-side, no wire change. `DamageDealt` reaches the client
+(`game.ts:660`) but only `console.log`s it; `HitSpark` spawns particles but there is no hit flash,
+no hitstop, no knockback emphasis. Build (and tune live): (a) a brief damage flash on the victim
+mesh on `DamageDealt` (per-entity — needs a non-shared material hook or an emissive overlay; mind
+the voxel material cache), (b) optional hitstop (a few-frame freeze of attacker+target anim on a
+confirmed hit), (c) knockback emphasis — the server impulse already moves the body; add a short
+reactive flinch or a small screen-space punch, (d) a floating damage number off `DamageDealt`.
+DONE: a landed hit reads with weight (flash + spark + reaction pose, optional hitstop); blocked hits
+read distinctly; knockback has impact. All client-side, tuned on screen with the user. NOTE:
+playtest the post-T-287 combat FIRST — with attacks finally going where you aim and the reactions
+already animating, scope the juice against what actually still feels missing.
 
 ### T-293 · Movement responsiveness tuning pass
-Effort: S   Status: todo   Depends: T-287
+Effort: S   Status: done   Commit: 496ed4e   Depends: T-287
 
 After T-287 removes the body-lag (the biggest chunk of perceived sluggishness — pain "model too
 slow" is feel, not render cost, which is already sub-ms), tune the remainder. In
