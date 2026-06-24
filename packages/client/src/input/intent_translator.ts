@@ -55,8 +55,10 @@ const GAME_KEYS = new Set([
 
 export class IntentTranslator {
   private readonly keys = new Set<string>();
-  /** Player facing — updated each mouse-move from cursor-on-ground raycast. */
-  private facing = 0;
+  /** Player facing — updated each mouse-move from cursor-on-ground raycast.
+   *  Exposed via `get facing()` so the renderer can predict the local body's
+   *  rotation without the server round-trip (T-287). */
+  private _facing = 0;
   /** Accumulated one-shot bits cleared each buildDatagram(). */
   private pendingActions = 0;
   /** Charge that becomes part of the next datagram (cleared after build). */
@@ -81,6 +83,8 @@ export class IntentTranslator {
     private readonly router: IntentRouter,
     private readonly getPlayerScreen: () => { x: number; y: number },
     private readonly getCursorFacing: (canvasX: number, canvasY: number) => number | null,
+    /** Fixed camera yaw — the basis for camera-relative movement (T-287). */
+    private readonly getCameraYaw: () => number,
   ) {}
 
   /** Wire this as the InputCapture sink. */
@@ -169,7 +173,7 @@ export class IntentTranslator {
     // Cursor → player facing: raycast onto the ground plane at player Y.
     // The renderer owns the camera + player position so it does the projection.
     const f = this.getCursorFacing(e.canvasX, e.canvasY);
-    if (f !== null) this.facing = f;
+    if (f !== null) this._facing = f;
   }
 
   private onMouseDown(e: Extract<RawEvent, { kind: "mouse-down" }>): void {
@@ -238,18 +242,19 @@ export class IntentTranslator {
 
   /** Called once per frame by the game loop. */
   buildDatagram(seq: number, tick: number): MovementDatagram {
-    // Movement is FACING-relative: W = forward in the direction the
-    // character is facing (cursor-driven). The camera angle is fixed.
-    // So if the cursor points south, the character faces south, and W
-    // moves south — character rotates, camera doesn't.
-    const fwdX =  Math.cos(this.facing);
-    const fwdY =  Math.sin(this.facing);
-    // Player-right vector in game (X, Y). Top-down camera with the world's
-    // +Y rendering "up" on screen means the screen-right of the facing
-    // vector is the math-CCW perpendicular, not the CW one — pressing D
-    // strafes to the right of the cursor direction as the player sees it.
-    const rgtX = -Math.sin(this.facing);
-    const rgtY =  Math.cos(this.facing);
+    // Movement is CAMERA-relative (T-287): W = "into the screen" (away from
+    // the camera along its fixed yaw), D = screen-right — independent of where
+    // the cursor points. The body still aims at the cursor (`facing` on the
+    // wire below), so melee/aim track the cursor while locomotion follows the
+    // screen. Diablo/PoE muscle memory on a fixed-yaw camera.
+    const yaw = this.getCameraYaw();
+    const fwdX =  Math.cos(yaw);
+    const fwdY =  Math.sin(yaw);
+    // Screen-right is camera-forward × world-up; for this fixed top-down rig
+    // that resolves to the math-CCW perpendicular (-sin, cos), so pressing D
+    // strafes to the player-perceived right of the screen.
+    const rgtX = -Math.sin(yaw);
+    const rgtY =  Math.cos(yaw);
 
     let movX = 0, movY = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    { movX += fwdX; movY += fwdY; }
@@ -276,7 +281,7 @@ export class IntentTranslator {
       seq,
       tick,
       timestamp: Date.now(),
-      facing: this.facing,
+      facing: this._facing,
       movementX: movX,
       movementY: movY,
       actions,
@@ -288,4 +293,8 @@ export class IntentTranslator {
 
   get mouseX(): number { return this.mouseCanvasX; }
   get mouseY(): number { return this.mouseCanvasY; }
+
+  /** Cursor-derived facing (radians). The local, un-round-tripped value the
+   *  renderer applies to the local mesh for predicted body rotation (T-287). */
+  get facing(): number { return this._facing; }
 }

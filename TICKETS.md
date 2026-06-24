@@ -743,6 +743,122 @@ on bare presses, and deliberately does NOT when (a) a text field is focused (nev
 keep working). Verified live: Space/ArrowDown → defaultPrevented; KeyP, Ctrl+W, and Space-in-an-input
 → not prevented.
 
+## Client / Controls, Feel & Render Polish
+
+Born from the 2026-06-24 client-overhaul analysis (7-reader sweep over the post-rebuild
+client). Root finding: **facing is never predicted client-side** — the local body's
+`rotation.y` is written only from networked `state.facing` (`entity_mesh.ts:624`); the
+renderer overrides the local player's *position* with prediction (`renderer.ts:879`) but
+never *rotation*. The cursor facing computed every frame in `IntentTranslator.facing`
+round-trips the server before the body turns. That single gap is the spine of BOTH the
+controls-feel complaint and the "attacks go random directions" complaint (the swing trail
+sweeps from a stale orientation). The "grayscale" look is the palette's own near-grey
+atmosphere (noon `sky` = `fog` = `#9aa39e`, ~5% saturation) plus a hardcoded hemisphere
+ground color and an imperceptible ±6% split-tone tint — NOT a blocked T-286 boost (the
+palette IS the runtime authority via `applyPalette`). Chosen directions: controls →
+camera-relative movement + cursor-aim (Diablo/PoE); color → deutlich bunter.
+
+### T-287 · Camera-relative movement + client-predicted cursor-facing
+Effort: M   Status: in-progress
+
+Two coupled control fixes; chosen scheme = camera-relative + cursor-aim (Diablo/PoE).
+
+1. **Camera-relative movement.** `IntentTranslator.buildDatagram` builds the movement basis
+   from the player's cursor `facing` (`intent_translator.ts:245-252`) — W moves toward the
+   cursor. Replace the basis with the fixed camera yaw (`CameraRig.getYaw()`): W = screen-up,
+   D = screen-right, regardless of where the cursor points. `facing` still rides the wire
+   (cursor-aim) so the body and swings aim at the cursor. Inject `getCameraYaw` into the
+   translator.
+2. **Predicted facing.** The local mesh `rotation.y` is set only from networked `state.facing`,
+   so the body turns a round-trip late. Pass the local `IntentTranslator.facing` through
+   `renderer.render()` and apply it to the local player's `group.rotation.y` in the same
+   override block that already overrides local position (`renderer.ts:879`), using the
+   `-angle - π/2` convention. Remote entities stay on the interpolated networked path.
+
+DONE: aiming turns the body the instant the cursor moves (no ~50-100ms delay); the swing
+trail sweeps toward the cursor every time (fixes "attacks go random directions"); WASD moves
+relative to the camera, not the cursor. No server change. Verify via the testplay harness
+(local mesh `rotation.y` tracks the cursor angle within one frame).
+
+### T-288 · Single saturated lighting authority — de-grey the atmosphere
+Effort: S   Status: todo
+
+The world reads grey because the palette's own atmosphere is near-grey: noon `sky` and `fog`
+are both `#9aa39e` (~5% saturation), and fog color = sky color washes the whole scene toward
+grey at `fogFar` 230. The hemisphere GROUND color (`0x334433`) is hardcoded in the
+`environment_lighting.ts` ctor and never palette-driven (only `hemi.color`/sky updates in
+`applyPalette`). User wants DEUTLICH BUNTER. Make `palette.json` the sole, saturated authority:
+(a) decouple fog color from sky and push both toward chroma; (b) add `hemiGround` to palette
+phases and drive `hemi.groundColor` from it (warm toward sage/earth); (c) delete the dead
+hardcoded `makePhaseLights()` fallback table now that all four phases live in the palette (fail
+loud on a missing phase rather than silently falling back to cyan). DONE: noon scene reads with
+real color (oak/sand/ember are colored, not grey); exactly one phase table; removing a phase
+from `palette.json` errors at boot. Final values dialed on screen with the user.
+
+### T-289 · Replace dead split-tone tint with a real saturation control
+Effort: S   Status: todo   Depends: T-288
+
+The post-process split-tone tint (`edge_pass.ts:202-207`) is ±6% RGB on an already-desaturated
+base — below perceptual threshold (ΔE<2 from neutral), pure cognitive noise. Delete it and add a
+real `uSaturation`/vibrance uniform that lifts chroma in the grade (>1, toward "deutlich
+bunter"). Re-tune exposure/ACES/vignette around the now-authoritative palette. DONE: the post
+pass carries one honest knob instead of a dead tint; the scene has visible chroma punch; the
+change is delete-tint + add-one-uniform. Tuned on screen with the user.
+
+### T-290 · Skill-cast animations — populate the `animation` field on skill ActionDefs
+Effort: S   Status: todo
+
+Skill ActionDefs (`data/actions/skill_fireblast.json`, `skill_mend.json`) have phases/effects/
+costs but NO `animation` block, so `AnimationSystem.projectLocomotion` reads `undefined`, returns
+null, and the client renders no motion during the cast despite the action running its full
+windup/active/winddown server-side. Pure content hole — `swing_light.json` shows the structure.
+Add an `animation` block to each skill mapping windup/active/winddown to a cast clip (reuse an
+existing channel pose or author a dedicated cast clip in the skeleton's `animationSlots`),
+full-body override to match swing behavior. No code change. DONE: pressing a hotbar skill plays a
+visible cast animation for the action's full duration on local and remote characters; verified via
+the animation harness. (Cast-bar UI off `ui_store.castState` is a separate nicety, not required.)
+
+### T-291 · Client-side layer crossfade — kill the pose snap on every server delta
+Effort: M   Status: todo
+
+`AnimationState` arrives as a full layer snapshot at 20Hz and is applied raw each frame with no
+blend — idle→swing / idle→walk hard-cut the pose in one frame and layer weights jump 0↔1. Add a
+client-only per-mesh crossfade: a small pending-blend queue keyed by layer id; a layer appearing
+in the new snapshot fades in (~150-250ms), a disappearing one fades out (retain the previous clip
+during the window); fold the eased weight into the layer evaluation. No wire/server change — the
+client derives the blend schedule from layer-presence deltas. DONE: idle→walk→swing→idle
+transitions are visibly smoothed (no single-frame limb snap), verified frame-by-frame on the
+harness. Optional follow-up: sync locomotion clip time to fractional ticks for 60fps-smooth walk.
+
+### T-292 · Combat reactions on the wire — block/dodge/stagger/knockback presentation
+Effort: L   Status: todo   Depends: T-287
+
+Block, dodge i-frames, stagger, knockback, parry, and counter-window are fully implemented
+server-side (actions + tags + impulses) but carry ZERO networked presentation — the tags are
+`networked:false` (T-250) and `AnimationState` only carries clip layers + weaponActionId, so real
+working mechanics are invisible and combat reads floaty. Per the T-250 rule (wire carries DATA,
+client derives presentation), add a derived combat-state enum to networked `AnimationState`
+(`idle | blocking | staggered_light | staggered_heavy | dodging | counter_ready`), computed in
+`AnimationSystem` from tag presence at apply-changeset time; the client maps it to reaction
+poses/clips in the constraint pipeline (registry/projection, no per-state switch). Separately,
+give the hit-feedback event a knockback direction so the client adds a brief reactive flinch + a
+small screen-space push; consider unifying HitSpark/DamageDealt into one `HitResult` event
+`{attacker,target,amount,blocked,knockback,reaction}`. Enum (not flag set) for v1. DONE: blocking
+holds guard, dodging rolls, staggered recoils, knockback shows a push, parry shows attacker-stagger
++ defender counter-ready — all off networked data, no presence-flags reintroduced.
+
+### T-293 · Movement responsiveness tuning pass
+Effort: S   Status: todo   Depends: T-287
+
+After T-287 removes the body-lag (the biggest chunk of perceived sluggishness — pain "model too
+slow" is feel, not render cost, which is already sub-ms), tune the remainder. In
+`game_config.json`: lower `prediction.correctionHalfLifeMs` 60→~35-40, raise
+`prediction.hardSnapThresholdUnits` 2.0→~3.0, raise `physics.groundAccel` 40→~60-70 (max speed
+stays 6 — reach it in ~1 frame). Verify no rubber-band on high-divergence cases (hitting an
+unpredicted obstacle). Render/voxel-bake cost is already fine — explicitly NOT an optimization
+ticket. DONE: turning/stopping feel crisp, HUD `inputLag` within 1-2 frames, no rubber-band
+regressions; all changes are content/config values.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
@@ -840,6 +956,26 @@ the Heritage batch because of this span.
 ---
 
 ## Territorial Control
+
+### T-294 · Upper-terrain claims as POI metadata (not a second heightmap)
+Effort: L   Status: todo
+
+Implement ideas.md's upper/lower terrain as a SEMANTIC overlay on the existing single heightmap,
+NOT a literal second elevation layer. A second heightmap doubles terrain wire + save size and
+forces layered physics/fog for a feature whose content — claims, central POIs, building hubs,
+fast-travel — is all metadata that lives on POI entities; the wilderness plateau already IS the
+"upper terrain", and "lower navigation / upper for POIs" maps onto the path-floor-vs-plateau the
+terrain already expresses. Build the core claim loop: add a server-only `Claim` component on POI
+entities (`poiInstanceId`, `claimerId`, `timestamp`); mark central/hub POIs (`isCentral` on
+`PoiDef` + a `TileNarrative` tag). Defeating a central POI publishes a `ClaimAcquired` event;
+`TriggerSystem` fires a `grant_claim` effect on the victor (reuses the trigger primitive — no new
+event→effect bridge). Persist claims in `HeritageStore` per player per tile (survives death/
+disconnect). Gate building placement on owned claims (buildings snap to claimed POI anchors; each
+claim unlocks a content-defined building set via `data/buildings`). Depends on T-212 (POI runtime)
+/ T-213 (stairs). DONE: a player defeats a central POI, receives and keeps a claim across
+reconnect, and unlocks claim-gated building options at that anchor; no second heightmap is
+introduced; claim state is server-only for now. Defer claim-SHARING (others' spawnpoints / fast-
+travel / sleeping) and minimap/fog claim overlays to follow-up tickets so this lands the core loop.
 
 ## Species
 

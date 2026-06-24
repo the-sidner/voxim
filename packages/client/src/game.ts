@@ -378,6 +378,7 @@ export class VoximGame {
       this.intentRouter,
       () => this.renderer!.getPlayerScreenPos(),
       (cx, cy) => this.renderer!.getCursorFacing(cx, cy),
+      () => this.renderer!.cameraRig.getYaw(),
     );
     this.inputCapture = new InputCapture(canvas, this.input.handle, (e) => {
       // Take full control of the game keybindings: swallow the browser's own
@@ -972,7 +973,9 @@ export class VoximGame {
       // `currentlyVisible` arc is computed here; `seenEver` is server-driven
       // and arrives via BinaryStateMessage's fogSnapshot / fogReveals.
       if (px !== undefined && py !== undefined) {
-        const facing = this.world.get(this.playerId)?.facing?.angle ?? 0;
+        // Local cursor facing (T-287) so the vision cone tracks the cursor
+        // immediately, not a server round-trip late; fall back to networked.
+        const facing = this.input?.facing ?? this.world.get(this.playerId)?.facing?.angle ?? 0;
         this.fog.updateLocalLOS(px, py, facing, (x, y) => this.world.isOpen(x, y));
       }
     }
@@ -981,7 +984,7 @@ export class VoximGame {
     // whose kindGrid arrived before their heightmap.
     this.waterRenderer?.tick(now);
 
-    this.renderer?.render(this.serverTick, predictedPos);
+    this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null);
 
     const tPostStart = performance.now();
     // Update world-space entity health bars + gate labels (frame-driven, not reactive)

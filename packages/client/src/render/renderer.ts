@@ -785,7 +785,7 @@ export class VoximRenderer {
 
   // ---- render loop ----
 
-  render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null): void {
+  render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null, localFacing?: number | null): void {
     // Compute a smooth fractional tick that advances at 20 Hz based on real time.
     // This makes animations run at 60 fps instead of stepping every 50 ms.
     const now = performance.now();
@@ -875,12 +875,22 @@ export class VoximRenderer {
     }
     this.frameTimings.skMs = performance.now() - tSkStart;
 
-    // Override local player position with client-side prediction
-    if (localPredictedPos && this.localPlayerId) {
+    // Override the local player's transform with client-side prediction so the
+    // body tracks input without a server round-trip. Position comes from the
+    // predictor; facing/rotation comes from the locally-tracked cursor angle
+    // (T-287) — updateEntityMesh only ever sets rotation from the networked
+    // facing, which lags by RTT and made swings sweep from a stale orientation.
+    if (this.localPlayerId) {
       const localMesh = this.entities.all.get(this.localPlayerId);
       if (localMesh) {
-        // world(x, y, z) → three(x, height, y) — same mapping as updateEntityMesh
-        localMesh.group.position.set(localPredictedPos.x, localPredictedPos.z + localMesh.groundOffsetWorld + localMesh.rollLiftY, localPredictedPos.y);
+        if (localPredictedPos) {
+          // world(x, y, z) → three(x, height, y) — same mapping as updateEntityMesh
+          localMesh.group.position.set(localPredictedPos.x, localPredictedPos.z + localMesh.groundOffsetWorld + localMesh.rollLiftY, localPredictedPos.y);
+        }
+        if (localFacing != null) {
+          // Same convention as updateEntityMesh: rotation.y = -angle - π/2.
+          localMesh.group.rotation.y = -localFacing - Math.PI / 2;
+        }
       }
     }
 
