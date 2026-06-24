@@ -1,9 +1,24 @@
 {
+  "_comment": "Teaching outpost (T-300). Player spawns at the tile centre (~256,256). A safe hub with a craft pavilion + trader + villagers; readable hostile clusters in the four cardinal directions at ~30-40 units so the player chooses engagement. Structural entities stay near the hub (z~4 is known-flat there); enemies ride npcs[] (terrain-snapped) so they sit on the surface anywhere. Procedural nodes/NPCs fill the wilderness fringe. Missing enemies (drowner/bandit/rotten_knight) are also added to zone npcWeights so the fringe is populated too.",
   "tileId": "tile_0",
   "entities": [
     { "prefabId": "chopping_block", "x": 259, "y": 256, "z": 4.0 },
     { "prefabId": "workbench",      "x": 261, "y": 256, "z": 4.0 },
-    { "prefabId": "campfire",       "x": 259, "y": 258, "z": 4.0 }
+    { "prefabId": "campfire",       "x": 256, "y": 259, "z": 4.0 },
+
+    { "prefabId": "forge",          "x": 263, "y": 253, "z": 4.0 },
+    { "prefabId": "anvil",          "x": 266, "y": 255, "z": 4.0 },
+    { "prefabId": "furnace",        "x": 263, "y": 258, "z": 4.0 },
+    { "prefabId": "iron_ore_vein",  "x": 268, "y": 252, "z": 4.0 },
+    { "prefabId": "iron_ore_vein",  "x": 269, "y": 255, "z": 4.0 },
+
+    { "prefabId": "model_building_ruin_tower", "x": 244, "y": 266, "z": 4.0 },
+    { "prefabId": "model_building_ruin_wall",  "x": 242, "y": 264, "z": 4.0 },
+    { "prefabId": "model_building_ruin_wall",  "x": 246, "y": 268, "z": 4.0 },
+
+    { "prefabId": "rock_large",     "x": 248, "y": 248, "z": 4.0 },
+    { "prefabId": "model_dead_tree","x": 270, "y": 262, "z": 4.0 },
+    { "prefabId": "model_dead_tree","x": 247, "y": 252, "z": 4.0 }
   ],
   "npcs": [
     {
@@ -16,7 +31,22 @@
         { "itemType": "iron_ingot", "buyPrice": 12, "sellPrice": 5,  "stock": 10 },
         { "itemType": "iron_sword", "buyPrice": 45, "sellPrice": 22, "stock": 2 }
       ]
-    }
+    },
+    { "prefabId": "villager", "x": 250, "y": 261, "name": "Old Brenna" },
+    { "prefabId": "villager", "x": 264, "y": 250, "name": "Halvard" },
+
+    { "prefabId": "wolf", "x": 289, "y": 251 },
+    { "prefabId": "wolf", "x": 293, "y": 255 },
+    { "prefabId": "wolf", "x": 287, "y": 258 },
+
+    { "prefabId": "drowner", "x": 256, "y": 222 },
+    { "prefabId": "drowner", "x": 251, "y": 226 },
+    { "prefabId": "drowner", "x": 260, "y": 224 },
+
+    { "prefabId": "bandit", "x": 220, "y": 253 },
+    { "prefabId": "bandit", "x": 216, "y": 249 },
+
+    { "prefabId": "rotten_knight", "x": 244, "y": 288 }
   ],
   "proceduralNodes": true,
   "proceduralNpcs": true

@@ -16,13 +16,13 @@
     }
   ],
   "dangerLevel": 8,
-  "npcSpawnDensity": 0.08,
+  "npcSpawnDensity": 0.22,
   "nodeSpawnDensity": 0.5,
   "propSpawnDensity": 1.5,
   "npcWeights": {
-    "wolf": 3,
-    "archer": 3,
-    "villager": 3
+    "rotten_knight": 4,
+    "bandit": 3,
+    "archer": 2
   },
   "entityWeights": {
     "iron_ore_vein": 5

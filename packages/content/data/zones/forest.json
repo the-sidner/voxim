@@ -9,13 +9,14 @@
     }
   ],
   "dangerLevel": 3,
-  "npcSpawnDensity": 0.08,
+  "npcSpawnDensity": 0.18,
   "nodeSpawnDensity": 0.5,
   "propSpawnDensity": 1.5,
   "npcWeights": {
-    "wolf": 3,
-    "archer": 3,
-    "villager": 3
+    "wolf": 4,
+    "bandit": 2,
+    "archer": 2,
+    "villager": 1
   },
   "entityWeights": {
     "tree": 10,
