@@ -15,13 +15,13 @@
     "hit_back": "standing_react_large_from_right",
     "death": "zombie_dying"
   },
-  "morphValues": {
-    "armLength": 1.4,
-    "legLength": 0.85,
-    "torsoHeight": 0.95,
-    "shoulderWidth": 0.85,
-    "headSize": 1.1,
-    "hipWidth": 0.9
+  "morphRanges": {
+    "armLength":     { "min": 1.25, "max": 1.55 },
+    "legLength":     { "min": 0.78, "max": 0.95 },
+    "torsoHeight":   { "min": 0.88, "max": 1.05 },
+    "shoulderWidth": { "min": 0.78, "max": 0.98 },
+    "headSize":      { "min": 1.00, "max": 1.20 },
+    "hipWidth":      { "min": 0.82, "max": 1.02 }
   },
   "components": {
     "npc": {

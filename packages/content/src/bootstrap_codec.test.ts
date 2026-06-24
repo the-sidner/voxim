@@ -67,10 +67,11 @@ Deno.test("bootstrap codec preserves item content (sample probe)", async () => {
   assertEquals(biped.bones.length, src.skeletons.getOrThrow("biped").bones.length);
   assertEquals(biped.archetype, "biped");
 
-  // Per-prefab morphValues survive the codec (T-180)
+  // Per-prefab morphRanges survive the codec (T-180 / T-305 — drowner now
+  // jitters around its long-armed identity instead of a fixed body).
   const drownerPrefab = dst.prefabs.getOrThrow("drowner");
-  assertEquals(drownerPrefab.morphValues?.armLength, 1.4);
-  assertEquals(drownerPrefab.morphValues?.headSize, 1.1);
+  assertEquals(drownerPrefab.morphRanges?.armLength?.min, 1.25);
+  assertEquals(drownerPrefab.morphRanges?.armLength?.max, 1.55);
 
   // Tag indexing rebuilt on hydrate
   const metals = dst.materials.byTag("metal").map((m) => m.name).sort();
