@@ -83,11 +83,11 @@
   },
   "physics": {
     "gravity": 20,
-    "maxGroundSpeed": 6,
+    "maxGroundSpeed": 9,
     "groundAccel": 65,
     "airControlMult": 0.3,
     "dragRetainPerSec": 0.05,
-    "jumpImpulse": 9,
+    "jumpImpulse": 6,
     "stepHeight": 0.75,
     "entityCollisionRadius": 0.4
   },
