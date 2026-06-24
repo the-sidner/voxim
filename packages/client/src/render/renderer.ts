@@ -28,7 +28,7 @@ import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import { GateMarkerRenderer } from "./gate_marker.ts";
 import { EntityMeshRegistry } from "./entity_mesh_registry.ts";
 import { EnvironmentLighting } from "./environment_lighting.ts";
-import { updateSkeletonPose, type EntityMeshGroup } from "./entity_mesh.ts";
+import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "./entity_mesh.ts";
 import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
@@ -798,6 +798,9 @@ export class VoximRenderer {
     this.renderer.info.reset();
 
     const tSkStart = performance.now();
+    // Frame dt for the animation crossfade (T-291). lastFrameMs still holds the
+    // PREVIOUS frame's timestamp here — it's advanced later in the post-FX block.
+    const animDtMs = this.lastFrameMs > 0 ? Math.min(now - this.lastFrameMs, 100) : 16;
     // Drive skeleton poses for all animated entities.
     for (const [, mesh] of this.entities.all) {
       if (mesh.boneGroups && mesh.skeletonId && this.content) {
@@ -806,19 +809,23 @@ export class VoximRenderer {
         const clipIndex  = this.content.getClipIndex(mesh.skeletonId);
         const maskIndex  = this.content.getMaskIndex(mesh.skeletonId);
 
-        const pose = evaluatePose(skeleton, clipIndex, maskIndex, anim);
+        // Crossfade the raw 20Hz layer snapshot so state transitions (idle→walk,
+        // swing in/out) ease in/out instead of hard-cutting the pose (T-291).
+        const layers = blendAnimationLayers(mesh.layerFades, anim?.layers ?? [], animDtMs);
+        const animForPose = anim ? { ...anim, layers } : null;
+
+        const pose = evaluatePose(skeleton, clipIndex, maskIndex, animForPose);
         updateSkeletonPose(mesh, pose);
 
         // Roll vertical lift — sin(πt) parabola peaking at clip mid-point so the
         // tucked body clears the ground during the somersault. Tied to the
-        // entity's own scale so a 2× big NPC also lifts 2×.
+        // entity's own scale so a 2× big NPC also lifts 2×. Reads the blended
+        // layers so a fading roll lifts proportionally.
         let lift = 0;
-        if (anim) {
-          for (const layer of anim.layers) {
-            if (layer.clipId === "roll" && layer.weight > 0) {
-              lift = Math.sin(layer.time * Math.PI) * 1.6 * mesh.modelScale * layer.weight;
-              break;
-            }
+        for (const layer of layers) {
+          if (layer.clipId === "roll" && layer.weight > 0) {
+            lift = Math.sin(layer.time * Math.PI) * 1.6 * mesh.modelScale * layer.weight;
+            break;
           }
         }
         mesh.rollLiftY = lift;

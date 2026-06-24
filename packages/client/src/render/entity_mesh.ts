@@ -175,6 +175,13 @@ export interface EntityMeshGroup {
    * lift while the "roll" clip is active to keep the body visible.
    */
   rollLiftY: number;
+  /**
+   * Client-side animation crossfade state (T-291): clipId → fade entry. Keeps a
+   * short ease on layer presence so the 20Hz AnimationState snapshots blend
+   * instead of hard-cutting the pose on every server delta. Purely
+   * presentational — no wire or server involvement.
+   */
+  layerFades: Map<string, LayerFade>;
 }
 
 // ---- create ----
@@ -206,10 +213,83 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     nameLabel: null,
     nameLabelText: "",
     rollLiftY: 0,
+    layerFades: new Map(),
   };
   updateEntityMesh(mesh, state);
   syncNameLabel(mesh, state);
   return mesh;
+}
+
+// ---- animation layer crossfade (T-291) ----
+
+type AnimationLayer = AnimationStateData["layers"][number];
+
+/** One clip's crossfade entry: its last-seen layer snapshot + eased presence. */
+export interface LayerFade {
+  layer: AnimationLayer;
+  /** Presence 0..1 — ramps in when the clip appears, out when it leaves. */
+  w: number;
+}
+
+/** ~120 ms fade — long enough to kill the 20Hz pose snap, short enough not to
+ *  visibly delay a swing windup (which is itself only ~100 ms). */
+const LAYER_FADE_PER_MS = 1 / 120;
+
+function smoothstep01(w: number): number {
+  const t = w < 0 ? 0 : w > 1 ? 1 : w;
+  return t * t * (3 - 2 * t);
+}
+
+function withFadeWeight(l: AnimationLayer, w: number): AnimationLayer {
+  return { ...l, weight: l.weight * smoothstep01(w) };
+}
+
+/**
+ * Crossfade the raw 20Hz AnimationState layer stack using per-mesh fade state.
+ * A clip appearing in `target` ramps its weight in; a clip that vanished is
+ * RETAINED and ramped out, so the old pose fades instead of snapping. Output
+ * preserves the target's compositing order and slots each fading-out remnant
+ * next to the target layer sharing its `maskId` (its region), or appends it
+ * when its region went idle — so masked remnants (a finishing swing on
+ * `right_hand`) stay on top of the full-body locomotion layer rather than being
+ * overwritten by it. Identity is the clipId, which is disjoint in practice
+ * across slots (locomotion clips vs weapon clips vs cast clips). Mutates `fades`.
+ */
+export function blendAnimationLayers(
+  fades: Map<string, LayerFade>,
+  target: readonly AnimationLayer[],
+  dtMs: number,
+): AnimationLayer[] {
+  const step = Math.min(Math.max(dtMs, 0) * LAYER_FADE_PER_MS, 1);
+  const firstFrame = fades.size === 0;
+  const present = new Set<string>();
+  for (const l of target) {
+    present.add(l.clipId);
+    const f = fades.get(l.clipId);
+    if (f) { f.layer = l; f.w = Math.min(1, f.w + step); }
+    else fades.set(l.clipId, { layer: l, w: firstFrame ? 1 : step });
+  }
+  const fadingOut: LayerFade[] = [];
+  for (const [id, f] of fades) {
+    if (present.has(id)) continue;
+    f.w = Math.max(0, f.w - step);
+    if (f.w <= 0.001) fades.delete(id);
+    else fadingOut.push(f);
+  }
+  // Fast path: no transition in flight — just apply eased weights in order.
+  if (fadingOut.length === 0) {
+    return target.map((l) => withFadeWeight(l, fades.get(l.clipId)!.w));
+  }
+  const out: AnimationLayer[] = [];
+  const placed = new Set<LayerFade>();
+  for (const l of target) {
+    for (const f of fadingOut) {
+      if (!placed.has(f) && f.layer.maskId === l.maskId) { out.push(withFadeWeight(f.layer, f.w)); placed.add(f); }
+    }
+    out.push(withFadeWeight(l, fades.get(l.clipId)!.w));
+  }
+  for (const f of fadingOut) if (!placed.has(f)) out.push(withFadeWeight(f.layer, f.w));
+  return out;
 }
 
 function createPlaceholder(
