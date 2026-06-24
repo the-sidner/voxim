@@ -759,7 +759,7 @@ palette IS the runtime authority via `applyPalette`). Chosen directions: control
 camera-relative movement + cursor-aim (Diablo/PoE); color → deutlich bunter.
 
 ### T-287 · Camera-relative movement + client-predicted cursor-facing
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 31be627
 
 Two coupled control fixes; chosen scheme = camera-relative + cursor-aim (Diablo/PoE).
 
@@ -806,7 +806,7 @@ pass carries one honest knob instead of a dead tint; the scene has visible chrom
 change is delete-tint + add-one-uniform. Tuned on screen with the user.
 
 ### T-290 · Skill-cast animations — populate the `animation` field on skill ActionDefs
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: bd88c96
 
 Skill ActionDefs (`data/actions/skill_fireblast.json`, `skill_mend.json`) have phases/effects/
 costs but NO `animation` block, so `AnimationSystem.projectLocomotion` reads `undefined`, returns
