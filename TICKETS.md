@@ -933,7 +933,7 @@ exception. DONE: each enemy rewards a distinct defense — dodge-through the thr
 readable from telegraph alone. Pure content + a BT variant.
 
 ### T-300 · Curated showcase tile_layout — the teaching outpost
-Effort: S   Status: todo   Depends: T-299
+Effort: S   Status: done   Commit: 5f88375   (landed ahead of T-299 — placed existing enemies; new archetypes still T-299)
 
 Rewrite `tile_layout.json` into a curated opening scene: keep the stations + trader, add a craft
 pavilion (forge+anvil+nearby iron ore/coal), a 2-3 drowner marsh-edge, a rotten_knight ruin, the
@@ -990,7 +990,7 @@ dynamic combat at runtime, not just static placement. Reuses spawnPrefab + TickC
 components.
 
 ### T-305 · Per-instance morph variety for NPC spawns
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 119e117   (humanoids done; wolf needs quadruped morphParams — follow-up)
 
 Extend the spawner's morph sampling so each NPC of a type rolls morph values within a per-prefab
 range (e.g. drowner armLength 1.2-1.6, hipWidth 0.8-1.1) from its spawn seed. DONE: a pack of
