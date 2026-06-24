@@ -1351,6 +1351,10 @@ export interface PalettePhase {
   sky: string;
   fog: string;
   sun: string;
+  /** Hemisphere ground-fill color — the bounce tone on shadowed/downward faces.
+   *  Palette-driven (T-288) so shadow ambient is warm earth, not a hardcoded
+   *  desaturated green. Defaults to a darkened `sky` if omitted. */
+  hemiGround?: string;
   sunIntensity: number;
   hemiIntensity: number;
   fogFar: number;

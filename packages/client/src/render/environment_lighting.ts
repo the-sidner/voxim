@@ -17,34 +17,46 @@ import type { Palette } from "@voxim/content";
 
 /** Lighting definition for a given time-of-day phase. */
 interface DayPhaseLight {
-  sky: THREE.Color; fog: THREE.Color; sun: THREE.Color;
+  sky: THREE.Color; fog: THREE.Color; sun: THREE.Color; hemiGround: THREE.Color;
   sunIntensity: number; hemiIntensity: number; fogFar: number;
 }
 
-function makePhaseLights(): Record<string, DayPhaseLight> {
-  return {
-    noon:     { sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc), sun: new THREE.Color(0xfffde0), sunIntensity: 2.5,  hemiIntensity: 0.25, fogFar: 220 },
-    dawn:     { sky: new THREE.Color(0xd8846a), fog: new THREE.Color(0xb06848), sun: new THREE.Color(0xffb060), sunIntensity: 1.4,  hemiIntensity: 0.14, fogFar: 160 },
-    dusk:     { sky: new THREE.Color(0xa04828), fog: new THREE.Color(0x883820), sun: new THREE.Color(0xff7030), sunIntensity: 1.1,  hemiIntensity: 0.11, fogFar: 150 },
-    midnight: { sky: new THREE.Color(0x08091a), fog: new THREE.Color(0x060714), sun: new THREE.Color(0x2030a0), sunIntensity: 0.06, hemiIntensity: 0.04, fogFar: 100 },
-  };
-}
-
 /**
- * Build the day-night phase lights from the content palette (T-280) — replaces
- * the hardcoded cyan-sky defaults in makePhaseLights with the ash-hazed `phases`
- * block. Starts from the defaults so a palette missing a phase still resolves.
+ * Build the day-night phase lights from the content palette (T-280/T-288). The
+ * palette is the SOLE authority — there is no hardcoded fallback table (the old
+ * cyan-sky defaults contradicted the palette and suppressed the art sweep). A
+ * phase's `hemiGround` drives the ambient bounce on shadowed faces; it falls
+ * back to a darkened sky only if a phase omits it. Fails loud if the `noon`
+ * anchor (every consumer's fallback) is missing.
  */
 function buildPhaseLights(palette: Palette): Record<string, DayPhaseLight> {
   const col = (h: string) => new THREE.Color(parseInt(h.replace("#", ""), 16) >>> 0);
-  const out = makePhaseLights();
+  const out: Record<string, DayPhaseLight> = {};
   for (const [name, p] of Object.entries(palette.phases)) {
     out[name] = {
       sky: col(p.sky), fog: col(p.fog), sun: col(p.sun),
+      hemiGround: p.hemiGround ? col(p.hemiGround) : col(p.sky).multiplyScalar(0.4),
       sunIntensity: p.sunIntensity, hemiIntensity: p.hemiIntensity, fogFar: p.fogFar,
     };
   }
+  if (!out.noon) {
+    throw new Error("palette.phases.noon missing — the day-night system has no anchor phase");
+  }
   return out;
+}
+
+/** Neutral placeholder phase — the lerp state before applyPalette snaps it to noon. */
+function neutralPhase(): DayPhaseLight {
+  return {
+    sky: new THREE.Color(0x808080), fog: new THREE.Color(0x808080), sun: new THREE.Color(0xffffff),
+    hemiGround: new THREE.Color(0x404040), sunIntensity: 2.0, hemiIntensity: 0.4, fogFar: 220,
+  };
+}
+
+/** Copy all fields of one phase into another (in place). */
+function copyPhase(dst: DayPhaseLight, src: DayPhaseLight): void {
+  dst.sky.copy(src.sky); dst.fog.copy(src.fog); dst.sun.copy(src.sun); dst.hemiGround.copy(src.hemiGround);
+  dst.sunIntensity = src.sunIntensity; dst.hemiIntensity = src.hemiIntensity; dst.fogFar = src.fogFar;
 }
 
 /** Lerp a number toward target, returning new value. */
@@ -72,17 +84,12 @@ export class EnvironmentLighting {
   /** Hemisphere sky/ground ambient. */
   private readonly hemi: THREE.HemisphereLight;
 
-  private phaseLights = makePhaseLights();
-  /** Current interpolated lighting values (mutated every frame). */
-  private readonly lightCur: DayPhaseLight = {
-    sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc),
-    sun: new THREE.Color(0xfffde0), sunIntensity: 2.5, hemiIntensity: 0.25, fogFar: 220,
-  };
-  /** Target lighting values set by setPhase(). */
-  private readonly lightTgt: DayPhaseLight = {
-    sky: new THREE.Color(0x7aa4cc), fog: new THREE.Color(0x7aa4cc),
-    sun: new THREE.Color(0xfffde0), sunIntensity: 2.5, hemiIntensity: 0.25, fogFar: 220,
-  };
+  /** Phase table — empty until applyPalette() populates it from the palette. */
+  private phaseLights: Record<string, DayPhaseLight> = {};
+  /** Current interpolated lighting (mutated every frame; snapped to noon on applyPalette). */
+  private readonly lightCur: DayPhaseLight = neutralPhase();
+  /** Target lighting set by setPhase(). */
+  private readonly lightTgt: DayPhaseLight = neutralPhase();
 
   constructor(private readonly scene: THREE.Scene) {
     // ---- lighting ----
@@ -112,8 +119,10 @@ export class EnvironmentLighting {
       this._shadowCamUp    = new THREE.Vector3().crossVectors(SUN_DIR, this._shadowCamRight).normalize();
     }
 
-    // Ambient fill — brightened so shadowed cliff walls are readable, not black voids.
-    this.hemi = new THREE.HemisphereLight(0x99bbdd, 0x334433, 0.55);
+    // Ambient fill — brightened so shadowed cliff walls are readable, not black
+    // voids. Colors are neutral placeholders, overwritten by applyPalette() from
+    // the palette's noon sky (sky-side) + hemiGround (ground-side).
+    this.hemi = new THREE.HemisphereLight(0x808080, 0x404040, 0.55);
     this.scene.add(this.hemi);
 
     // ---- visible sun sphere ----
@@ -123,9 +132,9 @@ export class EnvironmentLighting {
     );
     this.scene.add(this.sunMesh);
 
-    // ---- sky ----
-    this.scene.fog = new THREE.Fog(0x7aa4cc, 80, 220);
-    this.scene.background = new THREE.Color(0x7aa4cc);
+    // ---- sky ---- (neutral placeholders; applyPalette swaps to the palette noon)
+    this.scene.fog = new THREE.Fog(0x808080, 80, 220);
+    this.scene.background = new THREE.Color(0x808080);
   }
 
   /**
@@ -135,9 +144,15 @@ export class EnvironmentLighting {
    */
   applyPalette(palette: Palette): void {
     this.phaseLights = buildPhaseLights(palette);
-    this.hemi.color.copy(this.phaseLights.noon.sky);
-    (this.scene.background as THREE.Color).copy(this.phaseLights.noon.sky);
-    (this.scene.fog as THREE.Fog).color.copy(this.phaseLights.noon.fog);
+    const noon = this.phaseLights.noon;
+    this.hemi.color.copy(noon.sky);
+    this.hemi.groundColor.copy(noon.hemiGround);
+    (this.scene.background as THREE.Color).copy(noon.sky);
+    (this.scene.fog as THREE.Fog).color.copy(noon.fog);
+    // Snap the lerp state to noon so there's no startup fade from the neutral
+    // placeholder — applyPalette runs once at content load, before the loop.
+    copyPhase(this.lightCur, noon);
+    copyPhase(this.lightTgt, noon);
   }
 
   /** Set the target lighting for a named day phase (lerped toward each frame). */
@@ -146,6 +161,7 @@ export class EnvironmentLighting {
     this.lightTgt.sky.copy(p.sky);
     this.lightTgt.fog.copy(p.fog);
     this.lightTgt.sun.copy(p.sun);
+    this.lightTgt.hemiGround.copy(p.hemiGround);
     this.lightTgt.sunIntensity = p.sunIntensity;
     this.lightTgt.hemiIntensity = p.hemiIntensity;
     this.lightTgt.fogFar = p.fogFar;
@@ -169,6 +185,7 @@ export class EnvironmentLighting {
     this.lightCur.sky.lerp(this.lightTgt.sky, L);
     this.lightCur.fog.lerp(this.lightTgt.fog, L);
     this.lightCur.sun.lerp(this.lightTgt.sun, L);
+    this.lightCur.hemiGround.lerp(this.lightTgt.hemiGround, L);
     this.lightCur.sunIntensity  = lerpN(this.lightCur.sunIntensity,  this.lightTgt.sunIntensity,  L);
     this.lightCur.hemiIntensity = lerpN(this.lightCur.hemiIntensity, this.lightTgt.hemiIntensity, L);
     this.lightCur.fogFar        = lerpN(this.lightCur.fogFar,        this.lightTgt.fogFar,        L);
@@ -177,6 +194,8 @@ export class EnvironmentLighting {
     (this.scene.fog as THREE.Fog).far = this.lightCur.fogFar;
     this.sun.color.copy(this.lightCur.sun);
     this.sun.intensity   = this.lightCur.sunIntensity;
+    this.hemi.color.copy(this.lightCur.sky);
+    this.hemi.groundColor.copy(this.lightCur.hemiGround);
     this.hemi.intensity  = this.lightCur.hemiIntensity;
     this.sunMesh.visible = this.lightCur.sunIntensity > 0.15;
 
