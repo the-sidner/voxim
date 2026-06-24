@@ -865,6 +865,149 @@ unpredicted obstacle). Render/voxel-bake cost is already fine — explicitly NOT
 ticket. DONE: turning/stopping feel crisp, HUD `inputLag` within 1-2 frames, no rubber-band
 regressions; all changes are content/config values.
 
+## Symphony — Feel, Content & Voxel Language
+
+The 2026-06-24 vision arc: the mechanics exist but don't FEEL good yet — they must become a
+SYMPHONY, made accessible through FEEL not TELL. Verified reality: the engine + all four primitives
++ combat consequences (parry/poise/stagger/block/knockback/counter) are DONE and networked; the gap
+is FEEL plumbing + CONTENT + a written voxel design language, not new systems. User design
+decisions: combat pace = **fast everywhere** (Vermintide frequency, short telegraphs); commitment =
+**micro-cancel** (first windup tick bailable, then locked); aesthetic = **organic everywhere**
+(vertexDisp across all classes, but silhouette proportions anchored to the human scale so figures
+still read). Sequenced as 3 batches; lead with the feel core so the symphony is testable soonest.
+See [[project_client_overhaul]] memory + the workflow design framework.
+
+### T-295 · Action commitment flag (micro-cancel) — no bail after the first windup tick
+Effort: S   Status: done   Commit: 96be004
+
+Verified: `dispatcher.arbitrate()` already locks active/winddown (`cancel.into:[]`) and runs the
+reaction-interrupt block (stagger/hit/death via `interruptPriority`) BEFORE the cancel matrix
+(`dispatcher.ts:243-262`); only `windup.into:["any"]` keeps swings bailable. Add optional
+`ActionDef.committed?: boolean`. When set, the dispatcher honors the action's cancel matrix ONLY
+while `current.phase === "windup" && current.ticksInPhase === 0` (the ~50ms micro-cancel grace the
+user chose); after that, reject all non-reaction displacements (one branch above the cancel-matrix
+block; the reaction-interrupt path stays untouched so stagger/hit/death always cut in). Set
+`committed:true` on all `swing_*` and `skill_*` actions. Stamina still deducts on start (commitment
+is a resource bet). DONE: press swing then dodge on the same frame → bail works (tick 0); one tick
+later → swing is locked and completes, dodge dropped; getting staggered still interrupts. Verify via
+the testplay harness.
+
+### T-296 · Hitstop on weapon contact
+Effort: S   Status: todo
+
+Add `ActionDef.hitStopTicks` (default 0). The `weapon_trace` resolver, on a landed hit, freezes
+attacker+target movement for N ticks via resolver-local scratch (reuse the rewind-tick scratch
+pattern — no new component) and emits a contact event the client maps to a sharp audio crack + brief
+freeze. Tune light=2, heavy=4-5. DONE: hitting an enemy produces a visible 2-5 tick freeze + crack;
+a heavy swing reads heavier than a light one. No wire change beyond the contact event.
+
+### T-297 · Telegraph lead clip for actions
+Effort: M   Status: todo   Depends: T-295
+
+Add optional `ActionDef.animation.preWindup {clipId, ticks}`; bootstrap codec carries it;
+`skeleton_evaluator` plays the pre-clip for `ticks` before the `windup:enter` clip (server already
+sends phase names — the client derives the lead). With the fast global pace, keep tells SHORT: a
+1-2 tick player tell, 3-5 tick enemy tells (readable but quick; the heavy-thrower gets the longest).
+DONE: a heavy enemy visibly winds up before its hitbox goes live; a player can read and space against
+it; falls back cleanly when `preWindup` is absent.
+
+### T-298 · Readable i-frames + recovery-exposure visuals
+Effort: M   Status: todo   Depends: T-295
+
+`skeleton_evaluator` reads `dodge_roll`'s `ticksInPhase` to render a flash / bone-shine during the
+i-frame window (client-only, existing server state — the player SEES why the dodge worked). Add an
+optional 4th `recovery` phase to the action schema; actions without it treat `winddown` as both.
+Author `recovery` on the heavy swings so the post-swing exposed stance is a distinct, punishable
+clip. DONE: the i-frame window is visually obvious; a whiffed heavy swing leaves a legible openable
+window.
+
+### T-299 · Two committed hostile archetypes + global rear multiplier
+Effort: M   Status: todo   Depends: T-295, T-297
+
+Author a **Heavy-Thrower** (the ONE slow showcase enemy against the fast global pace: a single
+uninterruptible telegraphed overhead via `committed:true` + a new heavy weapon_action + an
+`uninterruptible_active` gate so only block/dodge/death stop it, big knockback) and a **Shield-Knight**
+(blocks until flanked, then one committed heavy), using existing primitives + `RequestedActions` BT
+nodes. Add a global rear `partMultiplier` (1.25-1.5) to `game_config` + a per-archetype gate
+exception. DONE: each enemy rewards a distinct defense — dodge-through the thrower, flank the knight —
+readable from telegraph alone. Pure content + a BT variant.
+
+### T-300 · Curated showcase tile_layout — the teaching outpost
+Effort: S   Status: todo   Depends: T-299
+
+Rewrite `tile_layout.json` into a curated opening scene: keep the stations + trader, add a craft
+pavilion (forge+anvil+nearby iron ore/coal), a 2-3 drowner marsh-edge, a rotten_knight ruin, the
+T-299 heavy-thrower in a clearing, an archer perch — each at 50-80 cells so the player chooses
+engagement. Bump safezone `npcSpawnDensity` 0.08→0.2 so enemies are visibly present; let procedural
+fill the fringe. DONE: spawning into the world shows combat, crafting, enemy variety, and procedural
+scatter at a glance. Zero code.
+
+### T-301 · Codify the voxel design language (DESIGN_LANGUAGE.md + material generatorPreferences + boot coherence check)
+Effort: M   Status: todo
+
+Write `DESIGN_LANGUAGE.md` (repo root): the 4-word grammar vocabulary (SOLID / LIMB / SHELL /
+SCATTER-FLECK), the human-anchored scale hierarchy (1 unit = 1u; standing human = 1.2u, head ≈12.5%
+for readable silhouette; trees 5-12u, boulders 0.5-3u), the signal-hue reservation (ember/rot/blood/
+bile/frost NEVER on structural mass) + semantic density bands per material tag. DECISION (user):
+**organic everywhere** — vertexDisp / irregular surfaces across ALL classes including characters and
+equipment, BUT silhouette PROPORTIONS stay anchored to the human scale and the ground plane so
+figures still read and animate at gameplay distance (organic surface ≠ unreadable form). Extend the
+material schema with `generatorPreferences {density_range, thickness_range, layerable, emission}`. Add
+a client-boot coherence check (mirror `server.ts` fail-fast): every ProcModelDef/ScatterDef resolves
+its generator + materials, no signal hue on a structural-mass material, character-class generators
+emit at the ground plane. DONE: the doc exists, the schema carries hints, boot fails loudly on a
+clashing generator — it unblocks every later generator's param + proportion choices.
+
+### T-302 · humanoid_grammar — Layer 2 procedural character bodies
+Effort: L   Status: todo   Depends: T-301
+
+Implement `humanoid_grammar(seed, params, ctx) → VoxelAtom[]` (T-186 Layer 2): emit SOLID torso/head
++ LIMB arms/legs that FILL limb volume from the existing 6 morph keys, organic surface per
+DESIGN_LANGUAGE.md, ground-anchored, fail-fast on missing materials. Add a `generated:true` prefab
+path so a test NPC spawns from a generated body, not the authored `biped_skeletal`. DONE: a generated
+character reads as solid mass at gameplay distance, varies by seed, animates on the existing
+skeleton. Reuses bakeVoxels / the morph wire path / skeleton infra; no wire or schema-breaking change.
+
+### T-303 · Voxel-to-stats slice — Composed sword + material-derived stats
+Effort: M   Status: todo   Depends: T-301
+
+Author one Composed sword prefab (blade/grip slots with `materialCategories` + `statContributions`)
+and implement the unused `deriveItemStats` `_parts` path: sum `material.properties[property] ×
+multiplier` per slot into weight/damage; optionally read the already-derived blade AABB length into a
+reach/attackRange stat. DECISION (user): voxels feed **weight/damage/reach, NOT swing speed** (speed
+stays a per-action design dial the commitment/telegraph work depends on). Keep hardcoded
+`swingable.damage` as fallback when Composed is absent. DONE: swapping the blade material measurably
+changes the sword's weight and damage via the live StatContribution schema — voxels feed stats.
+
+### T-304 · POI activity handlers (T-212 v2) — encounter spawning
+Effort: M   Status: todo   Depends: T-299
+
+Wire the POI activity registry (`Registry<H>`, mirror the action-effect pattern): implement the
+`encounter` handler first (reads a POI mob table, spawns mobs at the trigger centroid, sets aggro on
+player entry), boot-cross-check existing POIs against the registry. Defer bossfight/wave/puzzle to a
+follow-up. DONE: walking into a wolf_den / bandit_camp trigger spawns the pack and they aggro —
+dynamic combat at runtime, not just static placement. Reuses spawnPrefab + TickContext; no new
+components.
+
+### T-305 · Per-instance morph variety for NPC spawns
+Effort: S   Status: todo
+
+Extend the spawner's morph sampling so each NPC of a type rolls morph values within a per-prefab
+range (e.g. drowner armLength 1.2-1.6, hipWidth 0.8-1.1) from its spawn seed. DONE: a pack of
+drowners has visibly distinct silhouettes despite sharing clips/skeleton — cheap visual variety, zero
+animation cost, works on authored OR generated (T-302) bodies.
+
+### T-306 · blade_grammar + armor_grammar — procedural equipment
+Effort: L   Status: todo   Depends: T-301, T-302, T-303
+
+Two generators on the ProcModel substrate: `blade_grammar` (LIMB spine + SOLID pommel + SHELL guard;
+straight/curved/serrated; material per the density bands) emitting trace metadata the `weapon_trace`
+resolver re-derives server-side from the same seed at prefab-load (zero wire cost); `armor_grammar`
+(SHELL plates keyed by bone, merged into the character's baked mesh at build time). DONE: a weapon's
+blade shape and an NPC's armor are seed-unique, the swing hitbox follows the generated blade, and
+stats can feed off the emitted materials (composes with T-303). The vision-4 capstone; depends on the
+language + body + stats work landing first.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
