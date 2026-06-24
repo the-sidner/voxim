@@ -84,7 +84,7 @@
   "physics": {
     "gravity": 20,
     "maxGroundSpeed": 6,
-    "groundAccel": 40,
+    "groundAccel": 65,
     "airControlMult": 0.3,
     "dragRetainPerSec": 0.05,
     "jumpImpulse": 9,
@@ -185,8 +185,8 @@
     "rttMaxMs": 1000
   },
   "prediction": {
-    "correctionHalfLifeMs": 60,
-    "hardSnapThresholdUnits": 2.0
+    "correctionHalfLifeMs": 38,
+    "hardSnapThresholdUnits": 3.0
   },
   "npcAiDefaults": {
     "wanderRadius": 20,
