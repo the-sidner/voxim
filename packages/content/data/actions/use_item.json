@@ -1,5 +1,6 @@
 {
   "id": "use_item",
+  "committed": true,
   "kind": "active",
   "slot": "primary",
   "phases": { "raise": { "ticks": 6 }, "apply": { "ticks": 3 }, "recover": { "ticks": 8 } },

@@ -739,6 +739,14 @@ export interface ActionDef {
   /** Threshold for non-consent interruption (reactions). */
   interruptPriority?: number;
   /**
+   * Commitment (T-295): once started, the action cannot be player-cancelled —
+   * its `cancel` matrix is honored ONLY during the micro-cancel grace (the
+   * first windup tick, ~50ms, so a pure mis-press can still abort). After that,
+   * only a reaction interrupt (stagger/hit/death via `interruptPriority`) can
+   * displace it. Default false = the cancel matrix applies as written.
+   */
+  committed?: boolean;
+  /**
    * Gates evaluated at initiation. The action starts only if every gate
    * passes (plus resource `costs` are affordable). Closed-vocabulary typed
    * predicates — see `ActionGate`. (T-226)

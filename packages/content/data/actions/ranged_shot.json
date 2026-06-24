@@ -1,5 +1,6 @@
 {
   "id": "ranged_shot",
+  "committed": true,
   "kind": "active",
   "slot": "primary",
   "limbs": ["right_hand"],

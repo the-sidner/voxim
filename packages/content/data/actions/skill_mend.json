@@ -1,5 +1,6 @@
 {
   "id": "skill_mend",
+  "committed": true,
   "kind": "active",
   "slot": "primary",
   "phases": { "windup": { "ticks": 8 }, "active": { "ticks": 1 }, "winddown": { "ticks": 6 } },

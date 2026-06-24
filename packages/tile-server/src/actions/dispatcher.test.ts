@@ -185,6 +185,65 @@ Deno.test("cancel matrix: glob admits, committed phase rejects", () => {
   assertEquals(run("active"), "swing");      // committed → cancel rejected
 });
 
+Deno.test("committed flag: cancel allowed only in the first-tick micro-cancel grace (T-295)", () => {
+  // 3-tick windup so there are multiple windup arbitrate-ticks to distinguish
+  // the grace tick from the committed remainder. advance() runs before
+  // arbitrate(), so a seed of ticksInPhase N is seen by arbitrate as N+1.
+  const committedSwing: ActionDef = {
+    id: "committed_swing", kind: "active", slot: "primary", committed: true,
+    phases: { windup: { ticks: 3 }, active: { ticks: 2 }, winddown: { ticks: 2 } },
+    cancel: { windup: { into: ["dodge_*"] }, active: { into: [] }, winddown: { into: [] } },
+    movement: { windup: "slowed", active: "locked", winddown: "slowed" }, effects: [],
+  };
+  const dodge: ActionDef = {
+    id: "dodge_roll", kind: "active", slot: "primary",
+    phases: { p: { ticks: 2 } }, cancel: { p: { into: [] } }, movement: { p: "free" }, effects: [],
+  };
+  const run = (phase: string, ticksInPhase: number) => {
+    const world = new World();
+    const id = actor(world, ["primary"]);
+    world.write(id, ActiveActions, {
+      states: { primary: { actionId: "committed_swing", phase, ticksInPhase, initiator: "intent" } },
+    });
+    const d = new ActionDispatcher(
+      content(committedSwing, dodge), newGateRegistry(), newEffectRegistry(),
+      fixedIntent("primary", "dodge_roll"),
+    );
+    d.run(world, new EventBus(), 1 / 20);
+    world.applyChangeset();
+    return slotState(world, id, "primary")?.actionId;
+  };
+  assertEquals(run("windup", 0), "dodge_roll");      // seen as windup/1 → grace → bail
+  assertEquals(run("windup", 1), "committed_swing"); // seen as windup/2 → committed → reject
+  assertEquals(run("active", 0), "committed_swing"); // active → committed → reject
+});
+
+Deno.test("committed flag: reactions still interrupt past the grace (T-295)", () => {
+  const committedSwing: ActionDef = {
+    id: "committed_swing", kind: "active", slot: "primary", committed: true,
+    phases: { windup: { ticks: 3 }, active: { ticks: 2 }, winddown: { ticks: 2 } },
+    cancel: { windup: { into: ["any"] }, active: { into: [] }, winddown: { into: [] } },
+    movement: { windup: "slowed", active: "locked", winddown: "slowed" }, effects: [],
+  };
+  const flinch: ActionDef = {
+    id: "flinch", kind: "reaction", slot: "primary", interruptPriority: 10,
+    phases: { p: { ticks: 3 } }, cancel: { p: { into: [] } }, movement: { p: "locked" }, effects: [],
+  };
+  const world = new World();
+  const id = actor(world, ["primary"]);
+  // Committed swing past the grace (seen as windup/2) — a reaction must still cut in.
+  world.write(id, ActiveActions, {
+    states: { primary: { actionId: "committed_swing", phase: "windup", ticksInPhase: 1, initiator: "intent" } },
+  });
+  const d = new ActionDispatcher(
+    content(committedSwing, flinch), newGateRegistry(), newEffectRegistry(),
+    fixedIntent("primary", "flinch"),
+  );
+  d.run(world, new EventBus(), 1 / 20);
+  world.applyChangeset();
+  assertEquals(slotState(world, id, "primary")?.actionId, "flinch");
+});
+
 Deno.test("reaction interrupt priority bypasses the cancel matrix", () => {
   const flinch: ActionDef = {
     id: "flinch", kind: "reaction", slot: "primary", interruptPriority: 10,

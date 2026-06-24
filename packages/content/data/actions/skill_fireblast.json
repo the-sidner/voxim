@@ -1,5 +1,6 @@
 {
   "id": "skill_fireblast",
+  "committed": true,
   "kind": "active",
   "slot": "primary",
   "phases": { "windup": { "ticks": 10 }, "active": { "ticks": 1 }, "winddown": { "ticks": 8 } },

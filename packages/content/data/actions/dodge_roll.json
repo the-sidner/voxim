@@ -1,5 +1,6 @@
 {
   "id": "dodge_roll",
+  "committed": true,
   "kind": "active",
   "slot": "locomotion",
   "phases": { "dash": { "ticks": 5 } },

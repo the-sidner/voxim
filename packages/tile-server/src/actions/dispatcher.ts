@@ -253,6 +253,18 @@ export class ActionDispatcher implements System {
       return;
     }
 
+    // Commitment (T-295): a committed action can be player-cancelled only during
+    // the micro-cancel grace — its first phase's first arbitratable tick (~50ms,
+    // a mis-press escape). `advance()` runs before `arbitrate()`, so a started
+    // action is first seen here at ticksInPhase 1; <=1 in the first phase IS that
+    // opening tick. Past it, no player displacement — only the reaction-interrupt
+    // path above (stagger/hit/death) cuts in.
+    if (curDef?.committed) {
+      const firstPhase = Object.keys(curDef.phases)[0];
+      const inGrace = current.phase === firstPhase && current.ticksInPhase <= 1;
+      if (!inGrace) return;
+    }
+
     const rule = curDef?.cancel[current.phase];
     if (!rule) return; // phase committed (no cancel rule) — reject
     if (!rule.into.some((t) => idMatches(wantId, t))) return; // not admitted
