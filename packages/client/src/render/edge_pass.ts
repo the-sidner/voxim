@@ -59,6 +59,7 @@ const FRAG = /* glsl */`
   uniform vec3      uHoverColor;
   uniform float     uHoverRadius;
   uniform float     uExposure;            // pre-tonemap radiance lift
+  uniform float     uSaturation;          // post-tonemap chroma gain (>1 = bunter)
   uniform float     uVignetteStart;       // radius where corner darkening begins
   uniform float     uVignetteStrength;    // max corner darkening (0 = off)
 
@@ -199,12 +200,14 @@ const FRAG = /* glsl */`
     // stays a clean gameplay multiply on top (a tone-mapped image, not raw HDR).
     color.rgb = aces(color.rgb * uExposure);
 
-    // Split-tone grade: nudge shadows cool, highlights warm — painterly depth
-    // for the desaturated world, reinforcing the palette's own cool (deep-water/
-    // frost) vs warm (timber/sand) axis. Subtle (±~6%); never recolours, only
-    // tints by luminance so the grim low-chroma identity holds.
+    // Saturation lift (T-289): pull each channel away from its luma so the
+    // desaturated earth palette reads as colored, not ash-grey. Replaces a dead
+    // ±6% split-tone tint that was below perceptual threshold on the grey base.
+    // Applied after tone-mapping, before the fog-of-war dim so chroma is graded
+    // on the lit image, not the gameplay multiply. uSaturation > 1 extrapolates
+    // past the source colour; clamp the low end so it can't go negative.
     float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-    color.rgb *= mix(vec3(0.94, 0.98, 1.06), vec3(1.06, 1.01, 0.92), smoothstep(0.0, 0.6, luma));
+    color.rgb = max(mix(vec3(luma), color.rgb, uSaturation), 0.0);
 
     // ---- Fog of war (T-157) ---------------------------------------------
     // Reconstruct world position from depth + inverse camera matrices.
@@ -280,6 +283,9 @@ export class EdgePass {
         // midtone; ACES (in-shader) rolls off the highlights; the vignette pulls
         // the corners back for focus. Tuned by eye against the ash-grey world.
         uExposure:         { value: 1.5 },
+        // Chroma gain — lifts the intentionally-desaturated earth palette into
+        // readable color ("deutlich bunter"). 1.0 = neutral; tuned by eye.
+        uSaturation:       { value: 1.4 },
         uVignetteStart:    { value: 0.45 },
         uVignetteStrength: { value: 0.12 },
       },
@@ -331,6 +337,11 @@ export class EdgePass {
   setCameraMatrices(projInv: THREE.Matrix4, viewInv: THREE.Matrix4): void {
     (this.material.uniforms.uProjInv.value as THREE.Matrix4).copy(projInv);
     (this.material.uniforms.uViewInv.value as THREE.Matrix4).copy(viewInv);
+  }
+
+  /** Post-tonemap chroma gain (1.0 = neutral, >1 = more saturated). Tuning knob. */
+  setSaturation(value: number): void {
+    this.material.uniforms.uSaturation.value = value;
   }
 
   /** Set the tile size in world units (== fog texture side).  0 disables fog. */
