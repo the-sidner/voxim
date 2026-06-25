@@ -32,6 +32,7 @@ import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "
 import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
+import { solveSwingPose } from "@voxim/content";
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
@@ -814,8 +815,29 @@ export class VoximRenderer {
         const layers = blendAnimationLayers(mesh.layerFades, anim?.layers ?? [], animDtMs);
         const animForPose = anim ? { ...anim, layers } : null;
 
-        const pose = evaluatePose(skeleton, clipIndex, maskIndex, animForPose);
-        updateSkeletonPose(mesh, pose);
+        // Procedural swing: if the actor is mid-swing on a weapon action with an
+        // authored swingPath, drive the whole upper body from that arc (spine
+        // twist+lean, weapon-arm IK, off-hand counter) instead of the borrowed
+        // Mixamo clip. The lower body keeps locomotion: we strip the swing clip
+        // from the base layers so the legs walk/idle while the arms swing.
+        const swingWA = anim?.weaponActionId
+          ? this.weaponActionsMap.get(anim.weaponActionId)
+          : undefined;
+        if (swingWA?.swingPath && skeleton) {
+          const total = swingWA.windupTicks + swingWA.activeTicks + swingWA.winddownTicks;
+          const ticks = anim!.ticksIntoAction + (now - mesh.lastAnimUpdateMs) / 50;
+          const t = Math.max(0, Math.min(ticks / total, 1));
+          const baseLayers = layers.filter((l) => l.clipId !== swingWA.clipId);
+          const basePose = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
+          const boneIndex = this.content.getBoneIndex(mesh.skeletonId);
+          const swing = solveSwingPose(skeleton, boneIndex, basePose, mesh.modelScale, swingWA.swingPath, t, { morphParams: mesh.modelMorphs });
+          const euler = new Map<string, THREE.Euler>();
+          for (const [bone, r] of swing) euler.set(bone, new THREE.Euler(r.x, r.y, r.z));
+          updateSkeletonPose(mesh, euler);
+        } else {
+          const pose = evaluatePose(skeleton, clipIndex, maskIndex, animForPose);
+          updateSkeletonPose(mesh, pose);
+        }
 
         // Roll vertical lift — sin(πt) parabola peaking at clip mid-point so the
         // tucked body clears the ground during the somersault. Tied to the

@@ -27,10 +27,10 @@ import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import {
   localToWorld,
-  evaluateAnimationLayers, solveSkeleton, applyQuat,
+  evaluateAnimationLayers, solveSkeleton, applyQuat, sampleSwingPath,
 } from "@voxim/content";
 import type {
-  ContentService, DerivedItemStats, SwingableData,
+  ContentService, DerivedItemStats, SwingableData, WeaponActionDef,
   AnimationLayer, AnimationClip, BoneMask, BoneDef, SkeletonDef, Vec3,
 } from "@voxim/content";
 import { Position, Facing, Velocity, InputState, ModelRef } from "../../components/game.ts";
@@ -142,7 +142,7 @@ export class WeaponTraceResolver implements EffectResolver {
     const maskIndex = content.getMaskIndex(skeleton.id);
     const boneIndex = content.getBoneIndex(skeleton.id);
     const handBone = action.holdHand ?? "hand_r";
-    const bladeRadius = action.blade.radius;
+    const bladeRadius = action.swingPath?.radius ?? action.blade.radius;
 
     const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
     const tCurr = Math.min((action.windupTicks + ticksInPhase) / totalTicks, 1);
@@ -159,8 +159,16 @@ export class WeaponTraceResolver implements EffectResolver {
     const attackFacing = attackerSnap?.facing ?? world.get(entityId, InputState)?.facing ?? 0;
     const origin: Vec3 = { x: ax, y: ay, z: az };
 
-    const bladeCurr = computeBladeWorld(action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone, skeleton, clipIndex, maskIndex, boneIndex, tCurr, modelRef.scaleX, modelRef.morphValues, origin, attackFacing);
-    const bladePrev = computeBladeWorld(action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone, skeleton, clipIndex, maskIndex, boneIndex, tPrev, modelRef.scaleX, modelRef.morphValues, origin, attackFacing);
+    // When the action carries an authored swingPath, the hit sweeps the capsule
+    // along that arc directly (no clip sampling) — the SAME hilt→tip path the
+    // client renders, so the blade you see is the blade that hits. Falls back to
+    // clip-sampled blade geometry for actions still without an authored swing.
+    const bladeCurr = action.swingPath
+      ? computeSwingBladeWorld(action.swingPath, tCurr, modelRef.scaleX, origin, attackFacing)
+      : computeBladeWorld(action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone, skeleton, clipIndex, maskIndex, boneIndex, tCurr, modelRef.scaleX, modelRef.morphValues, origin, attackFacing);
+    const bladePrev = action.swingPath
+      ? computeSwingBladeWorld(action.swingPath, tPrev, modelRef.scaleX, origin, attackFacing)
+      : computeBladeWorld(action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone, skeleton, clipIndex, maskIndex, boneIndex, tPrev, modelRef.scaleX, modelRef.morphValues, origin, attackFacing);
     if (!bladeCurr || !bladePrev) return;
 
     const tipDist = Math.sqrt((bladeCurr.tip.x - ax) ** 2 + (bladeCurr.tip.y - ay) ** 2 + (bladeCurr.tip.z - az) ** 2);
@@ -271,6 +279,33 @@ export class ProjectileSpawnResolver implements EffectResolver {
       world.write(projId, ModelRef, { modelId: action.projectile.modelId, scaleX: s, scaleY: s, scaleZ: s, seed: 0 });
     }
   }
+}
+
+/**
+ * World-space blade endpoints from an authored swingPath sampled at normalised
+ * `t`. The hilt and tip are read straight from the arc (actor-local solver),
+ * scaled, then placed by the attacker's facing + origin — the exact same path
+ * the client's swing-pose producer renders, so hit == visual by construction.
+ */
+function computeSwingBladeWorld(
+  swingPath: NonNullable<WeaponActionDef["swingPath"]>,
+  t: number,
+  entityScale: number,
+  attackerOrigin: Vec3,
+  attackFacing: number,
+): { base: Vec3; tip: Vec3 } {
+  const s = sampleSwingPath(swingPath, t);
+  // base = hilt; tip = hilt + bladeDir * length (solver space), entity-scaled.
+  const baseSolver = { x: s.hilt.x * entityScale, y: s.hilt.y * entityScale, z: s.hilt.z * entityScale };
+  const tipSolver = {
+    x: (s.hilt.x + s.bladeDir.x * s.length) * entityScale,
+    y: (s.hilt.y + s.bladeDir.y * s.length) * entityScale,
+    z: (s.hilt.z + s.bladeDir.z * s.length) * entityScale,
+  };
+  // solver (x=right, y=up, z=-fwd) → actor-local (fwd=-z, right=x, up=y) → world.
+  const base = localToWorld(-baseSolver.z, baseSolver.x, baseSolver.y, attackerOrigin, attackFacing);
+  const tip = localToWorld(-tipSolver.z, tipSolver.x, tipSolver.y, attackerOrigin, attackFacing);
+  return { base, tip };
 }
 
 /**

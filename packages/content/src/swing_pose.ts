@@ -79,9 +79,12 @@ export interface SwingPoseParams {
   leanGain?: number;
   /** Elbow pole hint, solver space (where the weapon elbow bends toward). */
   poleHint?: V3;
+  /** Per-entity morph params (body proportions) so the producer's FK matches
+   *  the rendered skeleton — pass ModelRef.morphValues on the client. */
+  morphParams?: Record<string, number>;
 }
 
-const DEFAULTS: Required<Omit<SwingPoseParams, "offHandBone">> & { offHandBone: string | null } = {
+const DEFAULTS: Required<Omit<SwingPoseParams, "offHandBone" | "morphParams">> & { offHandBone: string | null } = {
   handBone: "hand_r",
   bladeAxisLocal: { x: 0, y: 1, z: 0 },
   offHandBone: "hand_l",
@@ -175,6 +178,7 @@ export function solveSwingPose(
   params: SwingPoseParams = {},
 ): Map<string, BoneRotation> {
   const p = { ...DEFAULTS, ...params };
+  const morph = params.morphParams;
   const out = new Map<string, BoneRotation>(basePose);
   const s = sampleSwingPath(sp, t);
   const hilt = mul(s.hilt, scale);
@@ -182,7 +186,7 @@ export function solveSwingPose(
   // 1. Spine producer — twist (yaw about up) + forward lean (pitch about right),
   //    derived from the hilt, distributed up the three spine joints so it reads
   //    as a spine bending, not a single hinge.
-  const restP = solveSkeleton(skeleton, boneIndex, out, scale);
+  const restP = solveSkeleton(skeleton, boneIndex, out, scale, morph);
   const yaw = p.twistGain * s.hilt.x;                       // follow hilt laterally
   const lean = p.leanGain * Math.max(0, -s.hilt.z);         // fold toward forward reach
   const D = quatFromEulerXYZ(lean, yaw, 0);                 // world-space spine delta
@@ -199,7 +203,7 @@ export function solveSwingPose(
 
   // 2. Re-solve FK with the spine bent, so the shoulder (and arm rest dirs) are
   //    where the torso just put them, then IK the weapon arm onto the hilt.
-  const P = solveSkeleton(skeleton, boneIndex, out, scale);
+  const P = solveSkeleton(skeleton, boneIndex, out, scale, morph);
   const handR = p.handBone;
   const lowerR = boneIndex.get(handR)?.parent;
   const upperR = lowerR ? boneIndex.get(lowerR)?.parent : undefined;
