@@ -13,6 +13,7 @@
 
 import type { SkeletonDef, AnimationClip, AnimationLibrary, AnimationLayer, BoneMask, AnimationKeyframe } from "./types.ts";
 import type { BoneRotation } from "./ik_solver.ts";
+import { quatFromEulerXYZ, eulerFromQuat, slerpQuat } from "./ik_solver.ts";
 
 /**
  * Build a clip lookup map (clipId → AnimationClip) for an AnimationLibrary.
@@ -117,14 +118,18 @@ export function evaluateAnimationLayers(
           z: cur.z + clipRot.z * w,
         });
       } else {
-        // override: lerp from current accumulated pose to this layer's pose,
-        // using shortest-arc per component so blends near ±π don't snap
-        // through identity.
-        result.set(bone.id, {
-          x: cur.x + shortestArcDelta(cur.x, clipRot.x) * w,
-          y: cur.y + shortestArcDelta(cur.y, clipRot.y) * w,
-          z: cur.z + shortestArcDelta(cur.z, clipRot.z) * w,
-        });
+        // override: slerp from the accumulated pose to this layer's pose by
+        // weight (quaternions, not per-component Euler lerp — a partial-weight
+        // crossfade between very different poses, e.g. locomotion→swing, would
+        // otherwise sweep limbs through garbage). At w=1 this is an exact
+        // replace; at w<1 (a layer fading in/out) it's a clean orientation blend.
+        if (w >= 0.999) {
+          result.set(bone.id, clipRot);
+        } else {
+          const qc = quatFromEulerXYZ(cur.x, cur.y, cur.z);
+          const ql = quatFromEulerXYZ(clipRot.x, clipRot.y, clipRot.z);
+          result.set(bone.id, eulerFromQuat(slerpQuat(qc, ql, w)));
+        }
       }
     }
   }
@@ -166,22 +171,13 @@ export function sampleTrack(track: AnimationKeyframe[], t: number): BoneRotation
   const span = b.time - a.time;
   const alpha = span > 1e-9 ? (tc - a.time) / span : 0;
 
-  // Shortest-arc per Euler component: a value of 3.13 → -3.13 represents a
-  // continuous tiny rotation through π, but a naive lerp would sweep through
-  // 0 — that's the "bones fly off for one frame" artifact during transitions
-  // and at clip boundaries. Wrapping the delta into [-π, π] picks the short
-  // way around per component.
-  return {
-    x: a.rotX + shortestArcDelta(a.rotX, b.rotX) * alpha,
-    y: a.rotY + shortestArcDelta(a.rotY, b.rotY) * alpha,
-    z: a.rotZ + shortestArcDelta(a.rotZ, b.rotZ) * alpha,
-  };
-}
-
-const TWO_PI = Math.PI * 2;
-function shortestArcDelta(a: number, b: number): number {
-  let d = (b - a) % TWO_PI;
-  if (d > Math.PI) d -= TWO_PI;
-  else if (d < -Math.PI) d += TWO_PI;
-  return d;
+  // Slerp via quaternions, NOT per-component Euler lerp. Euler lerp sweeps
+  // through garbage orientations whenever a joint rotates a lot or passes near
+  // gimbal lock — the Mixamo melee clips do exactly that (e.g. the elbow flips
+  // through x,z ≈ ±π mid-slash), which is the "crippled swing / weird rotations"
+  // bug. The Euler→quat→Euler round-trip is lossless for the FK: solveSkeleton
+  // re-converts to a quaternion, so only the orientation matters.
+  const qa = quatFromEulerXYZ(a.rotX, a.rotY, a.rotZ);
+  const qb = quatFromEulerXYZ(b.rotX, b.rotY, b.rotZ);
+  return eulerFromQuat(slerpQuat(qa, qb, alpha));
 }

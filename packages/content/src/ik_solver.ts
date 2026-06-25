@@ -101,7 +101,30 @@ function quatFromUnitVectors(from: Vec3, to: Vec3): Quat {
  * Convert unit quaternion to Euler XYZ intrinsic angles.
  * Matches THREE.Euler default order.
  */
-function eulerFromQuat(q: Quat): BoneRotation {
+/**
+ * Spherical linear interpolation between two unit quaternions, shortest-arc.
+ * The correct way to interpolate orientation — unlike per-component Euler lerp,
+ * which sweeps through garbage poses when the rotation is large or near gimbal
+ * lock (the "crippled swing / weird rotations" of the Mixamo melee clips).
+ */
+export function slerpQuat(a: Quat, b: Quat, t: number): Quat {
+  let dot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+  let bx = b.x, by = b.y, bz = b.z, bw = b.w;
+  if (dot < 0) { dot = -dot; bx = -bx; by = -by; bz = -bz; bw = -bw; } // shortest arc
+  if (dot > 0.9995) {
+    // Nearly parallel — lerp + normalize avoids the sin(theta)→0 blow-up.
+    const x = a.x + (bx - a.x) * t, y = a.y + (by - a.y) * t, z = a.z + (bz - a.z) * t, w = a.w + (bw - a.w) * t;
+    const inv = 1 / Math.hypot(x, y, z, w);
+    return { x: x * inv, y: y * inv, z: z * inv, w: w * inv };
+  }
+  const theta0 = Math.acos(dot);
+  const sin0 = Math.sin(theta0);
+  const s0 = Math.sin((1 - t) * theta0) / sin0;
+  const s1 = Math.sin(t * theta0) / sin0;
+  return { x: a.x * s0 + bx * s1, y: a.y * s0 + by * s1, z: a.z * s0 + bz * s1, w: a.w * s0 + bw * s1 };
+}
+
+export function eulerFromQuat(q: Quat): BoneRotation {
   const x2 = q.x * 2, y2 = q.y * 2, z2 = q.z * 2;
   const xx = q.x * x2, xy = q.x * y2, xz = q.x * z2;
   const yy = q.y * y2, yz = q.y * z2, zz = q.z * z2;
