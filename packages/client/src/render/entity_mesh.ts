@@ -107,6 +107,14 @@ export interface EntityMeshGroup {
   /** Wall-clock ms when animationState was last updated — used to extrapolate ticksIntoAction between server ticks. */
   lastAnimUpdateMs: number;
   /**
+   * Secondary-motion state: per-bone eased rotation (the follow-through chain
+   * — spine/head). Each frame the stored quaternion eases toward the composed
+   * target pose (a snappy exponential lerp, never a physics-velocity spring, so
+   * it cannot float/overshoot). IK'd hands/arms are excluded so the blade stays
+   * locked to the hit. Seeded to target on first sight; cleared on model swap.
+   */
+  boneSprings: Map<string, THREE.Quaternion>;
+  /**
    * World-space velocity (model coords) — used to derive movement direction
    * relative to facing for directional walk animations.
    */
@@ -197,6 +205,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     boneGroups: null,
     attachments: new Map(),
     boneSlotTransforms: new Map(),
+    boneSprings: new Map(),
     animationState: state.animationState ?? null,
     lastAnimUpdateMs: performance.now(),
     velocityX: state.velocity?.x ?? 0,
@@ -353,6 +362,7 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
   }
   mesh.attachments.clear();
   mesh.boneSlotTransforms.clear();
+  mesh.boneSprings.clear(); // drop stale spring state so a model swap doesn't ease from a garbage pose
 
   // 2. Bone hierarchy — traverse disposes body-part voxels inside bone groups.
   if (mesh.boneGroups) {

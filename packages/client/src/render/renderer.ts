@@ -33,6 +33,36 @@ import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
 import { solveSwingPose } from "@voxim/content";
+
+// ---- secondary motion (snappy organic ease) --------------------------------
+// The follow-through chain that gets eased — spine + head. NOT the IK'd hands/
+// arms (they must stay locked to the hilt so the blade == the hit). Other
+// skeletons (wolf) lack the torso bones — the ease just no-ops on missing bones.
+const SPRING_BONES = ["torso_lower", "torso_mid", "torso_upper", "head"] as const;
+// Higher = snappier. ~32 rad/s settles in ~90ms — organic, but never floaty.
+const SPRING_OMEGA = 32;
+const _springTargetQ = new THREE.Quaternion();
+
+/**
+ * Ease the follow-through bones toward the composed target pose with a
+ * framerate-corrected exponential lerp (a = 1 − e^(−ω·dt)). Stateless toward a
+ * moving target: it cannot overshoot or float (the user's hard "snappy, not
+ * physics-velocity" constraint), it only smooths the per-frame pose change so
+ * the spine/head settle organically instead of snapping. Mutates the THREE.Euler
+ * values already in `pose`. Seeds to target on first sight (no startup lurch).
+ */
+function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, THREE.Euler>, dtMs: number) {
+  const a = 1 - Math.exp(-SPRING_OMEGA * (Math.min(dtMs, 100) / 1000));
+  for (const bone of SPRING_BONES) {
+    const target = pose.get(bone);
+    if (!target) continue;
+    _springTargetQ.setFromEuler(target);
+    let q = mesh.boneSprings.get(bone);
+    if (!q) { q = _springTargetQ.clone(); mesh.boneSprings.set(bone, q); }
+    else { q.slerp(_springTargetQ, a); }
+    target.setFromQuaternion(q);
+  }
+}
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
 import { FacingOverlay, ChunkOverlay } from "./debug_overlay.ts";
 import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
@@ -823,6 +853,7 @@ export class VoximRenderer {
         const swingWA = anim?.weaponActionId
           ? this.weaponActionsMap.get(anim.weaponActionId)
           : undefined;
+        let pose: Map<string, THREE.Euler>;
         if (swingWA?.swingPath && skeleton) {
           const total = swingWA.windupTicks + swingWA.activeTicks + swingWA.winddownTicks;
           const ticks = anim!.ticksIntoAction + (now - mesh.lastAnimUpdateMs) / 50;
@@ -831,13 +862,17 @@ export class VoximRenderer {
           const basePose = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
           const boneIndex = this.content.getBoneIndex(mesh.skeletonId);
           const swing = solveSwingPose(skeleton, boneIndex, basePose, mesh.modelScale, swingWA.swingPath, t, { morphParams: mesh.modelMorphs });
-          const euler = new Map<string, THREE.Euler>();
-          for (const [bone, r] of swing) euler.set(bone, new THREE.Euler(r.x, r.y, r.z));
-          updateSkeletonPose(mesh, euler);
+          // rewrap the mixed map (THREE.Euler for untouched bones, {x,y,z} for overridden) to THREE.Euler
+          pose = new Map<string, THREE.Euler>();
+          for (const [bone, r] of swing) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
         } else {
-          const pose = evaluatePose(skeleton, clipIndex, maskIndex, animForPose);
-          updateSkeletonPose(mesh, pose);
+          pose = evaluatePose(skeleton, clipIndex, maskIndex, animForPose);
         }
+
+        // Secondary motion: ease the spine/head toward the composed pose (snappy,
+        // never floaty) so the body settles organically. IK'd hands are excluded.
+        applyBoneSprings(mesh, pose, animDtMs);
+        updateSkeletonPose(mesh, pose);
 
         // Roll vertical lift — sin(πt) parabola peaking at clip mid-point so the
         // tucked body clears the ground during the somersault. Tied to the
