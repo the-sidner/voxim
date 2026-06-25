@@ -3,11 +3,19 @@
   "windupTicks": 2,
   "activeTicks": 2,
   "winddownTicks": 4,
-  "clipId": "stable_sword_outward_slash",
+  "clipId": "sword_and_shield_slash_3",
   "blade": {
-    "baseLocal": [0, 0, 0],
-    "tipLocal":  [0, 0, -2.5],
-    "radius":    0.05
+    "baseLocal": [
+      0,
+      0,
+      0
+    ],
+    "tipLocal": [
+      0,
+      0,
+      -2.5
+    ],
+    "radius": 0.05
   },
   "staminaCost": 10
 }
