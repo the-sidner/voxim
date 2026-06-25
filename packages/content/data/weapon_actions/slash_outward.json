@@ -3,7 +3,7 @@
   "windupTicks": 2,
   "activeTicks": 2,
   "winddownTicks": 4,
-  "clipId": "sword_and_shield_slash_3",
+  "clipId": "standing_melee_attack_downward",
   "blade": {
     "baseLocal": [
       0,

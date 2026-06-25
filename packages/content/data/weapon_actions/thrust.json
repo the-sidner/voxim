@@ -3,11 +3,19 @@
   "windupTicks": 2,
   "activeTicks": 2,
   "winddownTicks": 3,
-  "clipId": "stabbing",
+  "clipId": "upward_thrust",
   "blade": {
-    "baseLocal": [0, 0, 0],
-    "tipLocal":  [0, 0, -3.0],
-    "radius":    0.04
+    "baseLocal": [
+      0,
+      0,
+      0
+    ],
+    "tipLocal": [
+      0,
+      0,
+      -3.0
+    ],
+    "radius": 0.04
   },
   "staminaCost": 12
 }

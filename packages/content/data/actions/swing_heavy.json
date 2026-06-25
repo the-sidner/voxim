@@ -8,13 +8,13 @@
   ],
   "phases": {
     "windup": {
-      "ticks": 5
+      "ticks": 4
     },
     "active": {
-      "ticks": 3
+      "ticks": 6
     },
     "winddown": {
-      "ticks": 8
+      "ticks": 6
     }
   },
   "cancel": {

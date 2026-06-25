@@ -11,10 +11,10 @@
       "ticks": 2
     },
     "active": {
-      "ticks": 2
+      "ticks": 4
     },
     "winddown": {
-      "ticks": 4
+      "ticks": 2
     }
   },
   "cancel": {
