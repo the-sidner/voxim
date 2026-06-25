@@ -1008,6 +1008,42 @@ blade shape and an NPC's armor are seed-unique, the swing hitbox follows the gen
 stats can feed off the emitted materials (composes with T-303). The vision-4 capstone; depends on the
 language + body + stats work landing first.
 
+## Procedural Animation
+
+The Overgrowth/David Rosen direction: a few authored anchors + procedural everything-between + IK,
+over one substrate (the skeleton). Poses, IK, and body attachments all hang off the same bones, so
+orthogonal behaviours (crouch + strafe + swing) compose instead of needing a combinatorial clip
+matrix. See `swing_pose.ts` (the shared producer) and the Swing Inspector (the authoring tool).
+
+### T-307 · Authored swingPath + procedural full-body swing
+Effort: L   Status: done   Commit: 4f9007b
+
+Re-introduced `SwingPathDef` (authored blade arc) on `WeaponActionDef`; authored 9 default swings;
+`solveSwingPose` derives the whole body from the hilt path (spine twist+lean, weapon-arm IK with
+blade·aim=1.0 so hit==visual, off-hand counter). Ported to game: server hit sweeps hilt→tip directly,
+client renders the producer over locomotion. Replaces borrowed Mixamo melee clips for swing actions.
+
+### T-308 · Procedural pose catalogue (locomotion poses + IK + secondary motion)
+Effort: L   Status: in-progress
+
+The fused pipeline: base-pose catalogue (idle/walk/run/strafe/crouch/turn as parametric poses or
+blends) → action overlay (swing/block/dodge) → IK layer (weapon arm, foot planting, look-at) →
+secondary motion (spring-damper momentum/overshoot). LANDED: `bendSpine` primitive +
+`applyLocomotionPose` (strafe/turn lean), composing with the swing in the inspector. NEXT: wire
+locomotion into the client render (strafe/turn from velocity vs facing); crouch (needs foot IK +
+pelvis drop); parametric gait replacing idle/walk clips; foot IK; secondary-motion springs (the big
+aliveness win — needs the temporal client, done last).
+
+### T-309 · Body attachment slots — sheathed weapons, belt items, backpack
+Effort: M   Status: todo
+
+Render carried/sheathed world items on the body (sword on back, axe at belt, backpack). The mechanism
+already exists: `AttachmentSlot` (bone-parented THREE.Group anchors) + `attachModelToSlot`, and
+`ARMOR_SLOTS` already maps e.g. `back → torso_upper`. Add named body anchors with offset transforms
+(sheath behind the spine, hip slots, backpack), a content rule for what renders where (e.g. a weapon
+shows sheathed on the back when not drawn), and item models per slot. Composes with T-308 for free —
+anchors are bone children, so a sheathed sword sways with the spine as the body crouches/strafes/swings.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
