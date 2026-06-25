@@ -1028,21 +1028,32 @@ Effort: L   Status: in-progress
 
 The fused pipeline: base-pose catalogue (idle/walk/run/strafe/crouch/turn as parametric poses or
 blends) → action overlay (swing/block/dodge) → IK layer (weapon arm, foot planting, look-at) →
-secondary motion (spring-damper momentum/overshoot). LANDED: `bendSpine` primitive +
-`applyLocomotionPose` (strafe/turn lean), composing with the swing in the inspector. NEXT: wire
-locomotion into the client render (strafe/turn from velocity vs facing); crouch (needs foot IK +
-pelvis drop); parametric gait replacing idle/walk clips; foot IK; secondary-motion springs (the big
-aliveness win — needs the temporal client, done last).
+secondary motion (snappy organic ease). LANDED: `bendSpine` primitive + `applyLocomotionPose`
+(strafe/turn lean) composing with the swing in the inspector; **two-arm IK grips** (`GripDef` +
+`swingPath.grips` — one arc serves 1H/2H, both hands via the one aimLimb primitive, commit 9190424);
+**secondary motion** (snappy exponential ease on spine/head, NOT a physics-velocity spring — user
+constraint; hands excluded so blade==hit; commit 05f13c2). NEXT: wire `applyLocomotionPose` into the
+client render — strafe/turn from INPUT INTENT not physics velocity (user: snappy/instant; local
+player reads movementX/Y directly, remotes from velocity) — needs a render() param + a live
+lean-direction sign-tune; crouch (foot IK + pelvis drop); parametric gait replacing idle/walk clips;
+foot IK. Dual-wield deferred (2nd server sweep + AnimationState channel).
 
-### T-309 · Body attachment slots — sheathed weapons, belt items, backpack
+### T-309 · Body attachment slots — hotbar items rendered on the body
 Effort: M   Status: todo
 
-Render carried/sheathed world items on the body (sword on back, axe at belt, backpack). The mechanism
-already exists: `AttachmentSlot` (bone-parented THREE.Group anchors) + `attachModelToSlot`, and
-`ARMOR_SLOTS` already maps e.g. `back → torso_upper`. Add named body anchors with offset transforms
-(sheath behind the spine, hip slots, backpack), a content rule for what renders where (e.g. a weapon
-shows sheathed on the back when not drawn), and item models per slot. Composes with T-308 for free —
-anchors are bone children, so a sheathed sword sways with the spine as the body crouches/strafes/swings.
+Render the player's HOTBAR items on body anchors (sword on back, axe at hip, etc.) — a LIMITED set of
+slots, the count EXTENDABLE by carry-equipment (backpack/belt). The active hotbar item is in hand; the
+rest render slung on the body. This (per the user) is the data source — NOT faking a sheath off
+`weaponActionId` (which double-renders ~95% of the time, per the design review). The render mechanism
+already exists: `AttachmentSlot` (bone-parented THREE.Group anchors) + `attachModelToSlot`; `ARMOR_SLOTS`
+already maps e.g. `back → torso_upper`. The hotbar exists client-side (`ui_store` hotbar: 8 slots +
+activeIndex; `hotbar_assign`/`hotbar_use` actions). To build: (1) add body anchors with offset transforms
+(pos+rot) applied every sync — sheath_back, hip_l/r — generalizing the held-weapon absolute-scale build
+onto bone-parented anchors; (2) map hotbar slot index → body anchor; render each occupied non-active
+hotbar item's model there; (3) gate the visible slot count by equipped carry-gear. OPEN: the hotbar is
+currently client-only — for OTHER players to see your slung gear it must be networked (or derived from a
+networked source). Composes with T-308 for free (anchors are bone children → slung gear sways with the
+body).
 
 ## Player UX
 
