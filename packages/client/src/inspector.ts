@@ -12,7 +12,7 @@
  */
 import * as THREE from "three";
 import {
-  BootstrapSource, evaluateAnimationLayers, solveSkeleton, applyQuat, solveSwingPose,
+  BootstrapSource, evaluateAnimationLayers, solveSkeleton, applyQuat, solveSwingPose, applyLocomotionPose,
 } from "@voxim/content";
 import type { ContentService, SkeletonDef, WeaponActionDef } from "@voxim/content";
 
@@ -166,9 +166,15 @@ function setPose(t: number) {
   // Pose: authored mode runs the procedural full-body swing producer (spine
   // twist+lean, weapon-arm IK onto the hilt, off-hand counter); clip mode plays
   // the Mixamo clip that currently drives the game.
-  const tf = useAuthored
-    ? solveSkeleton(skeleton, boneIndex, solveSwingPose(skeleton, boneIndex, new Map(), 1, curWA.swingPath!, t, {}), 1, undefined)
-    : solveSkeleton(skeleton, boneIndex, evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }]), 1, undefined);
+  let tf;
+  if (useAuthored) {
+    // Fused pipeline: locomotion base pose (strafe/turn lean) → swing overlay+IK.
+    const base = applyLocomotionPose(skeleton, boneIndex, new Map(), 1, { strafe, turn });
+    const pose = solveSwingPose(skeleton, boneIndex, base, 1, curWA.swingPath!, t, {});
+    tf = solveSkeleton(skeleton, boneIndex, pose, 1, undefined);
+  } else {
+    tf = solveSkeleton(skeleton, boneIndex, evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }]), 1, undefined);
+  }
 
   // bone segments + joints
   const segPos = segGeo.getAttribute("position") as THREE.BufferAttribute;
@@ -249,8 +255,25 @@ for (const w of weaponActions) {
 }
 waSel.value = curWA.id;
 let t = 0, playing = false, speed = 1;
+let strafe = 0, turn = 0;
 const tSlider = q("#t") as HTMLInputElement;
 const STEP = 1 / 30;
+
+// Locomotion controls — the base-pose catalogue composing live with the swing.
+{
+  const panel = waSel.parentElement ?? document.body;
+  const mk = (label: string, set: (v: number) => void) => {
+    const row = document.createElement("div");
+    row.style.cssText = "margin-top:6px;font-size:12px;color:#9fb4c8;display:flex;align-items:center;gap:8px";
+    const lab = document.createElement("span"); lab.textContent = label; lab.style.width = "44px"; row.appendChild(lab);
+    const sl = document.createElement("input");
+    sl.type = "range"; sl.min = "-1"; sl.max = "1"; sl.step = "0.05"; sl.value = "0"; sl.style.flex = "1";
+    sl.oninput = () => { set(parseFloat(sl.value)); setPose(t); };
+    row.appendChild(sl); panel.appendChild(row);
+  };
+  mk("strafe", (v) => { strafe = v; });
+  mk("turn", (v) => { turn = v; });
+}
 
 waSel.onchange = () => { curWA = weaponActions.find((w) => w.id === waSel.value)!; useAuthored = !!curWA.swingPath; buildArc(); setPose(t); };
 tSlider.oninput = () => { t = parseFloat(tSlider.value); setPose(t); };

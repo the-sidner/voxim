@@ -158,7 +158,81 @@ function aimLimb(
   out.set(hand, eulerFromQuat(quatMultiply(invertQuat(qLnew), qHnew)));
 }
 
-// ---- the producer ----
+/**
+ * Apply a world-space spine bend (delta quaternion `D`) distributed across the
+ * three torso joints so it reads as a spine, not a single hinge. Mutates `pose`
+ * in place; reads the CURRENT pose so successive bends compose (a strafe lean
+ * then a swing fold stack into one spine). The shared spine primitive for every
+ * pose in the catalogue.
+ */
+function bendSpine(
+  skeleton: SkeletonDef,
+  boneIndex: ReadonlyMap<string, BoneDef>,
+  pose: Map<string, BoneRotation>,
+  scale: number,
+  D: Quat,
+  morph?: Record<string, number>,
+) {
+  const restP = solveSkeleton(skeleton, boneIndex, pose, scale, morph);
+  const spine: Array<[string, number]> = [["torso_lower", 0.30], ["torso_mid", 0.62], ["torso_upper", 1.0]];
+  const spineWorld = new Map<string, Quat>();
+  for (const [bid, frac] of spine) {
+    const t0 = restP.get(bid); if (!t0) continue;
+    const nw = quatMultiply(slerpQuat(IDENT, D, frac), t0.rot);
+    const parent = boneIndex.get(bid)?.parent;
+    const pnw = (parent && spineWorld.get(parent)) || (parent && restP.get(parent)?.rot) || IDENT;
+    pose.set(bid, eulerFromQuat(quatMultiply(invertQuat(pnw), nw)));
+    spineWorld.set(bid, nw);
+  }
+}
+
+// ---- locomotion poses (the base-pose catalogue) -----------------------------
+
+/** Movement state that selects/weights base poses. Extends as the catalogue grows. */
+export interface LocoState {
+  /** Lateral movement relative to facing, -1 (left) … +1 (right). */
+  strafe?: number;
+  /** Turn rate, -1 … +1. */
+  turn?: number;
+}
+
+export interface LocoPoseParams {
+  /** Sideways lean (roll) per unit strafe, radians. */
+  strafeLean?: number;
+  /** Lean into a turn (roll) per unit turn, radians. */
+  turnLean?: number;
+  /** Twist into a turn (yaw) per unit turn, radians. */
+  turnTwist?: number;
+  morphParams?: Record<string, number>;
+}
+
+const LOCO_DEFAULTS = { strafeLean: 0.35, turnLean: 0.22, turnTwist: 0.30 };
+
+/**
+ * First entry in the base-pose catalogue: a procedural locomotion lean. The
+ * body banks into a strafe and leans+twists into a turn — derived from movement
+ * state, no clip. Returns a new pose; feed it as the `basePose` to
+ * `solveSwingPose` and the swing composes on top.
+ */
+export function applyLocomotionPose(
+  skeleton: SkeletonDef,
+  boneIndex: ReadonlyMap<string, BoneDef>,
+  basePose: ReadonlyMap<string, BoneRotation>,
+  scale: number,
+  loco: LocoState,
+  params: LocoPoseParams = {},
+): Map<string, BoneRotation> {
+  const out = new Map<string, BoneRotation>(basePose);
+  const strafe = loco.strafe ?? 0, turn = loco.turn ?? 0;
+  if (strafe === 0 && turn === 0) return out;
+  const lp = { ...LOCO_DEFAULTS, ...params };
+  const roll = lp.strafeLean * strafe + lp.turnLean * turn; // sideways bank
+  const yaw = lp.turnTwist * turn;                          // twist into the turn
+  bendSpine(skeleton, boneIndex, out, scale, quatFromEulerXYZ(0, yaw, roll), params.morphParams);
+  return out;
+}
+
+// ---- the swing producer ----
 
 /**
  * Build the full-body override rotations for a swing in progress.
@@ -184,22 +258,11 @@ export function solveSwingPose(
   const hilt = mul(s.hilt, scale);
 
   // 1. Spine producer — twist (yaw about up) + forward lean (pitch about right),
-  //    derived from the hilt, distributed up the three spine joints so it reads
-  //    as a spine bending, not a single hinge.
-  const restP = solveSkeleton(skeleton, boneIndex, out, scale, morph);
+  //    derived from the hilt. Composes on top of whatever the base pose already
+  //    bent the spine to (e.g. a strafe lean), so locomotion + swing multiply.
   const yaw = p.twistGain * s.hilt.x;                       // follow hilt laterally
   const lean = p.leanGain * Math.max(0, -s.hilt.z);         // fold toward forward reach
-  const D = quatFromEulerXYZ(lean, yaw, 0);                 // world-space spine delta
-  const spine: Array<[string, number]> = [["torso_lower", 0.30], ["torso_mid", 0.62], ["torso_upper", 1.0]];
-  const spineWorld = new Map<string, Quat>();
-  for (const [bid, frac] of spine) {
-    const t0 = restP.get(bid); if (!t0) continue;
-    const nw = quatMultiply(slerpQuat(IDENT, D, frac), t0.rot);
-    const parent = boneIndex.get(bid)?.parent;
-    const pnw = (parent && spineWorld.get(parent)) || (parent && restP.get(parent)?.rot) || IDENT;
-    out.set(bid, eulerFromQuat(quatMultiply(invertQuat(pnw), nw)));
-    spineWorld.set(bid, nw);
-  }
+  bendSpine(skeleton, boneIndex, out, scale, quatFromEulerXYZ(lean, yaw, 0), morph);
 
   // 2. Re-solve FK with the spine bent, so the shoulder (and arm rest dirs) are
   //    where the torso just put them, then IK the weapon arm onto the hilt.
