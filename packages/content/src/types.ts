@@ -516,6 +516,45 @@ export interface WeaponBladeDef {
 }
 
 /**
+ * One keyframe of an authored swing arc, in **actor-local** space:
+ *   fwd   = the direction the character faces
+ *   right = to the character's right
+ *   up    = world up (height above the feet origin)
+ *
+ * `hilt` is where the grip (and so the weapon arm's wrist) sits; `blade` is the
+ * direction the blade points (need not be unit — it is normalised on use). The
+ * tip is always `hilt + normalize(blade) * SwingPathDef.length`, so a whole
+ * swing is described by where the hand is and which way the blade points over
+ * normalised swing time.
+ */
+export interface SwingKeyframe {
+  /** Normalised swing time. 0 = first windup tick, 1 = last winddown tick. Ascending. */
+  t: number;
+  /** Grip position, actor-local fwd/right/up, world units. */
+  hilt: { fwd: number; right: number; up: number };
+  /** Blade pointing direction, actor-local fwd/right/up (normalised on use). */
+  blade: { fwd: number; right: number; up: number };
+}
+
+/**
+ * An **authored** swing — the hilt-centric primitive that replaces a borrowed
+ * full-body clip with a designed blade motion. Hit detection (server), the
+ * weapon-arm IK (client), and the trail all read this one path, so the blade
+ * you see is exactly the blade that hits.
+ *
+ * When a WeaponActionDef carries a `swingPath`, it is the source of truth for
+ * the swing and the `clipId`/`blade` clip-sampling fallback is unused.
+ */
+export interface SwingPathDef {
+  /** Blade length, world units. Tip = hilt + normalize(blade) * length. */
+  length: number;
+  /** Swept-capsule radius, world units. */
+  radius: number;
+  /** Keyframes over normalised swing time, t ascending in [0,1]. */
+  keyframes: SwingKeyframe[];
+}
+
+/**
  * Physics definition for one weapon archetype (melee or ranged).
  * Drives the three-phase swing (windup → active → winddown), the swing
  * animation clip, and the blade-capsule geometry attached to the holding
@@ -549,11 +588,19 @@ export interface WeaponActionDef {
    */
   clipId?: string;
   /**
-   * Blade geometry in hand-bone-local solver space. Required for melee
-   * actions; absent for ranged. Hit detection transforms these endpoints
-   * by the holding hand's world matrix each active tick.
+   * Blade geometry in hand-bone-local solver space. The clip-sampling
+   * fallback for melee actions without an authored `swingPath`: hit
+   * detection transforms these endpoints by the holding hand's world matrix
+   * each active tick. Absent for ranged.
    */
   blade?: WeaponBladeDef;
+  /**
+   * Authored swing arc (hilt-centric). When present this is the source of
+   * truth for both the hit sweep and the weapon-arm pose, and the
+   * `clipId`/`blade` clip-sampling above is unused. This is how a swing is
+   * meant to be authored — a clean designed arc, not a borrowed full-body clip.
+   */
+  swingPath?: SwingPathDef;
   /**
    * Bone the weapon (or attack-anchor for bites/claws) is attached to.
    * Hit detection reads this bone's world transform each active tick.

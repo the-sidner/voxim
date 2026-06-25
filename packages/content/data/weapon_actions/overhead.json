@@ -5,17 +5,21 @@
   "winddownTicks": 5,
   "clipId": "great_sword_attack",
   "blade": {
-    "baseLocal": [
-      0,
-      0,
-      0
-    ],
-    "tipLocal": [
-      0,
-      3.5,
-      0
-    ],
+    "baseLocal": [0, 0, 0],
+    "tipLocal": [0, 3.5, 0],
     "radius": 0.06
+  },
+  "swingPath": {
+    "length": 2.6,
+    "radius": 0.07,
+    "keyframes": [
+      { "t": 0.00, "hilt": { "fwd": 0.10, "right": 0.50, "up": 5.10 }, "blade": { "fwd": -0.50, "right": 0.10, "up": 1.00 } },
+      { "t": 0.25, "hilt": { "fwd": 0.45, "right": 0.45, "up": 4.95 }, "blade": { "fwd": 0.55, "right": 0.05, "up": 0.55 } },
+      { "t": 0.35, "hilt": { "fwd": 0.70, "right": 0.38, "up": 4.20 }, "blade": { "fwd": 0.85, "right": 0.00, "up": -0.35 } },
+      { "t": 0.45, "hilt": { "fwd": 0.80, "right": 0.30, "up": 3.55 }, "blade": { "fwd": 0.80, "right": -0.05, "up": -0.75 } },
+      { "t": 0.625, "hilt": { "fwd": 0.90, "right": 0.20, "up": 3.00 }, "blade": { "fwd": 0.70, "right": -0.10, "up": -0.90 } },
+      { "t": 1.00, "hilt": { "fwd": 0.50, "right": 0.40, "up": 3.60 }, "blade": { "fwd": 0.60, "right": 0.00, "up": -0.30 } }
+    ]
   },
   "staminaCost": 14
 }

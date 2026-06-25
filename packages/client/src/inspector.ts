@@ -29,8 +29,13 @@ const clipIndex = content.getClipIndex(skeleton.id);
 const maskIndex = content.getMaskIndex(skeleton.id);
 const boneIndex = content.getBoneIndex(skeleton.id);
 const weaponActions: WeaponActionDef[] = [...content.weaponActions.values()]
-  .filter((w) => !!w.blade && clipIndex.has(w.clipId ?? ""))
+  .filter((w) => !!w.swingPath || (!!w.blade && clipIndex.has(w.clipId ?? "")))
   .sort((a, b) => a.id.localeCompare(b.id));
+
+// Where the weapon arm's shoulder sits at rest (probed) — used to draw the
+// "reach" guide line from the hand to the authored hilt and flag overreach.
+const SHOULDER = { x: 0.51, y: 4.0, z: -0.08 };
+const ARM_REACH = 1.4;
 
 // ---- three.js scene ---------------------------------------------------------
 const canvas = document.getElementById("c") as HTMLCanvasElement;
@@ -74,6 +79,20 @@ const blade = new THREE.Mesh(
 );
 scene.add(blade);
 
+// Authored-swing extras: a marker at the hilt (where the arm's wrist must
+// reach) and a dashed guide line hand → hilt (the reach the IK will close).
+const hiltDot = new THREE.Mesh(
+  new THREE.SphereGeometry(0.12, 12, 8),
+  new THREE.MeshBasicMaterial({ color: 0x39d7c0 }),
+);
+hiltDot.visible = false;
+scene.add(hiltDot);
+const guideGeo = new THREE.BufferGeometry();
+guideGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+const guide = new THREE.Line(guideGeo, new THREE.LineDashedMaterial({ color: 0x39d7c0, dashSize: 0.15, gapSize: 0.1 }));
+guide.visible = false;
+scene.add(guide);
+
 // Tip arc — the full path the blade tip traces over the whole clip, sampled
 // once per clip so you see the entire swing shape at a glance.
 const ARC = 64;
@@ -82,9 +101,62 @@ const arcGeo = new THREE.BufferGeometry();
 arcGeo.setAttribute("position", new THREE.BufferAttribute(arcPts, 3));
 scene.add(new THREE.Line(arcGeo, new THREE.LineBasicMaterial({ color: 0x5a7fb0 })));
 
+// ---- authored swing sampling ------------------------------------------------
+type V3 = { x: number; y: number; z: number };
+// actor-local {fwd,right,up} → inspector world {x:right, y:up, z:-fwd}.
+const toWorld = (p: { fwd: number; right: number; up: number }): V3 => ({ x: p.right, y: p.up, z: -p.fwd });
+
+// Sample the authored swingPath at normalised t → world-space hilt + tip.
+function sampleSwing(t: number): { hilt: V3; tip: V3 } | null {
+  const sp = curWA.swingPath;
+  if (!sp || sp.keyframes.length === 0) return null;
+  const kf = sp.keyframes;
+  let a = kf[0], b = kf[kf.length - 1];
+  for (let i = 0; i < kf.length - 1; i++) {
+    if (t >= kf[i].t && t <= kf[i + 1].t) { a = kf[i]; b = kf[i + 1]; break; }
+  }
+  const span = b.t - a.t;
+  const f = span > 1e-6 ? (t - a.t) / span : 0;
+  const lp = (x: number, y: number) => x + (y - x) * f;
+  const hilt = { fwd: lp(a.hilt.fwd, b.hilt.fwd), right: lp(a.hilt.right, b.hilt.right), up: lp(a.hilt.up, b.hilt.up) };
+  const bd = { fwd: lp(a.blade.fwd, b.blade.fwd), right: lp(a.blade.right, b.blade.right), up: lp(a.blade.up, b.blade.up) };
+  const m = Math.hypot(bd.fwd, bd.right, bd.up) || 1;
+  const tip = { fwd: hilt.fwd + (bd.fwd / m) * sp.length, right: hilt.right + (bd.right / m) * sp.length, up: hilt.up + (bd.up / m) * sp.length };
+  return { hilt: toWorld(hilt), tip: toWorld(tip) };
+}
+
+// ---- pose evaluation --------------------------------------------------------
+// Default to a swing that has an authored path (the new thing under design),
+// else a real clip swing, else whatever sorts first.
+let curWA: WeaponActionDef = weaponActions.find((w) => w.swingPath)
+  ?? weaponActions.find((w) => /^(slash|swing|overhead|thrust|heavy)/.test(w.id))
+  ?? weaponActions[0];
+let useAuthored = !!curWA.swingPath;
+
+function inBox(p: V3): boolean {
+  return -p.z > ENEMY.fwd - ENEMY.depth / 2 && -p.z < ENEMY.fwd + ENEMY.depth / 2 &&
+    p.y > ENEMY.yMin && p.y < ENEMY.yMax && Math.abs(p.x) < ENEMY.halfW + 0.3;
+}
+
+// Orient + scale the blade box so it spans base→tip.
+function placeBlade(base: V3, tip: V3) {
+  const bv = new THREE.Vector3(base.x, base.y, base.z);
+  const tv = new THREE.Vector3(tip.x, tip.y, tip.z);
+  blade.position.copy(bv).add(tv).multiplyScalar(0.5);
+  const dir = new THREE.Vector3().subVectors(tv, bv);
+  blade.scale.set(1, 1, Math.max(0.01, dir.length()));
+  blade.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
+}
+
 function buildArc() {
   for (let i = 0; i < ARC; i++) {
-    const rot = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: i / (ARC - 1), weight: 1, blend: "override" as const, speedScale: 1 }]);
+    const t = i / (ARC - 1);
+    if (useAuthored) {
+      const s = sampleSwing(t);
+      if (s) arcPts.set([s.tip.x, s.tip.y, s.tip.z], i * 3);
+      continue;
+    }
+    const rot = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }]);
     const tf = solveSkeleton(skeleton, boneIndex, rot, 1, undefined);
     const hand = tf.get(curWA.holdHand ?? HOLD_BONE);
     if (hand && curWA.blade) {
@@ -95,14 +167,12 @@ function buildArc() {
   arcGeo.getAttribute("position").needsUpdate = true;
 }
 
-// ---- pose evaluation --------------------------------------------------------
-type V3 = { x: number; y: number; z: number };
-// Default to a real swing (the thing under investigation), not whatever sorts first.
-let curWA: WeaponActionDef = weaponActions.find((w) => /^(slash|swing|overhead|thrust|heavy)/.test(w.id)) ?? weaponActions[0];
-
 function setPose(t: number) {
-  const rotations = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }]);
-  const tf = solveSkeleton(skeleton, boneIndex, rotations, 1, undefined);
+  // Body pose: in authored mode the swing is no longer a clip, so show a
+  // neutral rest body — the arm will be IK'd onto the hilt in a later step;
+  // in clip mode show the Mixamo clip that currently drives everything.
+  const layers = useAuthored ? [] : [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }];
+  const tf = solveSkeleton(skeleton, boneIndex, evaluateAnimationLayers(skeleton, clipIndex, maskIndex, layers), 1, undefined);
 
   // bone segments + joints
   const segPos = segGeo.getAttribute("position") as THREE.BufferAttribute;
@@ -116,27 +186,34 @@ function setPose(t: number) {
   for (let i = 0; i < boneList.length; i++) { const p = tf.get(boneList[i].id)?.pos; if (p) jPos.setXYZ(i, p.x, p.y, p.z); }
   jPos.needsUpdate = true;
 
-  // blade from the hold-hand bone
-  const hand = tf.get(curWA.holdHand ?? HOLD_BONE);
-  let fwd = 0, height = 0, hits = false;
-  if (hand && curWA.blade) {
-    const bl = curWA.blade;
-    const bt = applyQuat({ x: bl.baseLocal[0], y: bl.baseLocal[1], z: bl.baseLocal[2] }, hand.rot);
-    const tt = applyQuat({ x: bl.tipLocal[0], y: bl.tipLocal[1], z: bl.tipLocal[2] }, hand.rot);
-    const base = { x: hand.pos.x + bt.x, y: hand.pos.y + bt.y, z: hand.pos.z + bt.z };
-    const tip = { x: hand.pos.x + tt.x, y: hand.pos.y + tt.y, z: hand.pos.z + tt.z };
-    // orient the blade box from base→tip
-    const bv = new THREE.Vector3(base.x, base.y, base.z);
-    const tv = new THREE.Vector3(tip.x, tip.y, tip.z);
-    blade.position.copy(bv).add(tv).multiplyScalar(0.5);
-    const dir = new THREE.Vector3().subVectors(tv, bv);
-    blade.scale.set(1, 1, Math.max(0.01, dir.length()));
-    blade.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
-    // readout: forward (toward enemy = -z), height
-    fwd = -tip.z; height = tip.y;
-    const inBox = (q: V3) => -q.z > ENEMY.fwd - ENEMY.depth / 2 && -q.z < ENEMY.fwd + ENEMY.depth / 2 && q.y > ENEMY.yMin && q.y < ENEMY.yMax && Math.abs(q.x) < ENEMY.halfW + 0.3;
-    hits = inBox(tip) || inBox(base) || inBox({ x: (tip.x + base.x) / 2, y: (tip.y + base.y) / 2, z: (tip.z + base.z) / 2 });
+  let fwd = 0, height = 0, hits = false, reach = 0;
+  if (useAuthored) {
+    const s = sampleSwing(t)!;
+    placeBlade(s.hilt, s.tip);
+    hiltDot.position.set(s.hilt.x, s.hilt.y, s.hilt.z);
+    const hand = tf.get(curWA.holdHand ?? HOLD_BONE)?.pos ?? SHOULDER;
+    const gp = guideGeo.getAttribute("position") as THREE.BufferAttribute;
+    gp.setXYZ(0, hand.x, hand.y, hand.z); gp.setXYZ(1, s.hilt.x, s.hilt.y, s.hilt.z); gp.needsUpdate = true;
+    guide.computeLineDistances();
+    reach = Math.hypot(s.hilt.x - SHOULDER.x, s.hilt.y - SHOULDER.y, s.hilt.z - SHOULDER.z);
+    fwd = -s.tip.z; height = s.tip.y;
+    const mid = { x: (s.tip.x + s.hilt.x) / 2, y: (s.tip.y + s.hilt.y) / 2, z: (s.tip.z + s.hilt.z) / 2 };
+    hits = inBox(s.tip) || inBox(s.hilt) || inBox(mid);
+  } else {
+    const hand = tf.get(curWA.holdHand ?? HOLD_BONE);
+    if (hand && curWA.blade) {
+      const bl = curWA.blade;
+      const bt = applyQuat({ x: bl.baseLocal[0], y: bl.baseLocal[1], z: bl.baseLocal[2] }, hand.rot);
+      const tt = applyQuat({ x: bl.tipLocal[0], y: bl.tipLocal[1], z: bl.tipLocal[2] }, hand.rot);
+      const base = { x: hand.pos.x + bt.x, y: hand.pos.y + bt.y, z: hand.pos.z + bt.z };
+      const tip = { x: hand.pos.x + tt.x, y: hand.pos.y + tt.y, z: hand.pos.z + tt.z };
+      placeBlade(base, tip);
+      fwd = -tip.z; height = tip.y;
+      hits = inBox(tip) || inBox(base) || inBox({ x: (tip.x + base.x) / 2, y: (tip.y + base.y) / 2, z: (tip.z + base.z) / 2 });
+    }
   }
+  hiltDot.visible = useAuthored;
+  guide.visible = useAuthored;
 
   // active-window flash
   const tot = curWA.windupTicks + curWA.activeTicks + curWA.winddownTicks;
@@ -149,7 +226,9 @@ function setPose(t: number) {
   const win = q("#inwin")!; win.textContent = inWin ? "YES (hit fires)" : "no"; win.className = inWin ? "hit" : "";
   const h = q("#hits")!; h.textContent = hits ? "HIT ✓" : "miss"; h.className = hits ? "hit" : "miss";
   q("#tval")!.textContent = t.toFixed(3);
-  q("#frame")!.textContent = `clip: ${curWA.clipId}`;
+  q("#frame")!.textContent = useAuthored
+    ? `authored swingPath · reach ${reach.toFixed(2)}${reach > ARM_REACH ? " ⚠ over" : ""}`
+    : `clip: ${curWA.clipId ?? "—"}`;
 }
 
 // ---- camera presets ---------------------------------------------------------
@@ -167,7 +246,7 @@ function q(s: string) { return document.querySelector(s) as HTMLElement | null; 
 const waSel = q("#wa") as HTMLSelectElement;
 for (const w of weaponActions) {
   const o = document.createElement("option");
-  o.value = w.id; o.textContent = `${w.id}  (${w.clipId})`;
+  o.value = w.id; o.textContent = w.swingPath ? `✦ ${w.id}  (authored)` : `${w.id}  (${w.clipId})`;
   waSel.appendChild(o);
 }
 waSel.value = curWA.id;
@@ -175,7 +254,7 @@ let t = 0, playing = false, speed = 1;
 const tSlider = q("#t") as HTMLInputElement;
 const STEP = 1 / 30;
 
-waSel.onchange = () => { curWA = weaponActions.find((w) => w.id === waSel.value)!; buildArc(); setPose(t); };
+waSel.onchange = () => { curWA = weaponActions.find((w) => w.id === waSel.value)!; useAuthored = !!curWA.swingPath; buildArc(); setPose(t); };
 tSlider.oninput = () => { t = parseFloat(tSlider.value); setPose(t); };
 q("#stepf")!.onclick = () => { t = Math.min(1, t + STEP); tSlider.value = String(t); setPose(t); };
 q("#stepb")!.onclick = () => { t = Math.max(0, t - STEP); tSlider.value = String(t); setPose(t); };
@@ -190,6 +269,11 @@ addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") (q("#stepf") as HTMLButtonElement).click();
   else if (e.key === "ArrowLeft") (q("#stepb") as HTMLButtonElement).click();
   else if (e.key === " ") { e.preventDefault(); (q("#play") as HTMLButtonElement).click(); }
+  // 'a' toggles authored swingPath ↔ Mixamo clip for the SAME action, so you
+  // can A/B the clean authored arc against the borrowed full-body flail.
+  else if (e.key === "a" || e.key === "A") {
+    if (curWA.swingPath) { useAuthored = !useAuthored; buildArc(); setPose(t); }
+  }
 });
 
 // ---- loop -------------------------------------------------------------------
