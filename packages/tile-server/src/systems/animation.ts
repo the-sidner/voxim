@@ -263,11 +263,25 @@ export function projectLocomotion(
   if (!clipId) return null;
 
   const loop = anim.loop ?? false;
-  const phaseTicks = def.phases[phaseName].ticks;
-  const phaseDurSec = phaseTicks > 0 ? phaseTicks * TICK_DT : 0;
+  // Auto-fit a one-shot clip to play ONCE across the full span of phases that
+  // share it — not each phase independently. A swing's clip spans windup +
+  // active + winddown; the old per-phase fit (1/phaseDur) made the 2-tick
+  // active phase advance the clip 0.5 PER TICK (a violent two-frame jolt — the
+  // "crippled swing / weird rotations"). Summing the same-clip phases makes it
+  // walk the clip smoothly (8 ticks → 12.5%/tick).
+  let spanTicks = def.phases[phaseName].ticks;
+  if (def.animation) {
+    let sum = 0;
+    for (const [pn, pe] of Object.entries(def.animation)) {
+      const ref = crouched && pe.crouchClipId ? pe.crouchClipId : pe.clipId;
+      if (ref === clipRef) sum += def.phases[pn]?.ticks ?? 0;
+    }
+    if (sum > 0) spanTicks = sum;
+  }
+  const spanDurSec = spanTicks > 0 ? spanTicks * TICK_DT : 0;
   const speedScale: number | "velocity" = anim.speedScale !== undefined
     ? anim.speedScale
-    : (!loop && phaseDurSec > 0 ? 1 / phaseDurSec : 1);
+    : (!loop && spanDurSec > 0 ? 1 / spanDurSec : 1);
 
   const time = computeClipTime(
     prevTimeByClip.get(clipId) ?? 0,

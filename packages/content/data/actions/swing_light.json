@@ -52,7 +52,7 @@
   "animation": {
     "windup": {
       "clipId": "$weapon.swing_clip",
-      "loop": true
+      "loop": false
     },
     "active": {
       "clipId": "$weapon.swing_clip",
