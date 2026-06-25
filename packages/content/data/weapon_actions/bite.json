@@ -6,9 +6,17 @@
   "clipId": "zombie_biting",
   "holdHand": "head",
   "blade": {
-    "baseLocal": [0, 0, 0],
-    "tipLocal":  [0, 0, -1.2],
-    "radius":    0.30
+    "baseLocal": [
+      0,
+      0,
+      0
+    ],
+    "tipLocal": [
+      0,
+      1.2,
+      0
+    ],
+    "radius": 0.3
   },
   "staminaCost": 0
 }

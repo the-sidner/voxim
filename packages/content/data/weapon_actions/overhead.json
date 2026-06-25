@@ -5,9 +5,17 @@
   "winddownTicks": 5,
   "clipId": "great_sword_attack",
   "blade": {
-    "baseLocal": [0, 0, 0],
-    "tipLocal":  [0, 0, -3.5],
-    "radius":    0.06
+    "baseLocal": [
+      0,
+      0,
+      0
+    ],
+    "tipLocal": [
+      0,
+      3.5,
+      0
+    ],
+    "radius": 0.06
   },
   "staminaCost": 14
 }

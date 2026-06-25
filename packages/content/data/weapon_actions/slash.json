@@ -5,9 +5,17 @@
   "winddownTicks": 4,
   "clipId": "great_sword_slash",
   "blade": {
-    "baseLocal": [0, 0, 0],
-    "tipLocal":  [0, 0, -2.5],
-    "radius":    0.05
+    "baseLocal": [
+      0,
+      0,
+      0
+    ],
+    "tipLocal": [
+      0,
+      2.5,
+      0
+    ],
+    "radius": 0.05
   },
   "staminaCost": 10,
   "rootMotion": {
