@@ -17,5 +17,76 @@
     ],
     "radius": 0.05
   },
-  "staminaCost": 10
+  "staminaCost": 10,
+  "swingPath": {
+    "length": 2.4,
+    "radius": 0.06,
+    "keyframes": [
+      {
+        "t": 0,
+        "hilt": {
+          "fwd": 0.1,
+          "right": -0.5,
+          "up": 3.5
+        },
+        "blade": {
+          "fwd": -0.1,
+          "right": -1,
+          "up": 0.1
+        }
+      },
+      {
+        "t": 0.25,
+        "hilt": {
+          "fwd": 0.6,
+          "right": -0.2,
+          "up": 3.3
+        },
+        "blade": {
+          "fwd": 0.6,
+          "right": -0.7,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.4,
+        "hilt": {
+          "fwd": 0.9,
+          "right": 0.3,
+          "up": 3.2
+        },
+        "blade": {
+          "fwd": 1,
+          "right": 0.1,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.55,
+        "hilt": {
+          "fwd": 0.7,
+          "right": 0.7,
+          "up": 3.1
+        },
+        "blade": {
+          "fwd": 0.5,
+          "right": 0.8,
+          "up": 0
+        }
+      },
+      {
+        "t": 1,
+        "hilt": {
+          "fwd": 0.4,
+          "right": 0.4,
+          "up": 3.5
+        },
+        "blade": {
+          "fwd": 0.6,
+          "right": 0.2,
+          "up": -0.05
+        }
+      }
+    ]
+  }
 }

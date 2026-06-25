@@ -17,5 +17,89 @@
     ],
     "radius": 0.07
   },
-  "staminaCost": 22
+  "staminaCost": 22,
+  "swingPath": {
+    "length": 3,
+    "radius": 0.08,
+    "keyframes": [
+      {
+        "t": 0,
+        "hilt": {
+          "fwd": -0.2,
+          "right": 0.9,
+          "up": 3.6
+        },
+        "blade": {
+          "fwd": -0.6,
+          "right": 0.9,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.33,
+        "hilt": {
+          "fwd": 0.6,
+          "right": 0.85,
+          "up": 3.3
+        },
+        "blade": {
+          "fwd": 0.6,
+          "right": 0.8,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.45,
+        "hilt": {
+          "fwd": 0.95,
+          "right": 0.2,
+          "up": 3.2
+        },
+        "blade": {
+          "fwd": 1,
+          "right": 0,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.56,
+        "hilt": {
+          "fwd": 0.6,
+          "right": -0.6,
+          "up": 3.1
+        },
+        "blade": {
+          "fwd": 0.4,
+          "right": -0.95,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.75,
+        "hilt": {
+          "fwd": -0.2,
+          "right": -0.9,
+          "up": 3.2
+        },
+        "blade": {
+          "fwd": -0.5,
+          "right": -0.9,
+          "up": 0
+        }
+      },
+      {
+        "t": 1,
+        "hilt": {
+          "fwd": 0.3,
+          "right": 0.5,
+          "up": 3.5
+        },
+        "blade": {
+          "fwd": 0.6,
+          "right": 0.4,
+          "up": -0.05
+        }
+      }
+    ]
+  }
 }

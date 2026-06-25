@@ -12,10 +12,81 @@
     ],
     "tipLocal": [
       0,
-      3.0,
+      3,
       0
     ],
     "radius": 0.04
   },
-  "staminaCost": 12
+  "staminaCost": 12,
+  "swingPath": {
+    "length": 2.8,
+    "radius": 0.06,
+    "keyframes": [
+      {
+        "t": 0,
+        "hilt": {
+          "fwd": -0.1,
+          "right": 0.5,
+          "up": 3.4
+        },
+        "blade": {
+          "fwd": 1,
+          "right": -0.05,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.29,
+        "hilt": {
+          "fwd": 0.2,
+          "right": 0.45,
+          "up": 3.4
+        },
+        "blade": {
+          "fwd": 1,
+          "right": 0,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.45,
+        "hilt": {
+          "fwd": 0.9,
+          "right": 0.35,
+          "up": 3.4
+        },
+        "blade": {
+          "fwd": 1,
+          "right": 0,
+          "up": 0
+        }
+      },
+      {
+        "t": 0.57,
+        "hilt": {
+          "fwd": 1,
+          "right": 0.3,
+          "up": 3.4
+        },
+        "blade": {
+          "fwd": 1,
+          "right": 0,
+          "up": 0
+        }
+      },
+      {
+        "t": 1,
+        "hilt": {
+          "fwd": 0.3,
+          "right": 0.45,
+          "up": 3.4
+        },
+        "blade": {
+          "fwd": 1,
+          "right": -0.05,
+          "up": 0
+        }
+      }
+    ]
+  }
 }
