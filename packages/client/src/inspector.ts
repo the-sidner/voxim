@@ -12,7 +12,7 @@
  */
 import * as THREE from "three";
 import {
-  BootstrapSource, evaluateAnimationLayers, solveSkeleton, applyQuat,
+  BootstrapSource, evaluateAnimationLayers, solveSkeleton, applyQuat, solveSwingPose,
 } from "@voxim/content";
 import type { ContentService, SkeletonDef, WeaponActionDef } from "@voxim/content";
 
@@ -31,11 +31,6 @@ const boneIndex = content.getBoneIndex(skeleton.id);
 const weaponActions: WeaponActionDef[] = [...content.weaponActions.values()]
   .filter((w) => !!w.swingPath || (!!w.blade && clipIndex.has(w.clipId ?? "")))
   .sort((a, b) => a.id.localeCompare(b.id));
-
-// Where the weapon arm's shoulder sits at rest (probed) — used to draw the
-// "reach" guide line from the hand to the authored hilt and flag overreach.
-const SHOULDER = { x: 0.51, y: 4.0, z: -0.08 };
-const ARM_REACH = 1.4;
 
 // ---- three.js scene ---------------------------------------------------------
 const canvas = document.getElementById("c") as HTMLCanvasElement;
@@ -168,11 +163,12 @@ function buildArc() {
 }
 
 function setPose(t: number) {
-  // Body pose: in authored mode the swing is no longer a clip, so show a
-  // neutral rest body — the arm will be IK'd onto the hilt in a later step;
-  // in clip mode show the Mixamo clip that currently drives everything.
-  const layers = useAuthored ? [] : [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }];
-  const tf = solveSkeleton(skeleton, boneIndex, evaluateAnimationLayers(skeleton, clipIndex, maskIndex, layers), 1, undefined);
+  // Pose: authored mode runs the procedural full-body swing producer (spine
+  // twist+lean, weapon-arm IK onto the hilt, off-hand counter); clip mode plays
+  // the Mixamo clip that currently drives the game.
+  const tf = useAuthored
+    ? solveSkeleton(skeleton, boneIndex, solveSwingPose(skeleton, boneIndex, new Map(), 1, curWA.swingPath!, t, {}), 1, undefined)
+    : solveSkeleton(skeleton, boneIndex, evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }]), 1, undefined);
 
   // bone segments + joints
   const segPos = segGeo.getAttribute("position") as THREE.BufferAttribute;
@@ -186,34 +182,36 @@ function setPose(t: number) {
   for (let i = 0; i < boneList.length; i++) { const p = tf.get(boneList[i].id)?.pos; if (p) jPos.setXYZ(i, p.x, p.y, p.z); }
   jPos.needsUpdate = true;
 
-  let fwd = 0, height = 0, hits = false, reach = 0;
-  if (useAuthored) {
+  let fwd = 0, height = 0, hits = false, gap = 0;
+  const hand = tf.get(curWA.holdHand ?? HOLD_BONE);
+  if (useAuthored && hand) {
+    // Real attached blade: from the IK'd hand, along its +Y (the weapon axis).
+    const ln = curWA.swingPath!.length;
+    const axis = applyQuat({ x: 0, y: 1, z: 0 }, hand.rot);
+    const base = { x: hand.pos.x, y: hand.pos.y, z: hand.pos.z };
+    const tip = { x: hand.pos.x + axis.x * ln, y: hand.pos.y + axis.y * ln, z: hand.pos.z + axis.z * ln };
+    placeBlade(base, tip);
+    // Authored hilt target + the gap the fist fell short by (over-reach clamp).
     const s = sampleSwing(t)!;
-    placeBlade(s.hilt, s.tip);
     hiltDot.position.set(s.hilt.x, s.hilt.y, s.hilt.z);
-    const hand = tf.get(curWA.holdHand ?? HOLD_BONE)?.pos ?? SHOULDER;
     const gp = guideGeo.getAttribute("position") as THREE.BufferAttribute;
-    gp.setXYZ(0, hand.x, hand.y, hand.z); gp.setXYZ(1, s.hilt.x, s.hilt.y, s.hilt.z); gp.needsUpdate = true;
+    gp.setXYZ(0, hand.pos.x, hand.pos.y, hand.pos.z); gp.setXYZ(1, s.hilt.x, s.hilt.y, s.hilt.z); gp.needsUpdate = true;
     guide.computeLineDistances();
-    reach = Math.hypot(s.hilt.x - SHOULDER.x, s.hilt.y - SHOULDER.y, s.hilt.z - SHOULDER.z);
-    fwd = -s.tip.z; height = s.tip.y;
-    const mid = { x: (s.tip.x + s.hilt.x) / 2, y: (s.tip.y + s.hilt.y) / 2, z: (s.tip.z + s.hilt.z) / 2 };
-    hits = inBox(s.tip) || inBox(s.hilt) || inBox(mid);
-  } else {
-    const hand = tf.get(curWA.holdHand ?? HOLD_BONE);
-    if (hand && curWA.blade) {
-      const bl = curWA.blade;
-      const bt = applyQuat({ x: bl.baseLocal[0], y: bl.baseLocal[1], z: bl.baseLocal[2] }, hand.rot);
-      const tt = applyQuat({ x: bl.tipLocal[0], y: bl.tipLocal[1], z: bl.tipLocal[2] }, hand.rot);
-      const base = { x: hand.pos.x + bt.x, y: hand.pos.y + bt.y, z: hand.pos.z + bt.z };
-      const tip = { x: hand.pos.x + tt.x, y: hand.pos.y + tt.y, z: hand.pos.z + tt.z };
-      placeBlade(base, tip);
-      fwd = -tip.z; height = tip.y;
-      hits = inBox(tip) || inBox(base) || inBox({ x: (tip.x + base.x) / 2, y: (tip.y + base.y) / 2, z: (tip.z + base.z) / 2 });
-    }
+    gap = Math.hypot(hand.pos.x - s.hilt.x, hand.pos.y - s.hilt.y, hand.pos.z - s.hilt.z);
+    fwd = -tip.z; height = tip.y;
+    hits = inBox(tip) || inBox(base) || inBox({ x: (tip.x + base.x) / 2, y: (tip.y + base.y) / 2, z: (tip.z + base.z) / 2 });
+  } else if (hand && curWA.blade) {
+    const bl = curWA.blade;
+    const bt = applyQuat({ x: bl.baseLocal[0], y: bl.baseLocal[1], z: bl.baseLocal[2] }, hand.rot);
+    const tt = applyQuat({ x: bl.tipLocal[0], y: bl.tipLocal[1], z: bl.tipLocal[2] }, hand.rot);
+    const base = { x: hand.pos.x + bt.x, y: hand.pos.y + bt.y, z: hand.pos.z + bt.z };
+    const tip = { x: hand.pos.x + tt.x, y: hand.pos.y + tt.y, z: hand.pos.z + tt.z };
+    placeBlade(base, tip);
+    fwd = -tip.z; height = tip.y;
+    hits = inBox(tip) || inBox(base) || inBox({ x: (tip.x + base.x) / 2, y: (tip.y + base.y) / 2, z: (tip.z + base.z) / 2 });
   }
-  hiltDot.visible = useAuthored;
-  guide.visible = useAuthored;
+  hiltDot.visible = useAuthored && gap > 0.03;
+  guide.visible = useAuthored && gap > 0.03;
 
   // active-window flash
   const tot = curWA.windupTicks + curWA.activeTicks + curWA.winddownTicks;
@@ -227,7 +225,7 @@ function setPose(t: number) {
   const h = q("#hits")!; h.textContent = hits ? "HIT ✓" : "miss"; h.className = hits ? "hit" : "miss";
   q("#tval")!.textContent = t.toFixed(3);
   q("#frame")!.textContent = useAuthored
-    ? `authored swingPath · reach ${reach.toFixed(2)}${reach > ARM_REACH ? " ⚠ over" : ""}`
+    ? `procedural swing${gap > 0.05 ? ` · ⚠ over-reach ${gap.toFixed(2)}` : ""}`
     : `clip: ${curWA.clipId ?? "—"}`;
 }
 

@@ -138,6 +138,10 @@ export { buildAnimationLibrary } from "./src/anim_library.ts";
 export type { BoneTransform } from "./src/skeleton_solver.ts";
 export { solveSkeleton, REST_POSE } from "./src/skeleton_solver.ts";
 
+// ---- Procedural full-body swing pose (inspector + client) ----
+export type { SwingSample, SwingPoseParams } from "./src/swing_pose.ts";
+export { sampleSwingPath, solveSwingPose } from "./src/swing_pose.ts";
+
 // ---- ModelRef ECS component ----
 export { ModelRef } from "./src/component.ts";
 

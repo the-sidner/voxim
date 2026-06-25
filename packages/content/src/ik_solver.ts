@@ -247,5 +247,5 @@ export function quatMultiply(a: Quat, b: Quat): Quat {
   };
 }
 
-export { applyQuat };
+export { applyQuat, quatFromUnitVectors };
 export type { Quat };
