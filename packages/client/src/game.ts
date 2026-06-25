@@ -892,8 +892,12 @@ export class VoximGame {
     }
 
     let predictedPos = null;
+    let localMovement: { x: number; y: number } | null = null;
     if (this.input) {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
+      // Movement INTENT (camera-relative world XY) — drives the local player's
+      // locomotion lean directly, so it's snappy/instant (not physics velocity).
+      localMovement = { x: datagram.movementX, y: datagram.movementY };
       this.connection.sendMovement(datagram);
       recordInput(datagram);
       // Track the send timestamp so we can derive RTT when this seq is
@@ -984,7 +988,7 @@ export class VoximGame {
     // whose kindGrid arrived before their heightmap.
     this.waterRenderer?.tick(now);
 
-    this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null);
+    this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null, localMovement);
 
     const tPostStart = performance.now();
     // Update world-space entity health bars + gate labels (frame-driven, not reactive)

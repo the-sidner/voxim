@@ -32,7 +32,8 @@ import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "
 import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
-import { solveSwingPose } from "@voxim/content";
+import { solveSwingPose, applyLocomotionPose } from "@voxim/content";
+import type { BoneRotation, LocoState } from "@voxim/content";
 
 // ---- secondary motion (snappy organic ease) --------------------------------
 // The follow-through chain that gets eased — spine + head. NOT the IK'd hands/
@@ -816,7 +817,29 @@ export class VoximRenderer {
 
   // ---- render loop ----
 
-  render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null, localFacing?: number | null): void {
+  /**
+   * Locomotion lean state for an entity. Local player: from movement INTENT
+   * (snappy, no physics velocity). Remotes: from networked velocity. Returns
+   * null when near-stationary so the FK fast-path skips the extra solve.
+   */
+  private locoState(
+    id: string, mesh: EntityMeshGroup,
+    localMovement: { x: number; y: number } | null, localFacing: number | null,
+  ): LocoState | null {
+    let mx: number, my: number, facing: number;
+    if (id === this.localPlayerId && localMovement) {
+      mx = localMovement.x; my = localMovement.y; facing = localFacing ?? mesh.facingAngle;
+    } else {
+      mx = mesh.velocityX; my = mesh.velocityY; facing = mesh.facingAngle;
+    }
+    const mag = Math.hypot(mx, my);
+    if (mag < 0.05) return null;
+    // lateral fraction of the move direction relative to facing (right = facing − 90°)
+    const strafe = (mx * Math.sin(facing) - my * Math.cos(facing)) / mag;
+    return { strafe: Math.max(-1, Math.min(1, strafe)), turn: 0 };
+  }
+
+  render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null, localFacing?: number | null, localMovement?: { x: number; y: number } | null): void {
     // Compute a smooth fractional tick that advances at 20 Hz based on real time.
     // This makes animations run at 60 fps instead of stepping every 50 ms.
     const now = performance.now();
@@ -833,7 +856,7 @@ export class VoximRenderer {
     // PREVIOUS frame's timestamp here — it's advanced later in the post-FX block.
     const animDtMs = this.lastFrameMs > 0 ? Math.min(now - this.lastFrameMs, 100) : 16;
     // Drive skeleton poses for all animated entities.
-    for (const [, mesh] of this.entities.all) {
+    for (const [id, mesh] of this.entities.all) {
       if (mesh.boneGroups && mesh.skeletonId && this.content) {
         const anim = mesh.animationState;
         const skeleton   = this.content.getSkeletonSync(mesh.skeletonId);
@@ -845,26 +868,29 @@ export class VoximRenderer {
         const layers = blendAnimationLayers(mesh.layerFades, anim?.layers ?? [], animDtMs);
         const animForPose = anim ? { ...anim, layers } : null;
 
-        // Procedural swing: if the actor is mid-swing on a weapon action with an
-        // authored swingPath, drive the whole upper body from that arc (spine
-        // twist+lean, weapon-arm IK, off-hand counter) instead of the borrowed
-        // Mixamo clip. The lower body keeps locomotion: we strip the swing clip
-        // from the base layers so the legs walk/idle while the arms swing.
+        // Fused pose pipeline: locomotion lean (base) → swing overlay → IK, all
+        // composed on one skeleton. The swing producer takes a basePose, so the
+        // locomotion lean feeds it and the two stack. Lower body keeps the
+        // locomotion clip; the swing clip is stripped so legs walk while arms swing.
         const swingWA = anim?.weaponActionId
           ? this.weaponActionsMap.get(anim.weaponActionId)
           : undefined;
+        const loco = this.locoState(id, mesh, localMovement ?? null, localFacing ?? null);
         let pose: Map<string, THREE.Euler>;
-        if (swingWA?.swingPath && skeleton) {
-          const total = swingWA.windupTicks + swingWA.activeTicks + swingWA.winddownTicks;
-          const ticks = anim!.ticksIntoAction + (now - mesh.lastAnimUpdateMs) / 50;
-          const t = Math.max(0, Math.min(ticks / total, 1));
-          const baseLayers = layers.filter((l) => l.clipId !== swingWA.clipId);
-          const basePose = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
+        if (skeleton && (swingWA?.swingPath || loco)) {
           const boneIndex = this.content.getBoneIndex(mesh.skeletonId);
-          const swing = solveSwingPose(skeleton, boneIndex, basePose, mesh.modelScale, swingWA.swingPath, t, { morphParams: mesh.modelMorphs });
+          const baseLayers = swingWA?.swingPath ? layers.filter((l) => l.clipId !== swingWA.clipId) : layers;
+          let rot: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
+          if (loco) rot = applyLocomotionPose(skeleton, boneIndex, rot, mesh.modelScale, loco, { morphParams: mesh.modelMorphs });
+          if (swingWA?.swingPath) {
+            const total = swingWA.windupTicks + swingWA.activeTicks + swingWA.winddownTicks;
+            const ticks = anim!.ticksIntoAction + (now - mesh.lastAnimUpdateMs) / 50;
+            const t = Math.max(0, Math.min(ticks / total, 1));
+            rot = solveSwingPose(skeleton, boneIndex, rot, mesh.modelScale, swingWA.swingPath, t, { morphParams: mesh.modelMorphs });
+          }
           // rewrap the mixed map (THREE.Euler for untouched bones, {x,y,z} for overridden) to THREE.Euler
           pose = new Map<string, THREE.Euler>();
-          for (const [bone, r] of swing) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
+          for (const [bone, r] of rot) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
         } else {
           pose = evaluatePose(skeleton, clipIndex, maskIndex, animForPose);
         }
