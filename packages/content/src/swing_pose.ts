@@ -17,7 +17,7 @@
  *
  * All vectors are SOLVER space (x=right, y=up, z=-fwd), matching skeleton_solver.
  */
-import type { SkeletonDef, BoneDef, SwingPathDef, SwingKeyframe } from "./types.ts";
+import type { SkeletonDef, BoneDef, SwingPathDef, SwingKeyframe, GripDef } from "./types.ts";
 import type { BoneRotation, Quat } from "./ik_solver.ts";
 import {
   applyQuat, quatMultiply, invertQuat, eulerFromQuat, quatFromUnitVectors,
@@ -34,6 +34,8 @@ const dot = (a: V3, b: V3): number => a.x * b.x + a.y * b.y + a.z * b.z;
 const len = (a: V3): number => Math.hypot(a.x, a.y, a.z);
 const norm = (a: V3): V3 => { const l = len(a) || 1; return { x: a.x / l, y: a.y / l, z: a.z / l }; };
 const IDENT: Quat = { x: 0, y: 0, z: 0, w: 1 };
+/** Default off-hand elbow pole (solver space): down, slightly left + back. */
+const LEFT_POLE: V3 = { x: -0.4, y: -0.9, z: 0.35 };
 
 /** actor-local {fwd,right,up} → solver {x:right, y:up, z:-fwd}. */
 const toSolver = (p: { fwd: number; right: number; up: number }): V3 => ({ x: p.right, y: p.up, z: -p.fwd });
@@ -265,27 +267,34 @@ export function solveSwingPose(
   bendSpine(skeleton, boneIndex, out, scale, quatFromEulerXYZ(lean, yaw, 0), morph);
 
   // 2. Re-solve FK with the spine bent, so the shoulder (and arm rest dirs) are
-  //    where the torso just put them, then IK the weapon arm onto the hilt.
+  //    where the torso put them, then IK each gripping arm onto its grip point.
+  //    ONE primitive (aimLimb) drives every hand — 1H grips the hilt; a 2H off
+  //    hand grips a point further down the same blade axis. Default (no authored
+  //    grips) = today's 1H: right hand on the hilt, driving the blade.
   const P = solveSkeleton(skeleton, boneIndex, out, scale, morph);
-  const handR = p.handBone;
-  const lowerR = boneIndex.get(handR)?.parent;
-  const upperR = lowerR ? boneIndex.get(lowerR)?.parent : undefined;
-  if (upperR && lowerR) {
-    const aimWorld = applyQuat(s.bladeDir, IDENT); // bladeDir is already solver-world
-    aimLimb(P, boneIndex, upperR, lowerR, handR, hilt, p.poleHint, p.bladeAxisLocal, aimWorld, out);
+  const grips: GripDef[] = sp.grips ?? [{ bone: p.handBone, along: 0, drivesBlade: true }];
+  const gripped = new Set(grips.map((g) => g.bone));
+  for (const g of grips) {
+    const lower = boneIndex.get(g.bone)?.parent;
+    const upper = lower ? boneIndex.get(lower)?.parent : undefined;
+    if (!upper || !lower) continue;
+    const target = add(hilt, mul(s.bladeDir, g.along * s.length * scale));
+    const pole = g.poleHint ? toSolver(g.poleHint) : (g.bone === p.handBone ? p.poleHint : LEFT_POLE);
+    const bladeAxis = g.drivesBlade ? p.bladeAxisLocal : null;
+    const aimWorld = g.drivesBlade ? s.bladeDir : null;
+    aimLimb(P, boneIndex, upper, lower, g.bone, target, pole, bladeAxis, aimWorld, out);
   }
 
-  // 3. Off-hand counter — bring the free arm to a guard that trails the swing,
-  //    so it isn't a dead rest T-pose. A point back + across, lowering as the
-  //    swing reaches forward.
-  if (p.offHandBone) {
+  // 3. Off-hand counter — if the off hand isn't gripping (the 1H case), bring it
+  //    to a guard that trails the swing, so it isn't a dead rest T-pose.
+  if (p.offHandBone && !gripped.has(p.offHandBone)) {
     const handL = p.offHandBone;
     const lowerL = boneIndex.get(handL)?.parent;
     const upperL = lowerL ? boneIndex.get(lowerL)?.parent : undefined;
     if (upperL && lowerL) {
       const reachFwd = Math.max(0, -s.hilt.z);
       const guard = mul({ x: -0.55, y: 3.3 - 0.25 * reachFwd, z: 0.45 + 0.3 * reachFwd }, scale);
-      aimLimb(P, boneIndex, upperL, lowerL, handL, guard, { x: -0.4, y: -0.9, z: 0.35 }, null, null, out);
+      aimLimb(P, boneIndex, upperL, lowerL, handL, guard, LEFT_POLE, null, null, out);
     }
   }
 

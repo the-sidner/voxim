@@ -552,6 +552,30 @@ export interface SwingPathDef {
   radius: number;
   /** Keyframes over normalised swing time, t ascending in [0,1]. */
   keyframes: SwingKeyframe[];
+  /**
+   * Which hands grip the weapon and where — lets ONE authored arc serve a 1H
+   * sword (right hand only, left free) or a 2H weapon (both hands on the same
+   * haft). Absent ⇒ the default 1H grip (right hand on the hilt, driving the
+   * blade; the off hand counter-poses). The same IK primitive aims every
+   * gripping arm; only each hand's target differs.
+   */
+  grips?: GripDef[];
+}
+
+/** One hand's grip on the weapon during a swing (see SwingPathDef.grips). */
+export interface GripDef {
+  /** Hand bone that grips (e.g. "hand_r" / "hand_l"). Its arm chain is the
+   *  bone's parent (lower arm) + grandparent (upper arm). */
+  bone: string;
+  /** Signed offset along the blade axis, in blade-LENGTH units, from the hilt.
+   *  0 = on the hilt; negative = toward the pommel (where a 2H off hand grips).
+   *  target = hilt + normalize(bladeDir) * (along * length). */
+  along: number;
+  /** This hand rolls its wrist so the blade points along the authored
+   *  direction. At most one grip per swing should set it. Default false. */
+  drivesBlade?: boolean;
+  /** Elbow pole hint, actor-local {fwd,right,up}. Defaults per side. */
+  poleHint?: { fwd: number; right: number; up: number };
 }
 
 /**
