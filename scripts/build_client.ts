@@ -36,6 +36,10 @@ await esbuild.build({
 // (The voxel-bake Web Worker was retired in T-281 — every voxel surface now
 // bakes synchronously through the bakeVoxels kitchen, so there is no second
 // worker bundle to build.)
+//
+// The swing inspector is a standalone dev tool with its own bundle
+// (scripts/build_inspector.ts, `deno task inspector`) — kept separate so it can
+// be (re)built without overwriting the dev container's root-owned game.js.
 
 await esbuild.stop();
 console.log("[build] packages/client/dist/game.js written");

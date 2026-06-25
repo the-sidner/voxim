@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voxim — Swing Inspector</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #14161a; color: #d6d8dc; font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; overflow: hidden; }
+    #c { position: fixed; inset: 0; }
+    #panel { position: fixed; top: 0; left: 0; width: 340px; max-height: 100vh; overflow: auto;
+      background: rgba(20,22,26,.92); border-right: 1px solid #2a2e36; padding: 12px 14px; }
+    h1 { font-size: 14px; margin: 0 0 10px; color: #9fb4c8; }
+    .row { margin: 8px 0; }
+    label { display: block; color: #8b93a0; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    select, input[type=range], button { width: 100%; }
+    select { background: #1d2128; color: #e6e8ec; border: 1px solid #333a44; padding: 5px; border-radius: 4px; }
+    button { background: #232934; color: #d6d8dc; border: 1px solid #333a44; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #2c3340; }
+    button.on { background: #2d4a63; border-color: #3d6a8e; }
+    .btns { display: flex; gap: 6px; }
+    .btns button { width: auto; flex: 1; }
+    .stat { display: flex; justify-content: space-between; padding: 2px 0; }
+    .stat b { color: #e6e8ec; font-weight: 600; }
+    .hit { color: #6fcf6f; } .miss { color: #d97676; }
+    #tval { color: #e6e8ec; }
+    .hint { color: #6b7280; font-size: 11px; margin-top: 6px; }
+    .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="panel">
+    <h1>⚔ Swing Inspector</h1>
+    <div class="row">
+      <label>Weapon action (clip)</label>
+      <select id="wa"></select>
+    </div>
+    <div class="row">
+      <label>Time <span id="tval">0.00</span> &nbsp; <span id="frame"></span></label>
+      <input id="t" type="range" min="0" max="1" step="0.001" value="0" />
+    </div>
+    <div class="row btns">
+      <button id="stepb">◀ frame</button>
+      <button id="play">▶ play</button>
+      <button id="stepf">frame ▶</button>
+    </div>
+    <div class="row btns">
+      <button data-spd="0.25">0.25×</button>
+      <button data-spd="0.5">0.5×</button>
+      <button data-spd="1" class="on">1×</button>
+    </div>
+    <div class="row btns">
+      <button data-cam="side" class="on">Side</button>
+      <button data-cam="front">Front</button>
+      <button data-cam="top">Top</button>
+      <button data-cam="iso">Iso</button>
+    </div>
+    <div class="row">
+      <label>Readout</label>
+      <div class="stat"><span>blade forward (toward enemy)</span><b id="fwd">—</b></div>
+      <div class="stat"><span>blade height</span><b id="hgt">—</b></div>
+      <div class="stat"><span>in active hit window?</span><b id="inwin">—</b></div>
+      <div class="stat"><span>hits frontal enemy NOW?</span><b id="hits">—</b></div>
+    </div>
+    <div class="hint">
+      <span class="swatch" style="background:#d97826"></span>blade &nbsp;
+      <span class="swatch" style="background:#5a7fb0"></span>tip trail (arc) &nbsp;
+      <span class="swatch" style="background:#6c1f1c"></span>enemy in front<br>
+      The blade should sweep <b>through the red enemy box</b> during the
+      <b>active window</b> (highlighted on the slider). Use Side view to see the arc.
+    </div>
+  </div>
+  <script type="module" src="/dist/inspector.js"></script>
+</body>
+</html>

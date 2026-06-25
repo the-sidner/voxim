@@ -26,6 +26,7 @@
     "ai-manager":   "deno run --allow-net --allow-env packages/ai-manager/main.ts",
     "atlas":        "deno run --allow-net --allow-read --allow-env packages/atlas/main.ts",
     "bundle":       "deno run -A --node-modules-dir=auto scripts/build_client.ts",
+    "inspector":    "deno run --allow-read --allow-write scripts/gen_content_blob.ts && deno run -A --node-modules-dir=auto scripts/build_inspector.ts",
     "client-dev":   "deno run -A --node-modules-dir=auto scripts/serve_client.ts",
     "demo":         "deno task bundle && deno task tile",
     "demo-server":  "deno task tile",
