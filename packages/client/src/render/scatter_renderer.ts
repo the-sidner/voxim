@@ -145,8 +145,9 @@ export class ScatterRenderer {
         for (const m of matIds) {
           const archId = `${HANDLE_PREFIX}${def.id}:${i}|${m}`;
           if (!this.instancePool.hasArchetype(archId)) {
-            const geometry = geometryFromBaked(bakeVoxels(atoms, m));
-            const material = buildVoxelMaterial(this.content.getMaterialById(m), m);
+            const matDef = this.content.getMaterialById(m);
+            const geometry = geometryFromBaked(bakeVoxels(atoms, m, undefined, matDef?.render?.tintJitter));
+            const material = buildVoxelMaterial(matDef, m);
             canopyFade.register(material, { voxelMode: true, wind: true });
             this.instancePool.registerArchetype(archId, {
               geometry, material, castShadow: true, receiveShadow: true,

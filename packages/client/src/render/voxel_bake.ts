@@ -168,11 +168,27 @@ function voxHash(x: number, y: number, z: number, salt: number): number {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
 }
 
+/** Per-voxel colour-mottle amplitude — content-authored via
+ *  `MaterialDef.render.tintJitter` (T-311 Phase 0a, grammar G6). The default
+ *  reproduces the pre-T-311 hardcoded mottle EXACTLY, so a material that declares
+ *  no tintJitter bakes byte-identically. */
+export interface TintJitter {
+  /** Brightness multiplier range [min,max], sampled by a per-voxel hash. */
+  brightness: [number, number];
+  /** Warm↔cool tilt amplitude (red up / blue down). */
+  warmCool: number;
+}
+
+const DEFAULT_TINT: TintJitter = { brightness: [0.80, 1.20], warmCool: 0.14 };
+
 /** Per-voxel tint (rgb multipliers around 1.0): brightness jitter + a warm/cool
- *  tilt. Tuned subtle — mottles the surface without losing the material's identity. */
-function voxelTint(cx: number, cy: number, cz: number): [number, number, number] {
-  const bright = 0.80 + 0.40 * voxHash(cx, cy, cz, 1);   // 0.80 .. 1.20
-  const warm = (voxHash(cx, cy, cz, 2) - 0.5) * 0.14;     // ±0.07 warm/cool tilt
+ *  tilt. Tuned subtle — mottles the surface without losing the material's identity.
+ *  The hash stays sub-voxel dither; the AMPLITUDE is the content knob, so richness
+ *  is authored not hardcoded (the doctrine's position-hash rule). */
+function voxelTint(cx: number, cy: number, cz: number, t: TintJitter): [number, number, number] {
+  const [lo, hi] = t.brightness;
+  const bright = lo + (hi - lo) * voxHash(cx, cy, cz, 1);
+  const warm = (voxHash(cx, cy, cz, 2) - 0.5) * t.warmCool;
   return [bright * (1 + warm), bright, bright * (1 - warm)];
 }
 
@@ -191,6 +207,9 @@ export function bakeVoxels(
   /** Optional constant displacement magnitude for every atom (T-283 terrain);
    *  omitted → each voxel uses 10 % of its own smallest edge. */
   mag?: number,
+  /** Per-voxel colour-mottle amplitude (content: MaterialDef.render.tintJitter).
+   *  Omitted/undefined → the engine default (byte-identical to pre-T-311). */
+  tint: TintJitter = DEFAULT_TINT,
 ): BakedMesh {
   const voxels: { px: number; py: number; pz: number; baked: BakedVoxel }[] = [];
   for (const a of atoms) {
@@ -211,7 +230,7 @@ export function bakeVoxels(
 
   let vOff = 0, iOff = 0;
   for (const { px, py, pz, baked } of voxels) {
-    const [tr, tg, tb] = voxelTint(px, py, pz);   // one tint per voxel
+    const [tr, tg, tb] = voxelTint(px, py, pz, tint);   // one tint per voxel
     for (let i = 0; i < BOX_VERT_COUNT; i++) {
       const v = vOff + i;
       // Translate the voxel's local geometry to its model-space center.

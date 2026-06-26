@@ -546,8 +546,9 @@ export class VoximRenderer {
     });
     const meshes: THREE.Mesh[] = [];
     for (const [matId, atoms] of byMat) {
-      const geo = geometryFromBaked(bakeVoxels(atoms, matId, TERRAIN_DISP_MAG));
-      const m = buildVoxelMaterial(this.content?.getMaterialSync(matId), matId);
+      const matDef = this.content?.getMaterialSync(matId);
+      const geo = geometryFromBaked(bakeVoxels(atoms, matId, TERRAIN_DISP_MAG, matDef?.render?.tintJitter));
+      const m = buildVoxelMaterial(matDef, matId);
       canopyFade.register(m, { voxelMode: true });
       const me = new THREE.Mesh(geo, m);
       me.name = "terrain";

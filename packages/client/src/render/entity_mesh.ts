@@ -426,9 +426,10 @@ function buildMergedSubMeshes(
   for (const n of nodes) matIds.add(n.materialId);
   const meshes: THREE.Mesh[] = [];
   for (const matId of matIds) {
-    const baked = bakeVoxels(atoms, matId);
+    const matDef = materials.get(matId);
+    const baked = bakeVoxels(atoms, matId, undefined, matDef?.render?.tintJitter);
     if (baked.indices.length === 0) continue;
-    const mesh = new THREE.Mesh(geometryFromBaked(baked), buildVoxelMaterial(materials.get(matId), matId, onTop));
+    const mesh = new THREE.Mesh(geometryFromBaked(baked), buildVoxelMaterial(matDef, matId, onTop));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     meshes.push(mesh);
