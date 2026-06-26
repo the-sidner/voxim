@@ -111,6 +111,7 @@ const WRITABLE_PREFIXES = [
   "generators/",
   "skeletons/",
   "materials/",   // T-311 Phase 1b — the Studio Material editor writes render blocks
+  "procmodels/",  // T-311 Phase 1a — the Studio ProcModel editor writes tuned params
 ];
 
 function isWritablePath(file: string): boolean {

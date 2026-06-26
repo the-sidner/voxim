@@ -7,13 +7,15 @@ import { useEffect, useState } from "preact/hooks";
 import { VoxelEditor } from "./voxel-editor/VoxelEditor.tsx";
 import { AnimationEditor } from "./animation-editor/AnimationEditor.tsx";
 import { MaterialEditor } from "./material-editor/MaterialEditor.tsx";
+import { ProcModelEditor } from "./procmodel-editor/ProcModelEditor.tsx";
 
-type Route = "voxel" | "anim" | "material";
+type Route = "voxel" | "anim" | "material" | "procmodel";
 
 function currentRoute(): Route {
   const h = (globalThis as { location?: Location }).location?.hash ?? "";
   if (h === "#anim") return "anim";
   if (h === "#material") return "material";
+  if (h === "#procmodel") return "procmodel";
   return "voxel";
 }
 
@@ -35,7 +37,10 @@ export function App() {
     <>
       <TopBar route={route} onPick={go} />
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        {route === "voxel" ? <VoxelEditor /> : route === "anim" ? <AnimationEditor /> : <MaterialEditor />}
+        {route === "voxel" ? <VoxelEditor />
+          : route === "anim" ? <AnimationEditor />
+          : route === "material" ? <MaterialEditor />
+          : <ProcModelEditor />}
       </div>
     </>
   );
@@ -57,6 +62,10 @@ function TopBar({ route, onPick }: { route: Route; onPick: (r: Route) => void })
         class={`dt-tab ${route === "material" ? "is-active" : ""}`}
         onClick={() => onPick("material")}
       >Material</button>
+      <button
+        class={`dt-tab ${route === "procmodel" ? "is-active" : ""}`}
+        onClick={() => onPick("procmodel")}
+      >ProcModel</button>
     </div>
   );
 }
