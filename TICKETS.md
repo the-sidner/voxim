@@ -1070,7 +1070,18 @@ high-end stylized voxel — hard edges, but clean, richly lit, with glow/AO/haze
 phases, each a self-contained commit verified via the testplay screenshot harness.
 
 ### T-311 · Visual data-model arc — author the world's look as content, not client hacks
-Effort: XL   Status: planned   Plan: `VISUAL_DATAMODEL_PLAN.md` + `ART_DIRECTION.md`
+Effort: XL   Status: in-progress   Plan: `VISUAL_DATAMODEL_PLAN.md` + `ART_DIRECTION.md`
+
+**Progress:** Phase 0a landed — `MaterialDef.render` block frozen (I2) + TextureStyle
+registry retiring the numeric `DRAW_FN` switch (`abdaf2d`); per-voxel `tintJitter`
+amplitude threaded from `render` through `bakeVoxels` (`a649dee`). Both byte-identical /
+zero visual change, `deno check` + parity tests green. **0b/0c/0d deliberately deferred,
+not skipped:** 0b (CLIFF_* → config) is interim that Phase 6 deletes wholesale + would
+need new bootstrap plumbing → throwaway; 0c (`buildMaterialMap`) is a 10-line stable
+atlas-enum lookup, not a richness hack → converting it is ceremony; 0d (FieldExpr/
+FieldSampler registry) is premature before the Phase-3 grids exist (the critique's #5 —
+build the sampler with its data, not before). Next: Phase 1 (Studio Material + ProcModel
+live-preview panels) → the first hero-cell density slice.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
