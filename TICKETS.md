@@ -1080,8 +1080,11 @@ not skipped:** 0b (CLIFF_* → config) is interim that Phase 6 deletes wholesale
 need new bootstrap plumbing → throwaway; 0c (`buildMaterialMap`) is a 10-line stable
 atlas-enum lookup, not a richness hack → converting it is ceremony; 0d (FieldExpr/
 FieldSampler registry) is premature before the Phase-3 grids exist (the critique's #5 —
-build the sampler with its data, not before). Next: Phase 1 (Studio Material + ProcModel
-live-preview panels) → the first hero-cell density slice.
+build the sampler with its data, not before). Phase 1b landed — the Studio "Material"
+editor (`0f6f73d`): live-previews `MaterialDef.render` through the REAL shipped runtime
+(curated `@voxim/client/render` barrel; `bakeVoxels`+`buildVoxelMaterial`+`getVoxelTexture`
+bundled into the studio, verified). Next: Phase 1a (Studio ProcModel + Scatter-Field-Painter
+panel) → the first hero-cell density slice.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
