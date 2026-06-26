@@ -13,6 +13,8 @@
 export type {
   MaterialId,
   MaterialDef,
+  MaterialRenderDef,
+  MaterialVariant,
   MaterialProperties,
   VoxelNode,
   SubObjectRef,

@@ -110,6 +110,7 @@ const WRITABLE_PREFIXES = [
   "clip_overrides/",
   "generators/",
   "skeletons/",
+  "materials/",   // T-311 Phase 1b — the Studio Material editor writes render blocks
 ];
 
 function isWritablePath(file: string): boolean {

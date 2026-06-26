@@ -1,7 +1,10 @@
 {
   "name": "@voxim/client",
   "version": "0.1.0",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./mod.ts",
+    "./render": "./src/render/studio_render.ts"
+  },
   "imports": {
     "three": "https://esm.sh/three@0.167.0",
     "preact": "npm:preact@10.25.4",
