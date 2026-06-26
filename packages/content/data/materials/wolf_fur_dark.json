@@ -17,5 +17,8 @@
   "tags": [
     "organic",
     "fur"
-  ]
+  ],
+  "render": {
+    "textureStyle": "organic"
+  }
 }

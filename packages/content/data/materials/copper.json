@@ -17,5 +17,8 @@
   "tags": [
     "metal",
     "copper"
-  ]
+  ],
+  "render": {
+    "textureStyle": "metal"
+  }
 }

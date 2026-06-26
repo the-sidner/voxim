@@ -18,5 +18,8 @@
     "metal",
     "alloy",
     "iron"
-  ]
+  ],
+  "render": {
+    "textureStyle": "metal"
+  }
 }

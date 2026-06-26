@@ -17,5 +17,8 @@
   "tags": [
     "organic",
     "bone"
-  ]
+  ],
+  "render": {
+    "textureStyle": "bone"
+  }
 }

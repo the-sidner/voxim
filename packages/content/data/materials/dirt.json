@@ -17,5 +17,8 @@
   "tags": [
     "ground",
     "soil"
-  ]
+  ],
+  "render": {
+    "textureStyle": "dirt"
+  }
 }

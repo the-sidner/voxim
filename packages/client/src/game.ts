@@ -53,6 +53,7 @@ import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { BootstrapSource } from "@voxim/content";
 import { crossCheckProcModels } from "./render/procmodel/mod.ts";
+import { crossCheckTextureStyles } from "./render/material_textures.ts";
 import type { ContentService, Prefab, ToolData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
@@ -309,6 +310,9 @@ export class VoximGame {
       // to a registered generator and every ScatterDef.procModel resolves — the
       // client twin of server.ts's content cross-checks (generators live here).
       crossCheckProcModels(this.contentService);
+      // T-311 Phase 0a: every MaterialDef.render.textureStyle resolves to a
+      // registered TextureStyle (the client twin of the procmodel cross-check).
+      crossCheckTextureStyles(this.contentService);
       console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons, ${this.contentService.animationLibraries.size} animation libraries`);
     } else {
       console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");

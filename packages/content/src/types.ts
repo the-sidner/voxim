@@ -32,6 +32,57 @@ export interface MaterialProperties {
   toughness: number;
 }
 
+/**
+ * Per-material RENDER look block (T-311 Phase 0a). The shape is FROZEN here in
+ * one commit (VISUAL_DATAMODEL_PLAN.md invariant I2) so the visual axes that
+ * extend it — texture / tint / relief / wetness / reflect / moss / glow — never
+ * re-break the schema. Only `textureStyle` has a consumer today; the rest are
+ * reserved and read by later phases. Every field optional; absent = engine
+ * default (so adding the block to a material is a pure file-drop, no code edit).
+ */
+export interface MaterialRenderDef {
+  /** Surface-texture style id → client TextureStyle registry (grammar G4,
+   *  Phase 0a). Absent = flat colour. */
+  textureStyle?: string;
+  /** Per-voxel colour mottle (G6, Phase 0a pt.2): brightness range + warm/cool
+   *  tilt. Absent = engine-default jitter. */
+  tintJitter?: { brightness: [number, number]; warmCool: number };
+  /** Relief/displacement detail knobs (Phase 4). */
+  relief?: { resolution?: number; detail?: number; dispMag?: number };
+  /** Wetness/gloss response, driven by SurfaceStateGrid (Phase 4). */
+  wetness?: { gloss: number; darken: number; reflectGain: number };
+  /** Reflection treatment, shared with water via the SurfaceTreatment registry
+   *  (Phase 5). */
+  reflect?: { strength: number; tint: number; blur: number; glint: number };
+  /** Moss-creep blend, driven by the OvergrowthGrid (Phase 4): material to blend
+   *  toward + per-orientation bias + crack-joint boost + tint shift. */
+  mossBlend?: {
+    material: string;
+    floorBias: number;
+    wallBias: number;
+    jointBoost: number;
+    tintShift: [number, number, number];
+  };
+  /** Emissive family for flame/rune tinting — 'warm' | 'corruption' | 'cold'
+   *  (Phase 2). */
+  glowFamily?: string;
+}
+
+/**
+ * Material STATE-LADDER variant (T-311 Phase 2, grammar G3). One ordered ladder
+ * models BOTH two-state (sacred↔corrupted) and N-state decay
+ * (fresh→weathered→decayed) + settlement upgrade-stages. Selected by a
+ * SERVER-authoritative index resolved by STABLE string `id`→index at boot (never
+ * raw array position — invariant I3c). Reserved shape; consumer lands in Phase 2.
+ */
+export interface MaterialVariant {
+  id: string;
+  colorOverride?: number;
+  colorShift?: { h: number; s: number; l: number };
+  emissiveCracks?: number;
+  addsTags?: readonly string[];
+}
+
 export interface MaterialDef {
   id: MaterialId;
   name: string;        // unique string key used by the craft system
@@ -47,6 +98,11 @@ export interface MaterialDef {
   properties: MaterialProperties;
   /** Categorical tags. Indexed by ContentRegistry.byTag() (T-174). */
   tags?: readonly string[];
+  /** Render look block (T-311 Phase 0a; shape frozen per invariant I2). */
+  render?: MaterialRenderDef;
+  /** State-ladder variants (T-311 Phase 2, grammar G3) — selected by a
+   *  server-authoritative index. Reserved; consumer lands in Phase 2. */
+  variants?: readonly MaterialVariant[];
 }
 
 // ---- voxel model ----

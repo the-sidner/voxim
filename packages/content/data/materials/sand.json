@@ -16,5 +16,8 @@
   },
   "tags": [
     "ground"
-  ]
+  ],
+  "render": {
+    "textureStyle": "sand"
+  }
 }

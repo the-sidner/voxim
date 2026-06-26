@@ -13,5 +13,8 @@
     "flexibility": 0.5,
     "flammability": 1.0,
     "toughness": 0.05
+  },
+  "render": {
+    "textureStyle": "organic"
   }
 }

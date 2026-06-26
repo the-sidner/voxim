@@ -17,5 +17,8 @@
   "tags": [
     "stone",
     "mineral"
-  ]
+  ],
+  "render": {
+    "textureStyle": "stone"
+  }
 }

@@ -17,5 +17,8 @@
   "tags": [
     "ground",
     "vegetation"
-  ]
+  ],
+  "render": {
+    "textureStyle": "organic"
+  }
 }

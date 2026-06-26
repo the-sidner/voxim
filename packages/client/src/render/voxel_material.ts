@@ -30,7 +30,7 @@ export function buildVoxelMaterial(
   const emissive = matDef && matDef.emissive > 0
     ? new THREE.Color(color).multiplyScalar(matDef.emissive * 2.2)
     : new THREE.Color(0x000000);
-  const tex = getVoxelTexture(materialId, color);
+  const tex = getVoxelTexture(matDef?.render?.textureStyle, materialId, color);
   return new THREE.MeshPhongMaterial({
     color: tex ? 0xffffff : color,
     map: tex ?? undefined,

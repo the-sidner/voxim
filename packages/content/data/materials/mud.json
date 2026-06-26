@@ -18,5 +18,8 @@
     "ground",
     "soil",
     "wet"
-  ]
+  ],
+  "render": {
+    "textureStyle": "dirt"
+  }
 }

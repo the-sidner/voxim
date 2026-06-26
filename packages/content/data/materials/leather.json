@@ -13,5 +13,8 @@
     "flexibility": 0.8,
     "flammability": 0.5,
     "toughness": 0.4
+  },
+  "render": {
+    "textureStyle": "leather"
   }
 }
