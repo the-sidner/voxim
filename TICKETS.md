@@ -1032,11 +1032,13 @@ secondary motion (snappy organic ease). LANDED: `bendSpine` primitive + `applyLo
 (strafe/turn lean) composing with the swing in the inspector; **two-arm IK grips** (`GripDef` +
 `swingPath.grips` — one arc serves 1H/2H, both hands via the one aimLimb primitive, commit 9190424);
 **secondary motion** (snappy exponential ease on spine/head, NOT a physics-velocity spring — user
-constraint; hands excluded so blade==hit; commit 05f13c2). NEXT: wire `applyLocomotionPose` into the
-client render — strafe/turn from INPUT INTENT not physics velocity (user: snappy/instant; local
-player reads movementX/Y directly, remotes from velocity) — needs a render() param + a live
-lean-direction sign-tune; crouch (foot IK + pelvis drop); parametric gait replacing idle/walk clips;
-foot IK. Dual-wield deferred (2nd server sweep + AnimationState channel).
+constraint; hands excluded so blade==hit; commit 05f13c2). **input locomotion lean**
+(1cf601d) wired into the client (local player strafe from movement intent; remotes from velocity;
+strafe sign unverified live). **crouch + foot IK** (49f1161 pose+inspector, d450415 client): solveSkeleton
+gained an optional `rootOffset`; `applyCrouchPose` drops the pelvis + re-plants feet via `aimLimb` on the
+leg chains; client crouches on Ctrl (eased `crouchEased` + a root-group translation). NEXT: parametric
+gait replacing idle/walk clips; look-at; foot-on-terrain IK; tune crouch depth/knee-pole + strafe sign.
+Dual-wield deferred (2nd server sweep + AnimationState channel).
 
 ### T-309 · Body attachment slots — hotbar items rendered on the body
 Effort: M   Status: todo
@@ -1050,10 +1052,12 @@ already maps e.g. `back → torso_upper`. The hotbar exists client-side (`ui_sto
 activeIndex; `hotbar_assign`/`hotbar_use` actions). To build: (1) add body anchors with offset transforms
 (pos+rot) applied every sync — sheath_back, hip_l/r — generalizing the held-weapon absolute-scale build
 onto bone-parented anchors; (2) map hotbar slot index → body anchor; render each occupied non-active
-hotbar item's model there; (3) gate the visible slot count by equipped carry-gear. OPEN: the hotbar is
-currently client-only — for OTHER players to see your slung gear it must be networked (or derived from a
-networked source). Composes with T-308 for free (anchors are bone children → slung gear sways with the
-body).
+hotbar item's model there; (3) gate the visible slot count by equipped carry-gear. DECIDED (user): the hotbar is
+NETWORKED (server-authoritative) so other players see your slung gear; and the full INVENTORY is only
+accessible by selecting the BACKPACK on the hotbar (no backpack on the bar ⇒ no inventory access — the
+hotbar is what you carry on your body; the backpack is one slot that opens the bag). Composes with T-308
+for free (anchors are bone children → slung gear sways with the body). This pulls the hotbar from a
+client-UI mapping into a real networked component + an inventory-access gate — sizeable; its own arc.
 
 ## Player UX
 
