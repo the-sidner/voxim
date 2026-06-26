@@ -97,14 +97,20 @@ export class EnvironmentLighting {
     this.sun = new THREE.DirectionalLight(0xfffde0, 2.5);
     this.sun.position.copy(SUN_DIR).multiplyScalar(100);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(1024, 1024);
+    // 2048 map over the same ±60 frustum = 4× the texel density of the old 1024,
+    // so penumbrae read clean instead of pixel-staired. PCFSoftShadowMap (set on
+    // the renderer) + a small radius gives a tight, stylized soft edge — comic,
+    // not a mushy realistic blur.
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.radius = 2.5;
     this.sun.shadow.camera.near   = 0.5;
     this.sun.shadow.camera.far    = 400;
     this.sun.shadow.camera.left   = -60;
     this.sun.shadow.camera.right  =  60;
     this.sun.shadow.camera.top    =  60;
     this.sun.shadow.camera.bottom = -60;
-    this.sun.shadow.bias = -0.001; // prevent self-shadow acne on flat faces
+    this.sun.shadow.bias = -0.0005;     // smaller depth bias at the higher resolution
+    this.sun.shadow.normalBias = 0.02;  // push along the normal to kill acne on flat faces
     this.scene.add(this.sun);
     // Target must be in the scene so Three.js updates its world matrix each frame.
     this.scene.add(this.sun.target);

@@ -1,0 +1,8 @@
+- rendered item pictures
+- lower/upper terrain -> lower navigation, upper for pois
+- upper terrain can be claimed
+- upper terrain builds the quest and story line
+- when you beat a level, you do so be claiming the central upper terrain
+- you then get access to more uilding options, and can give claims to others
+- others can even use claims you clean and prepare as spawnpoints or even fasttravel and sleeping.
+- a city then is more a collection of houses and places on the upper terrains of a level.

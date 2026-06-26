@@ -40,6 +40,17 @@ const CROUCH_DROP = 0.9;
 // Crouch ease rate — snappy (~150ms settle) but not a one-frame jolt.
 const CROUCH_OMEGA = 18;
 
+// Supersample factor = clamp(devicePixelRatio, MIN, MAX). The whole post chain
+// renders at this × the CSS resolution and downsamples on the final blit, so the
+// comic outlines/flat-shaded silhouettes resolve as clean lines, not aliased
+// stairs. A floor of 1.5 guarantees the crispness even on DPR=1 displays (a plain
+// 1:1 raster is what produced the staircase aliasing); the 2× cap bounds fill-rate
+// on the voxel scene. Tuning knob — drop the floor to 1 for a low-end quality mode.
+const AAGFX_MIN_SS = 1.5;
+const AAGFX_MAX_SS = 2;
+const aagfxSupersample = () =>
+  Math.min(Math.max(globalThis.devicePixelRatio || 1, AAGFX_MIN_SS), AAGFX_MAX_SS);
+
 // ---- secondary motion (snappy organic ease) --------------------------------
 // The follow-through chain that gets eased — spine + head. NOT the IK'd hands/
 // arms (they must stay locked to the hilt so the blade == the hit). Other
@@ -315,10 +326,18 @@ export class VoximRenderer {
 
     this.hitSparkRenderer = new HitSparkRenderer(this.scene);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(1);
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+    // Supersample: render the whole pipeline at up to 2× the CSS resolution and
+    // downsample on the final blit. This is the AAA win for the comic look —
+    // the deliberate flat-shaded silhouettes + Sobel ink stay crisp lines instead
+    // of stair-stepped aliasing. SSAA (vs MSAA) also anti-aliases the shading and
+    // the depth-derived edge pass, which MSAA's edge-only coverage cannot.
+    this.renderer.setPixelRatio(aagfxSupersample());
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.BasicShadowMap; // hard 1-pixel shadow edges → thin outline
+    // Soft-but-tight shadows: PCF penumbra at high resolution reads as clean
+    // contact shadowing under the comic look — not the old hard 1px stamp, but
+    // not a mushy realistic blur either (radius is kept small in EnvironmentLighting).
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Disable auto-reset so renderer.info accumulates draw calls / triangles
     // across every renderer.render() call within a single frame (shadow pass +
     // main scene + post-FX passes). render() resets manually at the top.
@@ -335,15 +354,23 @@ export class VoximRenderer {
     );
 
     // ---- render target (with depth texture for the depth-blit pass) ----
-    const pw = Math.max(1, canvas.clientWidth  || canvas.width  || 320);
-    const ph = Math.max(1, canvas.clientHeight || canvas.height || 180);
+    // Targets are sized at the supersampled (DPR-scaled) drawing-buffer resolution
+    // so they map 1:1 to the final blit and the whole pipeline benefits from SSAA.
+    const ratio = this.renderer.getPixelRatio();
+    const pw = Math.max(1, Math.round((canvas.clientWidth  || canvas.width  || 320) * ratio));
+    const ph = Math.max(1, Math.round((canvas.clientHeight || canvas.height || 180) * ratio));
     // Float depth texture — more portable for shader sampling than UnsignedIntType
     // on WebGL2 (some drivers return undefined values for DEPTH_COMPONENT24 sampling).
     const depthTex = new THREE.DepthTexture(pw, ph, THREE.FloatType);
     depthTex.format = THREE.DepthFormat;
+    // HalfFloat (HDR) colour: the lit scene keeps radiance above 1.0 (sun disc,
+    // emissive embers/torches) instead of clamping at the buffer, so the EdgePass
+    // ACES curve tone-maps real highlights and the bloom pass has bright pixels to
+    // threshold. An LDR buffer here would clip all of that to flat white.
     this.pixelTarget = new THREE.WebGLRenderTarget(pw, ph, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
+      type: THREE.HalfFloatType,
       stencilBuffer: false,
     });
     this.pixelTarget.depthTexture = depthTex;
@@ -1171,8 +1198,10 @@ export class VoximRenderer {
     this.renderer.setSize(w, h, false);
     const aspect = w / h;
     this.cameraRig.resize(aspect);
-    const npw = Math.max(1, w);
-    const nph = Math.max(1, h);
+    // Match the supersampled drawing-buffer resolution (CSS size × pixel ratio).
+    const ratio = this.renderer.getPixelRatio();
+    const npw = Math.max(1, Math.round(w * ratio));
+    const nph = Math.max(1, Math.round(h * ratio));
     this.pixelTarget.setSize(npw, nph);
     this.heightTarget.setSize(npw, nph);
     this.hoverMaskTarget.setSize(npw, nph);
