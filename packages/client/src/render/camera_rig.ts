@@ -19,10 +19,13 @@ import * as THREE from "three";
 // Geometry tuned so a ~1.8m player occupies ~7% of vertical view.
 // Slant distance ≈ √(BACK² + (HEIGHT-LOOK_AT_BIAS)²) ≈ 35m.
 // Gaze angle below horizontal ≈ atan2(HEIGHT-LOOK_AT_BIAS, BACK) ≈ 55°.
-const BACK_DISTANCE = 20.0;
-const HEIGHT_ABOVE  = 30.0;
+// Telephoto framing (T-310, phase F): a narrower FOV with the camera pushed back
+// proportionally (×1.18) keeps the player the same on-screen size and the same
+// ~55° gaze, but flattens perspective into a more cinematic, "longer-lens" look.
+const BACK_DISTANCE = 23.6;
+const HEIGHT_ABOVE  = 35.4;
 const LOOK_AT_BIAS  = 1.0;   // look-at point this many metres above player root
-const FOV_DEG       = 40;    // narrow FOV — compresses depth, keeps horizon hidden
+const FOV_DEG       = 34;    // narrower telephoto — flatter, more cinematic depth
 const DEFAULT_YAW   = Math.PI / 4;  // "northeast" — matches the old iso direction
 
 export class CameraRig {
