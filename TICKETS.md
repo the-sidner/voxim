@@ -1088,9 +1088,15 @@ Elevate the render to AAA production feel WITHOUT abandoning the comic/pixel-art
   with canopyFade + a foliage flag; low screenshot-verifiability. Follow-up.
 - [x] F — Camera: telephoto framing (FOV 40→34, distance ×1.18) for flatter cinematic depth.
 
-Follow-ups (own sub-tickets when picked up): foliage wind sway; arcing sun per day-phase; richer
-material textures (normal/roughness detail); hit-impact flash ring; verify the new stylized water
-in-world (no water cell was reachable from the test-play spawn this pass).
+Follow-ups landed (same arc, after A–F): **foliage wind sway** (canopyFade wind option, verified via
+two-frame motion diff); **richer material textures** (tileable value-noise weathering patches under
+the grain); **hit-impact flash** (expanding additive billboard pool on each hit).
+
+Still deferred: **arcing sun** per day-phase (long raking dawn/dusk shadows — needs per-phase sun
+direction + recomputing the shadow-cam basis when SUN_DIR moves each frame; low screenshot-
+verifiability at the fixed test time-of-day); **verify the new stylized water in-world** (no water
+cell was reachable from the test-play spawn — the shader is robust + type-checks but is visually
+unconfirmed); optional normal/roughness detail maps once a PBR path is ever wanted.
 
 Invariants to defend: keep `flatShading:true` + the Sobel ink (the comic grammar); keep the
 single `buildVoxelMaterial` factory; preserve the terrain no-crack constant-displacement guarantee;
