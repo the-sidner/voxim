@@ -64,24 +64,57 @@ function makeTex(
 
 // ---- texture generators -----------------------------------------------------
 
-/** Fill with base colour then scatter brightness-varied pixels. */
+/** Build an n×n value-noise lattice in [0,1] for tileable low-frequency variation. */
+function makeNoiseGrid(rng: () => number, n: number): Float32Array {
+  const g = new Float32Array(n * n);
+  for (let i = 0; i < n * n; i++) g[i] = rng();
+  return g;
+}
+
+/** Bilinear sample of an n×n lattice with wrap-around (tileable) at (fx, fy) in
+ *  lattice units. */
+function sampleTileable(grid: Float32Array, n: number, fx: number, fy: number): number {
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const tx = fx - x0, ty = fy - y0;
+  const xa = ((x0 % n) + n) % n, xb = (xa + 1) % n;
+  const ya = ((y0 % n) + n) % n, yb = (ya + 1) % n;
+  const v00 = grid[ya * n + xa], v10 = grid[ya * n + xb];
+  const v01 = grid[yb * n + xa], v11 = grid[yb * n + xb];
+  const a = v00 + (v10 - v00) * tx;
+  const b = v01 + (v11 - v01) * tx;
+  return a + (b - a) * ty;
+}
+
+/**
+ * Fill with base colour then layer two scales of variation: a smooth tileable
+ * value-noise (large organic patches — the "detail" read that keeps a flat voxel
+ * face from looking like a single uniform swatch) plus the fine per-pixel grain.
+ */
 function drawNoise(
   ctx: CanvasRenderingContext2D,
   rng: () => number,
   r: number, g: number, b: number,
-  amount: number,   // ±fraction variation
+  amount: number,   // ±fraction fine-grain variation
   size = 32,
 ): void {
   ctx.fillStyle = rgba(r, g, b);
   ctx.fillRect(0, 0, size, size);
+  const N = 4;                       // low-freq lattice → ~8px patches at 32px
+  const lf = makeNoiseGrid(rng, N);
+  const lowAmount = amount * 0.6;    // patch contrast, relative to the fine grain
   const img = ctx.getImageData(0, 0, size, size);
   const d = img.data;
-  for (let i = 0; i < size * size; i++) {
-    const v = (rng() - 0.5) * 2 * amount;
-    d[i * 4    ] = clamp8(r + r * v);
-    d[i * 4 + 1] = clamp8(g + g * v);
-    d[i * 4 + 2] = clamp8(b + b * v);
-    d[i * 4 + 3] = 255;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const patch = (sampleTileable(lf, N, (x / size) * N, (y / size) * N) - 0.5) * 2 * lowAmount;
+      const grain = (rng() - 0.5) * 2 * amount;
+      const v = patch + grain;
+      d[i * 4    ] = clamp8(r + r * v);
+      d[i * 4 + 1] = clamp8(g + g * v);
+      d[i * 4 + 2] = clamp8(b + b * v);
+      d[i * 4 + 3] = 255;
+    }
   }
   ctx.putImageData(img, 0, 0);
 }
@@ -129,13 +162,17 @@ function drawStone(
   const S = 32;
   const img = ctx.createImageData(S, S);
   const o = img.data;
+  const N = 4;
+  const lf = makeNoiseGrid(rng, N);   // large weathered patches across the stone
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       // Subtle speckle noise
       const n = (rng() - 0.5) * 0.25;
+      // Large-scale weathering/stain patches
+      const patch = (sampleTileable(lf, N, (x / S) * N, (y / S) * N) - 0.5) * 0.18;
       // Faint "block edge" lines every 8 px to suggest masonry
       const edge = (x % 8 === 0 || y % 8 === 0) ? -0.12 : 0;
-      const v = n + edge;
+      const v = n + patch + edge;
       const i = (y * S + x) * 4;
       o[i    ] = clamp8(r + r * v);
       o[i + 1] = clamp8(g + g * v);
