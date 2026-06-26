@@ -130,7 +130,7 @@ export class ScatterRenderer {
           if (!this.instancePool.hasArchetype(archId)) {
             const geometry = geometryFromBaked(bakeVoxels(atoms, m));
             const material = buildVoxelMaterial(this.content.getMaterialById(m), m);
-            canopyFade.register(material, { voxelMode: true });
+            canopyFade.register(material, { voxelMode: true, wind: true });
             this.instancePool.registerArchetype(archId, {
               geometry, material, castShadow: true, receiveShadow: true,
             });

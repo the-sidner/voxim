@@ -21,7 +21,14 @@ import * as THREE from "three";
 export interface CanopyFadeUniforms {
   uPlayerY:      { value: number };
   uFadeCenterXZ: { value: THREE.Vector2 };
+  uWindTime:     { value: number };
+  uWindStrength: { value: number };
+  uWindDir:      { value: THREE.Vector2 };
 }
+
+/** Horizontal wind direction (three-space XZ) and how far the crown sways. */
+const WIND_DIR = new THREE.Vector2(0.92, 0.39);  // normalized-ish
+const WIND_STRENGTH = 0.06;                       // world units per unit of voxel height
 
 /**
  * Fade thresholds. Geometry is killed via `discard` (binary cutout), not
@@ -44,7 +51,15 @@ export class CanopyFade {
   readonly uniforms: CanopyFadeUniforms = {
     uPlayerY:      { value: -1e6 },
     uFadeCenterXZ: { value: new THREE.Vector2(0, 0) },
+    uWindTime:     { value: 0 },
+    uWindStrength: { value: WIND_STRENGTH },
+    uWindDir:      { value: WIND_DIR.clone() },
   };
+
+  /** Advance the foliage wind animation. Pumped once per frame by the renderer. */
+  setWindTime(nowMs: number): void {
+    this.uniforms.uWindTime.value = nowMs * 0.001;
+  }
 
   /**
    * Push per-frame state. Coords are GAME space (z = up). Camera is in
@@ -69,9 +84,33 @@ export class CanopyFade {
    * blob. Call once per material at construction; the patch is applied
    * the first time Three.js compiles its program.
    */
-  register(material: THREE.Material, options: { voxelMode?: boolean } = {}): void {
+  register(material: THREE.Material, options: { voxelMode?: boolean; wind?: boolean } = {}): void {
     const voxelMode = options.voxelMode ?? false;
+    const wind = options.wind ?? false;
     const u = this.uniforms;
+
+    // Foliage wind: a height-scaled horizontal sway recomputed into gl_Position.
+    // Amplitude grows with the voxel's model-space height so the foot stays
+    // planted; the phase varies by world XZ so neighbouring plants don't lockstep.
+    // (Only the colour pass sways — the shadow depth material is unpatched, so
+    // shadows stay put; acceptable for a gentle breeze.)
+    const windUniforms = wind
+      ? `uniform float uWindTime;
+         uniform float uWindStrength;
+         uniform vec2  uWindDir;`
+      : "";
+    const windBody = wind
+      ? `vec4 wpos = vec4(transformed, 1.0);
+         #ifdef USE_INSTANCING
+           wpos = instanceMatrix * wpos;
+         #endif
+         wpos = modelMatrix * wpos;
+         float windPhase = uWindTime * 1.7 + wpos.x * 0.22 + wpos.z * 0.22;
+         float gust = sin(windPhase) + 0.4 * sin(windPhase * 2.3 + 1.7);
+         float windH = max(voxelCenter.y, 0.0);
+         wpos.xyz += vec3(uWindDir.x, 0.0, uWindDir.y) * (gust * uWindStrength * windH);
+         gl_Position = projectionMatrix * viewMatrix * wpos;`
+      : "";
 
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uPlayerY       = u.uPlayerY;
@@ -81,6 +120,11 @@ export class CanopyFade {
       shader.uniforms.uFadeInnerR    = { value: FADE_INNER_RADIUS };
       shader.uniforms.uFadeOuterR    = { value: FADE_OUTER_RADIUS };
       shader.uniforms.uFadeCutoff    = { value: FADE_CUTOFF };
+      if (wind) {
+        shader.uniforms.uWindTime     = u.uWindTime;
+        shader.uniforms.uWindStrength = u.uWindStrength;
+        shader.uniforms.uWindDir      = u.uWindDir;
+      }
 
       if (voxelMode) {
         // Per-voxel cutout. `voxelCenter` is a per-vertex attribute that
@@ -97,6 +141,7 @@ export class CanopyFade {
           uniform float uFadeMaxHeight;
           uniform float uFadeInnerR;
           uniform float uFadeOuterR;
+          ${windUniforms}
           varying float vFade;
           ${shader.vertexShader}
         `.replace(
@@ -111,7 +156,8 @@ export class CanopyFade {
            float vertFade = smoothstep(uFadeMinHeight, uFadeMaxHeight, aboveY);
            float horizDist = length(vc.xz - uFadeCenterXZ);
            float horizFade = 1.0 - smoothstep(uFadeInnerR, uFadeOuterR, horizDist);
-           vFade = vertFade * horizFade;`,
+           vFade = vertFade * horizFade;
+           ${windBody}`,
         );
 
         // Use the dummy `_FRAGMENT_BEGIN_` token via the `dithering_fragment`
