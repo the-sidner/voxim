@@ -38,6 +38,18 @@ const CHUNK = 32;
  */
 export const TERRAIN_DISP_MAG = 0.18 * HEIGHT_STEP;
 
+// ---- Terraced cliff edges (T-310 — the upper/lower transition as terrain
+// definition, not a shader hack). A cliff cell (a plateau edge or a forest/stone
+// wall) is voxelised as a STACK of sub-boxes that recede on the exposed side(s)
+// as they descend — a ziggurat / tree-trunk stepped face. Real geometry derived
+// deterministically from the heightmap; collision stays the heightmap (barrier),
+// so the two-tier gating (stairs) is untouched.
+const CLIFF_MIN   = 1.2;   // expose depth (world units) above which we terrace
+const STEP_H      = 0.66;  // sub-box height per terrace step
+const STEP_INSET  = 0.3;   // how far each lower step recedes on an exposed side
+const STEP_MAX    = 3;     // cap sub-boxes per cliff cell (perf bound)
+const EXPOSE_MIN  = 0.5;   // a side is "exposed" when its neighbour is this much lower
+
 /** The four cardinal neighbour chunks' heightmaps (null when not yet streamed). */
 export interface ChunkNeighbours {
   N?: HeightmapData | null;
@@ -76,30 +88,63 @@ export function buildChunkAtoms(
       const h = H(cx, cy);
       const m = mats.data[cx + cy * CHUNK];
 
-      const hMinNbr = Math.min(
-        neigh(cx, cy, "N", h),
-        neigh(cx, cy, "E", h),
-        neigh(cx, cy, "S", h),
-        neigh(cx, cy, "W", h),
-      );
+      const hN = neigh(cx, cy, "N", h);
+      const hE = neigh(cx, cy, "E", h);
+      const hS = neigh(cx, cy, "S", h);
+      const hW = neigh(cx, cy, "W", h);
+      const hMinNbr = Math.min(hN, hE, hS, hW);
       // Exposed vertical extent below the top, floored to one step (flat plateau
       // cell → a thin slab whose underside hides beneath equal-height neighbours).
       const depth = Math.max(h - Math.min(h, hMinNbr), HEIGHT_STEP);
 
-      const atom: VoxelAtom = {
-        cx: offX + cx + 0.5, // cell centre, east
-        cy: offZ + cy + 0.5, // cell centre, south
-        cz: h - depth / 2,   // vertical centre: top at h, bottom at h-depth
-        sx: 1,
-        sy: 1,
-        sz: depth,           // full edge size; the per-voxel-size unlock = cliff depth
-        materialId: m,
-        // vid omitted → baked-static terrain
-      };
-
       let bucket = byMat.get(m);
       if (!bucket) byMat.set(m, bucket = []);
-      bucket.push(atom);
+
+      if (depth > CLIFF_MIN) {
+        // ---- Terraced cliff: a stack of sub-boxes receding on the exposed
+        // side(s). The top box keeps the full footprint (welds to higher
+        // neighbours); each lower box steps back on whichever side is lower.
+        const expE = (h - hE) > EXPOSE_MIN;
+        const expW = (h - hW) > EXPOSE_MIN;
+        const expS = (h - hS) > EXPOSE_MIN;
+        const expN = (h - hN) > EXPOSE_MIN;
+        const k = Math.min(STEP_MAX, Math.max(2, Math.round(depth / STEP_H)));
+        const bottom = h - depth;
+        for (let L = 0; L < k; L++) {
+          const zTop = h - L * STEP_H;
+          const zBot = L === k - 1 ? bottom : Math.max(bottom, h - (L + 1) * STEP_H);
+          const sz = zTop - zBot;
+          if (sz <= 0.02) break;
+          const rec = L * STEP_INSET;
+          let x0 = offX + cx, x1 = offX + cx + 1;
+          let y0 = offZ + cy, y1 = offZ + cy + 1;
+          if (expE) x1 -= rec;
+          if (expW) x0 += rec;
+          if (expS) y1 -= rec;
+          if (expN) y0 += rec;
+          const sx = x1 - x0, sy = y1 - y0;
+          if (sx < 0.12 || sy < 0.12) break;   // receded to a spire tip — stop
+          bucket.push({
+            cx: (x0 + x1) / 2,
+            cy: (y0 + y1) / 2,
+            cz: (zTop + zBot) / 2,
+            sx, sy, sz,
+            materialId: m,
+          });
+        }
+        continue;
+      }
+
+      // Flat / shallow cell → one column box (top at h, floor at h-depth).
+      bucket.push({
+        cx: offX + cx + 0.5,
+        cy: offZ + cy + 0.5,
+        cz: h - depth / 2,
+        sx: 1,
+        sy: 1,
+        sz: depth,
+        materialId: m,
+      });
     }
   }
   return byMat;
