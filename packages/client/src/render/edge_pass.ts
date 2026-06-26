@@ -44,6 +44,8 @@ const FRAG = /* glsl */`
   uniform sampler2D tHoverMask;
   uniform sampler2D tDepth;
   uniform sampler2D tFog;
+  uniform sampler2D tBloom;            // half-res blurred HDR bright-pass
+  uniform float     uBloomStrength;    // how much glow to add back (0 = off)
   uniform mat4      uProjInv;
   uniform mat4      uViewInv;
   uniform float     uTileSize;          // world units per tile axis (= fog texture side)
@@ -194,6 +196,13 @@ const FRAG = /* glsl */`
     float hRim = hDil * (1.0 - hMask) * uHoverActive;
     color.rgb = mix(color.rgb, uHoverColor, hRim);
 
+    // ---- Bloom (HDR glow) -----------------------------------------------
+    // Add the blurred bright-pass back into the linear HDR radiance BEFORE the
+    // ACES tonemap, so torch/ember/sun glow rolls off filmically with the rest
+    // of the image instead of clipping to flat white. Sampled with linear
+    // upscaling from the half-res bloom target → a smooth halo.
+    color.rgb += texture2D(tBloom, vUv).rgb * uBloomStrength;
+
     // ---- Tone (lit radiance) --------------------------------------------
     // Exposure lift then the ACES curve, applied to the LIT scene BEFORE the
     // fog-of-war dim — so tone-mapping shapes the world's light, and fog-of-war
@@ -253,6 +262,11 @@ export class EdgePass {
     width: number,
     height: number,
   ) {
+    // 1×1 black placeholder so the shader compiles before the BloomPass texture
+    // is wired in; the renderer swaps in the live half-res bloom texture at boot.
+    const blackTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1, THREE.RGBAFormat);
+    blackTex.needsUpdate = true;
+
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         tColor:        { value: colorTex },
@@ -260,6 +274,8 @@ export class EdgePass {
         tHoverMask:    { value: hoverMaskTex },
         tDepth:        { value: depthTex },
         tFog:          { value: fogTex },
+        tBloom:        { value: blackTex },
+        uBloomStrength: { value: 0.7 },
         uProjInv:      { value: new THREE.Matrix4() },
         uViewInv:      { value: new THREE.Matrix4() },
         uTileSize:     { value: 0.0 },           // 0 disables fog (no tile yet)
@@ -342,6 +358,16 @@ export class EdgePass {
   /** Post-tonemap chroma gain (1.0 = neutral, >1 = more saturated). Tuning knob. */
   setSaturation(value: number): void {
     this.material.uniforms.uSaturation.value = value;
+  }
+
+  /** Bind the live bloom texture (replaces the black constructor placeholder). */
+  setBloomTexture(tex: THREE.Texture): void {
+    this.material.uniforms.tBloom.value = tex;
+  }
+
+  /** Glow amount added back before tone-mapping (0 = off). Tuning knob. */
+  setBloomStrength(value: number): void {
+    this.material.uniforms.uBloomStrength.value = value;
   }
 
   /** Set the tile size in world units (== fog texture side).  0 disables fog. */

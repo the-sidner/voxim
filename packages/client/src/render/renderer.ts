@@ -89,6 +89,7 @@ import type { DebugUpdateContext } from "./debug_overlay_manager.ts";
 import { HitSparkRenderer } from "./hit_spark_renderer.ts";
 import { LightManager } from "./light_manager.ts";
 import { EdgePass } from "./edge_pass.ts";
+import { BloomPass } from "./bloom_pass.ts";
 import { CameraRig } from "./camera_rig.ts";
 import type { FogOfWar } from "../state/fog_of_war.ts";
 import { FOG_GRID_SIZE, FOG_CELL_SIZE } from "@voxim/protocol";
@@ -267,6 +268,8 @@ export class VoximRenderer {
   private readonly depthBlitMat: THREE.ShaderMaterial;
   /** Screen-space edge detection — runs during the blit pass. */
   private readonly edgePass: EdgePass;
+  /** HDR bloom — bright-pass + separable blur, composited into the EdgePass. */
+  private readonly bloom: BloomPass;
   /** Hover mask: hovered entity rendered flat-white; fed into EdgePass for silhouette outline. */
   private readonly hoverMaskTarget: THREE.WebGLRenderTarget;
   /** Override material used during the hover mask pass — flat white, no lighting. */
@@ -434,6 +437,15 @@ export class VoximRenderer {
     const blitGeo = new THREE.PlaneGeometry(2, 2);
     this.blitMesh = new THREE.Mesh(blitGeo, this.edgePass.material);
     this.blitScene.add(this.blitMesh);
+
+    // ---- HDR bloom (bright-pass + blur of the HalfFloat scene) ----
+    // Threshold above the brightest sun-lit earth tones so the glow is mostly
+    // emissive (torches/embers) + the hottest highlights, not a haze over the
+    // whole lit ground. Tuned by eye against the HalfFloat radiance.
+    this.bloom = new BloomPass(pw, ph);
+    this.bloom.setThreshold(0.85, 0.5);
+    this.edgePass.setBloomStrength(1.0);
+    this.edgePass.setBloomTexture(this.bloom.texture);
 
     // ---- environment lighting (sun + hemi + sky/fog + day-night) ----
     this.envLighting = new EnvironmentLighting(this.scene);
@@ -1109,9 +1121,14 @@ export class VoximRenderer {
       this.renderer.setRenderTarget(null);
       this.renderer.render(this.scene, this.camera);
     } else {
-      // Pass 1: render scene to low-res pixel target (writes colour + depth).
+      // Pass 1: render scene to the HDR pixel target (writes colour + depth).
       this.renderer.setRenderTarget(this.pixelTarget);
       this.renderer.render(this.scene, this.camera);
+
+      // Bloom: bright-pass + blur the HDR scene colour (torch/ember/sun glow).
+      // The EdgePass adds the result back before its ACES tonemap.
+      this.bloom.render(this.renderer, this.pixelTarget.texture);
+      this.edgePass.setBloomTexture(this.bloom.texture);
 
       // Hover mask: render whatever's currently on HOVER_LAYER flat-white →
       // hoverMaskTarget.  HoverOutlineRenderer puts the hovered entity's meshes
@@ -1206,6 +1223,7 @@ export class VoximRenderer {
     this.heightTarget.setSize(npw, nph);
     this.hoverMaskTarget.setSize(npw, nph);
     this.edgePass.setSize(npw, nph);
+    this.bloom.setSize(npw, nph);
   }
 
   dispose(): void {
@@ -1215,6 +1233,7 @@ export class VoximRenderer {
     this.weaponTrail.dispose();
     this.instancePool.dispose();
     this.edgePass.dispose();
+    this.bloom.dispose();
     this.pixelTarget.dispose();
     this.heightTarget.dispose();
     this.hoverMaskTarget.dispose();

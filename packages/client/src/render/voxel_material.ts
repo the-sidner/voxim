@@ -23,9 +23,12 @@ export function buildVoxelMaterial(
   const color = matDef?.color ?? FALLBACK_COLOR;
   // roughness (0–1) → shininess: rough surfaces have no specular highlight.
   const shininess = matDef ? Math.round((1 - matDef.roughness) * 80) : 0;
-  // emissive: glow in the material's own color, scaled by its emissive factor.
+  // emissive: glow in the material's own color, scaled past 1.0 so emissive
+  // surfaces (torches, embers) sit in the HDR headroom and clear the bloom
+  // bright-pass threshold — that's what makes them visibly GLOW into the scene
+  // rather than just reading as a bright-coloured face (T-310, phase D).
   const emissive = matDef && matDef.emissive > 0
-    ? new THREE.Color(color).multiplyScalar(matDef.emissive * 0.7)
+    ? new THREE.Color(color).multiplyScalar(matDef.emissive * 2.2)
     : new THREE.Color(0x000000);
   const tex = getVoxelTexture(materialId, color);
   return new THREE.MeshPhongMaterial({
