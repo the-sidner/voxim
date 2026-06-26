@@ -68,6 +68,15 @@ const FRAG = /* glsl */`
   uniform float     uAoRadius;            // SSAO sampling reach (view-space, folds in proj scale)
   uniform float     uAoStrength;          // SSAO darkening amount (0 = off)
   uniform float     uSplitTone;           // forest split-tone strength (0 = off)
+  uniform vec3      uGrimGain;            // grim grade — highlight tint
+  uniform vec3      uGrimGamma;           // grim grade — midtone power
+  uniform vec3      uGrimLift;            // grim grade — raised cool blacks
+  uniform float     uGrimDesat;           // grim desaturation (warm pixels spared)
+  uniform float     uWarmGain;            // ember/warm detector sensitivity
+  uniform vec3      uGrimCast;            // cool weathered cast on cool pixels
+  uniform float     uGrainStrength;       // film-grain amount
+  uniform float     uGrainShadowFloor;    // how much grain survives into shadow
+  uniform float     uTime;                // seconds — animates the grain
   uniform float     uVignetteStart;       // radius where corner darkening begins
   uniform float     uVignetteStrength;    // max corner darkening (0 = off)
 
@@ -314,6 +323,23 @@ const FRAG = /* glsl */`
     float vigD = distance(vUv, vec2(0.5));
     color.rgb *= 1.0 - uVignetteStrength * smoothstep(uVignetteStart, 0.75, vigD);
 
+    // ---- Dirt / grind / grim filmic finish -------------------------------
+    // A weathered cinematic cast: lift/gamma/gain grade, a grim desaturation
+    // that SPARES warm/ember pixels (fire keeps its colour), and animated
+    // luminance-weighted film grain. The "lived-in, not clean" reference look.
+    color.rgb = color.rgb * uGrimGain;                          // highlight tint
+    color.rgb = pow(max(color.rgb, vec3(0.0)), uGrimGamma);     // midtone shape
+    color.rgb += uGrimLift * (1.0 - color.rgb);                 // raised cool blacks (grime)
+    {
+      float gl2  = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+      float warm = clamp((color.r - color.b) * uWarmGain, 0.0, 1.0);  // ember detector
+      color.rgb  = mix(color.rgb, vec3(gl2), uGrimDesat * (1.0 - warm));
+      color.rgb *= mix(uGrimCast, vec3(1.0), warm);             // cool weathered cast
+      // Film grain — more in shadow/mid, animated by uTime.
+      float gn = fract(sin(dot(vUv * 1024.0 + uTime, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+      color.rgb += gn * uGrainStrength * mix(uGrainShadowFloor, 1.0, gl2);
+    }
+
     // Linear → sRGB for canvas output.
     color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
 
@@ -390,6 +416,18 @@ export class EdgePass {
         // Stronger split-tone — cool misty shadow vs warm firelight, the
         // reference's core temperature story. Tuning knob.
         uSplitTone:        { value: 0.62 },
+        // Dirt/grind/grim filmic finish. lift/gamma/gain = weathered grade;
+        // grim desat pulls colour out EXCEPT warm/ember pixels (fire stays);
+        // grain adds film texture. All tuning knobs.
+        uGrimGain:          { value: new THREE.Vector3(1.0, 0.99, 0.95) },
+        uGrimGamma:         { value: new THREE.Vector3(1.05, 1.0, 1.07) },
+        uGrimLift:          { value: new THREE.Vector3(0.012, 0.015, 0.02) },
+        uGrimDesat:         { value: 0.26 },
+        uWarmGain:          { value: 2.5 },
+        uGrimCast:          { value: new THREE.Vector3(0.95, 1.0, 0.97) },
+        uGrainStrength:     { value: 0.05 },
+        uGrainShadowFloor:  { value: 0.4 },
+        uTime:              { value: 0 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -459,6 +497,11 @@ export class EdgePass {
   /** Bind the live god-ray (light-shaft) texture. */
   setGodRayTexture(tex: THREE.Texture): void {
     this.material.uniforms.tGodRay.value = tex;
+  }
+
+  /** Advance the animated film grain (seconds). */
+  setTime(seconds: number): void {
+    this.material.uniforms.uTime.value = seconds;
   }
 
   /** Set the tile size in world units (== fog texture side).  0 disables fog. */

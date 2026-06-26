@@ -1127,6 +1127,7 @@ export class VoximRenderer {
     this.hitSparkRenderer.update(dt);
     this.dustMotes.update(dt * 1000, this.cameraTarget);
     canopyFade.setWindTime(now);
+    this.edgePass.setTime(now * 0.001);
     this.lightManager.tick(now);
 
     const tGlStart = performance.now();
