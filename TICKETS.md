@@ -1069,6 +1069,27 @@ re-read as **crisper + more detailed within the comic idiom**, plus AAA lighting
 high-end stylized voxel — hard edges, but clean, richly lit, with glow/AO/haze/depth). Sequenced as
 phases, each a self-contained commit verified via the testplay screenshot harness.
 
+### T-311 · Visual data-model arc — author the world's look as content, not client hacks
+Effort: L   Status: planned   Plan: `VISUAL_DATAMODEL_PLAN.md`
+
+The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
+goals (richer voxel trees/vegetation, terraced upper/lower transition as REAL terrain, procedural
+materials with relief/moss, dense layered ground cover, overgrowth-on-stone) through **planned
+data-model extensions/refactors** across server→client→content — *the way the animation arc was built*
+— and build **authoring + live-preview Studio devtools** on the way. Key finding (mapping workflow):
+this is a REFACTOR not new architecture — the ProcModel/Scatter primitive (T-285) already proves the
+pattern; richness only leaks out of the data model in three client hacks (per-voxel tint = position
+hash; material relief = numeric-id→drawFn switch; terraced cliff = hardcoded client consts off a flat
+2.0u step) plus a missing authoring devtool. Phases 0–5 in the plan: (0) lift the hacks into
+`MaterialDef.render` + content terrace config behind registries; (1) Studio ProcModel + Material panels
+(reuse the real generator/material code path, like the AnimationEditor/Swing-Inspector); (2) richer
+trees + biome→scatter binding + dense cover (content); (3) atlas authors a stepped cliff into the
+Heightmap so collision+render agree (deletes the client terrace hack); (4) a server-authoritative
+`OvergrowthGrid` channel feeding moss-creep + wall-scatter; (5) hot-reload bridge. Server/atlas =
+terrain shape + gameplay signals; client-render (content-driven) = tessellation/relief/foliage. The
+T-310 render hacks (terrace voxelisation, voxelTint, the grim/atmosphere passes) stay as the working
+baseline and get folded into the data model phase by phase.
+
 ### T-310 · AAA graphics pass — detail + light + atmosphere over the comic voxel look
 Effort: L   Status: in-progress
 
