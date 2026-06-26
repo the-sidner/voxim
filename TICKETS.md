@@ -1070,25 +1070,33 @@ high-end stylized voxel — hard edges, but clean, richly lit, with glow/AO/haze
 phases, each a self-contained commit verified via the testplay screenshot harness.
 
 ### T-311 · Visual data-model arc — author the world's look as content, not client hacks
-Effort: L   Status: planned   Plan: `VISUAL_DATAMODEL_PLAN.md`
+Effort: XL   Status: planned   Plan: `VISUAL_DATAMODEL_PLAN.md` + `ART_DIRECTION.md`
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
-goals (richer voxel trees/vegetation, terraced upper/lower transition as REAL terrain, procedural
-materials with relief/moss, dense layered ground cover, overgrowth-on-stone) through **planned
-data-model extensions/refactors** across server→client→content — *the way the animation arc was built*
-— and build **authoring + live-preview Studio devtools** on the way. Key finding (mapping workflow):
-this is a REFACTOR not new architecture — the ProcModel/Scatter primitive (T-285) already proves the
-pattern; richness only leaks out of the data model in three client hacks (per-voxel tint = position
-hash; material relief = numeric-id→drawFn switch; terraced cliff = hardcoded client consts off a flat
-2.0u step) plus a missing authoring devtool. Phases 0–5 in the plan: (0) lift the hacks into
-`MaterialDef.render` + content terrace config behind registries; (1) Studio ProcModel + Material panels
-(reuse the real generator/material code path, like the AnimationEditor/Swing-Inspector); (2) richer
-trees + biome→scatter binding + dense cover (content); (3) atlas authors a stepped cliff into the
-Heightmap so collision+render agree (deletes the client terrace hack); (4) a server-authoritative
-`OvergrowthGrid` channel feeding moss-creep + wall-scatter; (5) hot-reload bridge. Server/atlas =
-terrain shape + gameplay signals; client-render (content-driven) = tessellation/relief/foliage. The
-T-310 render hacks (terrace voxelisation, voxelTint, the grim/atmosphere passes) stay as the working
-baseline and get folded into the data model phase by phase.
+goals through **planned data-model extensions/refactors** across server→content→client — *the way the
+animation arc was built* — with **authoring + live-preview Studio devtools** on the way. This is a
+REFACTOR not new architecture (the five primitives + ProcModel/Scatter T-285 already prove the pattern).
+
+**Refined 2026-06-26 against the full `data/fake-art` art bible** (see `ART_DIRECTION.md`). The bible's
+concept-sheets ARE data-model specs; the gap is wider than the original three hacks (per-voxel tint hash,
+`DRAW_FN` numeric switch, client `CLIFF_*` terrace) — it's a *family*, plus a missing scene layer
+(atmosphere/grade/lighting/decals/creatures/water). Crucially the bible reduces to **7 reusable grammar
+primitives** (PerCellServerFieldGrid · FieldExpr · MaterialStateLadder · SurfaceTreatment+TextureStyle
+registry · ProceduralAssemblyKit · PerVoxel attribute sidecar · AuthoredEnvParamSet) — model the grammar
+once, not N features.
+
+Reworked 8-phase plan (0–7): (0) freeze the **complete** `MaterialDef.render` block + one render-context
+wire key + registries; (1) Studio Material + ProcModel panels (real shipped runtime); (2) MaterialStateLadder
++ GradeDef + LightDef/LightBudget — no re-bake; (3 ✶) the **single** wire break — unified per-cell field
+grids (Veg/SurfaceState/Water, subsuming the old OvergrowthGrid); (4) field consumers (scatter/moss/wetness/
+decals); (5) AtmosphereDef + server sun-arc + creature fragmentation (G6 in-shader dissolve) + cheap water
+reflection; (6 ✶) server-authoritative terraced cliffs (G5, deletes `CLIFF_*`); (7 ✶) modular settlements +
+roads — LATER, def-shape + one strategy only. **Three hard invariants before any code:** (I1) freeze the
+per-grid field-set matrix before minting any chunk wireId — grids are permanent; wire cost is the initial
+chunk-stream flood (`MAX_CHUNK_SPAWNS_PER_TICK=20`, chunks never leave AoI), packed codecs mandatory;
+(I2) `MaterialDef.render` full shape + the one render-context key land in Phase 0, frozen; (I3) drop
+overhang from v1, the `dissolves` shader is a deliberate capped amendment to "no per-frame voxel offset",
+and `variantIndex` is a content-version-checked stable index. Open designer questions tracked in the plan.
 
 ### T-310 · AAA graphics pass — detail + light + atmosphere over the comic voxel look
 Effort: L   Status: in-progress
@@ -1123,6 +1131,70 @@ Invariants to defend: keep `flatShading:true` + the Sobel ink (the comic grammar
 single `buildVoxelMaterial` factory; preserve the terrain no-crack constant-displacement guarantee;
 keep tone/sRGB hand-rolled in EdgePass (don't double-encode via renderer toneMapping); new post
 passes follow the existing hand-rolled fullscreen-quad pattern (no EffectComposer).
+
+### T-312 · Visual content-authoring arc — fill the libraries the look needs
+Effort: XL   Status: planned (blocked on T-311 tools)
+
+T-311 delivers the **machinery** (field grids, registries, devtools, render hooks); the art-bible look
+only *appears* once content is authored against it. This is that authoring arc — the bulk of the visible
+result, and weeks–months of work even with the tools. **Goal: the layered DENSITY of the screenshots**
+(`ART_DIRECTION.md §1`), reached by composing small primitives (`VISUAL_DATAMODEL_PLAN.md §Density through
+composition`). **Discipline: hero-cell → hero-scene → propagate** — get ONE patch fully dense in the
+devtool until a screenshot crop is matched (the density vertical-slice), then let the field grids + biome
+tables replay that recipe across the world. Do NOT hand-place; tune one recipe and scale by data.
+
+Each sub-library is gated on its T-311 phase tool:
+- **Flora & ground-cover library** — ~12 generators (fern/moss/root/vine/mushroom/grass/thorn/…) ×
+  healthy↔corrupted, biome-tuned `ScatterDef`/`ProcModelDef`. Tool: T-311 P1 ProcModel + Scatter-Field-Painter.
+- **Ruins/props/landmarks library** — chapels/altars/statues/tombs/gates/monoliths + caravan/barrel/crate/
+  well/chest/banner prefabs, sacred↔corrupted + wear states (the ruins + props sheets). Tool: P1 Material + P2 StateLadder.
+- **Creature roster** — the haunts (Wailing Shade, Hollow Lantern, Grief Husk, Mirror Stalker, …) as
+  `voxel_creature` procmodels + `DissolveProfileDef`s + skeletons. Tool: P5 Creature/Dissolve panel.
+- **Settlement module library** — the full tier × upgrade-stage × road-kit content beyond T-311 P7's
+  "one strategy + a handful of modules". Tool: P7 Module Composer.
+- **Atmosphere/grade/material polish pass** — `AtmosphereDef`/`GradeDef`/`render`-block tuning per
+  biome × time-of-day; the final mood pass. Tool: P5 Atmosphere + P2 Grade panels.
+
+LLM-assisted seeding (SPEC L22) is the intended accelerant. Without this arc, T-311 is a richly-capable
+engine rendering a sparse world — the capability gap is closed but the look is not yet authored.
+
+### T-313 · Deferred render-capability extensions — the engine bits T-311 does not add
+Effort: L   Status: planned
+
+T-311 closes the *data-model* gap, but a few genuine render capabilities the references imply are out of
+its scope. Ranked by **visible-jump-per-effort** (see `VISUAL_DATAMODEL_PLAN.md §boundary` for the table):
+1. **Arcing sun + raking shadows** (HIGH jump / MED effort) — long dawn/dusk shadows are the golden-hour
+   mood of the references; needs the server sun-direction T-311 P5 already adds + recomputing the
+   shadow-cam basis as `SUN_DIR` moves each frame. **Fold into / extend P5.** Best ratio.
+2. **In-world water verification** (LOW effort) — the stylized water shader (T-310 E) type-checks but was
+   never seen in play (no reachable water cell). Once T-311 P3 `WaterGrid` puts water in the world, confirm
+   + tune. Near-free.
+3. **Shadow cascades / full-frame god-rays** (HIGH jump / HIGH effort) — the ±60u shadow frustum makes
+   god-rays + crisp shadows near-field only; the ARPG camera sees well past it. A 2–3 split cascade is the
+   general render upgrade — after the cheap wins.
+4. **Water planar-reflection probe** (MED-localized jump / HIGH + fragile effort) — the canal-city mirror;
+   a second scene pass ordered against outline + bloom. P5 ships a cheap screen-space streak; this is the
+   quality follow-on, only where water/wet is on-screen.
+
+**NOT pursued (idiom / doctrine):** depth-of-field / painterly softening (fights the crisp Sobel ink — an
+anti-goal for the kept comic idiom); normal/roughness PBR maps (against the `flatShading` atomic-voxel
+doctrine). **Already landed (T-310 follow-ups, not deferred):** foliage wind sway (`canopy_fade` wind
+uniforms), richer material weathering textures, hit-impact flash, camera-occlusion fade.
+
+### T-314 · ARPG presentation & composition — the non-render gaps that still gate "looks finished"
+Effort: L   Status: planned
+
+The references read as "finished" partly for reasons orthogonal to the voxel/render data model. This
+ticket tracks the gap; the work lands in its home domains, cross-referenced so the visual arc doesn't
+pretend the look is done at T-311/T-312:
+- **HUD/UI polish** — the ARPG frame (health/mana orbs, skill bar, minimap, quest log) the mockups show;
+  reuses the existing Preact UI. (Home: `## UI / Interaction`.)
+- **Camera-occlusion extension** — `canopy_fade` already fades overhead geometry; extend the same uniforms
+  to fade tall side-walls/buildings between camera and player once settlements exist (T-311 P7). A cheap
+  extension of an existing mechanism, not greenfield. (Home: `## Client / Controls, Feel & Render Polish`.)
+- **Composed-scene worldbuilding** — the references are *composed* (path-to-plateau, the camp, the ruin
+  set-piece); making the procedural world *read* as composed needs authored POI set-pieces + good placement
+  on the POI system. (Home: `## World Generation`.)
 
 ## Player UX
 
