@@ -1,0 +1,21 @@
+{
+  "id": 17,
+  "name": "fern_green",
+  "color": "#6aa23c",
+  "roughness": 0.9,
+  "metallic": 0,
+  "emissive": 0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.08,
+    "density": 0.25,
+    "flexibility": 0.7,
+    "flammability": 0.6,
+    "toughness": 0.1
+  },
+  "tags": [
+    "organic",
+    "vegetation"
+  ]
+}

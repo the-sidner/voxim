@@ -342,7 +342,7 @@ export class EdgePass {
         uProjInv:      { value: new THREE.Matrix4() },
         uViewInv:      { value: new THREE.Matrix4() },
         uTileSize:     { value: 0.0 },           // 0 disables fog (no tile yet)
-        uFogUnseen:    { value: 0.06 },
+        uFogUnseen:    { value: 0.18 },
         uFogSeen:      { value: 0.66 },
         uFogVisible:   { value: 1.0 },
         texelSize:     { value: new THREE.Vector2(1 / width, 1 / height) },
@@ -363,10 +363,10 @@ export class EdgePass {
         // the corners back for focus. Tuned by eye against the ash-grey world.
         // Lifted a touch (was 1.5) now that HDR headroom + bloom carry the bright
         // end — pulls the grim midtones up so the world reads less muddy-dark.
-        uExposure:         { value: 1.62 },
+        uExposure:         { value: 1.42 },
         // Chroma gain — lifts the intentionally-desaturated earth palette into
         // readable color ("deutlich bunter"). 1.0 = neutral; tuned by eye.
-        uSaturation:       { value: 1.5 },
+        uSaturation:       { value: 1.62 },
         // Slightly deeper + earlier vignette focuses the eye on the player and
         // frames the lit scene cinematically (still soft, never a hard frame).
         uVignetteStart:    { value: 0.42 },
@@ -377,7 +377,7 @@ export class EdgePass {
         uAoRadius:         { value: 0.28 },
         uAoStrength:       { value: 1.15 },
         // Forest split-tone (green shadows / warm highlights). Tuning knob.
-        uSplitTone:        { value: 0.85 },
+        uSplitTone:        { value: 0.45 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
