@@ -62,6 +62,8 @@ const FRAG = /* glsl */`
   uniform float     uHoverRadius;
   uniform float     uExposure;            // pre-tonemap radiance lift
   uniform float     uSaturation;          // post-tonemap chroma gain (>1 = bunter)
+  uniform float     uAoRadius;            // SSAO sampling reach (view-space, folds in proj scale)
+  uniform float     uAoStrength;          // SSAO darkening amount (0 = off)
   uniform float     uVignetteStart;       // radius where corner darkening begins
   uniform float     uVignetteStrength;    // max corner darkening (0 = off)
 
@@ -87,6 +89,43 @@ const FRAG = /* glsl */`
   vec3 aces(vec3 x) {
     const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e2 = 0.14;
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e2), 0.0, 1.0);
+  }
+
+  // ---- Screen-space ambient occlusion ---------------------------------
+  // Reconstructs the view position + a central-difference normal from the depth
+  // buffer, then samples a per-pixel-rotated ring: every neighbour that rises in
+  // front of this surface along its normal contributes occlusion. The result is
+  // the soft contact darkening in every voxel crevice and terrain step that makes
+  // the blocky world read as dense and grounded (T-310, phase B). Depth-only, so
+  // voxels of ANY size are handled uniformly — no grid/neighbour assumptions.
+  float computeSsao(vec2 uv, float dC, vec2 e) {
+    vec3 pC = vpos(uv, dC);
+    float dist = max(-pC.z, 0.001);
+    float dR = texture2D(tDepth, uv + vec2(e.x, 0.0)).r;
+    float dL = texture2D(tDepth, uv - vec2(e.x, 0.0)).r;
+    float dU = texture2D(tDepth, uv + vec2(0.0, e.y)).r;
+    float dD = texture2D(tDepth, uv - vec2(0.0, e.y)).r;
+    vec3 N = normalize(cross(
+      vpos(uv + vec2(e.x, 0.0), dR) - vpos(uv - vec2(e.x, 0.0), dL),
+      vpos(uv + vec2(0.0, e.y), dU) - vpos(uv - vec2(0.0, e.y), dD)));
+    // per-pixel rotation breaks up banding from the fixed 8-direction ring
+    float ang = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+    // world reach → screen uv reach (shrinks with distance), clamped so near
+    // surfaces don't smear the whole screen.
+    float uvRad = clamp(uAoRadius / dist, 1.5 * e.x, 28.0 * e.x);
+    float occ = 0.0;
+    for (int i = 0; i < 8; i++) {
+      float a2 = (float(i) + 0.5) * 0.7853982 + ang;
+      float r  = uvRad * (0.35 + 0.65 * fract(float(i) * 0.61803));
+      vec2 off = vec2(cos(a2), sin(a2)) * r;
+      float ds = texture2D(tDepth, uv + off).r;
+      if (ds >= 0.9999) continue;                    // sky never occludes
+      vec3 diff = vpos(uv + off, ds) - pC;
+      float l = length(diff);
+      float rangeCheck = smoothstep(1.0, 0.0, l / 2.0);   // ignore far / other-surface hits
+      occ += max(dot(N, diff / (l + 1e-4)) - 0.025, 0.0) * rangeCheck;
+    }
+    return clamp(1.0 - (occ / 8.0) * uAoStrength, 0.0, 1.0);
   }
 
   void main() {
@@ -172,6 +211,12 @@ const FRAG = /* glsl */`
     float hFactor  = 0.82 + 0.18 * hC;
     float aoFactor = 1.0 - occlusion;
     color.rgb *= hFactor * aoFactor;
+
+    // True screen-space AO on top of the coarse height term — the contact
+    // shadows that ground voxels in their crevices. Sky pixels are exempt.
+    if (dCC < 0.9999 && uAoStrength > 0.0) {
+      color.rgb *= computeSsao(uv, dCC, e);
+    }
 
     // edgeColor is sRGB; convert to linear for correct mixing.
     vec3 edgeLinear = pow(max(edgeColor, vec3(0.0)), vec3(2.2));
@@ -308,6 +353,11 @@ export class EdgePass {
         // frames the lit scene cinematically (still soft, never a hard frame).
         uVignetteStart:    { value: 0.42 },
         uVignetteStrength: { value: 0.17 },
+        // SSAO — contact darkening between voxels. Radius folds in the projection
+        // scale (tuned by eye against the fixed camera); strength is the depth of
+        // the crevice shadow. Tuning knobs.
+        uAoRadius:         { value: 0.28 },
+        uAoStrength:       { value: 1.15 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
