@@ -37,39 +37,59 @@ const RIVER_DEPTH = 0.5;
 
 const VERT = /* glsl */`
   varying vec3 vWorldPos;
+  varying vec3 vViewDir;
   void main() {
     vec4 wp = modelMatrix * vec4(position, 1.0);
     vWorldPos = wp.xyz;
+    // cameraPosition is a guaranteed built-in in the VERTEX prefix (not always the
+    // fragment one) — compute the view vector here and pass it through.
+    vViewDir = cameraPosition - wp.xyz;
     gl_Position = projectionMatrix * viewMatrix * wp;
   }
 `;
 
 const FRAG = /* glsl */`
-  precision mediump float;
+  precision highp float;
   varying vec3 vWorldPos;
+  varying vec3 vViewDir;
   uniform float uTime;
   uniform vec3  uShallow;     // shallow-water tint (sRGB-ish)
   uniform vec3  uDeep;        // deep-water tint
   uniform float uOpacity;
+  uniform vec3  uSunDir;      // normalized, toward the sun (matches EnvironmentLighting)
 
   void main() {
-    // Two crossed travelling-wave bands give a subtle "rippling" feel.
-    // Low frequency, low amplitude — at game speed it reads as water without
-    // looking like a busy swimming-pool tile.
-    float w1 = sin(vWorldPos.x * 0.6 + uTime * 0.9);
-    float w2 = sin(vWorldPos.z * 0.55 - uTime * 0.7);
-    float w3 = sin((vWorldPos.x + vWorldPos.z) * 0.3 + uTime * 0.45);
-    float band = (w1 + w2 + w3) / 3.0;            // [-1, 1]
-    float lum  = 0.5 + 0.5 * band;                // [0, 1]
+    // Travelling-wave height field + its analytic gradient → a perturbed surface
+    // normal. Drives both the deep↔shallow tint and a moving specular so the
+    // water glints instead of sitting as a flat colour band.
+    float t = uTime;
+    float h =
+        sin(vWorldPos.x * 0.6  + t * 0.9)
+      + sin(vWorldPos.z * 0.55 - t * 0.7)
+      + 0.6 * sin((vWorldPos.x + vWorldPos.z) * 0.9 + t * 1.7);
+    float dhdx = 0.6  * cos(vWorldPos.x * 0.6  + t * 0.9)
+               + 0.54 * cos((vWorldPos.x + vWorldPos.z) * 0.9 + t * 1.7);
+    float dhdz = 0.55 * cos(vWorldPos.z * 0.55 - t * 0.7)
+               + 0.54 * cos((vWorldPos.x + vWorldPos.z) * 0.9 + t * 1.7);
+    vec3 N = normalize(vec3(-dhdx * 0.14, 1.0, -dhdz * 0.14));
+    vec3 V = normalize(vViewDir);
 
-    // Sparse highlights on the wave crests — sharpen with smoothstep so we
-    // don't get a uniform glow.
-    float sparkle = smoothstep(0.85, 0.97, lum);
-
+    float lum = clamp(0.5 + 0.5 * (h / 2.6), 0.0, 1.0);
     vec3 col = mix(uDeep, uShallow, lum);
-    col += sparkle * 0.4;
 
-    gl_FragColor = vec4(col, uOpacity);
+    // Fresnel: grazing angles lighten toward the bright shallow tint — the
+    // bright-rim read that says "water surface", not "blue floor".
+    float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    col = mix(col, uShallow * 1.3, fres * 0.6);
+
+    // Sun glint (Blinn) on the perturbed normal — a tight HDR highlight that the
+    // bloom pass turns into glittering sparkle on the crests.
+    vec3 H = normalize(uSunDir + V);
+    float spec = pow(max(dot(N, H), 0.0), 80.0);
+    col += spec * vec3(1.9, 1.7, 1.3);
+
+    float alpha = clamp(uOpacity + fres * 0.3, 0.0, 0.96);
+    gl_FragColor = vec4(col, alpha);
   }
 `;
 
@@ -82,6 +102,8 @@ function buildWaterMaterial(): THREE.ShaderMaterial {
       uShallow: { value: new THREE.Color(paletteToken("waterShallow")) },
       uDeep:    { value: new THREE.Color(paletteToken("waterDeep")) },
       uOpacity: { value: 0.62 },
+      // Matches SUN_DIR in environment_lighting.ts — keep in sync if the sun moves.
+      uSunDir:  { value: new THREE.Vector3(20, 100, -15).normalize() },
     },
     transparent: true,
     depthWrite:  false,
