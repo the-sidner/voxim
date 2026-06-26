@@ -44,6 +44,17 @@ interface Spark {
   maxLife: number;
 }
 
+const FLASH_POOL    = 8;
+const FLASH_LIFE    = 0.16;  // seconds
+const FLASH_MIN_SCALE = 0.4;
+const FLASH_MAX_SCALE = 2.6;
+
+interface Flash {
+  sprite: THREE.Sprite;
+  mat: THREE.SpriteMaterial;
+  life: number;   // remaining; <= 0 = free
+}
+
 export class HitSparkRenderer {
   private readonly sparks: Spark[] = [];
   private readonly posArr:   Float32Array;
@@ -51,6 +62,7 @@ export class HitSparkRenderer {
   private readonly geometry: THREE.BufferGeometry;
   private readonly points:   THREE.Points;
   private readonly sprite:   THREE.CanvasTexture;
+  private readonly flashes:  Flash[] = [];
 
   constructor(scene: THREE.Scene) {
     this.posArr   = new Float32Array(MAX_SPARKS * 3);
@@ -78,6 +90,28 @@ export class HitSparkRenderer {
     this.points.renderOrder = 999;
     this.points.frustumCulled = false;
     scene.add(this.points);
+
+    // Impact-flash pool: soft additive billboards that pop + expand + fade on
+    // each hit for a sense of weight. Each gets its own material so opacity
+    // animates independently.
+    for (let i = 0; i < FLASH_POOL; i++) {
+      const fmat = new THREE.SpriteMaterial({
+        map: this.sprite,
+        color: 0xffe6b0,
+        transparent: true,
+        opacity: 0,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const sprite = new THREE.Sprite(fmat);
+      sprite.layers.set(HITBOX_OVERLAY_LAYER);
+      sprite.renderOrder = 998;
+      sprite.frustumCulled = false;
+      sprite.visible = false;
+      scene.add(sprite);
+      this.flashes.push({ sprite, mat: fmat, life: 0 });
+    }
   }
 
   /**
@@ -106,6 +140,15 @@ export class HitSparkRenderer {
         life: maxLife,
         maxLife,
       });
+    }
+
+    // One impact flash per hit, from the pool (skip if all are busy).
+    const flash = this.flashes.find((f) => f.life <= 0);
+    if (flash) {
+      flash.life = FLASH_LIFE;
+      flash.sprite.position.set(tx, ty, tz);
+      flash.sprite.scale.set(FLASH_MIN_SCALE, FLASH_MIN_SCALE, 1);
+      flash.sprite.visible = true;
     }
   }
 
@@ -140,11 +183,27 @@ export class HitSparkRenderer {
     (this.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     (this.geometry.attributes.color    as THREE.BufferAttribute).needsUpdate = true;
     this.geometry.setDrawRange(0, count);
+
+    // Animate impact flashes: expand from small to large while fading out.
+    for (const f of this.flashes) {
+      if (f.life <= 0) continue;
+      f.life -= dt;
+      if (f.life <= 0) { f.sprite.visible = false; f.mat.opacity = 0; continue; }
+      const tt   = f.life / FLASH_LIFE;                 // 1 → 0
+      const grow = 1.0 - tt;                            // 0 → 1
+      const s    = FLASH_MIN_SCALE + (FLASH_MAX_SCALE - FLASH_MIN_SCALE) * grow;
+      f.sprite.scale.set(s, s, 1);
+      f.mat.opacity = tt * 0.9;                         // bright at birth → 0
+    }
   }
 
   dispose(): void {
     this.geometry.dispose();
     (this.points.material as THREE.Material).dispose();
+    for (const f of this.flashes) {
+      f.sprite.parent?.remove(f.sprite);
+      f.mat.dispose();
+    }
     this.sprite.dispose();
     this.points.parent?.remove(this.points);
   }
