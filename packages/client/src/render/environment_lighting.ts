@@ -81,6 +81,13 @@ const RIM_DIR = new THREE.Vector3(-28, 34, 20).normalize();
 /** Cool tint the rim fill is biased toward (a dusk-sky blue) for warm/cool contrast. */
 const COOL_RIM_TINT = new THREE.Color(0x8aa6d8);
 
+/**
+ * FogExp2 density = this / palette.fogFar. Lower than a literal 1/fogFar so the
+ * haze stays gentle inside the ~68-unit play radius and thickens toward the
+ * draw edge — depth cue, not a wall of murk. Tuning knob for overall atmosphere.
+ */
+const FOG_DENSITY_K = 1.6;
+
 export class EnvironmentLighting {
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
@@ -162,7 +169,12 @@ export class EnvironmentLighting {
     this.scene.add(this.sunMesh);
 
     // ---- sky ---- (neutral placeholders; applyPalette swaps to the palette noon)
-    this.scene.fog = new THREE.Fog(0x808080, 80, 220);
+    // Exponential fog (FogExp2) for aerial perspective — distance hazes out on a
+    // smooth curve so ridgelines and valleys gain depth, instead of the flat
+    // linear band the old THREE.Fog produced. Density is derived from the palette
+    // fogFar each frame (FOG_DENSITY_K / fogFar) so the day-night phases keep
+    // authoring the reach without a second knob.
+    this.scene.fog = new THREE.FogExp2(0x808080, FOG_DENSITY_K / 220);
     this.scene.background = new THREE.Color(0x808080);
   }
 
@@ -177,7 +189,8 @@ export class EnvironmentLighting {
     this.hemi.color.copy(noon.sky);
     this.hemi.groundColor.copy(noon.hemiGround);
     (this.scene.background as THREE.Color).copy(noon.sky);
-    (this.scene.fog as THREE.Fog).color.copy(noon.fog);
+    (this.scene.fog as THREE.FogExp2).color.copy(noon.fog);
+    (this.scene.fog as THREE.FogExp2).density = FOG_DENSITY_K / Math.max(noon.fogFar, 1);
     // Snap the lerp state to noon so there's no startup fade from the neutral
     // placeholder — applyPalette runs once at content load, before the loop.
     copyPhase(this.lightCur, noon);
@@ -219,8 +232,8 @@ export class EnvironmentLighting {
     this.lightCur.hemiIntensity = lerpN(this.lightCur.hemiIntensity, this.lightTgt.hemiIntensity, L);
     this.lightCur.fogFar        = lerpN(this.lightCur.fogFar,        this.lightTgt.fogFar,        L);
     (this.scene.background as THREE.Color).copy(this.lightCur.sky);
-    (this.scene.fog as THREE.Fog).color.copy(this.lightCur.fog);
-    (this.scene.fog as THREE.Fog).far = this.lightCur.fogFar;
+    (this.scene.fog as THREE.FogExp2).color.copy(this.lightCur.fog);
+    (this.scene.fog as THREE.FogExp2).density = FOG_DENSITY_K / Math.max(this.lightCur.fogFar, 1);
     this.sun.color.copy(this.lightCur.sun);
     this.sun.intensity   = this.lightCur.sunIntensity;
     this.hemi.color.copy(this.lightCur.sky);

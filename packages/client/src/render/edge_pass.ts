@@ -298,12 +298,16 @@ export class EdgePass {
         // Tone + mood. Exposure lifts the grim-dark scene into a readable
         // midtone; ACES (in-shader) rolls off the highlights; the vignette pulls
         // the corners back for focus. Tuned by eye against the ash-grey world.
-        uExposure:         { value: 1.5 },
+        // Lifted a touch (was 1.5) now that HDR headroom + bloom carry the bright
+        // end — pulls the grim midtones up so the world reads less muddy-dark.
+        uExposure:         { value: 1.62 },
         // Chroma gain — lifts the intentionally-desaturated earth palette into
         // readable color ("deutlich bunter"). 1.0 = neutral; tuned by eye.
-        uSaturation:       { value: 1.4 },
-        uVignetteStart:    { value: 0.45 },
-        uVignetteStrength: { value: 0.12 },
+        uSaturation:       { value: 1.5 },
+        // Slightly deeper + earlier vignette focuses the eye on the player and
+        // frames the lit scene cinematically (still soft, never a hard frame).
+        uVignetteStart:    { value: 0.42 },
+        uVignetteStrength: { value: 0.17 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
