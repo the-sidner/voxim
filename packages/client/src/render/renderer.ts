@@ -87,6 +87,7 @@ import { HitboxDebugOverlay, HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay
 import { DebugOverlayManager } from "./debug_overlay_manager.ts";
 import type { DebugUpdateContext } from "./debug_overlay_manager.ts";
 import { HitSparkRenderer } from "./hit_spark_renderer.ts";
+import { DustMotes } from "./dust_motes.ts";
 import { LightManager } from "./light_manager.ts";
 import { EdgePass } from "./edge_pass.ts";
 import { BloomPass } from "./bloom_pass.ts";
@@ -247,6 +248,7 @@ export class VoximRenderer {
   private readonly _skeletonOverlay: SkeletonOverlay;
   private readonly _chunkOverlay:    ChunkOverlay;
   private readonly hitSparkRenderer: HitSparkRenderer;
+  private readonly dustMotes: DustMotes;
   private readonly lightManager = new LightManager();
 
   private cameraTarget = new THREE.Vector3(256, 4, 256);
@@ -328,6 +330,7 @@ export class VoximRenderer {
     this.debugOverlayManager.register("hitbox",    new HitboxDebugOverlay());
 
     this.hitSparkRenderer = new HitSparkRenderer(this.scene);
+    this.dustMotes = new DustMotes(this.scene);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     // Supersample: render the whole pipeline at up to 2× the CSS resolution and
@@ -1111,6 +1114,7 @@ export class VoximRenderer {
     const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
     this.lastFrameMs = now;
     this.hitSparkRenderer.update(dt);
+    this.dustMotes.update(dt * 1000, this.cameraTarget);
     this.lightManager.tick(now);
 
     const tGlStart = performance.now();
@@ -1229,6 +1233,7 @@ export class VoximRenderer {
   dispose(): void {
     this.debugOverlayManager.dispose();
     this.hitSparkRenderer.dispose();
+    this.dustMotes.dispose();
     this.lightManager.dispose();
     this.weaponTrail.dispose();
     this.instancePool.dispose();

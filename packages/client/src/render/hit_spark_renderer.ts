@@ -11,6 +11,24 @@
 import * as THREE from "three";
 import { HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay.ts";
 
+/** Soft round sprite (white core → transparent) so sparks read as glowing points
+ *  instead of hard squares. Additive blending turns the core white-hot. */
+function makeSparkSprite(): THREE.CanvasTexture {
+  const s = 32;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = s;
+  const ctx = cv.getContext("2d")!;
+  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  g.addColorStop(0.0, "rgba(255,255,255,1)");
+  g.addColorStop(0.45, "rgba(255,255,255,0.55)");
+  g.addColorStop(1.0, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 const SPARKS_PER_HIT = 10;
 const MAX_SPARKS     = 256;
 const GRAVITY        = -12;   // world units / s²
@@ -32,6 +50,7 @@ export class HitSparkRenderer {
   private readonly colorArr: Float32Array;
   private readonly geometry: THREE.BufferGeometry;
   private readonly points:   THREE.Points;
+  private readonly sprite:   THREE.CanvasTexture;
 
   constructor(scene: THREE.Scene) {
     this.posArr   = new Float32Array(MAX_SPARKS * 3);
@@ -42,9 +61,11 @@ export class HitSparkRenderer {
     this.geometry.setAttribute("color",    new THREE.BufferAttribute(this.colorArr, 3).setUsage(THREE.DynamicDrawUsage));
     this.geometry.setDrawRange(0, 0);
 
+    this.sprite = makeSparkSprite();
     const mat = new THREE.PointsMaterial({
-      size: 5,               // pixels — sizeAttenuation must be false for orthographic cameras
+      size: 7,               // screen pixels (sizeAttenuation off — sparks are HUD-crisp)
       sizeAttenuation: false,
+      map: this.sprite,      // soft round sprite → glowing points, not hard squares
       vertexColors: true,
       transparent: true,
       depthTest: false,      // overlay pass depth buffer contains blit-quad values, not scene depth
@@ -65,7 +86,6 @@ export class HitSparkRenderer {
    * Matches the posBuffer push in entity_mesh.ts: { x: pos.x, y: pos.z, z: pos.y }.
    */
   spawn(serverX: number, serverY: number, serverZ: number): void {
-    console.log("[HitSparkRenderer] spawn sx=%f sy=%f sz=%f", serverX, serverY, serverZ);
     const tx = serverX;
     const ty = serverZ;  // server z (up)   → Three.js y
     const tz = serverY;  // server y (north) → Three.js z
@@ -125,6 +145,7 @@ export class HitSparkRenderer {
   dispose(): void {
     this.geometry.dispose();
     (this.points.material as THREE.Material).dispose();
+    this.sprite.dispose();
     this.points.parent?.remove(this.points);
   }
 }
