@@ -64,6 +64,7 @@ const FRAG = /* glsl */`
   uniform float     uSaturation;          // post-tonemap chroma gain (>1 = bunter)
   uniform float     uAoRadius;            // SSAO sampling reach (view-space, folds in proj scale)
   uniform float     uAoStrength;          // SSAO darkening amount (0 = off)
+  uniform float     uSplitTone;           // forest split-tone strength (0 = off)
   uniform float     uVignetteStart;       // radius where corner darkening begins
   uniform float     uVignetteStrength;    // max corner darkening (0 = off)
 
@@ -269,6 +270,17 @@ const FRAG = /* glsl */`
     float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
     color.rgb = max(mix(vec3(luma), color.rgb, uSaturation), 0.0);
 
+    // Forest split-tone: shadows toward a cool moss-green, highlights toward warm
+    // sunlight — the dappled light-through-canopy read that sells "deep forest".
+    // Subtle; scaled by uSplitTone.
+    {
+      float lz = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+      vec3 shadowTint = vec3(0.92, 1.05, 0.96);   // green-cool
+      vec3 highTint   = vec3(1.07, 1.02, 0.89);   // warm gold
+      vec3 tinted = color.rgb * mix(shadowTint, highTint, smoothstep(0.16, 0.74, lz));
+      color.rgb = mix(color.rgb, tinted, uSplitTone);
+    }
+
     // ---- Fog of war (T-157) ---------------------------------------------
     // Reconstruct world position from depth + inverse camera matrices.
     // Sky pixels have depth = 1.0; skip them.
@@ -364,6 +376,8 @@ export class EdgePass {
         // the crevice shadow. Tuning knobs.
         uAoRadius:         { value: 0.28 },
         uAoStrength:       { value: 1.15 },
+        // Forest split-tone (green shadows / warm highlights). Tuning knob.
+        uSplitTone:        { value: 0.85 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
