@@ -150,7 +150,30 @@ export interface BakedMesh {
   normals: Float32Array;
   uvs: Float32Array;
   voxelCenter: Float32Array;
+  /** Per-vertex RGB tint (~1.0) — a deterministic per-VOXEL brightness + warm/cool
+   *  jitter so every voxel is a slightly different shade of its material. This
+   *  mottled mosaic (vs one flat colour) is a core source of the reference look.
+   *  All 24 verts of a voxel share its tint. Consumed via material.vertexColors. */
+  colors: Float32Array;
   indices: Uint32Array;
+}
+
+/** Deterministic position hash → [0,1). Independent per `salt`. */
+function voxHash(x: number, y: number, z: number, salt: number): number {
+  // snap to a coarse lattice so a whole voxel hashes to one value regardless of
+  // which corner is sampled; quantise to 0.5u.
+  const xi = Math.round(x * 2), yi = Math.round(y * 2), zi = Math.round(z * 2);
+  let n = (Math.imul(xi, 374761393) ^ Math.imul(yi, 668265263) ^ Math.imul(zi, 2246822519) ^ Math.imul(salt, 3266489917)) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177) | 0;
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Per-voxel tint (rgb multipliers around 1.0): brightness jitter + a warm/cool
+ *  tilt. Tuned subtle — mottles the surface without losing the material's identity. */
+function voxelTint(cx: number, cy: number, cz: number): [number, number, number] {
+  const bright = 0.80 + 0.40 * voxHash(cx, cy, cz, 1);   // 0.80 .. 1.20
+  const warm = (voxHash(cx, cy, cz, 2) - 0.5) * 0.14;     // ±0.07 warm/cool tilt
+  return [bright * (1 + warm), bright, bright * (1 - warm)];
 }
 
 /**
@@ -183,10 +206,12 @@ export function bakeVoxels(
   const normals = new Float32Array(vCount * 3);
   const uvs = new Float32Array(vCount * 2);
   const voxelCenter = new Float32Array(vCount * 3);
+  const colors = new Float32Array(vCount * 3);
   const indices = new Uint32Array(voxels.length * BOX_INDEX_COUNT);
 
   let vOff = 0, iOff = 0;
   for (const { px, py, pz, baked } of voxels) {
+    const [tr, tg, tb] = voxelTint(px, py, pz);   // one tint per voxel
     for (let i = 0; i < BOX_VERT_COUNT; i++) {
       const v = vOff + i;
       // Translate the voxel's local geometry to its model-space center.
@@ -201,6 +226,9 @@ export function bakeVoxels(
       voxelCenter[v * 3]     = px;
       voxelCenter[v * 3 + 1] = py;
       voxelCenter[v * 3 + 2] = pz;
+      colors[v * 3]     = tr;
+      colors[v * 3 + 1] = tg;
+      colors[v * 3 + 2] = tb;
     }
     for (let i = 0; i < BOX_INDEX_COUNT; i++) {
       indices[iOff + i] = UNIT_BOX_INDEX[i] + vOff;
@@ -209,7 +237,7 @@ export function bakeVoxels(
     iOff += BOX_INDEX_COUNT;
   }
 
-  return { positions, normals, uvs, voxelCenter, indices };
+  return { positions, normals, uvs, voxelCenter, colors, indices };
 }
 
 /**

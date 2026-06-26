@@ -27,6 +27,7 @@ export function geometryFromBaked(baked: BakedMesh): THREE.BufferGeometry {
   out.setAttribute("normal",      new THREE.BufferAttribute(baked.normals,     3));
   out.setAttribute("uv",          new THREE.BufferAttribute(baked.uvs,         2));
   out.setAttribute("voxelCenter", new THREE.BufferAttribute(baked.voxelCenter, 3));
+  out.setAttribute("color",       new THREE.BufferAttribute(baked.colors,      3));
   if (baked.indices.length > 0) out.setIndex(new THREE.BufferAttribute(baked.indices, 1));
   return out;
 }

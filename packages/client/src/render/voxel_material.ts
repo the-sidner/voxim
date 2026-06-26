@@ -34,6 +34,10 @@ export function buildVoxelMaterial(
   return new THREE.MeshPhongMaterial({
     color: tex ? 0xffffff : color,
     map: tex ?? undefined,
+    // Per-voxel tint (baked into the `color` attribute by voxel_bake): every
+    // voxel a slightly different shade of the material → a rich mottled mosaic
+    // instead of one flat colour, the core of the reference surface richness.
+    vertexColors: true,
     flatShading: true,
     shininess,
     emissive,
