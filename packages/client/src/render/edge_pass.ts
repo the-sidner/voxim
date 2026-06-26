@@ -114,9 +114,11 @@ const FRAG = /* glsl */`
     // surfaces don't smear the whole screen.
     float uvRad = clamp(uAoRadius / dist, 1.5 * e.x, 28.0 * e.x);
     float occ = 0.0;
-    for (int i = 0; i < 8; i++) {
-      float a2 = (float(i) + 0.5) * 0.7853982 + ang;
-      float r  = uvRad * (0.35 + 0.65 * fract(float(i) * 0.61803));
+    // 4 rotated samples — half the taps of the original 8-ring. The per-pixel
+    // rotation (ang) + the radius jitter keep it from banding at the lower count.
+    for (int i = 0; i < 4; i++) {
+      float a2 = (float(i) + 0.5) * 1.5707963 + ang;   // 2π/4
+      float r  = uvRad * (0.4 + 0.6 * fract(float(i) * 0.61803));
       vec2 off = vec2(cos(a2), sin(a2)) * r;
       float ds = texture2D(tDepth, uv + off).r;
       if (ds >= 0.9999) continue;                    // sky never occludes
@@ -125,7 +127,7 @@ const FRAG = /* glsl */`
       float rangeCheck = smoothstep(1.0, 0.0, l / 2.0);   // ignore far / other-surface hits
       occ += max(dot(N, diff / (l + 1e-4)) - 0.025, 0.0) * rangeCheck;
     }
-    return clamp(1.0 - (occ / 8.0) * uAoStrength, 0.0, 1.0);
+    return clamp(1.0 - (occ / 4.0) * uAoStrength, 0.0, 1.0);
   }
 
   void main() {
@@ -227,19 +229,23 @@ const FRAG = /* glsl */`
     // (2R+1)×(2R+1) window.  Cost is small at our pixel-art resolutions (R≈4
     // → 81 samples) and the ring is fully continuous regardless of radius —
     // the previous +× sample produced a star-pattern that read as dots.
-    float hMask = texture2D(tHoverMask, vUv).r;
-    float hDil  = hMask;
-    int   r     = int(uHoverRadius);
-    for (int j = -8; j <= 8; j++) {
-      if (j < -r || j > r) continue;
-      for (int i = -8; i <= 8; i++) {
-        if (i < -r || i > r) continue;
-        hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(float(i), float(j))).r);
+    // Only run the (expensive) dilation when something is actually hovered —
+    // otherwise this was ~25 texture taps per pixel every frame for nothing.
+    if (uHoverActive > 0.0) {
+      float hMask = texture2D(tHoverMask, vUv).r;
+      float hDil  = hMask;
+      int   r     = int(uHoverRadius);
+      for (int j = -8; j <= 8; j++) {
+        if (j < -r || j > r) continue;
+        for (int i = -8; i <= 8; i++) {
+          if (i < -r || i > r) continue;
+          hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(float(i), float(j))).r);
+        }
       }
+      // Rim = dilated minus original.  The model itself stays untouched.
+      float hRim = hDil * (1.0 - hMask);
+      color.rgb = mix(color.rgb, uHoverColor, hRim);
     }
-    // Rim = dilated minus original.  The model itself stays untouched.
-    float hRim = hDil * (1.0 - hMask) * uHoverActive;
-    color.rgb = mix(color.rgb, uHoverColor, hRim);
 
     // ---- Bloom (HDR glow) -----------------------------------------------
     // Add the blurred bright-pass back into the linear HDR radiance BEFORE the

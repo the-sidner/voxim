@@ -124,13 +124,11 @@ export class BloomPass {
     renderer.setRenderTarget(this.bright);
     renderer.render(this.scene, this.cam);
 
-    // Ping-pong blur. Each iteration widens the kernel for a softer, larger halo.
-    // bright → pingA (H) → pingB (V) → pingA (H, wider) → pingB (V, wider) …
+    // Ping-pong blur — one horizontal + one vertical pass (was 4). The half-res
+    // target + a wider per-tap spread keep the halo soft at half the blur cost.
     const steps: BlurStep[] = [
-      { dir: [1, 0], spread: 1.0 },
-      { dir: [0, 1], spread: 1.0 },
-      { dir: [1, 0], spread: 2.0 },
-      { dir: [0, 1], spread: 2.0 },
+      { dir: [1, 0], spread: 1.7 },
+      { dir: [0, 1], spread: 1.7 },
     ];
     this.quad.material = this.blurMat;
     let src: THREE.Texture = this.bright.texture;

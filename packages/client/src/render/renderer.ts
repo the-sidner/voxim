@@ -42,12 +42,14 @@ const CROUCH_OMEGA = 18;
 
 // Supersample factor = clamp(devicePixelRatio, MIN, MAX). The whole post chain
 // renders at this × the CSS resolution and downsamples on the final blit, so the
-// comic outlines/flat-shaded silhouettes resolve as clean lines, not aliased
-// stairs. A floor of 1.5 guarantees the crispness even on DPR=1 displays (a plain
-// 1:1 raster is what produced the staircase aliasing); the 2× cap bounds fill-rate
-// on the voxel scene. Tuning knob — drop the floor to 1 for a low-end quality mode.
-const AAGFX_MIN_SS = 1.5;
-const AAGFX_MAX_SS = 2;
+// comic outlines/flat-shaded silhouettes resolve as clean lines instead of aliased
+// stairs. THIS IS THE PRIMARY PERF KNOB: cost scales with the square of this — the
+// post chain (SSAO + edge taps + bloom) is fill-rate bound, so every 0.1 here is
+// real frames. Capped at 1.35 (was 2.0) so a HiDPI panel renders below native
+// device res — still clearly anti-aliased vs the old 1:1 raster, but ~3× cheaper
+// than full native-2. Raise toward 1.6 for crisper edges if the GPU has headroom.
+const AAGFX_MIN_SS = 1.2;
+const AAGFX_MAX_SS = 1.35;
 const aagfxSupersample = () =>
   Math.min(Math.max(globalThis.devicePixelRatio || 1, AAGFX_MIN_SS), AAGFX_MAX_SS);
 
