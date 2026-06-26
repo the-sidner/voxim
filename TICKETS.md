@@ -1080,11 +1080,15 @@ not skipped:** 0b (CLIFF_* → config) is interim that Phase 6 deletes wholesale
 need new bootstrap plumbing → throwaway; 0c (`buildMaterialMap`) is a 10-line stable
 atlas-enum lookup, not a richness hack → converting it is ceremony; 0d (FieldExpr/
 FieldSampler registry) is premature before the Phase-3 grids exist (the critique's #5 —
-build the sampler with its data, not before). Phase 1b landed — the Studio "Material"
-editor (`0f6f73d`): live-previews `MaterialDef.render` through the REAL shipped runtime
-(curated `@voxim/client/render` barrel; `bakeVoxels`+`buildVoxelMaterial`+`getVoxelTexture`
-bundled into the studio, verified). Next: Phase 1a (Studio ProcModel + Scatter-Field-Painter
-panel) → the first hero-cell density slice.
+build the sampler with its data, not before). Phase 1 landed (both panels, live-verified via
+playwright) — Studio "Material" editor (`0f6f73d`) live-previews `MaterialDef.render`, and
+"ProcModel" editor (`57cf815`) generates trees/plants/rocks through the REAL generator
+registry + bake, both via the curated `@voxim/client/render` barrel (shipped runtime, no
+drift). The Scatter-Field-Painter half of P1a defers to P3/P4 (no field grids to paint
+yet). Next: Phase 2 (no-rebake content primitives — MaterialStateLadder + GradeDef +
+LightDef/LightBudget; unblocks the most axes). The hero-cell DENSITY slice is gated on
+P3 (field grids, the one wire break) + P4 (multi-layer scatter) — P1 delivers the
+"one primitive" authoring rung.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
