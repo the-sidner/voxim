@@ -1074,16 +1074,23 @@ Effort: L   Status: in-progress
 
 Elevate the render to AAA production feel WITHOUT abandoning the comic/pixel-art identity. Phases:
 - [x] A — Foundation: 1.5–2× supersample (clean comic edges, no aliasing), HalfFloat HDR scene
-  buffer (headroom for bloom + real ACES), 2048 PCF-soft shadow map. Commit (this).
-- [ ] B — Voxel detail: per-voxel baked ambient occlusion at seams (grounded, detailed, keeps flat
-  shading) + richer per-material textures. Threads through the worker + sync bake paths.
-- [ ] C — Lighting: cool rim/back light for silhouette separation + colored hemisphere bounce +
-  arcing sun (long raking dawn/dusk shadows; recompute the shadow-cam basis when SUN_DIR moves).
-- [ ] D — Atmosphere: bloom on emissive/sun (the headline glow), height/depth aerial fog in the
-  EdgePass, regrade exposure/saturation/vignette for the new HDR. Outlines kept.
-- [ ] E — Environment FX: foliage wind sway, richer stylized water (fresnel/foam/depth-fade),
-  additive glowing weapon trails, soft round hit sparks + impact flash, ambient dust motes.
-- [ ] F — Camera polish (optional): subtle telephoto FOV + idle dolly/sway.
+  buffer, 2048 PCF-soft shadow map. Commit (phase A).
+- [x] B — Voxel detail: real screen-space AO (depth-only, geometry-agnostic — handles voxels of any
+  size) in the EdgePass for contact/seam darkening. Chose SSAO over baked vertex AO to avoid the
+  worker/parity risk. Richer per-material textures left as an optional follow-up.
+- [x] C — Lighting: cool rim/back DirectionalLight for silhouette separation + warm/cool contrast.
+  Arcing sun deferred (needs per-phase sun direction in the palette schema) — follow-up.
+- [x] D — Atmosphere: HDR bloom on emissive/sun (BloomPass → EdgePass, before ACES), FogExp2 aerial
+  perspective, regrade (exposure 1.62 / saturation 1.5 / deeper vignette). Outlines kept.
+- [x] E — Environment FX: ambient dust motes, additive glowing weapon trails (HDR leading edge),
+  soft round hit sparks (was squares; dropped a hot-path console.log), stylized water
+  (fresnel rim + HDR sun glint). **Foliage wind sway deferred** — shared onBeforeCompile surgery
+  with canopyFade + a foliage flag; low screenshot-verifiability. Follow-up.
+- [x] F — Camera: telephoto framing (FOV 40→34, distance ×1.18) for flatter cinematic depth.
+
+Follow-ups (own sub-tickets when picked up): foliage wind sway; arcing sun per day-phase; richer
+material textures (normal/roughness detail); hit-impact flash ring; verify the new stylized water
+in-world (no water cell was reachable from the test-play spawn this pass).
 
 Invariants to defend: keep `flatShading:true` + the Sobel ink (the comic grammar); keep the
 single `buildVoxelMaterial` factory; preserve the terrain no-crack constant-displacement guarantee;
