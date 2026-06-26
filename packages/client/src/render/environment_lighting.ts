@@ -68,6 +68,19 @@ function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t
  */
 const SUN_DIR = new THREE.Vector3(20, 100, -15).normalize();
 
+/**
+ * Direction FROM the origin TOWARD the cool rim/back light — roughly opposite the
+ * sun in azimuth and raking low, so it catches the vertical faces the sun leaves
+ * in shadow and separates silhouettes from the background. A non-shadowing fill;
+ * its cool tint against the warm sun is the warm/cool temperature contrast that
+ * reads as deliberately-lit (AAA) rather than flat-ambient. Scales with daylight
+ * so night stays dark (it becomes a faint cool moon-fill, not a second sun).
+ */
+const RIM_DIR = new THREE.Vector3(-28, 34, 20).normalize();
+
+/** Cool tint the rim fill is biased toward (a dusk-sky blue) for warm/cool contrast. */
+const COOL_RIM_TINT = new THREE.Color(0x8aa6d8);
+
 export class EnvironmentLighting {
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
@@ -83,6 +96,8 @@ export class EnvironmentLighting {
   private readonly sunMesh: THREE.Mesh;
   /** Hemisphere sky/ground ambient. */
   private readonly hemi: THREE.HemisphereLight;
+  /** Cool, non-shadowing rim/back fill opposite the sun (silhouette separation). */
+  private readonly rim: THREE.DirectionalLight;
 
   /** Phase table — empty until applyPalette() populates it from the palette. */
   private phaseLights: Record<string, DayPhaseLight> = {};
@@ -130,6 +145,14 @@ export class EnvironmentLighting {
     // the palette's noon sky (sky-side) + hemiGround (ground-side).
     this.hemi = new THREE.HemisphereLight(0x808080, 0x404040, 0.55);
     this.scene.add(this.hemi);
+
+    // ---- cool rim / back fill ----
+    // No shadow (a fill, not a key). Direction + color/intensity are set per frame
+    // in update(); colour comes from the phase sky, intensity scales with daylight.
+    this.rim = new THREE.DirectionalLight(0x9fb6d8, 0.0);
+    this.rim.castShadow = false;
+    this.scene.add(this.rim);
+    this.scene.add(this.rim.target);
 
     // ---- visible sun sphere ----
     this.sunMesh = new THREE.Mesh(
@@ -204,6 +227,14 @@ export class EnvironmentLighting {
     this.hemi.groundColor.copy(this.lightCur.hemiGround);
     this.hemi.intensity  = this.lightCur.hemiIntensity;
     this.sunMesh.visible = this.lightCur.sunIntensity > 0.15;
+
+    // Cool rim/back fill: a sky-tinted cool shifted away from the warm sun, at
+    // ~28% of the sun's intensity (plus a small night floor as a moon-fill). It
+    // tracks the camera like the sun so the lit band follows the player.
+    this.rim.color.copy(this.lightCur.sky).lerp(COOL_RIM_TINT, 0.5);
+    this.rim.intensity = this.lightCur.sunIntensity * 0.28 + 0.06;
+    this.rim.position.copy(cameraTarget).addScaledVector(RIM_DIR, 100);
+    this.rim.target.position.copy(cameraTarget);
 
     // Keep sun shadow frustum centered on the player area.
     // Both position and target must move together — only the direction between
