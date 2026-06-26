@@ -165,13 +165,12 @@ function buildMaterialMap(content: ContentService): {
   map.set(MATERIAL_GRAVEL, byName("gravel"));
   map.set(MATERIAL_MUD,    byName("mud"));
   map.set(MATERIAL_SNOW,   byName("snow"));
-  // No dedicated "moss" content material yet — closest neighbour visually
-  // is dark grass; falling back to grass keeps green patches readable.
-  map.set(MATERIAL_MOSS,   byName("grass"));
-  // Carved paths read as worn earth — gravel gives the trodden-trail feel
-  // without needing a new content asset. If we add a "path"/"clay"
-  // material later this is the place to switch it on.
-  map.set(MATERIAL_PATH,   byName("gravel"));
+  // Dedicated forest-floor materials (T-310 level pass): the atlas already
+  // paints MOSS veins in moist clearings and PATH along carved corridors —
+  // give them real distinct colour instead of collapsing to grass/gravel, so
+  // the level's paths + clearings + ground variety actually read.
+  map.set(MATERIAL_MOSS,   byName("moss"));
+  map.set(MATERIAL_PATH,   byName("path"));
   // Atlas's WATER falls back to mud — content has no water material yet.
   // When phase 4 boundary kinds land, water boundaries will own their own
   // visual instead of leaning on the ground material.
