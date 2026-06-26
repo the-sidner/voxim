@@ -1059,6 +1059,37 @@ hotbar is what you carry on your body; the backpack is one slot that opens the b
 for free (anchors are bone children → slung gear sways with the body). This pulls the hotbar from a
 client-UI mapping into a real networked component + an inventory-access gate — sizeable; its own arc.
 
+## AAA Graphics
+
+The 2026-06-26 visual-elevation arc: the mechanics + voxel art language exist; what's missing is
+DETAIL + AAA light/atmosphere. User direction: the comic / pixel-art look is DELIBERATE and KEPT —
+the Sobel outlines and `flatShading:true` stay, voxels (of varying size) remain the atomic units (no
+bevels / smooth-normals / subdivision that would round them away). The ask is "rounder, less eckig"
+re-read as **crisper + more detailed within the comic idiom**, plus AAA lighting & atmosphere (think
+high-end stylized voxel — hard edges, but clean, richly lit, with glow/AO/haze/depth). Sequenced as
+phases, each a self-contained commit verified via the testplay screenshot harness.
+
+### T-310 · AAA graphics pass — detail + light + atmosphere over the comic voxel look
+Effort: L   Status: in-progress
+
+Elevate the render to AAA production feel WITHOUT abandoning the comic/pixel-art identity. Phases:
+- [x] A — Foundation: 1.5–2× supersample (clean comic edges, no aliasing), HalfFloat HDR scene
+  buffer (headroom for bloom + real ACES), 2048 PCF-soft shadow map. Commit (this).
+- [ ] B — Voxel detail: per-voxel baked ambient occlusion at seams (grounded, detailed, keeps flat
+  shading) + richer per-material textures. Threads through the worker + sync bake paths.
+- [ ] C — Lighting: cool rim/back light for silhouette separation + colored hemisphere bounce +
+  arcing sun (long raking dawn/dusk shadows; recompute the shadow-cam basis when SUN_DIR moves).
+- [ ] D — Atmosphere: bloom on emissive/sun (the headline glow), height/depth aerial fog in the
+  EdgePass, regrade exposure/saturation/vignette for the new HDR. Outlines kept.
+- [ ] E — Environment FX: foliage wind sway, richer stylized water (fresnel/foam/depth-fade),
+  additive glowing weapon trails, soft round hit sparks + impact flash, ambient dust motes.
+- [ ] F — Camera polish (optional): subtle telephoto FOV + idle dolly/sway.
+
+Invariants to defend: keep `flatShading:true` + the Sobel ink (the comic grammar); keep the
+single `buildVoxelMaterial` factory; preserve the terrain no-crack constant-displacement guarantee;
+keep tone/sRGB hand-rolled in EdgePass (don't double-encode via renderer toneMapping); new post
+passes follow the existing hand-rolled fullscreen-quad pattern (no EffectComposer).
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
