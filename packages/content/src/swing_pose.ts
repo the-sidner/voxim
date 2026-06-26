@@ -234,6 +234,53 @@ export function applyLocomotionPose(
   return out;
 }
 
+export interface CrouchPoseParams {
+  /** Knee pole hint, actor-local {fwd,right,up} — knees bend forward. */
+  kneePole?: { fwd: number; right: number; up: number };
+  /** Foot bones whose legs get planted. Default ["foot_l","foot_r"]. */
+  feetBones?: [string, string];
+  morphParams?: Record<string, number>;
+}
+
+const CROUCH_DEFAULTS = {
+  kneePole: { fwd: 1, right: 0, up: -0.2 },
+  feetBones: ["foot_l", "foot_r"] as [string, string],
+};
+
+/**
+ * Crouch: the pelvis drops by `dropY` (scaled solver units) while the feet stay
+ * planted — knees bend out. The drop itself is a root translation the CALLER
+ * applies (render translates the root group by -dropY; the inspector passes
+ * rootOffset to solveSkeleton). This only solves the LEG rotations that re-plant
+ * the feet, reusing the same `aimLimb` primitive as the arms. Composes with
+ * everything: crouch + strafe + swing stack on one skeleton.
+ */
+export function applyCrouchPose(
+  skeleton: SkeletonDef,
+  boneIndex: ReadonlyMap<string, BoneDef>,
+  basePose: ReadonlyMap<string, BoneRotation>,
+  scale: number,
+  dropY: number,
+  params: CrouchPoseParams = {},
+): Map<string, BoneRotation> {
+  const out = new Map<string, BoneRotation>(basePose);
+  if (dropY <= 1e-4) return out;
+  const morph = params.morphParams;
+  const cp = { ...CROUCH_DEFAULTS, ...params };
+  // Ground foot targets from the un-dropped pose; hips from the dropped pose.
+  const P0 = solveSkeleton(skeleton, boneIndex, out, scale, morph);
+  const Pd = solveSkeleton(skeleton, boneIndex, out, scale, morph, undefined, { x: 0, y: -dropY, z: 0 });
+  const pole = toSolver(cp.kneePole);
+  for (const foot of cp.feetBones) {
+    const lower = boneIndex.get(foot)?.parent;
+    const upper = lower ? boneIndex.get(lower)?.parent : undefined;
+    const target = P0.get(foot)?.pos;
+    if (!upper || !lower || !target) continue;
+    aimLimb(Pd, boneIndex, upper, lower, foot, target, pole, null, null, out);
+  }
+  return out;
+}
+
 // ---- the swing producer ----
 
 /**

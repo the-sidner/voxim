@@ -139,8 +139,8 @@ export type { BoneTransform } from "./src/skeleton_solver.ts";
 export { solveSkeleton, REST_POSE } from "./src/skeleton_solver.ts";
 
 // ---- Procedural pose catalogue: locomotion + swing (inspector + client) ----
-export type { SwingSample, SwingPoseParams, LocoState, LocoPoseParams } from "./src/swing_pose.ts";
-export { sampleSwingPath, solveSwingPose, applyLocomotionPose } from "./src/swing_pose.ts";
+export type { SwingSample, SwingPoseParams, LocoState, LocoPoseParams, CrouchPoseParams } from "./src/swing_pose.ts";
+export { sampleSwingPath, solveSwingPose, applyLocomotionPose, applyCrouchPose } from "./src/swing_pose.ts";
 
 // ---- ModelRef ECS component ----
 export { ModelRef } from "./src/component.ts";

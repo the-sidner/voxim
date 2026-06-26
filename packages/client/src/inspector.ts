@@ -12,7 +12,7 @@
  */
 import * as THREE from "three";
 import {
-  BootstrapSource, evaluateAnimationLayers, solveSkeleton, applyQuat, solveSwingPose, applyLocomotionPose,
+  BootstrapSource, evaluateAnimationLayers, solveSkeleton, applyQuat, solveSwingPose, applyLocomotionPose, applyCrouchPose,
 } from "@voxim/content";
 import type { ContentService, SkeletonDef, WeaponActionDef } from "@voxim/content";
 
@@ -168,10 +168,13 @@ function setPose(t: number) {
   // the Mixamo clip that currently drives the game.
   let tf;
   if (useAuthored) {
-    // Fused pipeline: locomotion base pose (strafe/turn lean) → swing overlay+IK.
-    const base = applyLocomotionPose(skeleton, boneIndex, new Map(), 1, { strafe, turn });
-    const pose = solveSwingPose(skeleton, boneIndex, base, 1, curWA.swingPath!, t, {});
-    tf = solveSkeleton(skeleton, boneIndex, pose, 1, undefined);
+    // Fused pipeline: crouch (legs + pelvis drop) → locomotion lean → swing
+    // overlay + IK, all on one skeleton. The pelvis drop is a root translation.
+    const dropY = crouch * CROUCH_DROP;
+    let rot = applyCrouchPose(skeleton, boneIndex, new Map(), 1, dropY);
+    rot = applyLocomotionPose(skeleton, boneIndex, rot, 1, { strafe, turn });
+    rot = solveSwingPose(skeleton, boneIndex, rot, 1, curWA.swingPath!, t, {});
+    tf = solveSkeleton(skeleton, boneIndex, rot, 1, undefined, undefined, dropY > 1e-4 ? { x: 0, y: -dropY, z: 0 } : undefined);
   } else {
     tf = solveSkeleton(skeleton, boneIndex, evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }]), 1, undefined);
   }
@@ -255,24 +258,26 @@ for (const w of weaponActions) {
 }
 waSel.value = curWA.id;
 let t = 0, playing = false, speed = 1;
-let strafe = 0, turn = 0;
+let strafe = 0, turn = 0, crouch = 0;
+const CROUCH_DROP = 0.9; // pelvis drop (solver units) at full crouch
 const tSlider = q("#t") as HTMLInputElement;
 const STEP = 1 / 30;
 
-// Locomotion controls — the base-pose catalogue composing live with the swing.
+// Locomotion + crouch controls — the base-pose catalogue composing live with the swing.
 {
   const panel = waSel.parentElement ?? document.body;
-  const mk = (label: string, set: (v: number) => void) => {
+  const mk = (label: string, min: number, set: (v: number) => void) => {
     const row = document.createElement("div");
     row.style.cssText = "margin-top:6px;font-size:12px;color:#9fb4c8;display:flex;align-items:center;gap:8px";
     const lab = document.createElement("span"); lab.textContent = label; lab.style.width = "44px"; row.appendChild(lab);
     const sl = document.createElement("input");
-    sl.type = "range"; sl.min = "-1"; sl.max = "1"; sl.step = "0.05"; sl.value = "0"; sl.style.flex = "1";
+    sl.type = "range"; sl.min = String(min); sl.max = "1"; sl.step = "0.05"; sl.value = "0"; sl.style.flex = "1";
     sl.oninput = () => { set(parseFloat(sl.value)); setPose(t); };
     row.appendChild(sl); panel.appendChild(row);
   };
-  mk("strafe", (v) => { strafe = v; });
-  mk("turn", (v) => { turn = v; });
+  mk("strafe", -1, (v) => { strafe = v; });
+  mk("turn", -1, (v) => { turn = v; });
+  mk("crouch", 0, (v) => { crouch = v; });
 }
 
 waSel.onchange = () => { curWA = weaponActions.find((w) => w.id === waSel.value)!; useAuthored = !!curWA.swingPath; buildArc(); setPose(t); };

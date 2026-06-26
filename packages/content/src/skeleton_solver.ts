@@ -50,9 +50,15 @@ export function solveSkeleton(
   scale: number,
   morphParams?: Record<string, number>,
   out?: Map<string, BoneTransform>,
+  rootOffset?: { x: number; y: number; z: number },
 ): Map<string, BoneTransform> {
   const result: Map<string, BoneTransform> = out ?? new Map();
   if (out) out.clear();
+  // The root (parent === null) normally starts at the origin; a rootOffset
+  // translates the whole skeleton in solver space (e.g. a crouch pelvis drop).
+  const rootTransform: BoneTransform = rootOffset
+    ? { pos: { x: rootOffset.x, y: rootOffset.y, z: rootOffset.z }, rot: IDENTITY_QUAT }
+    : IDENTITY_TRANSFORM;
 
   // Pre-build per-bone rest-axis multipliers from morph param declarations.
   const boneScaleX = new Map<string, number>();
@@ -77,7 +83,7 @@ export function solveSkeleton(
   for (const bone of skeleton.bones) {
     const parentTransform: BoneTransform = bone.parent !== null
       ? (result.get(bone.parent) ?? IDENTITY_TRANSFORM)
-      : IDENTITY_TRANSFORM;
+      : rootTransform;
 
     // Apply morph scale to rest components before coordinate conversion.
     const rx = bone.restX * (boneScaleX.get(bone.id) ?? 1.0);
