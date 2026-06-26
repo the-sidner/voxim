@@ -114,6 +114,10 @@ export interface EntityMeshGroup {
    * locked to the hit. Seeded to target on first sight; cleared on model swap.
    */
   boneSprings: Map<string, THREE.Quaternion>;
+  /** Eased crouch amount [0,1] — the pelvis-drop / foot-IK input. Eased toward
+   *  the target (local player input; remotes 0) so the crouch is snappy but not
+   *  a one-frame jolt. */
+  crouchEased: number;
   /**
    * World-space velocity (model coords) — used to derive movement direction
    * relative to facing for directional walk animations.
@@ -206,6 +210,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     attachments: new Map(),
     boneSlotTransforms: new Map(),
     boneSprings: new Map(),
+    crouchEased: 0,
     animationState: state.animationState ?? null,
     lastAnimUpdateMs: performance.now(),
     velocityX: state.velocity?.x ?? 0,

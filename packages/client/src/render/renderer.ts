@@ -32,8 +32,13 @@ import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "
 import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
-import { solveSwingPose, applyLocomotionPose } from "@voxim/content";
+import { solveSwingPose, applyLocomotionPose, applyCrouchPose } from "@voxim/content";
 import type { BoneRotation, LocoState } from "@voxim/content";
+
+// Pelvis drop (skeleton rest units) at full crouch; scaled per entity.
+const CROUCH_DROP = 0.9;
+// Crouch ease rate — snappy (~150ms settle) but not a one-frame jolt.
+const CROUCH_OMEGA = 18;
 
 // ---- secondary motion (snappy organic ease) --------------------------------
 // The follow-through chain that gets eased — spine + head. NOT the IK'd hands/
@@ -839,7 +844,7 @@ export class VoximRenderer {
     return { strafe: Math.max(-1, Math.min(1, strafe)), turn: 0 };
   }
 
-  render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null, localFacing?: number | null, localMovement?: { x: number; y: number } | null): void {
+  render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null, localFacing?: number | null, localMovement?: { x: number; y: number } | null, localCrouch?: number): void {
     // Compute a smooth fractional tick that advances at 20 Hz based on real time.
     // This makes animations run at 60 fps instead of stepping every 50 ms.
     const now = performance.now();
@@ -876,11 +881,24 @@ export class VoximRenderer {
           ? this.weaponActionsMap.get(anim.weaponActionId)
           : undefined;
         const loco = this.locoState(id, mesh, localMovement ?? null, localFacing ?? null);
+        // Crouch: eased toward the input target (local player; remotes have no
+        // networked crouch yet → 0). The pelvis drop is a root-group translation.
+        const crouchTarget = id === this.localPlayerId ? (localCrouch ?? 0) : 0;
+        mesh.crouchEased += (crouchTarget - mesh.crouchEased) * (1 - Math.exp(-CROUCH_OMEGA * (animDtMs / 1000)));
+        const dropY = mesh.crouchEased > 0.002 ? mesh.crouchEased * CROUCH_DROP * mesh.modelScale : 0;
+        // Only the local player crouches (remotes have no networked crouch), so
+        // only its root is translated — leaves every other rig's root untouched.
+        if (id === this.localPlayerId) {
+          const rootBone = mesh.boneGroups.get("root");
+          if (rootBone) rootBone.position.y = -dropY;
+        }
+
         let pose: Map<string, THREE.Euler>;
-        if (skeleton && (swingWA?.swingPath || loco)) {
+        if (skeleton && (swingWA?.swingPath || loco || dropY > 0)) {
           const boneIndex = this.content.getBoneIndex(mesh.skeletonId);
           const baseLayers = swingWA?.swingPath ? layers.filter((l) => l.clipId !== swingWA.clipId) : layers;
           let rot: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
+          if (dropY > 0) rot = applyCrouchPose(skeleton, boneIndex, rot, mesh.modelScale, dropY, { morphParams: mesh.modelMorphs });
           if (loco) rot = applyLocomotionPose(skeleton, boneIndex, rot, mesh.modelScale, loco, { morphParams: mesh.modelMorphs });
           if (swingWA?.swingPath) {
             const total = swingWA.windupTicks + swingWA.activeTicks + swingWA.winddownTicks;

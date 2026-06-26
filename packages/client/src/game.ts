@@ -45,7 +45,7 @@ import { humanizeItemType } from "./ui/item_names.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
 import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
 import { loadLoginName } from "./ui/login.ts";
-import { ACTION_USE_SKILL, ACTION_JUMP, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
+import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { EquipmentData, InventoryData, LoreLoadoutData, ResourceData, ActiveActionsData } from "@voxim/codecs";
 import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
@@ -893,11 +893,13 @@ export class VoximGame {
 
     let predictedPos = null;
     let localMovement: { x: number; y: number } | null = null;
+    let localCrouch = 0;
     if (this.input) {
       const datagram = this.input.buildDatagram(++this.inputSeq, this.serverTick);
       // Movement INTENT (camera-relative world XY) — drives the local player's
       // locomotion lean directly, so it's snappy/instant (not physics velocity).
       localMovement = { x: datagram.movementX, y: datagram.movementY };
+      localCrouch = hasAction(datagram.actions, ACTION_CROUCH) ? 1 : 0;
       this.connection.sendMovement(datagram);
       recordInput(datagram);
       // Track the send timestamp so we can derive RTT when this seq is
@@ -988,7 +990,7 @@ export class VoximGame {
     // whose kindGrid arrived before their heightmap.
     this.waterRenderer?.tick(now);
 
-    this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null, localMovement);
+    this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null, localMovement, localCrouch);
 
     const tPostStart = performance.now();
     // Update world-space entity health bars + gate labels (frame-driven, not reactive)
