@@ -93,6 +93,7 @@ import { DustMotes } from "./dust_motes.ts";
 import { LightManager } from "./light_manager.ts";
 import { EdgePass } from "./edge_pass.ts";
 import { BloomPass } from "./bloom_pass.ts";
+import { GodRayPass } from "./god_ray_pass.ts";
 import { CameraRig } from "./camera_rig.ts";
 import type { FogOfWar } from "../state/fog_of_war.ts";
 import { FOG_GRID_SIZE, FOG_CELL_SIZE } from "@voxim/protocol";
@@ -274,6 +275,10 @@ export class VoximRenderer {
   private readonly edgePass: EdgePass;
   /** HDR bloom — bright-pass + separable blur, composited into the EdgePass. */
   private readonly bloom: BloomPass;
+  /** Volumetric light shafts — radial scatter from the sun, into the EdgePass. */
+  private readonly godRay: GodRayPass;
+  private readonly _sunWorld = new THREE.Vector3();
+  private readonly _sunUV = new THREE.Vector2();
   /** Hover mask: hovered entity rendered flat-white; fed into EdgePass for silhouette outline. */
   private readonly hoverMaskTarget: THREE.WebGLRenderTarget;
   /** Override material used during the hover mask pass — flat white, no lighting. */
@@ -451,6 +456,10 @@ export class VoximRenderer {
     this.bloom.setThreshold(0.85, 0.5);
     this.edgePass.setBloomStrength(1.0);
     this.edgePass.setBloomTexture(this.bloom.texture);
+
+    // ---- volumetric god rays (radial scatter of the bloom toward the sun) ----
+    this.godRay = new GodRayPass(pw, ph);
+    this.edgePass.setGodRayTexture(this.godRay.texture);
 
     // ---- environment lighting (sun + hemi + sky/fog + day-night) ----
     this.envLighting = new EnvironmentLighting(this.scene);
@@ -1137,6 +1146,13 @@ export class VoximRenderer {
       this.bloom.render(this.renderer, this.pixelTarget.texture);
       this.edgePass.setBloomTexture(this.bloom.texture);
 
+      // God rays: project the sun to screen UV and radial-scatter the bloom
+      // bright-target toward it → canopy/mist light shafts.
+      this.envLighting.getSunWorldPosition(this._sunWorld).project(this.camera);
+      this._sunUV.set(this._sunWorld.x * 0.5 + 0.5, this._sunWorld.y * 0.5 + 0.5);
+      this.godRay.render(this.renderer, this.bloom.texture, this._sunUV);
+      this.edgePass.setGodRayTexture(this.godRay.texture);
+
       // Hover mask: render whatever's currently on HOVER_LAYER flat-white →
       // hoverMaskTarget.  HoverOutlineRenderer puts the hovered entity's meshes
       // (or proxy shells for prop-pool entities) onto the layer and toggles the
@@ -1231,6 +1247,7 @@ export class VoximRenderer {
     this.hoverMaskTarget.setSize(npw, nph);
     this.edgePass.setSize(npw, nph);
     this.bloom.setSize(npw, nph);
+    this.godRay.setSize(npw, nph);
   }
 
   dispose(): void {
@@ -1242,6 +1259,7 @@ export class VoximRenderer {
     this.instancePool.dispose();
     this.edgePass.dispose();
     this.bloom.dispose();
+    this.godRay.dispose();
     this.pixelTarget.dispose();
     this.heightTarget.dispose();
     this.hoverMaskTarget.dispose();

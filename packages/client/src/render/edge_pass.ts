@@ -46,6 +46,9 @@ const FRAG = /* glsl */`
   uniform sampler2D tFog;
   uniform sampler2D tBloom;            // half-res blurred HDR bright-pass
   uniform float     uBloomStrength;    // how much glow to add back (0 = off)
+  uniform sampler2D tGodRay;           // half-res radial light-shaft buffer
+  uniform float     uGodRayStrength;   // light-shaft intensity (0 = off)
+  uniform vec3      uGodRayColor;      // warm shaft tint
   uniform mat4      uProjInv;
   uniform mat4      uViewInv;
   uniform float     uTileSize;          // world units per tile axis (= fog texture side)
@@ -255,6 +258,11 @@ const FRAG = /* glsl */`
     // upscaling from the half-res bloom target → a smooth halo.
     color.rgb += texture2D(tBloom, vUv).rgb * uBloomStrength;
 
+    // ---- God rays (volumetric light shafts) -----------------------------
+    // Add the radial light-scatter buffer, warm-tinted, into the HDR scene
+    // before tone-mapping — sun/canopy shafts that roll off filmically.
+    color.rgb += texture2D(tGodRay, vUv).rgb * uGodRayStrength * uGodRayColor;
+
     // ---- Tone (lit radiance) --------------------------------------------
     // Exposure lift then the ACES curve, applied to the LIT scene BEFORE the
     // fog-of-war dim — so tone-mapping shapes the world's light, and fog-of-war
@@ -339,10 +347,13 @@ export class EdgePass {
         tFog:          { value: fogTex },
         tBloom:        { value: blackTex },
         uBloomStrength: { value: 0.7 },
+        tGodRay:        { value: blackTex },
+        uGodRayStrength: { value: 0.3 },
+        uGodRayColor:    { value: new THREE.Color(1.0, 0.93, 0.74) },  // warm shaft
         uProjInv:      { value: new THREE.Matrix4() },
         uViewInv:      { value: new THREE.Matrix4() },
         uTileSize:     { value: 0.0 },           // 0 disables fog (no tile yet)
-        uFogUnseen:    { value: 0.18 },
+        uFogUnseen:    { value: 0.12 },
         uFogSeen:      { value: 0.66 },
         uFogVisible:   { value: 1.0 },
         texelSize:     { value: new THREE.Vector2(1 / width, 1 / height) },
@@ -363,21 +374,22 @@ export class EdgePass {
         // the corners back for focus. Tuned by eye against the ash-grey world.
         // Lifted a touch (was 1.5) now that HDR headroom + bloom carry the bright
         // end — pulls the grim midtones up so the world reads less muddy-dark.
-        uExposure:         { value: 1.42 },
-        // Chroma gain — lifts the intentionally-desaturated earth palette into
-        // readable color ("deutlich bunter"). 1.0 = neutral; tuned by eye.
-        uSaturation:       { value: 1.62 },
-        // Slightly deeper + earlier vignette focuses the eye on the player and
-        // frames the lit scene cinematically (still soft, never a hard frame).
-        uVignetteStart:    { value: 0.42 },
-        uVignetteStrength: { value: 0.17 },
-        // SSAO — contact darkening between voxels. Radius folds in the projection
-        // scale (tuned by eye against the fixed camera); strength is the depth of
-        // the crevice shadow. Tuning knobs.
-        uAoRadius:         { value: 0.28 },
-        uAoStrength:       { value: 1.15 },
-        // Forest split-tone (green shadows / warm highlights). Tuning knob.
-        uSplitTone:        { value: 0.45 },
+        // Chiaroscuro (concept-art reference pivot): a LOWER exposure lets the
+        // shadows fall deep so the few warm torch/fire pools + the bloom carry
+        // the light — grim, high-contrast, NOT flat-bright.
+        uExposure:         { value: 1.12 },
+        // Rich colour held in the lit areas against the dark.
+        uSaturation:       { value: 1.66 },
+        // Deeper, earlier vignette — cinematic frame, pulls the dark in.
+        uVignetteStart:    { value: 0.34 },
+        uVignetteStrength: { value: 0.32 },
+        // Stronger SSAO so the dense overgrown stone reads packed with contact
+        // shadow, the way the references pool darkness in every crevice.
+        uAoRadius:         { value: 0.30 },
+        uAoStrength:       { value: 1.5 },
+        // Stronger split-tone — cool misty shadow vs warm firelight, the
+        // reference's core temperature story. Tuning knob.
+        uSplitTone:        { value: 0.62 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -442,6 +454,11 @@ export class EdgePass {
   /** Glow amount added back before tone-mapping (0 = off). Tuning knob. */
   setBloomStrength(value: number): void {
     this.material.uniforms.uBloomStrength.value = value;
+  }
+
+  /** Bind the live god-ray (light-shaft) texture. */
+  setGodRayTexture(tex: THREE.Texture): void {
+    this.material.uniforms.tGodRay.value = tex;
   }
 
   /** Set the tile size in world units (== fog texture side).  0 disables fog. */

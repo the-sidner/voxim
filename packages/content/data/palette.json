@@ -68,7 +68,7 @@
     "waterDeep": "deep-water"
   },
   "phases": {
-    "noon":     { "sky": "#8fb09a", "fog": "#6f8559", "sun": "#fff2cf", "hemiGround": "#33482a", "sunIntensity": 2.5,  "hemiIntensity": 0.62, "fogFar": 185 },
+    "noon":     { "sky": "#9aa89c", "fog": "#697b6a", "sun": "#fff0c4", "hemiGround": "#283823", "sunIntensity": 2.7,  "hemiIntensity": 0.4, "fogFar": 150 },
     "dawn":     { "sky": "#c8967a", "fog": "#b07a5e", "sun": "#ffce96", "hemiGround": "#5a4632", "sunIntensity": 1.5,  "hemiIntensity": 0.34, "fogFar": 170 },
     "dusk":     { "sky": "#a8502a", "fog": "#8a4422", "sun": "#ff8040", "hemiGround": "#4a2e20", "sunIntensity": 1.25, "hemiIntensity": 0.3,  "fogFar": 160 },
     "midnight": { "sky": "#0e0a18", "fog": "#0c0a14", "sun": "#4a4276", "hemiGround": "#14121c", "sunIntensity": 0.18, "hemiIntensity": 0.16, "fogFar": 105 }

@@ -86,7 +86,7 @@ const COOL_RIM_TINT = new THREE.Color(0x8aa6d8);
  * haze stays gentle inside the ~68-unit play radius and thickens toward the
  * draw edge — depth cue, not a wall of murk. Tuning knob for overall atmosphere.
  */
-const FOG_DENSITY_K = 1.6;
+const FOG_DENSITY_K = 2.1;
 
 export class EnvironmentLighting {
   /** Directional sun — its target tracks the camera center each frame. */
@@ -207,6 +207,12 @@ export class EnvironmentLighting {
     this.lightTgt.sunIntensity = p.sunIntensity;
     this.lightTgt.hemiIntensity = p.hemiIntensity;
     this.lightTgt.fogFar = p.fogFar;
+  }
+
+  /** World position of the visible sun disc — for projecting the sun to screen
+   *  space (god-ray light shafts). */
+  getSunWorldPosition(target: THREE.Vector3): THREE.Vector3 {
+    return target.copy(this.sunMesh.position);
   }
 
   /** Toggle sun shadow casting (debug). Returns the new state. */
