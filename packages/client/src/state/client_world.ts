@@ -8,7 +8,7 @@ import type { BinaryComponentDelta, BinaryEntitySpawn, WorldSnapshot } from "@vo
 import { ComponentType, COMPONENT_TYPE_TO_NAME, CODEC_BY_WIREID } from "@voxim/protocol";
 // Only the terrain-grid codecs are referenced directly (their decode has chunk-
 // binding side effects); every other component decodes through CODEC_BY_WIREID.
-import { heightmapCodec, openMaskCodec, kindGridCodec } from "@voxim/codecs";
+import { heightmapCodec, openMaskCodec, kindGridCodec, materialGridCodec } from "@voxim/codecs";
 import type {
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
@@ -101,6 +101,7 @@ export class ClientWorld {
    * server entities. Same key convention as the heightmap/openMask.
    */
   private readonly chunkKinds = new Map<string, Uint16Array>();
+  private readonly chunkMaterials = new Map<string, Uint16Array>();
   /**
    * Reverse map: chunk entityId → "chunkX,chunkY". Lets us index the
    * OpenMask / KindGrid deliveries (which don't carry chunkX/chunkY
@@ -158,6 +159,7 @@ export class ClientWorld {
         this.chunkCoordByEntity.set(entityId, key);
         if (entity.openMask) this.chunkOpenMasks.set(key, entity.openMask.data);
         if (entity.kindGrid) this.bindKinds(key, entity.kindGrid.data);
+        if (entity.materialGrid) this.chunkMaterials.set(key, entity.materialGrid.data);
         return;
       }
       case ComponentType.openMask: {
@@ -172,6 +174,13 @@ export class ClientWorld {
         entity.kindGrid = kg;
         const key = this.chunkCoordByEntity.get(entityId);
         if (key) this.bindKinds(key, kg.data);
+        return;
+      }
+      case ComponentType.materialGrid: {
+        const mg = materialGridCodec.decode(data);
+        entity.materialGrid = mg;
+        const key = this.chunkCoordByEntity.get(entityId);
+        if (key) this.chunkMaterials.set(key, mg.data);
         return;
       }
     }
@@ -290,6 +299,15 @@ export class ClientWorld {
   }
 
   /**
+   * Raw per-cell material-id buffer for one chunk, or null if not yet loaded.
+   * Lets decorators (floor scatter) place props by GROUND material — ferns on
+   * grass/moss, etc. — not just by the wall-only KindGrid.
+   */
+  getMaterialData(chunkX: number, chunkY: number): Uint16Array | null {
+    return this.chunkMaterials.get(`${chunkX},${chunkY}`) ?? null;
+  }
+
+  /**
    * Per-cell impassability check. Returns true (open) for unloaded chunks
    * so out-of-tile coordinates don't accidentally block — same convention
    * the server-side lookup uses.
@@ -309,6 +327,7 @@ export class ClientWorld {
     this.chunkHeightmaps.clear();
     this.chunkOpenMasks.clear();
     this.chunkKinds.clear();
+    this.chunkMaterials.clear();
     this.chunkCoordByEntity.clear();
   }
 }

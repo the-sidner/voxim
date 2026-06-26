@@ -1,0 +1,21 @@
+{
+  "id": 16,
+  "name": "mushroom_red",
+  "color": "#b0432e",
+  "roughness": 0.7,
+  "metallic": 0,
+  "emissive": 0,
+  "solid": true,
+  "walkable": false,
+  "properties": {
+    "hardness": 0.05,
+    "density": 0.2,
+    "flexibility": 0.4,
+    "flammability": 0.5,
+    "toughness": 0.05
+  },
+  "tags": [
+    "organic",
+    "vegetation"
+  ]
+}

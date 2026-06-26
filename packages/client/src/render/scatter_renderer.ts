@@ -59,10 +59,15 @@ export class ScatterRenderer {
   private readonly decorated = new Set<string>();
   /** Built variant pools: scatterId → per-variant archetype-id lists. */
   private readonly pools = new Map<string, string[][]>();
-  /** Chunks queued during loading (drained in start()). */
-  private readonly queue: Array<{ coord: string; kinds: Uint16Array }> = [];
+  /** Chunks queued during loading (drained across frames). `retries` bounds the
+   *  wait for a chunk's material grid to arrive before giving up on floor scatter. */
+  private readonly queue: Array<{ coord: string; kinds: Uint16Array; retries?: number }> = [];
   private active = false;
-  /** ScatterDefs grouped/ordered once; the cell walk consults their `kind`. */
+  private draining = false;
+  /** True when any ScatterDef keys on a ground material → decoration must wait
+   *  for the chunk's material grid, not just its kind grid. */
+  private readonly needsMaterials: boolean;
+  /** ScatterDefs grouped/ordered once; the cell walk consults kind or material. */
   private readonly defs: ScatterDef[];
 
   constructor(
@@ -74,12 +79,10 @@ export class ScatterRenderer {
   ) {
     registerBuiltinGenerators();
     this.defs = [...content.scatter.values()];
+    this.needsMaterials = this.defs.some((d) => d.material !== undefined);
     world.onChunkKinds((coord, kinds) => {
-      if (!this.active) {
-        if (!this.decorated.has(coord)) this.queue.push({ coord, kinds });
-        return;
-      }
-      this.decorateChunk(coord, kinds);
+      if (!this.decorated.has(coord)) this.queue.push({ coord, kinds });
+      if (this.active) this.scheduleDrain();
     });
   }
 
@@ -88,16 +91,30 @@ export class ScatterRenderer {
   start(): void {
     if (this.active) return;
     this.active = true;
-    const drainBatch = () => {
+    this.scheduleDrain();
+  }
+
+  /** Process one frame's worth of the queue, re-scheduling while work remains.
+   *  Chunks whose material grid hasn't arrived defer (bounded by a retry cap) so
+   *  floor scatter still lands once the grid streams in. */
+  private scheduleDrain(): void {
+    if (this.draining || !this.active) return;
+    this.draining = true;
+    requestAnimationFrame(() => {
+      this.draining = false;
       if (!this.active) return;
       const deadline = performance.now() + 8;
-      while (this.queue.length > 0 && performance.now() < deadline) {
-        const item = this.queue.shift()!;
-        this.decorateChunk(item.coord, item.kinds);
+      const n = this.queue.length;  // one pass; re-queued items wait for next rAF
+      for (let i = 0; i < n && performance.now() < deadline; i++) {
+        const item = this.queue.shift();
+        if (!item) break;
+        if (!this.decorateChunk(item.coord, item.kinds)) {
+          const retries = (item.retries ?? 0) + 1;
+          if (retries < 180) this.queue.push({ ...item, retries });  // ~3 s, then give up
+        }
       }
-      if (this.queue.length > 0) requestAnimationFrame(drainBatch);
-    };
-    requestAnimationFrame(drainBatch);
+      if (this.queue.length > 0) this.scheduleDrain();
+    });
   }
 
   /**
@@ -144,24 +161,55 @@ export class ScatterRenderer {
     return variants;
   }
 
-  private decorateChunk(coord: string, kinds: Uint16Array): void {
-    if (this.decorated.has(coord)) return;
-    this.decorated.add(coord);
-    if (this.defs.length === 0) return;
+  /** Returns true once the chunk is decorated; false to DEFER (its material grid
+   *  hasn't streamed in yet) so the caller can retry on a later frame. */
+  private decorateChunk(coord: string, kinds: Uint16Array): boolean {
+    if (this.decorated.has(coord)) return true;
 
     const sep = coord.indexOf(",");
     const cx = Number(coord.slice(0, sep));
     const cy = Number(coord.slice(sep + 1));
 
+    // Floor scatter keys on the GROUND material (grass/moss → ferns, mushrooms,
+    // tufts) which lives on KindGrid=OPEN(0) cells; wall scatter keys on the
+    // KindGrid kind (trees on FOREST walls). Resolve the material grid once;
+    // defer the whole chunk until it has arrived if any def needs it.
+    const materials = this.world.getMaterialData(cx, cy);
+    if (this.needsMaterials && !materials) return false;
+
+    this.decorated.add(coord);
+    if (this.defs.length === 0) return true;
+
     for (const def of this.defs) {
       const variants = this.ensurePool(def);
       if (variants.length === 0) continue;
+
+      let matIds: Set<number> | undefined;
+      if (def.material !== undefined) {
+        const names = Array.isArray(def.material) ? def.material : [def.material];
+        matIds = new Set<number>();
+        for (const nm of names) {
+          const m = this.content.materials.get(nm);
+          if (m) matIds.add(m.id);
+        }
+        if (matIds.size === 0) continue;  // all names unknown (typo)
+      }
+      const density = def.density ?? 1;
 
       const half = (def.stride / 2) | 0;
       const [jMin, jMax] = def.scaleJitter;
       for (let ly = half; ly < CHUNK_SIDE; ly += def.stride) {
         for (let lx = half; lx < CHUNK_SIDE; lx += def.stride) {
-          if (kinds[lx + ly * CHUNK_SIDE] !== def.kind) continue;
+          const cellIdx = lx + ly * CHUNK_SIDE;
+          const match = matIds !== undefined
+            ? matIds.has(materials![cellIdx])
+            : kinds[cellIdx] === def.kind;
+          if (!match) continue;
+          // Per-cell density gate (deterministic) so floor cover reads natural.
+          if (density < 1) {
+            const wxh = cx * CHUNK_SIDE + lx, wyh = cy * CHUNK_SIDE + ly;
+            if ((hash2u(wxh ^ 0x9e37, wyh ^ 0x79b9) & 0xffff) / 0xffff > density) continue;
+          }
 
           const wx = cx * CHUNK_SIDE + lx + 0.5;
           const wy = cy * CHUNK_SIDE + ly + 0.5;
@@ -190,6 +238,7 @@ export class ScatterRenderer {
         }
       }
     }
+    return true;
   }
 
   /** Drop every scatter handle on tile transition. Archetypes (geometry +

@@ -30,11 +30,13 @@ import { HEIGHT_STEP } from "@voxim/world";
 const CHUNK = 32;
 
 /**
- * Constant per-corner displacement magnitude for ALL terrain atoms — 10 % of the
+ * Constant per-corner displacement magnitude for ALL terrain atoms — % of the
  * height quantum. Pinned (not the per-voxel `0.10 * min(size)`) so variable-depth
  * column boxes don't crack at shared corners. Passed to `bakeVoxels(atoms, mat, mag)`.
+ * Raised (was 0.10) to soften the strict grid into a gently eroded forest floor
+ * while keeping the voxel read (T-310 level pass).
  */
-export const TERRAIN_DISP_MAG = 0.10 * HEIGHT_STEP;
+export const TERRAIN_DISP_MAG = 0.18 * HEIGHT_STEP;
 
 /** The four cardinal neighbour chunks' heightmaps (null when not yet streamed). */
 export interface ChunkNeighbours {

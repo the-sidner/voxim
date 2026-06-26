@@ -1,0 +1,11 @@
+{
+  "id": "fern",
+  "generator": "foliage_tuft",
+  "params": {
+    "blades": [5, 8],
+    "height": [2, 4],
+    "spread": 0.8,
+    "droop": 1.5,
+    "material": "moss"
+  }
+}

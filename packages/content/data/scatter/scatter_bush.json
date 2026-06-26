@@ -1,0 +1,12 @@
+{
+  "id": "scatter_bush",
+  "kind": 0,
+  "material": ["dirt", "grass"],
+  "density": 0.2,
+  "procModel": "bush",
+  "pool": 3,
+  "stride": 8,
+  "baseScale": 0.46,
+  "scaleJitter": [0.8, 1.35],
+  "rotate": true
+}

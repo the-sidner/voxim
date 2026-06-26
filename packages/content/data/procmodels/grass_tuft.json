@@ -1,0 +1,11 @@
+{
+  "id": "grass_tuft",
+  "generator": "foliage_tuft",
+  "params": {
+    "blades": [6, 11],
+    "height": [2, 4],
+    "spread": 1.2,
+    "droop": 0.0,
+    "material": "grass"
+  }
+}

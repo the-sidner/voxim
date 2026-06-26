@@ -1,0 +1,12 @@
+{
+  "id": "scatter_fern",
+  "kind": 0,
+  "material": ["dirt", "moss", "grass"],
+  "density": 0.24,
+  "procModel": "fern",
+  "pool": 4,
+  "stride": 6,
+  "baseScale": 0.40,
+  "scaleJitter": [0.8, 1.3],
+  "rotate": true
+}

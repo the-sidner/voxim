@@ -1,0 +1,12 @@
+{
+  "id": "scatter_mushroom",
+  "kind": 0,
+  "material": ["dirt", "moss"],
+  "density": 0.18,
+  "procModel": "mushroom",
+  "pool": 3,
+  "stride": 7,
+  "baseScale": 0.34,
+  "scaleJitter": [0.75, 1.4],
+  "rotate": true
+}

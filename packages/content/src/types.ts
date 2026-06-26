@@ -962,8 +962,17 @@ export interface ProcModelDef {
  */
 export interface ScatterDef {
   id: string;
-  /** KindGrid boundary kind that drives the cell walk (e.g. forest = 2). */
+  /** KindGrid boundary kind that drives the cell walk (e.g. forest = 2).
+   *  Used when `material` is absent (wall-kind scatter like trees on FOREST). */
   kind: number;
+  /** Optional: match the per-cell GROUND material NAME(s) instead of the KindGrid
+   *  kind, so plants/rocks scatter on the walkable floor (dirt forest-floor, grass,
+   *  moss, …) which is KindGrid=OPEN(0). A list matches any of the named materials.
+   *  Resolved to material ids at decoration time. */
+  material?: string | string[];
+  /** Optional placement probability [0,1] per candidate cell (default 1). A
+   *  per-cell hash gate so floor scatter reads natural/sparse, not lock-step. */
+  density?: number;
   /** ProcModelDef id → boot-cross-checked. */
   procModel: string;
   /** Variant pool size K — the tile-declared "I need K variants". */

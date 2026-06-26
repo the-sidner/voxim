@@ -1,0 +1,10 @@
+{
+  "id": "mushroom",
+  "generator": "mushroom",
+  "params": {
+    "capRadius": [1, 2],
+    "stemHeight": [1, 2],
+    "capMaterial": "mushroom_red",
+    "stemMaterial": "bone"
+  }
+}

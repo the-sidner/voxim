@@ -1,0 +1,10 @@
+{
+  "id": "forest_rock",
+  "generator": "boulder_grammar",
+  "params": {
+    "radiusRange": [1, 2],
+    "flatten": 0.55,
+    "lumpiness": 0.5,
+    "material": "stone"
+  }
+}
