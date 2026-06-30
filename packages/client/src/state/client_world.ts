@@ -8,8 +8,9 @@ import type { BinaryComponentDelta, BinaryEntitySpawn, WorldSnapshot } from "@vo
 import { ComponentType, COMPONENT_TYPE_TO_NAME, CODEC_BY_WIREID } from "@voxim/protocol";
 // Only the terrain-grid codecs are referenced directly (their decode has chunk-
 // binding side effects); every other component decodes through CODEC_BY_WIREID.
-import { heightmapCodec, openMaskCodec, kindGridCodec, materialGridCodec } from "@voxim/codecs";
+import { heightmapCodec, openMaskCodec, kindGridCodec, materialGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec } from "@voxim/codecs";
 import type {
+  VegFieldGridData, SurfaceStateGridData, WaterGridData,
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
   ResourceData, ActionCooldownsData, ActiveActionsData,
@@ -45,6 +46,9 @@ export interface EntityState {
   materialGrid?: MaterialGridData;
   openMask?: OpenMaskData;
   kindGrid?: KindGridData;
+  vegFieldGrid?: VegFieldGridData;
+  surfaceStateGrid?: SurfaceStateGridData;
+  waterGrid?: WaterGridData;
   modelRef?: ModelRefData;
   animationState?: AnimationStateData;
   equipment?: EquipmentData;
@@ -102,6 +106,10 @@ export class ClientWorld {
    */
   private readonly chunkKinds = new Map<string, Uint16Array>();
   private readonly chunkMaterials = new Map<string, Uint16Array>();
+  // T-311 P3 render-field grids (the full plane bundles — scatter samples several planes).
+  private readonly chunkVegFields = new Map<string, VegFieldGridData>();
+  private readonly chunkSurfaceStates = new Map<string, SurfaceStateGridData>();
+  private readonly chunkWaterGrids = new Map<string, WaterGridData>();
   /**
    * Reverse map: chunk entityId → "chunkX,chunkY". Lets us index the
    * OpenMask / KindGrid deliveries (which don't carry chunkX/chunkY
@@ -160,6 +168,9 @@ export class ClientWorld {
         if (entity.openMask) this.chunkOpenMasks.set(key, entity.openMask.data);
         if (entity.kindGrid) this.bindKinds(key, entity.kindGrid.data);
         if (entity.materialGrid) this.chunkMaterials.set(key, entity.materialGrid.data);
+        if (entity.vegFieldGrid) this.chunkVegFields.set(key, entity.vegFieldGrid);
+        if (entity.surfaceStateGrid) this.chunkSurfaceStates.set(key, entity.surfaceStateGrid);
+        if (entity.waterGrid) this.chunkWaterGrids.set(key, entity.waterGrid);
         return;
       }
       case ComponentType.openMask: {
@@ -181,6 +192,27 @@ export class ClientWorld {
         entity.materialGrid = mg;
         const key = this.chunkCoordByEntity.get(entityId);
         if (key) this.chunkMaterials.set(key, mg.data);
+        return;
+      }
+      case ComponentType.vegFieldGrid: {
+        const vg = vegFieldGridCodec.decode(data);
+        entity.vegFieldGrid = vg;
+        const key = this.chunkCoordByEntity.get(entityId);
+        if (key) this.chunkVegFields.set(key, vg);
+        return;
+      }
+      case ComponentType.surfaceStateGrid: {
+        const sg = surfaceStateGridCodec.decode(data);
+        entity.surfaceStateGrid = sg;
+        const key = this.chunkCoordByEntity.get(entityId);
+        if (key) this.chunkSurfaceStates.set(key, sg);
+        return;
+      }
+      case ComponentType.waterGrid: {
+        const wg = waterGridCodec.decode(data);
+        entity.waterGrid = wg;
+        const key = this.chunkCoordByEntity.get(entityId);
+        if (key) this.chunkWaterGrids.set(key, wg);
         return;
       }
     }
@@ -307,6 +339,18 @@ export class ClientWorld {
     return this.chunkMaterials.get(`${chunkX},${chunkY}`) ?? null;
   }
 
+  /** T-311 P3 render-field grid bundles for a chunk (null until streamed). The
+   *  scatter renderer + future moss/wetness consumers sample their planes. */
+  getVegFieldGrid(chunkX: number, chunkY: number): VegFieldGridData | null {
+    return this.chunkVegFields.get(`${chunkX},${chunkY}`) ?? null;
+  }
+  getSurfaceStateGrid(chunkX: number, chunkY: number): SurfaceStateGridData | null {
+    return this.chunkSurfaceStates.get(`${chunkX},${chunkY}`) ?? null;
+  }
+  getWaterGrid(chunkX: number, chunkY: number): WaterGridData | null {
+    return this.chunkWaterGrids.get(`${chunkX},${chunkY}`) ?? null;
+  }
+
   /**
    * Per-cell impassability check. Returns true (open) for unloaded chunks
    * so out-of-tile coordinates don't accidentally block — same convention
@@ -328,6 +372,9 @@ export class ClientWorld {
     this.chunkOpenMasks.clear();
     this.chunkKinds.clear();
     this.chunkMaterials.clear();
+    this.chunkVegFields.clear();
+    this.chunkSurfaceStates.clear();
+    this.chunkWaterGrids.clear();
     this.chunkCoordByEntity.clear();
   }
 }
