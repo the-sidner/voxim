@@ -1110,15 +1110,16 @@ DENSITY slice. **P3 commit 1 LANDED (`c87a4fc`)** — the grids are minted as ne
 components (wireIds 54/55/56), sync per-plane RLE codecs (gzip ruled out — Serialiser is sync),
 registered in NETWORKED_DEFS + the client CODEC_BY_WIREID decode table, createChunk writes neutral
 defaults so every chunk carries them, MAX_CHUNK_SPAWNS_PER_TICK 20→12; 6 codec round-trip tests +
-deno check ×5 green. **The permanent wire is set.** Remaining P3: **commit 2a LANDED (`70e8e47`)** — the pure derivation core
-`deriveFieldPlanes(signals) → 10 planes` (canopyLight via forest-shadow spread, wetness via water
-spread, ruinAge = seed-deterministic per-chamber hash, traffic = rasterised path level, surfaceLevel
-= height+RIVER_DEPTH at WATER), unit-tested for structural properties, decoupled. **commit 2b** (the
-plumbing + infra) — wire it as a `fields.ts` pipeline STAGE (rasterise pathLevel from the zone graph,
-call deriveFieldPlanes) → TileInit/TileInitWire (base64) → upsample (smooth=bilinear, variantIndex=
-nearest, surfaceLevel=nearest+NaN-guard) → atlas_terrain → generator.chunksFromBuffers → setChunk* →
-**RE-BAKE**. **commit 3** — Atlas-inspector heat overlays for the 10 planes + live rule-weight sliders
-(the tool that TUNES the v1 formulas). Then Phase 4 wires the client consumers → the DENSITY slice.
+deno check ×5 green. **The permanent wire is set.** Remaining P3: **2a LANDED (`70e8e47`)** — pure `deriveFieldPlanes` core, unit-tested. **2b-i LANDED
+(`539ee7d`)** — the `fields` pipeline stage (rasterises pathLevel from the zone graph, calls
+deriveFieldPlanes → state.fields; wired into the typed pipe + ORDERED_STAGES + a tunable
+GenParams["fields"] slice; snapshot unchanged, runner now 12 stages). **commit 3 LANDED (`663bc49`)**
+— Atlas-inspector heat overlays (a "fields" viewer + plane select, encodeState/decodeState `__planes`
+bundle, round-trip unit-tested) + the `fields` GenParams sliders tune the formulas live, no re-bake.
+**DERIVE + VISUALISE + TUNE is done.** Remaining **2b-ii** (infra) — thread state.fields → TileInit/
+TileInitWire (base64) → upsample (smooth=bilinear, variantIndex=nearest, surfaceLevel=nearest+NaN-guard)
+→ atlas_terrain → generator.chunksFromBuffers → setChunk* → **RE-BAKE** (needs atlas+postgres). Then
+**Phase 4** wires the client consumers (FieldExpr scatter / moss / wetness / decals) → the DENSITY slice.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
