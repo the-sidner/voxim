@@ -1110,11 +1110,15 @@ DENSITY slice. **P3 commit 1 LANDED (`c87a4fc`)** — the grids are minted as ne
 components (wireIds 54/55/56), sync per-plane RLE codecs (gzip ruled out — Serialiser is sync),
 registered in NETWORKED_DEFS + the client CODEC_BY_WIREID decode table, createChunk writes neutral
 defaults so every chunk carries them, MAX_CHUNK_SPAWNS_PER_TICK 20→12; 6 codec round-trip tests +
-deno check ×5 green. **The permanent wire is set.** Remaining P3: commit 2 — atlas derives the real
-fields (a new `fields.ts` pipeline stage; canopyLight from forest-mask blur, corruption from
-POI/chamber-age, wetness from water-distance, etc.) + the two MISSING signals chamberAge & traffic
-(from chamberOf + zone-graph topology) → TileInit → upsample → setChunk* → RE-BAKE; commit 3 —
-Atlas-inspector heat overlays for the 10 planes (3b). Then Phase 4 wires the consumers.
+deno check ×5 green. **The permanent wire is set.** Remaining P3: **commit 2a LANDED (`70e8e47`)** — the pure derivation core
+`deriveFieldPlanes(signals) → 10 planes` (canopyLight via forest-shadow spread, wetness via water
+spread, ruinAge = seed-deterministic per-chamber hash, traffic = rasterised path level, surfaceLevel
+= height+RIVER_DEPTH at WATER), unit-tested for structural properties, decoupled. **commit 2b** (the
+plumbing + infra) — wire it as a `fields.ts` pipeline STAGE (rasterise pathLevel from the zone graph,
+call deriveFieldPlanes) → TileInit/TileInitWire (base64) → upsample (smooth=bilinear, variantIndex=
+nearest, surfaceLevel=nearest+NaN-guard) → atlas_terrain → generator.chunksFromBuffers → setChunk* →
+**RE-BAKE**. **commit 3** — Atlas-inspector heat overlays for the 10 planes + live rule-weight sliders
+(the tool that TUNES the v1 formulas). Then Phase 4 wires the client consumers → the DENSITY slice.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
