@@ -1,12 +1,26 @@
 {
   "id": "scatter_bush",
   "kind": 0,
-  "material": ["dirt", "grass"],
-  "density": 0.3,
+  "material": [
+    "dirt",
+    "grass"
+  ],
   "procModel": "bush",
   "pool": 3,
   "stride": 7,
   "baseScale": 0.55,
-  "scaleJitter": [0.8, 1.4],
-  "rotate": true
+  "scaleJitter": [
+    0.8,
+    1.4
+  ],
+  "rotate": true,
+  "densityField": [
+    {
+      "field": "fertility",
+      "curve": "smoothstep",
+      "min": 0.3,
+      "max": 0.95,
+      "weight": 1.0
+    }
+  ]
 }

@@ -1,12 +1,27 @@
 {
   "id": "scatter_grass",
   "kind": 0,
-  "material": ["dirt", "grass", "moss"],
-  "density": 0.6,
+  "material": [
+    "dirt",
+    "grass",
+    "moss"
+  ],
   "procModel": "grass_tuft",
   "pool": 4,
   "stride": 3,
   "baseScale": 0.42,
-  "scaleJitter": [0.7, 1.4],
-  "rotate": true
+  "scaleJitter": [
+    0.7,
+    1.4
+  ],
+  "rotate": true,
+  "densityField": [
+    {
+      "field": "fertility",
+      "curve": "smoothstep",
+      "min": 0.2,
+      "max": 0.9,
+      "weight": 1.0
+    }
+  ]
 }

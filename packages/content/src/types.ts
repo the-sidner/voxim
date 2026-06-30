@@ -1076,8 +1076,15 @@ export interface ScatterDef {
    *  Resolved to material ids at decoration time. */
   material?: string | string[];
   /** Optional placement probability [0,1] per candidate cell (default 1). A
-   *  per-cell hash gate so floor scatter reads natural/sparse, not lock-step. */
+   *  per-cell hash gate so floor scatter reads natural/sparse, not lock-step.
+   *  Superseded by `densityField` when present. */
   density?: number;
+  /** Per-cell DENSITY as a FieldExpr over the VegFieldGrid/SurfaceStateGrid planes
+   *  (T-311 P4). When present it REPLACES `density` — placement keep-probability
+   *  VARIES per cell (dense in fertile/shade, sparse on dry rock / worn paths),
+   *  the organic-vs-uniform-carpet lever. Boot-cross-checked against FIELD_NAMES.
+   *  A hash still only decorrelates the keep ROLL, never decides density. */
+  densityField?: import("./field_expr.ts").FieldExpr;
   /** ProcModelDef id → boot-cross-checked. */
   procModel: string;
   /** Variant pool size K — the tile-declared "I need K variants". */

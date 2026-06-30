@@ -16,6 +16,8 @@
  */
 import * as THREE from "three";
 import type { ContentService, ScatterDef } from "@voxim/content";
+import { evaluateFieldExpr } from "@voxim/content";
+import type { VegFieldGridData, SurfaceStateGridData, WaterGridData } from "@voxim/codecs";
 import type { ClientWorld } from "../state/client_world.ts";
 import { bakeVoxels } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
@@ -47,6 +49,36 @@ function mix32(a: number, b: number): number {
 }
 
 /** Cheap 2D integer hash for per-cell variant / rotation / scale selection. */
+/**
+ * Closed-vocabulary read of a FIELD_NAME → [0,1] at one cell (T-311 P4). A
+ * name→plane binding (not a switch on kind): the 9 u8 planes normalise by 255;
+ * surfaceLevel (f32, NaN sentinel) maps present→1 / NaN→0 (never /255 — that
+ * would poison the FieldExpr sum with NaN).
+ */
+function sampleField(
+  field: string,
+  veg: VegFieldGridData | null,
+  surf: SurfaceStateGridData | null,
+  water: WaterGridData | null,
+  cellIdx: number,
+): number {
+  if (veg) {
+    if (field === "canopyLight") return veg.canopyLight[cellIdx] / 255;
+    if (field === "corruption") return veg.corruption[cellIdx] / 255;
+    if (field === "fertility") return veg.fertility[cellIdx] / 255;
+  }
+  if (surf) {
+    if (field === "wetness") return surf.wetness[cellIdx] / 255;
+    if (field === "overgrowth") return surf.overgrowth[cellIdx] / 255;
+    if (field === "wear") return surf.wear[cellIdx] / 255;
+    if (field === "variantIndex") return surf.variantIndex[cellIdx] / 255;
+    if (field === "ruinAge") return surf.ruinAge[cellIdx] / 255;
+    if (field === "traffic") return surf.traffic[cellIdx] / 255;
+  }
+  if (field === "surfaceLevel") return water && !Number.isNaN(water.surfaceLevel[cellIdx]) ? 1 : 0;
+  return 0;
+}
+
 function hash2u(x: number, y: number): number {
   let n = ((x * 1619) ^ (y * 31337) ^ 0x9e3779b1) | 0;
   n = ((n << 13) ^ n) | 0;
@@ -67,6 +99,9 @@ export class ScatterRenderer {
   /** True when any ScatterDef keys on a ground material → decoration must wait
    *  for the chunk's material grid, not just its kind grid. */
   private readonly needsMaterials: boolean;
+  /** True when any ScatterDef drives density off a FieldExpr → decoration must
+   *  wait for the chunk's VegFieldGrid/SurfaceStateGrid to stream (T-311 P4). */
+  private readonly needsFields: boolean;
   /** ScatterDefs grouped/ordered once; the cell walk consults kind or material. */
   private readonly defs: ScatterDef[];
 
@@ -80,6 +115,7 @@ export class ScatterRenderer {
     registerBuiltinGenerators();
     this.defs = [...content.scatter.values()];
     this.needsMaterials = this.defs.some((d) => d.material !== undefined);
+    this.needsFields = this.defs.some((d) => d.densityField !== undefined);
     world.onChunkKinds((coord, kinds) => {
       if (!this.decorated.has(coord)) this.queue.push({ coord, kinds });
       if (this.active) this.scheduleDrain();
@@ -178,6 +214,13 @@ export class ScatterRenderer {
     const materials = this.world.getMaterialData(cx, cy);
     if (this.needsMaterials && !materials) return false;
 
+    // T-311 P4: per-cell density reads the render-field grids. Defer until they
+    // stream (the retry queue gives ~3s); resolve once per chunk.
+    const veg = this.needsFields ? this.world.getVegFieldGrid(cx, cy) : null;
+    const surf = this.needsFields ? this.world.getSurfaceStateGrid(cx, cy) : null;
+    const water = this.needsFields ? this.world.getWaterGrid(cx, cy) : null;
+    if (this.needsFields && (!veg || !surf)) return false;
+
     this.decorated.add(coord);
     if (this.defs.length === 0) return true;
 
@@ -195,7 +238,7 @@ export class ScatterRenderer {
         }
         if (matIds.size === 0) continue;  // all names unknown (typo)
       }
-      const density = def.density ?? 1;
+      const flatDensity = def.density ?? 1;
 
       const half = (def.stride / 2) | 0;
       const [jMin, jMax] = def.scaleJitter;
@@ -206,10 +249,16 @@ export class ScatterRenderer {
             ? matIds.has(materials![cellIdx])
             : kinds[cellIdx] === def.kind;
           if (!match) continue;
-          // Per-cell density gate (deterministic) so floor cover reads natural.
-          if (density < 1) {
+          // Per-cell keep-probability: a content FieldExpr over the render fields
+          // (dense in fertile/shade, sparse on dry rock / worn paths) when authored,
+          // else the flat density. The hash ONLY decorrelates the keep ROLL — it
+          // never decides density (T-311 doctrine).
+          const keep = (def.densityField && veg && surf)
+            ? evaluateFieldExpr(def.densityField, (f) => sampleField(f, veg, surf, water, cellIdx))
+            : flatDensity;
+          if (keep < 1) {
             const wxh = cx * CHUNK_SIDE + lx, wyh = cy * CHUNK_SIDE + ly;
-            if ((hash2u(wxh ^ 0x9e37, wyh ^ 0x79b9) & 0xffff) / 0xffff > density) continue;
+            if ((hash2u(wxh ^ 0x9e37, wyh ^ 0x79b9) & 0xffff) / 0xffff > keep) continue;
           }
 
           const wx = cx * CHUNK_SIDE + lx + 0.5;

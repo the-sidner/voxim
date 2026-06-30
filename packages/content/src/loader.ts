@@ -22,6 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef, Palette } from "./types.ts";
+import { crossCheckFieldExpr } from "./field_expr.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
@@ -671,6 +672,8 @@ export function validateScatterDef(def: ScatterDef): void {
   if (!Array.isArray(def.scaleJitter) || def.scaleJitter.length !== 2) {
     throw new Error(`Scatter '${def.id}': 'scaleJitter' must be a [min,max] pair`);
   }
+  // T-311 P4: a densityField FieldExpr must reference only known field planes.
+  if (def.densityField) crossCheckFieldExpr(def.densityField, `ScatterDef '${def.id}'`);
 }
 
 export function validateResourceDef(def: ResourceDef): void {
