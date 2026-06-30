@@ -1096,11 +1096,15 @@ capping dynamic PointLights at 8, degrading the rest to always-on emissive flame
 `flicker` float retired for a `lightDefId` string (numbers stay on the wire for getLightAt;
 client resolves flicker/castsPool/family from the LightDef — T-250), placed prefabs +
 Illuminator + deriveItemStats + EquipmentSystem all moved in one commit, server boot
-cross-check added. **LightDef is COMPLETE.** Remaining in P2: MaterialStateLadder (variant
-resolution + Material-panel preview can land now; in-game per-cell consumer gated on P3's
-SurfaceStateGrid.variantIndex). The hero-cell DENSITY slice is gated on P3 (field grids, the
-one permanent wire break — gut-check the field-set matrix with the user first, I1) + P4
-(multi-layer scatter).
+cross-check added. **LightDef is COMPLETE.** **MaterialStateLadder (G3) COMPLETE** too — `resolveMaterialVariant`
+in @voxim/content (colorOverride/HSL-colorShift/emissiveCracks/addsTags; stable id→index, I3c)
++ a Studio Material "State ladder" dropdown previewing each variant through the real resolver
+(the in-game per-cell index comes from P3's SurfaceStateGrid.variantIndex); example
+corrupted/mossy variants on stone, live-verified. **PHASE 2 COMPLETE** (GradeDef · LightDef ·
+MaterialStateLadder). Next: **Phase 3** — the unified per-cell field grids, the ONE permanent
+wire break (chunk-component wireIds never reused). GATE: gut-check the exhaustive field-set
+matrix with the user BEFORE any grid codec lands (invariant I1) — it is the single irreversible
+decision of the arc. P3 + P4 (multi-layer scatter) unlock the hero-cell DENSITY slice.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
