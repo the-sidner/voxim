@@ -4,7 +4,8 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
-import { Heightmap, MaterialGrid, OpenMask, KindGrid } from "./components.ts";
+import { Heightmap, MaterialGrid, OpenMask, KindGrid, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "./components.ts";
+import type { VegFieldGridData, SurfaceStateGridData } from "./components.ts";
 import { CHUNK_SIZE } from "./terrain.ts";
 
 const CHUNK_CELLS = CHUNK_SIZE * CHUNK_SIZE;
@@ -36,6 +37,25 @@ export function createChunk(world: World, chunkX: number, chunkY: number): Entit
   // Default-untagged: 0 = OPEN. Decoration renderer skips these.
   world.write(id, KindGrid, {
     data: new Uint16Array(CHUNK_CELLS),
+  });
+
+  // T-311 P3 render-field grids — default to neutral (zeros / NaN); the atlas
+  // derivation writes the real fields (Phase-3 commit 2). Render-only, never collision.
+  world.write(id, VegFieldGrid, {
+    canopyLight: new Uint8Array(CHUNK_CELLS),
+    corruption: new Uint8Array(CHUNK_CELLS),
+    fertility: new Uint8Array(CHUNK_CELLS),
+  });
+  world.write(id, SurfaceStateGrid, {
+    wetness: new Uint8Array(CHUNK_CELLS),
+    overgrowth: new Uint8Array(CHUNK_CELLS),
+    wear: new Uint8Array(CHUNK_CELLS),
+    variantIndex: new Uint8Array(CHUNK_CELLS),
+    ruinAge: new Uint8Array(CHUNK_CELLS),
+    traffic: new Uint8Array(CHUNK_CELLS),
+  });
+  world.write(id, WaterGrid, {
+    surfaceLevel: new Float32Array(CHUNK_CELLS).fill(NaN),
   });
 
   return id;
@@ -93,4 +113,22 @@ export function setChunkKinds(
   const existing = world.get(chunkId, KindGrid);
   if (!existing) throw new Error(`setChunkKinds: chunk ${chunkId} has no KindGrid`);
   world.write(chunkId, KindGrid, { ...existing, data: kinds });
+}
+
+/** Overwrite a chunk's VegFieldGrid (T-311 P3) — atlas-derived render fields. */
+export function setChunkVegField(world: World, chunkId: EntityId, data: VegFieldGridData): void {
+  if (!world.get(chunkId, VegFieldGrid)) throw new Error(`setChunkVegField: chunk ${chunkId} has no VegFieldGrid`);
+  world.write(chunkId, VegFieldGrid, data);
+}
+
+/** Overwrite a chunk's SurfaceStateGrid (T-311 P3). */
+export function setChunkSurfaceState(world: World, chunkId: EntityId, data: SurfaceStateGridData): void {
+  if (!world.get(chunkId, SurfaceStateGrid)) throw new Error(`setChunkSurfaceState: chunk ${chunkId} has no SurfaceStateGrid`);
+  world.write(chunkId, SurfaceStateGrid, data);
+}
+
+/** Overwrite a chunk's WaterGrid surface levels (T-311 P3). NaN = no water. */
+export function setChunkWater(world: World, chunkId: EntityId, surfaceLevel: Float32Array): void {
+  if (!world.get(chunkId, WaterGrid)) throw new Error(`setChunkWater: chunk ${chunkId} has no WaterGrid`);
+  world.write(chunkId, WaterGrid, { surfaceLevel });
 }

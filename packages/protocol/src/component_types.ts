@@ -64,6 +64,9 @@ export const ComponentType = {
   actionCooldowns:    51,  // T-265: per-action cooldowns + GCD for the skill bar sweep
   jobBoard:           52,  // T-076: hiring board's pending jobs on the wire for the job-board panel
   container:          53,  // T-077/T-078: family library/treasury slot store, on the wire for the chest deposit/withdraw panel
+  vegFieldGrid:       54,  // T-311 P3: per-cell canopyLight/corruption/fertility (render fields, never collision)
+  surfaceStateGrid:   55,  // T-311 P3: per-cell wetness/overgrowth/wear/variantIndex/ruinAge/traffic
+  waterGrid:          56,  // T-311 P3: per-cell water surface level (f32, NaN = no water)
   // 49 (parent) — defined in @voxim/engine/src/scene.ts; engine owns the
   //    scene-graph primitive (co-equal with World), so its wire id lives
   //    there. Reserved here so the numbering map stays visible. Never reuse.

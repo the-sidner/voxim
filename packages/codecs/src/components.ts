@@ -8,6 +8,7 @@
 import type { Serialiser } from "@voxim/engine";
 import { buildCodec } from "./binary.ts";
 import { WireWriter, WireReader } from "./wire.ts";
+import { rleEncodeU8, rleDecodeU8 } from "./rle.ts";
 import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, BodyPartVolume } from "@voxim/content";
 
 /**
@@ -170,6 +171,108 @@ export const kindGridCodec: Serialiser<KindGridData> = {
   decode(bytes: Uint8Array): KindGridData {
     const copy = bytes.slice(0, CHUNK_CELLS * 2);
     return { data: new Uint16Array(copy.buffer, copy.byteOffset, CHUNK_CELLS) };
+  },
+};
+
+// ---- Per-cell field grids (T-311 Phase 3) ----------------------------------
+// Server/atlas-authoritative render fields, one byte plane per field (0..255),
+// RLE-packed per plane (sync — Serialiser is sync, gzip is async). WaterGrid is
+// an f32 surface level with a NaN sentinel, packed as water/dry runs. NEVER
+// consulted for collision — OpenMask stays the sole collision authority.
+
+/** Frame N u8 planes, each as [mode u8: 1=rle 0=raw][len u16][bytes]. */
+function encodeU8Planes(planes: Uint8Array[]): Uint8Array {
+  const w = new WireWriter();
+  w.writeU8(planes.length);
+  for (const p of planes) {
+    const rle = rleEncodeU8(p);
+    if (rle.length < CHUNK_CELLS) {
+      w.writeU8(1); w.writeU16(rle.length); w.writeBytes(rle);
+    } else {
+      w.writeU8(0); w.writeU16(CHUNK_CELLS); w.writeBytes(p);
+    }
+  }
+  return w.toBytes();
+}
+function decodeU8Planes(bytes: Uint8Array): Uint8Array[] {
+  const r = new WireReader(bytes);
+  const n = r.readU8();
+  const out: Uint8Array[] = [];
+  for (let i = 0; i < n; i++) {
+    const mode = r.readU8();
+    const len = r.readU16();
+    const raw = r.readBytes(len);
+    out.push(mode === 1 ? rleDecodeU8(raw, CHUNK_CELLS) : new Uint8Array(raw));
+  }
+  return out;
+}
+
+export interface VegFieldGridData {
+  /** Sky visibility 0..255 (255 = open sky, low under canopy). 1024 cells, row-major. */
+  canopyLight: Uint8Array;
+  /** Corruption intensity 0..255. */
+  corruption: Uint8Array;
+  /** Vegetation fertility 0..255 (the scatter-density basis). */
+  fertility: Uint8Array;
+}
+export const vegFieldGridCodec: Serialiser<VegFieldGridData> = {
+  encode(d: VegFieldGridData): Uint8Array {
+    return encodeU8Planes([d.canopyLight, d.corruption, d.fertility]);
+  },
+  decode(b: Uint8Array): VegFieldGridData {
+    const [canopyLight, corruption, fertility] = decodeU8Planes(b);
+    return { canopyLight, corruption, fertility };
+  },
+};
+
+export interface SurfaceStateGridData {
+  wetness: Uint8Array;       // 0..255
+  overgrowth: Uint8Array;    // moss-creep 0..255
+  wear: Uint8Array;          // path/traffic wear 0..255
+  variantIndex: Uint8Array;  // MaterialDef.variants index (stable id→index), 0..255
+  ruinAge: Uint8Array;       // age/decay 0..255 ("oldest stone most swallowed")
+  traffic: Uint8Array;       // footfall/disturbance 0..255
+}
+export const surfaceStateGridCodec: Serialiser<SurfaceStateGridData> = {
+  encode(d: SurfaceStateGridData): Uint8Array {
+    return encodeU8Planes([d.wetness, d.overgrowth, d.wear, d.variantIndex, d.ruinAge, d.traffic]);
+  },
+  decode(b: Uint8Array): SurfaceStateGridData {
+    const [wetness, overgrowth, wear, variantIndex, ruinAge, traffic] = decodeU8Planes(b);
+    return { wetness, overgrowth, wear, variantIndex, ruinAge, traffic };
+  },
+};
+
+export interface WaterGridData {
+  /** Per-cell water surface level in world units; NaN = no water. 1024 cells. */
+  surfaceLevel: Float32Array;
+}
+export const waterGridCodec: Serialiser<WaterGridData> = {
+  encode(d: WaterGridData): Uint8Array {
+    const w = new WireWriter();
+    const a = d.surfaceLevel;
+    let i = 0;
+    while (i < CHUNK_CELLS) {
+      const water = !Number.isNaN(a[i]);
+      let run = 1;
+      while (i + run < CHUNK_CELLS && (!Number.isNaN(a[i + run])) === water) run++;
+      w.writeU16(run);
+      w.writeU8(water ? 1 : 0);
+      if (water) for (let k = 0; k < run; k++) w.writeF32(a[i + k]);
+      i += run;
+    }
+    return w.toBytes();
+  },
+  decode(b: Uint8Array): WaterGridData {
+    const r = new WireReader(b);
+    const a = new Float32Array(CHUNK_CELLS);
+    let o = 0;
+    while (o < CHUNK_CELLS) {
+      const run = r.readU16();
+      const water = r.readU8() === 1;
+      for (let k = 0; k < run && o < CHUNK_CELLS; k++) a[o++] = water ? r.readF32() : NaN;
+    }
+    return { surfaceLevel: a };
   },
 };
 

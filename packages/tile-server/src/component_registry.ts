@@ -21,7 +21,7 @@
 // deno-lint-ignore-file no-explicit-any
 import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
 import { Parent } from "@voxim/engine";
-import { Heightmap, KindGrid, MaterialGrid, OpenMask } from "@voxim/world";
+import { Heightmap, KindGrid, MaterialGrid, OpenMask, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "@voxim/world";
 import {
   AnimationState,
   Facing,
@@ -105,6 +105,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // Lets the client decorate the closed pixels (forest tiles → trees,
   // stone tiles → rocks) without server entities.
   KindGrid,
+  // T-311 P3 render-field grids — per-cell render descriptors (never collision).
+  VegFieldGrid,
+  SurfaceStateGrid,
+  WaterGrid,
   Position,
   Velocity,
   Facing,

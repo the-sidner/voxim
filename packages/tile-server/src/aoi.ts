@@ -33,10 +33,14 @@ import { NETWORKED_DEFS } from "./component_registry.ts";
 
 /**
  * Max number of NEW terrain chunk spawns per state message.
- * Each 32×32 chunk is ~6 KB; 20 chunks ≈ 120 KB — well within the QUIC
- * flow-control window.  256 total chunks load over ~13 ticks (≈650 ms).
+ * Re-derived for T-311 P3: a chunk now carries the 3 render-field grids on top
+ * of height/material/open/kind. RLE-packed those add typically <1 KB (the fields
+ * are spatially coherent — long runs), so a chunk is ~7 KB packed; 12 chunks
+ * ≈ 84 KB stays within the QUIC flow window. 256 chunks load over ~22 ticks
+ * (≈1.1 s). (If real packed sizes measure smaller after the atlas derivation
+ * lands, this can rise back toward 20.)
  */
-const MAX_CHUNK_SPAWNS_PER_TICK = 20;
+const MAX_CHUNK_SPAWNS_PER_TICK = 12;
 
 function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponentEntry[] {
   const components: BinaryComponentEntry[] = [];

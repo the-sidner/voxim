@@ -5,6 +5,7 @@ export { buildCodec, encodeF64, decodeF64, encodeF32, decodeF32, encodeI32, deco
 
 export type {
   PositionData, VelocityData, FacingData, HeightmapData, MaterialGridData, OpenMaskData, KindGridData,
+  VegFieldGridData, SurfaceStateGridData, WaterGridData,
   ItemPart, ModelRefData, AnimationStateData,
   InputStateData, HealthData, WorldClockData,
   InventorySlot, EquipmentSlot, EquipmentData, InventoryData,
@@ -29,6 +30,7 @@ export type {
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
+  vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec,
   itemPartCodec, inventorySlotCodec,
   inputStateCodec, healthCodec, worldClockCodec,
   resourceCodec, actionCooldownsCodec,

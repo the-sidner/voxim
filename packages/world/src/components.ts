@@ -5,11 +5,11 @@
  * as players, NPCs, and items.
  */
 import { defineComponent } from "@voxim/engine";
-import { heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec } from "@voxim/codecs";
-import type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData } from "@voxim/codecs";
+import { heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec } from "@voxim/codecs";
+import type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData } from "@voxim/codecs";
 import { ComponentType } from "@voxim/protocol";
 
-export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData };
+export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData };
 
 const CHUNK_CELLS = 32 * 32;
 
@@ -85,5 +85,47 @@ export const KindGrid = defineComponent({
   codec: kindGridCodec,
   default: (): KindGridData => ({
     data: new Uint16Array(CHUNK_CELLS),  // 0 = OPEN
+  }),
+});
+
+// ---- Per-cell render field grids (T-311 P3) --------------------------------
+// Server/atlas-authoritative render descriptors, one byte plane per field. NEVER
+// consulted for collision (OpenMask is the sole authority); the client reads them
+// to drive scatter density / moss / wetness / variant selection / atmosphere.
+
+/** VegFieldGrid — canopyLight / corruption / fertility (0..255 per cell). */
+export const VegFieldGrid = defineComponent({
+  name: "vegFieldGrid" as const,
+  wireId: ComponentType.vegFieldGrid,
+  codec: vegFieldGridCodec,
+  default: (): VegFieldGridData => ({
+    canopyLight: new Uint8Array(CHUNK_CELLS),
+    corruption: new Uint8Array(CHUNK_CELLS),
+    fertility: new Uint8Array(CHUNK_CELLS),
+  }),
+});
+
+/** SurfaceStateGrid — wetness / overgrowth / wear / variantIndex / ruinAge / traffic. */
+export const SurfaceStateGrid = defineComponent({
+  name: "surfaceStateGrid" as const,
+  wireId: ComponentType.surfaceStateGrid,
+  codec: surfaceStateGridCodec,
+  default: (): SurfaceStateGridData => ({
+    wetness: new Uint8Array(CHUNK_CELLS),
+    overgrowth: new Uint8Array(CHUNK_CELLS),
+    wear: new Uint8Array(CHUNK_CELLS),
+    variantIndex: new Uint8Array(CHUNK_CELLS),
+    ruinAge: new Uint8Array(CHUNK_CELLS),
+    traffic: new Uint8Array(CHUNK_CELLS),
+  }),
+});
+
+/** WaterGrid — per-cell water surface level (world units); NaN = no water. */
+export const WaterGrid = defineComponent({
+  name: "waterGrid" as const,
+  wireId: ComponentType.waterGrid,
+  codec: waterGridCodec,
+  default: (): WaterGridData => ({
+    surfaceLevel: new Float32Array(CHUNK_CELLS).fill(NaN),
   }),
 });
