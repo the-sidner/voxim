@@ -1124,8 +1124,26 @@ serialised fieldsB64 into the stored wire (canopyLight max 255 / ruinAge max 246
 via GET /tile), and the tile-server loaded the re-baked world cleanly ("atlas terrain loaded" + booted) —
 the re-bake caught + fixed a real transition crash (old worlds lack fieldsB64 → graceful zero planes).
 **FieldExpr (G2) evaluator also landed** (`content/field_expr.ts`). **PHASE 3 COMPLETE** (grids minted +
-derived + threaded to chunks + inspector + FieldExpr). Next: **Phase 4** — client consumers read the grids
-(FieldExpr-driven multi-layer ScatterDef / moss-creep / wetness / decals) → the hero-cell DENSITY slice.
+derived + threaded to chunks + inspector + FieldExpr). **Phase 4 STARTED + LIVE-VERIFIED:** client stores the per-chunk field grids (`client_world` maps +
+getters) and **field-driven scatter density** landed — `ScatterDef.densityField` (FieldExpr) replaces
+the flat hash gate; `scatter_renderer` evaluates it per cell (dense in fertile/shade, receding on dry
+rock/paths); 4 foliage defs authored; loader boot cross-check. **Verified live on the running stack:**
+re-baked world → tile-server re-derives chunks with fields → AoI → client receives + STORES them
+(probe: fertility 66–167, canopyLight 0–255, traffic 0–255, all varying per cell) → scatter reads them.
+The live loop caught + fixed 2 integration bugs (re-bake decode crash on old worlds; stale-save bypass)
+and surfaced a follow-up. **FieldExpr (G2)** evaluator also landed. Remaining P4: corruption-morph
+generators, moss-creep (`mossBlend`×overgrowth into the per-voxel colour), wetness specular, decals,
+scatter clusterCount/jitter → the hero-cell DENSITY slice.
+
+### T-312b · save_manager must persist (or re-derive) the per-cell render-field grids
+Effort: S   Status: todo
+SaveManager saves Heightmap + MaterialGrid per chunk but NOT the T-311 VegFieldGrid/SurfaceStateGrid/
+WaterGrid. So a save-load cycle drops them → chunks lose their field grids until the next atlas re-derive
+(found live in P4: a stale save bypassed the field path; deleting tile_saves fixed it). Since the grids
+are atlas-DERIVED (deterministic, not runtime-mutated), the cleanest fix is to RE-DERIVE them on save-load
+(re-run the atlas field slice / re-apply atlas.fields onto the loaded chunks) rather than bloat the save;
+or persist them in the save format. Until fixed, a tile-server restart after an auto-save (every 6000
+ticks) loses the fields. Belongs with T-311 Phase 4.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
