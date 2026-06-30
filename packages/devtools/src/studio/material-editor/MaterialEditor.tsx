@@ -17,6 +17,7 @@
 import { useRef, useState } from "preact/hooks";
 import * as THREE from "three";
 import type { MaterialDef, MaterialRenderDef } from "@voxim/content";
+import { resolveMaterialVariant } from "@voxim/content";
 import {
   bakeVoxels,
   geometryFromBaked,
@@ -43,8 +44,9 @@ function parseColor(c: string | number): number {
 const WALL_W = 6;
 const WALL_H = 4;
 
-/** Bake a flat 6×4 wall of one material through the real runtime. */
-function buildWallMesh(mat: MaterialJson): THREE.Mesh {
+/** Bake a flat 6×4 wall of one material through the real runtime, under variant
+ *  `variantIndex` (-1 = base) resolved by the real resolveMaterialVariant. */
+function buildWallMesh(mat: MaterialJson, variantIndex: number): THREE.Mesh {
   const atoms = [];
   for (let y = 0; y < WALL_H; y++) {
     for (let x = 0; x < WALL_W; x++) {
@@ -52,7 +54,8 @@ function buildWallMesh(mat: MaterialJson): THREE.Mesh {
     }
   }
   const baked = bakeVoxels(atoms, mat.id, undefined, mat.render?.tintJitter);
-  const def = { ...mat, color: parseColor(mat.color) } as unknown as MaterialDef;
+  let def = { ...mat, color: parseColor(mat.color) } as unknown as MaterialDef;
+  if (variantIndex >= 0) def = resolveMaterialVariant(def, variantIndex);
   return new THREE.Mesh(geometryFromBaked(baked), buildVoxelMaterial(def, mat.id));
 }
 
@@ -63,10 +66,11 @@ export function MaterialEditor() {
   const [mat, setMat]     = useState<MaterialJson | null>(null);
   const [path, setPath]   = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [variantIndex, setVariantIndex] = useState(-1);
   const viewportRef = useRef<Viewport | null>(null);
   const meshRef     = useRef<THREE.Mesh | null>(null);
 
-  const rebuild = (m: MaterialJson) => {
+  const rebuild = (m: MaterialJson, vi: number) => {
     const vp = viewportRef.current;
     if (!vp) return;
     if (meshRef.current) {
@@ -77,7 +81,7 @@ export function MaterialEditor() {
     // The texture cache is keyed per material-id; clear it so an edited
     // textureStyle / colour regenerates instead of returning the stale texture.
     disposeVoxelTextures();
-    const mesh = buildWallMesh(m);
+    const mesh = buildWallMesh(m, vi);
     vp.contentGroup.add(mesh);
     meshRef.current = mesh;
     const box = new THREE.Box3().setFromObject(mesh);
@@ -91,7 +95,8 @@ export function MaterialEditor() {
     setMat(m);
     setPath(p);
     setDirty(false);
-    rebuild(m);
+    setVariantIndex(-1);
+    rebuild(m, -1);
   };
 
   const applyRender = (render: MaterialRenderDef) => {
@@ -99,7 +104,12 @@ export function MaterialEditor() {
     const m = { ...mat, render };
     setMat(m);
     setDirty(true);
-    rebuild(m);
+    rebuild(m, variantIndex);
+  };
+
+  const pickVariant = (vi: number) => {
+    setVariantIndex(vi);
+    if (mat) rebuild(mat, vi);
   };
 
   const save = async () => {
@@ -125,11 +135,11 @@ export function MaterialEditor() {
         <ViewportPane
           onReady={(vp) => {
             viewportRef.current = vp;
-            if (mat) rebuild(mat);
+            if (mat) rebuild(mat, variantIndex);
           }}
         />
       }
-      right={<Inspector mat={mat} onChange={applyRender} />}
+      right={<Inspector mat={mat} variantIndex={variantIndex} onChange={applyRender} onVariant={pickVariant} />}
     />
   );
 }
@@ -138,10 +148,14 @@ export function MaterialEditor() {
 
 function Inspector({
   mat,
+  variantIndex,
   onChange,
+  onVariant,
 }: {
   mat: MaterialJson | null;
+  variantIndex: number;
   onChange: (render: MaterialRenderDef) => void;
+  onVariant: (index: number) => void;
 }) {
   if (!mat) {
     return <div style={{ padding: "var(--s-4)", color: "var(--bone-faint)" }}>Pick a material on the left.</div>;
@@ -149,6 +163,7 @@ function Inspector({
   const render = mat.render ?? {};
   const tint = render.tintJitter;
   const styles = textureStyleIds();
+  const variants = mat.variants ?? [];
 
   const setStyle = (v: string) => {
     const next = { ...render };
@@ -195,6 +210,23 @@ function Inspector({
           </>
         )}
       </Section>
+
+      {variants.length > 0 && (
+        <Section label={`State ladder (${variants.length})`}>
+          <select
+            class="dt-input"
+            value={String(variantIndex)}
+            onChange={(e) => onVariant(parseInt((e.target as HTMLSelectElement).value, 10))}
+          >
+            <option value="-1">base</option>
+            {variants.map((v, i) => <option key={v.id} value={String(i)}>{v.id}</option>)}
+          </select>
+          <div style={{ color: "var(--bone-faint)", fontSize: "var(--fs-small)", marginTop: 4 }}>
+            Resolved through the real <code>resolveMaterialVariant</code>; in-game the per-cell index
+            comes from the server SurfaceStateGrid (Phase 3).
+          </div>
+        </Section>
+      )}
 
       <div style={{ color: "var(--bone-faint)", fontSize: "var(--fs-small)", lineHeight: 1.5 }}>
         Preview bakes through the real <code>bakeVoxels</code> + <code>buildVoxelMaterial</code> —

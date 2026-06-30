@@ -114,6 +114,7 @@ export type {
   TileTraderListing,
 } from "./src/types.ts";
 export { snapColorToRamp, hexStrToNum } from "./src/palette_snap.ts";
+export { resolveMaterialVariant, materialVariantIndex } from "./src/material_variant.ts";
 export type { VoxelAtom } from "./src/voxel.ts";
 
 // ---- hitbox derivation and application ----

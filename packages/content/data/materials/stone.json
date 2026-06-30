@@ -20,5 +20,9 @@
   ],
   "render": {
     "textureStyle": "stone"
-  }
+  },
+  "variants": [
+    { "id": "corrupted", "colorShift": { "h": -0.02, "s": 0.35, "l": -0.22 }, "emissiveCracks": 0.28, "addsTags": ["corrupted"] },
+    { "id": "mossy", "colorOverride": 5069354 }
+  ]
 }
