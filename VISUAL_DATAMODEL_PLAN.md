@@ -155,13 +155,24 @@ The three cross-cutting primitives that need no wire break (or only a tiny one):
   no pop; Studio Grade + Light panels. One small wire bump.
 
 ### Phase 3 ✶ · The unified per-cell field grids — ONE wire-format pass (the load-bearing decision, **I1**)
-Land ALL server-authoritative spatial render grids together so the wire breaks **once**. Recommended split
-(two grids — open question §below): **`VegFieldGrid`** {canopyLight, corruption, fertility} and
-**`SurfaceStateGrid`** {wetness, overgrowth, wear, variantIndex} (subsumes the old standalone
-`OvergrowthGrid`), plus **`WaterGrid`** {tile-global sea-level}. Atlas-derived from signals it already
-computes; `upsample.ts` rescales (smooth=bilinear, discrete=nearest, water-level=uniform); new
-`ComponentType` wireIds + **mandatory packed** codecs; boot cross-checks; re-derive
-`MAX_CHUNK_SPAWNS_PER_TICK`. Consumers are **minimal stubs** this phase (prove the data arrives).
+Land ALL server-authoritative spatial render grids together so the wire breaks **once**. **FIELD-SET
+MATRIX — SIGNED OFF (user, the irreversible I1 decision):**
+
+| Grid | Fields (per cell) | Bytes |
+|---|---|---|
+| **`VegFieldGrid`** | `canopyLight` u8 · `corruption` u8 · `fertility` u8 | 3 |
+| **`SurfaceStateGrid`** | `wetness` u8 · `overgrowth` u8 · `wear` u8 · `variantIndex` **u8** · `ruinAge` u8 · `traffic` u8 (subsumes the old standalone `OvergrowthGrid`) | 6 |
+| **`WaterGrid`** | `surfaceLevel` f32 (NaN = no water) | 4 |
+
+Two grids (vegetation vs surface-state — distinct consumers/cadence) + WaterGrid separate (f32). **Full
+resolution** (1 field-cell per terrain cell). `ruinAge` + `traffic` baked in now (the explicitly-deferred
+consumers — ruin-age drives the "oldest stone most swallowed" overgrowth; traffic feeds vegetation
+fertility/path-clearing + decals) so there is **no second permanent wire break**; `variantIndex` is **u8**
+(256 variants, no 16-ceiling). Atlas-derived from signals it already computes; `upsample.ts` rescales
+(smooth=bilinear, discrete=nearest, water-level=uniform); new `ComponentType` wireIds + **mandatory
+RLE/zlib-packed** codecs (smooth fields compress hugely); boot cross-checks; re-derive
+`MAX_CHUNK_SPAWNS_PER_TICK` for the bigger initial chunk-stream flood. Consumers are **minimal stubs** this
+phase (prove the data arrives). FieldExpr/FieldSampler substrate lands here (with the grids as its data).
 - **3b** — Atlas-inspector **heat overlays** for each field + live rule-weight sliders re-running the real
   atlas stage; one re-bake validates coherence (pools near water/ruins, recede on dry tops).
 
@@ -345,10 +356,9 @@ stage — author field **coherence** before a re-bake.
 
 ## Open questions for the designer (decisions only you can make)
 
-1. **Wire budget vs fidelity** — RLE/zlib packing sufficient, or cap field resolution to 1 cell per 2×2
-   (halves payload, softens puddle/moss gradients)?
-2. **Grid split** — `VegFieldGrid` separate from `SurfaceStateGrid` (recommended: two grids — different
-   consumers/cadence), or one combined grid (one wire slot)?
+1. **Wire budget vs fidelity** — ✅ RESOLVED (user): full resolution + mandatory RLE/zlib packing.
+2. **Grid split** — ✅ RESOLVED (user): two grids (`VegFieldGrid` + `SurfaceStateGrid`), `WaterGrid`
+   separate; `variantIndex` u8; `ruinAge` + `traffic` baked in now (see the Phase-3 field-set matrix).
 3. **Sun-arc authority** — derive `sunAltitude/Azimuth` server-side from `WorldClock` (recommended; shadows
    + shaft UVs must agree) and add 2 floats to the day-phase payload?
 4. **Overhang** — confirmed DROP from v1 (recommended), or one explicitly-reviewed decorative carve-out?

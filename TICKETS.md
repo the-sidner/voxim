@@ -1102,9 +1102,12 @@ in @voxim/content (colorOverride/HSL-colorShift/emissiveCracks/addsTags; stable 
 (the in-game per-cell index comes from P3's SurfaceStateGrid.variantIndex); example
 corrupted/mossy variants on stone, live-verified. **PHASE 2 COMPLETE** (GradeDef · LightDef ·
 MaterialStateLadder). Next: **Phase 3** — the unified per-cell field grids, the ONE permanent
-wire break (chunk-component wireIds never reused). GATE: gut-check the exhaustive field-set
-matrix with the user BEFORE any grid codec lands (invariant I1) — it is the single irreversible
-decision of the arc. P3 + P4 (multi-layer scatter) unlock the hero-cell DENSITY slice.
+wire break. **FIELD-SET MATRIX SIGNED OFF (user, I1)** — see `VISUAL_DATAMODEL_PLAN.md §Phase 3`:
+`VegFieldGrid`{canopyLight,corruption,fertility} + `SurfaceStateGrid`{wetness,overgrowth,wear,
+variantIndex u8,ruinAge,traffic} + `WaterGrid`{surfaceLevel f32}; full-res, mandatory RLE/zlib,
+ruinAge+traffic baked in now (no 2nd break). P3 + P4 (multi-layer scatter) unlock the hero-cell
+DENSITY slice. Next concrete step: map the atlas→chunk-component→upsample→client pipeline, then
+mint the grids smallest-first (defs+codecs → atlas derivation → re-bake → Atlas-inspector overlays).
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
