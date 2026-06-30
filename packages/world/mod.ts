@@ -21,7 +21,7 @@ export {
 
 export { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness, setChunkKinds, setChunkVegField, setChunkSurfaceState, setChunkWater } from "./src/chunk.ts";
 
-export { buildTerrainBuffers, chunksFromBuffers, seedFromTileId } from "./src/generator.ts";
+export { applyFieldsToChunks, buildTerrainBuffers, chunksFromBuffers, seedFromTileId } from "./src/generator.ts";
 export type { GeneratedTile, WorldGenContent } from "./src/generator.ts";
 
 export { saveTerrainCache, loadTerrainCache } from "./src/terrain_cache.ts";

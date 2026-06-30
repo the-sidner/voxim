@@ -18,7 +18,7 @@ import type { EntityId, ChangesetSet, ChangesetRemoval } from "@voxim/engine";
 import type { AtlasTileInitRepo, AtlasWorldRepo, TileSaveRepo, WorldsRepo } from "@voxim/db";
 import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
-import { chunksFromBuffers, TILE_SIZE } from "@voxim/world";
+import { applyFieldsToChunks, chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { placePois, spawnMobPois } from "./poi_placer.ts";
@@ -979,6 +979,13 @@ export class TileServer {
       // visual and lives client-side now: KindGrid is networked so the
       // client decorates closed pixels itself. Server keeps no per-tree
       // entities — collision is handled by OpenMask in stepPhysics.
+    } else {
+      // Save-loaded chunks carry only Heightmap/MaterialGrid/OpenMask/KindGrid
+      // (save_manager's CHUNK_DEFS). The render-field grids are deterministic
+      // atlas output, deliberately excluded from the save, so overlay them onto
+      // the loaded chunks now — else scatter/moss/wetness see neutral fields
+      // until the next from-scratch gen (T-312b).
+      applyFieldsToChunks(this.world, atlas.fields);
     }
 
     const procedural = new ProceduralSpawner(this.world, content, zoneGrid, tileSeed);

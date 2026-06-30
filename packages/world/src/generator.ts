@@ -25,6 +25,8 @@
 import type { World, EntityId } from "@voxim/engine";
 import type { BiomeDef, ZoneDef } from "@voxim/content";
 import { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness, setChunkKinds, setChunkVegField, setChunkSurfaceState, setChunkWater } from "./chunk.ts";
+import { Heightmap, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "./components.ts";
+import type { VegFieldGridData, SurfaceStateGridData } from "./components.ts";
 import { CHUNK_SIZE, CHUNKS_PER_TILE_SIDE, TILE_SIZE, snapHeight } from "./terrain.ts";
 
 /** T-311 P3 render-field planes at TILE_SIZE² (structural — atlas FieldPlanes is
@@ -393,6 +395,42 @@ export async function buildTerrainBuffers(
  * Write pre-built height/material buffers into ECS chunk entities.
  * Synchronous — no noise computation, just memory copies.
  */
+/**
+ * Slice the tile-wide render-field planes into ONE chunk's per-cell grids
+ * (T-311 P3). The single source of truth for tile→chunk field projection,
+ * shared by `chunksFromBuffers` (fresh gen) and `applyFieldsToChunks`
+ * (save-load overlay) so the two paths can never drift.
+ */
+function sliceFieldsForChunk(fields: FieldsBufferInput, cx: number, cy: number): {
+  veg: VegFieldGridData; surf: SurfaceStateGridData; water: Float32Array;
+} {
+  const veg: VegFieldGridData = {
+    canopyLight: new Uint8Array(CHUNK_CELLS), corruption: new Uint8Array(CHUNK_CELLS), fertility: new Uint8Array(CHUNK_CELLS),
+  };
+  const surf: SurfaceStateGridData = {
+    wetness: new Uint8Array(CHUNK_CELLS), overgrowth: new Uint8Array(CHUNK_CELLS), wear: new Uint8Array(CHUNK_CELLS),
+    variantIndex: new Uint8Array(CHUNK_CELLS), ruinAge: new Uint8Array(CHUNK_CELLS), traffic: new Uint8Array(CHUNK_CELLS),
+  };
+  const water = new Float32Array(CHUNK_CELLS);
+  for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+      const flatIdx = (cx * CHUNK_SIZE + lx) + (cy * CHUNK_SIZE + ly) * TILE_SIZE;
+      const chunkIdx = lx + ly * CHUNK_SIZE;
+      veg.canopyLight[chunkIdx] = fields.canopyLight[flatIdx];
+      veg.corruption[chunkIdx]  = fields.corruption[flatIdx];
+      veg.fertility[chunkIdx]   = fields.fertility[flatIdx];
+      surf.wetness[chunkIdx]      = fields.wetness[flatIdx];
+      surf.overgrowth[chunkIdx]   = fields.overgrowth[flatIdx];
+      surf.wear[chunkIdx]         = fields.wear[flatIdx];
+      surf.variantIndex[chunkIdx] = fields.variantIndex[flatIdx];
+      surf.ruinAge[chunkIdx]      = fields.ruinAge[flatIdx];
+      surf.traffic[chunkIdx]      = fields.traffic[flatIdx];
+      water[chunkIdx]             = fields.surfaceLevel[flatIdx];
+    }
+  }
+  return { veg, surf, water };
+}
+
 export function chunksFromBuffers(
   world: World,
   heightBuffer: Float32Array,
@@ -410,15 +448,6 @@ export function chunksFromBuffers(
       const materials = new Uint16Array(CHUNK_CELLS);
       const open  = openBuffer ? new Uint8Array(CHUNK_CELLS)  : null;
       const kinds = kindBuffer ? new Uint16Array(CHUNK_CELLS) : null;
-      // T-311 P3: per-chunk render-field planes (zero-alloc only when present).
-      const veg = fields && {
-        canopyLight: new Uint8Array(CHUNK_CELLS), corruption: new Uint8Array(CHUNK_CELLS), fertility: new Uint8Array(CHUNK_CELLS),
-      };
-      const surf = fields && {
-        wetness: new Uint8Array(CHUNK_CELLS), overgrowth: new Uint8Array(CHUNK_CELLS), wear: new Uint8Array(CHUNK_CELLS),
-        variantIndex: new Uint8Array(CHUNK_CELLS), ruinAge: new Uint8Array(CHUNK_CELLS), traffic: new Uint8Array(CHUNK_CELLS),
-      };
-      const water = fields ? new Float32Array(CHUNK_CELLS) : null;
 
       for (let ly = 0; ly < CHUNK_SIZE; ly++) {
         for (let lx = 0; lx < CHUNK_SIZE; lx++) {
@@ -431,18 +460,6 @@ export function chunksFromBuffers(
           materials[chunkIdx] = materialBuffer[flatIdx];
           if (open  && openBuffer) open[chunkIdx]  = openBuffer[flatIdx];
           if (kinds && kindBuffer) kinds[chunkIdx] = kindBuffer[flatIdx];
-          if (fields && veg && surf && water) {
-            veg.canopyLight[chunkIdx] = fields.canopyLight[flatIdx];
-            veg.corruption[chunkIdx]  = fields.corruption[flatIdx];
-            veg.fertility[chunkIdx]   = fields.fertility[flatIdx];
-            surf.wetness[chunkIdx]      = fields.wetness[flatIdx];
-            surf.overgrowth[chunkIdx]   = fields.overgrowth[flatIdx];
-            surf.wear[chunkIdx]         = fields.wear[flatIdx];
-            surf.variantIndex[chunkIdx] = fields.variantIndex[flatIdx];
-            surf.ruinAge[chunkIdx]      = fields.ruinAge[flatIdx];
-            surf.traffic[chunkIdx]      = fields.traffic[flatIdx];
-            water[chunkIdx]             = fields.surfaceLevel[flatIdx];
-          }
         }
       }
 
@@ -450,15 +467,37 @@ export function chunksFromBuffers(
       setChunkMaterials(world, id, materials);
       if (open)  setChunkOpenness(world, id, open);
       if (kinds) setChunkKinds(world, id, kinds);
-      if (veg)   setChunkVegField(world, id, veg);
-      if (surf)  setChunkSurfaceState(world, id, surf);
-      if (water) setChunkWater(world, id, water);
+      if (fields) {
+        const { veg, surf, water } = sliceFieldsForChunk(fields, cx, cy);
+        setChunkVegField(world, id, veg);
+        setChunkSurfaceState(world, id, surf);
+        setChunkWater(world, id, water);
+      }
 
       chunkIds[cx + cy * CHUNKS_PER_TILE_SIDE] = id;
     }
   }
 
   return chunkIds;
+}
+
+/**
+ * Re-apply the atlas-derived render fields onto chunks ALREADY in the world —
+ * the save-load overlay (T-312b). The field grids are deterministic atlas
+ * output, never runtime-mutated, so the save deliberately excludes them
+ * (`CHUNK_DEFS` = Heightmap/MaterialGrid/OpenMask/KindGrid); we restore them
+ * here. Writes via `world.write` (not the guarded `setChunk*`) so it ADDS the
+ * components even on a chunk reconstructed from a save that never had them.
+ */
+export function applyFieldsToChunks(world: World, fields: FieldsBufferInput): void {
+  for (const { entityId } of world.query(Heightmap)) {
+    const hm = world.get(entityId, Heightmap);
+    if (!hm) continue;
+    const { veg, surf, water } = sliceFieldsForChunk(fields, hm.chunkX, hm.chunkY);
+    world.write(entityId, VegFieldGrid, veg);
+    world.write(entityId, SurfaceStateGrid, surf);
+    world.write(entityId, WaterGrid, { surfaceLevel: water });
+  }
 }
 
 /** Derive a numeric seed from a tile ID string. */
