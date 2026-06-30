@@ -1085,10 +1085,14 @@ playwright) — Studio "Material" editor (`0f6f73d`) live-previews `MaterialDef.
 "ProcModel" editor (`57cf815`) generates trees/plants/rocks through the REAL generator
 registry + bake, both via the curated `@voxim/client/render` barrel (shipped runtime, no
 drift). The Scatter-Field-Painter half of P1a defers to P3/P4 (no field grids to paint
-yet). Next: Phase 2 (no-rebake content primitives — MaterialStateLadder + GradeDef +
-LightDef/LightBudget; unblocks the most axes). The hero-cell DENSITY slice is gated on
-P3 (field grids, the one wire break) + P4 (multi-layer scatter) — P1 delivers the
-"one primitive" authoring rung.
+yet). Phase 2 in progress — **GradeDef** landed (`3a5e940`): the first AuthoredEnvParamSet (G7),
+the 13 EdgePass grade constants lifted into a content `grades/` category (wired
+types→store→loader→bootstrap round-trip), EdgePass.setGrade applied by the renderer; zero
+visual change (values byte-equal to the retired constants). Remaining P2: MaterialStateLadder
+(variant resolution + Material-panel preview can land now; the in-game per-cell consumer is
+gated on P3's SurfaceStateGrid.variantIndex) and LightDef/FlickerCurve/LightBudget (the
+local-lighting pools — the larger piece). The hero-cell DENSITY slice is gated on P3 (field
+grids, the one wire break) + P4 (multi-layer scatter).
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
