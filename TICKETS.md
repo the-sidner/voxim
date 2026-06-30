@@ -1092,13 +1092,15 @@ visual change (values byte-equal to the retired constants). **LightDef** mostly 
 cartography workflow): LightDef content category (`4e8292b`, BOOTSTRAP_VERSION 15→16) +
 FlickerCurve registry replacing the hardcoded oscillator (`4bf9c4a`) + client LightBudget
 capping dynamic PointLights at 8, degrading the rest to always-on emissive flame voxels
-(`8636ce4`, headless unit-verified). All no-wire-break (interim: legacy LightEmitter.flicker
-float → 'torch' curve, castsPool true). Remaining: the ONE LightEmitter wire bump (drop
-`flicker`, add `lightDefId`; placed prefabs reference a light; client resolves
-flicker/castsPool/family from the LightDef; folds in Illuminator.lightDefId) — deferred as
-the clean last slice. Also still in P2: MaterialStateLadder (variant resolution + Material-panel
-preview can land now; in-game per-cell consumer gated on P3's SurfaceStateGrid.variantIndex).
-The hero-cell DENSITY slice is gated on P3 (field grids, the one wire break) + P4 (multi-layer scatter).
+(`8636ce4`, headless unit-verified). The LightEmitter wire bump landed too (`73eeeb7`):
+`flicker` float retired for a `lightDefId` string (numbers stay on the wire for getLightAt;
+client resolves flicker/castsPool/family from the LightDef — T-250), placed prefabs +
+Illuminator + deriveItemStats + EquipmentSystem all moved in one commit, server boot
+cross-check added. **LightDef is COMPLETE.** Remaining in P2: MaterialStateLadder (variant
+resolution + Material-panel preview can land now; in-game per-cell consumer gated on P3's
+SurfaceStateGrid.variantIndex). The hero-cell DENSITY slice is gated on P3 (field grids, the
+one permanent wire break — gut-check the field-set matrix with the user first, I1) + P4
+(multi-layer scatter).
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
