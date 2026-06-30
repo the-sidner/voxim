@@ -115,6 +115,8 @@ export type {
 } from "./src/types.ts";
 export { snapColorToRamp, hexStrToNum } from "./src/palette_snap.ts";
 export { resolveMaterialVariant, materialVariantIndex } from "./src/material_variant.ts";
+export { evaluateFieldExpr, crossCheckFieldExpr, FIELD_NAMES } from "./src/field_expr.ts";
+export type { FieldExpr, FieldTerm, FieldCurve } from "./src/field_expr.ts";
 export type { VoxelAtom } from "./src/voxel.ts";
 
 // ---- hitbox derivation and application ----
