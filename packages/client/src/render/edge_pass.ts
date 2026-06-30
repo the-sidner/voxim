@@ -27,6 +27,7 @@
  */
 
 import * as THREE from "three";
+import type { GradeDef } from "@voxim/content";
 
 const VERT = /* glsl */`
   varying vec2 vUv;
@@ -482,6 +483,29 @@ export class EdgePass {
   /** Post-tonemap chroma gain (1.0 = neutral, >1 = more saturated). Tuning knob. */
   setSaturation(value: number): void {
     this.material.uniforms.uSaturation.value = value;
+  }
+
+  /**
+   * Apply a content `GradeDef` (T-311 Phase 2, grammar G7) — lifts the colour
+   * grade out of the hardcoded constructor constants into authored content; the
+   * constructor values now serve only as the pre-bootstrap fallback (the same
+   * pattern as the palette / edge-ink). Sets the 13 grade uniforms 1:1.
+   */
+  setGrade(g: GradeDef): void {
+    const u = this.material.uniforms;
+    u.uExposure.value         = g.exposure;
+    u.uSaturation.value       = g.saturation;
+    u.uVignetteStart.value    = g.vignetteStart;
+    u.uVignetteStrength.value = g.vignetteStrength;
+    u.uSplitTone.value        = g.splitTone;
+    (u.uGrimGain.value  as THREE.Vector3).set(g.grimGain[0],  g.grimGain[1],  g.grimGain[2]);
+    (u.uGrimGamma.value as THREE.Vector3).set(g.grimGamma[0], g.grimGamma[1], g.grimGamma[2]);
+    (u.uGrimLift.value  as THREE.Vector3).set(g.grimLift[0],  g.grimLift[1],  g.grimLift[2]);
+    u.uGrimDesat.value        = g.grimDesat;
+    u.uWarmGain.value         = g.warmGain;
+    (u.uGrimCast.value  as THREE.Vector3).set(g.grimCast[0],  g.grimCast[1],  g.grimCast[2]);
+    u.uGrainStrength.value    = g.grainStrength;
+    u.uGrainShadowFloor.value = g.grainShadowFloor;
   }
 
   /** Bind the live bloom texture (replaces the black constructor placeholder). */

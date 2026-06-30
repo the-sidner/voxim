@@ -497,6 +497,11 @@ export class VoximRenderer {
       // tint reads the `edgeInk` palette token instead of a hardcoded literal.
       this.edgePass.setEdgeColor(paletteToken("edgeInk"));
     }
+    // Colour grade is content now (T-311 Phase 2, grammar G7): the EdgePass grade
+    // uniforms read the authored `grades/default.json` instead of hardcoded
+    // constants. Absent → the EdgePass constructor fallback (identical values).
+    const grade = cache.getGrade("default");
+    if (grade) this.edgePass.setGrade(grade);
   }
 
 

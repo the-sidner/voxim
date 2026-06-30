@@ -1,0 +1,16 @@
+{
+  "id": "default",
+  "exposure": 1.12,
+  "saturation": 1.66,
+  "vignetteStart": 0.34,
+  "vignetteStrength": 0.32,
+  "splitTone": 0.62,
+  "grimGain": [1.0, 0.99, 0.95],
+  "grimGamma": [1.05, 1.0, 1.07],
+  "grimLift": [0.012, 0.015, 0.02],
+  "grimDesat": 0.26,
+  "warmGain": 2.5,
+  "grimCast": [0.95, 1.0, 0.97],
+  "grainStrength": 0.05,
+  "grainShadowFloor": 0.4
+}

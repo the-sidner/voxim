@@ -39,6 +39,7 @@ import type {
   NpcTemplate,
   BehaviorTreeSpec,
   BiomeDef,
+  GradeDef,
   ZoneDef,
   PoiDef,
   PoiRole,
@@ -110,6 +111,13 @@ export interface ContentService {
    * a file drop. See RESOURCE_PRIMITIVE_PLAN.md.
    */
   readonly resources: ContentRegistryReadonly<ResourceDef>;
+
+  /**
+   * Colour grades keyed by id (T-311 Phase 2, grammar G7). Loaded from
+   * `data/grades/*.json`; the client lerps the EdgePass grade uniforms from the
+   * selected grade. Authoring a new look is a file drop.
+   */
+  readonly grades: ContentRegistryReadonly<GradeDef>;
 
   /**
    * Triggers keyed by id (T-259). Reactive couplings loaded from
@@ -244,6 +252,10 @@ export class StaticContentStore implements ContentService {
     kind: "resource",
     idOf: (r) => r.id,
   });
+  public readonly grades = new ContentRegistry<GradeDef>({
+    kind: "grade",
+    idOf: (g) => g.id,
+  });
   public readonly triggers = new ContentRegistry<TriggerDef>({
     kind: "trigger",
     idOf: (t) => t.id,
@@ -366,6 +378,10 @@ export class StaticContentStore implements ContentService {
 
   registerResource(def: ResourceDef): void {
     this.resources.register(def);
+  }
+
+  registerGrade(def: GradeDef): void {
+    this.grades.register(def);
   }
 
   registerTrigger(def: TriggerDef): void {

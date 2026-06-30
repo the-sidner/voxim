@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, Palette } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, Palette } from "./types.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
@@ -52,7 +52,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw,
-    procModelsRaw, scatterRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -71,6 +71,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "triggers"),
     readJsonDirOptional(dataDir, "procmodels"),
     readJsonDirOptional(dataDir, "scatter"),
+    readJsonDirOptional(dataDir, "grades"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -205,6 +206,9 @@ async function loadContentStoreInternal(
   for (const raw of scatterRaw as ScatterDef[]) {
     validateScatterDef(raw);
     store.registerScatter(raw);
+  }
+  for (const raw of gradesRaw as GradeDef[]) {
+    store.registerGrade(raw);
   }
   for (const s of store.scatter.values()) {
     if (!store.procModels.get(s.procModel)) {

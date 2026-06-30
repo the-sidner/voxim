@@ -105,6 +105,31 @@ export interface MaterialDef {
   variants?: readonly MaterialVariant[];
 }
 
+/**
+ * Colour-grade definition (T-311 Phase 2, grammar G7 · AuthoredEnvParamSet). The
+ * full set of EdgePass grade constants lifted VERBATIM out of the shader into
+ * content (`data/grades/*.json`) — shader maths unchanged, only the source of the
+ * numbers moves. The client selects a grade and lerps the EdgePass uniforms from
+ * it; per-biome/phase selection by a networked context key lands later. Every
+ * field maps 1:1 to a `u*` uniform.
+ */
+export interface GradeDef {
+  id: string;
+  exposure: number;          // uExposure — pre-tonemap radiance lift
+  saturation: number;        // uSaturation — post-tonemap chroma gain
+  vignetteStart: number;     // uVignetteStart
+  vignetteStrength: number;  // uVignetteStrength
+  splitTone: number;         // uSplitTone — cool shadow ↔ warm light
+  grimGain: [number, number, number];   // uGrimGain — highlight tint
+  grimGamma: [number, number, number];  // uGrimGamma — midtone power
+  grimLift: [number, number, number];   // uGrimLift — raised cool blacks
+  grimDesat: number;         // uGrimDesat — warm pixels spared
+  warmGain: number;          // uWarmGain — warm-pixel desat exemption
+  grimCast: [number, number, number];   // uGrimCast — cool weathered cast
+  grainStrength: number;     // uGrainStrength — film grain
+  grainShadowFloor: number;  // uGrainShadowFloor
+}
+
 // ---- voxel model ----
 
 export interface VoxelNode {
