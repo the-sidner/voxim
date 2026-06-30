@@ -1088,11 +1088,17 @@ drift). The Scatter-Field-Painter half of P1a defers to P3/P4 (no field grids to
 yet). Phase 2 in progress — **GradeDef** landed (`3a5e940`): the first AuthoredEnvParamSet (G7),
 the 13 EdgePass grade constants lifted into a content `grades/` category (wired
 types→store→loader→bootstrap round-trip), EdgePass.setGrade applied by the renderer; zero
-visual change (values byte-equal to the retired constants). Remaining P2: MaterialStateLadder
-(variant resolution + Material-panel preview can land now; the in-game per-cell consumer is
-gated on P3's SurfaceStateGrid.variantIndex) and LightDef/FlickerCurve/LightBudget (the
-local-lighting pools — the larger piece). The hero-cell DENSITY slice is gated on P3 (field
-grids, the one wire break) + P4 (multi-layer scatter).
+visual change (values byte-equal to the retired constants). **LightDef** mostly landed (mapped by a
+cartography workflow): LightDef content category (`4e8292b`, BOOTSTRAP_VERSION 15→16) +
+FlickerCurve registry replacing the hardcoded oscillator (`4bf9c4a`) + client LightBudget
+capping dynamic PointLights at 8, degrading the rest to always-on emissive flame voxels
+(`8636ce4`, headless unit-verified). All no-wire-break (interim: legacy LightEmitter.flicker
+float → 'torch' curve, castsPool true). Remaining: the ONE LightEmitter wire bump (drop
+`flicker`, add `lightDefId`; placed prefabs reference a light; client resolves
+flicker/castsPool/family from the LightDef; folds in Illuminator.lightDefId) — deferred as
+the clean last slice. Also still in P2: MaterialStateLadder (variant resolution + Material-panel
+preview can land now; in-game per-cell consumer gated on P3's SurfaceStateGrid.variantIndex).
+The hero-cell DENSITY slice is gated on P3 (field grids, the one wire break) + P4 (multi-layer scatter).
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
