@@ -62,6 +62,22 @@ Deno.test("instrumented runner: trace has one entry per stage with monotonic inp
   }
 });
 
+Deno.test("T-311: encodeState/decodeState round-trips a typed-array plane bundle (state.fields)", () => {
+  const fields = {
+    canopyLight: new Uint8Array([1, 2, 250]),
+    surfaceLevel: new Float32Array([NaN, 1.5, 3.25]),
+  };
+  const dec = decodeState(encodeState({ fields, chunkX: 5 })) as {
+    fields: Record<string, ArrayBufferView>; chunkX: number;
+  };
+  assertEquals(dec.chunkX, 5);
+  assertEquals(Array.from(dec.fields.canopyLight as Uint8Array), [1, 2, 250]);
+  const sl = dec.fields.surfaceLevel as Float32Array;
+  assert(Number.isNaN(sl[0]));
+  assertEquals(sl[1], 1.5);
+  assertEquals(sl[2], 3.25);
+});
+
 Deno.test("instrumented runner: full re-run with shared cache hits every stage", () => {
   const cache = new TileCache();
   const a = runInstrumented({

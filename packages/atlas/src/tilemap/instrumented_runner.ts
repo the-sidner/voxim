@@ -339,16 +339,43 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
  * Encode a pipeline state to a wire-friendly JSON object: typed arrays
  * become base64 with a kind tag. Anything else passes through as JSON.
  */
+function encodeTA(v: unknown): { __ta: string; b64: string } | null {
+  if (v instanceof Uint8Array)   return { __ta: "u8",  b64: b64Of(v) };
+  if (v instanceof Uint16Array)  return { __ta: "u16", b64: b64Of(viewOf(v)) };
+  if (v instanceof Float32Array) return { __ta: "f32", b64: b64Of(viewOf(v)) };
+  return null;
+}
+
+/** A flat object whose every value is a typed array — e.g. the T-311 `fields`
+ *  plane bundle. Encoded under `__planes` so decode can recurse one level. */
+function isPlaneBundle(v: unknown): boolean {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const vals = Object.values(v as Record<string, unknown>);
+  return vals.length > 0 && vals.every((x) =>
+    x instanceof Uint8Array || x instanceof Uint16Array || x instanceof Float32Array);
+}
+
 export function encodeState(state: unknown): unknown {
   const s = state as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(s)) {
-    if (v instanceof Uint8Array)   out[k] = { __ta: "u8",  b64: b64Of(v) };
-    else if (v instanceof Uint16Array)  out[k] = { __ta: "u16", b64: b64Of(viewOf(v)) };
-    else if (v instanceof Float32Array) out[k] = { __ta: "f32", b64: b64Of(viewOf(v)) };
-    else out[k] = v;
+    const ta = encodeTA(v);
+    if (ta) out[k] = ta;
+    else if (isPlaneBundle(v)) {
+      const planes: Record<string, unknown> = {};
+      for (const [ik, iv] of Object.entries(v as Record<string, unknown>)) planes[ik] = encodeTA(iv);
+      out[k] = { __planes: planes };
+    } else out[k] = v;
   }
   return out;
+}
+
+function decodeTA(tagged: { __ta: string; b64: string }): unknown {
+  const bytes = bytesFromB64(tagged.b64);
+  if (tagged.__ta === "u8")  return bytes;
+  if (tagged.__ta === "u16") return new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+  if (tagged.__ta === "f32") return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+  throw new Error(`unknown typed-array tag ${tagged.__ta}`);
 }
 
 export function decodeState(payload: unknown): unknown {
@@ -356,12 +383,13 @@ export function decodeState(payload: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(p)) {
     if (v && typeof v === "object" && "__ta" in v && "b64" in v) {
-      const tagged = v as { __ta: string; b64: string };
-      const bytes = bytesFromB64(tagged.b64);
-      if      (tagged.__ta === "u8")  out[k] = bytes;
-      else if (tagged.__ta === "u16") out[k] = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
-      else if (tagged.__ta === "f32") out[k] = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-      else throw new Error(`unknown typed-array tag ${tagged.__ta}`);
+      out[k] = decodeTA(v as { __ta: string; b64: string });
+    } else if (v && typeof v === "object" && "__planes" in v) {
+      const planes: Record<string, unknown> = {};
+      for (const [ik, iv] of Object.entries((v as { __planes: Record<string, { __ta: string; b64: string }> }).__planes)) {
+        planes[ik] = decodeTA(iv);
+      }
+      out[k] = planes;
     } else {
       out[k] = v;
     }
