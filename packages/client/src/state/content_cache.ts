@@ -8,7 +8,7 @@
  * via T-178). A future ticket will retire the cache entirely once the
  * renderer reads from ContentService directly.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef } from "@voxim/content";
 import { buildMaskIndex, deriveHitboxTemplate } from "@voxim/content";
 import type { HitboxContentAdapter } from "@voxim/content";
 import type { TileConnection } from "../connection/tile_connection.ts";
@@ -166,6 +166,12 @@ export class ContentCache {
    *  the bootstrap service is wired or if the id is unknown. */
   getGrade(id: string): GradeDef | null {
     return this.bootstrapService?.grades.get(id) ?? null;
+  }
+
+  /** Light definition by id (T-311 P2), from the bootstrap blob. Null until the
+   *  bootstrap service is wired or if the id is unknown. */
+  getLight(id: string): LightDef | null {
+    return this.bootstrapService?.lights.get(id) ?? null;
   }
 
   getSkeletonSync(skeletonId: string): SkeletonDef | undefined {

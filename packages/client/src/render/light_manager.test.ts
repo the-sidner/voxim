@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { LightManager } from "./light_manager.ts";
 
 function makeEmitter() {
-  return { color: 0xffffff, intensity: 1, radius: 10, flicker: 0 };
+  return { color: 0xffffff, intensity: 1, radius: 10, lightDefId: "" };
 }
 
 function visibleLights(groups: THREE.Group[]): boolean[] {

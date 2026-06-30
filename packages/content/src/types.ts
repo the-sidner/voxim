@@ -340,8 +340,9 @@ export interface DerivedItemStats {
   lightIntensity?: number;
   /** Light radius in world units while equipped. */
   lightRadius?: number;
-  /** Flicker amplitude 0–1. 0 = steady, 1 = heavy flicker. */
-  lightFlicker?: number;
+  /** Content LightDef id (T-311 P2) — drives the client presentation (flicker
+   *  curve / family / castsPool) of the equipped light. */
+  lightDefId?: string;
 }
 
 /**
@@ -461,7 +462,7 @@ export interface PlaceableData {
  * `ItemEffects` instance component (unique items).
  */
 export interface EffectSpec { id: string; params?: Record<string, unknown>; }
-export interface IlluminatorData { radius: number; color: number; intensity: number; flicker: number; }
+export interface IlluminatorData { radius: number; color: number; intensity: number; lightDefId: string; }
 export interface ArmorData { reduction: number; staminaPenalty: number; }
 export interface MaterialSourceData { materialName: string; }
 export interface ComposedData { slots: ItemSlotDef[]; }

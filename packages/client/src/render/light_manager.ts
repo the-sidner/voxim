@@ -18,6 +18,7 @@
  */
 import * as THREE from "three";
 import type { LightEmitterData } from "@voxim/codecs";
+import type { ContentCache } from "../state/content_cache.ts";
 import { getFlickerCurve, registerBuiltinFlickerCurves } from "./flicker_curves.ts";
 
 /**
@@ -44,21 +45,19 @@ interface TrackedLight {
   phase: number;
 }
 
-/**
- * Interim flicker-curve resolution until the LightEmitter wire carries
- * `lightDefId` (T-311 P2 commit 5): map the legacy `flicker` float to a curve.
- * Commit 5 replaces this with a LightDef lookup off the wire id.
- */
-function flickerCurveFor(emitter: LightEmitterData): string {
-  return emitter.flicker > 0 ? "torch" : "steady";
-}
-
 export class LightManager {
   /** entityId → tracked light. */
   private readonly lights = new Map<string, TrackedLight>();
+  /** Bootstrap content — resolves LightEmitter.lightDefId → LightDef for the
+   *  presentation-only fields (flicker curve / castsPool). */
+  private content: ContentCache | null = null;
 
   constructor() {
     registerBuiltinFlickerCurves();
+  }
+
+  setContent(cache: ContentCache): void {
+    this.content = cache;
   }
 
   /**
@@ -77,13 +76,20 @@ export class LightManager {
       return;
     }
 
+    // Resolve the presentation-only fields from the content LightDef (T-311 P2);
+    // the wire carries the numbers, the client derives flicker/castsPool here.
+    const def = this.content?.getLight(emitter.lightDefId) ?? null;
+    const flickerCurveId = def?.flickerCurveId ?? "steady";
+    const castsPool = def?.castsPool ?? true;
+
     const existing = this.lights.get(entityId);
     if (existing) {
       // Update existing light in place.
       existing.light.color.setHex(emitter.color);
       existing.light.distance = emitter.radius;
       existing.baseIntensity = emitter.intensity;
-      existing.flickerCurveId = flickerCurveFor(emitter);
+      existing.flickerCurveId = flickerCurveId;
+      existing.castsPool = castsPool;
     } else {
       // Create and parent to entity group.
       // Height offset: center-of-mass is roughly 0.9 world units up (= Three.js Y).
@@ -93,8 +99,8 @@ export class LightManager {
       this.lights.set(entityId, {
         light,
         baseIntensity: emitter.intensity,
-        flickerCurveId: flickerCurveFor(emitter),
-        castsPool: true,
+        flickerCurveId,
+        castsPool,
         phase: Math.random() * Math.PI * 2,
       });
     }

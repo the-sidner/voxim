@@ -504,7 +504,7 @@ export class StaticContentStore implements ContentService {
     const c = prefab.components;
     const weight = c["weight"] as { baseWeight?: number } | undefined;
     const armor = c["armor"] as { reduction?: number; staminaPenalty?: number } | undefined;
-    const illuminator = c["illuminator"] as { radius?: number; color?: number; intensity?: number; flicker?: number } | undefined;
+    const illuminator = c["illuminator"] as { radius?: number; color?: number; intensity?: number; lightDefId?: string } | undefined;
     const tool = c["tool"] as { toolType?: string; durability?: number } | undefined;
     const swingable = c["swingable"] as { damage?: number; durability?: number } | undefined;
     const armorDur = c["armor"] as { durability?: number } | undefined;
@@ -535,7 +535,7 @@ export class StaticContentStore implements ContentService {
       stats.lightRadius = illuminator.radius;
       stats.lightColor = illuminator.color;
       stats.lightIntensity = illuminator.intensity * quality;
-      stats.lightFlicker = illuminator.flicker;
+      if (illuminator.lightDefId) stats.lightDefId = illuminator.lightDefId;
     }
     if (tool?.toolType) stats.toolType = tool.toolType;
     if (swingable?.damage !== undefined) stats.damage = swingable.damage * quality;

@@ -269,7 +269,7 @@ const illuminatorSchema = v.object({
   radius: v.number(),
   color: v.number(),
   intensity: v.number(),
-  flicker: v.number(),
+  lightDefId: v.string(),
 });
 
 export const Illuminator = defineComponent({
@@ -282,7 +282,7 @@ export const Illuminator = defineComponent({
       w.writeF32(v.radius);
       w.writeI32(v.color);
       w.writeF32(v.intensity);
-      w.writeF32(v.flicker);
+      w.writeStr(v.lightDefId);
       return w.toBytes();
     },
     decode(b: Uint8Array): IlluminatorData {
@@ -291,7 +291,7 @@ export const Illuminator = defineComponent({
         radius: r.readF32(),
         color: r.readI32(),
         intensity: r.readF32(),
-        flicker: r.readF32(),
+        lightDefId: r.readStr(),
       };
     },
   },
@@ -299,7 +299,7 @@ export const Illuminator = defineComponent({
     radius: 0,
     color: 0xffaa44,
     intensity: 0,
-    flicker: 0,
+    lightDefId: "",
   }),
 });
 

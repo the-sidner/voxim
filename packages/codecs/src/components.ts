@@ -1241,13 +1241,16 @@ export const hitboxCodec: Serialiser<HitboxData> = {
 // ---- LightEmitter ----------------------------------------------------------
 // Emitted by entities that cast light (torch, campfire, hearth, player holding torch).
 // color is a packed RGB u32 (0xRRGGBB). intensity 0–1 scales the raw radius.
-// flicker 0–1 drives random oscillation amplitude on the client.
+// lightDefId (T-311 P2) is the content LightDef id — the client resolves the
+// presentation-only fields (flicker curve, family, castsPool) from it; the
+// numbers (color/intensity/radius) stay on the wire because getLightAt() queries
+// them server-side (the "wire carries data, client derives presentation" doctrine).
 
 export interface LightEmitterData {
   color: number;
   intensity: number;
   radius: number;
-  flicker: number;
+  lightDefId: string;
 }
 
 export const lightEmitterCodec: Serialiser<LightEmitterData> = {
@@ -1256,12 +1259,12 @@ export const lightEmitterCodec: Serialiser<LightEmitterData> = {
     w.writeU32(v.color);
     w.writeF32(v.intensity);
     w.writeF32(v.radius);
-    w.writeF32(v.flicker);
+    w.writeStr(v.lightDefId);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): LightEmitterData {
     const r = new WireReader(bytes);
-    return { color: r.readU32(), intensity: r.readF32(), radius: r.readF32(), flicker: r.readF32() };
+    return { color: r.readU32(), intensity: r.readF32(), radius: r.readF32(), lightDefId: r.readStr() };
   },
 };
 

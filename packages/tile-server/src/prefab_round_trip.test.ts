@@ -134,9 +134,9 @@ Deno.test("Placeable — schema/codec agreement", () => {
 Deno.test("Illuminator — schema/codec agreement", () => {
   // Floats are f32 — use dyadic rationals so round-trip is exact.
   roundTrip(Illuminator, [
-    { radius: 8, color: 0xffaa44, intensity: 1, flicker: 0.125 },
-    { radius: 0, color: 0, intensity: 0, flicker: 0 },
-    { radius: 12.5, color: 0xffffff, intensity: 0.75, flicker: 0.25 },
+    { radius: 8, color: 0xffaa44, intensity: 1, lightDefId: "torch" },
+    { radius: 0, color: 0, intensity: 0, lightDefId: "" },
+    { radius: 12.5, color: 0xffffff, intensity: 0.75, lightDefId: "campfire" },
   ], "Illuminator");
 });
 

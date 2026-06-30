@@ -15,7 +15,7 @@ export const LightEmitter = defineComponent({
   name: "lightEmitter" as const,
   wireId: ComponentType.lightEmitter,
   codec: lightEmitterCodec,
-  default: (): LightEmitterData => ({ color: 0xffaa44, intensity: 1.0, radius: 8.0, flicker: 0.15 }),
+  default: (): LightEmitterData => ({ color: 0xffaa44, intensity: 1.0, radius: 8.0, lightDefId: "torch" }),
 });
 
 // ---- DarknessModifier ----

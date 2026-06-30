@@ -9,7 +9,7 @@
       "color": 16755780,
       "intensity": 1.0,
       "radius": 10.0,
-      "flicker": 0.2
+      "lightDefId": "torch"
     }
   }
 }

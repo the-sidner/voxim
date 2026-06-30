@@ -486,6 +486,7 @@ export class VoximRenderer {
   setContentCache(cache: ContentCache): void {
     this.content = cache;
     this.entities.setContent(cache);
+    this.lightManager.setContent(cache);
     // Lighting + sky/fog come from the single palette source (T-280) once the
     // bootstrap arrives — replaces the hardcoded cyan noon sky with the
     // ash-hazed phase colors (EnvironmentLighting rebuilds its phase table).

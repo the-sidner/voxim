@@ -513,6 +513,21 @@ export class TileServer {
       }
     }
 
+    // T-311 P2: every prefab light reference (a placed `lightEmitter` or an item
+    // `illuminator`) must resolve to a loaded LightDef — fail-fast before the
+    // client silently falls back to a default light.
+    for (const prefab of content.prefabs.values()) {
+      const comps = prefab.components as Record<string, { lightDefId?: string }> | undefined;
+      for (const key of ["lightEmitter", "illuminator"] as const) {
+        const id = comps?.[key]?.lightDefId;
+        if (id && !content.lights.get(id)) {
+          throw new Error(
+            `prefab "${prefab.id}" ${key}.lightDefId "${id}" but no such LightDef is loaded.`,
+          );
+        }
+      }
+    }
+
     // Trigger primitive (T-259) — the single event→effect bridge. Catalog
     // (closed event-kind vocabulary) + sources (live "who owns which
     // triggers" reads; v1: equipment) + the buffered TriggerSystem.

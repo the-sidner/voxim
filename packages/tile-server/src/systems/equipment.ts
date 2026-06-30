@@ -135,7 +135,7 @@ export class EquipmentSystem implements System {
         color:     stats.lightColor     ?? 0xffaa44,
         intensity: stats.lightIntensity ?? 1.0,
         radius:    stats.lightRadius,
-        flicker:   stats.lightFlicker   ?? 0.15,
+        lightDefId: stats.lightDefId    ?? "torch",
       });
     }
     log.info("equipped: entity=%s item=%s slot=%s", entityId, prefabId, equipSlot);
@@ -198,7 +198,7 @@ export class EquipmentSystem implements System {
     let bestRadius = 0;
     let bestColor = 0xffaa44;
     let bestIntensity = 1.0;
-    let bestFlicker = 0.15;
+    let bestLightDefId = "torch";
 
     for (const s of SLOTS) {
       const slot = newEquipment[s];
@@ -210,12 +210,12 @@ export class EquipmentSystem implements System {
         bestRadius    = stats.lightRadius;
         bestColor     = stats.lightColor     ?? 0xffaa44;
         bestIntensity = stats.lightIntensity ?? 1.0;
-        bestFlicker   = stats.lightFlicker   ?? 0.15;
+        bestLightDefId = stats.lightDefId    ?? "torch";
       }
     }
 
     if (bestRadius > 0) {
-      world.set(entityId, LightEmitter, { color: bestColor, intensity: bestIntensity, radius: bestRadius, flicker: bestFlicker });
+      world.set(entityId, LightEmitter, { color: bestColor, intensity: bestIntensity, radius: bestRadius, lightDefId: bestLightDefId });
     } else if (world.has(entityId, LightEmitter)) {
       // No light-emitting item equipped — remove the component (T-269). The
       // removal reaches the client over the wire's removal channel (T-250) and
