@@ -308,9 +308,11 @@ export class ClientWorld {
   }
 
   /**
-   * Sample terrain height at a world position. Uses bilinear interpolation
-   * between the four surrounding heightmap cells.
-   * Returns 0 for unloaded chunks.
+   * Sample terrain height at a world position via NEAREST cell (matches the
+   * server's terrain_lookup, which is explicitly non-bilinear — feet/props must
+   * agree with the column-box top at model-z=h). Returns 0 for unloaded chunks;
+   * callers near the tile edge can sample past the boundary, so this 0 is a
+   * known bounded artifact (see T-311 follow-up — NaN-sentinel + scatter defer).
    */
   getTerrainHeight(wx: number, wy: number): number {
     const cx = Math.floor(wx / CHUNK_SIDE);
