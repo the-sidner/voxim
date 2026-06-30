@@ -40,10 +40,13 @@ export const TERRAIN_DISP_MAG = 0.18 * HEIGHT_STEP;
 
 // ---- Terraced cliff edges (T-310 — the upper/lower transition as terrain
 // definition, not a shader hack). A cliff cell (a plateau edge or a forest/stone
-// wall) is voxelised as a STACK of sub-boxes that recede on the exposed side(s)
-// as they descend — a ziggurat / tree-trunk stepped face. Real geometry derived
-// deterministically from the heightmap; collision stays the heightmap (barrier),
-// so the two-tier gating (stairs) is untouched.
+// wall) is voxelised as a STACK of sub-boxes forming a bottom-wide ziggurat: the
+// bottom box reaches the cliff lip and each higher box steps BACK from the drop,
+// so the exposed face descends as a visible staircase of ledges. Real geometry
+// derived deterministically from the heightmap; collision stays the heightmap
+// (barrier), so the two-tier gating (stairs) is untouched. NOTE: this is the
+// client-voxeliser stopgap; real terracing folds into the terrain DATA MODEL
+// (server-authoritative stepped Heightmap) in T-311 Phase 6, which retires this.
 const CLIFF_MIN   = 1.2;   // expose depth (world units) above which we terrace
 const STEP_H      = 0.66;  // sub-box height per terrace step
 const STEP_INSET  = 0.3;   // how far each lower step recedes on an exposed side
@@ -101,9 +104,15 @@ export function buildChunkAtoms(
       if (!bucket) byMat.set(m, bucket = []);
 
       if (depth > CLIFF_MIN) {
-        // ---- Terraced cliff: a stack of sub-boxes receding on the exposed
-        // side(s). The top box keeps the full footprint (welds to higher
-        // neighbours); each lower box steps back on whichever side is lower.
+        // ---- Terraced cliff: a stack of sub-boxes forming a bottom-wide
+        // ziggurat. The BOTTOM box reaches the cliff lip (full footprint on the
+        // exposed side); each HIGHER box steps BACK from the drop, so the face
+        // descends as a visible staircase of ledges. The non-exposed side(s)
+        // (toward an equal/higher neighbour) are never receded, so the top
+        // surface stays welded to the adjacent plateau slab — only the exposed
+        // drop side terraces. (Recede grows UPWARD, rec=(k-1-L)·INSET: an
+        // earlier version grew it downward → an inverted/corbel overhang whose
+        // full-width top lip hid the steps under it.)
         const expE = (h - hE) > EXPOSE_MIN;
         const expW = (h - hW) > EXPOSE_MIN;
         const expS = (h - hS) > EXPOSE_MIN;
@@ -115,7 +124,7 @@ export function buildChunkAtoms(
           const zBot = L === k - 1 ? bottom : Math.max(bottom, h - (L + 1) * STEP_H);
           const sz = zTop - zBot;
           if (sz <= 0.02) break;
-          const rec = L * STEP_INSET;
+          const rec = (k - 1 - L) * STEP_INSET;
           let x0 = offX + cx, x1 = offX + cx + 1;
           let y0 = offZ + cy, y1 = offZ + cy + 1;
           if (expE) x1 -= rec;
