@@ -1116,10 +1116,16 @@ deriveFieldPlanes → state.fields; wired into the typed pipe + ORDERED_STAGES +
 GenParams["fields"] slice; snapshot unchanged, runner now 12 stages). **commit 3 LANDED (`663bc49`)**
 — Atlas-inspector heat overlays (a "fields" viewer + plane select, encodeState/decodeState `__planes`
 bundle, round-trip unit-tested) + the `fields` GenParams sliders tune the formulas live, no re-bake.
-**DERIVE + VISUALISE + TUNE is done.** Remaining **2b-ii** (infra) — thread state.fields → TileInit/
-TileInitWire (base64) → upsample (smooth=bilinear, variantIndex=nearest, surfaceLevel=nearest+NaN-guard)
-→ atlas_terrain → generator.chunksFromBuffers → setChunk* → **RE-BAKE** (needs atlas+postgres). Then
-**Phase 4** wires the client consumers (FieldExpr scatter / moss / wetness / decals) → the DENSITY slice.
+**DERIVE + VISUALISE + TUNE done.** **2b-ii LANDED + RE-BAKE-VERIFIED** (`<this commit>`): state.fields →
+TileInit → TileInitWire(fieldsB64) → upsample (nearest-resample, NaN-safe water) → atlas_terrain →
+chunksFromBuffers(32² slice) → setChunk* — every chunk now carries the atlas-DERIVED Veg/SurfaceState/
+Water grids. Verified live: brought the docker stack up, `POST /world/bake` ran the fields stage +
+serialised fieldsB64 into the stored wire (canopyLight max 255 / ruinAge max 246 / traffic from paths,
+via GET /tile), and the tile-server loaded the re-baked world cleanly ("atlas terrain loaded" + booted) —
+the re-bake caught + fixed a real transition crash (old worlds lack fieldsB64 → graceful zero planes).
+**FieldExpr (G2) evaluator also landed** (`content/field_expr.ts`). **PHASE 3 COMPLETE** (grids minted +
+derived + threaded to chunks + inspector + FieldExpr). Next: **Phase 4** — client consumers read the grids
+(FieldExpr-driven multi-layer ScatterDef / moss-creep / wetness / decals) → the hero-cell DENSITY slice.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
