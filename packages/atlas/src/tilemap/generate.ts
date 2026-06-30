@@ -151,6 +151,7 @@ export function generateTile(
     // sets; the derived `zoneOf` index can be recovered via
     // `levelToZoneOf(level)` on the consumer side.
     level:      s.level,
+    fields:     s.fields,
     boundaries: [],
     features:   [],
   };
@@ -177,8 +178,41 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     portals:  t.portals,
     gateSummary: t.gateSummary,
     level:     t.level,
+    fieldsB64: encodeFieldsB64(t.fields),
     boundaries: t.boundaries,
     features:   t.features,
+  };
+}
+
+/** Encode the render-field planes to a name→base64 map (T-311 P3). */
+function encodeFieldsB64(f: TileInit["fields"]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(f)) {
+    out[k] = bytesToBase64(new Uint8Array((v as ArrayBufferView).buffer, (v as ArrayBufferView).byteOffset, (v as ArrayBufferView).byteLength));
+  }
+  return out;
+}
+
+/** Decode the name→base64 field map back into typed planes (u8, f32 surfaceLevel).
+ *  Absent map (a world baked before T-311 P3) → neutral zero/NaN planes of
+ *  gridSize² so an old DB payload loads without crashing; a re-bake fills them. */
+function decodeFieldsB64(m: Record<string, string> | undefined, cells: number): TileInit["fields"] {
+  if (!m) {
+    const z = () => new Uint8Array(cells);
+    return {
+      canopyLight: z(), corruption: z(), fertility: z(),
+      wetness: z(), overgrowth: z(), wear: z(),
+      variantIndex: z(), ruinAge: z(), traffic: z(),
+      surfaceLevel: new Float32Array(cells).fill(NaN),
+    };
+  }
+  const u8 = (k: string) => base64ToBytes(m[k]);
+  const f32 = (k: string) => { const b = base64ToBytes(m[k]); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4); };
+  return {
+    canopyLight: u8("canopyLight"), corruption: u8("corruption"), fertility: u8("fertility"),
+    wetness: u8("wetness"), overgrowth: u8("overgrowth"), wear: u8("wear"),
+    variantIndex: u8("variantIndex"), ruinAge: u8("ruinAge"), traffic: u8("traffic"),
+    surfaceLevel: f32("surfaceLevel"),
   };
 }
 
@@ -203,6 +237,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     heightBytes.byteLength / 4,
   );
   const matBytes = base64ToBytes(w.materialsB64);
+  // (fields decoded below in the return via decodeFieldsB64)
   const materials = new Uint16Array(
     matBytes.buffer,
     matBytes.byteOffset,
@@ -231,6 +266,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     portals:  w.portals,
     gateSummary: w.gateSummary,
     level:     w.level,
+    fields:    decodeFieldsB64(w.fieldsB64, w.gridSize * w.gridSize),
     boundaries: w.boundaries,
     features:   w.features,
   };

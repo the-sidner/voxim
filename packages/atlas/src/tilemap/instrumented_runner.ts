@@ -25,7 +25,7 @@
  */
 
 import { ORDERED_STAGES, type StageId } from "./pipeline/stages.ts";
-import type { PipelineBase, PoiNetworkState } from "./pipeline/state.ts";
+import type { PipelineBase, FieldsState } from "./pipeline/state.ts";
 import { emptyLevel } from "./level/types.ts";
 import type { GenParams } from "../genparams.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
@@ -123,7 +123,7 @@ export interface InstrumentedRunInput {
 
 export interface InstrumentedRunOutput {
   /** Final state after the full pipeline (POI network is the last stage). */
-  final: PoiNetworkState;
+  final: FieldsState;
   /** One entry per stage actually run (or skipped, in resume mode). */
   trace: StageTrace[];
   /** Per-stage output snapshot. Keys = StageId; values = the stage's TOut. */
@@ -203,7 +203,7 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
           cacheHit: false, inputHash: prevHash, outputHash: 0,
           error: (err as Error)?.message ?? String(err),
         });
-        return { final: state as PoiNetworkState, trace, intermediates };
+        return { final: state as FieldsState, trace, intermediates };
       }
       outputHash = hashStageOutput(stage.id, state);
       input.cache?.store(input.tileSeed, prefix, { state, outputHash });
@@ -222,7 +222,7 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
     prevHash = outputHash;
   }
 
-  return { final: state as PoiNetworkState, trace, intermediates };
+  return { final: state as FieldsState, trace, intermediates };
 }
 
 // ---- hashing --------------------------------------------------------------

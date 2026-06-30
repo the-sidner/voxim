@@ -447,6 +447,7 @@ function generateTileInitFromFinal(
     materials: final.materials,
     kindOf:    final.kindOf,
     level:     final.level,
+    fields:    final.fields,
     boundaries: [],
     features:   [],
   };

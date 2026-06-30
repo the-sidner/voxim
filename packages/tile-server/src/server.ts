@@ -971,6 +971,7 @@ export class TileServer {
         atlas.materialBuffer,
         atlas.openBuffer,
         atlas.kindBuffer,
+        atlas.fields, // T-311 P3 render-field planes → VegFieldGrid/SurfaceStateGrid/WaterGrid
       );
       this.spawnWorldState(content);
 

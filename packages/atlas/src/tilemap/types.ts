@@ -11,6 +11,7 @@
 
 import type { Edge } from "../worldmap/types.ts";
 import type { LevelDef } from "./level/types.ts";
+import type { FieldPlanes } from "./pipeline/fields.ts";
 
 /**
  * One connected open-pixel component at sample-grid resolution.
@@ -158,6 +159,14 @@ export interface TileInit {
    */
   level: LevelDef;
 
+  /**
+   * T-311 P3 — per-cell render-field planes (canopyLight/corruption/fertility/
+   * wetness/overgrowth/wear/variantIndex/ruinAge/traffic + water surfaceLevel),
+   * length gridSize² each. Upsampled + sliced into the VegFieldGrid/
+   * SurfaceStateGrid/WaterGrid chunk components by the tile-server. Render-only.
+   */
+  fields: FieldPlanes;
+
   // ---- placeholders for later phases ------------------------------
   /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
   boundaries: unknown[];
@@ -191,6 +200,8 @@ export interface TileInitWire {
   gateSummary: number;
   /** LevelDef (T-214) — semantic graph; JSON-friendly already. */
   level: LevelDef;
+  /** T-311 P3 — render-field planes, base64-encoded raw bytes per plane name. */
+  fieldsB64: Record<string, string>;
   boundaries: unknown[];
   features: unknown[];
 }

@@ -28,8 +28,40 @@
  */
 
 import type { TileInit } from "./types.ts";
+import type { FieldPlanes } from "./pipeline/fields.ts";
 import { WALL_HEIGHT } from "./pipeline/terrain.ts";
 import { levelToZoneOf } from "./level/types.ts";
+
+/** Nearest-resample a gridSize² plane to targetSize² (T-311 P3). Render fields
+ *  are coherent descriptors (not collision) so nearest is correct + NaN-safe for
+ *  the f32 water level; bilinear refinement can come later if gradients read blocky. */
+function nearestResample<T extends Uint8Array | Float32Array>(src: T, g: number, target: number): T {
+  const out = (src instanceof Float32Array ? new Float32Array(target * target) : new Uint8Array(target * target)) as T;
+  const ratio = g / target;
+  for (let ty = 0; ty < target; ty++) {
+    const sy = Math.min(g - 1, Math.max(0, Math.round((ty + 0.5) * ratio - 0.5)));
+    for (let tx = 0; tx < target; tx++) {
+      const sx = Math.min(g - 1, Math.max(0, Math.round((tx + 0.5) * ratio - 0.5)));
+      out[ty * target + tx] = src[sy * g + sx];
+    }
+  }
+  return out;
+}
+
+function upsampleFieldPlanes(f: FieldPlanes, g: number, target: number): FieldPlanes {
+  return {
+    canopyLight: nearestResample(f.canopyLight, g, target),
+    corruption:  nearestResample(f.corruption, g, target),
+    fertility:   nearestResample(f.fertility, g, target),
+    wetness:     nearestResample(f.wetness, g, target),
+    overgrowth:  nearestResample(f.overgrowth, g, target),
+    wear:        nearestResample(f.wear, g, target),
+    variantIndex: nearestResample(f.variantIndex, g, target),
+    ruinAge:     nearestResample(f.ruinAge, g, target),
+    traffic:     nearestResample(f.traffic, g, target),
+    surfaceLevel: nearestResample(f.surfaceLevel, g, target),
+  };
+}
 
 export interface UpsampleOptions {
   /** Target side length in voxels (e.g. 512 for tile-server). */
@@ -67,6 +99,8 @@ export interface UpsampleOutput {
    * to map player position → zone for the "You are in:" HUD.
    */
   zoneBuffer: Uint16Array;
+  /** T-311 P3 render-field planes, nearest-resampled to targetSize². */
+  fields: FieldPlanes;
 }
 
 export function upsampleTile(tile: TileInit, options: UpsampleOptions): UpsampleOutput {
@@ -147,5 +181,6 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
     }
   }
 
-  return { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer };
+  const fields = upsampleFieldPlanes(tile.fields, g, targetSize);
+  return { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields };
 }

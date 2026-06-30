@@ -45,6 +45,7 @@ export { upsampleTile } from "./src/tilemap/upsample.ts";
 export { applyStairUnlock, markStairAnchor } from "./src/tilemap/stair_unlock.ts";
 export type { StairAnchor, StairUnlockOptions, StairMarkerOptions } from "./src/tilemap/stair_unlock.ts";
 export type { UpsampleOptions, UpsampleOutput } from "./src/tilemap/upsample.ts";
+export type { FieldPlanes } from "./src/tilemap/pipeline/fields.ts";
 
 // T-214: LevelDef IR — the semantic graph of a tile. Reducers (next
 // commits) will mutate it directly; today it's absorbingly built from

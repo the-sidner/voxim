@@ -24,8 +24,17 @@
 
 import type { World, EntityId } from "@voxim/engine";
 import type { BiomeDef, ZoneDef } from "@voxim/content";
-import { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness, setChunkKinds } from "./chunk.ts";
+import { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness, setChunkKinds, setChunkVegField, setChunkSurfaceState, setChunkWater } from "./chunk.ts";
 import { CHUNK_SIZE, CHUNKS_PER_TILE_SIDE, TILE_SIZE, snapHeight } from "./terrain.ts";
+
+/** T-311 P3 render-field planes at TILE_SIZE² (structural — atlas FieldPlanes is
+ *  assignable). Sliced per chunk into the VegFieldGrid/SurfaceStateGrid/WaterGrid. */
+export interface FieldsBufferInput {
+  canopyLight: Uint8Array; corruption: Uint8Array; fertility: Uint8Array;
+  wetness: Uint8Array; overgrowth: Uint8Array; wear: Uint8Array;
+  variantIndex: Uint8Array; ruinAge: Uint8Array; traffic: Uint8Array;
+  surfaceLevel: Float32Array;
+}
 import {
   fbm,
   ridgedFbm,
@@ -390,6 +399,7 @@ export function chunksFromBuffers(
   materialBuffer: Uint16Array,
   openBuffer?: Uint8Array,
   kindBuffer?: Uint16Array,
+  fields?: FieldsBufferInput,
 ): EntityId[] {
   const chunkIds: EntityId[] = [];
 
@@ -400,6 +410,15 @@ export function chunksFromBuffers(
       const materials = new Uint16Array(CHUNK_CELLS);
       const open  = openBuffer ? new Uint8Array(CHUNK_CELLS)  : null;
       const kinds = kindBuffer ? new Uint16Array(CHUNK_CELLS) : null;
+      // T-311 P3: per-chunk render-field planes (zero-alloc only when present).
+      const veg = fields && {
+        canopyLight: new Uint8Array(CHUNK_CELLS), corruption: new Uint8Array(CHUNK_CELLS), fertility: new Uint8Array(CHUNK_CELLS),
+      };
+      const surf = fields && {
+        wetness: new Uint8Array(CHUNK_CELLS), overgrowth: new Uint8Array(CHUNK_CELLS), wear: new Uint8Array(CHUNK_CELLS),
+        variantIndex: new Uint8Array(CHUNK_CELLS), ruinAge: new Uint8Array(CHUNK_CELLS), traffic: new Uint8Array(CHUNK_CELLS),
+      };
+      const water = fields ? new Float32Array(CHUNK_CELLS) : null;
 
       for (let ly = 0; ly < CHUNK_SIZE; ly++) {
         for (let lx = 0; lx < CHUNK_SIZE; lx++) {
@@ -412,6 +431,18 @@ export function chunksFromBuffers(
           materials[chunkIdx] = materialBuffer[flatIdx];
           if (open  && openBuffer) open[chunkIdx]  = openBuffer[flatIdx];
           if (kinds && kindBuffer) kinds[chunkIdx] = kindBuffer[flatIdx];
+          if (fields && veg && surf && water) {
+            veg.canopyLight[chunkIdx] = fields.canopyLight[flatIdx];
+            veg.corruption[chunkIdx]  = fields.corruption[flatIdx];
+            veg.fertility[chunkIdx]   = fields.fertility[flatIdx];
+            surf.wetness[chunkIdx]      = fields.wetness[flatIdx];
+            surf.overgrowth[chunkIdx]   = fields.overgrowth[flatIdx];
+            surf.wear[chunkIdx]         = fields.wear[flatIdx];
+            surf.variantIndex[chunkIdx] = fields.variantIndex[flatIdx];
+            surf.ruinAge[chunkIdx]      = fields.ruinAge[flatIdx];
+            surf.traffic[chunkIdx]      = fields.traffic[flatIdx];
+            water[chunkIdx]             = fields.surfaceLevel[flatIdx];
+          }
         }
       }
 
@@ -419,6 +450,9 @@ export function chunksFromBuffers(
       setChunkMaterials(world, id, materials);
       if (open)  setChunkOpenness(world, id, open);
       if (kinds) setChunkKinds(world, id, kinds);
+      if (veg)   setChunkVegField(world, id, veg);
+      if (surf)  setChunkSurfaceState(world, id, surf);
+      if (water) setChunkWater(world, id, water);
 
       chunkIds[cx + cy * CHUNKS_PER_TILE_SIDE] = id;
     }

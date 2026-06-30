@@ -23,7 +23,7 @@ import {
   findRegion,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
-  type TileInitWire, type LevelDef,
+  type TileInitWire, type LevelDef, type FieldPlanes,
 } from "@voxim/atlas";
 import {
   TILE_SIZE,
@@ -50,6 +50,8 @@ export interface AtlasTerrainResult {
    * (tree entities at forest pixels, etc.).
    */
   kindBuffer: Uint16Array;
+  /** T-311 P3 render-field planes at TILE_SIZE², sliced into the chunk grids. */
+  fields: FieldPlanes;
   /**
    * Initial gate-summary u16 from atlas. Tile-server publishes this to
    * coordinator on boot so the world-graph aggregate gets seeded; phase
@@ -248,7 +250,7 @@ export async function loadTerrainFromAtlas(
 
   const tile = tileInitFromWire(row.payload as unknown as TileInitWire);
   const { materialMap, defaultMaterialId } = buildMaterialMap(content);
-  const { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer } = upsampleTile(tile, {
+  const { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields } = upsampleTile(tile, {
     targetSize: TILE_SIZE,
     materialMap,
     defaultMaterialId,
@@ -299,6 +301,7 @@ export async function loadTerrainFromAtlas(
     materialBuffer,
     openBuffer,
     kindBuffer,
+    fields,
     gateSummary: tile.gateSummary,
     tileSeed: Number(row.seed),
     cellX,
