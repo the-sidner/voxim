@@ -1134,7 +1134,7 @@ export class VoximRenderer {
     this.dustMotes.update(dt * 1000, this.cameraTarget);
     canopyFade.setWindTime(now);
     this.edgePass.setTime(now * 0.001);
-    this.lightManager.tick(now);
+    this.lightManager.tick(now, this.camera.position);
 
     const tGlStart = performance.now();
     if (this.bypassPostFX) {

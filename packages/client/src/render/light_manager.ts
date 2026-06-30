@@ -20,12 +20,26 @@ import * as THREE from "three";
 import type { LightEmitterData } from "@voxim/codecs";
 import { getFlickerCurve, registerBuiltinFlickerCurves } from "./flicker_curves.ts";
 
+/**
+ * Max simultaneous dynamic PointLights (T-311 P2 LightBudget). The reference
+ * scenes pack many torches/fires; uncapped, each LightEmitter would mint a
+ * PointLight and overflow the MeshPhongMaterial forward-lighting uniform array.
+ * Only the nearest-N (by importance/distance) cast a real light; the rest keep
+ * glowing through their always-on emissive flame voxels (+ bloom) for free.
+ */
+const LIGHT_BUDGET = 8;
+/** Reused scratch to avoid per-light Vector3 allocation each frame. */
+const _scratch = new THREE.Vector3();
+
 interface TrackedLight {
   light: THREE.PointLight;
   /** Base intensity from the component data. */
   baseIntensity: number;
   /** Content flicker-curve id (T-311) — dispatched in tick(). */
   flickerCurveId: string;
+  /** Eligible for a real PointLight (vs emissive-only). Interim true until the
+   *  wire carries lightDefId and we resolve LightDef.castsPool (commit 5). */
+  castsPool: boolean;
   /** Per-entity phase offset so torches don't all sync up. */
   phase: number;
 }
@@ -80,6 +94,7 @@ export class LightManager {
         light,
         baseIntensity: emitter.intensity,
         flickerCurveId: flickerCurveFor(emitter),
+        castsPool: true,
         phase: Math.random() * Math.PI * 2,
       });
     }
@@ -89,12 +104,31 @@ export class LightManager {
    * Animate flicker for all tracked lights.
    * @param timeMs  Current time in milliseconds (e.g. performance.now())
    */
-  tick(timeMs: number): void {
+  /**
+   * Per-frame: animate flicker (content curve) for every light, then apply the
+   * LightBudget — only the nearest-N (importance ÷ distance²) cast a real
+   * PointLight; the rest are switched invisible (their emissive flame voxels keep
+   * the glow for free, so there is no visible pop). `cameraPos` is the camera's
+   * world position (ranking origin).
+   */
+  tick(timeMs: number, cameraPos: THREE.Vector3): void {
     const t = timeMs * 0.001;
     const steady = getFlickerCurve("steady")!;
+    const ranked: { light: THREE.PointLight; score: number }[] = [];
     for (const tracked of this.lights.values()) {
       const fn = getFlickerCurve(tracked.flickerCurveId) ?? steady;
       tracked.light.intensity = fn(t, tracked.phase, tracked.baseIntensity);
+      if (!tracked.castsPool) { tracked.light.visible = false; continue; }
+      tracked.light.getWorldPosition(_scratch);
+      const importance = tracked.baseIntensity * Math.max(1, tracked.light.distance);
+      const distSq = Math.max(1e-3, _scratch.distanceToSquared(cameraPos));
+      ranked.push({ light: tracked.light, score: importance / distSq });
+    }
+    // Cheap when ranked.length ≤ budget (the common case); a sort only matters
+    // once a scene exceeds the budget, exactly when it must.
+    ranked.sort((a, b) => b.score - a.score);
+    for (let i = 0; i < ranked.length; i++) {
+      ranked[i].light.visible = i < LIGHT_BUDGET;
     }
   }
 
