@@ -1130,20 +1130,27 @@ the flat hash gate; `scatter_renderer` evaluates it per cell (dense in fertile/s
 rock/paths); 4 foliage defs authored; loader boot cross-check. **Verified live on the running stack:**
 re-baked world → tile-server re-derives chunks with fields → AoI → client receives + STORES them
 (probe: fertility 66–167, canopyLight 0–255, traffic 0–255, all varying per cell) → scatter reads them.
-The live loop caught + fixed 2 integration bugs (re-bake decode crash on old worlds; stale-save bypass)
-and surfaced a follow-up. **FieldExpr (G2)** evaluator also landed. Remaining P4: corruption-morph
-generators, moss-creep (`mossBlend`×overgrowth into the per-voxel colour), wetness specular, decals,
-scatter clusterCount/jitter → the hero-cell DENSITY slice.
+The live loop caught + fixed 3 integration bugs (re-bake decode crash on old worlds; stale-save bypass;
+the T-312b save-load field gap). **FieldExpr (G2)** evaluator also landed. **Scatter CLUSTERS landed +
+LIVE-VERIFIED:** `ScatterDef.cluster {count:[min,max], radius}` — a matching cell seeds a field-sized
+clump (count lerped 0→max by the cell's field density, scattered in a disk) instead of a single prop, so
+fertile/shaded cells read DENSE and dry rock thins to nothing; all instances of a cell share one handle.
+Authored into grass (0-5, r1.4) + fern (0-3, r2.2). End-to-end live proof on a SAVE-loaded world after the
+T-312b fix: fields reach the client (fertility 66-167, canopyLight 0-255 varying), all 256 chunks decorate,
+962 scatter instances place (oak 792, grass 133 clustered, fern 31, rock 6) — visually a dense forest.
+Remaining P4: bush/mushroom field-tuning (place 0 near spawn — likely material/gate mismatch), corruption-
+morph generators, moss-creep (`mossBlend`×overgrowth into the per-voxel colour), wetness specular, decals.
 
-### T-312b · save_manager must persist (or re-derive) the per-cell render-field grids
-Effort: S   Status: todo
-SaveManager saves Heightmap + MaterialGrid per chunk but NOT the T-311 VegFieldGrid/SurfaceStateGrid/
-WaterGrid. So a save-load cycle drops them → chunks lose their field grids until the next atlas re-derive
-(found live in P4: a stale save bypassed the field path; deleting tile_saves fixed it). Since the grids
-are atlas-DERIVED (deterministic, not runtime-mutated), the cleanest fix is to RE-DERIVE them on save-load
-(re-run the atlas field slice / re-apply atlas.fields onto the loaded chunks) rather than bloat the save;
-or persist them in the save format. Until fixed, a tile-server restart after an auto-save (every 6000
-ticks) loses the fields. Belongs with T-311 Phase 4.
+### T-312b · re-apply atlas render-fields on save-load
+Effort: S   Status: done   Commit: 1248388
+SaveManager's `CHUNK_DEFS` persist only Heightmap/MaterialGrid/OpenMask/KindGrid; the T-311 render-field
+grids are deterministic atlas output and deliberately excluded. But the save-load path skipped
+`chunksFromBuffers` entirely, so reloaded chunks carried NO field grids until the next from-scratch gen —
+scatter/moss/wetness saw neutral fields and the client received none (found live: a watcher restart
+reloaded a fieldless auto-save and field-driven scatter went silent). FIXED: `world.applyFieldsToChunks`
+overlays the atlas planes onto loaded chunks (writes via `world.write` so it adds the components even on a
+save that never had them); `server.ts` calls it in the `loaded` branch. Factored `sliceFieldsForChunk()`
+as the single tile→chunk projection shared by `chunksFromBuffers` + the overlay so they can't drift.
 
 The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
 goals through **planned data-model extensions/refactors** across server→content→client — *the way the
