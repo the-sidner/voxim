@@ -674,6 +674,14 @@ export function validateScatterDef(def: ScatterDef): void {
   }
   // T-311 P4: a densityField FieldExpr must reference only known field planes.
   if (def.densityField) crossCheckFieldExpr(def.densityField, `ScatterDef '${def.id}'`);
+  if (def.cluster) {
+    if (!Array.isArray(def.cluster.count) || def.cluster.count.length !== 2) {
+      throw new Error(`Scatter '${def.id}': 'cluster.count' must be a [min,max] pair`);
+    }
+    if (typeof def.cluster.radius !== "number" || def.cluster.radius < 0) {
+      throw new Error(`Scatter '${def.id}': 'cluster.radius' must be ≥ 0`);
+    }
+  }
 }
 
 export function validateResourceDef(def: ResourceDef): void {

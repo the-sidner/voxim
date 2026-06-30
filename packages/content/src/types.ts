@@ -1097,6 +1097,13 @@ export interface ScatterDef {
   scaleJitter: [number, number];
   /** Whether each instance gets a random Y rotation. */
   rotate: boolean;
+  /** Optional CLUMP behaviour (T-311 P4 — the density lever). When present, a
+   *  matching cell seeds a clump of instances scattered in a disk of `radius`
+   *  (world units) rather than a single prop; the count LERPS `count[0]→count[1]`
+   *  by the cell's field density (so fertile/shaded cells read DENSE and dry rock
+   *  thins to nothing — "combine primitives into a dense scene"). Absent = the
+   *  classic single-per-cell keep-probability placement. */
+  cluster?: { count: [number, number]; radius: number };
 }
 
 // ---- biomes ----

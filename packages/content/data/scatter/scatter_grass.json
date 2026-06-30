@@ -23,5 +23,9 @@
       "max": 0.9,
       "weight": 1.0
     }
-  ]
+  ],
+  "cluster": {
+    "count": [0, 5],
+    "radius": 1.4
+  }
 }

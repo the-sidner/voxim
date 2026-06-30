@@ -239,9 +239,29 @@ export class ScatterRenderer {
         if (matIds.size === 0) continue;  // all names unknown (typo)
       }
       const flatDensity = def.density ?? 1;
+      const cluster = def.cluster;
 
       const half = (def.stride / 2) | 0;
       const [jMin, jMax] = def.scaleJitter;
+
+      // Place ONE instance at a world position into `out`, with decorrelated
+      // variant/rotation/scale. `hSel` drives variant + Y-rotation, `hScale` the
+      // scale jitter (two hashes so visually-adjacent props don't lock-step);
+      // scale rides the matrix, never the archetype key (the T-281 resolution).
+      const buildSlots = (wx: number, wy: number, hSel: number, hScale: number, out: InstanceSlot[]) => {
+        const wz = this.world.getTerrainHeight(wx, wy);
+        const variant = hSel % variants.length;
+        const rotY = def.rotate ? ((hSel >>> 8) & 0xffff) / 0xffff * Math.PI * 2 : 0;
+        const scale = def.baseScale * (jMin + (hScale / 0xffffffff) * (jMax - jMin));
+        // model(x,y,z=up) → three(x, z, y).
+        const matrix = new THREE.Matrix4().compose(
+          new THREE.Vector3(wx, wz, wy),
+          new THREE.Quaternion().setFromAxisAngle(Y_AXIS, rotY),
+          new THREE.Vector3(scale, scale, scale),
+        );
+        for (const archetypeId of variants[variant]) out.push({ archetypeId, matrix: matrix.clone() });
+      };
+
       for (let ly = half; ly < CHUNK_SIDE; ly += def.stride) {
         for (let lx = half; lx < CHUNK_SIDE; lx += def.stride) {
           const cellIdx = lx + ly * CHUNK_SIDE;
@@ -249,42 +269,41 @@ export class ScatterRenderer {
             ? matIds.has(materials![cellIdx])
             : kinds[cellIdx] === def.kind;
           if (!match) continue;
-          // Per-cell keep-probability: a content FieldExpr over the render fields
-          // (dense in fertile/shade, sparse on dry rock / worn paths) when authored,
-          // else the flat density. The hash ONLY decorrelates the keep ROLL — it
-          // never decides density (T-311 doctrine).
-          const keep = (def.densityField && veg && surf)
+
+          // Per-cell field density [0,1]: a content FieldExpr over the render
+          // fields (dense in fertile/shade, receding on dry rock / worn paths)
+          // when authored, else the flat density. The organic-vs-uniform-carpet
+          // lever (T-311 P4) — a hash only ever decorrelates, never decides density.
+          const fieldDensity = (def.densityField && veg && surf)
             ? evaluateFieldExpr(def.densityField, (f) => sampleField(f, veg, surf, water, cellIdx))
             : flatDensity;
-          if (keep < 1) {
-            const wxh = cx * CHUNK_SIDE + lx, wyh = cy * CHUNK_SIDE + ly;
-            if ((hash2u(wxh ^ 0x9e37, wyh ^ 0x79b9) & 0xffff) / 0xffff > keep) continue;
+
+          const baseWx = cx * CHUNK_SIDE + lx + 0.5;
+          const baseWy = cy * CHUNK_SIDE + ly + 0.5;
+          const cellSlots: InstanceSlot[] = [];
+
+          if (cluster) {
+            // Field-sized CLUMP: count lerps 0→max with the field and the props
+            // scatter in a disk of `radius`, so fertile cells read DENSE while dry
+            // cells thin to nothing — the "combine primitives into density" lever.
+            const n = Math.round(cluster.count[0] + (cluster.count[1] - cluster.count[0]) * fieldDensity);
+            for (let k = 0; k < n; k++) {
+              const hk = hash2u((baseWx * 13 + k * 0x9e37) | 0, (baseWy * 7 + k * 0x79b9) | 0);
+              const ang = (hk & 0xffff) / 0xffff * Math.PI * 2;
+              const rad = Math.sqrt(((hk >>> 16) & 0xffff) / 0xffff) * cluster.radius;  // sqrt → uniform disk
+              buildSlots(baseWx + Math.cos(ang) * rad, baseWy + Math.sin(ang) * rad, hk, hash2u(hk | 0, k), cellSlots);
+            }
+          } else {
+            // Single placement, hash-gated by the keep-probability.
+            if (fieldDensity < 1) {
+              const wxh = cx * CHUNK_SIDE + lx, wyh = cy * CHUNK_SIDE + ly;
+              if ((hash2u(wxh ^ 0x9e37, wyh ^ 0x79b9) & 0xffff) / 0xffff > fieldDensity) continue;
+            }
+            buildSlots(baseWx, baseWy, hash2u(baseWx | 0, baseWy | 0), hash2u(baseWy | 0, baseWx | 0), cellSlots);
           }
 
-          const wx = cx * CHUNK_SIDE + lx + 0.5;
-          const wy = cy * CHUNK_SIDE + ly + 0.5;
-          const wz = this.world.getTerrainHeight(wx, wy);
-
-          // Two decorrelated hashes: one drives variant + rotation, the other
-          // the scale jitter, so visually-adjacent props don't lock-step.
-          const h1 = hash2u(wx | 0, wy | 0);
-          const h2 = hash2u(wy | 0, wx | 0);
-          const variant = h1 % variants.length;
-          const rotY = def.rotate ? ((h1 >>> 8) & 0xffff) / 0xffff * Math.PI * 2 : 0;
-          const scale = def.baseScale * (jMin + (h2 / 0xffffffff) * (jMax - jMin));
-
-          // model(x,y,z=up) → three(x, z, y); scale rides the matrix, NOT the key.
-          const matrix = new THREE.Matrix4().compose(
-            new THREE.Vector3(wx, wz, wy),
-            new THREE.Quaternion().setFromAxisAngle(Y_AXIS, rotY),
-            new THREE.Vector3(scale, scale, scale),
-          );
-
-          const slots: InstanceSlot[] = variants[variant].map((archetypeId) => ({
-            archetypeId, matrix: matrix.clone(),
-          }));
-          if (slots.length === 0) continue;
-          this.instancePool.add(`${HANDLE_PREFIX}${def.id}:${cx},${cy}:${lx},${ly}`, coord, slots);
+          if (cellSlots.length === 0) continue;
+          this.instancePool.add(`${HANDLE_PREFIX}${def.id}:${cx},${cy}:${lx},${ly}`, coord, cellSlots);
         }
       }
     }
