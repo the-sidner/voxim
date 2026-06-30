@@ -91,6 +91,11 @@ export class ProceduralSpawner {
   spawnInitialEntities(): void {
     const layout = this.content.getTileLayout();
     if (layout) {
+      // Snap structural props to the actual terrain surface — they have no
+      // physics to settle them (unlike NPCs, which gravity drops to groundZ),
+      // so a stale hardcoded z floats them. Same lookup the procedural nodes
+      // use; an explicit cfg.z still wins if a layout deliberately pins one.
+      const getTerrainZ = buildTerrainHeightLookup(this.world);
       let spawned = 0;
       for (const cfg of layout.entities) {
         if (!this.content.prefabs.get(cfg.prefabId)) {
@@ -98,7 +103,7 @@ export class ProceduralSpawner {
           continue;
         }
         spawnPrefab(this.world, this.content, cfg.prefabId, {
-          x: cfg.x, y: cfg.y, z: cfg.z,
+          x: cfg.x, y: cfg.y, z: cfg.z ?? getTerrainZ(cfg.x, cfg.y),
           seed: positionSeed(cfg.x, cfg.y),
         });
         spawned++;

@@ -1934,7 +1934,9 @@ export interface TileEntityConfig {
   prefabId: string;
   x: number;
   y: number;
-  /** World-unit height. Defaults to 4.0 (slightly above ground). */
+  /** World-unit height. Omit to snap to the terrain surface at (x,y) — the
+   *  default for structural props (they have no physics to settle them). Set
+   *  explicitly only to deliberately pin a prop off the ground. */
   z?: number;
   /** Display name override applied to NPC entities after spawn. */
   name?: string;

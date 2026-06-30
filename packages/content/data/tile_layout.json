@@ -1,24 +1,24 @@
 {
-  "_comment": "Teaching outpost (T-300). Player spawns at the tile centre (~256,256). A safe hub with a craft pavilion + trader + villagers; readable hostile clusters in the four cardinal directions at ~30-40 units so the player chooses engagement. Structural entities stay near the hub (z~4 is known-flat there); enemies ride npcs[] (terrain-snapped) so they sit on the surface anywhere. Procedural nodes/NPCs fill the wilderness fringe. Missing enemies (drowner/bandit/rotten_knight) are also added to zone npcWeights so the fringe is populated too.",
+  "_comment": "Teaching outpost (T-300). Player spawns at the tile centre (~256,256). A safe hub with a craft pavilion + trader + villagers; readable hostile clusters in the four cardinal directions at ~30-40 units so the player chooses engagement. Structural entities omit z — the spawner snaps them to the terrain surface at (x,y), so they sit on the ground whatever the heightmap generates (a stale hardcoded z floated them when the terrain changed). Enemies ride npcs[] (gravity-snapped). Procedural nodes/NPCs fill the wilderness fringe. Missing enemies (drowner/bandit/rotten_knight) are also added to zone npcWeights so the fringe is populated too.",
   "tileId": "tile_0",
   "entities": [
-    { "prefabId": "chopping_block", "x": 259, "y": 256, "z": 4.0 },
-    { "prefabId": "workbench",      "x": 261, "y": 256, "z": 4.0 },
-    { "prefabId": "campfire",       "x": 256, "y": 259, "z": 4.0 },
+    { "prefabId": "chopping_block", "x": 259, "y": 256 },
+    { "prefabId": "workbench",      "x": 261, "y": 256 },
+    { "prefabId": "campfire",       "x": 256, "y": 259 },
 
-    { "prefabId": "forge",          "x": 263, "y": 253, "z": 4.0 },
-    { "prefabId": "anvil",          "x": 266, "y": 255, "z": 4.0 },
-    { "prefabId": "furnace",        "x": 263, "y": 258, "z": 4.0 },
-    { "prefabId": "iron_ore_vein",  "x": 268, "y": 252, "z": 4.0 },
-    { "prefabId": "iron_ore_vein",  "x": 269, "y": 255, "z": 4.0 },
+    { "prefabId": "forge",          "x": 263, "y": 253 },
+    { "prefabId": "anvil",          "x": 266, "y": 255 },
+    { "prefabId": "furnace",        "x": 263, "y": 258 },
+    { "prefabId": "iron_ore_vein",  "x": 268, "y": 252 },
+    { "prefabId": "iron_ore_vein",  "x": 269, "y": 255 },
 
-    { "prefabId": "model_building_ruin_tower", "x": 244, "y": 266, "z": 4.0 },
-    { "prefabId": "model_building_ruin_wall",  "x": 242, "y": 264, "z": 4.0 },
-    { "prefabId": "model_building_ruin_wall",  "x": 246, "y": 268, "z": 4.0 },
+    { "prefabId": "model_building_ruin_tower", "x": 244, "y": 266 },
+    { "prefabId": "model_building_ruin_wall",  "x": 242, "y": 264 },
+    { "prefabId": "model_building_ruin_wall",  "x": 246, "y": 268 },
 
-    { "prefabId": "rock_large",     "x": 248, "y": 248, "z": 4.0 },
-    { "prefabId": "model_dead_tree","x": 270, "y": 262, "z": 4.0 },
-    { "prefabId": "model_dead_tree","x": 247, "y": 252, "z": 4.0 }
+    { "prefabId": "rock_large",     "x": 248, "y": 248 },
+    { "prefabId": "model_dead_tree","x": 270, "y": 262 },
+    { "prefabId": "model_dead_tree","x": 247, "y": 252 }
   ],
   "npcs": [
     {
