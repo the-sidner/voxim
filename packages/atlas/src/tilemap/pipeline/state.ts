@@ -258,3 +258,13 @@ export interface TileNarrative {
  * `state.level.edges.stairs`; no new pipeline-state fields are added.
  */
 export type PoiNetworkState = AnnotatedZoneState;
+
+/**
+ * After the `fields` stage (T-311 P3): the per-cell render-field planes derived
+ * from the topology + biome. Read by the Atlas inspector (heat overlays) and,
+ * in a follow-up, threaded to the VegFieldGrid/SurfaceStateGrid/WaterGrid chunk
+ * components. Adds no mutation to the existing buffers.
+ */
+export interface FieldsState extends PoiNetworkState {
+  fields: import("./fields.ts").FieldPlanes;
+}

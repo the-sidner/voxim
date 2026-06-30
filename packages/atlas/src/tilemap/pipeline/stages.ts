@@ -24,12 +24,13 @@ import { terrain } from "./terrain.ts";
 import { materials } from "./materials.ts";
 import { zoneGraph } from "./zone_graph.ts";
 import { poiNetwork } from "./poi_network.ts";
+import { fieldsStage } from "./fields.ts";
 import type { GenParams } from "../../genparams.ts";
 
 export type StageId =
   | "noiseField" | "junctions" | "network" | "rooms" | "portalPlacement"
   | "boundaryKinds" | "rivers" | "terrain" | "materials" | "zoneGraph"
-  | "poiNetwork";
+  | "poiNetwork" | "fields";
 
 export interface StageMeta {
   id: StageId;
@@ -53,4 +54,5 @@ export const ORDERED_STAGES: ReadonlyArray<StageMeta> = [
   { id: "materials",       transformer: materials       as Transformer<unknown, unknown, unknown>, paramsKey: "materials", label: "Materials" },
   { id: "zoneGraph",       transformer: zoneGraph       as Transformer<unknown, unknown, unknown>, paramsKey: "zoneGraph",  label: "Zone graph" },
   { id: "poiNetwork",      transformer: poiNetwork      as Transformer<unknown, unknown, unknown>, paramsKey: "poiNetwork", label: "POI network" },
+  { id: "fields",          transformer: fieldsStage     as Transformer<unknown, unknown, unknown>, paramsKey: "fields",     label: "Render fields" },
 ];

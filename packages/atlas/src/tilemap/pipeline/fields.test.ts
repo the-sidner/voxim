@@ -26,7 +26,14 @@ function baseInput(): FieldDeriveInput {
   chamberOf[idx(5, 5)] = 7;
   // a path
   pathLevel[idx(2, 6)] = 200;
-  return { gridSize: G, kindOf, heightMap, chamberOf, pathLevel, moisture: 0.5, tileSeed: 12345 };
+  return {
+    gridSize: G, kindOf, heightMap, chamberOf, pathLevel, moisture: 0.5, tileSeed: 12345,
+    params: {
+      forestShadowPasses: 3, forestShadowDecay: 0.72,
+      waterSpreadPasses: 4, waterSpreadDecay: 0.78,
+      corruptionDrynessBias: 40, variantCorruptThreshold: 160,
+    },
+  };
 }
 
 Deno.test("T-311: water cell gets finite surfaceLevel (height+RIVER_DEPTH); dry cells NaN", () => {

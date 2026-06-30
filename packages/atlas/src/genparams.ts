@@ -263,6 +263,20 @@ export interface GenParams {
     pocketAreaMin: number;
     /** Everything else with degree ≤ 1 → "deadend". */
   };
+
+  /** T-311 P3 — render-field derivation weights (Atlas-inspector tunes these). */
+  fields: {
+    /** canopyLight: canopy-shadow spread radius (passes) + per-cell falloff. */
+    forestShadowPasses: number;
+    forestShadowDecay: number;
+    /** wetness: damp-ground spread from water (passes) + falloff. */
+    waterSpreadPasses: number;
+    waterSpreadDecay: number;
+    /** corruption added at moisture 0 (dry tiles read more corrupt). */
+    corruptionDrynessBias: number;
+    /** corruption above this → the "corrupted" material variant index. */
+    variantCorruptThreshold: number;
+  };
 }
 
 /**
@@ -374,6 +388,14 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     minFitScore:            0.1,
     preferredTopologyBonus: 0.5,
     maxWireSearchDepth:     8,
+  },
+  fields: {
+    forestShadowPasses:      3,
+    forestShadowDecay:       0.72,
+    waterSpreadPasses:       4,
+    waterSpreadDecay:        0.78,
+    corruptionDrynessBias:   40,
+    variantCorruptThreshold: 160,
   },
 };
 
@@ -511,6 +533,7 @@ function cloneParams(p: GenParams): GenParams {
     kinds:      { ...p.kinds },
     zoneGraph:  { ...p.zoneGraph },
     poiNetwork: { ...p.poiNetwork },
+    fields:     { ...p.fields },
   };
 }
 

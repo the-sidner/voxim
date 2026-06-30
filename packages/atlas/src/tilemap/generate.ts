@@ -38,13 +38,14 @@ import { terrain } from "./pipeline/terrain.ts";
 import { materials } from "./pipeline/materials.ts";
 import { zoneGraph } from "./pipeline/zone_graph.ts";
 import { poiNetwork } from "./pipeline/poi_network.ts";
+import { fieldsStage } from "./pipeline/fields.ts";
 import { deriveGateSummary } from "./summary.ts";
 import { emptyLevel } from "./level/types.ts";
 import { rasterize } from "./level/rasterize.ts";
 import type { TileInit, TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
-import type { PipelineBase, PoiNetworkState } from "./pipeline/state.ts";
+import type { PipelineBase, FieldsState } from "./pipeline/state.ts";
 import type { ContentService } from "@voxim/content";
 
 const DEFAULT_TILE_SIZE = 512;
@@ -105,7 +106,7 @@ export function generateTile(
     }),
   };
 
-  const pipeline: Stage<PipelineBase, PoiNetworkState> = pipe(
+  const pipeline: Stage<PipelineBase, FieldsState> = pipe(
     bind(noiseField,      params.noise,      tileSeed),
     bind(junctions,       params.room,       tileSeed),
     bind(network,         params.network,    tileSeed),
@@ -117,6 +118,7 @@ export function generateTile(
     bind(materials,       params.materials,  tileSeed),
     bind(zoneGraph,       params.zoneGraph,  tileSeed),
     bind(poiNetwork,      params.poiNetwork, tileSeed),
+    bind(fieldsStage,     params.fields,     tileSeed),
   );
 
   const s = pipeline(initial);
