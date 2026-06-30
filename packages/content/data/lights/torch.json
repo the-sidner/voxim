@@ -1,0 +1,9 @@
+{
+  "id": "torch",
+  "family": "warm",
+  "baseColor": 16755780,
+  "radius": 10.0,
+  "intensity": 1.0,
+  "castsPool": true,
+  "flickerCurveId": "torch"
+}

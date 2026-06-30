@@ -40,6 +40,7 @@ import type {
   BehaviorTreeSpec,
   BiomeDef,
   GradeDef,
+  LightDef,
   ZoneDef,
   PoiDef,
   PoiRole,
@@ -118,6 +119,14 @@ export interface ContentService {
    * selected grade. Authoring a new look is a file drop.
    */
   readonly grades: ContentRegistryReadonly<GradeDef>;
+
+  /**
+   * Light definitions keyed by id (T-311 Phase 2). The server resolves a
+   * LightDef into the networked LightEmitter numbers; the client derives the
+   * presentation-only fields (flicker/family/castsPool). Authoring a light is a
+   * file drop. See VISUAL_DATAMODEL_PLAN.md (grammar G7-adjacent).
+   */
+  readonly lights: ContentRegistryReadonly<LightDef>;
 
   /**
    * Triggers keyed by id (T-259). Reactive couplings loaded from
@@ -256,6 +265,10 @@ export class StaticContentStore implements ContentService {
     kind: "grade",
     idOf: (g) => g.id,
   });
+  public readonly lights = new ContentRegistry<LightDef>({
+    kind: "light",
+    idOf: (l) => l.id,
+  });
   public readonly triggers = new ContentRegistry<TriggerDef>({
     kind: "trigger",
     idOf: (t) => t.id,
@@ -382,6 +395,10 @@ export class StaticContentStore implements ContentService {
 
   registerGrade(def: GradeDef): void {
     this.grades.register(def);
+  }
+
+  registerLight(def: LightDef): void {
+    this.lights.register(def);
   }
 
   registerTrigger(def: TriggerDef): void {

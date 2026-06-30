@@ -1,0 +1,9 @@
+{
+  "id": "campfire",
+  "family": "warm",
+  "baseColor": 16740384,
+  "radius": 14.0,
+  "intensity": 1.0,
+  "castsPool": true,
+  "flickerCurveId": "torch"
+}

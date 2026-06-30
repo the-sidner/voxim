@@ -130,6 +130,29 @@ export interface GradeDef {
   grainShadowFloor: number;  // uGrainShadowFloor
 }
 
+/**
+ * Light definition (T-311 Phase 2). "A light" is content: a warm/corruption/cold
+ * family, a base colour + radius + intensity, whether it is eligible to cast a
+ * real PointLight (`castsPool` — vs glowing through its emissive flame voxels
+ * only), and an optional `flickerCurveId` into the client flicker registry.
+ * Referenced by an entity's `lightDefId` (placed-emitter prefabs / Illuminator);
+ * the server resolves the numbers into the networked LightEmitter, the client
+ * derives the presentation-only fields (flicker/family/castsPool) from this def.
+ */
+export interface LightDef {
+  id: string;
+  /** Grouping / future selection key. Informational this phase (no consumer yet). */
+  family: "warm" | "corruption" | "cold";
+  baseColor: number;   // 0xRRGGBB
+  radius: number;      // world units
+  intensity: number;
+  /** Eligible for a real THREE.PointLight via the client LightBudget; false =
+   *  emissive-flame glow only (always-on, free). */
+  castsPool: boolean;
+  /** → client flicker registry; absent = 'steady'. */
+  flickerCurveId?: string;
+}
+
 // ---- voxel model ----
 
 export interface VoxelNode {

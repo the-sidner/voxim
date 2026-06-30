@@ -1,0 +1,9 @@
+{
+  "id": "hearth",
+  "family": "warm",
+  "baseColor": 16746496,
+  "radius": 12.0,
+  "intensity": 1.1,
+  "castsPool": true,
+  "flickerCurveId": "candle"
+}

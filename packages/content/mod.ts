@@ -16,6 +16,7 @@ export type {
   MaterialRenderDef,
   MaterialVariant,
   GradeDef,
+  LightDef,
   MaterialProperties,
   VoxelNode,
   SubObjectRef,

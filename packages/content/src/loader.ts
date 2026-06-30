@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, Palette } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef, Palette } from "./types.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
@@ -52,7 +52,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw,
-    procModelsRaw, scatterRaw, gradesRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -72,6 +72,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "procmodels"),
     readJsonDirOptional(dataDir, "scatter"),
     readJsonDirOptional(dataDir, "grades"),
+    readJsonDirOptional(dataDir, "lights"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -209,6 +210,10 @@ async function loadContentStoreInternal(
   }
   for (const raw of gradesRaw as GradeDef[]) {
     store.registerGrade(raw);
+  }
+  for (const raw of lightsRaw as LightDef[]) {
+    validateLightDef(raw);
+    store.registerLight(raw);
   }
   for (const s of store.scatter.values()) {
     if (!store.procModels.get(s.procModel)) {
@@ -630,6 +635,18 @@ export function validateProcModelDef(def: ProcModelDef): void {
   }
   if (def.params === null || typeof def.params !== "object") {
     throw new Error(`ProcModel '${def.id}': 'params' must be an object`);
+  }
+}
+
+export function validateLightDef(def: LightDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`LightDef: missing or empty id`);
+  }
+  if (def.family !== "warm" && def.family !== "corruption" && def.family !== "cold") {
+    throw new Error(`Light '${def.id}': 'family' must be 'warm' | 'corruption' | 'cold'`);
+  }
+  for (const k of ["baseColor", "radius", "intensity"] as const) {
+    if (typeof def[k] !== "number") throw new Error(`Light '${def.id}': '${k}' must be a number`);
   }
 }
 
