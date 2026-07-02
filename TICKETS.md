@@ -1174,11 +1174,13 @@ EntityDied pools at the entity) + `DecalRenderer` (thin voxel slabs via Instance
 slab-by-slab crumble decay; MAX_SPLATS=160 perf cap; tile-transition reset; `blood` material id 33).
 Live-verified: stimulated wire events → splats at player, blocked skipped, fast-forward decay → 0.
 **PHASE 4 COMPLETE** (field-driven scatter density/clusters · corruption-morph · moss-creep · wetness
-specular · ephemeral decals). **P4 follow-up (`a4e54c1`):** fixed vanishing 1-cell-wide ridges (double
-terrace inset → negative footprint → break before any box; now a MIN_FOOT recede budget, test-pinned) +
-**stacked-voxel warp** — terrace sub-boxes jitter their EXPOSED faces ±warp/2 (deterministic voxHash;
-welded faces/z/grid slot exact) so cliffs read hand-stacked; amplitude = `render.relief.warp` (the
-relief block's first consumer). Note: the terrace voxeliser remains the client stopgap P6 retires. Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
+specular · ephemeral decals). **P4 follow-up (`f7eb022`):** cliff edges are now warped voxel STACKS — the T-310 inset-ziggurat
+voxeliser is DELETED (with it the recede-degeneration bug family, incl. vanishing 1-wide ridges). A cliff
+cell piles 2–5 full-footprint stone boxes base→lip; the hand-stacked read comes from the per-voxel
+language alone: exposed-face warp (`render.relief.warp`, the relief block's first consumer; deterministic
+voxHash, welded faces/z/top stone exact), per-voxel tint, corner displacement, per-stone Sobel ink.
+Live-verified: the pale zigzag ledge artifacts on every cliff edge are gone, TRIS 1718k→1679k. The
+stack TRIGGER stays the client stopgap P6 retires — the stacked-stone language survives on the atoms. Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
 T-310 arcing sun) + creature fragmentation (G6/I3b) + cheap water reflection.
 
 ### T-312b · re-apply atlas render-fields on save-load
