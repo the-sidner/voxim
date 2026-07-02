@@ -982,6 +982,7 @@ export class TileServer {
         atlas.chambers,
         tileSeed,
         woodMat.id,
+        atlas.wallHeight,
       );
       chunksFromBuffers(
         this.world,

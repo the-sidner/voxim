@@ -26,8 +26,6 @@ import { BoundaryKind } from "@voxim/protocol";
 import { TILE_SIZE } from "@voxim/world";
 import { spawnPrefab } from "./spawner.ts";
 
-const WALL_HEIGHT = 2.0;
-
 /** Pool of NPC prefab ids used by the mob POI.  Wired by id; kept lean for
  *  "first primitive". Boot-cross-checked in server.ts against content.prefabs
  *  (T-315 A6) — every id here is assumed loaded by the time spawnMobPois runs. */
@@ -81,6 +79,11 @@ export interface RoomFieldPlanes {
  * SAME tile buffers — room POIs de-nature them under the stamped footprint
  * so a walled room doesn't keep reading the forest fertility/wetness it
  * replaced (T-315 A4).
+ *
+ * `wallHeight` is the world's actual wall-step height
+ * (GenParams.terrain.wallHeight, T-315 C1) — room POI walls rise this far
+ * above the local floor, matching the wall step atlas generation used for
+ * the surrounding terrain.
  */
 export function placePois(
   heights: Float32Array,
@@ -91,6 +94,7 @@ export function placePois(
   chambers: ChamberInfo[],
   tileSeed: number,
   woodMaterialId: number,
+  wallHeight: number,
 ): MobSpawn[] {
   const mobs: MobSpawn[] = [];
   let mobChambers = 0;
@@ -120,7 +124,7 @@ export function placePois(
       mobChambers++;
     } else if (roll < P_MOB + P_ROOM) {
       // Room POI — stamp a 5×5 wooden enclosure around the chamber centre.
-      stampRoom(heights, opens, kinds, materials, fields, cx, cy, woodMaterialId);
+      stampRoom(heights, opens, kinds, materials, fields, cx, cy, woodMaterialId, wallHeight);
       roomChambers++;
     }
     // else: empty chamber.
@@ -170,15 +174,16 @@ function stampRoom(
   cx: number,
   cy: number,
   woodMaterialId: number,
+  wallHeight: number,
 ): void {
   const x0 = cx - ROOM_HALF, x1 = cx + ROOM_HALF;
   const y0 = cy - ROOM_HALF, y1 = cy + ROOM_HALF;
   if (x0 < 0 || y0 < 0 || x1 >= TILE_SIZE || y1 >= TILE_SIZE) return;
 
   // Read the local floor height from the chamber centre — it's open ground,
-  // so heights[idx] is exactly the floor.  Walls rise WALL_HEIGHT above this.
+  // so heights[idx] is exactly the floor.  Walls rise wallHeight above this.
   const floor = heights[cx + cy * TILE_SIZE];
-  const wallY = floor + WALL_HEIGHT;
+  const wallY = floor + wallHeight;
 
   // South-facing doorway: middle cell of the south edge.
   const doorX = cx;

@@ -38,6 +38,14 @@ export interface AtlasTerrainResult {
   heightBuffer: Float32Array;
   materialBuffer: Uint16Array;
   /**
+   * The world's actual wall-step height (GenParams.terrain.wallHeight,
+   * T-315 C1) — derived once here via `mergeGenParams(world.params)` so
+   * every downstream consumer (poi_placer's room-POI walls included)
+   * matches the wall step atlas generation actually used, instead of
+   * assuming the DEFAULT_GEN_PARAMS 2.0.
+   */
+  wallHeight: number;
+  /**
    * Per-cell openness at TILE_SIZE² resolution. 1 = open, 0 = closed.
    * Drives openMask-based collision in tile-server's physics; closed
    * pixels block movement regardless of how the boundary chooses to
@@ -304,6 +312,7 @@ export async function loadTerrainFromAtlas(
   return {
     heightBuffer,
     materialBuffer,
+    wallHeight: genParams.terrain.wallHeight,
     openBuffer,
     kindBuffer,
     fields,
