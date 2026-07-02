@@ -28,6 +28,9 @@ export function geometryFromBaked(baked: BakedMesh): THREE.BufferGeometry {
   out.setAttribute("uv",          new THREE.BufferAttribute(baked.uvs,         2));
   out.setAttribute("voxelCenter", new THREE.BufferAttribute(baked.voxelCenter, 3));
   out.setAttribute("color",       new THREE.BufferAttribute(baked.colors,      3));
+  // Optional G6 sidecar (T-311 P4): per-vertex wetness for the wet_specular
+  // surface treatment. Only present when some atom carried `wet01`.
+  if (baked.wetness) out.setAttribute("aWetness", new THREE.BufferAttribute(baked.wetness, 1));
   if (baked.indices.length > 0) out.setIndex(new THREE.BufferAttribute(baked.indices, 1));
   return out;
 }

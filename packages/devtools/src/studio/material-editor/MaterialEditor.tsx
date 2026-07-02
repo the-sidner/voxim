@@ -19,6 +19,7 @@ import * as THREE from "three";
 import type { MaterialDef, MaterialRenderDef } from "@voxim/content";
 import { resolveMaterialVariant } from "@voxim/content";
 import {
+  applySurfaceTreatment,
   bakeVoxels,
   geometryFromBaked,
   buildVoxelMaterial,
@@ -47,21 +48,28 @@ const WALL_H = 4;
 
 /** Bake a flat 6×4 wall of one material through the real runtime, under variant
  *  `variantIndex` (-1 = base) resolved by the real resolveMaterialVariant.
- *  `mossPreview` (mock SurfaceStateGrid slider, T-311 P4) ramps each column's
- *  `moss01` 0→overgrowth×floorBias left→right through the REAL moss path. */
+ *  `mossPreview` / `wetPreview` (mock SurfaceStateGrid sliders, T-311 P4) ramp
+ *  each column's `moss01` / `wet01` 0→value left→right through the REAL moss
+ *  bake + wet_specular treatment paths. */
 function buildWallMesh(
   mat: MaterialJson,
   variantIndex: number,
   mossPreview?: { overgrowth: number; targetColor: number },
+  wetPreview?: number,
 ): THREE.Mesh {
   const mb = mat.render?.mossBlend;
+  const wetDef = mat.render?.wetness;
   const atoms = [];
   for (let y = 0; y < WALL_H; y++) {
     for (let x = 0; x < WALL_W; x++) {
-      const moss01 = mb && mossPreview
-        ? (x / (WALL_W - 1)) * mossPreview.overgrowth * mb.floorBias
-        : 0;
-      atoms.push({ cx: x, cy: y, cz: 0, sx: 1, sy: 1, sz: 1, materialId: mat.id, ...(moss01 > 0 && { moss01 }) });
+      const ramp = x / (WALL_W - 1);
+      const moss01 = mb && mossPreview ? ramp * mossPreview.overgrowth * mb.floorBias : 0;
+      const wet01 = wetDef && wetPreview !== undefined ? ramp * wetPreview : undefined;
+      atoms.push({
+        cx: x, cy: y, cz: 0, sx: 1, sy: 1, sz: 1, materialId: mat.id,
+        ...(moss01 > 0 && { moss01 }),
+        ...(wet01 !== undefined && { wet01 }),
+      });
     }
   }
   const moss = mb && mossPreview
@@ -70,7 +78,11 @@ function buildWallMesh(
   const baked = bakeVoxels(atoms, mat.id, undefined, mat.render?.tintJitter, moss);
   let def = { ...mat, color: parseColor(mat.color) } as unknown as MaterialDef;
   if (variantIndex >= 0) def = resolveMaterialVariant(def, variantIndex);
-  return new THREE.Mesh(geometryFromBaked(baked), buildVoxelMaterial(def, mat.id));
+  const material = buildVoxelMaterial(def, mat.id);
+  if (wetDef && baked.wetness) {
+    applySurfaceTreatment("wet_specular", material, { gloss: wetDef.gloss, darken: wetDef.darken });
+  }
+  return new THREE.Mesh(geometryFromBaked(baked), material);
 }
 
 export function MaterialEditor() {
@@ -83,10 +95,14 @@ export function MaterialEditor() {
   const [variantIndex, setVariantIndex] = useState(-1);
   /** Mock SurfaceStateGrid.overgrowth for the moss preview (never persisted). */
   const [mossOg, setMossOg] = useState(0.6);
+  /** Mock SurfaceStateGrid.wetness for the wet_specular preview (never persisted). */
+  const [wetMock, setWetMock] = useState(0.8);
   const viewportRef = useRef<Viewport | null>(null);
   const meshRef     = useRef<THREE.Mesh | null>(null);
   /** Resolved palette colour of the mossBlend target material (lazy-loaded). */
   const mossTargetRef = useRef<number | null>(null);
+  const wetMockRef = useRef(wetMock);
+  wetMockRef.current = wetMock;
 
   const rebuild = (m: MaterialJson, vi: number, og = mossOg) => {
     const vp = viewportRef.current;
@@ -100,7 +116,11 @@ export function MaterialEditor() {
     // textureStyle / colour regenerates instead of returning the stale texture.
     disposeVoxelTextures();
     const target = mossTargetRef.current;
-    const mesh = buildWallMesh(m, vi, target !== null ? { overgrowth: og, targetColor: target } : undefined);
+    const mesh = buildWallMesh(
+      m, vi,
+      target !== null ? { overgrowth: og, targetColor: target } : undefined,
+      wetMockRef.current,
+    );
     vp.contentGroup.add(mesh);
     meshRef.current = mesh;
     const box = new THREE.Box3().setFromObject(mesh);
@@ -152,6 +172,12 @@ export function MaterialEditor() {
     if (mat) rebuild(mat, variantIndex, og);
   };
 
+  const previewWet = (w: number) => {
+    setWetMock(w);
+    wetMockRef.current = w;
+    if (mat) rebuild(mat, variantIndex);
+  };
+
   const save = async () => {
     if (!mat || !path) return;
     const out: MaterialJson = { ...mat };
@@ -179,7 +205,7 @@ export function MaterialEditor() {
           }}
         />
       }
-      right={<Inspector mat={mat} variantIndex={variantIndex} mossOg={mossOg} onChange={applyRender} onVariant={pickVariant} onMossOg={previewMossOg} />}
+      right={<Inspector mat={mat} variantIndex={variantIndex} mossOg={mossOg} wetMock={wetMock} onChange={applyRender} onVariant={pickVariant} onMossOg={previewMossOg} onWetMock={previewWet} />}
     />
   );
 }
@@ -190,16 +216,20 @@ function Inspector({
   mat,
   variantIndex,
   mossOg,
+  wetMock,
   onChange,
   onVariant,
   onMossOg,
+  onWetMock,
 }: {
   mat: MaterialJson | null;
   variantIndex: number;
   mossOg: number;
+  wetMock: number;
   onChange: (render: MaterialRenderDef) => void;
   onVariant: (index: number) => void;
   onMossOg: (og: number) => void;
+  onWetMock: (w: number) => void;
 }) {
   if (!mat) {
     return <div style={{ padding: "var(--s-4)", color: "var(--bone-faint)" }}>Pick a material on the left.</div>;
@@ -284,6 +314,38 @@ function Inspector({
               The wall ramps moss 0→overgrowth×floorBias left→right through the real
               bake. <em>overgrowth</em> is a MOCK of the per-cell server field
               (SurfaceStateGrid) — preview only, never saved.
+            </div>
+          </>
+        )}
+      </Section>
+
+      <Section label="Wetness (wet_specular treatment)">
+        <label style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+          <input
+            type="checkbox"
+            checked={!!render.wetness}
+            onChange={(e) => {
+              const next = { ...render };
+              if ((e.target as HTMLInputElement).checked) {
+                next.wetness = render.wetness ?? { gloss: 6, darken: 0.25, reflectGain: 0 };
+              } else delete next.wetness;
+              onChange(next);
+            }}
+          />
+          <span style={{ color: "var(--bone-faint)" }}>{render.wetness ? "authored" : "off"}</span>
+        </label>
+        {render.wetness && (
+          <>
+            <Slider label="gloss" value={render.wetness.gloss} min={0} max={16} step={0.5}
+              onInput={(v) => onChange({ ...render, wetness: { ...render.wetness!, gloss: v } })} />
+            <Slider label="darken" value={render.wetness.darken} min={0} max={0.6} step={0.02}
+              onInput={(v) => onChange({ ...render, wetness: { ...render.wetness!, darken: v } })} />
+            <Slider label="wetness" value={wetMock} min={0} max={1} step={0.05} onInput={onWetMock} />
+            <div style={{ color: "var(--bone-faint)", fontSize: "var(--fs-small)", marginTop: 4 }}>
+              The wall ramps wetness 0→value left→right through the real
+              <code> wet_specular</code> treatment (G4). <em>wetness</em> is a MOCK of the
+              per-cell server field — preview only, never saved. <code>reflectGain</code> is
+              reserved for the P5 reflection streak.
             </div>
           </>
         )}

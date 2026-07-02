@@ -19,6 +19,11 @@
     "soil"
   ],
   "render": {
-    "textureStyle": "dirt"
+    "textureStyle": "dirt",
+    "wetness": {
+      "gloss": 3.0,
+      "darken": 0.22,
+      "reflectGain": 0
+    }
   }
 }

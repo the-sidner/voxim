@@ -156,6 +156,10 @@ export interface BakedMesh {
    *  All 24 verts of a voxel share its tint. Consumed via material.vertexColors. */
   colors: Float32Array;
   indices: Uint32Array;
+  /** Per-vertex wetness 0..1 (T-311 P4, G6 sidecar) — present only when some
+   *  atom carried `wet01`; becomes the `aWetness` attribute consumed by the
+   *  `wet_specular` surface treatment. All 24 verts of a voxel share its value. */
+  wetness?: Float32Array;
 }
 
 /** Deterministic position hash → [0,1). Independent per `salt`. */
@@ -250,13 +254,15 @@ export function bakeVoxels(
    *  mossy atoms → byte-identical. */
   moss?: MossResponse,
 ): BakedMesh {
-  const voxels: { px: number; py: number; pz: number; moss01: number; baked: BakedVoxel }[] = [];
+  const voxels: { px: number; py: number; pz: number; moss01: number; wet01: number; baked: BakedVoxel }[] = [];
+  let anyWet = false;
   for (const a of atoms) {
     if (a.materialId !== materialId) continue;
     // model center → three center (x, z, y); size stays in model axes — the
     // displaced-box bake applies the same swap to the extents internally.
     const px = a.cx, py = a.cz, pz = a.cy;
-    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, mag) });
+    if (a.wet01 !== undefined) anyWet = true;
+    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, mag) });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;
@@ -266,9 +272,10 @@ export function bakeVoxels(
   const voxelCenter = new Float32Array(vCount * 3);
   const colors = new Float32Array(vCount * 3);
   const indices = new Uint32Array(voxels.length * BOX_INDEX_COUNT);
+  const wetness = anyWet ? new Float32Array(vCount) : undefined;
 
   let vOff = 0, iOff = 0;
-  for (const { px, py, pz, moss01, baked } of voxels) {
+  for (const { px, py, pz, moss01, wet01, baked } of voxels) {
     let [tr, tg, tb] = voxelTint(px, py, pz, tint);   // one tint per voxel
     if (moss && moss01 > 0) {
       // Lerp the multiplier toward the moss response: base×ratio ≈ moss colour.
@@ -294,6 +301,7 @@ export function bakeVoxels(
       colors[v * 3]     = tr;
       colors[v * 3 + 1] = tg;
       colors[v * 3 + 2] = tb;
+      if (wetness) wetness[v] = wet01;
     }
     for (let i = 0; i < BOX_INDEX_COUNT; i++) {
       indices[iOff + i] = UNIT_BOX_INDEX[i] + vOff;
@@ -302,7 +310,7 @@ export function bakeVoxels(
     iOff += BOX_INDEX_COUNT;
   }
 
-  return { positions, normals, uvs, voxelCenter, colors, indices };
+  return { positions, normals, uvs, voxelCenter, colors, indices, ...(wetness && { wetness }) };
 }
 
 /**

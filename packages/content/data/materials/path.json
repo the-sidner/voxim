@@ -17,5 +17,12 @@
   "tags": [
     "ground",
     "path"
-  ]
+  ],
+  "render": {
+    "wetness": {
+      "gloss": 8.0,
+      "darken": 0.3,
+      "reflectGain": 0
+    }
+  }
 }

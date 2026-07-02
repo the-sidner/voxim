@@ -30,6 +30,11 @@
         0.06,
         -0.05
       ]
+    },
+    "wetness": {
+      "gloss": 6.0,
+      "darken": 0.25,
+      "reflectGain": 0
     }
   },
   "variants": [

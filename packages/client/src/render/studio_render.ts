@@ -18,3 +18,8 @@ export {
 } from "./material_textures.ts";
 export { registerBuiltinGenerators, getGenerator, generatorIds } from "./procmodel/mod.ts";
 export type { Generator, GeneratorContext } from "./procmodel/mod.ts";
+export {
+  applySurfaceTreatment,
+  registerBuiltinSurfaceTreatments,
+  surfaceTreatmentIds,
+} from "./surface_treatments.ts";

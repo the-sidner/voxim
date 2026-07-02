@@ -321,3 +321,20 @@ Deno.test("moss-creep (T-311 P4): no moss01 atoms bake byte-identically; moss01 
   const between = (a: number, m: number, b: number) => (m > Math.min(a, b)) && (m < Math.max(a, b));
   assertEquals(between(plain.colors[0], half.colors[0], mossy.colors[0]), true);
 });
+
+Deno.test("wetness sidecar (T-311 P4): aWetness only when atoms carry wet01; colours untouched", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const dry = bakeVoxels([atom], 1);
+  assertEquals(dry.wetness, undefined, "no wet01 → no wetness plane");
+
+  const wet = bakeVoxels([{ ...atom, wet01: 0.75 }], 1);
+  assertEquals(wet.wetness?.length, BOX_VERT_COUNT, "one value per vertex");
+  assertEquals(wet.wetness![0], 0.75);
+  // The response is in-shader — the baked colours stay byte-identical.
+  assertEquals(wet.colors, dry.colors);
+
+  // Mixed: only the wet atom's verts carry the value; the dry atom's are 0.
+  const mixed = bakeVoxels([{ ...atom, wet01: 1 }, { ...atom, cx: 1.5 }], 1);
+  assertEquals(mixed.wetness![0], 1);
+  assertEquals(mixed.wetness![BOX_VERT_COUNT], 0);
+});

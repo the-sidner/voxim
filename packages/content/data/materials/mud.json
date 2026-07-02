@@ -20,6 +20,11 @@
     "wet"
   ],
   "render": {
-    "textureStyle": "dirt"
+    "textureStyle": "dirt",
+    "wetness": {
+      "gloss": 10.0,
+      "darken": 0.35,
+      "reflectGain": 0
+    }
   }
 }

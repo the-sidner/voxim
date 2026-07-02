@@ -43,4 +43,12 @@ export interface VoxelAtom {
    * the only colour carrier). Absent ⇒ bakes byte-identically.
    */
   moss01?: number;
+  /**
+   * Per-voxel wetness sample 0..1 (T-311 P4, G6 sidecar) — the cell's
+   * SurfaceStateGrid.wetness, emitted into an `aWetness` vertex attribute so
+   * the `wet_specular` surface treatment (G4) can darken + gloss in-shader.
+   * DATA only — the response params live on `MaterialDef.render.wetness`.
+   * Absent ⇒ no attribute, bakes byte-identically.
+   */
+  wet01?: number;
 }

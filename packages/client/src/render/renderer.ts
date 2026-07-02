@@ -20,6 +20,7 @@ import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
 import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
+import { applySurfaceTreatment } from "./surface_treatments.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
@@ -545,16 +546,19 @@ export class VoximRenderer {
       }
     }
 
-    // Moss-creep (T-311 P4): thread the chunk's server overgrowth plane + the
-    // per-material mossBlend bias into the atom build; atoms carry `moss01`.
+    // Surface fields (T-311 P4): thread the chunk's SurfaceStateGrid planes +
+    // the per-material render responses into the atom build; atoms carry the
+    // G6 sidecar scalars (`moss01`, `wet01`).
     const surf = this.terrainSurf.get(key);
-    const mossInput = surf
+    const surfaceInput = surf
       ? {
         overgrowth: surf.overgrowth,
-        biasFor: (matId: number) => {
+        wetness: surf.wetness,
+        mossBiasFor: (matId: number) => {
           const mb = this.content?.getMaterialSync(matId)?.render?.mossBlend;
           return mb ? { floor: mb.floorBias, wall: mb.wallBias, joint: mb.jointBoost } : undefined;
         },
+        wets: (matId: number) => this.content?.getMaterialSync(matId)?.render?.wetness !== undefined,
       }
       : undefined;
 
@@ -565,7 +569,7 @@ export class VoximRenderer {
       E: this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
       S: this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
       W: this.terrainHmaps.get(`${cx - 1},${cy}`) ?? null,
-    }, mossInput);
+    }, surfaceInput);
     const meshes: THREE.Mesh[] = [];
     for (const [matId, atoms] of byMat) {
       const matDef = this.content?.getMaterialSync(matId);
@@ -574,9 +578,17 @@ export class VoximRenderer {
       const mossResp = matDef && mb && mossTarget
         ? resolveMossResponse(matDef.color, mossTarget.color, mb.tintShift)
         : undefined;
-      const geo = geometryFromBaked(bakeVoxels(atoms, matId, TERRAIN_DISP_MAG, matDef?.render?.tintJitter, mossResp));
+      const baked = bakeVoxels(atoms, matId, TERRAIN_DISP_MAG, matDef?.render?.tintJitter, mossResp);
+      const geo = geometryFromBaked(baked);
       const m = buildVoxelMaterial(matDef, matId);
       canopyFade.register(m, { voxelMode: true });
+      // Wetness response (G4): dispatch the wet_specular treatment AFTER
+      // canopyFade (treatments chain onBeforeCompile), only where the bake
+      // actually emitted the aWetness attribute.
+      const wet = matDef?.render?.wetness;
+      if (wet && baked.wetness) {
+        applySurfaceTreatment("wet_specular", m, { gloss: wet.gloss, darken: wet.darken });
+      }
       const me = new THREE.Mesh(geo, m);
       me.name = "terrain";
       me.castShadow = true;
