@@ -1191,7 +1191,12 @@ perfectly smooth trodden paths (traffic-inverted) — one grammar, two consumers
 ContentCache never held ground materials, so getMaterialSync returned undefined and every
 `MaterialDef.render` response silently no-opped on terrain; now falls back to the bootstrap
 ContentService (scene-probe verified: real colours + textures live, golden paths, textured stone).
-Grade retune against the REAL material colours is an open content follow-up. Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
+Grade retune against the REAL material colours is an open content follow-up.
+**Civilization axis (`989fb8a`, user design principle):** `relief.disturbanceField` (renamed from
+surfaceWarpField) is THE per-cell wildness FieldExpr (1 = wild, 0 = civilized) scaling every
+voxel-disturbance channel: surface roughness, cliff-stack warp, and NEW the per-voxel tint mottle
+(`VoxelAtom.tintScale`, 25% floor) — trodden/worked cells read flat + uniform + orderly, wilderness
+rough + mottled. `path` authors `disturbanceField: []` (empty expr = always civilized). Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
 T-310 arcing sun) + creature fragmentation (G6/I3b) + cheap water reflection.
 
 ### T-312b · re-apply atlas render-fields on save-load
