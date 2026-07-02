@@ -41,6 +41,7 @@ import type {
   BiomeDef,
   GradeDef,
   LightDef,
+  DecalDef,
   ZoneDef,
   PoiDef,
   PoiRole,
@@ -127,6 +128,13 @@ export interface ContentService {
    * file drop. See VISUAL_DATAMODEL_PLAN.md (grammar G7-adjacent).
    */
   readonly lights: ContentRegistryReadonly<LightDef>;
+
+  /**
+   * Ephemeral combat decals keyed by id (T-311 P4). Loaded from
+   * `data/decals/*.json`; the client's decal-source registry seeds splats
+   * from wire GameEvents and decays them — never saved, never networked.
+   */
+  readonly decals: ContentRegistryReadonly<DecalDef>;
 
   /**
    * Triggers keyed by id (T-259). Reactive couplings loaded from
@@ -269,6 +277,10 @@ export class StaticContentStore implements ContentService {
     kind: "light",
     idOf: (l) => l.id,
   });
+  public readonly decals = new ContentRegistry<DecalDef>({
+    kind: "decal",
+    idOf: (d) => d.id,
+  });
   public readonly triggers = new ContentRegistry<TriggerDef>({
     kind: "trigger",
     idOf: (t) => t.id,
@@ -399,6 +411,10 @@ export class StaticContentStore implements ContentService {
 
   registerLight(def: LightDef): void {
     this.lights.register(def);
+  }
+
+  registerDecal(def: DecalDef): void {
+    this.decals.register(def);
   }
 
   registerTrigger(def: TriggerDef): void {

@@ -28,11 +28,12 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, GameConfig, TileLayout, Prefab,
-  ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef, Palette,
+  ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
+  DecalDef, Palette,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 16;
+export const BOOTSTRAP_VERSION = 17;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -56,6 +57,7 @@ interface ContentBootstrapJson {
   scatter:             ScatterDef[];
   grades:              GradeDef[];
   lights:              LightDef[];
+  decals:              DecalDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
   palette:             Palette;
@@ -130,6 +132,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     scatter:             [...service.scatter.values()],
     grades:              [...service.grades.values()],
     lights:              [...service.lights.values()],
+    decals:              [...service.decals.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
     palette:             service.getPalette(),
@@ -216,6 +219,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const s of body.scatter ?? [])        store.registerScatter(s);
   for (const g of body.grades ?? [])         store.registerGrade(g);
   for (const l of body.lights ?? [])         store.registerLight(l);
+  for (const d of body.decals ?? [])         store.registerDecal(d);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
   store.setPalette(body.palette);

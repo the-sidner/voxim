@@ -21,7 +21,8 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef, Palette } from "./types.ts";
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
+  DecalDef, Palette } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
@@ -53,7 +54,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw,
-    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, decalsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -74,6 +75,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "scatter"),
     readJsonDirOptional(dataDir, "grades"),
     readJsonDirOptional(dataDir, "lights"),
+    readJsonDirOptional(dataDir, "decals"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -215,6 +217,10 @@ async function loadContentStoreInternal(
   for (const raw of lightsRaw as LightDef[]) {
     validateLightDef(raw);
     store.registerLight(raw);
+  }
+  for (const raw of decalsRaw as DecalDef[]) {
+    validateDecalDef(raw);
+    store.registerDecal(raw);
   }
   for (const s of store.scatter.values()) {
     if (!store.procModels.get(s.procModel)) {
@@ -665,6 +671,34 @@ export function validateLightDef(def: LightDef): void {
   }
   for (const k of ["baseColor", "radius", "intensity"] as const) {
     if (typeof def[k] !== "number") throw new Error(`Light '${def.id}': '${k}' must be a number`);
+  }
+}
+
+/** Shape-validate one ephemeral combat DecalDef (T-311 P4). The `source` id is
+ *  cross-checked on the client against the decal-source registry (the closed
+ *  event catalog); `material` against the material registry. */
+export function validateDecalDef(def: DecalDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`DecalDef: missing or empty id`);
+  }
+  if (typeof def.source !== "string" || def.source.length === 0) {
+    throw new Error(`Decal '${def.id}': 'source' must be a non-empty decal-source id`);
+  }
+  if (typeof def.material !== "string" || def.material.length === 0) {
+    throw new Error(`Decal '${def.id}': 'material' must be a material name`);
+  }
+  if (!Array.isArray(def.count) || def.count.length !== 2 || def.count[0] < 0 || def.count[1] < def.count[0]) {
+    throw new Error(`Decal '${def.id}': 'count' must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (!Array.isArray(def.sizeRange) || def.sizeRange.length !== 2 || def.sizeRange[0] <= 0) {
+    throw new Error(`Decal '${def.id}': 'sizeRange' must be a positive [min,max] pair`);
+  }
+  if (typeof def.radius !== "number" || def.radius < 0) {
+    throw new Error(`Decal '${def.id}': 'radius' must be ≥ 0`);
+  }
+  if (typeof def.ttlSeconds !== "number" || def.ttlSeconds <= 0
+    || typeof def.fadeSeconds !== "number" || def.fadeSeconds < 0) {
+    throw new Error(`Decal '${def.id}': 'ttlSeconds' must be > 0 and 'fadeSeconds' ≥ 0`);
   }
 }
 

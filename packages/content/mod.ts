@@ -17,6 +17,7 @@ export type {
   MaterialVariant,
   GradeDef,
   LightDef,
+  DecalDef,
   MaterialProperties,
   VoxelNode,
   SubObjectRef,

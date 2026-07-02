@@ -30,6 +30,8 @@ import { HoverOutlineRenderer } from "./render/hover_outline.ts";
 import { ScatterRenderer } from "./render/scatter_renderer.ts";
 import { seedFromTileId } from "@voxim/world";
 import { WaterRenderer } from "./render/water_renderer.ts";
+import { DecalRenderer } from "./render/decal_renderer.ts";
+import { crossCheckDecals } from "./render/decal_sources.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
 import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
@@ -213,6 +215,7 @@ export class VoximGame {
    *  the single-tile world; the gateway path overrides it. */
   private tileId = "0_0";
   private waterRenderer: WaterRenderer | null = null;
+  private decals: DecalRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
@@ -316,6 +319,7 @@ export class VoximGame {
       crossCheckTextureStyles(this.contentService);
       // T-311 Phase 2: every LightDef.flickerCurveId resolves to a registered curve.
       crossCheckFlickerCurves(this.contentService);
+      crossCheckDecals(this.contentService);
       console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons, ${this.contentService.animationLibraries.size} animation libraries`);
     } else {
       console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");
@@ -444,6 +448,13 @@ export class VoximGame {
         this.renderer.instancePool, this.contentService, this.world,
         seedFromTileId(this.tileId),
       );
+    }
+
+    // Ephemeral combat decals (T-311 P4, designer Q8: in-memory + decay).
+    // Wire GameEvents run through the decal-source registry; splats are thin
+    // voxel slabs in the shared instanced pool — never saved, never networked.
+    if (this.contentService) {
+      this.decals = new DecalRenderer(this.renderer.instancePool, this.contentService, this.world);
     }
 
     // Water surface (T-159) — translucent overlay over WATER cells, animated
@@ -669,6 +680,7 @@ export class VoximGame {
             console.log(`[Event] DamageDealt target=${ev.targetId.slice(-6)} source=${ev.sourceId.slice(-6)} amount=${ev.amount.toFixed(1)}${blocked}`);
             const screenPos = this.renderer?.getEntityScreenPos(ev.targetId);
             if (screenPos) this.overlay?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
+            this.decals?.onEvent(ev);
             break;
           }
           case "HitSpark":
@@ -681,6 +693,7 @@ export class VoximGame {
           }
           case "EntityDied":
             console.log(`[Event] EntityDied entity=${ev.entityId.slice(-6)}${ev.killerId ? ` killer=${ev.killerId.slice(-6)}` : ""}`);
+            this.decals?.onEvent(ev);
             if (ev.entityId === this.playerId) {
               openPanel("death", true);
               pushToast("You died", "danger");
@@ -807,6 +820,7 @@ export class VoximGame {
     // Wipe per-tile state. The renderer instance is kept; only its scene
     // contents go.
     this.scatter?.reset();
+    this.decals?.reset();
     this.waterRenderer?.clear();
     this.world.clear();
     this.buildOccupancy.clear();
@@ -996,6 +1010,7 @@ export class VoximGame {
     // Water animation: bump the shared shader's uTime + flush any chunks
     // whose kindGrid arrived before their heightmap.
     this.waterRenderer?.tick(now);
+    this.decals?.update(now);
 
     this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null, localMovement, localCrouch);
 
@@ -1698,6 +1713,8 @@ export class VoximGame {
     this.scatter = null;
     this.waterRenderer?.clear();
     this.waterRenderer = null;
+    this.decals?.reset();
+    this.decals = null;
     this.inputCapture?.dispose();
     this.inputCapture = null;
     this.input = null;

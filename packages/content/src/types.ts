@@ -1121,6 +1121,36 @@ export interface ScatterDef {
   morphField?: import("./field_expr.ts").FieldExpr;
 }
 
+// ---- decals ----
+
+/**
+ * An EPHEMERAL combat decal (T-311 P4 — designer decision: in-memory + decay,
+ * never saved, no wire component). The client's decal-source registry maps a
+ * wire GameEvent (closed catalog: "damage" | "death") to a spawn point +
+ * intensity; the DecalDef says what grows there: a splat of thin voxel slabs
+ * in the splat material, scattered in a disk, decaying slab-by-slab after
+ * `ttlSeconds`. The WHERE/WHAT traces to the server event + this content —
+ * only the sub-splat scatter is random (transient presentation).
+ */
+export interface DecalDef {
+  id: string;
+  /** Decal-source id → client decal-source registry (closed event catalog);
+   *  boot-cross-checked. */
+  source: string;
+  /** Splat material NAME (palette colour + render look via buildVoxelMaterial). */
+  material: string;
+  /** Slab count [min,max] — lerped by the source's intensity. */
+  count: [number, number];
+  /** Scatter disk radius (world units). */
+  radius: number;
+  /** Slab edge length [min,max] (world units). */
+  sizeRange: [number, number];
+  /** Full-strength lifetime; after this the splat decays slab-by-slab. */
+  ttlSeconds: number;
+  /** Decay window — slabs vanish one by one across this span. */
+  fadeSeconds: number;
+}
+
 // ---- biomes ----
 
 /**

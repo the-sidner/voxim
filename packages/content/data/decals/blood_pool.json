@@ -1,0 +1,16 @@
+{
+  "id": "blood_pool",
+  "source": "death",
+  "material": "blood",
+  "count": [
+    5,
+    9
+  ],
+  "radius": 1.1,
+  "sizeRange": [
+    0.35,
+    0.8
+  ],
+  "ttlSeconds": 150,
+  "fadeSeconds": 60
+}
