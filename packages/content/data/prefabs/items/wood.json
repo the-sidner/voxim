@@ -1,0 +1,11 @@
+{
+  "id": "wood",
+  "modelId": "model_log",
+  "modelScale": 0.5,
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 1.0
+    }
+  }
+}

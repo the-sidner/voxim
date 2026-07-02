@@ -30,8 +30,10 @@ const WALL_HEIGHT = 2.0;
 const BOUNDARY_KIND_OPEN  = 0;
 const BOUNDARY_KIND_STONE = 1;
 
-/** Pool of NPC prefab ids used by the mob POI.  Wired by id; kept lean for "first primitive". */
-const MOB_NPC_POOL = ["wolf", "bandit", "archer", "drowner", "rotten_knight"] as const;
+/** Pool of NPC prefab ids used by the mob POI.  Wired by id; kept lean for
+ *  "first primitive". Boot-cross-checked in server.ts against content.prefabs
+ *  (T-315 A6) — every id here is assumed loaded by the time spawnMobPois runs. */
+export const MOB_NPC_POOL = ["wolf", "bandit", "archer", "drowner", "rotten_knight"] as const;
 
 /** Number of NPCs spawned per mob POI.  User spec: "3 random mobs". */
 const MOB_COUNT = 3;
@@ -147,8 +149,8 @@ export function placePois(
 /**
  * Spawn the mob NPCs returned by {@link placePois}.  Called after
  * `chunksFromBuffers` so the world graph (chunks, terrain) is in place.
- * Skips any spawn whose prefab id isn't in the content store — keeps
- * `MOB_NPC_POOL` resilient to content changes.
+ * Every `MOB_NPC_POOL` id is boot-cross-checked in server.ts (T-315 A6),
+ * so no runtime existence guard is needed here.
  */
 export function spawnMobPois(
   world: World,
@@ -156,7 +158,6 @@ export function spawnMobPois(
   mobs: MobSpawn[],
 ): void {
   for (const m of mobs) {
-    if (!content.prefabs.get(m.prefabId)) continue;
     spawnPrefab(world, content, m.prefabId, { x: m.x, y: m.y });
   }
 }

@@ -23,8 +23,10 @@ import { Facing } from "./components/game.ts";
 import { Stair } from "./components/stair.ts";
 import { spawnPrefab } from "./spawner.ts";
 
-const STAIR_FOUND_PREFAB_ID  = "stair";
-const STAIR_LOCKED_PREFAB_ID = "stair_locked";
+/** Boot-cross-checked in server.ts against content.prefabs (T-315 A6) —
+ *  placeStairs assumes both are loaded. */
+export const STAIR_FOUND_PREFAB_ID  = "stair";
+export const STAIR_LOCKED_PREFAB_ID = "stair_locked";
 
 export function placeStairs(
   world: World,
@@ -33,12 +35,6 @@ export function placeStairs(
   heightBuffer: Float32Array,
   tileSize: number,
 ): number {
-  for (const id of [STAIR_FOUND_PREFAB_ID, STAIR_LOCKED_PREFAB_ID]) {
-    if (!content.prefabs.get(id)) {
-      console.warn(`[stair_spawner] missing prefab "${id}" — skipping stair spawn`);
-      return 0;
-    }
-  }
   const stairs = level.edges.stairs;
   if (!stairs.length) return 0;
 

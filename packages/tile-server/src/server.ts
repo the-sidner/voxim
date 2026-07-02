@@ -21,7 +21,7 @@ import { spawnGates, mirrorPosition } from "./gate.ts";
 import { applyFieldsToChunks, chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import type { ZoneGridData } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
-import { placePois, spawnMobPois } from "./poi_placer.ts";
+import { placePois, spawnMobPois, MOB_NPC_POOL } from "./poi_placer.ts";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, SERVICE_SECRET_HEADER, TileEvents } from "@voxim/protocol";
 import type { EntityDeployedPayload } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
@@ -80,7 +80,7 @@ import { TriggerSystem } from "./systems/trigger.ts";
 import { newTriggerCatalog } from "./triggers/catalog.ts";
 import { newTriggerSourceRegistry, equipmentTriggerSource, npcTemplateTriggerSource } from "./triggers/source.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
-import { placeStairs } from "./stair_spawner.ts";
+import { placeStairs, STAIR_FOUND_PREFAB_ID, STAIR_LOCKED_PREFAB_ID } from "./stair_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
 import { speedSkillEffect, damageBoostSkillEffect, shieldSkillEffect, fleeSkillEffect, HealthSkillResolver } from "./actions/resolvers/skill_effects.ts";
@@ -525,6 +525,27 @@ export class TileServer {
             `prefab "${prefab.id}" ${key}.lightDefId "${id}" but no such LightDef is loaded.`,
           );
         }
+      }
+    }
+
+    // T-315 A6: boot cross-checks for content ids that were previously
+    // validated (or silently unvalidated) at runtime — fail-fast, matching
+    // the startingSkills / lightEmitter checks above.
+    for (const id of MOB_NPC_POOL) {
+      if (!content.prefabs.get(id)) {
+        throw new Error(`poi_placer.MOB_NPC_POOL names prefab "${id}" but no such prefab is loaded.`);
+      }
+    }
+    for (const id of [STAIR_FOUND_PREFAB_ID, STAIR_LOCKED_PREFAB_ID]) {
+      if (!content.prefabs.get(id)) {
+        throw new Error(`stair_spawner needs prefab "${id}" but no such prefab is loaded.`);
+      }
+    }
+    for (const prefabId of Object.values(content.getGameConfig().terrain.materialDrops)) {
+      if (!content.prefabs.get(prefabId)) {
+        throw new Error(
+          `game_config.terrain.materialDrops names prefab "${prefabId}" but no such prefab is loaded.`,
+        );
       }
     }
 

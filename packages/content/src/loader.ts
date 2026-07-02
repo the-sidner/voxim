@@ -116,6 +116,20 @@ async function loadContentStoreInternal(
     store.registerMaterial(mat);
   }
 
+  // T-315 A6: mossBlend.material names another material by NAME. Can't
+  // inline-check in the loop above — materials register in filename order,
+  // so a blend target may not be registered yet when the referencing
+  // material's file is processed. Separate post-registration pass, same
+  // shape as the scatter→procModel cross-check below.
+  for (const mat of store.materials.values()) {
+    const mb = mat.render?.mossBlend;
+    if (mb && !store.materials.get(mb.material)) {
+      throw new Error(
+        `[content] material '${mat.name}' mossBlend.material references unknown material '${mb.material}'`,
+      );
+    }
+  }
+
   for (const raw of modelsRaw as ModelDefinition[]) {
     store.registerModel(raw);
   }
