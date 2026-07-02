@@ -24,7 +24,8 @@
  * welded to on-lattice placed/dug voxels too.
  */
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
-import type { VoxelAtom } from "@voxim/content";
+import type { VoxelAtom, FieldExpr } from "@voxim/content";
+import { evaluateFieldExpr } from "@voxim/content";
 import { HEIGHT_STEP } from "@voxim/world";
 import { voxHash } from "./voxel_bake.ts";
 
@@ -83,6 +84,9 @@ export interface SurfaceFieldInput {
   mossBiasFor: (materialId: number) => { floor: number; wall: number; joint: number } | undefined;
   /** True when the material authors `render.wetness` → atoms carry `wet01`. */
   wets: (materialId: number) => boolean;
+  /** Generic normalised field read (shared `sampleField` over the chunk's
+   *  Veg/SurfaceState/Water grids) — evaluates `relief.surfaceWarpField`. */
+  sample: (field: string, cellIdx: number) => number;
 }
 
 /**
@@ -96,12 +100,16 @@ export function buildChunkAtoms(
   mats: MaterialGridData,
   nb: ChunkNeighbours,
   surface?: SurfaceFieldInput,
-  /** Per-material stacked-voxel warp amplitude (`MaterialDef.render.relief.warp`,
-   *  T-311 P4): cliff-stack stones below the lip jitter their EXPOSED faces by
-   *  ±amp/2 (deterministic voxHash) — size varies, the grid slot and every
-   *  WELDED face stay exact (no slit into the void under neighbour slabs), and
-   *  the corners keep the usual displacement. Reads as hand-stacked stone. */
-  reliefFor?: (materialId: number) => number | undefined,
+  /** Per-material relief response (`MaterialDef.render.relief`, T-311 P4):
+   *  `warp` drives the cliff-stack stones (exposed-face jitter + independent
+   *  corner warp + oversize-into-solid); `surfaceWarp`(+`surfaceWarpField`)
+   *  drives the same decorrelated warp on walkable floor slabs — rough
+   *  ground, modulated per cell by the server render fields. */
+  reliefFor?: (materialId: number) => {
+    warp?: number;
+    surfaceWarp?: number;
+    surfaceWarpField?: FieldExpr;
+  } | undefined,
 ): Map<number, VoxelAtom[]> {
   const offX = hm.chunkX * CHUNK;
   const offZ = hm.chunkY * CHUNK;
@@ -158,7 +166,7 @@ export function buildChunkAtoms(
         const expN = (h - hN) > EXPOSE_MIN;
         const n = Math.min(STACK_MAX, Math.max(2, Math.round(depth / STONE_H)));
         const bh = depth / n;
-        const warpAmp = reliefFor?.(m) ?? 0;
+        const warpAmp = reliefFor?.(m)?.warp ?? 0;
         // Course boundaries between stones, z-jittered ±warp/4 (per cell +
         // course, deterministic) so the horizontal seams run UNEVEN like real
         // coursework. Both stones at a seam share the jittered boundary —
@@ -225,14 +233,31 @@ export function buildChunkAtoms(
       }
 
       // Flat / shallow cell → one column box (top at h, floor at h-depth).
+      // Surface roughness (T-311 P4): with `relief.surfaceWarp` the slab warps
+      // its corners INDEPENDENTLY (own dispSeed) — rough, clod-like ground —
+      // modulated 0..1 per cell by the optional `surfaceWarpField` FieldExpr
+      // (e.g. traffic-inverted: wilderness rough, trodden paths smooth). The
+      // slab OVERSIZES into known-solid (sideways into neighbour slabs, down
+      // into the earth) so corner gaps only ever reveal another slab.
+      const relief = reliefFor?.(m);
+      let surfAmp = relief?.surfaceWarp ?? 0;
+      if (surfAmp > 0 && relief?.surfaceWarpField && surface) {
+        surfAmp *= evaluateFieldExpr(relief.surfaceWarpField, (f) => surface.sample(f, cellIdx));
+      }
+      const rough = surfAmp > 0.02;
+      const grow = rough ? surfAmp + 0.05 : 0;
       bucket.push({
         cx: offX + cx + 0.5,
         cy: offZ + cy + 0.5,
-        cz: h - depth / 2,
-        sx: 1,
-        sy: 1,
-        sz: depth,
+        cz: h - depth / 2 - grow / 2,
+        sx: 1 + 2 * grow,
+        sy: 1 + 2 * grow,
+        sz: depth + grow,
         materialId: m,
+        ...(rough && {
+          dispMag: TERRAIN_DISP_MAG + surfAmp,
+          dispSeed: 1 + Math.floor(voxHash(offX + cx, offZ + cy, 0, 9) * 0xffff),
+        }),
         ...(og01 > 0 && { moss01: og01 * mossBias!.floor }),
         ...(wet01 !== undefined && { wet01 }),
       });

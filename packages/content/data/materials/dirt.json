@@ -26,7 +26,17 @@
       "reflectGain": 0
     },
     "relief": {
-      "warp": 0.4
+      "warp": 0.4,
+      "surfaceWarp": 0.14,
+      "surfaceWarpField": [
+        {
+          "field": "traffic",
+          "curve": "smoothstep",
+          "min": 0.55,
+          "max": 0.05,
+          "weight": 1.0
+        }
+      ]
     }
   }
 }

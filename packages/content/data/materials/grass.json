@@ -21,7 +21,17 @@
   "render": {
     "textureStyle": "organic",
     "relief": {
-      "warp": 0.35
+      "warp": 0.35,
+      "surfaceWarp": 0.12,
+      "surfaceWarpField": [
+        {
+          "field": "traffic",
+          "curve": "smoothstep",
+          "min": 0.55,
+          "max": 0.05,
+          "weight": 1.0
+        }
+      ]
     }
   }
 }

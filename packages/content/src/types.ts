@@ -47,11 +47,23 @@ export interface MaterialRenderDef {
   /** Per-voxel colour mottle (G6, Phase 0a pt.2): brightness range + warm/cool
    *  tilt. Absent = engine-default jitter. */
   tintJitter?: { brightness: [number, number]; warmCool: number };
-  /** Relief/displacement detail knobs. `warp` (the first consumer, T-311 P4)
-   *  is the stacked-voxel amplitude: terrace sub-boxes jitter their exposed
-   *  faces by ±warp/2 — size varies, grid slot + welded faces stay exact —
-   *  so cliff stacks read as hand-stacked stone. Additive, all optional. */
-  relief?: { resolution?: number; detail?: number; dispMag?: number; warp?: number };
+  /** Relief/displacement detail knobs (T-311 P4; additive, all optional).
+   *  `warp` — the stacked-voxel amplitude for CLIFF stacks: stones jitter
+   *  their exposed faces ±warp/2, warp their corners independently (own
+   *  dispSeed) and oversize into known-solid, so cliffs read hand-stacked.
+   *  `surfaceWarp` — the same per-voxel decorrelated warp on the walkable
+   *  floor slabs: rough, clod-like ground. `surfaceWarpField` — an optional
+   *  FieldExpr over the server render fields modulating surfaceWarp 0..1 per
+   *  cell (e.g. traffic-inverted: wilderness rough, trodden paths smooth);
+   *  boot-cross-checked. */
+  relief?: {
+    resolution?: number;
+    detail?: number;
+    dispMag?: number;
+    warp?: number;
+    surfaceWarp?: number;
+    surfaceWarpField?: import("./field_expr.ts").FieldExpr;
+  };
   /** Wetness/gloss response, driven by SurfaceStateGrid (Phase 4). */
   wetness?: { gloss: number; darken: number; reflectGain: number };
   /** Reflection treatment, shared with water via the SurfaceTreatment registry

@@ -14,13 +14,14 @@
  * radius from the player have their groups hidden.
  */
 import * as THREE from "three";
-import type { HeightmapData, MaterialGridData, SurfaceStateGridData } from "@voxim/codecs";
+import type { HeightmapData, MaterialGridData, SurfaceStateGridData, VegFieldGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
 import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
 import { applySurfaceTreatment } from "./surface_treatments.ts";
+import { sampleField } from "./field_sample.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
@@ -215,6 +216,8 @@ export class VoximRenderer {
   private readonly terrainMats    = new Map<string, MaterialGridData>();
   /** SurfaceStateGrid per chunk — the moss-creep overgrowth source (T-311 P4). */
   private readonly terrainSurf    = new Map<string, SurfaceStateGridData>();
+  /** VegFieldGrid per chunk — feeds relief.surfaceWarpField sampling (T-311 P4). */
+  private readonly terrainVeg     = new Map<string, VegFieldGridData>();
   /** Entity-mesh lifecycle — live animated meshes + pooled-prop positions + the
    *  async spawn→build state machine (T-282). The renderer reaches the meshes
    *  through `entities.all` / `entities.get(id)` for its per-frame pose loop. */
@@ -511,13 +514,14 @@ export class VoximRenderer {
 
   // ---- terrain ----
 
-  updateTerrain(heightmap: HeightmapData, materials: MaterialGridData, surf?: SurfaceStateGridData): void {
+  updateTerrain(heightmap: HeightmapData, materials: MaterialGridData, surf?: SurfaceStateGridData, veg?: VegFieldGridData): void {
     const cx = heightmap.chunkX, cy = heightmap.chunkY;
     const key = `${cx},${cy}`;
 
     this.terrainHmaps.set(key, heightmap);
     this.terrainMats.set(key, materials);
     if (surf) this.terrainSurf.set(key, surf);
+    if (veg) this.terrainVeg.set(key, veg);
 
     // Each cell's column floors to the lowest of its FOUR neighbours, so the new
     // chunk changes the cliff depth along every shared edge — rebuild all four
@@ -550,6 +554,7 @@ export class VoximRenderer {
     // the per-material render responses into the atom build; atoms carry the
     // G6 sidecar scalars (`moss01`, `wet01`).
     const surf = this.terrainSurf.get(key);
+    const veg = this.terrainVeg.get(key) ?? null;
     const surfaceInput = surf
       ? {
         overgrowth: surf.overgrowth,
@@ -559,6 +564,7 @@ export class VoximRenderer {
           return mb ? { floor: mb.floorBias, wall: mb.wallBias, joint: mb.jointBoost } : undefined;
         },
         wets: (matId: number) => this.content?.getMaterialSync(matId)?.render?.wetness !== undefined,
+        sample: (field: string, cellIdx: number) => sampleField(field, veg, surf, null, cellIdx),
       }
       : undefined;
 
@@ -570,8 +576,8 @@ export class VoximRenderer {
       S: this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
       W: this.terrainHmaps.get(`${cx - 1},${cy}`) ?? null,
     }, surfaceInput,
-      // Stacked-voxel warp amplitude per material (render.relief.warp, T-311 P4).
-      (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief?.warp);
+      // Per-material relief response (render.relief, T-311 P4).
+      (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief);
     const meshes: THREE.Mesh[] = [];
     for (const [matId, atoms] of byMat) {
       const matDef = this.content?.getMaterialSync(matId);
@@ -617,6 +623,7 @@ export class VoximRenderer {
       this.terrainHmaps.delete(key);
       this.terrainMats.delete(key);
       this.terrainSurf.delete(key);
+      this.terrainVeg.delete(key);
       this._chunkOverlay.removeChunk(chunkX, chunkY);
     }
   }

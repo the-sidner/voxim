@@ -57,7 +57,7 @@ Deno.test("warp: exposed faces + course seams jitter; lip, base and welds stay e
   const { hm, mats } = flatChunk(2);
   // West half raised → cliff cells at x=15, EAST face exposed, WEST face welded.
   for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
-  const relief = (matId: number) => (matId === 3 ? 0.3 : undefined);
+  const relief = (matId: number) => (matId === 3 ? { warp: 0.3 } : undefined);
   const plain = [...buildChunkAtoms(hm, mats, {}).values()].flat();
   const warpedA = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat();
   const warpedB = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat();
@@ -101,7 +101,7 @@ Deno.test("warp: exposed faces + course seams jitter; lip, base and welds stay e
 Deno.test("warp keeps courses gap-free (stones overlap into each other, never apart)", () => {
   const { hm, mats } = flatChunk(2);
   for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
-  const relief = () => 0.3;
+  const relief = () => ({ warp: 0.3 });
   const stack = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat()
     .filter((a) => a.cx > 14.6 && a.cx < 16.4 && a.cy > 15.9 && a.cy < 17.1 && a.sz > 0.3 && a.sz < 2.5)
     .sort((a, b) => b.cz - a.cz);
@@ -111,4 +111,45 @@ Deno.test("warp keeps courses gap-free (stones overlap into each other, never ap
     const below = stack[i].cz + stack[i].sz / 2;
     assert(below >= above - 1e-9, "no z gap between courses (overlap is fine)");
   }
+});
+
+Deno.test("surface roughness: field-modulated dispSeed on flat slabs; zero field = exact", () => {
+  const { hm, mats } = flatChunk(2);
+  const relief = () => ({
+    surfaceWarp: 0.15,
+    surfaceWarpField: [{ field: "traffic", curve: "linear" as const, min: 0.55, max: 0.05, weight: 1.0 }],
+  });
+  // traffic plane: left half trodden (255 → smooth), right half wilderness (0 → rough)
+  const surface = {
+    overgrowth: new Uint8Array(CHUNK * CHUNK),
+    wetness: new Uint8Array(CHUNK * CHUNK),
+    mossBiasFor: () => undefined,
+    wets: () => false,
+    sample: (field: string, cellIdx: number) =>
+      field === "traffic" ? ((cellIdx % CHUNK) < 16 ? 1 : 0) : 0,
+  };
+  const plain = [...buildChunkAtoms(hm, mats, {}).values()].flat();
+  const roughA = [...buildChunkAtoms(hm, mats, {}, surface, relief).values()].flat();
+  const roughB = [...buildChunkAtoms(hm, mats, {}, surface, relief).values()].flat();
+  assertEquals(roughA, roughB, "deterministic");
+  assertEquals(plain.length, roughA.length);
+
+  let roughCount = 0, smoothCount = 0;
+  for (let i = 0; i < plain.length; i++) {
+    const p = plain[i], w = roughA[i];
+    const lx = Math.round(p.cx - 0.5);
+    if (lx < 16) {
+      // trodden: field → 0 ⇒ byte-identical slab (no seed, no oversize)
+      assertEquals(w, p, "trodden cells stay exact");
+      smoothCount++;
+    } else {
+      // wilderness: field → 1 ⇒ seeded, chunkier, oversized into solid
+      assertEquals(typeof w.dispSeed, "number", "wilderness slab is seeded");
+      assert(w.dispMag! > 0.045, "wilderness slab displaces chunkier");
+      assert(w.sx > p.sx && w.sz > p.sz, "wilderness slab oversizes into solid");
+      assert(w.cz + w.sz / 2 <= p.cz + p.sz / 2 + 1e-9, "top face never rises above collision h");
+      roughCount++;
+    }
+  }
+  assert(roughCount > 0 && smoothCount > 0);
 });
