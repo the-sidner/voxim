@@ -17,7 +17,9 @@ export interface FieldTerm {
   field: string;
   /** Remap shape applied to the normalised, min/max-windowed sample. */
   curve: FieldCurve;
-  /** Input window: sample values ≤min → 0, ≥max → 1 before the curve. */
+  /** Input window: sample values ≤min → 0, ≥max → 1 before the curve.
+   *  min > max INVERTS the ramp (≥min → 0, ≤max → 1) — the "denser in shade"
+   *  authoring idiom (`min: 1.0, max: 0.15` on canopyLight). */
   min: number;
   max: number;
   /** Contribution scale; terms sum then clamp to [0,1]. */
@@ -56,7 +58,11 @@ export function evaluateFieldExpr(expr: FieldExpr, sample: (field: string) => nu
   for (const term of expr) {
     const raw = sample(term.field);
     const span = term.max - term.min;
-    const t = span <= 1e-6 ? (raw >= term.max ? 1 : 0) : (raw - term.min) / span;
+    // |span|≈0 degenerates to a threshold at max. A NEGATIVE span (min > max) is
+    // the inverted ramp — the plain (raw-min)/span already descends there, so it
+    // must NOT fall into the degenerate branch (a `span <= 0` guard silently
+    // turned every authored "denser in shade" window into raw≥max — T-311 P4).
+    const t = Math.abs(span) <= 1e-6 ? (raw >= term.max ? 1 : 0) : (raw - term.min) / span;
     sum += term.weight * applyCurve(t, term.curve);
   }
   return clamp01(sum);

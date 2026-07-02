@@ -26,6 +26,20 @@ Deno.test("T-311: step + smoothstep curves", () => {
   assert(evaluateFieldExpr(ss, sample({ corruption: 0.25 })) < 0.25);     // eased in
 });
 
+Deno.test("T-311 P4: inverted window (min > max) is a descending ramp", () => {
+  // The "denser in shade" idiom: canopyLight 1.0 → 0, 0.15 → 1.
+  const inv: FieldExpr = [{ field: "canopyLight", curve: "linear", min: 1.0, max: 0.15, weight: 1 }];
+  assertEquals(evaluateFieldExpr(inv, sample({ canopyLight: 1.0 })), 0);
+  assertEquals(evaluateFieldExpr(inv, sample({ canopyLight: 0.15 })), 1);
+  assertEquals(evaluateFieldExpr(inv, sample({ canopyLight: 0 })), 1);      // below max clamps to 1
+  const mid = evaluateFieldExpr(inv, sample({ canopyLight: 0.575 }));       // window midpoint
+  assert(Math.abs(mid - 0.5) < 1e-6, `midpoint → 0.5, got ${mid}`);
+  // Degenerate window (min == max) stays a threshold at max.
+  const deg: FieldExpr = [{ field: "wear", curve: "linear", min: 0.5, max: 0.5, weight: 1 }];
+  assertEquals(evaluateFieldExpr(deg, sample({ wear: 0.49 })), 0);
+  assertEquals(evaluateFieldExpr(deg, sample({ wear: 0.51 })), 1);
+});
+
 Deno.test("T-311: terms sum then clamp to [0,1]", () => {
   const e: FieldExpr = [
     { field: "fertility", curve: "linear", min: 0, max: 1, weight: 0.7 },
