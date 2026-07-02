@@ -270,6 +270,7 @@ function viewOf(arr: ArrayBufferView): Uint8Array {
  *   rivers:          openMask (mutated), kindOf (mutated)
  *   terrain:         heightMap
  *   materials:       materials
+ *   fields:          all FieldPlanes planes (T-315 A5)
  *
  * Hash always covers the union of all mutable fields a stage might
  * have touched, even if no actual change occurred — that's a strict
@@ -329,6 +330,15 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
       h ^= fnv1aString(JSON.stringify((s.level as { narrative: unknown }).narrative));
       h ^= fnv1aString(JSON.stringify((s.level as { edges: { stairs: unknown } }).edges.stairs));
       break;
+    case "fields": {
+      // T-315 A5: was silently excluded — a corrupted/regressed field
+      // plane was invisible to divergence detection. Sorted key order
+      // keeps the xor combination deterministic (doesn't affect the
+      // result, which is order-independent anyway, per the doc above).
+      const f = s.fields as Record<string, ArrayBufferView>;
+      for (const k of Object.keys(f).sort()) h ^= fnv1aBytes(viewOf(f[k]));
+      break;
+    }
   }
   return h >>> 0;
 }
