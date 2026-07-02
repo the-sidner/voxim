@@ -88,7 +88,7 @@ export class ScatterRenderer {
     registerBuiltinGenerators();
     this.defs = [...content.scatter.values()];
     this.needsMaterials = this.defs.some((d) => d.material !== undefined);
-    this.needsFields = this.defs.some((d) => d.densityField !== undefined);
+    this.needsFields = this.defs.some((d) => d.densityField !== undefined || d.morphField !== undefined);
     world.onChunkKinds((coord, kinds) => {
       if (!this.decorated.has(coord)) this.queue.push({ coord, kinds });
       if (this.active) this.scheduleDrain();
