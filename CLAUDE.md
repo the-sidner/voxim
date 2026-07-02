@@ -85,7 +85,6 @@ a migration debt you've signed yourself up for. Take the big diff instead.
 deno task demo          # bundle client + start tile server
 deno task tile          # server only
 deno task bundle        # client bundle only
-deno task gen-terrain   # regenerate terrain_tile_0.bin
 # content auto-loads from packages/content/data/ at server boot — no aggregation step needed
 deno check packages/tile-server/mod.ts packages/client/src/game.ts packages/codecs/mod.ts packages/content/mod.ts
 ```
