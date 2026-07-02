@@ -26,7 +26,9 @@ import { newEntityId } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import {
   Heightmap, MaterialGrid, OpenMask, KindGrid,
+  VegFieldGrid, SurfaceStateGrid, WaterGrid,
   type HeightmapData, type MaterialGridData, type OpenMaskData, type KindGridData,
+  type VegFieldGridData, type SurfaceStateGridData, type WaterGridData,
 } from "@voxim/world";
 import type { System, EventEmitter } from "../system.ts";
 import { Position } from "../components/game.ts";
@@ -44,6 +46,9 @@ interface CachedChunk {
   materialGrid: MaterialGridData;
   openMask: OpenMaskData;
   kindGrid: KindGridData;
+  vegFieldGrid: VegFieldGridData;
+  surfaceStateGrid: SurfaceStateGridData;
+  waterGrid: WaterGridData;
 }
 
 export class ChunkLifecycleSystem implements System {
@@ -117,18 +122,35 @@ export class ChunkLifecycleSystem implements System {
     }
   }
 
-  /** Deep-copy a chunk's four grid components, or null if any is missing. */
+  /** Deep-copy a chunk's seven grid components, or null if any is missing. */
   private snapshot(world: World, id: EntityId): CachedChunk | null {
     const hm = world.get(id, Heightmap);
     const mg = world.get(id, MaterialGrid);
     const om = world.get(id, OpenMask);
     const kg = world.get(id, KindGrid);
-    if (!hm || !mg || !om || !kg) return null;
+    const vg = world.get(id, VegFieldGrid);
+    const sg = world.get(id, SurfaceStateGrid);
+    const wg = world.get(id, WaterGrid);
+    if (!hm || !mg || !om || !kg || !vg || !sg || !wg) return null;
     return {
       heightmap: { data: hm.data.slice(), chunkX: hm.chunkX, chunkY: hm.chunkY },
       materialGrid: { data: mg.data.slice() },
       openMask: { data: om.data.slice() },
       kindGrid: { data: kg.data.slice() },
+      vegFieldGrid: {
+        canopyLight: vg.canopyLight.slice(),
+        corruption: vg.corruption.slice(),
+        fertility: vg.fertility.slice(),
+      },
+      surfaceStateGrid: {
+        wetness: sg.wetness.slice(),
+        overgrowth: sg.overgrowth.slice(),
+        wear: sg.wear.slice(),
+        variantIndex: sg.variantIndex.slice(),
+        ruinAge: sg.ruinAge.slice(),
+        traffic: sg.traffic.slice(),
+      },
+      waterGrid: { surfaceLevel: wg.surfaceLevel.slice() },
     };
   }
 
@@ -147,6 +169,20 @@ export class ChunkLifecycleSystem implements System {
     world.write(id, MaterialGrid, { data: cached.materialGrid.data.slice() });
     world.write(id, OpenMask, { data: cached.openMask.data.slice() });
     world.write(id, KindGrid, { data: cached.kindGrid.data.slice() });
+    world.write(id, VegFieldGrid, {
+      canopyLight: cached.vegFieldGrid.canopyLight.slice(),
+      corruption: cached.vegFieldGrid.corruption.slice(),
+      fertility: cached.vegFieldGrid.fertility.slice(),
+    });
+    world.write(id, SurfaceStateGrid, {
+      wetness: cached.surfaceStateGrid.wetness.slice(),
+      overgrowth: cached.surfaceStateGrid.overgrowth.slice(),
+      wear: cached.surfaceStateGrid.wear.slice(),
+      variantIndex: cached.surfaceStateGrid.variantIndex.slice(),
+      ruinAge: cached.surfaceStateGrid.ruinAge.slice(),
+      traffic: cached.surfaceStateGrid.traffic.slice(),
+    });
+    world.write(id, WaterGrid, { surfaceLevel: cached.waterGrid.surfaceLevel.slice() });
   }
 
   /** Test/diagnostics: number of chunks currently held in the unload cache. */
