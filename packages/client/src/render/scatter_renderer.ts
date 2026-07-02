@@ -48,7 +48,6 @@ function mix32(a: number, b: number): number {
   return (x ^ (x >>> 16)) >>> 0;
 }
 
-/** Cheap 2D integer hash for per-cell variant / rotation / scale selection. */
 /**
  * Closed-vocabulary read of a FIELD_NAME → [0,1] at one cell (T-311 P4). A
  * name→plane binding (not a switch on kind): the 9 u8 planes normalise by 255;
@@ -79,11 +78,14 @@ function sampleField(
   return 0;
 }
 
+/** Cheap 2D integer hash for per-cell variant / rotation / scale selection. */
 function hash2u(x: number, y: number): number {
-  let n = ((x * 1619) ^ (y * 31337) ^ 0x9e3779b1) | 0;
-  n = ((n << 13) ^ n) | 0;
-  n = (n * ((n * n * 15731 + 789221) | 0) + 1376312589) | 0;
-  return n >>> 0;
+  // Full-avalanche 2D hash (murmur3 finalizer via mix32). The previous
+  // Perlin-style integer noise (n·(n²·15731+789221)+…) only mixes its HIGH
+  // bits — its low 16 bits are heavily biased on cell lattices (measured
+  // median 56576/65535), which silently broke every `(h & 0xffff)/0xffff`
+  // probability gate (keep-gate, cluster dither) and the `% variants` pick.
+  return mix32(Math.imul(x | 0, 0x1f1f1f1f) | 0, Math.imul(y | 0, 0x2545f491) | 0);
 }
 
 export class ScatterRenderer {
