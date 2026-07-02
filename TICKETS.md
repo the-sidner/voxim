@@ -1180,7 +1180,18 @@ cell piles 2–5 full-footprint stone boxes base→lip; the hand-stacked read co
 language alone: exposed-face warp (`render.relief.warp`, the relief block's first consumer; deterministic
 voxHash, welded faces/z/top stone exact), per-voxel tint, corner displacement, per-stone Sobel ink.
 Live-verified: the pale zigzag ledge artifacts on every cliff edge are gone, TRIS 1718k→1679k. The
-stack TRIGGER stays the client stopgap P6 retires — the stacked-stone language survives on the atoms. Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
+stack TRIGGER stays the client stopgap P6 retires — the stacked-stone language survives on the atoms.
+**Stacked-voxel language completed (`dc93a14`, `3dd769a`):** `VoxelAtom.dispSeed` decorrelates a voxel's
+corner warp from the world-position weld — stones/slabs poke out of the merged mesh, clip into each other
+(deliberate) and get their own facet normals (per-stone light); oversize-into-known-solid (≥ max corner
+roll) guarantees gaps never see through the wall. Extended to the walkable floor as
+`relief.surfaceWarp` + `surfaceWarpField` (FieldExpr, boot-checked): rough clod-mosaic wilderness,
+perfectly smooth trodden paths (traffic-inverted) — one grammar, two consumers; field sampler shared
+(`field_sample.ts`). **Found + fixed en route: ALL terrain had rendered FALLBACK grey** — the legacy
+ContentCache never held ground materials, so getMaterialSync returned undefined and every
+`MaterialDef.render` response silently no-opped on terrain; now falls back to the bootstrap
+ContentService (scene-probe verified: real colours + textures live, golden paths, textured stone).
+Grade retune against the REAL material colours is an open content follow-up. Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
 T-310 arcing sun) + creature fragmentation (G6/I3b) + cheap water reflection.
 
 ### T-312b · re-apply atlas render-fields on save-load
