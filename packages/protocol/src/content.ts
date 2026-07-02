@@ -13,6 +13,7 @@
  */
 import type { Serialiser } from "@voxim/engine";
 import type { ModelDefinition, MaterialDef, SkeletonDef } from "@voxim/content";
+import { encodeFrame } from "./framing.ts";
 
 // Re-export so consumers can import wire types from @voxim/protocol.
 export type { ModelDefinition, MaterialDef, SkeletonDef } from "@voxim/content";
@@ -34,15 +35,10 @@ export type ContentResponse =
 
 // ---- codecs ----
 
-const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 function encodeJson(value: unknown): Uint8Array {
-  const payload = enc.encode(JSON.stringify(value));
-  const out = new Uint8Array(4 + payload.byteLength);
-  new DataView(out.buffer).setUint32(0, payload.byteLength, true);
-  out.set(payload, 4);
-  return out;
+  return encodeFrame(value);
 }
 
 function decodeJson<T>(bytes: Uint8Array): T {

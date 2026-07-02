@@ -1235,10 +1235,7 @@ export class TileServer {
           aoiRadius, this.sessions.size,
         );
         const payload = binaryStateMessageCodec.encode(msg);
-        const framed = new Uint8Array(4 + payload.byteLength);
-        new DataView(framed.buffer).setUint32(0, payload.byteLength, true);
-        framed.set(payload, 4);
-        session.sendStateRaw(framed);
+        session.sendStateRaw(encodeFrame(payload));
       }
     }
     _sysMs.push(["[send]", performance.now() - _tSend]);
@@ -1639,10 +1636,7 @@ export class TileServer {
       onlineCount: this.sessions.size,
     };
     const payload = binaryStateMessageCodec.encode(msg);
-    const framed = new Uint8Array(4 + payload.byteLength);
-    new DataView(framed.buffer).setUint32(0, payload.byteLength, true);
-    framed.set(payload, 4);
-    session.sendStateRaw(framed);
+    session.sendStateRaw(encodeFrame(payload));
   }
 
   private spawnWorldState(content: ContentService): void {
@@ -1834,10 +1828,7 @@ export class TileServer {
         this.sessions.size,
       );
       const initialPayload = binaryStateMessageCodec.encode(initialMsg);
-      const initialFramed = new Uint8Array(4 + initialPayload.byteLength);
-      new DataView(initialFramed.buffer).setUint32(0, initialPayload.byteLength, true);
-      initialFramed.set(initialPayload, 4);
-      clientSession.sendStateRaw(initialFramed);
+      clientSession.sendStateRaw(encodeFrame(initialPayload));
     }
 
     // Subsequent ticks will send deltas via the normal AoI loop.
