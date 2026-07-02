@@ -1138,8 +1138,20 @@ fertile/shaded cells read DENSE and dry rock thins to nothing; all instances of 
 Authored into grass (0-5, r1.4) + fern (0-3, r2.2). End-to-end live proof on a SAVE-loaded world after the
 T-312b fix: fields reach the client (fertility 66-167, canopyLight 0-255 varying), all 256 chunks decorate,
 962 scatter instances place (oak 792, grass 133 clustered, fern 31, rock 6) — visually a dense forest.
-Remaining P4: bush/mushroom field-tuning (place 0 near spawn — likely material/gate mismatch), corruption-
-morph generators, moss-creep (`mossBlend`×overgrowth into the per-voxel colour), wetness specular, decals.
+**Bush/mushroom zero-placement SOLVED** — the live placement-funnel probe traced it to THREE substrate
+bugs, all fixed: (1) FieldExpr inverted windows (min>max, the "denser in shade" idiom) silently degenerated
+to a raw≥max threshold via the `span<=1e-6` guard — the declutter pass (415dad2) actually placed ZERO oaks
+(`15b4862`); (2) round() on the cluster-count lerp cliffed everything under density 0.25 to empty
+(`90a8979`, stochastic hash-dithered rounding — field decides expected count, hash only dithers);
+(3) hash2u was Perlin integer noise whose low 16 bits are garbage on cell lattices (median 56576/65535) —
+every `(h&0xffff)` probability gate was broken, the REAL bush=0 cause + a near-constant variant pick
+(`08d46c8`, murmur3 mix32). Plus the atlas gap the probe exposed: fertility was near-FLAT outside chambers
+(no signal could carry groves at all) → **fertility dapple** fbm modulation in `deriveFieldPlanes`
+(`feb10e4`, GenParams `fertilityDappleAmp/Scale`, re-bake). Defs re-authored to the MEASURED band
+(ground fertility mean 0.26, band 0.14–0.45; `aee129f`): live-verified oak 962 grove-varied /
+grass 9.6k / fern 4.8k / mushroom 1.4k / bush 173 / rock 296, paths clear, under InstancePool caps.
+Remaining P4: corruption-morph generators, moss-creep (`mossBlend`×overgrowth into the per-voxel
+colour), wetness specular, decals.
 
 ### T-312b · re-apply atlas render-fields on save-load
 Effort: S   Status: done   Commit: 1248388
