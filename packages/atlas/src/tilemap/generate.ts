@@ -260,7 +260,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
   };
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+export function bytesToBase64(bytes: Uint8Array): string {
   // Chunked to avoid blowing the call stack on String.fromCharCode.apply.
   let s = "";
   const chunk = 0x8000;
@@ -270,7 +270,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array {
   if (typeof b64 !== "string") {
     throw new Error(
       `tile-init wire decode: expected base64 string, got ${b64 === undefined ? "undefined" : typeof b64}; ` +

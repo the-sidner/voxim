@@ -113,7 +113,7 @@ export const network: Transformer<JunctionsState, NetworkState, GenParams["netwo
     return { ...state, openMask, corridors, degrees };
   };
 
-function sampleWidth(rng: () => number, params: GenParams["network"]): number {
+export function sampleWidth(rng: () => number, params: GenParams["network"]): number {
   const lo = Math.min(params.widthMin, params.widthMax);
   const hi = Math.max(params.widthMin, params.widthMax);
   if (lo === hi) return lo;

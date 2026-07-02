@@ -38,7 +38,7 @@ export const FIELD_NAMES = [
 
 const FIELD_SET: ReadonlySet<string> = new Set(FIELD_NAMES);
 
-function clamp01(x: number): number {
+export function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 

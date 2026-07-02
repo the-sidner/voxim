@@ -31,6 +31,7 @@ import type { GenParams } from "../genparams.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import type { ContentService } from "@voxim/content";
 import { DEFAULT_TILE_SIZE, DEFAULT_GRID_SIZE } from "./types.ts";
+import { bytesToBase64, base64ToBytes } from "./generate.ts";
 
 // ---- cache ----------------------------------------------------------------
 
@@ -348,9 +349,9 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
  * become base64 with a kind tag. Anything else passes through as JSON.
  */
 function encodeTA(v: unknown): { __ta: string; b64: string } | null {
-  if (v instanceof Uint8Array)   return { __ta: "u8",  b64: b64Of(v) };
-  if (v instanceof Uint16Array)  return { __ta: "u16", b64: b64Of(viewOf(v)) };
-  if (v instanceof Float32Array) return { __ta: "f32", b64: b64Of(viewOf(v)) };
+  if (v instanceof Uint8Array)   return { __ta: "u8",  b64: bytesToBase64(v) };
+  if (v instanceof Uint16Array)  return { __ta: "u16", b64: bytesToBase64(viewOf(v)) };
+  if (v instanceof Float32Array) return { __ta: "f32", b64: bytesToBase64(viewOf(v)) };
   return null;
 }
 
@@ -379,7 +380,7 @@ export function encodeState(state: unknown): unknown {
 }
 
 function decodeTA(tagged: { __ta: string; b64: string }): unknown {
-  const bytes = bytesFromB64(tagged.b64);
+  const bytes = base64ToBytes(tagged.b64);
   if (tagged.__ta === "u8")  return bytes;
   if (tagged.__ta === "u16") return new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
   if (tagged.__ta === "f32") return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
@@ -405,18 +406,3 @@ export function decodeState(payload: unknown): unknown {
   return out;
 }
 
-function b64Of(bytes: Uint8Array): string {
-  let s = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    s += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-  }
-  return btoa(s);
-}
-
-function bytesFromB64(b64: string): Uint8Array {
-  const s = atob(b64);
-  const out = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
-  return out;
-}

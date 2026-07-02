@@ -11,10 +11,7 @@
  * remap cells; the per-cell grid will store that resolved index.
  */
 import type { MaterialDef } from "./types.ts";
-
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
-}
+import { clamp01 } from "./field_expr.ts";
 
 function rgbToHsl(c: number): [number, number, number] {
   const r = ((c >> 16) & 0xff) / 255, g = ((c >> 8) & 0xff) / 255, b = (c & 0xff) / 255;

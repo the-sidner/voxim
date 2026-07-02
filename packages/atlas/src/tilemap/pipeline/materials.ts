@@ -31,6 +31,7 @@ import {
   BOUNDARY_KIND_GRASS_MOUND,
   BOUNDARY_KIND_WATER,
 } from "./boundary_kinds.ts";
+import { ROOM_ID_NONE } from "./room_detection.ts";
 import type { MaterialsState, TerrainState } from "./state.ts";
 
 /**
@@ -51,12 +52,6 @@ export const MATERIAL_MUD    = 7;
 export const MATERIAL_MOSS   = 8;
 export const MATERIAL_PATH   = 9;
 export const MATERIAL_SNOW   = 10;
-
-/** Sentinel for chamberOf — pixels that are open but not inside a chamber
- *  (i.e. corridor pixels carved by the network/portal stages). Mirrors
- *  `ROOM_ID_NONE` from rooms.ts; duplicated here to keep this file self-
- *  contained. */
-const ROOM_ID_NONE = 0xFFFF;
 
 const DETAIL_SUB_SEED  = 0x50005001;
 const SPREAD_SUB_SEED  = 0xC0FFEE17;

@@ -18,6 +18,7 @@
 import type { Transformer } from "@voxim/levelgen";
 import { runRoomDetection } from "./room_detection.ts";
 import { carveSpline, makeWaypoints, clampPx } from "./bezier_carve.ts";
+import { sampleWidth } from "./network.ts";
 import type { Corridor, Portal } from "../types.ts";
 import type { Edge, GateSpec } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
@@ -118,13 +119,6 @@ export const portalPlacement: Transformer<RoomsState, PortalsState, GenParams["n
     corridors: priorCorridors.concat(corridors),
   };
 };
-
-function sampleWidth(rng: () => number, params: GenParams["network"]): number {
-  const lo = Math.min(params.widthMin, params.widthMax);
-  const hi = Math.max(params.widthMin, params.widthMax);
-  if (lo === hi) return lo;
-  return lo + Math.floor(rng() * (hi - lo + 1));
-}
 
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;
