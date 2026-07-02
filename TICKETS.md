@@ -338,6 +338,21 @@ When the player entity is inside the enclosure, the roof is hidden (player sees 
 When outside, the roof is visible.
 Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
 
+### T-315 · Terrain-path comb — pull atlas→world→server→wire→client back in line
+Effort: L   Status: todo
+
+Multi-agent audit (2026-07-02) of the whole terrain/level-generator path found 73 deduped drift
+findings (27 adversarially confirmed, incl. all 7 high): field grids destroyed on chunk
+unload/reload (ChunkLifecycle sister-bug of T-312b), the dead gen-terrain path, the orphaned+drifted
+terrain_config.json decoy, WALL_HEIGHT as dead GenParam vs hardcoded 2.0 consumers, ContentCache as
+legacy parallel path, nine-copy hash/PRNG family, tuning stranded in code (TERRAIN_DISP_MAG vs the
+unread relief.dispMag knob), and a three-name axis vocabulary. Plan: `TERRAIN_COMB_PLAN.md` —
+six phases: A substrate bugs · B delete-the-dead · C one-value-one-owner · D tuning→content ·
+E single-owner structures (ContentCache, client chunk-state, server chunk-join, atlas assembly) ·
+F naming/honesty sweep. Explicitly defers water/SUN_DIR/CLIFF_* to T-311 P5/P6.
+Done when: all six phases landed (each bullet one commit), `deno check` green, testplay pass after
+A/D/E, and the plan doc marked done with the closing commit hash.
+
 ## Client Rebuild
 
 The full plan lives in `CLIENT_REBUILD_PLAN.md` (grounded in an 8-subsystem audit).
