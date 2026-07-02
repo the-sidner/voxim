@@ -119,6 +119,19 @@ export interface StairUnlockOptions {
  *   mutated. Returns the count of pixels affected so callers can log /
  *   verify.
  *
+ * ACCEPTED DIVERGENCE (T-315 A4): this carves a ramp through wilderness
+ * AFTER the atlas's derived render-field planes (fertility/wetness/
+ * overgrowth/traffic, `FieldPlanes`) have already been computed — the
+ * fields under the fresh ramp surface keep reading "wild" instead of
+ * "path". Left as-is deliberately: the disturbance-driven roughness
+ * response is already a continuous gradient across the wilderness/path
+ * boundary, so this reads as a soft edge rather than a visible seam, and
+ * a correct fix needs a directional gradient (not a flat overwrite like
+ * the POI room stamp gets) — more machinery than a substrate-bugfix
+ * phase should absorb. If it becomes visually offensive, it belongs in
+ * P6's terraced-cliff rework, which already owns this file's CLIFF_MIN/
+ * STONE_H-adjacent territory.
+ *
  * Algorithm:
  *   1. Determine climb direction: from anchor → wilderness centroid.
  *      Approximated by sampling the 4 neighbours and picking the one

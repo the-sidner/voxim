@@ -68,6 +68,18 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+/** The four render-field planes a room POI de-natures for its footprint
+ *  (indoor/worked ⇒ no forest fields). Same flat TILE_SIZE² indexing as
+ *  `heights`/`opens`/`kinds`/`materials`. Stair ramps carve through
+ *  wilderness too but are NOT covered here — their field divergence is
+ *  accepted (see `applyStairUnlock`'s doc comment, T-315 A4). */
+export interface RoomFieldPlanes {
+  fertility: Uint8Array;
+  wetness: Uint8Array;
+  overgrowth: Uint8Array;
+  traffic: Uint8Array;
+}
+
 /**
  * Place POIs for every chamber.  Mutates `heights` / `opens` / `kinds` /
  * `materials` in place for room POIs; returns a list of mob spawns for the
@@ -75,12 +87,18 @@ function mulberry32(seed: number): () => number {
  *
  * `woodMaterialId` and `floorMaterialFallbackId` are tile-server's content
  * material ids (atlas-id translation has already happened by this point).
+ *
+ * `fields` are the atlas's derived render-field planes (T-311 P3) for the
+ * SAME tile buffers — room POIs de-nature them under the stamped footprint
+ * so a walled room doesn't keep reading the forest fertility/wetness it
+ * replaced (T-315 A4).
  */
 export function placePois(
   heights: Float32Array,
   opens: Uint8Array,
   kinds: Uint16Array,
   materials: Uint16Array,
+  fields: RoomFieldPlanes,
   chambers: ChamberInfo[],
   tileSeed: number,
   woodMaterialId: number,
@@ -113,7 +131,7 @@ export function placePois(
       mobChambers++;
     } else if (roll < P_MOB + P_ROOM) {
       // Room POI — stamp a 5×5 wooden enclosure around the chamber centre.
-      stampRoom(heights, opens, kinds, materials, cx, cy, woodMaterialId);
+      stampRoom(heights, opens, kinds, materials, fields, cx, cy, woodMaterialId);
       roomChambers++;
     }
     // else: empty chamber.
@@ -149,12 +167,18 @@ export function spawnMobPois(
  *
  * The room footprint is `(2*ROOM_HALF + 1)` cells per axis.  Walls form a
  * one-cell-thick perimeter; the interior stays open.
+ *
+ * De-natures `fields` (fertility/wetness/overgrowth→0, traffic→walked)
+ * across the FULL footprint — walls AND interior — so the room reads as
+ * indoor/worked rather than keeping the forest fields it replaced. Height/
+ * open/kind/material stay wall-perimeter-only as before (T-315 A4).
  */
 function stampRoom(
   heights: Float32Array,
   opens: Uint8Array,
   kinds: Uint16Array,
   materials: Uint16Array,
+  fields: RoomFieldPlanes,
   cx: number,
   cy: number,
   woodMaterialId: number,
@@ -174,12 +198,21 @@ function stampRoom(
 
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
+      const idx = x + y * TILE_SIZE;
+
+      // Indoor/worked field de-naturing covers the whole footprint (walls
+      // AND interior floor) — a walled room shouldn't keep reading the
+      // forest fertility/wetness/overgrowth it replaced.
+      fields.fertility[idx]  = 0;
+      fields.wetness[idx]    = 0;
+      fields.overgrowth[idx] = 0;
+      fields.traffic[idx]    = 128; // moderate, walked-interior traffic
+
       const onPerimeter =
         x === x0 || x === x1 || y === y0 || y === y1;
       if (!onPerimeter) continue;
       if (x === doorX && y === doorY) continue;
 
-      const idx = x + y * TILE_SIZE;
       heights[idx]   = wallY;
       opens[idx]     = 0;
       kinds[idx]     = BOUNDARY_KIND_STONE; // suppress forest decoration

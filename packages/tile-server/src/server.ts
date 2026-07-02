@@ -961,6 +961,7 @@ export class TileServer {
         atlas.openBuffer,
         atlas.kindBuffer,
         atlas.materialBuffer,
+        atlas.fields,
         atlas.chambers,
         tileSeed,
         woodMat.id,
