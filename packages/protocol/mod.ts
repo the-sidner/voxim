@@ -15,17 +15,6 @@ export {
   resolveServiceSecret,
 } from "./src/service_auth.ts";
 
-export {
-  WORLD_MAP_VERSION,
-  encodeWorldMap,
-  decodeWorldMap,
-} from "./src/world_map.ts";
-export type {
-  WorldMapCell,
-  WorldMapPayload,
-  GatePosition,
-} from "./src/world_map.ts";
-
 export type {
   MovementDatagram,
   CommandDatagram,

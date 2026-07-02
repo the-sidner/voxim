@@ -12,9 +12,16 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
-import type { GatePosition } from "@voxim/protocol";
 import { Position } from "./components/game.ts";
 import { GateLink } from "./components/gate.ts";
+
+/** Gate placement on a tile edge, derived from atlas cell metadata at boot. */
+export interface GatePosition {
+  /** "north" | "south" | "east" | "west" — which edge the gate sits on. */
+  edge: "north" | "south" | "east" | "west";
+  /** Tile id on the other side of the gate (the destination). */
+  toTileId: string;
+}
 
 /** World units. Tile width is 512 in the dev build. */
 const TILE_SIZE = 512;

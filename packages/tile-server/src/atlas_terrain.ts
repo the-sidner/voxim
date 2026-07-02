@@ -13,7 +13,7 @@
  */
 
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
-import type { GatePosition } from "@voxim/protocol";
+import type { GatePosition } from "./gate.ts";
 import type { ContentService } from "@voxim/content";
 import {
   tileInitFromWire,
@@ -238,10 +238,10 @@ export async function loadTerrainFromAtlas(
   for (const edge of ["north", "east", "south", "west"] as const) {
     const g = gates[edge];
     if (!g) continue;
-    // Note: protocol's GatePosition is currently edge-only (offset lives
-    // inside atlas's tile_init.portals[]). Until tile-server's gate system
-    // honours per-edge offsets, gates spawn at edge midpoints — a small
-    // visual disagreement vs. the inspector's gate dots.
+    // Note: GatePosition is currently edge-only (offset lives inside
+    // atlas's tile_init.portals[]). Until tile-server's gate system honours
+    // per-edge offsets, gates spawn at edge midpoints — a small visual
+    // disagreement vs. the inspector's gate dots.
     gatePositions.push({
       edge,
       toTileId: `${g.toCellX}_${g.toCellY}`,

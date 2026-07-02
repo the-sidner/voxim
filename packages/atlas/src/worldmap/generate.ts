@@ -18,9 +18,8 @@ import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
 
 /**
  * Tile size in world units. Must match the runtime tile size; today
- * that's protocol's TILE_WORLD_SIZE (512). Held locally so atlas isn't
- * coupled to the legacy WorldMapPayload types in protocol — those will
- * be retired once tile-server reads tile_init from atlas.
+ * that's protocol's TILE_WORLD_SIZE (512). Held locally so atlas stays
+ * decoupled from protocol's tile-server-facing types.
  */
 const TILE_WORLD_SIZE = 512;
 /** Margin from tile corners where gates are clamped, in world units. */
