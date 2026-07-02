@@ -128,14 +128,6 @@ function drawWood(
   r: number, g: number, b: number,
 ): void {
   const S = 32;
-  const img = ctx.getImageData(0, 0, S, S) || (() => {
-    ctx.fillStyle = rgba(r, g, b);
-    ctx.fillRect(0, 0, S, S);
-    return ctx.getImageData(0, 0, S, S);
-  })();
-  ctx.fillStyle = rgba(r, g, b);
-  ctx.fillRect(0, 0, S, S);
-  const d = ctx.getImageData(0, 0, S, S).data;
   const imgData = ctx.createImageData(S, S);
   const o = imgData.data;
   for (let y = 0; y < S; y++) {
