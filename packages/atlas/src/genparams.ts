@@ -214,6 +214,32 @@ export interface GenParams {
      * 36%, etc.
      */
     branchLengthFraction: number;
+    /** Max spawnBranches attempts rolled per corridor (each attempt
+     *  independently rolls against branchRate). */
+    branchMaxAttemptsPerCorridor: number;
+    /**
+     * A branch's start point is sampled at
+     * `t = branchPositionMin + rng() × branchPositionRange` along the
+     * parent spline. Default [0.2, +0.6] → t ∈ [0.2, 0.8]. (Stored as
+     * min + range rather than min/max so the default reproduces the
+     * exact float sequence of the original hand-written literals —
+     * `max - min` for 0.8 - 0.2 is not bit-identical to the literal 0.6.)
+     */
+    branchPositionMin: number;
+    branchPositionRange: number;
+    /** Angular jitter amplitude (radians) applied to a branch's
+     *  perpendicular-off-parent direction; actual jitter is uniform in
+     *  [-jitter/2, +jitter/2]. */
+    branchAngleJitter: number;
+    /**
+     * The ×random length-variance multiplier applied to
+     * parentLen × branchLengthFraction is
+     * `branchLengthVarianceMin + rng() × branchLengthVarianceRange`.
+     * Default [0.7, +0.6] → multiplier ∈ [0.7, 1.3]. Same min+range
+     * reasoning as branchPositionMin/Range above.
+     */
+    branchLengthVarianceMin: number;
+    branchLengthVarianceRange: number;
   };
 
   /** Per-pixel boundary kind (STONE / FOREST / GRASS_MOUND) selectors. */
@@ -395,6 +421,12 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     branchRate: 0.65,                    // most corridors spawn at least one branch
     branchMaxDepth: 2,
     branchLengthFraction: 0.55,
+    branchMaxAttemptsPerCorridor: 2,
+    branchPositionMin: 0.2,
+    branchPositionRange: 0.6,
+    branchAngleJitter: Math.PI * 0.5,
+    branchLengthVarianceMin: 0.7,
+    branchLengthVarianceRange: 0.6,
   },
   materials: {
     detailFrequency: 0.06,
@@ -509,6 +541,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         maxEdgeLength: 480, loopRate: 0.40, widthMin: 2, widthMax: 5,
         segments: 3, curvature: 0.10, bezierSamples: 240,
         branchRate: 0.25, branchMaxDepth: 1, branchLengthFraction: 0.40,
+        branchMaxAttemptsPerCorridor: 2, branchPositionMin: 0.2, branchPositionRange: 0.6,
+        branchAngleJitter: Math.PI * 0.5, branchLengthVarianceMin: 0.7, branchLengthVarianceRange: 0.6,
       },
       kinds: { ...DEFAULT_GEN_PARAMS.kinds, forestMoisture: 0.10 },
     },
@@ -534,6 +568,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         maxEdgeLength: 220, loopRate: 0.95, widthMin: 0, widthMax: 1,
         segments: 5, curvature: 0.35, bezierSamples: 200,
         branchRate: 0.85, branchMaxDepth: 3, branchLengthFraction: 0.55,
+        branchMaxAttemptsPerCorridor: 2, branchPositionMin: 0.2, branchPositionRange: 0.6,
+        branchAngleJitter: Math.PI * 0.5, branchLengthVarianceMin: 0.7, branchLengthVarianceRange: 0.6,
       },
       terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 3.0 },
       kinds: {
@@ -567,6 +603,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         maxEdgeLength: 320, loopRate: 0.75, widthMin: 2, widthMax: 4,
         segments: 4, curvature: 0.28, bezierSamples: 220,
         branchRate: 0.55, branchMaxDepth: 2, branchLengthFraction: 0.50,
+        branchMaxAttemptsPerCorridor: 2, branchPositionMin: 0.2, branchPositionRange: 0.6,
+        branchAngleJitter: Math.PI * 0.5, branchLengthVarianceMin: 0.7, branchLengthVarianceRange: 0.6,
       },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
