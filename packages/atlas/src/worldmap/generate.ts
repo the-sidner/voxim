@@ -11,7 +11,7 @@
  *   3. World-perimeter edges have no gate.
  */
 
-import { fbm, hash2 } from "../common/noise.ts";
+import { fbm, hash2 } from "@voxim/levelgen";
 import { generateRivers } from "./rivers.ts";
 import { TILE_WORLD_SIZE, GATE_INSET, type Edge, type GateSpec, type WorldCellRecord, type WorldMap } from "./types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";

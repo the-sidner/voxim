@@ -37,6 +37,7 @@
 
 import type { Transformer } from "@voxim/levelgen";
 import { splitSeed } from "@voxim/levelgen";
+import { mulberry32 } from "@voxim/engine";
 import type { ContentService, PoiDef } from "@voxim/content";
 import type { GenParams } from "../../genparams.ts";
 import type {
@@ -841,17 +842,3 @@ function addFoundStairsForExposedWilderness(
   return added;
 }
 
-// ---------------------------------------------------------------------
-// PRNG (matches the per-stage mulberry32 used elsewhere in this package)
-// ---------------------------------------------------------------------
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}

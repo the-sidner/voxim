@@ -23,7 +23,7 @@
  * terminal → edge. Sink cells: edge → interior terminal.
  */
 
-import { hash2 } from "../common/noise.ts";
+import { hash2 } from "@voxim/levelgen";
 import { TILE_WORLD_SIZE, GATE_INSET, type Edge, type RiverEndpoint, type WorldCellRecord } from "./types.ts";
 import type { GenParams } from "../genparams.ts";
 

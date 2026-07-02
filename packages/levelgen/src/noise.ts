@@ -1,10 +1,16 @@
 /**
  * 2D seeded value noise for terrain generation.
  *
- * Implements FBM (Fractional Brownian Motion) over a 2D value noise base.
- * No external dependencies — pure arithmetic, deterministic given a seed.
+ * Implements FBM (Fractional Brownian Motion) over a 2D value noise base,
+ * plus ridged/billow variants and domain warp. No external dependencies —
+ * pure arithmetic, deterministic given a seed.
  *
  * Not cryptographically secure; game-quality randomness only.
+ *
+ * Shared by atlas and world/tile-server (T-315 C5) — both packages need
+ * byte-identical noise output (atlas's inspector snapshot matrix pins it),
+ * so this is the single owner rather than two independently-maintained
+ * copies.
  */
 
 /**

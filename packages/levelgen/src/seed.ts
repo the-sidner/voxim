@@ -9,15 +9,28 @@
  *
  * `hashString` is FNV-1a 32-bit: small, stable across engines, well-mixed
  * for short identifiers. `splitSeed` then folds the hash into the global
- * seed with a Murmur3-style finalizer for extra avalanche.
+ * seed with a Murmur3-style finalizer for extra avalanche. `hashBytes` is
+ * the same FNV-1a algorithm over a byte view — used by atlas's inspector
+ * to hash typed-array pipeline state for divergence detection.
  *
- * Both functions return unsigned 32-bit integers.
+ * All three functions return unsigned 32-bit integers.
  */
 
 export function hashString(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** FNV-1a 32-bit over a byte view. Caller passes a Uint8Array view so we
+ *  don't allocate. */
+export function hashBytes(bytes: Uint8Array): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i];
     h = Math.imul(h, 0x01000193);
   }
   return h >>> 0;

@@ -22,7 +22,7 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
-import { fbm } from "../../common/noise.ts";
+import { fbm } from "@voxim/levelgen";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
 import {

@@ -54,7 +54,7 @@ import {
   billowFbm,
   domainWarp,
   valueNoise2D,
-} from "./noise.ts";
+} from "@voxim/levelgen";
 import {
   DEFAULT_TERRAIN_CONFIG,
   type TerrainConfig,

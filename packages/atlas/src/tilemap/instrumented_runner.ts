@@ -30,6 +30,7 @@ import { emptyLevel } from "./level/types.ts";
 import type { GenParams } from "../genparams.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import type { ContentService } from "@voxim/content";
+import { hashString, hashBytes } from "@voxim/levelgen";
 import { DEFAULT_TILE_SIZE, DEFAULT_GRID_SIZE } from "./types.ts";
 import { bytesToBase64, base64ToBytes } from "./generate.ts";
 
@@ -226,29 +227,6 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
 
 // ---- hashing --------------------------------------------------------------
 
-/**
- * FNV-1a 32-bit over a byte view. Cheap (~1 ms / 512² Uint16Array on
- * a modern CPU) and stable across engines. Caller passes a Uint8Array
- * view so we don't allocate.
- */
-function fnv1aBytes(bytes: Uint8Array): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < bytes.length; i++) {
-    h ^= bytes[i];
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
-function fnv1aString(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
 function viewOf(arr: ArrayBufferView): Uint8Array {
   return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
 }
@@ -280,54 +258,54 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
   let h = 0;
   switch (stageId) {
     case "noiseField":
-      h ^= fnv1aBytes(viewOf(s.noiseField as Float32Array));
+      h ^= hashBytes(viewOf(s.noiseField as Float32Array));
       break;
     case "junctions":
-      h ^= fnv1aString(JSON.stringify(s.seeds));
+      h ^= hashString(JSON.stringify(s.seeds));
       break;
     case "network":
-      h ^= fnv1aBytes(s.openMask as Uint8Array);
-      h ^= fnv1aBytes(s.degrees as Uint8Array);
-      h ^= fnv1aString(JSON.stringify(s.corridors));
+      h ^= hashBytes(s.openMask as Uint8Array);
+      h ^= hashBytes(s.degrees as Uint8Array);
+      h ^= hashString(JSON.stringify(s.corridors));
       break;
     case "rooms":
-      h ^= fnv1aBytes(s.openMask as Uint8Array);
-      h ^= fnv1aBytes(viewOf(s.chamberOf as Uint16Array));
-      h ^= fnv1aString(JSON.stringify(s.chambers));
+      h ^= hashBytes(s.openMask as Uint8Array);
+      h ^= hashBytes(viewOf(s.chamberOf as Uint16Array));
+      h ^= hashString(JSON.stringify(s.chambers));
       break;
     case "portalPlacement":
-      h ^= fnv1aBytes(s.openMask as Uint8Array);
-      h ^= fnv1aBytes(viewOf(s.roomOf as Uint16Array));
-      h ^= fnv1aString(JSON.stringify(s.rooms));
-      h ^= fnv1aString(JSON.stringify(s.portals));
-      h ^= fnv1aString(JSON.stringify(s.corridors));
+      h ^= hashBytes(s.openMask as Uint8Array);
+      h ^= hashBytes(viewOf(s.roomOf as Uint16Array));
+      h ^= hashString(JSON.stringify(s.rooms));
+      h ^= hashString(JSON.stringify(s.portals));
+      h ^= hashString(JSON.stringify(s.corridors));
       break;
     case "boundaryKinds":
-      h ^= fnv1aBytes(viewOf(s.kindOf as Uint16Array));
+      h ^= hashBytes(viewOf(s.kindOf as Uint16Array));
       break;
     case "rivers":
-      h ^= fnv1aBytes(s.openMask as Uint8Array);
-      h ^= fnv1aBytes(viewOf(s.kindOf as Uint16Array));
+      h ^= hashBytes(s.openMask as Uint8Array);
+      h ^= hashBytes(viewOf(s.kindOf as Uint16Array));
       break;
     case "terrain":
-      h ^= fnv1aBytes(viewOf(s.heightMap as Float32Array));
+      h ^= hashBytes(viewOf(s.heightMap as Float32Array));
       break;
     case "materials":
-      h ^= fnv1aBytes(viewOf(s.materials as Uint16Array));
+      h ^= hashBytes(viewOf(s.materials as Uint16Array));
       break;
     case "zoneGraph":
-      h ^= fnv1aBytes(viewOf(s.zoneOf as Uint16Array));
+      h ^= hashBytes(viewOf(s.zoneOf as Uint16Array));
       // T-214: regions live on state.level after zoneGraph; hash both
       // the legacy `zones` (still used by poi_network) and the LevelDef
       // regions so a divergence in either flags as a fixture diff.
-      h ^= fnv1aString(JSON.stringify(s.zones));
-      h ^= fnv1aString(JSON.stringify((s.level as { regions: unknown }).regions));
+      h ^= hashString(JSON.stringify(s.zones));
+      h ^= hashString(JSON.stringify((s.level as { regions: unknown }).regions));
       break;
     case "poiNetwork":
       // T-214: narrative + stairs are now on state.level; their JSON
       // shape is the canonical hash input for the matcher's output.
-      h ^= fnv1aString(JSON.stringify((s.level as { narrative: unknown }).narrative));
-      h ^= fnv1aString(JSON.stringify((s.level as { edges: { stairs: unknown } }).edges.stairs));
+      h ^= hashString(JSON.stringify((s.level as { narrative: unknown }).narrative));
+      h ^= hashString(JSON.stringify((s.level as { edges: { stairs: unknown } }).edges.stairs));
       break;
     case "fields": {
       // T-315 A5: was silently excluded — a corrupted/regressed field
@@ -335,7 +313,7 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
       // keeps the xor combination deterministic (doesn't affect the
       // result, which is order-independent anyway, per the doc above).
       const f = s.fields as Record<string, ArrayBufferView>;
-      for (const k of Object.keys(f).sort()) h ^= fnv1aBytes(viewOf(f[k]));
+      for (const k of Object.keys(f).sort()) h ^= hashBytes(viewOf(f[k]));
       break;
     }
   }

@@ -19,6 +19,7 @@ import type { ContentService, ScatterDef } from "@voxim/content";
 import { evaluateFieldExpr, morphTierParams } from "@voxim/content";
 import type { VegFieldGridData, SurfaceStateGridData, WaterGridData } from "@voxim/codecs";
 import { CHUNK_SIZE } from "@voxim/world";
+import { mix32 } from "@voxim/engine";
 import type { ClientWorld } from "../state/client_world.ts";
 import { bakeVoxels } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
@@ -39,14 +40,6 @@ function hash32(s: string): number {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h >>> 0;
-}
-
-/** 32-bit seed mixer (matches spawner.ts's mix32) — combines tile + variant. */
-function mix32(a: number, b: number): number {
-  let x = (a ^ b) >>> 0;
-  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0;
-  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0;
-  return (x ^ (x >>> 16)) >>> 0;
 }
 
 /** Cheap 2D integer hash for per-cell variant / rotation / scale selection. */

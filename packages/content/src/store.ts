@@ -65,6 +65,7 @@ import type { RecipeGraph } from "./recipe_graph.ts";
 import { buildRecipeGraph } from "./recipe_graph.ts";
 import type { ContentRegistryReadonly } from "./registry.ts";
 import { ContentRegistry } from "./registry.ts";
+import { mulberry32 } from "@voxim/engine";
 
 /** Default max durability for an equippable/usable item whose prefab doesn't
  *  declare an explicit `durability` (T-086). */
@@ -639,16 +640,9 @@ export class StaticContentStore implements ContentService {
  * Tiny seeded PRNG (mulberry32).  Produces values in [0, 1).
  * Same seed always produces the same sequence — deterministic across server and client.
  * Exported (T-285) so client procmodel generators draw from the same stream.
+ * Re-exported under this name from @voxim/engine's shared mulberry32 (T-315 C5).
  */
-export function makePrng(seed: number): () => number {
-  let s = seed >>> 0;
-  return (): number => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let z = Math.imul(s ^ (s >>> 15), 1 | s);
-    z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
-    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export const makePrng = mulberry32;
 
 /**
  * Resolve a model's subObjects list against a seed, collapsing every pool

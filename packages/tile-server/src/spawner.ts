@@ -16,7 +16,7 @@
  * coordinates once the placement is validated.
  */
 import type { World, EntityId, ComponentDef, PrefabSpawnContext } from "@voxim/engine";
-import { newEntityId, spawnPrefab as engineSpawnPrefab } from "@voxim/engine";
+import { newEntityId, spawnPrefab as engineSpawnPrefab, mix32 } from "@voxim/engine";
 import {
   Position,
   Velocity,
@@ -371,14 +371,6 @@ function hash32(s: string): number {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h >>> 0;
-}
-
-/** Mix two 32-bit seeds into one via xorshift; reused per morph key. */
-function mix32(a: number, b: number): number {
-  let x = (a ^ b) >>> 0;
-  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0;
-  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0;
-  return (x ^ (x >>> 16)) >>> 0;
 }
 
 /** [0, 1) from a 32-bit seed via mulberry32 one-step. */

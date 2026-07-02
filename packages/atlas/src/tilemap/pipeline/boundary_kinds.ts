@@ -29,10 +29,9 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
+import { fbm } from "@voxim/levelgen";
 import { BoundaryKind } from "@voxim/protocol";
 import type { KindsState, PortalsState } from "./state.ts";
-
-import { fbm } from "../../common/noise.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
 

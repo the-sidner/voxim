@@ -13,7 +13,7 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
-import { fbm } from "../../common/noise.ts";
+import { fbm } from "@voxim/levelgen";
 import type { GenParams } from "../../genparams.ts";
 import type { NoiseState, PipelineBase } from "./state.ts";
 

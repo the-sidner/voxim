@@ -28,23 +28,12 @@ import type { BodyPartVolume, Hitbox, SkeletonDef, SubObjectRef } from "./types.
 import type { BoneTransform } from "./skeleton_solver.ts";
 import { quatFromEulerXYZ, applyQuat } from "./ik_solver.ts";
 import type { Quat } from "./ik_solver.ts";
+import { mulberry32 as makePrng } from "@voxim/engine";
 
 /** Minimum capsule radius in voxel units. Parts below this threshold are skipped. */
 const MIN_RADIUS_VOXELS = 0.1;
 
 const IDENTITY_QUAT: Quat = { x: 0, y: 0, z: 0, w: 1 };
-
-// ── PRNG (mulberry32 — identical to store.ts; kept local to avoid private dep) ──
-
-function makePrng(seed: number): () => number {
-  let s = seed >>> 0;
-  return (): number => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let z = Math.imul(s ^ (s >>> 15), 1 | s);
-    z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
-    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 // ── Geometry helpers ─────────────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@
  * → non-zero ruinAge, path → traffic). NEVER read for collision.
  */
 import type { Transformer } from "@voxim/levelgen";
-import { fbm } from "../../common/noise.ts";
+import { fbm } from "@voxim/levelgen";
 import { BOUNDARY_KIND_FOREST, BOUNDARY_KIND_WATER } from "./boundary_kinds.ts";
 import { RIVER_DEPTH } from "./terrain.ts";
 import { ZONE_ID_NONE } from "./state.ts";

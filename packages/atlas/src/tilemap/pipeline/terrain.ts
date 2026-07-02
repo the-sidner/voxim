@@ -18,7 +18,7 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
-import { fbm } from "../../common/noise.ts";
+import { fbm } from "@voxim/levelgen";
 import type { GenParams } from "../../genparams.ts";
 import { BOUNDARY_KIND_WATER, BOUNDARY_KIND_OPEN } from "./boundary_kinds.ts";
 import type { RiversState, TerrainState } from "./state.ts";
