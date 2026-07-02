@@ -368,7 +368,8 @@ stage — author field **coherence** before a re-bake.
    on the visual primitives landing first?
 7. **Corruption source-of-truth** — static atlas fbm + corrupted-POI seeds for v1 (recommended), dynamic
    spreading corruption deferred (grids designed mutable-but-static so the upgrade needs no wire break)?
-8. **Decal persistence** — combat decals saved (chunk-component) or ephemeral in-memory with decay?
+8. **Decal persistence** — ✅ RESOLVED (user, 2026-07-02): EPHEMERAL — in-memory + decay, never saved,
+   no DecalGrid wireId; splats seed from the wire GameEvents (closed catalog) client-side.
 
 ---
 

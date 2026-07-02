@@ -1165,8 +1165,17 @@ Wetness section verified dry-tan→wet-dark. **Corruption-morph LANDED** (`f2873
 variant pool PER TIER and buckets each cell's SERVER corruption — the field decides the form, never a
 hash; fern/grass/oak authored (withered → corrupted purple husk), live-verified tier counts (fern t0
 4760 / t1 12 / t2 30 — healthy the norm, corruption marks the old chambers).
-Remaining P4: **decals** — blocked on the Q8 designer decision (saved chunk-component vs ephemeral
-in-memory + decay) AND a new permanent chunk wireId (I1-class; not minted unilaterally).
+**Decals LANDED (Q8 resolved by user: EPHEMERAL)** (`97510c7`): in-memory + decay, never saved, never
+networked — no DecalGrid wireId (transient state doesn't earn a permanent wire slot; late-joiner gaps
+self-heal by decay). `DecalDef` content category (`data/decals/*.json`, full plumbing, BOOTSTRAP_VERSION
+17) + the client decal-source registry over the closed event catalog (`damage`/`death` — wire GameEvents
+carry the WHERE/HOW-STRONG: DamageDealt hit contact point + amount intensity, blocked draws none;
+EntityDied pools at the entity) + `DecalRenderer` (thin voxel slabs via InstancePool — no alpha quads;
+slab-by-slab crumble decay; MAX_SPLATS=160 perf cap; tile-transition reset; `blood` material id 33).
+Live-verified: stimulated wire events → splats at player, blocked skipped, fast-forward decay → 0.
+**PHASE 4 COMPLETE** (field-driven scatter density/clusters · corruption-morph · moss-creep · wetness
+specular · ephemeral decals). Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
+T-310 arcing sun) + creature fragmentation (G6/I3b) + cheap water reflection.
 
 ### T-312b · re-apply atlas render-fields on save-load
 Effort: S   Status: done   Commit: 1248388
