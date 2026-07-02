@@ -276,6 +276,11 @@ export interface GenParams {
     corruptionDrynessBias: number;
     /** corruption above this → the "corrupted" material variant index. */
     variantCorruptThreshold: number;
+    /** fertility dapple: fbm modulation amplitude [1-amp,1+amp] (0 = flat) +
+     *  frequency per cell — makes fertility patchy so field-driven scatter
+     *  reads as groves/clearings, not a uniform carpet. */
+    fertilityDappleAmp: number;
+    fertilityDappleScale: number;
   };
 }
 
@@ -396,6 +401,8 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     waterSpreadDecay:        0.78,
     corruptionDrynessBias:   40,
     variantCorruptThreshold: 160,
+    fertilityDappleAmp:      0.45,
+    fertilityDappleScale:    0.05,   // features ~20 cells — grove-sized
   },
 };
 

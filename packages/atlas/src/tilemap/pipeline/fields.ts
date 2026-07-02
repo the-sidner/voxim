@@ -14,10 +14,14 @@
  * → non-zero ruinAge, path → traffic). NEVER read for collision.
  */
 import type { Transformer } from "@voxim/levelgen";
+import { fbm } from "../../common/noise.ts";
 import { BOUNDARY_KIND_FOREST, BOUNDARY_KIND_WATER } from "./boundary_kinds.ts";
 import { RIVER_DEPTH } from "./terrain.ts";
 import { ZONE_ID_NONE } from "./state.ts";
 import type { PoiNetworkState, FieldsState } from "./state.ts";
+
+/** Own fbm channel for the fertility dapple (noise stage uses …3001). */
+const DAPPLE_SUB_SEED = 0x30003002;
 
 /** Tunable derivation weights (the Atlas-inspector sliders edit these). Mirrors
  *  the `GenParams["fields"]` slice; kept here so `deriveFieldPlanes` stays a pure,
@@ -29,6 +33,12 @@ export interface FieldParams {
   waterSpreadDecay: number;
   corruptionDrynessBias: number; // dry tiles read more corrupt (0..255 added at moisture 0)
   variantCorruptThreshold: number; // corruption above this → the "corrupted" variant index
+  /** fertility dapple: mid-frequency fbm modulation [1-amp, 1+amp] so wilderness
+   *  fertility is PATCHY (groves / clearings / sparse scrub) instead of flat —
+   *  without it the formula below is near-constant outside chambers and every
+   *  fertility-driven scatter reads as a uniform carpet (or nothing). 0 = off. */
+  fertilityDappleAmp: number;
+  fertilityDappleScale: number;  // fbm frequency per cell (~1/feature-size)
 }
 
 export interface FieldDeriveInput {
@@ -127,7 +137,11 @@ export function deriveFieldPlanes(input: FieldDeriveInput): FieldPlanes {
 
   const moist255 = clamp255(moisture * 255);
 
+  const dAmp = params.fertilityDappleAmp;
+  const dScale = params.fertilityDappleScale;
+
   for (let i = 0; i < n; i++) {
+    const x = i % gridSize, y = (i / gridSize) | 0;
     // canopyLight: open sky 255, low under (and near) forest canopy.
     canopyLight[i] = clamp255(255 - forestShadow[i]);
 
@@ -146,9 +160,14 @@ export function deriveFieldPlanes(input: FieldDeriveInput): FieldPlanes {
     // wetness: near water + the tile's ambient moisture.
     wetness[i] = clamp255(Math.max(waterNear[i], moist255 * 0.5));
 
-    // fertility: moisture × dappled light × (low corruption). The scatter-density basis.
+    // fertility: moisture × dappled light × (low corruption), modulated by the
+    // mid-frequency dapple fbm. The scatter-density basis — the dapple is what
+    // lets groundcover/groves vary ORGANICALLY across otherwise-uniform
+    // wilderness (canopyLight is flat 0 inside forest, moisture is per-tile).
+    const dapple = dAmp <= 0 ? 1
+      : 1 - dAmp + 2 * dAmp * fbm(x * dScale, y * dScale, tileSeed ^ DAPPLE_SUB_SEED, 3);
     fertility[i] = clamp255(
-      moist255 * (0.4 + 0.6 * canopyLight[i] / 255) * (1 - 0.5 * corruption[i] / 255),
+      moist255 * (0.4 + 0.6 * canopyLight[i] / 255) * (1 - 0.5 * corruption[i] / 255) * dapple,
     );
 
     // overgrowth: moss creep on old, untrodden, corrupt stone.

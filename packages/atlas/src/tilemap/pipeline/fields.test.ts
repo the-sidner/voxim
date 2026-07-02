@@ -32,6 +32,7 @@ function baseInput(): FieldDeriveInput {
       forestShadowPasses: 3, forestShadowDecay: 0.72,
       waterSpreadPasses: 4, waterSpreadDecay: 0.78,
       corruptionDrynessBias: 40, variantCorruptThreshold: 160,
+      fertilityDappleAmp: 0, fertilityDappleScale: 0.05,
     },
   };
 }
@@ -68,6 +69,22 @@ Deno.test("T-311: traffic mirrors pathLevel; wear follows it; overgrowth recedes
   trodden.pathLevel[idx(5, 5)] = 255;
   const g = deriveFieldPlanes(trodden);
   assert(g.overgrowth[idx(5, 5)] <= f.overgrowth[idx(5, 5)], "traffic suppresses overgrowth");
+});
+
+Deno.test("T-311 P4: fertility dapple varies fertility spatially; amp 0 is flat", () => {
+  // amp 0 → open-sky cells away from forest/chambers share one fertility value.
+  const flat = deriveFieldPlanes(baseInput());
+  assertEquals(flat.fertility[idx(6, 6)], flat.fertility[idx(7, 7)]);
+  // amp on → the same cells differ somewhere (patchy), stay in range, deterministic.
+  const dappled = baseInput();
+  dappled.params.fertilityDappleAmp = 0.45;
+  dappled.params.fertilityDappleScale = 0.5; // coarse grid → high freq for the 8×8 test
+  const d1 = deriveFieldPlanes(dappled);
+  const d2 = deriveFieldPlanes(dappled);
+  assertEquals(d1.fertility, d2.fertility, "dapple is seed-deterministic");
+  const open = [idx(6, 6), idx(7, 7), idx(6, 7), idx(7, 6), idx(5, 7), idx(7, 5)];
+  const values = new Set(open.map((i) => d1.fertility[i]));
+  assert(values.size > 1, "dapple makes open-sky fertility vary");
 });
 
 Deno.test("T-311: full deriveFieldPlanes is deterministic", () => {
