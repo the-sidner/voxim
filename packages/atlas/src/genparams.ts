@@ -74,6 +74,9 @@ export interface GenParams {
     floorModAmplitude: number;
     /** Floor modulation noise frequency (cycles per pixel). */
     floorModFrequency: number;
+    /** Scale applied to (biome.altitude - 0.5) to bias the floor height by
+     *  altitude, before modulation. Default 4 → ~[-2, +2]. */
+    altitudeBiasScale: number;
   };
 
   /** Per-pixel material rule selectors. */
@@ -370,6 +373,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     floorBaseline: 0.0,
     floorModAmplitude: 1.5,
     floorModFrequency: 0.01,
+    altitudeBiasScale: 4,
   },
   room: {
     targetCount: 14,                     // more junctions → more graph nodes

@@ -51,7 +51,7 @@ export const terrain: Transformer<RiversState, TerrainState, GenParams["terrain"
 
     // Floor modulation: lower baseline at low altitudes, higher at high.
     // Ruggedness scales the amplitude — flat plains vs. rolling hills.
-    const floorBias = (biome.altitude - 0.5) * 4; // ~[-2, +2]
+    const floorBias = (biome.altitude - 0.5) * params.altitudeBiasScale; // ~[-2, +2] at default scale 4
     const modAmp    = params.floorModAmplitude * biome.ruggedness;
     const modFreq   = params.floorModFrequency;
 
