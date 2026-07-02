@@ -38,6 +38,7 @@
 import type { Transformer } from "@voxim/levelgen";
 import { splitSeed } from "@voxim/levelgen";
 import { mulberry32 } from "@voxim/engine";
+import { BoundaryKind } from "@voxim/protocol";
 import type { ContentService, PoiDef } from "@voxim/content";
 import type { GenParams } from "../../genparams.ts";
 import type {
@@ -273,8 +274,8 @@ function fitScore(
   if (poi.fit.requiredKind && poi.fit.requiredKind.length > 0) {
     // Zone must touch at least one of the required boundary kinds.
     // kindHistogram is keyed by numeric kind id; the POI declares tags
-    // (e.g. "stone"). We use a fixed mapping from tag → numeric kind id
-    // mirroring BOUNDARY_KIND_* in pipeline/boundary_kinds.ts.
+    // (e.g. "stone"). KIND_TAG_TO_ID maps tag → @voxim/protocol's
+    // BoundaryKind id (T-315 C4).
     let matched = false;
     for (const kindTag of poi.fit.requiredKind) {
       const kindId = KIND_TAG_TO_ID[kindTag];
@@ -296,11 +297,11 @@ function fitScore(
 }
 
 const KIND_TAG_TO_ID: Record<string, number> = {
-  open:        0,
-  stone:       1,
-  forest:      2,
-  water:       3,
-  grass_mound: 4,
+  open:        BoundaryKind.open,
+  stone:       BoundaryKind.stone,
+  forest:      BoundaryKind.forest,
+  water:       BoundaryKind.water,
+  grass_mound: BoundaryKind.grassMound,
 };
 
 function biomeMatches(

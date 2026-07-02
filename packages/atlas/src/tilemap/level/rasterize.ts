@@ -25,14 +25,11 @@
  * rasterizer is the place that owns that contract end-to-end.
  */
 
+import { BoundaryKind } from "@voxim/protocol";
 import type { PoiNetworkState } from "../pipeline/state.ts";
 import type { LevelDef, PlateauRegion } from "./types.ts";
 import { levelToZoneOf } from "./types.ts";
 import { verifyLevelInvariants } from "./verify.ts";
-import {
-  BOUNDARY_KIND_STONE, BOUNDARY_KIND_FOREST,
-  BOUNDARY_KIND_WATER, BOUNDARY_KIND_GRASS_MOUND,
-} from "../pipeline/boundary_kinds.ts";
 
 /**
  * The canonical per-tile rasterized buffer set. All buffers are
@@ -103,10 +100,10 @@ function computeKindOf(level: LevelDef): Uint16Array {
 
 function wallKindToBoundary(r: PlateauRegion): number {
   switch (r.wallKind) {
-    case "stone":  return BOUNDARY_KIND_STONE;
-    case "forest": return BOUNDARY_KIND_FOREST;
-    case "grass":  return BOUNDARY_KIND_GRASS_MOUND;
-    case "water":  return BOUNDARY_KIND_WATER;
+    case "stone":  return BoundaryKind.stone;
+    case "forest": return BoundaryKind.forest;
+    case "grass":  return BoundaryKind.grassMound;
+    case "water":  return BoundaryKind.water;
   }
 }
 

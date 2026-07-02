@@ -35,22 +35,12 @@ import type { KindsState, PortalsState } from "./state.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
 
-/**
- * Boundary-kind ids. Canonically defined in @voxim/protocol's
- * BoundaryKind (wire vocabulary — KindGrid ships these ids on the wire);
- * re-exported here under atlas's original names so existing internal
- * consumers (rasterize, fields, materials, poi_network, rivers, terrain,
- * zone_graph, …) are unaffected.
- *
- * 0 reserved for "open / not a boundary" so a fresh Uint16Array reads as
- * un-tagged before the stage runs.
- */
-export const BOUNDARY_KIND_OPEN        = BoundaryKind.open;
-export const BOUNDARY_KIND_STONE       = BoundaryKind.stone;
-export const BOUNDARY_KIND_FOREST      = BoundaryKind.forest;
-export const BOUNDARY_KIND_WATER       = BoundaryKind.water;
-export const BOUNDARY_KIND_GRASS_MOUND = BoundaryKind.grassMound;
-// Room left in the id space for future kinds (rubble, scree, hedge, …).
+// Boundary-kind ids are @voxim/protocol's `BoundaryKind` (wire
+// vocabulary — KindGrid ships these ids on the wire, T-315 C4). Atlas is
+// the canonical *producer* of the kindOf array but reads the id values
+// from protocol like every other consumer — one owner, no mirrored names.
+// 0 (BoundaryKind.open) is reserved for "not a boundary" so a fresh
+// Uint16Array reads as un-tagged before this stage runs.
 
 const KIND_SUB_SEED = 0x60006001;
 
@@ -65,7 +55,7 @@ export const boundaryKinds: Transformer<PortalsState, KindsState, GenParams["kin
       for (let px = 0; px < gridSize; px++) {
         const idx = py * gridSize + px;
         if (openMask[idx] === 1) {
-          kindOf[idx] = BOUNDARY_KIND_OPEN;
+          kindOf[idx] = BoundaryKind.open;
           continue;
         }
         const detail = fbm(px * f, py * f, seed ^ KIND_SUB_SEED, 2);
@@ -81,11 +71,11 @@ function pickKind(
   detail: number,
   p: GenParams["kinds"],
 ): number {
-  if (b.altitude > p.stoneAltitudeStrict) return BOUNDARY_KIND_STONE;
-  if (b.altitude > p.stoneAltitudeRugged && b.ruggedness > p.stoneRuggednessThreshold) return BOUNDARY_KIND_STONE;
-  if (b.moisture > p.forestMoisture) return BOUNDARY_KIND_FOREST;
+  if (b.altitude > p.stoneAltitudeStrict) return BoundaryKind.stone;
+  if (b.altitude > p.stoneAltitudeRugged && b.ruggedness > p.stoneRuggednessThreshold) return BoundaryKind.stone;
+  if (b.moisture > p.forestMoisture) return BoundaryKind.forest;
   // Detail noise is unused in the wall-pick today — kept in the call site
   // so future kinds (rubble, scree) can mix it in without a signature change.
   void detail;
-  return BOUNDARY_KIND_GRASS_MOUND;
+  return BoundaryKind.grassMound;
 }

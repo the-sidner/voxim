@@ -3,8 +3,8 @@
  * Atlas-inspector overlays tune the formulas). Pure, headless.
  */
 import { assert, assertEquals } from "jsr:@std/assert";
+import { BoundaryKind } from "@voxim/protocol";
 import { deriveFieldPlanes, type FieldDeriveInput } from "./fields.ts";
-import { BOUNDARY_KIND_FOREST, BOUNDARY_KIND_WATER, BOUNDARY_KIND_OPEN } from "./boundary_kinds.ts";
 import { RIVER_DEPTH } from "./terrain.ts";
 
 const G = 8;
@@ -12,16 +12,16 @@ const N = G * G;
 const idx = (x: number, y: number) => x + y * G;
 
 function baseInput(): FieldDeriveInput {
-  const kindOf = new Uint16Array(N).fill(BOUNDARY_KIND_OPEN);
+  const kindOf = new Uint16Array(N).fill(BoundaryKind.open);
   const heightMap = new Float32Array(N).fill(2.0);
   const chamberOf = new Uint16Array(N);
   const pathLevel = new Uint8Array(N);
   // forest cluster in the top-left corner
-  kindOf[idx(0, 0)] = BOUNDARY_KIND_FOREST;
-  kindOf[idx(1, 0)] = BOUNDARY_KIND_FOREST;
-  kindOf[idx(0, 1)] = BOUNDARY_KIND_FOREST;
+  kindOf[idx(0, 0)] = BoundaryKind.forest;
+  kindOf[idx(1, 0)] = BoundaryKind.forest;
+  kindOf[idx(0, 1)] = BoundaryKind.forest;
   // one water cell
-  kindOf[idx(4, 4)] = BOUNDARY_KIND_WATER;
+  kindOf[idx(4, 4)] = BoundaryKind.water;
   // a chamber
   chamberOf[idx(5, 5)] = 7;
   // a path

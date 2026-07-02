@@ -39,12 +39,9 @@
 
 import type { Transformer } from "@voxim/levelgen";
 import type { ZoneRole } from "@voxim/content";
+import { BoundaryKind } from "@voxim/protocol";
 import type { GenParams } from "../../genparams.ts";
 import { ROOM_ID_NONE } from "./room_detection.ts";
-import {
-  BOUNDARY_KIND_OPEN, BOUNDARY_KIND_STONE,
-  BOUNDARY_KIND_FOREST, BOUNDARY_KIND_GRASS_MOUND, BOUNDARY_KIND_WATER,
-} from "./boundary_kinds.ts";
 import {
   ZONE_ID_NONE, type AnnotatedZone, type AnnotatedZoneState, type MaterialsState,
 } from "./state.ts";
@@ -61,8 +58,8 @@ import type {
  * mechanic), but they're first-class sectors in the data model.
  */
 const WILDERNESS_KINDS = new Set<number>([
-  BOUNDARY_KIND_STONE, BOUNDARY_KIND_FOREST, BOUNDARY_KIND_GRASS_MOUND,
-  BOUNDARY_KIND_WATER,
+  BoundaryKind.stone, BoundaryKind.forest, BoundaryKind.grassMound,
+  BoundaryKind.water,
 ]);
 
 /**
@@ -415,10 +412,10 @@ function buildRegion(z: AnnotatedZone, pixels: number[]): Region {
  * one (stone > forest > grass > water).
  */
 function classifyWallKind(hist: Record<number, number>): PlateauRegion["wallKind"] {
-  const stone  = hist[BOUNDARY_KIND_STONE]       ?? 0;
-  const forest = hist[BOUNDARY_KIND_FOREST]      ?? 0;
-  const grass  = hist[BOUNDARY_KIND_GRASS_MOUND] ?? 0;
-  const water  = hist[BOUNDARY_KIND_WATER]       ?? 0;
+  const stone  = hist[BoundaryKind.stone]      ?? 0;
+  const forest = hist[BoundaryKind.forest]     ?? 0;
+  const grass  = hist[BoundaryKind.grassMound] ?? 0;
+  const water  = hist[BoundaryKind.water]      ?? 0;
   const max = Math.max(stone, forest, grass, water);
   if (max === 0) return "stone";
   if (stone  === max) return "stone";
@@ -683,10 +680,10 @@ function classifyCorridorRole(
  * Tie-breaking: stone > forest > grass > water.
  */
 function classifyWildernessRole(area: number, hist: Record<number, number>): ZoneRole {
-  const stone   = hist[BOUNDARY_KIND_STONE]       ?? 0;
-  const forest  = hist[BOUNDARY_KIND_FOREST]      ?? 0;
-  const grass   = hist[BOUNDARY_KIND_GRASS_MOUND] ?? 0;
-  const water   = hist[BOUNDARY_KIND_WATER]       ?? 0;
+  const stone   = hist[BoundaryKind.stone]      ?? 0;
+  const forest  = hist[BoundaryKind.forest]     ?? 0;
+  const grass   = hist[BoundaryKind.grassMound] ?? 0;
+  const water   = hist[BoundaryKind.water]      ?? 0;
   const total   = stone + forest + grass + water;
   if (total === 0) return "outcrop";
   const dominant = stone >= forest && stone >= grass && stone >= water ? "stone"
@@ -698,6 +695,3 @@ function classifyWildernessRole(area: number, hist: Record<number, number>): Zon
   if (dominant === "water")  return "morass";
   return                          area > 300 ? "hollow" : "outcrop";
 }
-
-// (suppress unused-var warnings for kind ids referenced only in type checks)
-void BOUNDARY_KIND_OPEN;

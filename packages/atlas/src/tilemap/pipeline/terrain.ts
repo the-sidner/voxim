@@ -19,8 +19,8 @@
 
 import type { Transformer } from "@voxim/levelgen";
 import { fbm } from "@voxim/levelgen";
+import { BoundaryKind } from "@voxim/protocol";
 import type { GenParams } from "../../genparams.ts";
-import { BOUNDARY_KIND_WATER, BOUNDARY_KIND_OPEN } from "./boundary_kinds.ts";
 import type { RiversState, TerrainState } from "./state.ts";
 
 /**
@@ -70,8 +70,8 @@ export const terrain: Transformer<RiversState, TerrainState, GenParams["terrain"
         // OPEN cells stay at floor.  Collision still blocks closed pixels via openMask.
         const k = kindOf[idx];
         const isClosed = openMask[idx] === 0;
-        const isWater  = isClosed && k === BOUNDARY_KIND_WATER;
-        const isWall   = isClosed && k !== BOUNDARY_KIND_WATER && k !== BOUNDARY_KIND_OPEN;
+        const isWater  = isClosed && k === BoundaryKind.water;
+        const isWall   = isClosed && k !== BoundaryKind.water && k !== BoundaryKind.open;
         heightMap[idx] = isWall  ? floor + params.wallHeight
                        : isWater ? floor - RIVER_DEPTH
                                  : floor;

@@ -36,11 +36,9 @@ export {
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS,
   MATERIAL_PATH, MATERIAL_SNOW,
 } from "./src/tilemap/pipeline/materials.ts";
-export {
-  BOUNDARY_KIND_OPEN, BOUNDARY_KIND_STONE,
-  BOUNDARY_KIND_FOREST, BOUNDARY_KIND_WATER,
-  BOUNDARY_KIND_GRASS_MOUND,
-} from "./src/tilemap/pipeline/boundary_kinds.ts";
+// Boundary-kind ids are @voxim/protocol's BoundaryKind (T-315 C4) — atlas
+// no longer mirrors them under its own names; consumers import BoundaryKind
+// from @voxim/protocol directly.
 export { upsampleTile } from "./src/tilemap/upsample.ts";
 export { applyStairUnlock, markStairAnchor } from "./src/tilemap/stair_unlock.ts";
 export type { StairAnchor, StairUnlockOptions, StairMarkerOptions } from "./src/tilemap/stair_unlock.ts";

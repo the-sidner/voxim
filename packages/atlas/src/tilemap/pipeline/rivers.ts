@@ -18,7 +18,7 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
-import { BOUNDARY_KIND_WATER } from "./boundary_kinds.ts";
+import { BoundaryKind } from "@voxim/protocol";
 import type { RiverEndpoint } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
 import type { KindsState, RiversState } from "./state.ts";
@@ -102,7 +102,7 @@ function brushDisk(
       if (px < 0 || py < 0 || px >= gridSize || py >= gridSize) continue;
       const idx = py * gridSize + px;
       openMask[idx] = 0;
-      kindOf[idx]   = BOUNDARY_KIND_WATER;
+      kindOf[idx]   = BoundaryKind.water;
     }
   }
 }

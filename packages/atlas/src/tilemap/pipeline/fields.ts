@@ -15,7 +15,7 @@
  */
 import type { Transformer } from "@voxim/levelgen";
 import { fbm } from "@voxim/levelgen";
-import { BOUNDARY_KIND_FOREST, BOUNDARY_KIND_WATER } from "./boundary_kinds.ts";
+import { BoundaryKind } from "@voxim/protocol";
 import { RIVER_DEPTH } from "./terrain.ts";
 import { ZONE_ID_NONE } from "./state.ts";
 import type { PoiNetworkState, FieldsState } from "./state.ts";
@@ -135,8 +135,8 @@ export function deriveFieldPlanes(input: FieldDeriveInput): FieldPlanes {
   const forestSeed = new Uint8Array(n);
   const waterSeed = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    if (kindOf[i] === BOUNDARY_KIND_FOREST) forestSeed[i] = 255;
-    if (kindOf[i] === BOUNDARY_KIND_WATER) {
+    if (kindOf[i] === BoundaryKind.forest) forestSeed[i] = 255;
+    if (kindOf[i] === BoundaryKind.water) {
       waterSeed[i] = 255;
       surfaceLevel[i] = heightMap[i] + RIVER_DEPTH; // surface sits above the cut channel
     }

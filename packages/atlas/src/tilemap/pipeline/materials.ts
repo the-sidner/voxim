@@ -23,14 +23,9 @@
 
 import type { Transformer } from "@voxim/levelgen";
 import { fbm } from "@voxim/levelgen";
+import { BoundaryKind } from "@voxim/protocol";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
-import {
-  BOUNDARY_KIND_STONE,
-  BOUNDARY_KIND_FOREST,
-  BOUNDARY_KIND_GRASS_MOUND,
-  BOUNDARY_KIND_WATER,
-} from "./boundary_kinds.ts";
 import { ROOM_ID_NONE } from "./room_detection.ts";
 import type { MaterialsState, TerrainState } from "./state.ts";
 
@@ -156,10 +151,10 @@ function perturbWithSpread(base: number, b: BiomeParams, spread: number): number
 
 function pickClosedMaterial(kind: number): number {
   switch (kind) {
-    case BOUNDARY_KIND_STONE:       return MATERIAL_STONE;  // bare rock
-    case BOUNDARY_KIND_FOREST:      return MATERIAL_DIRT;   // forest floor
-    case BOUNDARY_KIND_GRASS_MOUND: return MATERIAL_GRASS;  // green berm
-    case BOUNDARY_KIND_WATER:       return MATERIAL_WATER;  // rivers/ponds
+    case BoundaryKind.stone:      return MATERIAL_STONE;  // bare rock
+    case BoundaryKind.forest:     return MATERIAL_DIRT;   // forest floor
+    case BoundaryKind.grassMound: return MATERIAL_GRASS;  // green berm
+    case BoundaryKind.water:      return MATERIAL_WATER;  // rivers/ponds
     default:                        return MATERIAL_DIRT;
   }
 }

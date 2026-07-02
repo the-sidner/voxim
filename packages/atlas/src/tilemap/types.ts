@@ -147,10 +147,10 @@ export interface TileInit {
   materials: Uint16Array;
 
   /**
-   * Per-pixel boundary-kind ids (BOUNDARY_KIND_* in
-   * pipeline/boundary_kinds.ts). Length gridSize², row-major. Open
-   * pixels are tagged BOUNDARY_KIND_OPEN (= 0); closed pixels carry
-   * the kind that decides their visual + transform verbs.
+   * Per-pixel boundary-kind ids (@voxim/protocol's BoundaryKind, T-315
+   * C4). Length gridSize², row-major. Open pixels are tagged
+   * BoundaryKind.open (= 0); closed pixels carry the kind that decides
+   * their visual + transform verbs.
    */
   kindOf: Uint16Array;
 
