@@ -152,8 +152,6 @@ export function generateTile(
     // `levelToZoneOf(level)` on the consumer side.
     level:      s.level,
     fields:     s.fields,
-    boundaries: [],
-    features:   [],
   };
 }
 
@@ -179,8 +177,6 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     gateSummary: t.gateSummary,
     level:     t.level,
     fieldsB64: encodeFieldsB64(t.fields),
-    boundaries: t.boundaries,
-    features:   t.features,
   };
 }
 
@@ -267,8 +263,6 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     gateSummary: w.gateSummary,
     level:     w.level,
     fields:    decodeFieldsB64(w.fieldsB64, w.gridSize * w.gridSize),
-    boundaries: w.boundaries,
-    features:   w.features,
   };
 }
 

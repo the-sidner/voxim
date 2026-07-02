@@ -1,9 +1,8 @@
 /**
  * Tilemap layer types.
  *
- * One TileInit per tile. The shape is intentionally narrow for phase 2A —
- * holds only what the noise→rooms→portals backbone produces. Boundaries,
- * features, and full terrain buffers come in subsequent phases (2B+).
+ * One TileInit per tile: the noise→rooms→portals backbone, terrain
+ * buffers (heightmap/materialGrid), and T-311's render-field planes.
  *
  * Each pipeline stage is a pure function with typed inputs and outputs;
  * the orchestrator threads them. There is no shared mutable GenState.
@@ -70,9 +69,6 @@ export interface Corridor {
 /**
  * One tile's pre-computed initial state. What atlas writes; what
  * tile-server reads at boot before applying player edits.
- *
- * Phase 2A populates: tileSize, gridSize, openMask, rooms, roomOf, portals.
- * Phase 2B+ adds: boundaries, features, heightmap, materialGrid.
  */
 export interface TileInit {
   /** Worldmap cell this tile belongs to. */
@@ -166,12 +162,6 @@ export interface TileInit {
    * SurfaceStateGrid/WaterGrid chunk components by the tile-server. Render-only.
    */
   fields: FieldPlanes;
-
-  // ---- placeholders for later phases ------------------------------
-  /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
-  boundaries: unknown[];
-  /** Will be populated by phase 4 (feature kinds, e.g. hearth slot). */
-  features: unknown[];
 }
 
 /**
@@ -202,6 +192,4 @@ export interface TileInitWire {
   level: LevelDef;
   /** T-311 P3 — render-field planes, base64-encoded raw bytes per plane name. */
   fieldsB64: Record<string, string>;
-  boundaries: unknown[];
-  features: unknown[];
 }

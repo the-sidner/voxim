@@ -448,8 +448,6 @@ function generateTileInitFromFinal(
     kindOf:    final.kindOf,
     level:     final.level,
     fields:    final.fields,
-    boundaries: [],
-    features:   [],
   };
 }
 
