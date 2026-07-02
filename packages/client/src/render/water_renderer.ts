@@ -19,13 +19,11 @@
  * and replayed on the next tick.
  */
 import * as THREE from "three";
+import { BoundaryKind } from "@voxim/protocol";
 import type { ClientWorld } from "../state/client_world.ts";
 import { paletteToken } from "./palette.ts";
 
 const CHUNK_SIDE = 32;
-
-/** Mirror of atlas's BOUNDARY_KIND_WATER; literal keeps atlas out of the bundle. */
-const BOUNDARY_KIND_WATER = 3;
 
 /**
  * How far below floor the WATER channel is cut by atlas's terrain stage.
@@ -131,7 +129,7 @@ function buildWaterGeo(
   for (let ly = 0; ly < CHUNK_SIDE; ly++) {
     for (let lx = 0; lx < CHUNK_SIDE; lx++) {
       const idx = lx + ly * CHUNK_SIDE;
-      if (kinds[idx] !== BOUNDARY_KIND_WATER) continue;
+      if (kinds[idx] !== BoundaryKind.water) continue;
 
       // Surface sits at the original floor — `heights` carries the trenched
       // bed (`floor - RIVER_DEPTH`), so we add the depth back.

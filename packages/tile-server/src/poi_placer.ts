@@ -21,14 +21,11 @@
  */
 import type { World } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
+import { BoundaryKind } from "@voxim/protocol";
 import { spawnPrefab } from "./spawner.ts";
 
 const TILE_SIZE = 512;
 const WALL_HEIGHT = 2.0;
-
-/** Mirror of atlas's BOUNDARY_KIND_*; literals keep atlas out of tile-server's runtime bundle. */
-const BOUNDARY_KIND_OPEN  = 0;
-const BOUNDARY_KIND_STONE = 1;
 
 /** Pool of NPC prefab ids used by the mob POI.  Wired by id; kept lean for
  *  "first primitive". Boot-cross-checked in server.ts against content.prefabs
@@ -216,7 +213,7 @@ function stampRoom(
 
       heights[idx]   = wallY;
       opens[idx]     = 0;
-      kinds[idx]     = BOUNDARY_KIND_STONE; // suppress forest decoration
+      kinds[idx]     = BoundaryKind.stone; // suppress forest decoration
       materials[idx] = woodMaterialId;
     }
   }
@@ -225,6 +222,6 @@ function stampRoom(
   // a stray closed pixel right at the door cell.
   const dIdx = doorX + doorY * TILE_SIZE;
   opens[dIdx] = 1;
-  kinds[dIdx] = BOUNDARY_KIND_OPEN;
+  kinds[dIdx] = BoundaryKind.open;
   heights[dIdx] = floor;
 }

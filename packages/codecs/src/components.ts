@@ -156,10 +156,11 @@ export const openMaskCodec: Serialiser<OpenMaskData> = {
 
 export interface KindGridData {
   /**
-   * Per-cell boundary kind id from atlas's BOUNDARY_KIND_* set. Same
-   * row-major layout as HeightmapData.data. 0 = open / un-tagged.
-   * Drives client-side decoration (trees on FOREST, etc.) without
-   * needing per-tree server entities.
+   * Per-cell boundary kind id from @voxim/protocol's BoundaryKind set
+   * (packages/protocol/src/boundary_kind.ts). Same row-major layout as
+   * HeightmapData.data. 0 = open / un-tagged. Drives client-side
+   * decoration (trees on FOREST, etc.) without needing per-tree server
+   * entities.
    */
   data: Uint16Array;
 }

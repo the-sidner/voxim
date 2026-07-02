@@ -29,6 +29,7 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
+import { BoundaryKind } from "@voxim/protocol";
 import type { KindsState, PortalsState } from "./state.ts";
 
 import { fbm } from "../../common/noise.ts";
@@ -36,17 +37,20 @@ import type { BiomeParams } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
 
 /**
- * Atlas's canonical boundary-kind ids. Stable across versions; downstream
- * consumers translate to their own (visual + verb) registry.
+ * Boundary-kind ids. Canonically defined in @voxim/protocol's
+ * BoundaryKind (wire vocabulary — KindGrid ships these ids on the wire);
+ * re-exported here under atlas's original names so existing internal
+ * consumers (rasterize, fields, materials, poi_network, rivers, terrain,
+ * zone_graph, …) are unaffected.
  *
  * 0 reserved for "open / not a boundary" so a fresh Uint16Array reads as
  * un-tagged before the stage runs.
  */
-export const BOUNDARY_KIND_OPEN        = 0;
-export const BOUNDARY_KIND_STONE       = 1;
-export const BOUNDARY_KIND_FOREST      = 2;
-export const BOUNDARY_KIND_WATER       = 3;
-export const BOUNDARY_KIND_GRASS_MOUND = 4;
+export const BOUNDARY_KIND_OPEN        = BoundaryKind.open;
+export const BOUNDARY_KIND_STONE       = BoundaryKind.stone;
+export const BOUNDARY_KIND_FOREST      = BoundaryKind.forest;
+export const BOUNDARY_KIND_WATER       = BoundaryKind.water;
+export const BOUNDARY_KIND_GRASS_MOUND = BoundaryKind.grassMound;
 // Room left in the id space for future kinds (rubble, scree, hedge, …).
 
 const KIND_SUB_SEED = 0x60006001;
