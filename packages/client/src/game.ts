@@ -556,7 +556,7 @@ export class VoximGame {
           }
           // During loading: don't push to renderer yet — keeps JS thread free so
           // QUIC flow control isn't starved.  _finishLoading() flushes everything.
-          if (this.loadingComplete) this.renderer?.updateTerrain(state.heightmap, state.materialGrid);
+          if (this.loadingComplete) this.renderer?.updateTerrain(state.heightmap, state.materialGrid, state.surfaceStateGrid);
         } else if (state.gateLink && state.position) {
           // Gate entities are rendered as standalone navigational markers,
           // not via the regular entity mesh path (no modelRef, no skeleton).
@@ -1647,7 +1647,7 @@ export class VoximGame {
     let terrainCount = 0, entityCount = 0, gateCount = 0;
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap && state.materialGrid) {
-        this.renderer?.updateTerrain(state.heightmap, state.materialGrid); terrainCount++;
+        this.renderer?.updateTerrain(state.heightmap, state.materialGrid, state.surfaceStateGrid); terrainCount++;
       } else if (state.gateLink && state.position) {
         const groundZ = this.world.getTerrainHeight(state.position.x, state.position.y);
         this.renderer?.updateGateMarker(

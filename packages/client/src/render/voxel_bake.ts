@@ -181,6 +181,41 @@ export interface TintJitter {
 
 const DEFAULT_TINT: TintJitter = { brightness: [0.80, 1.20], warmCool: 0.14 };
 
+/**
+ * Resolved moss-creep colour response (T-311 P4) — the renderer derives this
+ * ONCE per material from `MaterialDef.render.mossBlend` + the target moss
+ * material's palette colour. `ratio` is moss÷base per channel (so baseColour ×
+ * ratio ≈ mossColour on the vertex-colour multiplier), `shift` an additive
+ * tint nudge. Applied per voxel, scaled by the atom's `moss01`.
+ */
+export interface MossResponse {
+  ratio: readonly [number, number, number];
+  shift: readonly [number, number, number];
+}
+
+/**
+ * Derive the per-channel colour response that lerps `baseColor` toward
+ * `mossColor` on the vertex-colour MULTIPLIER (which scales the material's
+ * base colour/texture). Ratio clamps to [0,4] so a near-black base can't
+ * blow the multiplier out. Pure — unit-testable without THREE.
+ */
+export function resolveMossResponse(
+  baseColor: number,
+  mossColor: number,
+  shift: readonly [number, number, number],
+): MossResponse {
+  const ch = (hex: number, s: number) => ((hex >> s) & 0xff) / 255;
+  const ratio1 = (m: number, b: number) => Math.min(4, m / Math.max(b, 1 / 255));
+  return {
+    ratio: [
+      ratio1(ch(mossColor, 16), ch(baseColor, 16)),
+      ratio1(ch(mossColor, 8), ch(baseColor, 8)),
+      ratio1(ch(mossColor, 0), ch(baseColor, 0)),
+    ],
+    shift,
+  };
+}
+
 /** Per-voxel tint (rgb multipliers around 1.0): brightness jitter + a warm/cool
  *  tilt. Tuned subtle — mottles the surface without losing the material's identity.
  *  The hash stays sub-voxel dither; the AMPLITUDE is the content knob, so richness
@@ -210,14 +245,18 @@ export function bakeVoxels(
   /** Per-voxel colour-mottle amplitude (content: MaterialDef.render.tintJitter).
    *  Omitted/undefined → the engine default (byte-identical to pre-T-311). */
   tint: TintJitter = DEFAULT_TINT,
+  /** Moss-creep colour response (content: MaterialDef.render.mossBlend, resolved
+   *  by the caller). Only read where an atom carries `moss01` — omitted or no
+   *  mossy atoms → byte-identical. */
+  moss?: MossResponse,
 ): BakedMesh {
-  const voxels: { px: number; py: number; pz: number; baked: BakedVoxel }[] = [];
+  const voxels: { px: number; py: number; pz: number; moss01: number; baked: BakedVoxel }[] = [];
   for (const a of atoms) {
     if (a.materialId !== materialId) continue;
     // model center → three center (x, z, y); size stays in model axes — the
     // displaced-box bake applies the same swap to the extents internally.
     const px = a.cx, py = a.cz, pz = a.cy;
-    voxels.push({ px, py, pz, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, mag) });
+    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, mag) });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;
@@ -229,8 +268,15 @@ export function bakeVoxels(
   const indices = new Uint32Array(voxels.length * BOX_INDEX_COUNT);
 
   let vOff = 0, iOff = 0;
-  for (const { px, py, pz, baked } of voxels) {
-    const [tr, tg, tb] = voxelTint(px, py, pz, tint);   // one tint per voxel
+  for (const { px, py, pz, moss01, baked } of voxels) {
+    let [tr, tg, tb] = voxelTint(px, py, pz, tint);   // one tint per voxel
+    if (moss && moss01 > 0) {
+      // Lerp the multiplier toward the moss response: base×ratio ≈ moss colour.
+      const k = moss01 > 1 ? 1 : moss01;
+      tr = tr * (1 - k + k * moss.ratio[0]) + k * moss.shift[0];
+      tg = tg * (1 - k + k * moss.ratio[1]) + k * moss.shift[1];
+      tb = tb * (1 - k + k * moss.ratio[2]) + k * moss.shift[2];
+    }
     for (let i = 0; i < BOX_VERT_COUNT; i++) {
       const v = vOff + i;
       // Translate the voxel's local geometry to its model-space center.

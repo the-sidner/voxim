@@ -19,6 +19,17 @@
     "stone"
   ],
   "render": {
-    "textureStyle": "stone"
+    "textureStyle": "stone",
+    "mossBlend": {
+      "material": "moss",
+      "floorBias": 0.7,
+      "wallBias": 0.4,
+      "jointBoost": 0.3,
+      "tintShift": [
+        -0.04,
+        0.06,
+        -0.05
+      ]
+    }
   }
 }

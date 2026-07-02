@@ -15,6 +15,7 @@ import {
   BOX_INDEX_COUNT,
   BOX_VERT_COUNT,
   computeVertexNormals,
+  resolveMossResponse,
   unitBoxIndex,
   unitBoxUV,
 } from "./voxel_bake.ts";
@@ -295,4 +296,28 @@ Deno.test("bakeVoxels constant-mag keeps a shared cliff-edge corner crack-free (
   const aD = bakeVoxels([deep], 1);
   const bD = bakeVoxels([shallow], 1);
   assertEquals(countShared(aD.positions, bD.positions), 0, "default per-voxel mag cracks the seam (no shared corner survives)");
+});
+
+Deno.test("moss-creep (T-311 P4): no moss01 atoms bake byte-identically; moss01 lerps toward the response", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const moss = resolveMossResponse(0x808080, 0x34522a, [0, 0, 0]);
+
+  // Passing a moss response with NO mossy atoms changes nothing.
+  const plain = bakeVoxels([atom], 1);
+  const withResp = bakeVoxels([atom], 1, undefined, undefined, moss);
+  assertEquals(plain.colors, withResp.colors, "no moss01 → byte-identical colours");
+
+  // moss01=1 → the colour multiplier scales by the ratio exactly (full lerp).
+  const mossy = bakeVoxels([{ ...atom, moss01: 1 }], 1, undefined, undefined, moss);
+  assertEquals(mossy.colors[0], Math.fround(plain.colors[0] * moss.ratio[0]));
+  assertEquals(mossy.colors[1], Math.fround(plain.colors[1] * moss.ratio[1]));
+  assertEquals(mossy.colors[2], Math.fround(plain.colors[2] * moss.ratio[2]));
+
+  // Ratio: moss #34522a over stone #808080 → green channel strongest.
+  assertEquals(moss.ratio[1] > moss.ratio[0] && moss.ratio[1] > moss.ratio[2], true);
+
+  // Half moss sits strictly between plain and full.
+  const half = bakeVoxels([{ ...atom, moss01: 0.5 }], 1, undefined, undefined, moss);
+  const between = (a: number, m: number, b: number) => (m > Math.min(a, b)) && (m < Math.max(a, b));
+  assertEquals(between(plain.colors[0], half.colors[0], mossy.colors[0]), true);
 });

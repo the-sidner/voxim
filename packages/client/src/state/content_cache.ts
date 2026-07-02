@@ -152,6 +152,11 @@ export class ContentCache {
     return this.models.get(modelId);
   }
 
+  /** Name → MaterialDef via the bootstrap service (moss-creep target lookup). */
+  getMaterialByName(name: string): MaterialDef | undefined {
+    return this.bootstrapService?.materials.get(name);
+  }
+
   getMaterialSync(materialId: number): MaterialDef | undefined {
     return this.materials.get(materialId);
   }

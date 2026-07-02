@@ -34,4 +34,13 @@ export interface VoxelAtom {
   materialId: number;
   /** Addressing tag for editable/placed voxels (0 = baked-static terrain/model). */
   vid?: number;
+  /**
+   * Moss-creep blend factor 0..1 (T-311 P4, G6 per-voxel render attribute) —
+   * how far this voxel's colour lerps toward `MaterialDef.render.mossBlend`'s
+   * target material. DATA, not colour: derived from the server-authoritative
+   * SurfaceStateGrid.overgrowth × the content-authored floor/wall bias; the
+   * moss COLOUR still resolves downstream from the palette (materialId stays
+   * the only colour carrier). Absent ⇒ bakes byte-identically.
+   */
+  moss01?: number;
 }

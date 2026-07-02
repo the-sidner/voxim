@@ -22,6 +22,7 @@ import {
   bakeVoxels,
   geometryFromBaked,
   buildVoxelMaterial,
+  resolveMossResponse,
   textureStyleIds,
   registerBuiltinTextureStyles,
   disposeVoxelTextures,
@@ -45,15 +46,28 @@ const WALL_W = 6;
 const WALL_H = 4;
 
 /** Bake a flat 6×4 wall of one material through the real runtime, under variant
- *  `variantIndex` (-1 = base) resolved by the real resolveMaterialVariant. */
-function buildWallMesh(mat: MaterialJson, variantIndex: number): THREE.Mesh {
+ *  `variantIndex` (-1 = base) resolved by the real resolveMaterialVariant.
+ *  `mossPreview` (mock SurfaceStateGrid slider, T-311 P4) ramps each column's
+ *  `moss01` 0→overgrowth×floorBias left→right through the REAL moss path. */
+function buildWallMesh(
+  mat: MaterialJson,
+  variantIndex: number,
+  mossPreview?: { overgrowth: number; targetColor: number },
+): THREE.Mesh {
+  const mb = mat.render?.mossBlend;
   const atoms = [];
   for (let y = 0; y < WALL_H; y++) {
     for (let x = 0; x < WALL_W; x++) {
-      atoms.push({ cx: x, cy: y, cz: 0, sx: 1, sy: 1, sz: 1, materialId: mat.id });
+      const moss01 = mb && mossPreview
+        ? (x / (WALL_W - 1)) * mossPreview.overgrowth * mb.floorBias
+        : 0;
+      atoms.push({ cx: x, cy: y, cz: 0, sx: 1, sy: 1, sz: 1, materialId: mat.id, ...(moss01 > 0 && { moss01 }) });
     }
   }
-  const baked = bakeVoxels(atoms, mat.id, undefined, mat.render?.tintJitter);
+  const moss = mb && mossPreview
+    ? resolveMossResponse(parseColor(mat.color), mossPreview.targetColor, mb.tintShift)
+    : undefined;
+  const baked = bakeVoxels(atoms, mat.id, undefined, mat.render?.tintJitter, moss);
   let def = { ...mat, color: parseColor(mat.color) } as unknown as MaterialDef;
   if (variantIndex >= 0) def = resolveMaterialVariant(def, variantIndex);
   return new THREE.Mesh(geometryFromBaked(baked), buildVoxelMaterial(def, mat.id));
@@ -67,10 +81,14 @@ export function MaterialEditor() {
   const [path, setPath]   = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [variantIndex, setVariantIndex] = useState(-1);
+  /** Mock SurfaceStateGrid.overgrowth for the moss preview (never persisted). */
+  const [mossOg, setMossOg] = useState(0.6);
   const viewportRef = useRef<Viewport | null>(null);
   const meshRef     = useRef<THREE.Mesh | null>(null);
+  /** Resolved palette colour of the mossBlend target material (lazy-loaded). */
+  const mossTargetRef = useRef<number | null>(null);
 
-  const rebuild = (m: MaterialJson, vi: number) => {
+  const rebuild = (m: MaterialJson, vi: number, og = mossOg) => {
     const vp = viewportRef.current;
     if (!vp) return;
     if (meshRef.current) {
@@ -81,11 +99,25 @@ export function MaterialEditor() {
     // The texture cache is keyed per material-id; clear it so an edited
     // textureStyle / colour regenerates instead of returning the stale texture.
     disposeVoxelTextures();
-    const mesh = buildWallMesh(m, vi);
+    const target = mossTargetRef.current;
+    const mesh = buildWallMesh(m, vi, target !== null ? { overgrowth: og, targetColor: target } : undefined);
     vp.contentGroup.add(mesh);
     meshRef.current = mesh;
     const box = new THREE.Box3().setFromObject(mesh);
     vp.frame(box);
+  };
+
+  /** Load the mossBlend target material's colour, then re-render the wall. */
+  const loadMossTarget = async (m: MaterialJson, vi: number, og?: number) => {
+    const name = m.render?.mossBlend?.material;
+    if (!name) { mossTargetRef.current = null; return; }
+    try {
+      const t = await readJson<MaterialJson>(`materials/${name}.json`);
+      mossTargetRef.current = parseColor(t.color);
+    } catch {
+      mossTargetRef.current = null;
+    }
+    rebuild(m, vi, og);
   };
 
   const pick = async (p: string) => {
@@ -96,7 +128,9 @@ export function MaterialEditor() {
     setPath(p);
     setDirty(false);
     setVariantIndex(-1);
+    mossTargetRef.current = null;
     rebuild(m, -1);
+    if (m.render?.mossBlend) void loadMossTarget(m, -1);
   };
 
   const applyRender = (render: MaterialRenderDef) => {
@@ -105,11 +139,17 @@ export function MaterialEditor() {
     setMat(m);
     setDirty(true);
     rebuild(m, variantIndex);
+    if (render.mossBlend && mossTargetRef.current === null) void loadMossTarget(m, variantIndex);
   };
 
   const pickVariant = (vi: number) => {
     setVariantIndex(vi);
     if (mat) rebuild(mat, vi);
+  };
+
+  const previewMossOg = (og: number) => {
+    setMossOg(og);
+    if (mat) rebuild(mat, variantIndex, og);
   };
 
   const save = async () => {
@@ -139,7 +179,7 @@ export function MaterialEditor() {
           }}
         />
       }
-      right={<Inspector mat={mat} variantIndex={variantIndex} onChange={applyRender} onVariant={pickVariant} />}
+      right={<Inspector mat={mat} variantIndex={variantIndex} mossOg={mossOg} onChange={applyRender} onVariant={pickVariant} onMossOg={previewMossOg} />}
     />
   );
 }
@@ -149,13 +189,17 @@ export function MaterialEditor() {
 function Inspector({
   mat,
   variantIndex,
+  mossOg,
   onChange,
   onVariant,
+  onMossOg,
 }: {
   mat: MaterialJson | null;
   variantIndex: number;
+  mossOg: number;
   onChange: (render: MaterialRenderDef) => void;
   onVariant: (index: number) => void;
+  onMossOg: (og: number) => void;
 }) {
   if (!mat) {
     return <div style={{ padding: "var(--s-4)", color: "var(--bone-faint)" }}>Pick a material on the left.</div>;
@@ -211,6 +255,40 @@ function Inspector({
         )}
       </Section>
 
+      <Section label="Moss creep (overgrowth response)">
+        <label style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+          <input
+            type="checkbox"
+            checked={!!render.mossBlend}
+            onChange={(e) => {
+              const next = { ...render };
+              if ((e.target as HTMLInputElement).checked) {
+                next.mossBlend = render.mossBlend
+                  ?? { material: "moss", floorBias: 0.85, wallBias: 0.55, jointBoost: 0.6, tintShift: [-0.04, 0.06, -0.05] };
+              } else delete next.mossBlend;
+              onChange(next);
+            }}
+          />
+          <span style={{ color: "var(--bone-faint)" }}>{render.mossBlend ? `→ ${render.mossBlend.material}` : "off"}</span>
+        </label>
+        {render.mossBlend && (
+          <>
+            <Slider label="floor bias" value={render.mossBlend.floorBias} min={0} max={1} step={0.05}
+              onInput={(v) => onChange({ ...render, mossBlend: { ...render.mossBlend!, floorBias: v } })} />
+            <Slider label="wall bias" value={render.mossBlend.wallBias} min={0} max={1} step={0.05}
+              onInput={(v) => onChange({ ...render, mossBlend: { ...render.mossBlend!, wallBias: v } })} />
+            <Slider label="joint boost" value={render.mossBlend.jointBoost} min={0} max={2} step={0.1}
+              onInput={(v) => onChange({ ...render, mossBlend: { ...render.mossBlend!, jointBoost: v } })} />
+            <Slider label="overgrowth" value={mossOg} min={0} max={1} step={0.05} onInput={onMossOg} />
+            <div style={{ color: "var(--bone-faint)", fontSize: "var(--fs-small)", marginTop: 4 }}>
+              The wall ramps moss 0→overgrowth×floorBias left→right through the real
+              bake. <em>overgrowth</em> is a MOCK of the per-cell server field
+              (SurfaceStateGrid) — preview only, never saved.
+            </div>
+          </>
+        )}
+      </Section>
+
       {variants.length > 0 && (
         <Section label={`State ladder (${variants.length})`}>
           <select
@@ -230,8 +308,8 @@ function Inspector({
 
       <div style={{ color: "var(--bone-faint)", fontSize: "var(--fs-small)", lineHeight: 1.5 }}>
         Preview bakes through the real <code>bakeVoxels</code> + <code>buildVoxelMaterial</code> —
-        what you see is what spawns in-game. Other render fields (relief, wetness, mossBlend, glowFamily,
-        variants) are reserved for later phases.
+        what you see is what spawns in-game. Other render fields (relief, wetness, glowFamily)
+        are reserved for later phases.
       </div>
     </div>
   );

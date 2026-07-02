@@ -14,12 +14,12 @@
  * radius from the player have their groups hidden.
  */
 import * as THREE from "three";
-import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
+import type { HeightmapData, MaterialGridData, SurfaceStateGridData } from "@voxim/codecs";
 import type { EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
-import { bakeVoxels } from "./voxel_bake.ts";
+import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
@@ -212,6 +212,8 @@ export class VoximRenderer {
   private gateMarkers!: GateMarkerRenderer; // set in constructor (needs camera + renderer)
   private readonly terrainHmaps   = new Map<string, HeightmapData>();
   private readonly terrainMats    = new Map<string, MaterialGridData>();
+  /** SurfaceStateGrid per chunk — the moss-creep overgrowth source (T-311 P4). */
+  private readonly terrainSurf    = new Map<string, SurfaceStateGridData>();
   /** Entity-mesh lifecycle — live animated meshes + pooled-prop positions + the
    *  async spawn→build state machine (T-282). The renderer reaches the meshes
    *  through `entities.all` / `entities.get(id)` for its per-frame pose loop. */
@@ -508,12 +510,13 @@ export class VoximRenderer {
 
   // ---- terrain ----
 
-  updateTerrain(heightmap: HeightmapData, materials: MaterialGridData): void {
+  updateTerrain(heightmap: HeightmapData, materials: MaterialGridData, surf?: SurfaceStateGridData): void {
     const cx = heightmap.chunkX, cy = heightmap.chunkY;
     const key = `${cx},${cy}`;
 
     this.terrainHmaps.set(key, heightmap);
     this.terrainMats.set(key, materials);
+    if (surf) this.terrainSurf.set(key, surf);
 
     // Each cell's column floors to the lowest of its FOUR neighbours, so the new
     // chunk changes the cliff depth along every shared edge — rebuild all four
@@ -542,6 +545,19 @@ export class VoximRenderer {
       }
     }
 
+    // Moss-creep (T-311 P4): thread the chunk's server overgrowth plane + the
+    // per-material mossBlend bias into the atom build; atoms carry `moss01`.
+    const surf = this.terrainSurf.get(key);
+    const mossInput = surf
+      ? {
+        overgrowth: surf.overgrowth,
+        biasFor: (matId: number) => {
+          const mb = this.content?.getMaterialSync(matId)?.render?.mossBlend;
+          return mb ? { floor: mb.floorBias, wall: mb.wallBias, joint: mb.jointBoost } : undefined;
+        },
+      }
+      : undefined;
+
     // Re-express the chunk as voxel atoms (column boxes) bucketed by material,
     // then bake one mesh per material through the shared voxel pipeline (T-283).
     const byMat = buildChunkAtoms(hm, mat, {
@@ -549,11 +565,16 @@ export class VoximRenderer {
       E: this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
       S: this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
       W: this.terrainHmaps.get(`${cx - 1},${cy}`) ?? null,
-    });
+    }, mossInput);
     const meshes: THREE.Mesh[] = [];
     for (const [matId, atoms] of byMat) {
       const matDef = this.content?.getMaterialSync(matId);
-      const geo = geometryFromBaked(bakeVoxels(atoms, matId, TERRAIN_DISP_MAG, matDef?.render?.tintJitter));
+      const mb = matDef?.render?.mossBlend;
+      const mossTarget = mb ? this.content?.getMaterialByName(mb.material) : undefined;
+      const mossResp = matDef && mb && mossTarget
+        ? resolveMossResponse(matDef.color, mossTarget.color, mb.tintShift)
+        : undefined;
+      const geo = geometryFromBaked(bakeVoxels(atoms, matId, TERRAIN_DISP_MAG, matDef?.render?.tintJitter, mossResp));
       const m = buildVoxelMaterial(matDef, matId);
       canopyFade.register(m, { voxelMode: true });
       const me = new THREE.Mesh(geo, m);
@@ -581,6 +602,7 @@ export class VoximRenderer {
       this.terrainMeshes.delete(key);
       this.terrainHmaps.delete(key);
       this.terrainMats.delete(key);
+      this.terrainSurf.delete(key);
       this._chunkOverlay.removeChunk(chunkX, chunkY);
     }
   }

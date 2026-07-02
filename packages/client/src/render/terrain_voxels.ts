@@ -62,6 +62,19 @@ export interface ChunkNeighbours {
 }
 
 /**
+ * Moss-creep input (T-311 P4): the chunk's server-authoritative overgrowth
+ * plane + a per-material bias lookup resolved from `MaterialDef.render.mossBlend`
+ * (undefined = material doesn't moss). THREE-free and content-free — the
+ * renderer owns the content resolution; this stage only derives each atom's
+ * `moss01` (overgrowth × floor/wall bias, terrace ledges boosted by joint).
+ */
+export interface MossInput {
+  /** SurfaceStateGrid.overgrowth, length CHUNK² (0..255). */
+  overgrowth: Uint8Array;
+  biasFor: (materialId: number) => { floor: number; wall: number; joint: number } | undefined;
+}
+
+/**
  * Build one chunk's terrain atoms, bucketed by materialId (each bucket bakes into
  * one mesh). Neighbour heightmaps supply the column-floor depth for edge cells; a
  * missing neighbour falls back to "neighbour height = h" (no wall toward the
@@ -71,6 +84,7 @@ export function buildChunkAtoms(
   hm: HeightmapData,
   mats: MaterialGridData,
   nb: ChunkNeighbours,
+  moss?: MossInput,
 ): Map<number, VoxelAtom[]> {
   const offX = hm.chunkX * CHUNK;
   const offZ = hm.chunkY * CHUNK;
@@ -102,6 +116,11 @@ export function buildChunkAtoms(
 
       let bucket = byMat.get(m);
       if (!bucket) byMat.set(m, bucket = []);
+
+      // Moss-creep (T-311 P4): this cell's overgrowth × the material's authored
+      // bias; 0 / no-mossBlend materials skip entirely (atoms stay bias-free).
+      const mossBias = moss?.biasFor(m);
+      const og01 = mossBias ? moss!.overgrowth[cx + cy * CHUNK] / 255 : 0;
 
       if (depth > CLIFF_MIN) {
         // ---- Terraced cliff: a stack of sub-boxes forming a bottom-wide
@@ -139,6 +158,13 @@ export function buildChunkAtoms(
             cz: (zTop + zBot) / 2,
             sx, sy, sz,
             materialId: m,
+            // Top step reads as floor; lower ledges are wall faces whose seams
+            // gather moss (jointBoost) — "oldest stone most swallowed".
+            ...(og01 > 0 && {
+              moss01: L === 0
+                ? og01 * mossBias!.floor
+                : Math.min(1, og01 * mossBias!.wall * (1 + mossBias!.joint)),
+            }),
           });
         }
         continue;
@@ -153,6 +179,7 @@ export function buildChunkAtoms(
         sy: 1,
         sz: depth,
         materialId: m,
+        ...(og01 > 0 && { moss01: og01 * mossBias!.floor }),
       });
     }
   }

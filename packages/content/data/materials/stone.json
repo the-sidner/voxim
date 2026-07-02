@@ -19,10 +19,35 @@
     "mineral"
   ],
   "render": {
-    "textureStyle": "stone"
+    "textureStyle": "stone",
+    "mossBlend": {
+      "material": "moss",
+      "floorBias": 0.85,
+      "wallBias": 0.55,
+      "jointBoost": 0.6,
+      "tintShift": [
+        -0.04,
+        0.06,
+        -0.05
+      ]
+    }
   },
   "variants": [
-    { "id": "corrupted", "colorShift": { "h": -0.02, "s": 0.35, "l": -0.22 }, "emissiveCracks": 0.28, "addsTags": ["corrupted"] },
-    { "id": "mossy", "colorOverride": 5069354 }
+    {
+      "id": "corrupted",
+      "colorShift": {
+        "h": -0.02,
+        "s": 0.35,
+        "l": -0.22
+      },
+      "emissiveCracks": 0.28,
+      "addsTags": [
+        "corrupted"
+      ]
+    },
+    {
+      "id": "mossy",
+      "colorOverride": 5069354
+    }
   ]
 }
