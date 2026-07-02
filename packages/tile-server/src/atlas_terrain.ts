@@ -21,9 +21,10 @@ import {
   applyStairUnlock,
   markStairAnchor,
   findRegion,
+  mergeGenParams,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
-  type TileInitWire, type LevelDef, type FieldPlanes,
+  type TileInitWire, type LevelDef, type FieldPlanes, type DeepPartialGenParams,
 } from "@voxim/atlas";
 import {
   TILE_SIZE,
@@ -250,10 +251,12 @@ export async function loadTerrainFromAtlas(
 
   const tile = tileInitFromWire(row.payload as unknown as TileInitWire);
   const { materialMap, defaultMaterialId } = buildMaterialMap(content);
+  const genParams = mergeGenParams(world.params as unknown as DeepPartialGenParams);
   const { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields } = upsampleTile(tile, {
     targetSize: TILE_SIZE,
     materialMap,
     defaultMaterialId,
+    wallHeight: genParams.terrain.wallHeight,
   });
 
   // T-213: stair runtime application at boot (T-214: consumes LevelDef).
@@ -286,7 +289,7 @@ export async function loadTerrainFromAtlas(
       const touched = applyStairUnlock(heightBuffer, openBuffer, zoneBuffer, TILE_SIZE, {
         wildernessZoneId: toRegion.zoneId,
         anchor: { x: ax, y: ay },
-        wallHeight: 2.0,
+        wallHeight: genParams.terrain.wallHeight,
         rampDepth: stair.rampDepth,
         rampHalfWidth: stair.rampHalfWidth,
       });

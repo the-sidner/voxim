@@ -29,7 +29,6 @@
 
 import type { TileInit } from "./types.ts";
 import type { FieldPlanes } from "./pipeline/fields.ts";
-import { WALL_HEIGHT } from "./pipeline/terrain.ts";
 import { levelToZoneOf } from "./level/types.ts";
 
 /** Nearest-resample a gridSize² plane to targetSize² (T-311 P3). Render fields
@@ -74,6 +73,12 @@ export interface UpsampleOptions {
   materialMap: ReadonlyMap<number, number>;
   /** Fallback for atlas ids not present in materialMap. */
   defaultMaterialId: number;
+  /**
+   * The world's actual wall-step height (GenParams.terrain.wallHeight),
+   * used to strip/re-add the wall step during floor bilinear resampling.
+   * Must match the value the source tile's heightMap was generated with.
+   */
+  wallHeight: number;
 }
 
 export interface UpsampleOutput {
@@ -104,7 +109,7 @@ export interface UpsampleOutput {
 }
 
 export function upsampleTile(tile: TileInit, options: UpsampleOptions): UpsampleOutput {
-  const { targetSize, materialMap, defaultMaterialId } = options;
+  const { targetSize, materialMap, defaultMaterialId, wallHeight } = options;
   const g = tile.gridSize;
   const N = targetSize * targetSize;
 
@@ -125,7 +130,7 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
   const floor = new Float32Array(g * g);
   for (let i = 0; i < g * g; i++) {
     floor[i] = tile.openMask[i] === 0
-      ? tile.heightMap[i] - WALL_HEIGHT
+      ? tile.heightMap[i] - wallHeight
       : tile.heightMap[i];
   }
 
@@ -163,7 +168,7 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
         f11 * fx       * fy;
 
       // Re-add wall step from the nearest pixel's openness.
-      const wall = tile.openMask[nIdx] === 0 ? WALL_HEIGHT : 0;
+      const wall = tile.openMask[nIdx] === 0 ? wallHeight : 0;
       heightBuffer[tIdx] = fInterp + wall;
 
       // Material: nearest only, with caller-supplied translation.
