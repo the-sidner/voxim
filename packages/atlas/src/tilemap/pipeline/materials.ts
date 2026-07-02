@@ -50,7 +50,6 @@ export const MATERIAL_SNOW   = 10;
 
 const DETAIL_SUB_SEED  = 0x50005001;
 const SPREAD_SUB_SEED  = 0xC0FFEE17;
-const SPREAD_FREQUENCY = 0.18;  // higher freq than detailFrequency → small patches
 
 export const materials: Transformer<TerrainState, MaterialsState, GenParams["materials"]> =
   (state, seed, params) => {
@@ -58,7 +57,7 @@ export const materials: Transformer<TerrainState, MaterialsState, GenParams["mat
     const N = gridSize * gridSize;
     const materials = new Uint16Array(N);
     const fDetail = params.detailFrequency;
-    const fSpread = SPREAD_FREQUENCY;
+    const fSpread = params.spreadFrequency;
 
     for (let py = 0; py < gridSize; py++) {
       for (let px = 0; px < gridSize; px++) {
@@ -87,7 +86,7 @@ export const materials: Transformer<TerrainState, MaterialsState, GenParams["mat
         // noise so uniform colour breaks into believable patches.
         const baseMat = pickMaterial(biome, detail, params);
         const spread  = fbm(px * fSpread, py * fSpread, seed ^ SPREAD_SUB_SEED, 2);
-        materials[idx] = perturbWithSpread(baseMat, biome, spread);
+        materials[idx] = perturbWithSpread(baseMat, biome, spread, params);
       }
     }
 
@@ -125,24 +124,24 @@ function pickPathMaterial(b: BiomeParams, p: GenParams["materials"]): number {
  * spread noise crosses a threshold. Keeps the biome-driven base most of
  * the time but breaks up uniform colour with believable patches.
  */
-function perturbWithSpread(base: number, b: BiomeParams, spread: number): number {
+function perturbWithSpread(base: number, b: BiomeParams, spread: number, p: GenParams["materials"]): number {
   // Threshold >0 is a small chance; >0.4 a rare chance. Spread is in [-1, 1].
   switch (base) {
     case MATERIAL_GRASS:
-      if (spread > 0.55)  return MATERIAL_DIRT;    // bare patches in meadows
-      if (spread > 0.40)  return MATERIAL_GRAVEL;  // tiny stone patches
-      if (spread < -0.55 && b.moisture > 0.5) return MATERIAL_MOSS;
+      if (spread > p.spreadGrassToDirt)   return MATERIAL_DIRT;    // bare patches in meadows
+      if (spread > p.spreadGrassToGravel) return MATERIAL_GRAVEL;  // tiny stone patches
+      if (spread < p.spreadGrassToMoss && b.moisture > 0.5) return MATERIAL_MOSS;
       return MATERIAL_GRASS;
     case MATERIAL_DIRT:
-      if (spread > 0.55)  return MATERIAL_GRAVEL;  // gravel speckles
-      if (spread < -0.55 && b.moisture > 0.5) return MATERIAL_MUD;
+      if (spread > p.spreadDirtToGravel)  return MATERIAL_GRAVEL;  // gravel speckles
+      if (spread < p.spreadDirtToMud && b.moisture > 0.5) return MATERIAL_MUD;
       return MATERIAL_DIRT;
     case MATERIAL_STONE:
-      if (spread > 0.55)  return MATERIAL_GRAVEL;  // weathered scree
-      if (spread < -0.55) return MATERIAL_MOSS;    // moss veins
+      if (spread > p.spreadStoneToGravel) return MATERIAL_GRAVEL;  // weathered scree
+      if (spread < p.spreadStoneToMoss)   return MATERIAL_MOSS;    // moss veins
       return MATERIAL_STONE;
     case MATERIAL_SAND:
-      if (spread > 0.65)  return MATERIAL_GRAVEL;  // pebble strips
+      if (spread > p.spreadSandToGravel)  return MATERIAL_GRAVEL;  // pebble strips
       return MATERIAL_SAND;
     default:
       return base;

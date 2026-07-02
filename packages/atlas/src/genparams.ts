@@ -94,6 +94,18 @@ export interface GenParams {
     waterDetail: number;
     /** moisture > X → GRASS, else DIRT. */
     grassMoisture: number;
+    /** High-frequency "spread" noise frequency — perturbs a chamber's base
+     *  material into patches (higher than detailFrequency → small patches). */
+    spreadFrequency: number;
+    /** perturbWithSpread thresholds (spread is in [-1, 1]). */
+    spreadGrassToDirt: number;
+    spreadGrassToGravel: number;
+    spreadGrassToMoss: number;
+    spreadDirtToGravel: number;
+    spreadDirtToMud: number;
+    spreadStoneToGravel: number;
+    spreadStoneToMoss: number;
+    spreadSandToGravel: number;
   };
 
   /**
@@ -354,6 +366,15 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     waterAltitude: 0.55,
     waterDetail: 0.60,
     grassMoisture: 0.40,
+    spreadFrequency: 0.18,
+    spreadGrassToDirt: 0.55,
+    spreadGrassToGravel: 0.40,
+    spreadGrassToMoss: -0.55,
+    spreadDirtToGravel: 0.55,
+    spreadDirtToMud: -0.55,
+    spreadStoneToGravel: 0.55,
+    spreadStoneToMoss: -0.55,
+    spreadSandToGravel: 0.65,
   },
   kinds: {
     detailFrequency: 0.05,
