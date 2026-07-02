@@ -315,6 +315,15 @@ export interface GenParams {
      *  reads as groves/clearings, not a uniform carpet. */
     fertilityDappleAmp: number;
     fertilityDappleScale: number;
+    /** wear = pathLevel × this. */
+    wearFromTraffic: number;
+    /** corruption = ruinAge × this + corruptionDrynessBias term. */
+    corruptionRuinAgeWeight: number;
+    /** fertility canopy term: (base + gain × canopyLight/255). */
+    fertilityCanopyBase: number;
+    fertilityCanopyGain: number;
+    /** fertility corruption term: (1 - damp × corruption/255). */
+    fertilityCorruptionDamp: number;
   };
 }
 
@@ -454,6 +463,11 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     variantCorruptThreshold: 160,
     fertilityDappleAmp:      0.45,
     fertilityDappleScale:    0.05,   // features ~20 cells — grove-sized
+    wearFromTraffic:         0.85,
+    corruptionRuinAgeWeight: 0.6,
+    fertilityCanopyBase:     0.4,
+    fertilityCanopyGain:     0.6,
+    fertilityCorruptionDamp: 0.5,
   },
 };
 

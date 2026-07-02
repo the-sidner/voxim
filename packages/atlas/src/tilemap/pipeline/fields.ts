@@ -39,6 +39,11 @@ export interface FieldParams {
    *  fertility-driven scatter reads as a uniform carpet (or nothing). 0 = off. */
   fertilityDappleAmp: number;
   fertilityDappleScale: number;  // fbm frequency per cell (~1/feature-size)
+  wearFromTraffic: number;         // wear = pathLevel × this
+  corruptionRuinAgeWeight: number; // corruption = ruinAge × this + dryness bias
+  fertilityCanopyBase: number;     // fertility canopy term: base + gain × canopyLight
+  fertilityCanopyGain: number;
+  fertilityCorruptionDamp: number; // fertility corruption term: 1 - damp × corruption
 }
 
 export interface FieldDeriveInput {
@@ -161,10 +166,10 @@ export function deriveFieldPlanes(input: FieldDeriveInput): FieldPlanes {
 
     // traffic = the rasterised path level; wear follows traffic.
     traffic[i] = pathLevel[i];
-    wear[i] = clamp255(pathLevel[i] * 0.85);
+    wear[i] = clamp255(pathLevel[i] * params.wearFromTraffic);
 
     // corruption: old chambers corrupt; biased a little by dryness.
-    corruption[i] = clamp255(ruinAge[i] * 0.6 + (1 - moisture) * params.corruptionDrynessBias);
+    corruption[i] = clamp255(ruinAge[i] * params.corruptionRuinAgeWeight + (1 - moisture) * params.corruptionDrynessBias);
 
     // wetness: near water + the tile's ambient moisture.
     wetness[i] = clamp255(Math.max(waterNear[i], moist255 * 0.5));
@@ -176,7 +181,10 @@ export function deriveFieldPlanes(input: FieldDeriveInput): FieldPlanes {
     const dapple = dAmp <= 0 ? 1
       : 1 - dAmp + 2 * dAmp * fbm(x * dScale, y * dScale, tileSeed ^ DAPPLE_SUB_SEED, 3);
     fertility[i] = clamp255(
-      moist255 * (0.4 + 0.6 * canopyLight[i] / 255) * (1 - 0.5 * corruption[i] / 255) * dapple,
+      moist255 *
+        (params.fertilityCanopyBase + params.fertilityCanopyGain * canopyLight[i] / 255) *
+        (1 - params.fertilityCorruptionDamp * corruption[i] / 255) *
+        dapple,
     );
 
     // overgrowth: moss creep on old, untrodden, corrupt stone.

@@ -33,6 +33,9 @@ function baseInput(): FieldDeriveInput {
       waterSpreadPasses: 4, waterSpreadDecay: 0.78,
       corruptionDrynessBias: 40, variantCorruptThreshold: 160,
       fertilityDappleAmp: 0, fertilityDappleScale: 0.05,
+      wearFromTraffic: 0.85, corruptionRuinAgeWeight: 0.6,
+      fertilityCanopyBase: 0.4, fertilityCanopyGain: 0.6,
+      fertilityCorruptionDamp: 0.5,
     },
   };
 }
