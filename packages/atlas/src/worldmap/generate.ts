@@ -13,17 +13,8 @@
 
 import { fbm, hash2 } from "../common/noise.ts";
 import { generateRivers } from "./rivers.ts";
-import type { Edge, GateSpec, WorldCellRecord, WorldMap } from "./types.ts";
+import { TILE_WORLD_SIZE, GATE_INSET, type Edge, type GateSpec, type WorldCellRecord, type WorldMap } from "./types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
-
-/**
- * Tile size in world units. Must match the runtime tile size; today
- * that's protocol's TILE_WORLD_SIZE (512). Held locally so atlas stays
- * decoupled from protocol's tile-server-facing types.
- */
-const TILE_WORLD_SIZE = 512;
-/** Margin from tile corners where gates are clamped, in world units. */
-const GATE_INSET = 8;
 
 // Distinct sub-seeds per biome field so they don't correlate trivially.
 const SEED_TEMP    = 0x10001001;

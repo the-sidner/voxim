@@ -30,9 +30,7 @@ import { emptyLevel } from "./level/types.ts";
 import type { GenParams } from "../genparams.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import type { ContentService } from "@voxim/content";
-
-const DEFAULT_TILE_SIZE = 512;
-const DEFAULT_GRID_SIZE = 512;
+import { DEFAULT_TILE_SIZE, DEFAULT_GRID_SIZE } from "./types.ts";
 
 // ---- cache ----------------------------------------------------------------
 

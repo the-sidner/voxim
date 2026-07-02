@@ -22,9 +22,9 @@
 import type { World } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import { BoundaryKind } from "@voxim/protocol";
+import { TILE_SIZE } from "@voxim/world";
 import { spawnPrefab } from "./spawner.ts";
 
-const TILE_SIZE = 512;
 const WALL_HEIGHT = 2.0;
 
 /** Pool of NPC prefab ids used by the mob POI.  Wired by id; kept lean for

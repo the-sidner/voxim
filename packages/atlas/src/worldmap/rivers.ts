@@ -24,12 +24,8 @@
  */
 
 import { hash2 } from "../common/noise.ts";
-import type { Edge, RiverEndpoint, WorldCellRecord } from "./types.ts";
+import { TILE_WORLD_SIZE, GATE_INSET, type Edge, type RiverEndpoint, type WorldCellRecord } from "./types.ts";
 import type { GenParams } from "../genparams.ts";
-
-/** Tile size matches what tile-server uses (mirrors atlas/worldmap/generate.ts). */
-const TILE_WORLD_SIZE = 512;
-const GATE_INSET = 8;
 
 const SEED_RIVER_PICK   = 0x70007001;
 const SEED_RIVER_OFFSET = 0x70007003;

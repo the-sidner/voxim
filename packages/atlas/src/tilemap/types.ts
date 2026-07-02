@@ -12,6 +12,16 @@ import type { Edge } from "../worldmap/types.ts";
 import type { LevelDef } from "./level/types.ts";
 import type { FieldPlanes } from "./pipeline/fields.ts";
 
+/** Default side length of the playable tile in world units. */
+export const DEFAULT_TILE_SIZE = 512;
+/**
+ * Default sample-grid resolution. One pixel = one world unit = one
+ * runtime voxel — atlas runs the pipeline at the same resolution
+ * tile-server samples so the inspector view matches what the player
+ * walks on (no upsample seam).
+ */
+export const DEFAULT_GRID_SIZE = 512;
+
 /**
  * One connected open-pixel component at sample-grid resolution.
  *

@@ -12,6 +12,7 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
+import { TILE_SIZE } from "@voxim/world";
 import { Position } from "./components/game.ts";
 import { GateLink } from "./components/gate.ts";
 
@@ -23,9 +24,14 @@ export interface GatePosition {
   toTileId: string;
 }
 
-/** World units. Tile width is 512 in the dev build. */
-const TILE_SIZE = 512;
-/** Distance from the edge where the gate sits. */
+/**
+ * Distance from the edge where the gate sits. Numerically matches atlas's
+ * own GATE_INSET (packages/atlas/src/worldmap/types.ts) — same physical
+ * quantity (inset from a tile edge, same 0..512 coordinate space) but atlas
+ * and tile-server can't share one owner across the dependency wall (atlas
+ * is upstream; this is gate-*trigger* placement, a tile-server-only
+ * concern). Keep the two in sync by hand if either value ever changes.
+ */
 const GATE_INSET = 8;
 /** Trigger radius in world units. */
 const GATE_RADIUS = 6;

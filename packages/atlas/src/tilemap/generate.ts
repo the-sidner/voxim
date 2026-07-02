@@ -42,17 +42,11 @@ import { fieldsStage } from "./pipeline/fields.ts";
 import { deriveGateSummary } from "./summary.ts";
 import { emptyLevel } from "./level/types.ts";
 import { rasterize } from "./level/rasterize.ts";
-import type { TileInit, TileInitWire } from "./types.ts";
+import { DEFAULT_TILE_SIZE, DEFAULT_GRID_SIZE, type TileInit, type TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
 import type { PipelineBase, FieldsState } from "./pipeline/state.ts";
 import type { ContentService } from "@voxim/content";
-
-const DEFAULT_TILE_SIZE = 512;
-// One pixel = one world unit = one runtime voxel. Atlas runs the pipeline
-// at the same resolution tile-server samples so the inspector view matches
-// what the player walks on (no upsample seam).
-const DEFAULT_GRID_SIZE = 512;
 
 export interface GenerateTileOptions {
   /** Side length of the playable tile in world units. Default 512. */
