@@ -1174,7 +1174,11 @@ EntityDied pools at the entity) + `DecalRenderer` (thin voxel slabs via Instance
 slab-by-slab crumble decay; MAX_SPLATS=160 perf cap; tile-transition reset; `blood` material id 33).
 Live-verified: stimulated wire events → splats at player, blocked skipped, fast-forward decay → 0.
 **PHASE 4 COMPLETE** (field-driven scatter density/clusters · corruption-morph · moss-creep · wetness
-specular · ephemeral decals). Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
+specular · ephemeral decals). **P4 follow-up (`a4e54c1`):** fixed vanishing 1-cell-wide ridges (double
+terrace inset → negative footprint → break before any box; now a MIN_FOOT recede budget, test-pinned) +
+**stacked-voxel warp** — terrace sub-boxes jitter their EXPOSED faces ±warp/2 (deterministic voxHash;
+welded faces/z/grid slot exact) so cliffs read hand-stacked; amplitude = `render.relief.warp` (the
+relief block's first consumer). Note: the terrace voxeliser remains the client stopgap P6 retires. Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
 T-310 arcing sun) + creature fragmentation (G6/I3b) + cheap water reflection.
 
 ### T-312b · re-apply atlas render-fields on save-load
