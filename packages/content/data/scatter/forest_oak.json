@@ -8,8 +8,9 @@
   "scaleJitter": [0.8, 1.25],
   "rotate": true,
   "densityField": [
-    { "field": "canopyLight", "curve": "smoothstep", "min": 1.0, "max": 0.15, "weight": 0.85 },
+    { "field": "canopyLight", "curve": "smoothstep", "min": 1.0, "max": 0.15, "weight": 0.15 },
+    { "field": "fertility", "curve": "smoothstep", "min": 0.15, "max": 0.45, "weight": 0.55 },
     { "field": "traffic", "curve": "linear", "min": 0.15, "max": 0.6, "weight": -0.7 }
   ],
-  "cluster": { "count": [0, 2], "radius": 3.0 }
+  "cluster": { "count": [0, 1], "radius": 3.0 }
 }
