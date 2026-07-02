@@ -29,8 +29,19 @@ import { Heightmap, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "./componen
 import type { VegFieldGridData, SurfaceStateGridData } from "./components.ts";
 import { CHUNK_SIZE, CHUNK_CELLS, CHUNKS_PER_TILE_SIDE, TILE_SIZE, snapHeight } from "./terrain.ts";
 
-/** T-311 P3 render-field planes at TILE_SIZE² (structural — atlas FieldPlanes is
- *  assignable). Sliced per chunk into the VegFieldGrid/SurfaceStateGrid/WaterGrid. */
+/**
+ * T-311 P3 render-field planes at TILE_SIZE². Field set is a deliberate
+ * parallel contract with atlas's FieldPlanes
+ * (packages/atlas/src/tilemap/pipeline/fields.ts) — atlas and world
+ * cannot import each other (both stay independent of the other's
+ * package), so tile-server's atlas_terrain.ts bridges the two by
+ * passing an atlas FieldPlanes value into `applyFieldsToChunks`
+ * (packages/tile-server/src/server.ts), which is typed to accept
+ * FieldsBufferInput. TypeScript's structural typing enforces the two
+ * interfaces stay field-compatible at that call site — update both
+ * together when adding/removing a plane. Sliced per chunk into the
+ * VegFieldGrid/SurfaceStateGrid/WaterGrid.
+ */
 export interface FieldsBufferInput {
   canopyLight: Uint8Array; corruption: Uint8Array; fertility: Uint8Array;
   wetness: Uint8Array; overgrowth: Uint8Array; wear: Uint8Array;

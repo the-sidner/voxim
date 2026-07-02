@@ -60,6 +60,15 @@ export interface FieldDeriveInput {
   params: FieldParams;
 }
 
+/**
+ * The 10-plane render-field bundle. Field set is a deliberate parallel
+ * contract with world's FieldsBufferInput (packages/world/src/generator.ts)
+ * — atlas and world cannot import each other, so tile-server's
+ * atlas_terrain.ts bridges the two by passing a FieldPlanes value where
+ * FieldsBufferInput is expected; TypeScript's structural typing enforces
+ * the two interfaces stay field-compatible at that call site. Update both
+ * together when adding/removing a plane.
+ */
 export interface FieldPlanes {
   canopyLight: Uint8Array;
   corruption: Uint8Array;
