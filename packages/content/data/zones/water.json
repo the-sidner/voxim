@@ -8,11 +8,5 @@
       ]
     }
   ],
-  "dangerLevel": 2,
-  "npcSpawnDensity": 0,
-  "nodeSpawnDensity": 0,
-  "propSpawnDensity": 0,
-  "npcWeights": {},
-  "entityWeights": {},
-  "propWeights": {}
+  "dangerLevel": 2
 }

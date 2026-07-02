@@ -1,5 +1,5 @@
 {
-  "_comment": "Teaching outpost (T-300). Player spawns at the tile centre (~256,256). A safe hub with a craft pavilion + trader + villagers; readable hostile clusters in the four cardinal directions at ~30-40 units so the player chooses engagement. Structural entities omit z — the spawner snaps them to the terrain surface at (x,y), so they sit on the ground whatever the heightmap generates (a stale hardcoded z floated them when the terrain changed). Enemies ride npcs[] (gravity-snapped). Procedural nodes/NPCs fill the wilderness fringe. Missing enemies (drowner/bandit/rotten_knight) are also added to zone npcWeights so the fringe is populated too.",
+  "_comment": "Teaching outpost (T-300). Player spawns at the tile centre (~256,256). A safe hub with a craft pavilion + trader + villagers; readable hostile clusters in the four cardinal directions at ~30-40 units so the player chooses engagement. Structural entities omit z — the spawner snaps them to the terrain surface at (x,y), so they sit on the ground whatever the heightmap generates (a stale hardcoded z floated them when the terrain changed). Enemies ride npcs[] (gravity-snapped).",
   "tileId": "tile_0",
   "entities": [
     { "prefabId": "chopping_block", "x": 259, "y": 256 },
@@ -47,7 +47,5 @@
     { "prefabId": "bandit", "x": 216, "y": 249 },
 
     { "prefabId": "rotten_knight", "x": 244, "y": 288 }
-  ],
-  "proceduralNodes": true,
-  "proceduralNpcs": true
+  ]
 }

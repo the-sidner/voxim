@@ -1243,15 +1243,6 @@ export interface ZoneDef {
   priority: number;
   classifyRules: ZoneClassifyRule[];
   dangerLevel: number;
-  /** Expected NPC spawns per zone cell; fractional values are probabilistic. */
-  npcSpawnDensity: number;
-  /** Expected resource-node spawns per zone cell. */
-  nodeSpawnDensity: number;
-  /** Expected decorative prop spawns per zone cell. */
-  propSpawnDensity: number;
-  npcWeights: Record<string, number>;
-  entityWeights: Record<string, number>;
-  propWeights: Record<string, number>;
 }
 
 // ---- behavior trees ----
@@ -2013,19 +2004,12 @@ export interface TileEntityConfig {
  * entities — persistent: resource nodes, workstations, static props.
  *            Only spawned when the tile has no saved world state.
  * npcs     — transient: NPCs are re-spawned on every server start from this
- *            list (or procedurally if absent/empty), so they are never stale.
- *
- * proceduralNodes — when true, procedural zone-based node scatter runs in
- *   addition to the explicit entities list (default false).
- * proceduralNpcs  — when true, procedural zone-based NPC scatter runs in
- *   addition to the explicit npcs list (default false).
+ *            list, so they are never stale.
  */
 export interface TileLayout {
   tileId: string;
   entities: TileEntityConfig[];
   npcs: TileEntityConfig[];
-  proceduralNodes?: boolean;
-  proceduralNpcs?: boolean;
 }
 
 // ---- skeleton system ----

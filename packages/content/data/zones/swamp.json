@@ -8,21 +8,5 @@
       ]
     }
   ],
-  "dangerLevel": 5,
-  "npcSpawnDensity": 0.2,
-  "nodeSpawnDensity": 0.5,
-  "propSpawnDensity": 1.5,
-  "npcWeights": {
-    "drowner": 5,
-    "wolf": 2,
-    "archer": 2
-  },
-  "entityWeights": {
-    "tree": 3,
-    "fiber_bush": 4
-  },
-  "propWeights": {
-    "model_dead_tree": 6,
-    "model_building_ruin_wall": 2
-  }
+  "dangerLevel": 5
 }

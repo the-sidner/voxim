@@ -19,7 +19,6 @@ import type { AtlasTileInitRepo, AtlasWorldRepo, TileSaveRepo, WorldsRepo } from
 import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
 import { applyFieldsToChunks, chunksFromBuffers, TILE_SIZE } from "@voxim/world";
-import type { ZoneGridData } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { placePois, spawnMobPois, MOB_NPC_POOL } from "./poi_placer.ts";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, SERVICE_SECRET_HEADER, TileEvents } from "@voxim/protocol";
@@ -962,9 +961,6 @@ export class TileServer {
     }, 5000);
 
     const loaded = this.saveManager ? await this.saveManager.load(this.world) : false;
-    // zoneGrid is null for now — atlas doesn't produce zones; ProceduralSpawner
-    // already no-ops every zone-driven method when this is null.
-    const zoneGrid: ZoneGridData | null = null;
     const tileSeed = atlas.tileSeed;
     // POIs (T-160): mob list filled before chunks commit; room-POI walls
     // get stamped into the buffers in place by `placePois`.  Always re-derived
@@ -1010,11 +1006,10 @@ export class TileServer {
       applyFieldsToChunks(this.world, atlas.fields);
     }
 
-    const procedural = new ProceduralSpawner(this.world, content, zoneGrid, tileSeed);
+    const procedural = new ProceduralSpawner(this.world, content, tileSeed);
     if (!loaded) procedural.spawnInitialEntities();
-    // NPCs and props are always re-spawned from layout (not persisted across restarts).
+    // NPCs are always re-spawned from layout (not persisted across restarts).
     procedural.spawnInitialNpcs();
-    procedural.spawnProceduralProps();
 
     // Mob POIs run AFTER procedural NPCs / props so they ride on top of the
     // base population.  Skipped on loaded saves — mob entities aren't
