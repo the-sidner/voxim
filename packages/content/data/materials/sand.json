@@ -20,7 +20,7 @@
   "render": {
     "textureStyle": "sand",
     "relief": {
-      "warp": 0.12
+      "warp": 0.15
     }
   }
 }

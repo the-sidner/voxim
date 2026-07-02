@@ -263,7 +263,7 @@ export function bakeVoxels(
     // displaced-box bake applies the same swap to the extents internally.
     const px = a.cx, py = a.cz, pz = a.cy;
     if (a.wet01 !== undefined) anyWet = true;
-    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, mag) });
+    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, a.dispMag ?? mag) });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;

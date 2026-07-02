@@ -53,34 +53,61 @@ Deno.test("cliff cells stack full-footprint stones: contiguous courses, base to 
   assert(Math.abs((edge.at(-1)!.cz - edge.at(-1)!.sz / 2) - 2) < 1e-9, "bottom stone sits on the base");
 });
 
-Deno.test("warp: exposed faces jitter, welded faces + tops stay exact, deterministic", () => {
+Deno.test("warp: exposed faces + course seams jitter; lip, base and welds stay exact", () => {
   const { hm, mats } = flatChunk(2);
   // West half raised → cliff cells at x=15, EAST face exposed, WEST face welded.
   for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
-  const relief = (matId: number) => (matId === 3 ? 0.24 : undefined);
+  const relief = (matId: number) => (matId === 3 ? 0.3 : undefined);
   const plain = [...buildChunkAtoms(hm, mats, {}).values()].flat();
   const warpedA = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat();
   const warpedB = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat();
   assertEquals(warpedA, warpedB, "warp is deterministic");
   assertEquals(plain.length, warpedA.length, "warp never adds/removes boxes");
 
-  let anyJitter = false;
+  let faceJitter = false, seamJitter = false;
   for (let i = 0; i < plain.length; i++) {
     const p = plain[i], w = warpedA[i];
-    // z is untouched everywhere (step heights + walkable tops stay collision-exact).
-    assertEquals(w.cz, p.cz);
-    assertEquals(w.sz, p.sz);
-    const isSubLip = p.sz > 0.3 && (p.cz + p.sz / 2) < 4.5 - 1e-6;  // terrace steps below the lip
-    if (!isSubLip) {
-      assertEquals(w, p, "flat slabs + top steps stay exact");
+    const isStack = p.sz > 0.3 && p.sz < 2;                  // cliff-stack stones
+    if (!isStack) { assertEquals(w, p, "flat slabs stay exact"); continue; }
+    const isTop = Math.abs((p.cz + p.sz / 2) - 4.5) < 1e-9;  // the lip stone
+    if (isTop) {
+      // Footprint + top face exact (plateau lip = collision edge); only its
+      // BOTTOM face rides the jittered course boundary below it.
+      assertEquals(w.cx, p.cx); assertEquals(w.sx, p.sx);
+      assertEquals(w.cy, p.cy); assertEquals(w.sy, p.sy);
+      assert(Math.abs((w.cz + w.sz / 2) - 4.5) < 1e-9, "lip top face exact");
+      assertEquals(w.dispMag, undefined, "lip keeps the terrain weld mag");
       continue;
     }
     // Welded WEST face pinned exactly (no slit into the under-slab void).
     assertEquals(w.cx - w.sx / 2, p.cx - p.sx / 2, "welded face must not move");
     // Exposed EAST face jitters, bounded by the amplitude.
     const dEast = (w.cx + w.sx / 2) - (p.cx + p.sx / 2);
-    assert(Math.abs(dEast) <= 0.12 + 1e-9, `east-face jitter bounded, got ${dEast}`);
-    if (dEast !== 0) anyJitter = true;
+    assert(Math.abs(dEast) <= 0.15 + 1e-9, `east-face jitter bounded, got ${dEast}`);
+    if (dEast !== 0) faceJitter = true;
+    // Course seams move (uneven coursework) but stay bounded.
+    if (Math.abs(w.cz - p.cz) > 1e-9) seamJitter = true;
+    // The stack base stays grounded.
+    if (Math.abs((p.cz - p.sz / 2) - 2) < 1e-9) {
+      assert(Math.abs((w.cz - w.sz / 2) - 2) < 1e-9, "bottom face stays on the base");
+    }
+    assert(w.dispMag !== undefined && w.dispMag > 0.045, "stones displace chunkier than terrain");
   }
-  assert(anyJitter, "warp actually jitters exposed faces");
+  assert(faceJitter, "warp jitters exposed faces");
+  assert(seamJitter, "warp unevens the course seams");
+});
+
+Deno.test("warp keeps courses contiguous (shared jittered boundaries)", () => {
+  const { hm, mats } = flatChunk(2);
+  for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
+  const relief = () => 0.3;
+  const stack = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat()
+    .filter((a) => a.cx > 14.9 && a.cx < 16.1 && a.cy > 15.9 && a.cy < 17.1 && a.sz > 0.3 && a.sz < 2)
+    .sort((a, b) => b.cz - a.cz);
+  assert(stack.length >= 2);
+  for (let i = 1; i < stack.length; i++) {
+    const above = stack[i - 1].cz - stack[i - 1].sz / 2;
+    const below = stack[i].cz + stack[i].sz / 2;
+    assert(Math.abs(above - below) < 1e-9, "warped courses stay contiguous");
+  }
 });

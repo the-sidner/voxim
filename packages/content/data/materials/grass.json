@@ -21,7 +21,7 @@
   "render": {
     "textureStyle": "organic",
     "relief": {
-      "warp": 0.16
+      "warp": 0.35
     }
   }
 }

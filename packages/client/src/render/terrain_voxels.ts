@@ -53,7 +53,7 @@ export const TERRAIN_DISP_MAG = 0.18 * HEIGHT_STEP;
 // Heightmap) in T-311 Phase 6, which retires this trigger — the stacked-stone
 // LANGUAGE (warp/tint/displacement) survives it, living on the atoms.
 const CLIFF_MIN   = 1.2;   // expose depth (world units) above which we stack
-const STONE_H     = 0.9;   // target stone height (stack quantum)
+const STONE_H     = 0.7;   // target stone height (stack quantum)
 const STACK_MAX   = 5;     // cap boxes per cliff cell (perf bound; deeper → taller stones)
 const EXPOSE_MIN  = 0.5;   // a side is "exposed" when its neighbour is this much lower
 
@@ -159,8 +159,22 @@ export function buildChunkAtoms(
         const n = Math.min(STACK_MAX, Math.max(2, Math.round(depth / STONE_H)));
         const bh = depth / n;
         const warpAmp = reliefFor?.(m) ?? 0;
+        // Course boundaries between stones, z-jittered ±warp/4 (per cell +
+        // course, deterministic) so the horizontal seams run UNEVEN like real
+        // coursework. Both stones at a seam share the jittered boundary —
+        // courses stay contiguous; the lip (index 0) and the base stay exact.
+        const zb: number[] = [h];
+        for (let i = 1; i < n; i++) {
+          const jitter = warpAmp > 0 ? (voxHash(offX + cx, offZ + cy, i, 7) - 0.5) * warpAmp * 0.5 : 0;
+          zb.push(h - i * bh + jitter);
+        }
+        zb.push(h - depth);
+        // Sub-lip stones displace their corners HARDER than the terrain
+        // constant — a shared seam vertex then offsets differently per side,
+        // opening deliberate chinks between stones (never on the lip).
+        const stoneDisp = warpAmp > 0 ? TERRAIN_DISP_MAG + warpAmp * 0.3 : undefined;
         for (let i = 0; i < n; i++) {
-          const zTop = h - i * bh;
+          const zTop = zb[i], zBot = zb[i + 1];
           let x0 = offX + cx, x1 = offX + cx + 1;
           let y0 = offZ + cy, y1 = offZ + cy + 1;
           if (warpAmp > 0 && i > 0) {
@@ -172,9 +186,10 @@ export function buildChunkAtoms(
           bucket.push({
             cx: (x0 + x1) / 2,
             cy: (y0 + y1) / 2,
-            cz: zTop - bh / 2,
-            sx: x1 - x0, sy: y1 - y0, sz: bh,
+            cz: (zTop + zBot) / 2,
+            sx: x1 - x0, sy: y1 - y0, sz: zTop - zBot,
             materialId: m,
+            ...(i > 0 && stoneDisp !== undefined && { dispMag: stoneDisp }),
             // The top stone reads as floor; the face stones below gather moss
             // in their seams (jointBoost) — "oldest stone most swallowed".
             ...(og01 > 0 && {

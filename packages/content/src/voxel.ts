@@ -51,4 +51,12 @@ export interface VoxelAtom {
    * Absent ⇒ no attribute, bakes byte-identically.
    */
   wet01?: number;
+  /**
+   * Per-voxel corner-displacement magnitude override (T-311 P4). Cliff-stack
+   * stones set this ABOVE the constant terrain mag so their corners read
+   * chunky and — because a shared vertex then displaces differently on each
+   * side of a stone seam — the seams open into deliberate chinks (the
+   * hand-stacked look). Absent ⇒ the bake call's mag (byte-identical).
+   */
+  dispMag?: number;
 }
