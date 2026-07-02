@@ -286,7 +286,14 @@ export class ScatterRenderer {
             // Field-sized CLUMP: count lerps 0→max with the field and the props
             // scatter in a disk of `radius`, so fertile cells read DENSE while dry
             // cells thin to nothing — the "combine primitives into density" lever.
-            const n = Math.round(cluster.count[0] + (cluster.count[1] - cluster.count[0]) * fieldDensity);
+            // The fractional part rounds STOCHASTICALLY (hash-dithered, the same
+            // doctrine as the single-placement keep-gate below): a plain round()
+            // cliffs everything under count 0.5 to 0, so low-density fields read
+            // as EMPTY instead of sparse — the field decides the expected count,
+            // the hash only dithers the quantisation.
+            const x = cluster.count[0] + (cluster.count[1] - cluster.count[0]) * fieldDensity;
+            const hq = hash2u((cx * CHUNK_SIDE + lx) ^ 0x5bd1, (cy * CHUNK_SIDE + ly) ^ 0xe995);
+            const n = Math.floor(x) + (((hq & 0xffff) / 0xffff) < x - Math.floor(x) ? 1 : 0);
             for (let k = 0; k < n; k++) {
               const hk = hash2u((baseWx * 13 + k * 0x9e37) | 0, (baseWy * 7 + k * 0x79b9) | 0);
               const ang = (hk & 0xffff) / 0xffff * Math.PI * 2;
