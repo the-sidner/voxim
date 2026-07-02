@@ -329,7 +329,6 @@ data/
   materials/        {name}.json  — MaterialDef (numeric id in file, name is filename)
 
   game_config.json              — singleton: combat ratios, physics constants, AI defaults
-  terrain_config.json           — terrain generation parameters
   tile_layout.json              — optional: NPC/prop placement overrides for a specific tile
 ```
 

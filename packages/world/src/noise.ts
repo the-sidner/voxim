@@ -173,36 +173,3 @@ export function domainWarp(
   const warpY = fbm(x * freq + 5.2, y * freq + 1.3, seed + 1000, octaves) * amp;
   return [x + warpX, y + warpY];
 }
-
-/**
- * Voronoi (cellular) noise — returns the distance to the nearest feature point
- * in a jittered grid of cells.
- *
- * Returns a value in [0, 1].
- */
-export function voronoi2D(x: number, y: number, seed: number): number {
-  const cx0 = Math.floor(x);
-  const cy0 = Math.floor(y);
-
-  let minDist = Infinity;
-
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const cx = cx0 + dx;
-      const cy = cy0 + dy;
-
-      // Feature point inside this cell — jitter via hash2
-      const fx = cx + hash2(cx, cy, seed);
-      const fy = cy + hash2(cx, cy, seed + 7777);
-
-      const ddx = x - fx;
-      const ddy = y - fy;
-      const dist = Math.sqrt(ddx * ddx + ddy * ddy);
-
-      if (dist < minDist) minDist = dist;
-    }
-  }
-
-  // Max possible distance to a feature point in a 3×3 neighbourhood is ~√2
-  return Math.max(0, Math.min(1, minDist));
-}

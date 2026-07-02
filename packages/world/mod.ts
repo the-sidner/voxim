@@ -24,7 +24,7 @@ export { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness, setC
 export { applyFieldsToChunks, buildTerrainBuffers, chunksFromBuffers, seedFromTileId } from "./src/generator.ts";
 export type { GeneratedTile, WorldGenContent } from "./src/generator.ts";
 
-export { valueNoise2D, fbm, ridgedFbm, billowFbm, domainWarp, voronoi2D } from "./src/noise.ts";
+export { valueNoise2D, fbm, ridgedFbm, billowFbm, domainWarp } from "./src/noise.ts";
 
 export type {
   TerrainConfig,
