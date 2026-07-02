@@ -12,5 +12,11 @@
   "warmGain": 2.5,
   "grimCast": [0.95, 1.0, 0.97],
   "grainStrength": 0.05,
-  "grainShadowFloor": 0.4
+  "grainShadowFloor": 0.4,
+  "bloomThreshold": 0.85,
+  "bloomKnee": 0.5,
+  "bloomStrength": 1.0,
+  "heightShadeBelow": 8.0,
+  "heightShadeAbove": 24.0,
+  "emissiveHdrScale": 2.2
 }

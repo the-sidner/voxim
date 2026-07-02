@@ -11,6 +11,19 @@ import { getVoxelTexture } from "./material_textures.ts";
 const FALLBACK_COLOR = 0x808080;
 
 /**
+ * Scene-wide multiplier pushing a material's authored `emissive` (0-1) past
+ * 1.0 into HDR/bloom range. Content-driven via GradeDef.emissiveHdrScale
+ * (T-315 D2); this default is the pre-bootstrap fallback (module-level
+ * singleton, same pattern as palette.ts's `setClientPalette`).
+ */
+let emissiveHdrScale = 2.2;
+
+/** Apply a content grade's emissive HDR scale (T-315 D2). */
+export function setEmissiveHdrScale(v: number): void {
+  emissiveHdrScale = v;
+}
+
+/**
  * Build a flat-shaded voxel material for `matDef` (already palette-snapped).
  * `onTop` enables polygonOffset for overlay voxels (e.g. armor over body parts)
  * so they render cleanly without z-fighting.
@@ -28,7 +41,7 @@ export function buildVoxelMaterial(
   // bright-pass threshold — that's what makes them visibly GLOW into the scene
   // rather than just reading as a bright-coloured face (T-310, phase D).
   const emissive = matDef && matDef.emissive > 0
-    ? new THREE.Color(color).multiplyScalar(matDef.emissive * 2.2)
+    ? new THREE.Color(color).multiplyScalar(matDef.emissive * emissiveHdrScale)
     : new THREE.Color(0x000000);
   const tex = getVoxelTexture(matDef?.render?.textureStyle, materialId, color);
   return new THREE.MeshPhongMaterial({

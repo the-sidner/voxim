@@ -23,7 +23,7 @@ import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
 import { applySurfaceTreatment } from "./surface_treatments.ts";
 import { sampleField } from "./field_sample.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
-import { buildVoxelMaterial } from "./voxel_material.ts";
+import { buildVoxelMaterial, setEmissiveHdrScale } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
 import { setClientPalette, paletteToken } from "./palette.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
@@ -94,7 +94,7 @@ import type { DebugUpdateContext } from "./debug_overlay_manager.ts";
 import { HitSparkRenderer } from "./hit_spark_renderer.ts";
 import { DustMotes } from "./dust_motes.ts";
 import { LightManager } from "./light_manager.ts";
-import { EdgePass } from "./edge_pass.ts";
+import { EdgePass, PRE_BOOTSTRAP_GRADE } from "./edge_pass.ts";
 import { BloomPass } from "./bloom_pass.ts";
 import { GodRayPass } from "./god_ray_pass.ts";
 import { CameraRig } from "./camera_rig.ts";
@@ -158,7 +158,8 @@ const DEPTH_BLIT_FRAG = /* glsl */`
  */
 const CULL_RADIUS_SQ = 160 * 160;
 
-/** 3rd-person camera vertical sample range above/below player Y for height shading. */
+/** 3rd-person camera vertical sample range above/below player Y for height
+ *  shading — default fallback until GradeDef.heightShadeBelow/Above arrives. */
 const HEIGHT_SHADE_BELOW = 8.0;
 const HEIGHT_SHADE_ABOVE = 24.0;
 
@@ -285,6 +286,11 @@ export class VoximRenderer {
   private readonly godRay: GodRayPass;
   private readonly _sunWorld = new THREE.Vector3();
   private readonly _sunUV = new THREE.Vector2();
+  /** 3rd-person camera vertical sample range above/below player Y for height
+   *  shading — content-driven via GradeDef.heightShadeBelow/Above (T-315 D2);
+   *  these hold the pre-bootstrap fallback until a grade arrives. */
+  private heightShadeBelow = HEIGHT_SHADE_BELOW;
+  private heightShadeAbove = HEIGHT_SHADE_ABOVE;
   /** Hover mask: hovered entity rendered flat-white; fed into EdgePass for silhouette outline. */
   private readonly hoverMaskTarget: THREE.WebGLRenderTarget;
   /** Override material used during the hover mask pass — flat white, no lighting. */
@@ -459,8 +465,7 @@ export class VoximRenderer {
     // emissive (torches/embers) + the hottest highlights, not a haze over the
     // whole lit ground. Tuned by eye against the HalfFloat radiance.
     this.bloom = new BloomPass(pw, ph);
-    this.bloom.setThreshold(0.85, 0.5);
-    this.edgePass.setBloomStrength(1.0);
+    this.bloom.setThreshold(PRE_BOOTSTRAP_GRADE.bloomThreshold, PRE_BOOTSTRAP_GRADE.bloomKnee);
     this.edgePass.setBloomTexture(this.bloom.texture);
 
     // ---- volumetric god rays (radial scatter of the bloom toward the sun) ----
@@ -508,7 +513,16 @@ export class VoximRenderer {
     // uniforms read the authored `grades/default.json` instead of hardcoded
     // constants. Absent → the EdgePass constructor fallback (identical values).
     const grade = cache.getGrade("default");
-    if (grade) this.edgePass.setGrade(grade);
+    if (grade) {
+      this.edgePass.setGrade(grade);
+      // Bloom threshold/knee, the height-shade band, and the emissive HDR
+      // scale aren't EdgePass uniforms — apply them to their own owners
+      // (T-315 D2).
+      this.bloom.setThreshold(grade.bloomThreshold, grade.bloomKnee);
+      this.heightShadeBelow = grade.heightShadeBelow;
+      this.heightShadeAbove = grade.heightShadeAbove;
+      setEmissiveHdrScale(grade.emissiveHdrScale);
+    }
   }
 
 
@@ -1236,8 +1250,8 @@ export class VoximRenderer {
       this.depthBlitMat.uniforms.uViewInv.value.copy(this.camera.matrixWorld);
       // Recenter the height-shading band on the player so the perspective view's
       // broader Y range (sky, distant hills) doesn't compress contrast near the player.
-      this.depthBlitMat.uniforms.uHeightMin.value = playerPos.y - HEIGHT_SHADE_BELOW;
-      this.depthBlitMat.uniforms.uHeightMax.value = playerPos.y + HEIGHT_SHADE_ABOVE;
+      this.depthBlitMat.uniforms.uHeightMin.value = playerPos.y - this.heightShadeBelow;
+      this.depthBlitMat.uniforms.uHeightMax.value = playerPos.y + this.heightShadeAbove;
       this.renderer.setRenderTarget(this.heightTarget);
       this.renderer.render(this.depthBlitScene, this.blitCamera);
 

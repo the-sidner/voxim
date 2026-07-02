@@ -135,8 +135,9 @@ export interface MaterialDef {
  * full set of EdgePass grade constants lifted VERBATIM out of the shader into
  * content (`data/grades/*.json`) — shader maths unchanged, only the source of the
  * numbers moves. The client selects a grade and lerps the EdgePass uniforms from
- * it; per-biome/phase selection by a networked context key lands later. Every
- * field maps 1:1 to a `u*` uniform.
+ * it; per-biome/phase selection by a networked context key lands later. Most
+ * fields map 1:1 to a `u*` EdgePass uniform; six (T-315 D2) are consumed by other
+ * render-pipeline owners instead — see each field's comment.
  */
 export interface GradeDef {
   id: string;
@@ -153,6 +154,22 @@ export interface GradeDef {
   grimCast: [number, number, number];   // uGrimCast — cool weathered cast
   grainStrength: number;     // uGrainStrength — film grain
   grainShadowFloor: number;  // uGrainShadowFloor
+  /** BloomPass uThreshold — HDR bright-pass cutoff (NOT an EdgePass uniform). */
+  bloomThreshold: number;
+  /** BloomPass uKnee — bright-pass rolloff softness (NOT an EdgePass uniform). */
+  bloomKnee: number;
+  /** EdgePass uBloomStrength — glow amount composited back before tonemap. */
+  bloomStrength: number;
+  /** Renderer-side world-Y sample range below the player, recomputed into
+   *  uHeightMin each frame (NOT a uniform itself — no direct `u*` counterpart). */
+  heightShadeBelow: number;
+  /** Renderer-side world-Y sample range above the player, recomputed into
+   *  uHeightMax each frame (NOT a uniform itself — no direct `u*` counterpart). */
+  heightShadeAbove: number;
+  /** Scene-wide multiplier pushing a material's authored `emissive` (0-1) past
+   *  1.0 into HDR/bloom range — a per-material build-time multiplier in
+   *  voxel_material.ts (NOT an EdgePass uniform). */
+  emissiveHdrScale: number;
 }
 
 /**

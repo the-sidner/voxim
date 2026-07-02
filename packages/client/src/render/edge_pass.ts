@@ -29,6 +29,37 @@
 import * as THREE from "three";
 import type { GradeDef } from "@voxim/content";
 
+/**
+ * The pre-bootstrap fallback grade — every value here matches
+ * `data/grades/default.json` exactly. Single named source for the
+ * constructor's uniform initial values instead of 19 scattered literals
+ * (13 grade fields + bloom threshold/knee/strength + height-shade band +
+ * emissive HDR scale); once the bootstrap blob arrives, `setGrade` /
+ * `setContentCache` overwrite these from the authored content.
+ */
+export const PRE_BOOTSTRAP_GRADE: GradeDef = {
+  id: "default",
+  exposure: 1.12,
+  saturation: 1.66,
+  vignetteStart: 0.34,
+  vignetteStrength: 0.32,
+  splitTone: 0.62,
+  grimGain: [1.0, 0.99, 0.95],
+  grimGamma: [1.05, 1.0, 1.07],
+  grimLift: [0.012, 0.015, 0.02],
+  grimDesat: 0.26,
+  warmGain: 2.5,
+  grimCast: [0.95, 1.0, 0.97],
+  grainStrength: 0.05,
+  grainShadowFloor: 0.4,
+  bloomThreshold: 0.85,
+  bloomKnee: 0.5,
+  bloomStrength: 1.0,
+  heightShadeBelow: 8.0,
+  heightShadeAbove: 24.0,
+  emissiveHdrScale: 2.2,
+};
+
 const VERT = /* glsl */`
   varying vec2 vUv;
   void main() {
@@ -373,7 +404,7 @@ export class EdgePass {
         tDepth:        { value: depthTex },
         tFog:          { value: fogTex },
         tBloom:        { value: blackTex },
-        uBloomStrength: { value: 0.7 },
+        uBloomStrength: { value: PRE_BOOTSTRAP_GRADE.bloomStrength },
         tGodRay:        { value: blackTex },
         uGodRayStrength: { value: 0.3 },
         uGodRayColor:    { value: new THREE.Color(1.0, 0.93, 0.74) },  // warm shaft
@@ -404,30 +435,30 @@ export class EdgePass {
         // Chiaroscuro (concept-art reference pivot): a LOWER exposure lets the
         // shadows fall deep so the few warm torch/fire pools + the bloom carry
         // the light — grim, high-contrast, NOT flat-bright.
-        uExposure:         { value: 1.12 },
+        uExposure:         { value: PRE_BOOTSTRAP_GRADE.exposure },
         // Rich colour held in the lit areas against the dark.
-        uSaturation:       { value: 1.66 },
+        uSaturation:       { value: PRE_BOOTSTRAP_GRADE.saturation },
         // Deeper, earlier vignette — cinematic frame, pulls the dark in.
-        uVignetteStart:    { value: 0.34 },
-        uVignetteStrength: { value: 0.32 },
+        uVignetteStart:    { value: PRE_BOOTSTRAP_GRADE.vignetteStart },
+        uVignetteStrength: { value: PRE_BOOTSTRAP_GRADE.vignetteStrength },
         // Stronger SSAO so the dense overgrown stone reads packed with contact
         // shadow, the way the references pool darkness in every crevice.
         uAoRadius:         { value: 0.30 },
         uAoStrength:       { value: 1.5 },
         // Stronger split-tone — cool misty shadow vs warm firelight, the
         // reference's core temperature story. Tuning knob.
-        uSplitTone:        { value: 0.62 },
+        uSplitTone:        { value: PRE_BOOTSTRAP_GRADE.splitTone },
         // Dirt/grind/grim filmic finish. lift/gamma/gain = weathered grade;
         // grim desat pulls colour out EXCEPT warm/ember pixels (fire stays);
         // grain adds film texture. All tuning knobs.
-        uGrimGain:          { value: new THREE.Vector3(1.0, 0.99, 0.95) },
-        uGrimGamma:         { value: new THREE.Vector3(1.05, 1.0, 1.07) },
-        uGrimLift:          { value: new THREE.Vector3(0.012, 0.015, 0.02) },
-        uGrimDesat:         { value: 0.26 },
-        uWarmGain:          { value: 2.5 },
-        uGrimCast:          { value: new THREE.Vector3(0.95, 1.0, 0.97) },
-        uGrainStrength:     { value: 0.05 },
-        uGrainShadowFloor:  { value: 0.4 },
+        uGrimGain:          { value: new THREE.Vector3(...PRE_BOOTSTRAP_GRADE.grimGain) },
+        uGrimGamma:         { value: new THREE.Vector3(...PRE_BOOTSTRAP_GRADE.grimGamma) },
+        uGrimLift:          { value: new THREE.Vector3(...PRE_BOOTSTRAP_GRADE.grimLift) },
+        uGrimDesat:         { value: PRE_BOOTSTRAP_GRADE.grimDesat },
+        uWarmGain:          { value: PRE_BOOTSTRAP_GRADE.warmGain },
+        uGrimCast:          { value: new THREE.Vector3(...PRE_BOOTSTRAP_GRADE.grimCast) },
+        uGrainStrength:     { value: PRE_BOOTSTRAP_GRADE.grainStrength },
+        uGrainShadowFloor:  { value: PRE_BOOTSTRAP_GRADE.grainShadowFloor },
         uTime:              { value: 0 },
       },
       vertexShader:   VERT,
@@ -489,7 +520,10 @@ export class EdgePass {
    * Apply a content `GradeDef` (T-311 Phase 2, grammar G7) — lifts the colour
    * grade out of the hardcoded constructor constants into authored content; the
    * constructor values now serve only as the pre-bootstrap fallback (the same
-   * pattern as the palette / edge-ink). Sets the 13 grade uniforms 1:1.
+   * pattern as the palette / edge-ink). Sets the 13 grade uniforms + bloomStrength
+   * 1:1. (bloomThreshold, bloomKnee, heightShadeBelow, heightShadeAbove, and
+   * emissiveHdrScale are NOT EdgePass uniforms — the caller applies those
+   * separately; see Renderer.setContentCache.)
    */
   setGrade(g: GradeDef): void {
     const u = this.material.uniforms;
@@ -506,6 +540,7 @@ export class EdgePass {
     (u.uGrimCast.value  as THREE.Vector3).set(g.grimCast[0],  g.grimCast[1],  g.grimCast[2]);
     u.uGrainStrength.value    = g.grainStrength;
     u.uGrainShadowFloor.value = g.grainShadowFloor;
+    u.uBloomStrength.value    = g.bloomStrength;
   }
 
   /** Bind the live bloom texture (replaces the black constructor placeholder). */
