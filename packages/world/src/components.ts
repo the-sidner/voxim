@@ -8,10 +8,9 @@ import { defineComponent } from "@voxim/engine";
 import { heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec } from "@voxim/codecs";
 import type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData } from "@voxim/codecs";
 import { ComponentType } from "@voxim/protocol";
+import { CHUNK_CELLS } from "./terrain.ts";
 
 export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData };
-
-const CHUNK_CELLS = 32 * 32;
 
 /**
  * Heightmap component.

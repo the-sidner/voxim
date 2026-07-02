@@ -13,11 +13,9 @@
  */
 import type { World } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
-import { Heightmap } from "@voxim/world";
+import { Heightmap, CHUNK_SIZE } from "@voxim/world";
 import { spawnPrefab } from "./spawner.ts";
 import { TraderInventory } from "./components/trader.ts";
-
-const CHUNK_CELLS = 32;
 
 /** Deterministic position-based seed — same (x,y) always gives same visual/hitbox variation. */
 export function positionSeed(x: number, y: number): number {
@@ -35,13 +33,13 @@ function buildTerrainHeightLookup(world: World): (wx: number, wy: number) => num
     heightChunks.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap.data);
   }
   return (wx: number, wy: number) => {
-    const cx = Math.floor(wx / CHUNK_CELLS);
-    const cy = Math.floor(wy / CHUNK_CELLS);
+    const cx = Math.floor(wx / CHUNK_SIZE);
+    const cy = Math.floor(wy / CHUNK_SIZE);
     const data = heightChunks.get(`${cx},${cy}`);
     if (!data) return 4.0;
-    const lx = Math.min(CHUNK_CELLS - 1, Math.floor(wx) - cx * CHUNK_CELLS);
-    const ly = Math.min(CHUNK_CELLS - 1, Math.floor(wy) - cy * CHUNK_CELLS);
-    return data[lx + ly * CHUNK_CELLS];
+    const lx = Math.min(CHUNK_SIZE - 1, Math.floor(wx) - cx * CHUNK_SIZE);
+    const ly = Math.min(CHUNK_SIZE - 1, Math.floor(wy) - cy * CHUNK_SIZE);
+    return data[lx + ly * CHUNK_SIZE];
   };
 }
 

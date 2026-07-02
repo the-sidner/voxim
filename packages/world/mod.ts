@@ -7,6 +7,7 @@ export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFi
 export {
   TILE_SIZE,
   CHUNK_SIZE,
+  CHUNK_CELLS,
   CHUNKS_PER_TILE_SIDE,
   CHUNKS_PER_TILE,
   HEIGHT_STEP,

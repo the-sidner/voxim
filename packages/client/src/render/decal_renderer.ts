@@ -15,6 +15,7 @@
 import * as THREE from "three";
 import type { GameEvent } from "@voxim/protocol";
 import type { ContentService, DecalDef } from "@voxim/content";
+import { CHUNK_SIZE } from "@voxim/world";
 import type { ClientWorld } from "../state/client_world.ts";
 import type { InstancePool, InstanceSlot } from "./instance_pool.ts";
 import { bakeVoxels } from "./voxel_bake.ts";
@@ -22,7 +23,6 @@ import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { getDecalSource, registerBuiltinDecalSources } from "./decal_sources.ts";
 
-const CHUNK_SIDE = 32;
 const HANDLE_PREFIX = "decal:";
 const SLAB_THICKNESS = 0.1;
 /** Lift above the displaced terrain top (± ~0.045) so slabs never z-fight. */
@@ -150,7 +150,7 @@ export class DecalRenderer {
     }
 
     const handle = `${HANDLE_PREFIX}${def.id}:${this.seq++}`;
-    const chunkCoord = `${Math.floor(x / CHUNK_SIDE)},${Math.floor(y / CHUNK_SIDE)}`;
+    const chunkCoord = `${Math.floor(x / CHUNK_SIZE)},${Math.floor(y / CHUNK_SIZE)}`;
     this.instancePool.add(handle, chunkCoord, slabs.map((s) => s.slot));
     this.splats.push({ handle, chunkCoord, slabs });
 

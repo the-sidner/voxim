@@ -6,6 +6,7 @@
  */
 import type { BinaryComponentDelta, BinaryEntitySpawn, WorldSnapshot } from "@voxim/protocol";
 import { ComponentType, COMPONENT_TYPE_TO_NAME, CODEC_BY_WIREID } from "@voxim/protocol";
+import { CHUNK_SIZE } from "@voxim/world";
 // Only the terrain-grid codecs are referenced directly (their decode has chunk-
 // binding side effects); every other component decodes through CODEC_BY_WIREID.
 import { heightmapCodec, openMaskCodec, kindGridCodec, materialGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec } from "@voxim/codecs";
@@ -82,8 +83,6 @@ export interface EntityState {
 function makeEntity(): EntityState {
   return { raw: new Map(), versions: new Map() };
 }
-
-const CHUNK_SIDE = 32;
 
 export class ClientWorld {
   private readonly entities = new Map<string, EntityState>();
@@ -315,13 +314,13 @@ export class ClientWorld {
    * known bounded artifact (see T-311 follow-up — NaN-sentinel + scatter defer).
    */
   getTerrainHeight(wx: number, wy: number): number {
-    const cx = Math.floor(wx / CHUNK_SIDE);
-    const cy = Math.floor(wy / CHUNK_SIDE);
+    const cx = Math.floor(wx / CHUNK_SIZE);
+    const cy = Math.floor(wy / CHUNK_SIZE);
     const data = this.chunkHeightmaps.get(`${cx},${cy}`);
     if (!data) return 0;
-    const lx = Math.max(0, Math.min(CHUNK_SIDE - 1, Math.floor(wx - cx * CHUNK_SIDE)));
-    const ly = Math.max(0, Math.min(CHUNK_SIDE - 1, Math.floor(wy - cy * CHUNK_SIDE)));
-    return data[lx + ly * CHUNK_SIDE] ?? 0;
+    const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - cx * CHUNK_SIZE)));
+    const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - cy * CHUNK_SIZE)));
+    return data[lx + ly * CHUNK_SIZE] ?? 0;
   }
 
   /**
@@ -359,13 +358,13 @@ export class ClientWorld {
    * the server-side lookup uses.
    */
   isOpen(wx: number, wy: number): boolean {
-    const cx = Math.floor(wx / CHUNK_SIDE);
-    const cy = Math.floor(wy / CHUNK_SIDE);
+    const cx = Math.floor(wx / CHUNK_SIZE);
+    const cy = Math.floor(wy / CHUNK_SIZE);
     const data = this.chunkOpenMasks.get(`${cx},${cy}`);
     if (!data) return true;
-    const lx = Math.max(0, Math.min(CHUNK_SIDE - 1, Math.floor(wx - cx * CHUNK_SIDE)));
-    const ly = Math.max(0, Math.min(CHUNK_SIDE - 1, Math.floor(wy - cy * CHUNK_SIDE)));
-    return data[lx + ly * CHUNK_SIDE] === 1;
+    const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - cx * CHUNK_SIZE)));
+    const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - cy * CHUNK_SIZE)));
+    return data[lx + ly * CHUNK_SIZE] === 1;
   }
 
   clear(): void {

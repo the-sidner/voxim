@@ -52,11 +52,7 @@ import { evaluateBladeWorld } from "./skeleton_evaluator.ts";
 import type { SkeletonOverlay } from "./skeleton_overlay.ts";
 import type { DebugOverlayManager } from "./debug_overlay_manager.ts";
 import type { LightManager } from "./light_manager.ts";
-
-/** Terrain chunk size in world units. Must match CHUNK_SIZE in @voxim/world.
- *  Mirrored from renderer.ts — the renderer's render-loop terrain cull keeps
- *  its own copy; this one keys static props into the pool's culling grid. */
-const CHUNK_SIZE = 32;
+import { CHUNK_SIZE } from "@voxim/world";
 
 /**
  * Squared speed below which a static prop is allowed to settle into the pool.

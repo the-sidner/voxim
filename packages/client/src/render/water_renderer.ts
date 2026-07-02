@@ -20,10 +20,9 @@
  */
 import * as THREE from "three";
 import { BoundaryKind } from "@voxim/protocol";
+import { CHUNK_SIZE } from "@voxim/world";
 import type { ClientWorld } from "../state/client_world.ts";
 import { paletteToken } from "./palette.ts";
-
-const CHUNK_SIDE = 32;
 
 /**
  * How far below floor the WATER channel is cut by atlas's terrain stage.
@@ -123,12 +122,12 @@ function buildWaterGeo(
   const indices:   number[] = [];
   let vBase = 0;
 
-  const offX = chunkX * CHUNK_SIDE;
-  const offZ = chunkY * CHUNK_SIDE;
+  const offX = chunkX * CHUNK_SIZE;
+  const offZ = chunkY * CHUNK_SIZE;
 
-  for (let ly = 0; ly < CHUNK_SIDE; ly++) {
-    for (let lx = 0; lx < CHUNK_SIDE; lx++) {
-      const idx = lx + ly * CHUNK_SIDE;
+  for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+      const idx = lx + ly * CHUNK_SIZE;
       if (kinds[idx] !== BoundaryKind.water) continue;
 
       // Surface sits at the original floor — `heights` carries the trenched

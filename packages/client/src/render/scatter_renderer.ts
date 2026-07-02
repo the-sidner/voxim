@@ -18,6 +18,7 @@ import * as THREE from "three";
 import type { ContentService, ScatterDef } from "@voxim/content";
 import { evaluateFieldExpr, morphTierParams } from "@voxim/content";
 import type { VegFieldGridData, SurfaceStateGridData, WaterGridData } from "@voxim/codecs";
+import { CHUNK_SIZE } from "@voxim/world";
 import type { ClientWorld } from "../state/client_world.ts";
 import { bakeVoxels } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
@@ -27,7 +28,6 @@ import { getGenerator, registerBuiltinGenerators } from "./procmodel/mod.ts";
 import type { InstancePool, InstanceSlot } from "./instance_pool.ts";
 import { sampleField } from "./field_sample.ts";
 
-const CHUNK_SIDE = 32;
 const HANDLE_PREFIX = "scatter:";
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
@@ -244,9 +244,9 @@ export class ScatterRenderer {
         for (const archetypeId of variants[variant]) out.push({ archetypeId, matrix: matrix.clone() });
       };
 
-      for (let ly = half; ly < CHUNK_SIDE; ly += def.stride) {
-        for (let lx = half; lx < CHUNK_SIDE; lx += def.stride) {
-          const cellIdx = lx + ly * CHUNK_SIDE;
+      for (let ly = half; ly < CHUNK_SIZE; ly += def.stride) {
+        for (let lx = half; lx < CHUNK_SIZE; lx += def.stride) {
+          const cellIdx = lx + ly * CHUNK_SIZE;
           const match = matIds !== undefined
             ? matIds.has(materials![cellIdx])
             : kinds[cellIdx] === def.kind;
@@ -271,8 +271,8 @@ export class ScatterRenderer {
           const variants = morphTier === 0 ? basePool : this.ensurePool(def, morphTier);
           if (variants.length === 0) continue;
 
-          const baseWx = cx * CHUNK_SIDE + lx + 0.5;
-          const baseWy = cy * CHUNK_SIDE + ly + 0.5;
+          const baseWx = cx * CHUNK_SIZE + lx + 0.5;
+          const baseWy = cy * CHUNK_SIZE + ly + 0.5;
           const cellSlots: InstanceSlot[] = [];
 
           if (cluster) {
@@ -285,7 +285,7 @@ export class ScatterRenderer {
             // as EMPTY instead of sparse — the field decides the expected count,
             // the hash only dithers the quantisation.
             const x = cluster.count[0] + (cluster.count[1] - cluster.count[0]) * fieldDensity;
-            const hq = hash2u((cx * CHUNK_SIDE + lx) ^ 0x5bd1, (cy * CHUNK_SIDE + ly) ^ 0xe995);
+            const hq = hash2u((cx * CHUNK_SIZE + lx) ^ 0x5bd1, (cy * CHUNK_SIZE + ly) ^ 0xe995);
             const n = Math.floor(x) + (((hq & 0xffff) / 0xffff) < x - Math.floor(x) ? 1 : 0);
             for (let k = 0; k < n; k++) {
               const hk = hash2u((baseWx * 13 + k * 0x9e37) | 0, (baseWy * 7 + k * 0x79b9) | 0);
@@ -296,7 +296,7 @@ export class ScatterRenderer {
           } else {
             // Single placement, hash-gated by the keep-probability.
             if (fieldDensity < 1) {
-              const wxh = cx * CHUNK_SIDE + lx, wyh = cy * CHUNK_SIDE + ly;
+              const wxh = cx * CHUNK_SIZE + lx, wyh = cy * CHUNK_SIZE + ly;
               if ((hash2u(wxh ^ 0x9e37, wyh ^ 0x79b9) & 0xffff) / 0xffff > fieldDensity) continue;
             }
             buildSlots(variants, baseWx, baseWy, hash2u(baseWx | 0, baseWy | 0), hash2u(baseWy | 0, baseWx | 0), cellSlots);

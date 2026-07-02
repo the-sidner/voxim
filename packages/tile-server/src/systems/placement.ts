@@ -37,12 +37,10 @@ import { Inventory } from "../components/items.ts";
 import { Blueprint } from "../components/building.ts";
 import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
-import { Heightmap, getHeight, snapHeight } from "@voxim/world";
+import { Heightmap, getHeight, snapHeight, CHUNK_SIZE } from "@voxim/world";
 import type { HeightmapData } from "@voxim/world";
 
 const log = createLogger("PlacementSystem");
-
-const CHUNK_SIZE = 32;
 
 export class PlacementSystem implements System {
   private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();

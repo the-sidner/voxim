@@ -36,6 +36,7 @@ import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
 import { solveSwingPose, applyLocomotionPose, applyCrouchPose } from "@voxim/content";
 import type { BoneRotation, LocoState } from "@voxim/content";
+import { CHUNK_SIZE } from "@voxim/world";
 
 // Pelvis drop (skeleton rest units) at full crouch; scaled per entity.
 const CROUCH_DROP = 0.9;
@@ -149,9 +150,6 @@ const DEPTH_BLIT_FRAG = /* glsl */`
     gl_FragColor = vec4(h, h, h, 1.0);
   }
 `;
-
-/** Terrain chunk size in world units. Must match CHUNK_SIZE in @voxim/world. */
-const CHUNK_SIZE = 32;
 
 /**
  * Entities further than this squared distance from the local player have

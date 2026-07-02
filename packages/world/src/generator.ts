@@ -27,7 +27,7 @@ import type { BiomeDef, ZoneDef } from "@voxim/content";
 import { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness, setChunkKinds, setChunkVegField, setChunkSurfaceState, setChunkWater } from "./chunk.ts";
 import { Heightmap, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "./components.ts";
 import type { VegFieldGridData, SurfaceStateGridData } from "./components.ts";
-import { CHUNK_SIZE, CHUNKS_PER_TILE_SIDE, TILE_SIZE, snapHeight } from "./terrain.ts";
+import { CHUNK_SIZE, CHUNK_CELLS, CHUNKS_PER_TILE_SIDE, TILE_SIZE, snapHeight } from "./terrain.ts";
 
 /** T-311 P3 render-field planes at TILE_SIZE² (structural — atlas FieldPlanes is
  *  assignable). Sliced per chunk into the VegFieldGrid/SurfaceStateGrid/WaterGrid. */
@@ -72,12 +72,6 @@ export interface WorldGenContent {
   readonly forcedBiome?: BiomeDef;
   resolveMaterialId(name: string): number;
 }
-
-// ---------------------------------------------------------------------------
-// Internal constants
-// ---------------------------------------------------------------------------
-
-const CHUNK_CELLS = CHUNK_SIZE * CHUNK_SIZE;
 
 // ---------------------------------------------------------------------------
 // Exported types

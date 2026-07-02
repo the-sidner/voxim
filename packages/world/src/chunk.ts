@@ -6,9 +6,7 @@ import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
 import { Heightmap, MaterialGrid, OpenMask, KindGrid, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "./components.ts";
 import type { VegFieldGridData, SurfaceStateGridData } from "./components.ts";
-import { CHUNK_SIZE } from "./terrain.ts";
-
-const CHUNK_CELLS = CHUNK_SIZE * CHUNK_SIZE;
+import { CHUNK_CELLS } from "./terrain.ts";
 
 /**
  * Create a chunk entity.
