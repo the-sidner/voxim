@@ -12,7 +12,10 @@
 import { assert, assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
-import { CHUNK_SIZE, Heightmap, MaterialGrid, OpenMask, KindGrid } from "@voxim/world";
+import {
+  CHUNK_SIZE, Heightmap, MaterialGrid, OpenMask, KindGrid,
+  VegFieldGrid, SurfaceStateGrid, WaterGrid,
+} from "@voxim/world";
 import { createChunk, setChunkHeights } from "@voxim/world";
 import { Position } from "../components/game.ts";
 import { ChunkLifecycleSystem } from "./chunk_lifecycle.ts";
@@ -134,6 +137,26 @@ Deno.test("system: distant chunk is cached + destroyed past grace, then restored
   heights[0] = -7.25; // a dig the player made earlier
   setChunkHeights(w, chunkId, heights);
 
+  // Distinctive field-plane values (T-315 A1) so we can prove these three
+  // grids — dropped by the pre-A1 CachedChunk — survive the cache round-trip
+  // byte-for-byte too, not just the original four.
+  w.write(chunkId, VegFieldGrid, {
+    canopyLight: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(11),
+    corruption: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(22),
+    fertility: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(33),
+  });
+  w.write(chunkId, SurfaceStateGrid, {
+    wetness: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(44),
+    overgrowth: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(55),
+    wear: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(66),
+    variantIndex: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(77),
+    ruinAge: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(88),
+    traffic: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(99),
+  });
+  w.write(chunkId, WaterGrid, {
+    surfaceLevel: new Float32Array(CHUNK_SIZE * CHUNK_SIZE).fill(3.5),
+  });
+
   // Player far away in the opposite corner — chunk (15,15) is out of range.
   const player = newEntityId();
   w.create(player);
@@ -180,4 +203,27 @@ Deno.test("system: distant chunk is cached + destroyed past grace, then restored
   assert(w.get(id, MaterialGrid) !== null);
   assert(w.get(id, OpenMask) !== null);
   assert(w.get(id, KindGrid) !== null);
+
+  // T-315 A1: the three field-plane grids must survive the round-trip too —
+  // before the fix these came back neutral (fresh zeros/NaN from a lost
+  // component) instead of the cached values, so scatter/moss/wetness/water
+  // silently reset on every unload/reload cycle.
+  const veg = w.get(id, VegFieldGrid);
+  assert(veg !== null, "VegFieldGrid restored");
+  assertEquals(veg!.canopyLight[0], 11);
+  assertEquals(veg!.corruption[0], 22);
+  assertEquals(veg!.fertility[0], 33);
+
+  const surf = w.get(id, SurfaceStateGrid);
+  assert(surf !== null, "SurfaceStateGrid restored");
+  assertEquals(surf!.wetness[0], 44);
+  assertEquals(surf!.overgrowth[0], 55);
+  assertEquals(surf!.wear[0], 66);
+  assertEquals(surf!.variantIndex[0], 77);
+  assertEquals(surf!.ruinAge[0], 88);
+  assertEquals(surf!.traffic[0], 99);
+
+  const water = w.get(id, WaterGrid);
+  assert(water !== null, "WaterGrid restored");
+  assertEquals(water!.surfaceLevel[0], 3.5);
 });
