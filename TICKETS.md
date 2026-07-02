@@ -1150,8 +1150,23 @@ every `(h&0xffff)` probability gate was broken, the REAL bush=0 cause + a near-c
 (`feb10e4`, GenParams `fertilityDappleAmp/Scale`, re-bake). Defs re-authored to the MEASURED band
 (ground fertility mean 0.26, band 0.14–0.45; `aee129f`): live-verified oak 962 grove-varied /
 grass 9.6k / fern 4.8k / mushroom 1.4k / bush 173 / rock 296, paths clear, under InstancePool caps.
-Remaining P4: corruption-morph generators, moss-creep (`mossBlend`×overgrowth into the per-voxel
-colour), wetness specular, decals.
+**Moss-creep LANDED** (`a46e14a`): `VoxelAtom.moss01` (G6 sidecar — DATA, palette stays the colour
+carrier) from SurfaceStateGrid.overgrowth × `render.mossBlend` floor/wall bias (+jointBoost on terrace
+ledges); bakeVoxels lerps the per-voxel tint via `resolveMossResponse`; byte-identical when absent
+(test-pinned); authored on stone+gravel; Studio Material editor grew a Moss section with a MOCK
+overgrowth ramp through the real bake (verified grey→mossy-green). **Wetness specular LANDED**
+(`0b4b819`): the G4 **SurfaceTreatment registry** (sibling of TextureStyle; water + `render.reflect`
+join in P5) with the `wet_specular` builtin — per-vertex `aWetness` (VoxelAtom.wet01 →
+SurfaceFieldInput generalises the moss input) darkens diffuse + boosts Phong specular in-shader;
+treatments CHAIN onBeforeCompile after canopyFade; authored on path/stone/gravel/dirt/mud; Studio
+Wetness section verified dry-tan→wet-dark. **Corruption-morph LANDED** (`f28733f`):
+`ProcModelDef.morphTiers` (≤3 deep-merged param overrides = ≤4 tiers, loader-validated) +
+`ScatterDef.morphField` (FieldExpr, cross-checked incl. tier membership); ScatterRenderer builds a
+variant pool PER TIER and buckets each cell's SERVER corruption — the field decides the form, never a
+hash; fern/grass/oak authored (withered → corrupted purple husk), live-verified tier counts (fern t0
+4760 / t1 12 / t2 30 — healthy the norm, corruption marks the old chambers).
+Remaining P4: **decals** — blocked on the Q8 designer decision (saved chunk-component vs ephemeral
+in-memory + decay) AND a new permanent chunk wireId (I1-class; not minted unilaterally).
 
 ### T-312b · re-apply atlas render-fields on save-load
 Effort: S   Status: done   Commit: 1248388
