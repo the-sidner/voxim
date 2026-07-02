@@ -360,7 +360,7 @@ export class EntityMeshRegistry {
    *  shared-cache complexity isn't worth it for a few extra materials. */
   private _buildPropMaterial(matId: number, mats: Map<number, MaterialDef>): THREE.Material {
     const mat = buildVoxelMaterial(mats.get(matId), matId);
-    canopyFade.register(mat, { voxelMode: true });
+    canopyFade.register(mat);
     return mat;
   }
 

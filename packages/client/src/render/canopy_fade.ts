@@ -8,13 +8,11 @@
  * to fade share the same uniforms — push the player's position once per
  * frame via update() and every registered material reflects it.
  *
- * Two modes:
- *   - voxelMode = true: the geometry has a `voxelCenter` attribute (every
- *     vertex of a voxel cube tagged with its model-space centre). The
- *     shader reads that, transforms once to world, and produces a
- *     "blocky" fade — voxels pop in and out as discrete blocks.
- *   - voxelMode = false: per-fragment world position. Used for smooth
- *     meshes (terrain) where there are no voxel cells to align with.
+ * Every registered material's geometry has a `voxelCenter` attribute
+ * (every vertex of a voxel cube tagged with its model-space centre) —
+ * all terrain and scatter geometry comes out of the voxel bake. The
+ * shader reads that, transforms once to world, and produces a "blocky"
+ * fade — voxels pop in and out as discrete blocks.
  */
 import * as THREE from "three";
 
@@ -84,8 +82,7 @@ export class CanopyFade {
    * blob. Call once per material at construction; the patch is applied
    * the first time Three.js compiles its program.
    */
-  register(material: THREE.Material, options: { voxelMode?: boolean; wind?: boolean } = {}): void {
-    const voxelMode = options.voxelMode ?? false;
+  register(material: THREE.Material, options: { wind?: boolean } = {}): void {
     const wind = options.wind ?? false;
     const u = this.uniforms;
 
@@ -126,82 +123,50 @@ export class CanopyFade {
         shader.uniforms.uWindDir      = u.uWindDir;
       }
 
-      if (voxelMode) {
-        // Per-voxel cutout. `voxelCenter` is a per-vertex attribute that
-        // tags every cube vertex with its centre in model space. Transform
-        // once to world, compute the (vert × horiz) fade product, and
-        // forward as a single float varying. All 24 verts of one cube
-        // share that value, so every fragment of one voxel agrees on
-        // discard — voxels disappear as whole blocks, never sliced.
-        shader.vertexShader = `
-          attribute vec3 voxelCenter;
-          uniform vec2  uFadeCenterXZ;
-          uniform float uPlayerY;
-          uniform float uFadeMinHeight;
-          uniform float uFadeMaxHeight;
-          uniform float uFadeInnerR;
-          uniform float uFadeOuterR;
-          ${windUniforms}
-          varying float vFade;
-          ${shader.vertexShader}
-        `.replace(
-          "#include <worldpos_vertex>",
-          `#include <worldpos_vertex>
-           vec4 vc = vec4(voxelCenter, 1.0);
-           #ifdef USE_INSTANCING
-             vc = instanceMatrix * vc;
-           #endif
-           vc = modelMatrix * vc;
-           float aboveY = vc.y - uPlayerY;
-           float vertFade = smoothstep(uFadeMinHeight, uFadeMaxHeight, aboveY);
-           float horizDist = length(vc.xz - uFadeCenterXZ);
-           float horizFade = 1.0 - smoothstep(uFadeInnerR, uFadeOuterR, horizDist);
-           vFade = vertFade * horizFade;
-           ${windBody}`,
-        );
+      // Per-voxel cutout. `voxelCenter` is a per-vertex attribute that
+      // tags every cube vertex with its centre in model space. Transform
+      // once to world, compute the (vert × horiz) fade product, and
+      // forward as a single float varying. All 24 verts of one cube
+      // share that value, so every fragment of one voxel agrees on
+      // discard — voxels disappear as whole blocks, never sliced.
+      shader.vertexShader = `
+        attribute vec3 voxelCenter;
+        uniform vec2  uFadeCenterXZ;
+        uniform float uPlayerY;
+        uniform float uFadeMinHeight;
+        uniform float uFadeMaxHeight;
+        uniform float uFadeInnerR;
+        uniform float uFadeOuterR;
+        ${windUniforms}
+        varying float vFade;
+        ${shader.vertexShader}
+      `.replace(
+        "#include <worldpos_vertex>",
+        `#include <worldpos_vertex>
+         vec4 vc = vec4(voxelCenter, 1.0);
+         #ifdef USE_INSTANCING
+           vc = instanceMatrix * vc;
+         #endif
+         vc = modelMatrix * vc;
+         float aboveY = vc.y - uPlayerY;
+         float vertFade = smoothstep(uFadeMinHeight, uFadeMaxHeight, aboveY);
+         float horizDist = length(vc.xz - uFadeCenterXZ);
+         float horizFade = 1.0 - smoothstep(uFadeInnerR, uFadeOuterR, horizDist);
+         vFade = vertFade * horizFade;
+         ${windBody}`,
+      );
 
-        // Use the dummy `_FRAGMENT_BEGIN_` token via the `dithering_fragment`
-        // include — earliest hook that runs after gl_FragColor is final.
-        shader.fragmentShader = `
-          uniform float uFadeCutoff;
-          varying float vFade;
-          ${shader.fragmentShader}
-        `.replace(
-          "#include <dithering_fragment>",
-          `#include <dithering_fragment>
-           if (vFade > uFadeCutoff) discard;`,
-        );
-      } else {
-        // Smooth meshes (terrain, etc.): per-fragment world position.
-        shader.vertexShader = `varying vec3 vFadeWorldPos;\n${shader.vertexShader}`
-          .replace(
-            "#include <worldpos_vertex>",
-            `#include <worldpos_vertex>
-             vFadeWorldPos = worldPosition.xyz;`,
-          );
-
-        shader.fragmentShader = `
-          uniform vec2  uFadeCenterXZ;
-          uniform float uPlayerY;
-          uniform float uFadeMinHeight;
-          uniform float uFadeMaxHeight;
-          uniform float uFadeInnerR;
-          uniform float uFadeOuterR;
-          uniform float uFadeCutoff;
-          varying vec3  vFadeWorldPos;
-          ${shader.fragmentShader}
-        `.replace(
-          "#include <dithering_fragment>",
-          `#include <dithering_fragment>
-           {
-             float aboveY = vFadeWorldPos.y - uPlayerY;
-             float vertFade = smoothstep(uFadeMinHeight, uFadeMaxHeight, aboveY);
-             float horizDist = length(vFadeWorldPos.xz - uFadeCenterXZ);
-             float horizFade = 1.0 - smoothstep(uFadeInnerR, uFadeOuterR, horizDist);
-             if (vertFade * horizFade > uFadeCutoff) discard;
-           }`,
-        );
-      }
+      // Use the dummy `_FRAGMENT_BEGIN_` token via the `dithering_fragment`
+      // include — earliest hook that runs after gl_FragColor is final.
+      shader.fragmentShader = `
+        uniform float uFadeCutoff;
+        varying float vFade;
+        ${shader.fragmentShader}
+      `.replace(
+        "#include <dithering_fragment>",
+        `#include <dithering_fragment>
+         if (vFade > uFadeCutoff) discard;`,
+      );
     };
   }
 }

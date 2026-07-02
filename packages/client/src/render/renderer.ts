@@ -593,7 +593,7 @@ export class VoximRenderer {
       const baked = bakeVoxels(atoms, matId, TERRAIN_DISP_MAG, matDef?.render?.tintJitter, mossResp);
       const geo = geometryFromBaked(baked);
       const m = buildVoxelMaterial(matDef, matId);
-      canopyFade.register(m, { voxelMode: true });
+      canopyFade.register(m);
       // Wetness response (G4): dispatch the wet_specular treatment AFTER
       // canopyFade (treatments chain onBeforeCompile), only where the bake
       // actually emitted the aWetness attribute.
