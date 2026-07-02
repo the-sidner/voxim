@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertNotEquals } from "jsr:@std/assert";
-import { nameZone, NAMED_AREA_MIN } from "./zone_namer.ts";
+import { nameZone } from "./zone_namer.ts";
 
 const FOREST_BIOME = { altitude: 0.4, moisture: 0.55, temperature: 0.5, ruggedness: 0.3 };
 const TUNDRA_BIOME = { altitude: 0.4, moisture: 0.5, temperature: 0.2, ruggedness: 0.3 };
@@ -54,11 +54,6 @@ Deno.test("zone namer: per-role threshold — plaza named at 250, micro-deadend 
   assertNotEquals(nameZone(42, 0, 250, "plaza", "path", FOREST_BIOME), "");
   // Deadend threshold 180; 50 stays anonymous.
   assertEquals(nameZone(42, 0, 50, "deadend", "path", FOREST_BIOME), "");
-});
-
-Deno.test("zone namer: legacy NAMED_AREA_MIN constant is 200", () => {
-  // Tests for older fixtures still rely on this; pin it.
-  assertEquals(NAMED_AREA_MIN, 200);
 });
 
 Deno.test("zone namer: path adjectives differ from wilderness adjectives over many samples", () => {

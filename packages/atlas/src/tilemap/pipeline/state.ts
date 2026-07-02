@@ -149,7 +149,7 @@ export interface AnnotatedZone {
   /**
    * Procedural display name (T-211), e.g. "Whispering Grove",
    * "Bandit's Crossroads". Empty string for sub-threshold zones
-   * (area < NAMED_AREA_MIN) that don't warrant UI display.
+   * (area below its role's naming threshold) that don't warrant UI display.
    */
   name: string;
 }

@@ -212,12 +212,6 @@ export interface GenParams {
     stoneRuggednessThreshold: number;
     /** moisture > X → FOREST (else falls back to GRASS_MOUND). */
     forestMoisture: number;
-    /**
-     * Tile-server tree spawn stride for FOREST pixels, in world units.
-     * Smaller = denser forest. Tile-server reads this from the world's
-     * persisted params at boot.
-     */
-    forestDensityStride: number;
   };
 
   /**
@@ -367,15 +361,6 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     stoneAltitudeRugged: 0.65,
     stoneRuggednessThreshold: 0.70,
     forestMoisture: 0.10,                // almost everything wet enough → forest walls
-    /**
-     * Tile-server tree spawn stride for FOREST wall pixels, in world units.
-     * Smaller = denser forest. Trade-off vs. entity count:
-     *   stride 4  → ~5000 trees / fully-forested 512u tile (heavy)
-     *   stride 6  → ~2200 trees / fully-forested 512u tile (recommended)
-     *   stride 12 → ~600  trees / fully-forested 512u tile (sparse cluster)
-     * Read at boot from the world's persisted params.
-     */
-    forestDensityStride: 6,
   },
   zoneGraph: {
     arenaAreaMin:           1500,

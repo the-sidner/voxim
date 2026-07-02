@@ -12,7 +12,7 @@
  *   "Bandit's Crossroads"  — path crossroads, dangerous-biased adj
  *
  * Adjective pools are seeded by the zone's tile + id so the same zone
- * always gets the same name. Only zones with `area >= NAMED_AREA_MIN`
+ * always gets the same name. Only zones with `area >= NAMED_AREA_MIN_BY_ROLE[role]`
  * receive a non-empty name; smaller zones (micro-thickets between
  * corridors, single-pixel crags) get `""` to avoid HUD spam.
  *
@@ -56,15 +56,8 @@ const NAMED_AREA_MIN_BY_ROLE: Record<ZoneRole, number> = {
   morass:     300,
 };
 
-/**
- * Legacy export, kept for tests + back-compat with older fixtures.
- * New code should consult `NAMED_AREA_MIN_BY_ROLE` directly via
- * `shouldNameZone()`.
- */
-export const NAMED_AREA_MIN = 200;
-
 export function shouldNameZone(area: number, role: ZoneRole): boolean {
-  return area >= (NAMED_AREA_MIN_BY_ROLE[role] ?? NAMED_AREA_MIN);
+  return area >= NAMED_AREA_MIN_BY_ROLE[role];
 }
 
 /**
