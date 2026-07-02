@@ -37,5 +37,14 @@
       2
     ],
     "radius": 2.2
-  }
+  },
+  "morphField": [
+    {
+      "field": "corruption",
+      "curve": "linear",
+      "min": 0.35,
+      "max": 0.6,
+      "weight": 1.0
+    }
+  ]
 }

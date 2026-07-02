@@ -220,6 +220,12 @@ async function loadContentStoreInternal(
     if (!store.procModels.get(s.procModel)) {
       throw new Error(`[content] scatter "${s.id}" references unknown procModel "${s.procModel}"`);
     }
+    // T-311 P4: a morphField without tiers to select is an authoring error.
+    if (s.morphField && !store.procModels.get(s.procModel)?.morphTiers?.length) {
+      throw new Error(
+        `[content] scatter "${s.id}" authors morphField but procModel "${s.procModel}" has no morphTiers`,
+      );
+    }
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
@@ -637,6 +643,17 @@ export function validateProcModelDef(def: ProcModelDef): void {
   if (def.params === null || typeof def.params !== "object") {
     throw new Error(`ProcModel '${def.id}': 'params' must be an object`);
   }
+  // T-311 P4: corruption-morph tiers — at most 3 overrides (4 tiers incl. base).
+  if (def.morphTiers !== undefined) {
+    if (!Array.isArray(def.morphTiers) || def.morphTiers.length < 1 || def.morphTiers.length > 3) {
+      throw new Error(`ProcModel '${def.id}': 'morphTiers' must be an array of 1–3 param-override objects`);
+    }
+    for (const t of def.morphTiers) {
+      if (t === null || typeof t !== "object" || Array.isArray(t)) {
+        throw new Error(`ProcModel '${def.id}': every 'morphTiers' entry must be an object`);
+      }
+    }
+  }
 }
 
 export function validateLightDef(def: LightDef): void {
@@ -674,6 +691,9 @@ export function validateScatterDef(def: ScatterDef): void {
   }
   // T-311 P4: a densityField FieldExpr must reference only known field planes.
   if (def.densityField) crossCheckFieldExpr(def.densityField, `ScatterDef '${def.id}'`);
+  // T-311 P4: same for the corruption-morph tier selector (procModel morphTiers
+  // membership is cross-checked with the other procModel refs after load).
+  if (def.morphField) crossCheckFieldExpr(def.morphField, `ScatterDef '${def.id}' morphField`);
   if (def.cluster) {
     if (!Array.isArray(def.cluster.count) || def.cluster.count.length !== 2) {
       throw new Error(`Scatter '${def.id}': 'cluster.count' must be a [min,max] pair`);

@@ -1054,6 +1054,15 @@ export interface ProcModelDef {
   /** Generator-specific parameter object — opaque to the loader. */
   // deno-lint-ignore no-explicit-any
   params: any;
+  /**
+   * Corruption-morph tiers (T-311 P4): up to THREE param-override objects,
+   * deep-merged over `params` (tier 0 = base `params`, tier i = merge of
+   * `morphTiers[i-1]`) — so a fern's corrupted form is DATA (darker material,
+   * fewer blades, more droop), not generator code. A ScatterDef's `morphField`
+   * buckets the server field into `1 + morphTiers.length` tiers (≤ 4).
+   */
+  // deno-lint-ignore no-explicit-any
+  morphTiers?: ReadonlyArray<Record<string, any>>;
 }
 
 /**
@@ -1104,6 +1113,12 @@ export interface ScatterDef {
    *  thins to nothing — "combine primitives into a dense scene"). Absent = the
    *  classic single-per-cell keep-probability placement. */
   cluster?: { count: [number, number]; radius: number };
+  /** Corruption-morph selector (T-311 P4): a FieldExpr over the render fields
+   *  whose value buckets the cell into one of the procModel's morph tiers
+   *  (`1 + morphTiers.length`, ≤ 4) — corrupted ground grows the corrupted
+   *  form. The SERVER field decides the tier, never a hash (the doctrine's
+   *  hash-only-dithers rule). Requires the procModel to author `morphTiers`. */
+  morphField?: import("./field_expr.ts").FieldExpr;
 }
 
 // ---- biomes ----

@@ -16,7 +16,7 @@
  */
 import * as THREE from "three";
 import type { ContentService, ScatterDef } from "@voxim/content";
-import { evaluateFieldExpr } from "@voxim/content";
+import { evaluateFieldExpr, morphTierParams } from "@voxim/content";
 import type { VegFieldGridData, SurfaceStateGridData, WaterGridData } from "@voxim/codecs";
 import type { ClientWorld } from "../state/client_world.ts";
 import { bakeVoxels } from "./voxel_bake.ts";
@@ -156,18 +156,22 @@ export class ScatterRenderer {
   }
 
   /**
-   * Build (once) the K-variant pool for a ScatterDef: run its generator K times
-   * off deterministic sub-seeds, bake each variant's per-material geometry, and
-   * register the archetypes. Returns the per-variant archetype-id lists.
+   * Build (once) the K-variant pool for a ScatterDef at one morph `tier`: run
+   * its generator K times off deterministic sub-seeds — tier > 0 deep-merges
+   * `morphTiers[tier-1]` over the base params (corruption-morph, T-311 P4) —
+   * bake each variant's per-material geometry, and register the archetypes.
+   * Returns the per-variant archetype-id lists.
    */
-  private ensurePool(def: ScatterDef): string[][] {
-    const cached = this.pools.get(def.id);
+  private ensurePool(def: ScatterDef, tier: number): string[][] {
+    const poolKey = `${def.id}:t${tier}`;
+    const cached = this.pools.get(poolKey);
     if (cached) return cached;
 
     const pm = this.content.procModels.get(def.procModel);
     const gen = pm && getGenerator(pm.generator);
     const variants: string[][] = [];
     if (pm && gen) {
+      const params = morphTierParams(pm.params, pm.morphTiers, tier);
       const ctx = {
         resolveMaterial: (name: string) => {
           const m = this.content.materials.get(name);
@@ -177,11 +181,11 @@ export class ScatterRenderer {
       };
       for (let i = 0; i < def.pool; i++) {
         const seed = mix32(this.tileSeed, hash32(def.id) ^ i);
-        const atoms = gen(seed, pm.params, ctx);
+        const atoms = gen(seed, params, ctx);
         const matIds = [...new Set(atoms.map((a) => a.materialId))];
         const archIds: string[] = [];
         for (const m of matIds) {
-          const archId = `${HANDLE_PREFIX}${def.id}:${i}|${m}`;
+          const archId = `${HANDLE_PREFIX}${def.id}:t${tier}:${i}|${m}`;
           if (!this.instancePool.hasArchetype(archId)) {
             const matDef = this.content.getMaterialById(m);
             const geometry = geometryFromBaked(bakeVoxels(atoms, m, undefined, matDef?.render?.tintJitter));
@@ -196,7 +200,7 @@ export class ScatterRenderer {
         variants.push(archIds);
       }
     }
-    this.pools.set(def.id, variants);
+    this.pools.set(poolKey, variants);
     return variants;
   }
 
@@ -227,8 +231,13 @@ export class ScatterRenderer {
     if (this.defs.length === 0) return true;
 
     for (const def of this.defs) {
-      const variants = this.ensurePool(def);
-      if (variants.length === 0) continue;
+      const basePool = this.ensurePool(def, 0);
+      if (basePool.length === 0) continue;
+      // Corruption-morph (T-311 P4): the cell's SERVER field buckets into one
+      // of the procModel's ≤4 tiers; each tier is its own variant pool.
+      const morphTierCount = def.morphField
+        ? 1 + (this.content.procModels.get(def.procModel)?.morphTiers?.length ?? 0)
+        : 1;
 
       let matIds: Set<number> | undefined;
       if (def.material !== undefined) {
@@ -250,7 +259,7 @@ export class ScatterRenderer {
       // variant/rotation/scale. `hSel` drives variant + Y-rotation, `hScale` the
       // scale jitter (two hashes so visually-adjacent props don't lock-step);
       // scale rides the matrix, never the archetype key (the T-281 resolution).
-      const buildSlots = (wx: number, wy: number, hSel: number, hScale: number, out: InstanceSlot[]) => {
+      const buildSlots = (variants: string[][], wx: number, wy: number, hSel: number, hScale: number, out: InstanceSlot[]) => {
         const wz = this.world.getTerrainHeight(wx, wy);
         const variant = hSel % variants.length;
         const rotY = def.rotate ? ((hSel >>> 8) & 0xffff) / 0xffff * Math.PI * 2 : 0;
@@ -280,6 +289,17 @@ export class ScatterRenderer {
             ? evaluateFieldExpr(def.densityField, (f) => sampleField(f, veg, surf, water, cellIdx))
             : flatDensity;
 
+          // Corruption-morph tier: the server field decides which variant pool
+          // grows here (bucketed, never a hash); tier 0 = the healthy base.
+          const morphTier = (morphTierCount > 1 && veg && surf)
+            ? Math.min(
+              morphTierCount - 1,
+              Math.floor(evaluateFieldExpr(def.morphField!, (f) => sampleField(f, veg, surf, water, cellIdx)) * morphTierCount),
+            )
+            : 0;
+          const variants = morphTier === 0 ? basePool : this.ensurePool(def, morphTier);
+          if (variants.length === 0) continue;
+
           const baseWx = cx * CHUNK_SIDE + lx + 0.5;
           const baseWy = cy * CHUNK_SIDE + ly + 0.5;
           const cellSlots: InstanceSlot[] = [];
@@ -300,7 +320,7 @@ export class ScatterRenderer {
               const hk = hash2u((baseWx * 13 + k * 0x9e37) | 0, (baseWy * 7 + k * 0x79b9) | 0);
               const ang = (hk & 0xffff) / 0xffff * Math.PI * 2;
               const rad = Math.sqrt(((hk >>> 16) & 0xffff) / 0xffff) * cluster.radius;  // sqrt → uniform disk
-              buildSlots(baseWx + Math.cos(ang) * rad, baseWy + Math.sin(ang) * rad, hk, hash2u(hk | 0, k), cellSlots);
+              buildSlots(variants, baseWx + Math.cos(ang) * rad, baseWy + Math.sin(ang) * rad, hk, hash2u(hk | 0, k), cellSlots);
             }
           } else {
             // Single placement, hash-gated by the keep-probability.
@@ -308,7 +328,7 @@ export class ScatterRenderer {
               const wxh = cx * CHUNK_SIDE + lx, wyh = cy * CHUNK_SIDE + ly;
               if ((hash2u(wxh ^ 0x9e37, wyh ^ 0x79b9) & 0xffff) / 0xffff > fieldDensity) continue;
             }
-            buildSlots(baseWx, baseWy, hash2u(baseWx | 0, baseWy | 0), hash2u(baseWy | 0, baseWx | 0), cellSlots);
+            buildSlots(variants, baseWx, baseWy, hash2u(baseWx | 0, baseWy | 0), hash2u(baseWy | 0, baseWx | 0), cellSlots);
           }
 
           if (cellSlots.length === 0) continue;
