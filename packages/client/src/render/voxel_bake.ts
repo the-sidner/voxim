@@ -263,7 +263,7 @@ export function bakeVoxels(
    *  mossy atoms → byte-identical. */
   moss?: MossResponse,
 ): BakedMesh {
-  const voxels: { px: number; py: number; pz: number; moss01: number; wet01: number; baked: BakedVoxel }[] = [];
+  const voxels: { px: number; py: number; pz: number; moss01: number; wet01: number; tintScale: number; baked: BakedVoxel }[] = [];
   let anyWet = false;
   for (const a of atoms) {
     if (a.materialId !== materialId) continue;
@@ -271,7 +271,7 @@ export function bakeVoxels(
     // displaced-box bake applies the same swap to the extents internally.
     const px = a.cx, py = a.cz, pz = a.cy;
     if (a.wet01 !== undefined) anyWet = true;
-    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, a.dispMag ?? mag, a.dispSeed) });
+    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, tintScale: a.tintScale ?? 1, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, a.dispMag ?? mag, a.dispSeed) });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;
@@ -284,8 +284,14 @@ export function bakeVoxels(
   const wetness = anyWet ? new Float32Array(vCount) : undefined;
 
   let vOff = 0, iOff = 0;
-  for (const { px, py, pz, moss01, wet01, baked } of voxels) {
-    let [tr, tg, tb] = voxelTint(px, py, pz, tint);   // one tint per voxel
+  for (const { px, py, pz, moss01, wet01, tintScale, baked } of voxels) {
+    // One tint per voxel; `tintScale` (the civilization axis) collapses the
+    // mottle amplitude toward flat for worked/trodden cells.
+    const t = tintScale >= 1 ? tint : {
+      brightness: [1 + (tint.brightness[0] - 1) * tintScale, 1 + (tint.brightness[1] - 1) * tintScale] as [number, number],
+      warmCool: tint.warmCool * tintScale,
+    };
+    let [tr, tg, tb] = voxelTint(px, py, pz, t);
     if (moss && moss01 > 0) {
       // Lerp the multiplier toward the moss response: base×ratio ≈ moss colour.
       const k = moss01 > 1 ? 1 : moss01;

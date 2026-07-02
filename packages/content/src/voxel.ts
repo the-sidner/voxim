@@ -69,4 +69,12 @@ export interface VoxelAtom {
    * welded (byte-identical).
    */
   dispSeed?: number;
+  /**
+   * Per-voxel tint-mottle scale 0..1 (T-311 P4 — the civilization axis).
+   * Scales the material's tintJitter amplitude toward flat: 1 = full wild
+   * mottle, 0 = perfectly uniform (worked/laid). Derived per cell from
+   * `relief.disturbanceField` — trodden paths read orderly, wilderness stays
+   * mottled. Absent ⇒ full amplitude (byte-identical).
+   */
+  tintScale?: number;
 }

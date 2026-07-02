@@ -113,13 +113,13 @@ Deno.test("warp keeps courses gap-free (stones overlap into each other, never ap
   }
 });
 
-Deno.test("surface roughness: field-modulated dispSeed on flat slabs; zero field = exact", () => {
+Deno.test("civilization axis: disturbanceField scales roughness AND tint mottle per cell", () => {
   const { hm, mats } = flatChunk(2);
   const relief = () => ({
     surfaceWarp: 0.15,
-    surfaceWarpField: [{ field: "traffic", curve: "linear" as const, min: 0.55, max: 0.05, weight: 1.0 }],
+    disturbanceField: [{ field: "traffic", curve: "linear" as const, min: 0.55, max: 0.05, weight: 1.0 }],
   });
-  // traffic plane: left half trodden (255 → smooth), right half wilderness (0 → rough)
+  // traffic plane: left half trodden (→ civilized), right half wilderness (→ wild)
   const surface = {
     overgrowth: new Uint8Array(CHUNK * CHUNK),
     wetness: new Uint8Array(CHUNK * CHUNK),
@@ -139,15 +139,18 @@ Deno.test("surface roughness: field-modulated dispSeed on flat slabs; zero field
     const p = plain[i], w = roughA[i];
     const lx = Math.round(p.cx - 0.5);
     if (lx < 16) {
-      // trodden: field → 0 ⇒ byte-identical slab (no seed, no oversize)
-      assertEquals(w, p, "trodden cells stay exact");
+      // civilized: flat + welded geometry, mottle collapses to the 25% floor
+      assertEquals(w.dispSeed, undefined, "civilized slab stays welded");
+      assertEquals(w.sx, p.sx, "civilized slab keeps exact footprint");
+      assertEquals(w.tintScale, 0.25, "civilized mottle at the floor");
       smoothCount++;
     } else {
-      // wilderness: field → 1 ⇒ seeded, chunkier, oversized into solid
+      // wilderness: seeded, chunkier, oversized into solid, full mottle
       assertEquals(typeof w.dispSeed, "number", "wilderness slab is seeded");
       assert(w.dispMag! > 0.045, "wilderness slab displaces chunkier");
       assert(w.sx > p.sx && w.sz > p.sz, "wilderness slab oversizes into solid");
       assert(w.cz + w.sz / 2 <= p.cz + p.sz / 2 + 1e-9, "top face never rises above collision h");
+      assertEquals(w.tintScale, 1, "wilderness keeps full mottle");
       roughCount++;
     }
   }

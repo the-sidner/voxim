@@ -109,9 +109,9 @@ async function loadContentStoreInternal(
       console.log(`[palette] ${mat.name.padEnd(14)} ${hexOf(mat.color)} → ${(swatchName.get(snapped) ?? "?").padEnd(11)} ${hexOf(snapped)}${override ? " (override)" : ""}`);
     }
     mat.color = snapped;
-    // T-311 P4: surface-roughness FieldExpr must reference known field planes.
-    if (mat.render?.relief?.surfaceWarpField) {
-      crossCheckFieldExpr(mat.render.relief.surfaceWarpField, `Material '${mat.name}' relief.surfaceWarpField`);
+    // T-311 P4: the disturbance (wildness) FieldExpr must reference known planes.
+    if (mat.render?.relief?.disturbanceField) {
+      crossCheckFieldExpr(mat.render.relief.disturbanceField, `Material '${mat.name}' relief.disturbanceField`);
     }
     store.registerMaterial(mat);
   }

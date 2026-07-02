@@ -101,14 +101,14 @@ export function buildChunkAtoms(
   nb: ChunkNeighbours,
   surface?: SurfaceFieldInput,
   /** Per-material relief response (`MaterialDef.render.relief`, T-311 P4):
-   *  `warp` drives the cliff-stack stones (exposed-face jitter + independent
-   *  corner warp + oversize-into-solid); `surfaceWarp`(+`surfaceWarpField`)
-   *  drives the same decorrelated warp on walkable floor slabs — rough
-   *  ground, modulated per cell by the server render fields. */
+   *  `warp` drives the cliff-stack stones, `surfaceWarp` the floor slabs, and
+   *  `disturbanceField` is THE per-cell wildness axis (1 = wild, 0 =
+   *  civilized) scaling BOTH warps and the tint mottle — worked/trodden
+   *  cells read orderly, wilderness rough and mottled. */
   reliefFor?: (materialId: number) => {
     warp?: number;
     surfaceWarp?: number;
-    surfaceWarpField?: FieldExpr;
+    disturbanceField?: FieldExpr;
   } | undefined,
 ): Map<number, VoxelAtom[]> {
   const offX = hm.chunkX * CHUNK;
@@ -166,7 +166,13 @@ export function buildChunkAtoms(
         const expN = (h - hN) > EXPOSE_MIN;
         const n = Math.min(STACK_MAX, Math.max(2, Math.round(depth / STONE_H)));
         const bh = depth / n;
-        const warpAmp = reliefFor?.(m)?.warp ?? 0;
+        const cliffRelief = reliefFor?.(m);
+        // Civilization axis: worked stone near trodden ground stacks neater.
+        const cliffDisturb = (cliffRelief?.disturbanceField && surface)
+          ? evaluateFieldExpr(cliffRelief.disturbanceField, (f) => surface.sample(f, cellIdx))
+          : 1;
+        const warpAmp = (cliffRelief?.warp ?? 0) * cliffDisturb;
+        const cliffTintScale = cliffRelief?.disturbanceField ? 0.25 + 0.75 * cliffDisturb : undefined;
         // Course boundaries between stones, z-jittered ±warp/4 (per cell +
         // course, deterministic) so the horizontal seams run UNEVEN like real
         // coursework. Both stones at a seam share the jittered boundary —
@@ -219,6 +225,7 @@ export function buildChunkAtoms(
               dispMag: stoneDisp,
               dispSeed: 1 + Math.floor(voxHash(offX + cx, offZ + cy, i, 8) * 0xffff),
             }),
+            ...(cliffTintScale !== undefined && { tintScale: cliffTintScale }),
             // The top stone reads as floor; the face stones below gather moss
             // in their seams (jointBoost) — "oldest stone most swallowed".
             ...(og01 > 0 && {
@@ -240,12 +247,15 @@ export function buildChunkAtoms(
       // slab OVERSIZES into known-solid (sideways into neighbour slabs, down
       // into the earth) so corner gaps only ever reveal another slab.
       const relief = reliefFor?.(m);
-      let surfAmp = relief?.surfaceWarp ?? 0;
-      if (surfAmp > 0 && relief?.surfaceWarpField && surface) {
-        surfAmp *= evaluateFieldExpr(relief.surfaceWarpField, (f) => surface.sample(f, cellIdx));
-      }
+      const disturb = (relief?.disturbanceField && surface)
+        ? evaluateFieldExpr(relief.disturbanceField, (f) => surface.sample(f, cellIdx))
+        : 1;
+      const surfAmp = (relief?.surfaceWarp ?? 0) * disturb;
       const rough = surfAmp > 0.02;
       const grow = rough ? surfAmp + 0.05 : 0;
+      // Civilization axis: tint mottle recedes toward uniform on worked cells
+      // (a 25% floor keeps even laid stone faintly alive).
+      const tintScale = relief?.disturbanceField ? 0.25 + 0.75 * disturb : undefined;
       bucket.push({
         cx: offX + cx + 0.5,
         cy: offZ + cy + 0.5,
@@ -258,6 +268,7 @@ export function buildChunkAtoms(
           dispMag: TERRAIN_DISP_MAG + surfAmp,
           dispSeed: 1 + Math.floor(voxHash(offX + cx, offZ + cy, 0, 9) * 0xffff),
         }),
+        ...(tintScale !== undefined && { tintScale }),
         ...(og01 > 0 && { moss01: og01 * mossBias!.floor }),
         ...(wet01 !== undefined && { wet01 }),
       });

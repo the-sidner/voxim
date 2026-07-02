@@ -5,7 +5,7 @@
  * reference, plus the merge bookkeeping.
  */
 
-import { assertEquals } from "jsr:@std/assert";
+import { assert, assertEquals } from "jsr:@std/assert";
 import * as THREE from "three";
 import { vertexDisp } from "./displacement.ts";
 import {
@@ -361,4 +361,20 @@ Deno.test("dispSeed (T-311 P4): decorrelated per-voxel warp; absent = welded/byt
     if (other.positions[i] !== seeded.positions[i]) { seedsDiffer = true; break; }
   }
   assertEquals(seedsDiffer, true, "distinct seeds → distinct warps");
+});
+
+Deno.test("tintScale (T-311 P4): mottle collapses toward flat; absent = byte-identical", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const wild = bakeVoxels([atom], 1);
+  const explicit = bakeVoxels([{ ...atom, tintScale: 1 }], 1);
+  assertEquals(wild.colors, explicit.colors, "tintScale 1 = full mottle (identical)");
+
+  const flat = bakeVoxels([{ ...atom, tintScale: 0 }], 1);
+  assertEquals(flat.colors[0], 1);
+  assertEquals(flat.colors[1], 1);
+  assertEquals(flat.colors[2], 1, "tintScale 0 = perfectly uniform (multiplier 1)");
+
+  const half = bakeVoxels([{ ...atom, tintScale: 0.5 }], 1);
+  const dist = (c: Float32Array) => Math.abs(c[0] - 1) + Math.abs(c[1] - 1) + Math.abs(c[2] - 1);
+  assert(dist(half.colors) > 0 && dist(half.colors) < dist(wild.colors), "half scale sits between");
 });

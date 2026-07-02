@@ -52,17 +52,20 @@ export interface MaterialRenderDef {
    *  their exposed faces ±warp/2, warp their corners independently (own
    *  dispSeed) and oversize into known-solid, so cliffs read hand-stacked.
    *  `surfaceWarp` — the same per-voxel decorrelated warp on the walkable
-   *  floor slabs: rough, clod-like ground. `surfaceWarpField` — an optional
-   *  FieldExpr over the server render fields modulating surfaceWarp 0..1 per
-   *  cell (e.g. traffic-inverted: wilderness rough, trodden paths smooth);
-   *  boot-cross-checked. */
+   *  floor slabs: rough, clod-like ground.
+   *  `disturbanceField` — THE per-cell wildness axis (FieldExpr over the
+   *  server render fields, boot-cross-checked): 1 = wild, 0 = civilized.
+   *  It scales EVERY disturbance channel — surfaceWarp, the cliff-stack
+   *  warp, and the per-voxel tint mottle — so worked/trodden cells read
+   *  orderly (flat, uniform, crisp) and wilderness reads rough and mottled.
+   *  Absent ⇒ constant full disturbance. */
   relief?: {
     resolution?: number;
     detail?: number;
     dispMag?: number;
     warp?: number;
     surfaceWarp?: number;
-    surfaceWarpField?: import("./field_expr.ts").FieldExpr;
+    disturbanceField?: import("./field_expr.ts").FieldExpr;
   };
   /** Wetness/gloss response, driven by SurfaceStateGrid (Phase 4). */
   wetness?: { gloss: number; darken: number; reflectGain: number };

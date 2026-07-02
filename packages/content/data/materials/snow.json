@@ -21,7 +21,7 @@
     "relief": {
       "warp": 0.15,
       "surfaceWarp": 0.08,
-      "surfaceWarpField": [
+      "disturbanceField": [
         {
           "field": "traffic",
           "curve": "smoothstep",
