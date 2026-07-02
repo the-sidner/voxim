@@ -106,9 +106,9 @@ export interface StairUnlockOptions {
   /** Wall step height the wilderness pixels currently carry. */
   wallHeight: number;
   /** Ramp depth (pixels) — how far into the wilderness the lerp extends. */
-  rampDepth?: number;
+  rampDepth: number;
   /** Ramp half-width perpendicular to the climb direction (pixels). */
-  rampHalfWidth?: number;
+  rampHalfWidth: number;
 }
 
 /**
@@ -151,9 +151,7 @@ export function applyStairUnlock(
   tileSize: number,
   opts: StairUnlockOptions,
 ): number {
-  const { wildernessZoneId, anchor, wallHeight } = opts;
-  const rampDepth     = opts.rampDepth     ?? 4;
-  const rampHalfWidth = opts.rampHalfWidth ?? 2;
+  const { wildernessZoneId, anchor, wallHeight, rampDepth, rampHalfWidth } = opts;
 
   const stride = tileSize;
   if (anchor.x < 0 || anchor.y < 0 || anchor.x >= stride || anchor.y >= stride) return 0;

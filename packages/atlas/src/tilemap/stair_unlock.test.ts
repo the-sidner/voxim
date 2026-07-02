@@ -131,6 +131,8 @@ Deno.test("applyStairUnlock: leaves an unrelated wilderness zone alone", () => {
     wildernessZoneId: WILD_ZID,
     anchor: { x: 3, y: 5 },
     wallHeight: WALL,
+    rampDepth: 4,
+    rampHalfWidth: 2,
   });
 
   // Top wilderness — opened.
@@ -151,6 +153,8 @@ Deno.test("applyStairUnlock: no-ops when anchor is not adjacent to the target wi
     wildernessZoneId: WILD_ZID,
     anchor: { x: 1, y: 1 },
     wallHeight: WALL,
+    rampDepth: 4,
+    rampHalfWidth: 2,
   });
   // Helper returns 0 touched + buffers unchanged.
   for (let i = 0; i < open.length; i++) {
@@ -165,6 +169,8 @@ Deno.test("applyStairUnlock: anchor out of bounds → no-op", () => {
     wildernessZoneId: WILD_ZID,
     anchor: { x: -1, y: 2 },
     wallHeight: WALL,
+    rampDepth: 4,
+    rampHalfWidth: 2,
   });
   assertEquals(touched, 0);
   for (let i = 0; i < open.length; i++) assertEquals(open[i], before[i]);

@@ -287,6 +287,8 @@ export async function loadTerrainFromAtlas(
         wildernessZoneId: toRegion.zoneId,
         anchor: { x: ax, y: ay },
         wallHeight: 2.0,
+        rampDepth: stair.rampDepth,
+        rampHalfWidth: stair.rampHalfWidth,
       });
       if (touched > 0) unlockedStairs.push(stair.id);
     }
