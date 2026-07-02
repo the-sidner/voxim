@@ -338,3 +338,27 @@ Deno.test("wetness sidecar (T-311 P4): aWetness only when atoms carry wet01; col
   assertEquals(mixed.wetness![0], 1);
   assertEquals(mixed.wetness![BOX_VERT_COUNT], 0);
 });
+
+Deno.test("dispSeed (T-311 P4): decorrelated per-voxel warp; absent = welded/byte-identical", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const welded = bakeVoxels([atom], 1);
+  const weldedAgain = bakeVoxels([atom], 1);
+  assertEquals(welded.positions, weldedAgain.positions, "no seed → deterministic weld");
+
+  const seeded = bakeVoxels([{ ...atom, dispSeed: 7 }], 1);
+  const seededAgain = bakeVoxels([{ ...atom, dispSeed: 7 }], 1);
+  assertEquals(seeded.positions, seededAgain.positions, "seeded bake is deterministic");
+  // A seeded voxel warps differently from the welded one at the same position…
+  let differs = false;
+  for (let i = 0; i < welded.positions.length; i++) {
+    if (welded.positions[i] !== seeded.positions[i]) { differs = true; break; }
+  }
+  assertEquals(differs, true, "seed decorrelates from the world-position weld");
+  // …and two different seeds differ from each other.
+  const other = bakeVoxels([{ ...atom, dispSeed: 8 }], 1);
+  let seedsDiffer = false;
+  for (let i = 0; i < seeded.positions.length; i++) {
+    if (other.positions[i] !== seeded.positions[i]) { seedsDiffer = true; break; }
+  }
+  assertEquals(seedsDiffer, true, "distinct seeds → distinct warps");
+});

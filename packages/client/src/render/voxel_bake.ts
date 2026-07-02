@@ -120,6 +120,12 @@ export function bakeDisplacedVoxel(
   px: number, py: number, pz: number,
   scale: { x: number; y: number; z: number },
   mag?: number,
+  /** Decorrelation seed (VoxelAtom.dispSeed): shifts the displacement sample
+   *  space so THIS voxel's corners warp independently of every neighbour —
+   *  coincident vertices no longer weld; the voxel pokes out of the merged
+   *  mesh and may clip into its neighbours (deliberate — the individual-stone
+   *  look). Omitted ⇒ shared world-position seeding (welded, byte-identical). */
+  seed?: number,
 ): BakedVoxel {
   const positions = new Float32Array(BOX_VERT_COUNT * 3);
   const normals = new Float32Array(BOX_VERT_COUNT * 3);
@@ -127,6 +133,8 @@ export function bakeDisplacedVoxel(
   // across all its atoms (T-283) — variable-`sz` column boxes would otherwise get
   // different per-voxel mag at a shared cliff-edge corner and crack hairline-wide.
   const m = mag ?? 0.10 * Math.min(scale.x, scale.y, scale.z);
+  // Large odd strides keep the shifted samples on distinct lattice cells.
+  const sx = seed ? seed * 53.25 : 0, sy = seed ? seed * 91.5 : 0, sz = seed ? seed * 37.75 : 0;
   for (let i = 0; i < BOX_VERT_COUNT; i++) {
     // Scale unit-box (±0.5) to actual voxel extents in Three.js space.
     // Coordinate mapping: model x → three x (scale.x),
@@ -135,7 +143,7 @@ export function bakeDisplacedVoxel(
     const lx = UNIT_BOX_POSITIONS[i * 3]     * scale.x;
     const ly = UNIT_BOX_POSITIONS[i * 3 + 1] * scale.z;
     const lz = UNIT_BOX_POSITIONS[i * 3 + 2] * scale.y;
-    const [dx, dy, dz] = vertexDisp(px + lx, py + ly, pz + lz, m);
+    const [dx, dy, dz] = vertexDisp(px + lx + sx, py + ly + sy, pz + lz + sz, m);
     positions[i * 3]     = lx + dx;
     positions[i * 3 + 1] = ly + dy;
     positions[i * 3 + 2] = lz + dz;
@@ -263,7 +271,7 @@ export function bakeVoxels(
     // displaced-box bake applies the same swap to the extents internally.
     const px = a.cx, py = a.cz, pz = a.cy;
     if (a.wet01 !== undefined) anyWet = true;
-    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, a.dispMag ?? mag) });
+    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, a.dispMag ?? mag, a.dispSeed) });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;

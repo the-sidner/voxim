@@ -173,8 +173,16 @@ export function buildChunkAtoms(
         // constant — a shared seam vertex then offsets differently per side,
         // opening deliberate chinks between stones (never on the lip).
         const stoneDisp = warpAmp > 0 ? TERRAIN_DISP_MAG + warpAmp * 0.3 : undefined;
+        // Independently-warped stones open corner gaps; a gap must only ever
+        // reveal ANOTHER stone, never the bright world behind the wall. So
+        // every sub-lip stone is OVERSIZED into known-solid: up into the stone
+        // above, down into the one below / the base, and sideways into the
+        // hill on welded sides — clipping is deliberate and invisible. The
+        // overlap exceeds the max corner roll (dispMag), so even a fully
+        // rolled-back corner still sits inside the neighbouring stone.
+        const overlap = stoneDisp !== undefined ? stoneDisp + 0.05 : 0;
         for (let i = 0; i < n; i++) {
-          const zTop = zb[i], zBot = zb[i + 1];
+          let zTop = zb[i], zBot = zb[i + 1];
           let x0 = offX + cx, x1 = offX + cx + 1;
           let y0 = offZ + cy, y1 = offZ + cy + 1;
           if (warpAmp > 0 && i > 0) {
@@ -182,6 +190,12 @@ export function buildChunkAtoms(
             if (expW) x0 += (voxHash(x0, y0, zTop, 4) - 0.5) * warpAmp;
             if (expS) y1 += (voxHash(x0, y1, zTop, 5) - 0.5) * warpAmp;
             if (expN) y0 += (voxHash(x0, y0, zTop, 6) - 0.5) * warpAmp;
+            zTop += overlap;          // clip up into the stone above (lip stays exact)
+            zBot -= overlap;          // clip down into the stone below / the base
+            if (!expE) x1 += overlap; // clip into the hill on welded sides
+            if (!expW) x0 -= overlap;
+            if (!expS) y1 += overlap;
+            if (!expN) y0 -= overlap;
           }
           bucket.push({
             cx: (x0 + x1) / 2,
@@ -189,7 +203,14 @@ export function buildChunkAtoms(
             cz: (zTop + zBot) / 2,
             sx: x1 - x0, sy: y1 - y0, sz: zTop - zBot,
             materialId: m,
-            ...(i > 0 && stoneDisp !== undefined && { dispMag: stoneDisp }),
+            // Sub-lip stones warp their corners INDEPENDENTLY (own dispSeed):
+            // each pokes out of the merged wall and clips into its neighbours
+            // — per-stone facet normals then light every stone differently.
+            // The lip stone stays welded to the plateau (walk surface).
+            ...(i > 0 && stoneDisp !== undefined && {
+              dispMag: stoneDisp,
+              dispSeed: 1 + Math.floor(voxHash(offX + cx, offZ + cy, i, 8) * 0xffff),
+            }),
             // The top stone reads as floor; the face stones below gather moss
             // in their seams (jointBoost) — "oldest stone most swallowed".
             ...(og01 > 0 && {

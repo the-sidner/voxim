@@ -59,4 +59,14 @@ export interface VoxelAtom {
    * hand-stacked look). Absent ⇒ the bake call's mag (byte-identical).
    */
   dispMag?: number;
+  /**
+   * Per-voxel displacement DECORRELATION seed (T-311 P4). The default
+   * displacement is seeded by shared world position so coincident vertices
+   * weld (continuous surfaces). A voxel carrying `dispSeed` warps its corners
+   * INDEPENDENTLY of every neighbour — voxels visibly poke out of the merged
+   * mesh and clip into each other (deliberate), and each gets its own facet
+   * normals → per-voxel light variation. The individual-stone look. Absent ⇒
+   * welded (byte-identical).
+   */
+  dispSeed?: number;
 }

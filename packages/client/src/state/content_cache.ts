@@ -158,7 +158,14 @@ export class ContentCache {
   }
 
   getMaterialSync(materialId: number): MaterialDef | undefined {
-    return this.materials.get(materialId);
+    // Bootstrap service first — it carries EVERY material synchronously. The
+    // legacy per-id fetch cache only ever held materials reached via model
+    // prefetch, so terrain ground materials (dirt/grass/sand/path) were
+    // silently undefined here and the whole terrain rendered the grey
+    // FALLBACK_COLOR with no texture/tint/moss/wetness/relief response
+    // (found T-311 P4 via a live scene probe: every "terrain" mesh at
+    // 0x808080, hasMap:false).
+    return this.bootstrapService?.getMaterialById(materialId) ?? this.materials.get(materialId);
   }
 
   /** The single color palette (T-280), from the bootstrap blob. Null until the
