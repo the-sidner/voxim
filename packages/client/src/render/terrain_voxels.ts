@@ -39,24 +39,23 @@ const CHUNK = 32;
  */
 export const TERRAIN_DISP_MAG = 0.18 * HEIGHT_STEP;
 
-// ---- Terraced cliff edges (T-310 — the upper/lower transition as terrain
-// definition, not a shader hack). A cliff cell (a plateau edge or a forest/stone
-// wall) is voxelised as a STACK of sub-boxes forming a bottom-wide ziggurat: the
-// bottom box reaches the cliff lip and each higher box steps BACK from the drop,
-// so the exposed face descends as a visible staircase of ledges. Real geometry
-// derived deterministically from the heightmap; collision stays the heightmap
-// (barrier), so the two-tier gating (stairs) is untouched. NOTE: this is the
-// client-voxeliser stopgap; real terracing folds into the terrain DATA MODEL
-// (server-authoritative stepped Heightmap) in T-311 Phase 6, which retires this.
-const CLIFF_MIN   = 1.2;   // expose depth (world units) above which we terrace
-const STEP_H      = 0.66;  // sub-box height per terrace step
-const STEP_INSET  = 0.3;   // how far each lower step recedes on an exposed side
-const STEP_MAX    = 3;     // cap sub-boxes per cliff cell (perf bound)
+// ---- Stacked-voxel cliff edges (T-311 P4 — replaces the T-310 inset ziggurat).
+// A cliff cell (a plateau edge or a forest/stone wall) is voxelised as a STACK
+// of full-footprint stone-height boxes from the cliff base to the lip. NO inset
+// geometry — the hand-stacked read comes entirely from the per-voxel language:
+// exposed-face warp (`render.relief.warp`), per-voxel tint, corner displacement,
+// and the Sobel outline inking each stone individually. This also removes the
+// whole family of recede-degeneration bugs (a 1-wide ridge double-inset itself
+// to negative width and vanished). Real geometry derived deterministically from
+// the heightmap; collision stays the heightmap (barrier), so the two-tier
+// gating (stairs) is untouched. NOTE: still the client-voxeliser stopgap; real
+// cliff shape folds into the terrain DATA MODEL (server-authoritative stepped
+// Heightmap) in T-311 Phase 6, which retires this trigger — the stacked-stone
+// LANGUAGE (warp/tint/displacement) survives it, living on the atoms.
+const CLIFF_MIN   = 1.2;   // expose depth (world units) above which we stack
+const STONE_H     = 0.9;   // target stone height (stack quantum)
+const STACK_MAX   = 5;     // cap boxes per cliff cell (perf bound; deeper → taller stones)
 const EXPOSE_MIN  = 0.5;   // a side is "exposed" when its neighbour is this much lower
-/** Minimum terrace footprint per axis. The recede is CLAMPED to keep this much
- *  width, so a 1-cell-wide ridge (both opposite sides exposed → double inset)
- *  still emits its stack instead of degenerating to nothing and vanishing. */
-const MIN_FOOT    = 0.4;
 
 /** The four cardinal neighbour chunks' heightmaps (null when not yet streamed). */
 export interface ChunkNeighbours {
@@ -98,7 +97,7 @@ export function buildChunkAtoms(
   nb: ChunkNeighbours,
   surface?: SurfaceFieldInput,
   /** Per-material stacked-voxel warp amplitude (`MaterialDef.render.relief.warp`,
-   *  T-311 P4): terrace sub-boxes below the lip jitter their EXPOSED faces by
+   *  T-311 P4): cliff-stack stones below the lip jitter their EXPOSED faces by
    *  ±amp/2 (deterministic voxHash) — size varies, the grid slot and every
    *  WELDED face stay exact (no slit into the void under neighbour slabs), and
    *  the corners keep the usual displacement. Reads as hand-stacked stone. */
@@ -144,62 +143,42 @@ export function buildChunkAtoms(
       const wet01 = surface?.wets(m) ? surface.wetness[cellIdx] / 255 : undefined;
 
       if (depth > CLIFF_MIN) {
-        // ---- Terraced cliff: a stack of sub-boxes forming a bottom-wide
-        // ziggurat. The BOTTOM box reaches the cliff lip (full footprint on the
-        // exposed side); each HIGHER box steps BACK from the drop, so the face
-        // descends as a visible staircase of ledges. The non-exposed side(s)
-        // (toward an equal/higher neighbour) are never receded, so the top
-        // surface stays welded to the adjacent plateau slab — only the exposed
-        // drop side terraces. (Recede grows UPWARD, rec=(k-1-L)·INSET: an
-        // earlier version grew it downward → an inverted/corbel overhang whose
-        // full-width top lip hid the steps under it.)
+        // ---- Stacked-voxel cliff: full-footprint stone boxes piled from the
+        // base to the lip. Sub-lip stones jitter their EXPOSED faces by
+        // ±warp/2 (deterministic voxHash off the face's world position + stone
+        // top, so every stone differs but chunk rebuilds are identical); the
+        // WELDED faces (toward equal/higher neighbours) never move — no slit
+        // opens into the void under the adjacent plateau slab — and z is
+        // untouched (stone courses stay contiguous; the walking surface at h
+        // is the top stone's exact top face). The TOP stone stays fully exact:
+        // it IS the plateau lip, and the collision edge lives there.
         const expE = (h - hE) > EXPOSE_MIN;
         const expW = (h - hW) > EXPOSE_MIN;
         const expS = (h - hS) > EXPOSE_MIN;
         const expN = (h - hN) > EXPOSE_MIN;
-        const k = Math.min(STEP_MAX, Math.max(2, Math.round(depth / STEP_H)));
-        const bottom = h - depth;
-        // Per-axis recede budget: keep at least MIN_FOOT of footprint. A ridge
-        // exposed on BOTH opposite sides splits the budget — without the clamp
-        // a 1-cell-wide ridge double-inset itself below zero width and the
-        // break skipped the WHOLE stack (thin upper terrain vanished).
-        const budgetX = (1 - MIN_FOOT) / ((expE && expW) ? 2 : 1);
-        const budgetY = (1 - MIN_FOOT) / ((expS && expN) ? 2 : 1);
+        const n = Math.min(STACK_MAX, Math.max(2, Math.round(depth / STONE_H)));
+        const bh = depth / n;
         const warpAmp = reliefFor?.(m) ?? 0;
-        for (let L = 0; L < k; L++) {
-          const zTop = h - L * STEP_H;
-          const zBot = L === k - 1 ? bottom : Math.max(bottom, h - (L + 1) * STEP_H);
-          const sz = zTop - zBot;
-          if (sz <= 0.02) break;
-          const rec = (k - 1 - L) * STEP_INSET;
+        for (let i = 0; i < n; i++) {
+          const zTop = h - i * bh;
           let x0 = offX + cx, x1 = offX + cx + 1;
           let y0 = offZ + cy, y1 = offZ + cy + 1;
-          if (expE) x1 -= Math.min(rec, budgetX);
-          if (expW) x0 += Math.min(rec, budgetX);
-          if (expS) y1 -= Math.min(rec, budgetY);
-          if (expN) y0 += Math.min(rec, budgetY);
-          // Stacked-voxel warp (T-311 P4): sub-lip steps jitter their EXPOSED
-          // faces by ±amp/2, hashed off the face's world position + step top so
-          // every stone in the stack differs but rebuilds identically. Welded
-          // faces never move; the walking-surface step (L=0) stays exact.
-          if (warpAmp > 0 && L > 0) {
+          if (warpAmp > 0 && i > 0) {
             if (expE) x1 += (voxHash(x1, y0, zTop, 3) - 0.5) * warpAmp;
             if (expW) x0 += (voxHash(x0, y0, zTop, 4) - 0.5) * warpAmp;
             if (expS) y1 += (voxHash(x0, y1, zTop, 5) - 0.5) * warpAmp;
             if (expN) y0 += (voxHash(x0, y0, zTop, 6) - 0.5) * warpAmp;
           }
-          const sx = x1 - x0, sy = y1 - y0;
-          if (sx < 0.12 || sy < 0.12) break;   // receded to a spire tip — stop
           bucket.push({
             cx: (x0 + x1) / 2,
             cy: (y0 + y1) / 2,
-            cz: (zTop + zBot) / 2,
-            sx, sy, sz,
+            cz: zTop - bh / 2,
+            sx: x1 - x0, sy: y1 - y0, sz: bh,
             materialId: m,
-            // Top step reads as floor; lower ledges are wall faces whose seams
-            // gather moss (jointBoost) — "oldest stone most swallowed".
+            // The top stone reads as floor; the face stones below gather moss
+            // in their seams (jointBoost) — "oldest stone most swallowed".
             ...(og01 > 0 && {
-              moss01: L === 0
+              moss01: i === 0
                 ? og01 * mossBias!.floor
                 : Math.min(1, og01 * mossBias!.wall * (1 + mossBias!.joint)),
             }),

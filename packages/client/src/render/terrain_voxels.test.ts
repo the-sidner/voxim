@@ -32,18 +32,25 @@ Deno.test("terrace: a 1-voxel-wide ridge still renders (both sides exposed)", ()
   }
 });
 
-Deno.test("terrace: normal one-sided cliff edge still terraces bottom-wide", () => {
+Deno.test("cliff cells stack full-footprint stones: contiguous courses, base to lip", () => {
   const { hm, mats } = flatChunk(2);
   // West half raised: a single long cliff along x=16 (one exposed side per cell).
   for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
   const byMat = buildChunkAtoms(hm, mats, {});
-  const edge = [...byMat.values()].flat().filter((a) => a.cx > 15 && a.cx < 16 && a.cy > 15.9 && a.cy < 17.1 && a.cz > 2.6);
-  assert(edge.length >= 2, "cliff cell terraces into a stack");
-  // Bottom-wide ziggurat: lower boxes at least as wide as higher ones.
-  const sorted = edge.slice().sort((a, b) => a.cz - b.cz);
-  for (let i = 1; i < sorted.length; i++) {
-    assert(sorted[i].sx <= sorted[i - 1].sx + 1e-9, "higher step must not outgrow the lower");
+  const edge = [...byMat.values()].flat()
+    .filter((a) => a.cx > 15 && a.cx < 16 && a.cy > 15.9 && a.cy < 17.1 && a.sz > 0.3)
+    .sort((a, b) => (b.cz) - (a.cz));
+  assert(edge.length >= 2 && edge.length <= 5, `stack of 2..5 stones, got ${edge.length}`);
+  // Full footprint (no inset geometry — the look comes from warp, off here).
+  for (const a of edge) { assertEquals(a.sx, 1); assertEquals(a.sy, 1); }
+  // Contiguous courses spanning [bottom, lip]: top face at h, no z gaps.
+  assert(Math.abs((edge[0].cz + edge[0].sz / 2) - 4.5) < 1e-9, "top stone reaches the lip");
+  for (let i = 1; i < edge.length; i++) {
+    const above = edge[i - 1].cz - edge[i - 1].sz / 2;
+    const below = edge[i].cz + edge[i].sz / 2;
+    assert(Math.abs(above - below) < 1e-9, "stone courses are contiguous");
   }
+  assert(Math.abs((edge.at(-1)!.cz - edge.at(-1)!.sz / 2) - 2) < 1e-9, "bottom stone sits on the base");
 });
 
 Deno.test("warp: exposed faces jitter, welded faces + tops stay exact, deterministic", () => {
