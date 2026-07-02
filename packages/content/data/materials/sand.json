@@ -18,6 +18,9 @@
     "ground"
   ],
   "render": {
-    "textureStyle": "sand"
+    "textureStyle": "sand",
+    "relief": {
+      "warp": 0.12
+    }
   }
 }

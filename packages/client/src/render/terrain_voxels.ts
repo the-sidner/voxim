@@ -26,6 +26,7 @@
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { VoxelAtom } from "@voxim/content";
 import { HEIGHT_STEP } from "@voxim/world";
+import { voxHash } from "./voxel_bake.ts";
 
 const CHUNK = 32;
 
@@ -52,6 +53,10 @@ const STEP_H      = 0.66;  // sub-box height per terrace step
 const STEP_INSET  = 0.3;   // how far each lower step recedes on an exposed side
 const STEP_MAX    = 3;     // cap sub-boxes per cliff cell (perf bound)
 const EXPOSE_MIN  = 0.5;   // a side is "exposed" when its neighbour is this much lower
+/** Minimum terrace footprint per axis. The recede is CLAMPED to keep this much
+ *  width, so a 1-cell-wide ridge (both opposite sides exposed → double inset)
+ *  still emits its stack instead of degenerating to nothing and vanishing. */
+const MIN_FOOT    = 0.4;
 
 /** The four cardinal neighbour chunks' heightmaps (null when not yet streamed). */
 export interface ChunkNeighbours {
@@ -92,6 +97,12 @@ export function buildChunkAtoms(
   mats: MaterialGridData,
   nb: ChunkNeighbours,
   surface?: SurfaceFieldInput,
+  /** Per-material stacked-voxel warp amplitude (`MaterialDef.render.relief.warp`,
+   *  T-311 P4): terrace sub-boxes below the lip jitter their EXPOSED faces by
+   *  ±amp/2 (deterministic voxHash) — size varies, the grid slot and every
+   *  WELDED face stay exact (no slit into the void under neighbour slabs), and
+   *  the corners keep the usual displacement. Reads as hand-stacked stone. */
+  reliefFor?: (materialId: number) => number | undefined,
 ): Map<number, VoxelAtom[]> {
   const offX = hm.chunkX * CHUNK;
   const offZ = hm.chunkY * CHUNK;
@@ -148,6 +159,13 @@ export function buildChunkAtoms(
         const expN = (h - hN) > EXPOSE_MIN;
         const k = Math.min(STEP_MAX, Math.max(2, Math.round(depth / STEP_H)));
         const bottom = h - depth;
+        // Per-axis recede budget: keep at least MIN_FOOT of footprint. A ridge
+        // exposed on BOTH opposite sides splits the budget — without the clamp
+        // a 1-cell-wide ridge double-inset itself below zero width and the
+        // break skipped the WHOLE stack (thin upper terrain vanished).
+        const budgetX = (1 - MIN_FOOT) / ((expE && expW) ? 2 : 1);
+        const budgetY = (1 - MIN_FOOT) / ((expS && expN) ? 2 : 1);
+        const warpAmp = reliefFor?.(m) ?? 0;
         for (let L = 0; L < k; L++) {
           const zTop = h - L * STEP_H;
           const zBot = L === k - 1 ? bottom : Math.max(bottom, h - (L + 1) * STEP_H);
@@ -156,10 +174,20 @@ export function buildChunkAtoms(
           const rec = (k - 1 - L) * STEP_INSET;
           let x0 = offX + cx, x1 = offX + cx + 1;
           let y0 = offZ + cy, y1 = offZ + cy + 1;
-          if (expE) x1 -= rec;
-          if (expW) x0 += rec;
-          if (expS) y1 -= rec;
-          if (expN) y0 += rec;
+          if (expE) x1 -= Math.min(rec, budgetX);
+          if (expW) x0 += Math.min(rec, budgetX);
+          if (expS) y1 -= Math.min(rec, budgetY);
+          if (expN) y0 += Math.min(rec, budgetY);
+          // Stacked-voxel warp (T-311 P4): sub-lip steps jitter their EXPOSED
+          // faces by ±amp/2, hashed off the face's world position + step top so
+          // every stone in the stack differs but rebuilds identically. Welded
+          // faces never move; the walking-surface step (L=0) stays exact.
+          if (warpAmp > 0 && L > 0) {
+            if (expE) x1 += (voxHash(x1, y0, zTop, 3) - 0.5) * warpAmp;
+            if (expW) x0 += (voxHash(x0, y0, zTop, 4) - 0.5) * warpAmp;
+            if (expS) y1 += (voxHash(x0, y1, zTop, 5) - 0.5) * warpAmp;
+            if (expN) y0 += (voxHash(x0, y0, zTop, 6) - 0.5) * warpAmp;
+          }
           const sx = x1 - x0, sy = y1 - y0;
           if (sx < 0.12 || sy < 0.12) break;   // receded to a spire tip — stop
           bucket.push({

@@ -569,7 +569,9 @@ export class VoximRenderer {
       E: this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
       S: this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
       W: this.terrainHmaps.get(`${cx - 1},${cy}`) ?? null,
-    }, surfaceInput);
+    }, surfaceInput,
+      // Stacked-voxel warp amplitude per material (render.relief.warp, T-311 P4).
+      (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief?.warp);
     const meshes: THREE.Mesh[] = [];
     for (const [matId, atoms] of byMat) {
       const matDef = this.content?.getMaterialSync(matId);

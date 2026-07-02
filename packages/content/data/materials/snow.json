@@ -16,5 +16,10 @@
   },
   "tags": [
     "ground"
-  ]
+  ],
+  "render": {
+    "relief": {
+      "warp": 0.12
+    }
+  }
 }

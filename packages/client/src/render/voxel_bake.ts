@@ -162,8 +162,9 @@ export interface BakedMesh {
   wetness?: Float32Array;
 }
 
-/** Deterministic position hash → [0,1). Independent per `salt`. */
-function voxHash(x: number, y: number, z: number, salt: number): number {
+/** Deterministic position hash → [0,1). Independent per `salt`. Exported as
+ *  THE per-voxel identity hash (tint, warp) so consumers never drift. */
+export function voxHash(x: number, y: number, z: number, salt: number): number {
   // snap to a coarse lattice so a whole voxel hashes to one value regardless of
   // which corner is sampled; quantise to 0.5u.
   const xi = Math.round(x * 2), yi = Math.round(y * 2), zi = Math.round(z * 2);

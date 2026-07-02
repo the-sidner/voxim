@@ -47,8 +47,11 @@ export interface MaterialRenderDef {
   /** Per-voxel colour mottle (G6, Phase 0a pt.2): brightness range + warm/cool
    *  tilt. Absent = engine-default jitter. */
   tintJitter?: { brightness: [number, number]; warmCool: number };
-  /** Relief/displacement detail knobs (Phase 4). */
-  relief?: { resolution?: number; detail?: number; dispMag?: number };
+  /** Relief/displacement detail knobs. `warp` (the first consumer, T-311 P4)
+   *  is the stacked-voxel amplitude: terrace sub-boxes jitter their exposed
+   *  faces by ±warp/2 — size varies, grid slot + welded faces stay exact —
+   *  so cliff stacks read as hand-stacked stone. Additive, all optional. */
+  relief?: { resolution?: number; detail?: number; dispMag?: number; warp?: number };
   /** Wetness/gloss response, driven by SurfaceStateGrid (Phase 4). */
   wetness?: { gloss: number; darken: number; reflectGain: number };
   /** Reflection treatment, shared with water via the SurfaceTreatment registry

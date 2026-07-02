@@ -19,6 +19,9 @@
     "vegetation"
   ],
   "render": {
-    "textureStyle": "organic"
+    "textureStyle": "organic",
+    "relief": {
+      "warp": 0.16
+    }
   }
 }

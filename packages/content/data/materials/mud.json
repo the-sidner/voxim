@@ -25,6 +25,9 @@
       "gloss": 10.0,
       "darken": 0.35,
       "reflectGain": 0
+    },
+    "relief": {
+      "warp": 0.14
     }
   }
 }
