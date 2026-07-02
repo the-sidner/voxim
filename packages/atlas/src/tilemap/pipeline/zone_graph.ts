@@ -680,22 +680,24 @@ function classifyCorridorRole(
 
 /**
  * Wilderness zones are picked by their dominant pixel kind.
- * Tie-breaking: stone > forest > grass.
+ * Tie-breaking: stone > forest > grass > water.
  */
 function classifyWildernessRole(area: number, hist: Record<number, number>): ZoneRole {
   const stone   = hist[BOUNDARY_KIND_STONE]       ?? 0;
   const forest  = hist[BOUNDARY_KIND_FOREST]      ?? 0;
   const grass   = hist[BOUNDARY_KIND_GRASS_MOUND] ?? 0;
-  const total   = stone + forest + grass;
+  const water   = hist[BOUNDARY_KIND_WATER]       ?? 0;
+  const total   = stone + forest + grass + water;
   if (total === 0) return "outcrop";
-  const dominant = stone >= forest && stone >= grass ? "stone"
-                 : forest >= grass ? "forest"
-                 : "grass";
+  const dominant = stone >= forest && stone >= grass && stone >= water ? "stone"
+                 : forest >= grass && forest >= water ? "forest"
+                 : grass >= water ? "grass"
+                 : "water";
   if (dominant === "stone")  return "crag";
   if (dominant === "forest") return area > 500 ? "grove"  : "thicket";
+  if (dominant === "water")  return "morass";
   return                          area > 300 ? "hollow" : "outcrop";
 }
 
 // (suppress unused-var warnings for kind ids referenced only in type checks)
 void BOUNDARY_KIND_OPEN;
-void BOUNDARY_KIND_WATER;
