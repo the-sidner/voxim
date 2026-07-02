@@ -35,6 +35,20 @@ function adjust(r: number, g: number, b: number, amount: number): string {
   return rgba(r + r * amount, g + g * amount, b + b * amount);
 }
 
+/**
+ * Per-style ±fraction fine-grain amounts for the drawOrganic/drawDirt/drawSand
+ * generators (all three are the same `drawNoise` shape, differentiated only by
+ * this coefficient). Content-driven via game_config.render.textureStyle
+ * (T-315 D3); these are the pre-bootstrap fallback (module-level singleton,
+ * same pattern as palette.ts's `setClientPalette`).
+ */
+let textureStyleAmounts = { organic: 0.25, dirt: 0.2, sand: 0.12 };
+
+/** Apply content-driven per-style texture-noise amounts (T-315 D3). */
+export function setTextureStyleParams(cfg: { organicAmount: number; dirtAmount: number; sandAmount: number }): void {
+  textureStyleAmounts = { organic: cfg.organicAmount, dirt: cfg.dirtAmount, sand: cfg.sandAmount };
+}
+
 // ---- canvas texture factory -------------------------------------------------
 
 function makeTex(
@@ -171,9 +185,8 @@ function drawOrganic(
   ctx: CanvasRenderingContext2D,
   rng: () => number,
   r: number, g: number, b: number,
-  amount = 0.25,
 ): void {
-  drawNoise(ctx, rng, r, g, b, amount);
+  drawNoise(ctx, rng, r, g, b, textureStyleAmounts.organic);
 }
 
 /** Metallic material — subtle diagonal sheen. */
@@ -206,7 +219,7 @@ function drawDirt(
   rng: () => number,
   r: number, g: number, b: number,
 ): void {
-  drawNoise(ctx, rng, r, g, b, 0.2);
+  drawNoise(ctx, rng, r, g, b, textureStyleAmounts.dirt);
 }
 
 /** Sand — warm fine grain. */
@@ -215,7 +228,7 @@ function drawSand(
   rng: () => number,
   r: number, g: number, b: number,
 ): void {
-  drawNoise(ctx, rng, r, g, b, 0.12);
+  drawNoise(ctx, rng, r, g, b, textureStyleAmounts.sand);
 }
 
 /** Leather — horizontal lines + noise. */

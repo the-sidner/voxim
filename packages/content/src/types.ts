@@ -1191,6 +1191,10 @@ export interface DecalDef {
   ttlSeconds: number;
   /** Decay window — slabs vanish one by one across this span. */
   fadeSeconds: number;
+  /** damage source only: a hit at/above this amount → intensity 1 (splat
+   *  count maxes out). Absent → the damageSource default (30). Ignored by
+   *  every other source (e.g. death). */
+  fullIntensityAt?: number;
 }
 
 // ---- biomes ----
@@ -1989,6 +1993,42 @@ export interface GameConfig {
      * `LoudNoise` event (T-040) — a sprint is loud enough to be heard, a
      * crouch-walk is not. */
     loudNoiseThreshold: number;
+  };
+  /** Client render look-tuning that doesn't fit MaterialRenderDef/GradeDef
+   *  (T-315 D3) — foliage wind + camera-occlusion fade-cylinder geometry, and
+   *  the shared drawNoise `amount` coefficient for the organic/dirt/sand
+   *  procedural texture styles. */
+  render: {
+    /** Foliage sway (canopy_fade.ts's wind uniforms). */
+    canopyWind: {
+      /** Horizontal wind direction (three-space XZ), roughly normalized. */
+      dirX: number;
+      dirY: number;
+      /** World units of sway per unit of voxel height. */
+      strength: number;
+    };
+    /** Camera-occlusion fade-cylinder geometry (canopy_fade.ts). Anything
+     *  above the player inside this cylinder fades/discards so the camera
+     *  isn't blocked by overhead canopy. */
+    canopyFade: {
+      /** Height above the player's feet where fade begins. */
+      minHeight: number;
+      /** Height above the player's feet where fade is fully complete. */
+      maxHeight: number;
+      /** Horizontal radius where fade is fully active. */
+      innerRadius: number;
+      /** Horizontal radius of the transition band outside innerRadius. */
+      outerRadius: number;
+      /** Discard threshold on (vertFade × horizFade). */
+      cutoff: number;
+    };
+    /** Per-style ±fraction fine-grain amount for the organic/dirt/sand
+     *  procedural texture generators (material_textures.ts's drawNoise). */
+    textureStyle: {
+      organicAmount: number;
+      dirtAmount: number;
+      sandAmount: number;
+    };
   };
 }
 

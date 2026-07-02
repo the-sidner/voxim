@@ -25,6 +25,7 @@ import { sampleField } from "./field_sample.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial, setEmissiveHdrScale } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
+import { setTextureStyleParams } from "./material_textures.ts";
 import { setClientPalette, paletteToken } from "./palette.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import { GateMarkerRenderer } from "./gate_marker.ts";
@@ -522,6 +523,14 @@ export class VoximRenderer {
       this.heightShadeBelow = grade.heightShadeBelow;
       this.heightShadeAbove = grade.heightShadeAbove;
       setEmissiveHdrScale(grade.emissiveHdrScale);
+    }
+    // Canopy wind/fade-cylinder geometry + procedural texture-noise amounts
+    // are content now (T-315 D3): game_config.render instead of hardcoded
+    // module consts. Absent → each module's own pre-bootstrap fallback.
+    const cfg = cache.getGameConfig();
+    if (cfg) {
+      canopyFade.applyConfig(cfg.render);
+      setTextureStyleParams(cfg.render.textureStyle);
     }
   }
 

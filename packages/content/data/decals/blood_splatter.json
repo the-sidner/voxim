@@ -12,5 +12,6 @@
     0.5
   ],
   "ttlSeconds": 75,
-  "fadeSeconds": 45
+  "fadeSeconds": 45,
+  "fullIntensityAt": 30
 }

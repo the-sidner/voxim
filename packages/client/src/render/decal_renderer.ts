@@ -71,7 +71,7 @@ export class DecalRenderer {
     };
     for (const def of this.defs) {
       const source = getDecalSource(def.source);
-      const spec = source?.(ev, positionOf);
+      const spec = source?.(ev, positionOf, def);
       if (spec) this.spawnSplat(def, spec.x, spec.y, spec.intensity);
     }
   }

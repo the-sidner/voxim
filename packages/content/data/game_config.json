@@ -223,5 +223,24 @@
     "maxStamina": 80,
     "perceptionRadius": 24,
     "loudNoiseThreshold": 0.7
+  },
+  "render": {
+    "canopyWind": {
+      "dirX": 0.92,
+      "dirY": 0.39,
+      "strength": 0.06
+    },
+    "canopyFade": {
+      "minHeight": 2.0,
+      "maxHeight": 5.0,
+      "innerRadius": 9.0,
+      "outerRadius": 11.0,
+      "cutoff": 0.5
+    },
+    "textureStyle": {
+      "organicAmount": 0.25,
+      "dirtAmount": 0.2,
+      "sandAmount": 0.12
+    }
   }
 }

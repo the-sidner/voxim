@@ -9,7 +9,7 @@
  * Pure + THREE-free: position lookups go through the injected resolver.
  */
 import type { GameEvent } from "@voxim/protocol";
-import type { ContentService } from "@voxim/content";
+import type { ContentService, DecalDef } from "@voxim/content";
 
 export interface DecalSpawnSpec {
   x: number;
@@ -22,6 +22,9 @@ export type DecalSource = (
   ev: GameEvent,
   /** Resolve an entity's current world position (null when out of AoI). */
   positionOf: (entityId: string) => { x: number; y: number } | null,
+  /** The matching DecalDef — sources read their own authored params (e.g.
+   *  damageSource's fullIntensityAt) instead of a shared global. */
+  def: DecalDef,
 ) => DecalSpawnSpec | null;
 
 const REGISTRY = new Map<string, DecalSource>();
@@ -38,13 +41,15 @@ export function decalSourceIds(): string[] {
   return [...REGISTRY.keys()];
 }
 
-/** Full damage at/above this amount → intensity 1 (splat count maxes out). */
-const DAMAGE_FULL_INTENSITY = 30;
+/** Full damage at/above this amount → intensity 1 (splat count maxes out) —
+ *  fallback when a DecalDef doesn't author its own `fullIntensityAt`. */
+const DEFAULT_DAMAGE_FULL_INTENSITY = 30;
 
 /** Blood at the hit contact point; blocked hits draw none. */
-const damageSource: DecalSource = (ev) => {
+const damageSource: DecalSource = (ev, _positionOf, def) => {
   if (ev.type !== "DamageDealt" || ev.blocked || ev.amount <= 0) return null;
-  return { x: ev.hitX, y: ev.hitY, intensity: Math.min(1, ev.amount / DAMAGE_FULL_INTENSITY) };
+  const fullAt = def.fullIntensityAt ?? DEFAULT_DAMAGE_FULL_INTENSITY;
+  return { x: ev.hitX, y: ev.hitY, intensity: Math.min(1, ev.amount / fullAt) };
 };
 
 /** A full-strength pool where an entity died (position from live state). */

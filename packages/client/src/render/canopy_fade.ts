@@ -22,6 +22,11 @@ export interface CanopyFadeUniforms {
   uWindTime:     { value: number };
   uWindStrength: { value: number };
   uWindDir:      { value: THREE.Vector2 };
+  uFadeMinHeight: { value: number };
+  uFadeMaxHeight: { value: number };
+  uFadeInnerR:    { value: number };
+  uFadeOuterR:    { value: number };
+  uFadeCutoff:    { value: number };
 }
 
 /** Horizontal wind direction (three-space XZ) and how far the crown sways. */
@@ -52,11 +57,37 @@ export class CanopyFade {
     uWindTime:     { value: 0 },
     uWindStrength: { value: WIND_STRENGTH },
     uWindDir:      { value: WIND_DIR.clone() },
+    uFadeMinHeight: { value: FADE_MIN_HEIGHT },
+    uFadeMaxHeight: { value: FADE_MAX_HEIGHT },
+    uFadeInnerR:    { value: FADE_INNER_RADIUS },
+    uFadeOuterR:    { value: FADE_OUTER_RADIUS },
+    uFadeCutoff:    { value: FADE_CUTOFF },
   };
 
   /** Advance the foliage wind animation. Pumped once per frame by the renderer. */
   setWindTime(nowMs: number): void {
     this.uniforms.uWindTime.value = nowMs * 0.001;
+  }
+
+  /**
+   * Apply content-driven canopy wind + fade-cylinder config (T-315 D3).
+   * Mutates the shared uniform `.value`s in place — Three.js reads `.value`
+   * at render time, so this retroactively reaches every material already
+   * registered (no shader recompile needed), unlike the old per-material
+   * fresh-literal capture at `register()` time.
+   */
+  applyConfig(cfg: {
+    canopyWind: { dirX: number; dirY: number; strength: number };
+    canopyFade: { minHeight: number; maxHeight: number; innerRadius: number; outerRadius: number; cutoff: number };
+  }): void {
+    const u = this.uniforms;
+    u.uWindStrength.value = cfg.canopyWind.strength;
+    (u.uWindDir.value as THREE.Vector2).set(cfg.canopyWind.dirX, cfg.canopyWind.dirY);
+    u.uFadeMinHeight.value = cfg.canopyFade.minHeight;
+    u.uFadeMaxHeight.value = cfg.canopyFade.maxHeight;
+    u.uFadeInnerR.value    = cfg.canopyFade.innerRadius;
+    u.uFadeOuterR.value    = cfg.canopyFade.outerRadius;
+    u.uFadeCutoff.value    = cfg.canopyFade.cutoff;
   }
 
   /**
@@ -112,11 +143,11 @@ export class CanopyFade {
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uPlayerY       = u.uPlayerY;
       shader.uniforms.uFadeCenterXZ  = u.uFadeCenterXZ;
-      shader.uniforms.uFadeMinHeight = { value: FADE_MIN_HEIGHT };
-      shader.uniforms.uFadeMaxHeight = { value: FADE_MAX_HEIGHT };
-      shader.uniforms.uFadeInnerR    = { value: FADE_INNER_RADIUS };
-      shader.uniforms.uFadeOuterR    = { value: FADE_OUTER_RADIUS };
-      shader.uniforms.uFadeCutoff    = { value: FADE_CUTOFF };
+      shader.uniforms.uFadeMinHeight = u.uFadeMinHeight;
+      shader.uniforms.uFadeMaxHeight = u.uFadeMaxHeight;
+      shader.uniforms.uFadeInnerR    = u.uFadeInnerR;
+      shader.uniforms.uFadeOuterR    = u.uFadeOuterR;
+      shader.uniforms.uFadeCutoff    = u.uFadeCutoff;
       if (wind) {
         shader.uniforms.uWindTime     = u.uWindTime;
         shader.uniforms.uWindStrength = u.uWindStrength;
