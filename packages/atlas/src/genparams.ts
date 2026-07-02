@@ -268,6 +268,34 @@ export interface GenParams {
     /** degree == 1 + area > this → "pocket" (worth visiting cul-de-sac) */
     pocketAreaMin: number;
     /** Everything else with degree ≤ 1 → "deadend". */
+
+    /** Disk radius (atlas pixels) carved around each qualifying network
+     *  junction to form a crossroads sector. */
+    crossroadsDiskRadius: number;
+    /** Minimum junction degree that carves a crossroads disk. */
+    crossroadsDegreeMin: number;
+    /** Wilderness blobs smaller than this (pixels) get merged into their
+     *  largest neighbour during phase 4b. */
+    wildernessMergeThreshold: number;
+    /** Search radius (atlas pixels) for the proximity-based wilderness
+     *  merge fallback, when a small blob has no direct adjacency. */
+    mergeProximityRadius: number;
+
+    /** Per-role minimum area (atlas pixels) below which nameZone
+     *  declines to name a sector (reads as too small/insignificant). */
+    namedAreaMinArena: number;
+    namedAreaMinPlaza: number;
+    namedAreaMinLobby: number;
+    namedAreaMinPocket: number;
+    namedAreaMinCrossroads: number;
+    namedAreaMinCorridor: number;
+    namedAreaMinDeadend: number;
+    namedAreaMinGrove: number;
+    namedAreaMinThicket: number;
+    namedAreaMinCrag: number;
+    namedAreaMinHollow: number;
+    namedAreaMinOutcrop: number;
+    namedAreaMinMorass: number;
   };
 
   /** T-311 P3 — render-field derivation weights (Atlas-inspector tunes these). */
@@ -392,6 +420,23 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     corridorAreaMax:        250,
     corridorAspectRatioMax: 0.4,
     pocketAreaMin:          150,
+    crossroadsDiskRadius:      3,
+    crossroadsDegreeMin:       3,
+    wildernessMergeThreshold: 400,
+    mergeProximityRadius:      8,
+    namedAreaMinArena:      500,
+    namedAreaMinPlaza:      200,
+    namedAreaMinLobby:      200,
+    namedAreaMinPocket:     200,
+    namedAreaMinCrossroads: 150,
+    namedAreaMinCorridor:   250,
+    namedAreaMinDeadend:    180,
+    namedAreaMinGrove:      300,
+    namedAreaMinThicket:    300,
+    namedAreaMinCrag:       300,
+    namedAreaMinHollow:     300,
+    namedAreaMinOutcrop:    300,
+    namedAreaMinMorass:     300,
   },
   poiNetwork: {
     targetPoiCount:         4,

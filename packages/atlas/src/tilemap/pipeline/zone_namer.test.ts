@@ -1,12 +1,14 @@
 import { assert, assertEquals, assertNotEquals } from "jsr:@std/assert";
 import { nameZone } from "./zone_namer.ts";
+import { DEFAULT_GEN_PARAMS } from "../../genparams.ts";
 
 const FOREST_BIOME = { altitude: 0.4, moisture: 0.55, temperature: 0.5, ruggedness: 0.3 };
 const TUNDRA_BIOME = { altitude: 0.4, moisture: 0.5, temperature: 0.2, ruggedness: 0.3 };
+const P = DEFAULT_GEN_PARAMS.zoneGraph;
 
 Deno.test("zone namer: identical inputs → identical names", () => {
-  const a = nameZone(42, 5, 200, "grove", "wilderness", FOREST_BIOME);
-  const b = nameZone(42, 5, 200, "grove", "wilderness", FOREST_BIOME);
+  const a = nameZone(42, 5, 200, "grove", "wilderness", FOREST_BIOME, P);
+  const b = nameZone(42, 5, 200, "grove", "wilderness", FOREST_BIOME, P);
   assertEquals(a, b);
 });
 
@@ -16,7 +18,7 @@ Deno.test("zone namer: different zone ids on same tile → different names (typi
   // above the grove threshold (800) so every zone gets a name.
   const names = new Set<string>();
   for (let i = 0; i < 10; i++) {
-    names.add(nameZone(42, i, 1500, "grove", "wilderness", FOREST_BIOME));
+    names.add(nameZone(42, i, 1500, "grove", "wilderness", FOREST_BIOME, P));
   }
   assert(names.size >= 7, `expected ≥7 unique names from 10 zones, got ${names.size}: ${[...names].join(", ")}`);
 });
@@ -27,8 +29,8 @@ Deno.test("zone namer: different biomes produce different adjective pools", () =
   const forestNames = new Set<string>();
   const tundraNames = new Set<string>();
   for (let i = 0; i < 30; i++) {
-    forestNames.add(nameZone(99, i, 1500, "grove", "wilderness", FOREST_BIOME));
-    tundraNames.add(nameZone(99, i, 1500, "grove", "wilderness", TUNDRA_BIOME));
+    forestNames.add(nameZone(99, i, 1500, "grove", "wilderness", FOREST_BIOME, P));
+    tundraNames.add(nameZone(99, i, 1500, "grove", "wilderness", TUNDRA_BIOME, P));
   }
   // At least one name must differ between biomes.
   let overlap = 0;
@@ -38,22 +40,22 @@ Deno.test("zone namer: different biomes produce different adjective pools", () =
 
 Deno.test("zone namer: tiny thicket (sub-threshold for wilderness) → empty string", () => {
   // 100 < the 800 threshold for thickets → stays anonymous.
-  const n = nameZone(42, 0, 100, "thicket", "wilderness", FOREST_BIOME);
+  const n = nameZone(42, 0, 100, "thicket", "wilderness", FOREST_BIOME, P);
   assertEquals(n, "");
 });
 
 Deno.test("zone namer: substantial grove (above threshold) → non-empty name", () => {
   // 2000 > the 800 grove threshold → gets a name.
-  const n = nameZone(42, 0, 2000, "grove", "wilderness", FOREST_BIOME);
+  const n = nameZone(42, 0, 2000, "grove", "wilderness", FOREST_BIOME, P);
   assertNotEquals(n, "");
   assert(n.includes(" "), `expected adj-noun pattern, got "${n}"`);
 });
 
 Deno.test("zone namer: per-role threshold — plaza named at 250, micro-deadend not at 50", () => {
   // Plaza threshold 200; 250 named.
-  assertNotEquals(nameZone(42, 0, 250, "plaza", "path", FOREST_BIOME), "");
+  assertNotEquals(nameZone(42, 0, 250, "plaza", "path", FOREST_BIOME, P), "");
   // Deadend threshold 180; 50 stays anonymous.
-  assertEquals(nameZone(42, 0, 50, "deadend", "path", FOREST_BIOME), "");
+  assertEquals(nameZone(42, 0, 50, "deadend", "path", FOREST_BIOME, P), "");
 });
 
 Deno.test("zone namer: path adjectives differ from wilderness adjectives over many samples", () => {
@@ -63,8 +65,8 @@ Deno.test("zone namer: path adjectives differ from wilderness adjectives over ma
   const pathNames = new Set<string>();
   const wildNames = new Set<string>();
   for (let i = 0; i < 100; i++) {
-    pathNames.add(nameZone(7, i, 250,  "plaza",  "path",       FOREST_BIOME));
-    wildNames.add(nameZone(7, i, 1500, "grove",  "wilderness", FOREST_BIOME));
+    pathNames.add(nameZone(7, i, 250,  "plaza",  "path",       FOREST_BIOME, P));
+    wildNames.add(nameZone(7, i, 1500, "grove",  "wilderness", FOREST_BIOME, P));
   }
   assert(pathNames.size > 5);
   assert(wildNames.size > 5);

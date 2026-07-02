@@ -62,26 +62,6 @@ const WILDERNESS_KINDS = new Set<number>([
   BoundaryKind.water,
 ]);
 
-/**
- * Disk radius (atlas pixels) used to carve a crossroads sector around
- * each network junction of qualifying degree. Tuned so 3-way + 4-way
- * intersections produce a visible, named "place" rather than getting
- * absorbed into the surrounding corridor.
- */
-const CROSSROADS_DISK_RADIUS = 3;
-const CROSSROADS_DEGREE_MIN  = 3;
-
-/**
- * Wilderness blobs smaller than this get absorbed into their largest
- * wilderness neighbour during phase 4b. Path-network carving fragments
- * the closed-pixel space into hundreds of tiny pockets (1-50 pixels);
- * those aren't perceived as "places" by the player. After merging,
- * the surviving wilderness sectors are uniformly substantial and
- * name-worthy. Tuned for the canonical fixtures — a tile typically
- * keeps 10-25 wilderness sectors instead of 137.
- */
-const WILDERNESS_MERGE_THRESHOLD = 400;
-
 export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParams["zoneGraph"]> =
   (state, _stageSeed, params) => {
     const { openMask, chamberOf, kindOf, portals, gridSize } = state;
@@ -116,7 +96,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     //         carve — chamber sector wins.
     if (state.seeds && state.degrees) {
       for (let i = 0; i < state.seeds.length; i++) {
-        if (state.degrees[i] < CROSSROADS_DEGREE_MIN) continue;
+        if (state.degrees[i] < params.crossroadsDegreeMin) continue;
         const j = state.seeds[i];
         const jx = j.x | 0;
         const jy = j.y | 0;
@@ -131,7 +111,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         const zid = nextZoneId++;
         traversalOf[zid] = "path";
         carvedAsCrossroads.add(zid);
-        const R = CROSSROADS_DISK_RADIUS;
+        const R = params.crossroadsDiskRadius;
         const R2 = R * R;
         for (let dy = -R; dy <= R; dy++) {
           const ny = jy + dy;
@@ -200,13 +180,13 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     //          fragments (1-50 pixels each) where the path network
     //          chops up the forest. Players don't perceive those as
     //          distinct places. Merge any wilderness sector smaller
-    //          than `WILDERNESS_MERGE_THRESHOLD` into the largest
+    //          than `params.wildernessMergeThreshold` into the largest
     //          wilderness sector it touches. After merging, the
     //          surviving sectors are substantial and uniformly
     //          name-worthy.
     mergeSmallWildernessZones(
       zoneOf, openMask, gridSize, traversalOf, nextZoneId,
-      WILDERNESS_MERGE_THRESHOLD,
+      params.wildernessMergeThreshold, params.mergeProximityRadius,
     );
 
     // ---- 5. Allocate per-sector accumulators --------------------------
@@ -315,7 +295,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         isEntry: z.isEntry,
         isCorridor: z.startedAsCorridor,
         traversal: z.traversal,
-        name: nameZone(_stageSeed, zid, z.area, role, z.traversal, biome),
+        name: nameZone(_stageSeed, zid, z.area, role, z.traversal, biome, params),
       });
     }
     zones.sort((a, b) => a.id - b.id);
@@ -464,7 +444,7 @@ function floodWilderness(
  *      open-pixel boundary with a larger wilderness zone? Merge.
  *   2. Proximity-based merge — small wilderness zone has no direct
  *      adjacency (path corridors fully surround it) but a larger
- *      wilderness zone exists within `MERGE_PROXIMITY_RADIUS` pixels
+ *      wilderness zone exists within `proximityRadius` pixels
  *      of any of its pixels? Merge across the thin path strip.
  *      Mechanically: the player still walks the path as a path;
  *      the SECTOR LABELLING just folds the small thicket into the
@@ -475,8 +455,6 @@ function floodWilderness(
  * un-merged — they're real standalone features. Path / chamber /
  * crossroads sectors are never touched.
  */
-const MERGE_PROXIMITY_RADIUS = 8;
-
 function mergeSmallWildernessZones(
   zoneOf: Uint16Array,
   _openMask: Uint8Array,
@@ -484,6 +462,7 @@ function mergeSmallWildernessZones(
   traversalOf: ("path" | "wilderness")[],
   _zoneCount: number,
   minArea: number,
+  proximityRadius: number,
 ): void {
   const N = gridSize * gridSize;
   const area = new Map<number, number>();
@@ -542,12 +521,12 @@ function mergeSmallWildernessZones(
     }
 
     // (2) Proximity-based — only fall back when no adjacency match.
-    //     Scan the small zone's pixels' MERGE_PROXIMITY_RADIUS neighbourhood
+    //     Scan the small zone's pixels' proximityRadius neighbourhood
     //     for ANY larger wilderness zone. Pick the largest.
     if (bestId === -1) {
       const bb = bbox.get(zid);
       if (!bb) continue;
-      const R = MERGE_PROXIMITY_RADIUS;
+      const R = proximityRadius;
       const xLo = Math.max(0, bb.minX - R);
       const xHi = Math.min(gridSize - 1, bb.maxX + R);
       const yLo = Math.max(0, bb.minY - R);

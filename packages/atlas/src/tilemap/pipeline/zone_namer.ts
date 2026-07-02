@@ -24,9 +24,11 @@
 
 import { hashString, splitSeed } from "@voxim/levelgen";
 import type { ZoneRole } from "@voxim/content";
+import type { GenParams } from "../../genparams.ts";
 
 /**
- * Per-role naming thresholds. Sub-threshold zones get name = "" so the
+ * Per-role naming thresholds, read from `params.namedAreaMin*`
+ * (GenParams["zoneGraph"]). Sub-threshold zones get name = "" so the
  * HUD doesn't flicker through hundreds of micro-pockets.
  *
  * Intent: only the **distinct sectors** of the tile should be named —
@@ -36,28 +38,30 @@ import type { ZoneRole } from "@voxim/content";
  * a player walking through them sees no caption — which matches reality
  * (you don't "enter" a 12-pixel scrub of trees, you walk past it).
  */
-const NAMED_AREA_MIN_BY_ROLE: Record<ZoneRole, number> = {
-  // Path rooms / connectives — most should get a name when meaningful.
-  plaza:      200,
-  arena:      500,
-  lobby:      200,
-  pocket:     200,
-  crossroads: 150,
-  corridor:   250,
-  deadend:    180,
-  // Wilderness — thresholds lowered now that the segmenter merges
-  // sub-400-area fragments into their largest neighbour. Every
-  // surviving wilderness sector is substantial; name it.
-  grove:      300,
-  thicket:    300,
-  crag:       300,
-  hollow:     300,
-  outcrop:    300,
-  morass:     300,
-};
+function namedAreaMinByRole(p: GenParams["zoneGraph"]): Record<ZoneRole, number> {
+  return {
+    // Path rooms / connectives — most should get a name when meaningful.
+    plaza:      p.namedAreaMinPlaza,
+    arena:      p.namedAreaMinArena,
+    lobby:      p.namedAreaMinLobby,
+    pocket:     p.namedAreaMinPocket,
+    crossroads: p.namedAreaMinCrossroads,
+    corridor:   p.namedAreaMinCorridor,
+    deadend:    p.namedAreaMinDeadend,
+    // Wilderness — thresholds lowered now that the segmenter merges
+    // sub-400-area fragments into their largest neighbour. Every
+    // surviving wilderness sector is substantial; name it.
+    grove:      p.namedAreaMinGrove,
+    thicket:    p.namedAreaMinThicket,
+    crag:       p.namedAreaMinCrag,
+    hollow:     p.namedAreaMinHollow,
+    outcrop:    p.namedAreaMinOutcrop,
+    morass:     p.namedAreaMinMorass,
+  };
+}
 
-export function shouldNameZone(area: number, role: ZoneRole): boolean {
-  return area >= NAMED_AREA_MIN_BY_ROLE[role];
+export function shouldNameZone(area: number, role: ZoneRole, params: GenParams["zoneGraph"]): boolean {
+  return area >= namedAreaMinByRole(params)[role];
 }
 
 /**
@@ -132,8 +136,9 @@ export function nameZone(
   role: ZoneRole,
   traversal: "path" | "wilderness",
   biome: { altitude: number; moisture: number; temperature: number; ruggedness: number },
+  params: GenParams["zoneGraph"],
 ): string {
-  if (!shouldNameZone(area, role)) return "";
+  if (!shouldNameZone(area, role, params)) return "";
 
   const subSeed = splitSeed(tileSeed, `zoneName_${zoneId}`);
   const tag     = biomeTag(biome);
