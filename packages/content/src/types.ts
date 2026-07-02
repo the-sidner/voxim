@@ -62,6 +62,13 @@ export interface MaterialRenderDef {
   relief?: {
     resolution?: number;
     detail?: number;
+    /** Per-corner displacement magnitude override (world units), replacing
+     *  the client's shared TERRAIN_DISP_MAG default for this material's
+     *  terrain atoms. Materials sharing a cliff-edge corner with a
+     *  DIFFERENT resolved dispMag will show a visible seam — the no-crack
+     *  guarantee only holds within one material's own atoms, which always
+     *  share the same resolved value. Absent ⇒ the shared default (current
+     *  behaviour for every material today). */
     dispMag?: number;
     warp?: number;
     surfaceWarp?: number;

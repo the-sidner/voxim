@@ -17,11 +17,17 @@
  *   zero-height box). The heightmap stays the collision/authoring source — this is
  *   render-only, physics untouched.
  *
- * No-crack guarantee: every terrain atom bakes with the SAME constant
- * `TERRAIN_DISP_MAG` (not the per-voxel default), so two column boxes of different
- * depth that share a cliff-edge corner get the identical `vertexDisp` offset and
- * stay welded. The same constant + the shared world-position lattice keep terrain
- * welded to on-lattice placed/dug voxels too.
+ * No-crack guarantee: every terrain atom of a given material bakes with that
+ * material's resolved `dispMag` (its `render.relief.dispMag`, or the shared
+ * `TERRAIN_DISP_MAG` default when absent — the per-voxel default is never
+ * used), so two column boxes of different depth that share a cliff-edge
+ * corner and the SAME resolved dispMag get the identical `vertexDisp` offset
+ * and stay welded. The guarantee holds WITHIN one material's own atoms
+ * (which always share the same resolved value) — a cliff-edge corner shared
+ * by two materials with DIFFERENT resolved dispMag will show a visible seam;
+ * no material JSON authors a per-material override today, so this is not yet
+ * an observed case. The shared world-position lattice keeps terrain welded
+ * to on-lattice placed/dug voxels too.
  */
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
 import type { VoxelAtom, FieldExpr } from "@voxim/content";
@@ -32,13 +38,26 @@ import { voxHash } from "./voxel_bake.ts";
 const CHUNK = 32;
 
 /**
- * Constant per-corner displacement magnitude for ALL terrain atoms — % of the
- * height quantum. Pinned (not the per-voxel `0.10 * min(size)`) so variable-depth
- * column boxes don't crack at shared corners. Passed to `bakeVoxels(atoms, mat, mag)`.
- * Raised (was 0.10) to soften the strict grid into a gently eroded forest floor
- * while keeping the voxel read (T-310 level pass).
+ * Default per-corner displacement magnitude for terrain atoms when a material
+ * doesn't author `render.relief.dispMag` — % of the height quantum. Pinned
+ * (not the per-voxel `0.10 * min(size)`) so variable-depth column boxes of
+ * the SAME resolved dispMag don't crack at shared corners. Passed to
+ * `bakeVoxels(atoms, mat, mag)`. Raised (was 0.10) to soften the strict grid
+ * into a gently eroded forest floor while keeping the voxel read (T-310
+ * level pass).
  */
 export const TERRAIN_DISP_MAG = 0.18 * HEIGHT_STEP;
+
+// ---- Named response constants for the disturbance/tint/roughness grammar.
+// These are universal shape constants of the formula (same curve for every
+// material) — per-material variation lives in warp/surfaceWarp/
+// disturbanceField/dispMag, not here, so these stay local consts rather
+// than promoting onto render.relief.
+const MOTTLE_FLOOR = 0.25;         // tintScale floor at full disturbance recede
+const COURSE_JITTER_SCALE = 0.5;   // cliff course-boundary z-jitter vs corner warp
+const CHINK_DISP_SCALE = 0.3;      // sub-lip stone corner-disp extra vs warpAmp
+const OVERLAP_MARGIN = 0.05;       // oversize-into-known-solid safety margin
+const SURFACE_ROUGH_MIN = 0.02;    // surfAmp threshold below which a slab stays flat
 
 // ---- Stacked-voxel cliff edges (T-311 P4 — replaces the T-310 inset ziggurat).
 // A cliff cell (a plateau edge or a forest/stone wall) is voxelised as a STACK
@@ -106,6 +125,7 @@ export function buildChunkAtoms(
    *  civilized) scaling BOTH warps and the tint mottle — worked/trodden
    *  cells read orderly, wilderness rough and mottled. */
   reliefFor?: (materialId: number) => {
+    dispMag?: number;
     warp?: number;
     surfaceWarp?: number;
     disturbanceField?: FieldExpr;
@@ -150,6 +170,22 @@ export function buildChunkAtoms(
       const og01 = mossBias ? surface!.overgrowth[cellIdx] / 255 : 0;
       const wet01 = surface?.wets(m) ? surface.wetness[cellIdx] / 255 : undefined;
 
+      // Per-material relief response, hoisted above the cliff/slab split so
+      // both branches read the SAME resolved disturbance/tint/dispMag —
+      // welding within one material's own atoms only holds if every atom of
+      // that material agrees on these values.
+      const relief = reliefFor?.(m);
+      // Civilization axis: worked stone/ground near trodden paths reads
+      // orderly; the disturbanceField (0=civilized, 1=wild) scales every
+      // disturbance channel below.
+      const disturb = (relief?.disturbanceField && surface)
+        ? evaluateFieldExpr(relief.disturbanceField, (f) => surface.sample(f, cellIdx))
+        : 1;
+      // Tint mottle recedes toward uniform on worked cells (a floor keeps
+      // even laid stone faintly alive).
+      const tintScale = relief?.disturbanceField ? MOTTLE_FLOOR + (1 - MOTTLE_FLOOR) * disturb : undefined;
+      const dispMagBase = relief?.dispMag ?? TERRAIN_DISP_MAG;
+
       if (depth > CLIFF_MIN) {
         // ---- Stacked-voxel cliff: full-footprint stone boxes piled from the
         // base to the lip. Sub-lip stones jitter their EXPOSED faces by
@@ -166,27 +202,21 @@ export function buildChunkAtoms(
         const expN = (h - hN) > EXPOSE_MIN;
         const n = Math.min(STACK_MAX, Math.max(2, Math.round(depth / STONE_H)));
         const bh = depth / n;
-        const cliffRelief = reliefFor?.(m);
-        // Civilization axis: worked stone near trodden ground stacks neater.
-        const cliffDisturb = (cliffRelief?.disturbanceField && surface)
-          ? evaluateFieldExpr(cliffRelief.disturbanceField, (f) => surface.sample(f, cellIdx))
-          : 1;
-        const warpAmp = (cliffRelief?.warp ?? 0) * cliffDisturb;
-        const cliffTintScale = cliffRelief?.disturbanceField ? 0.25 + 0.75 * cliffDisturb : undefined;
+        const warpAmp = (relief?.warp ?? 0) * disturb;
         // Course boundaries between stones, z-jittered ±warp/4 (per cell +
         // course, deterministic) so the horizontal seams run UNEVEN like real
         // coursework. Both stones at a seam share the jittered boundary —
         // courses stay contiguous; the lip (index 0) and the base stay exact.
         const zb: number[] = [h];
         for (let i = 1; i < n; i++) {
-          const jitter = warpAmp > 0 ? (voxHash(offX + cx, offZ + cy, i, 7) - 0.5) * warpAmp * 0.5 : 0;
+          const jitter = warpAmp > 0 ? (voxHash(offX + cx, offZ + cy, i, 7) - 0.5) * warpAmp * COURSE_JITTER_SCALE : 0;
           zb.push(h - i * bh + jitter);
         }
         zb.push(h - depth);
         // Sub-lip stones displace their corners HARDER than the terrain
         // constant — a shared seam vertex then offsets differently per side,
         // opening deliberate chinks between stones (never on the lip).
-        const stoneDisp = warpAmp > 0 ? TERRAIN_DISP_MAG + warpAmp * 0.3 : undefined;
+        const stoneDisp = warpAmp > 0 ? dispMagBase + warpAmp * CHINK_DISP_SCALE : undefined;
         // Independently-warped stones open corner gaps; a gap must only ever
         // reveal ANOTHER stone, never the bright world behind the wall. So
         // every sub-lip stone is OVERSIZED into known-solid: up into the stone
@@ -194,7 +224,7 @@ export function buildChunkAtoms(
         // hill on welded sides — clipping is deliberate and invisible. The
         // overlap exceeds the max corner roll (dispMag), so even a fully
         // rolled-back corner still sits inside the neighbouring stone.
-        const overlap = stoneDisp !== undefined ? stoneDisp + 0.05 : 0;
+        const overlap = stoneDisp !== undefined ? stoneDisp + OVERLAP_MARGIN : 0;
         for (let i = 0; i < n; i++) {
           let zTop = zb[i], zBot = zb[i + 1];
           let x0 = offX + cx, x1 = offX + cx + 1;
@@ -225,7 +255,7 @@ export function buildChunkAtoms(
               dispMag: stoneDisp,
               dispSeed: 1 + Math.floor(voxHash(offX + cx, offZ + cy, i, 8) * 0xffff),
             }),
-            ...(cliffTintScale !== undefined && { tintScale: cliffTintScale }),
+            ...(tintScale !== undefined && { tintScale }),
             // The top stone reads as floor; the face stones below gather moss
             // in their seams (jointBoost) — "oldest stone most swallowed".
             ...(og01 > 0 && {
@@ -246,16 +276,9 @@ export function buildChunkAtoms(
       // (e.g. traffic-inverted: wilderness rough, trodden paths smooth). The
       // slab OVERSIZES into known-solid (sideways into neighbour slabs, down
       // into the earth) so corner gaps only ever reveal another slab.
-      const relief = reliefFor?.(m);
-      const disturb = (relief?.disturbanceField && surface)
-        ? evaluateFieldExpr(relief.disturbanceField, (f) => surface.sample(f, cellIdx))
-        : 1;
       const surfAmp = (relief?.surfaceWarp ?? 0) * disturb;
-      const rough = surfAmp > 0.02;
-      const grow = rough ? surfAmp + 0.05 : 0;
-      // Civilization axis: tint mottle recedes toward uniform on worked cells
-      // (a 25% floor keeps even laid stone faintly alive).
-      const tintScale = relief?.disturbanceField ? 0.25 + 0.75 * disturb : undefined;
+      const rough = surfAmp > SURFACE_ROUGH_MIN;
+      const grow = rough ? surfAmp + OVERLAP_MARGIN : 0;
       bucket.push({
         cx: offX + cx + 0.5,
         cy: offZ + cy + 0.5,
@@ -265,7 +288,7 @@ export function buildChunkAtoms(
         sz: depth + grow,
         materialId: m,
         ...(rough && {
-          dispMag: TERRAIN_DISP_MAG + surfAmp,
+          dispMag: dispMagBase + surfAmp,
           dispSeed: 1 + Math.floor(voxHash(offX + cx, offZ + cy, 0, 9) * 0xffff),
         }),
         ...(tintScale !== undefined && { tintScale }),

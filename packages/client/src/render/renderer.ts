@@ -588,7 +588,8 @@ export class VoximRenderer {
       const mossResp = matDef && mb && mossTarget
         ? resolveMossResponse(matDef.color, mossTarget.color, mb.tintShift)
         : undefined;
-      const baked = bakeVoxels(atoms, matId, TERRAIN_DISP_MAG, matDef?.render?.tintJitter, mossResp);
+      const dispMag = matDef?.render?.relief?.dispMag ?? TERRAIN_DISP_MAG;
+      const baked = bakeVoxels(atoms, matId, dispMag, matDef?.render?.tintJitter, mossResp);
       const geo = geometryFromBaked(baked);
       const m = buildVoxelMaterial(matDef, matId);
       canopyFade.register(m);
