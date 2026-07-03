@@ -1361,6 +1361,34 @@ pretend the look is done at T-311/T-312:
   set-piece); making the procedural world *read* as composed needs authored POI set-pieces + good placement
   on the POI system. (Home: `## World Generation`.)
 
+### T-317 · Facing-follow camera mode — evaluate the rotating iso look
+Effort: M   Status: todo
+
+Design/look experiment (user request): make the camera rotatable — same rig geometry
+(BACK_DISTANCE/HEIGHT/telephoto FOV, the current position relative to the player), but the yaw
+follows the character's facing instead of staying fixed at `DEFAULT_YAW`. Goal is evaluative:
+SEE how the iso look reads when the world rotates with the player.
+
+The rig is ready for it: `CameraRig` already owns a `yaw` field and `intent_translator` reads
+`getCameraYaw()` per input frame, so camera-relative movement (T-287/T-290) keeps working
+under a rotating yaw by construction. The one real hazard is the **facing feedback loop**:
+facing is derived from the cursor by raycasting through the LIVE camera
+(`getCursorWorldPos`, updated on mouse-move) — a camera that chases facing re-projects the
+cursor, which re-derives facing. Mitigations: critically-damped yaw spring + max angular rate
+(smoothing lives in the CAMERA, never in the gameplay facing), plus a follow deadzone
+(only chase when the yaw error exceeds a threshold, PoE-soft-follow style); knobs in
+game_config so the feel is tunable without rebuilds.
+
+Ships as a runtime-toggleable MODE (debug key + config default) because the deliverable is a
+comparison — fixed-iso vs facing-follow. This is a deliberate UX-mode exception, not a
+migration shim: after the verdict, the losing mode is deleted (or the toggle is promoted to a
+real setting) — the ticket does not close with two half-owned camera behaviours left floating.
+Minimap stays north-up in v1. Stale "fixed iso camera" comments (camera_rig header,
+renderer `getCursorWorldPos` doc, intent_translator basis notes) update honestly in the same
+commit that makes yaw dynamic. Done when: toggle works live, rotation is smooth and playable
+(no cursor-chase spin), both modes screenshot-compared via testplay, and a verdict note lands
+in this ticket.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI

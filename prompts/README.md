@@ -21,6 +21,7 @@ pre-baked so an implementation agent (Sonnet) can execute without re-deriving th
 | 5 | `T-311-P6-terraced-cliffs.md` | atlas/wire/client ✶ | re-bake; heaviest |
 | 6 | `T-282-renderer-breakup-closeout.md` | audit/cleanup | anytime |
 | 7 | `T-186-body-recipes-layer2.md` | content/client | Step 0 reconciles vs T-301/T-302 |
+| 8 | `T-317-facing-follow-camera.md` | client/feel | anytime; short; user evaluates the result |
 
 - Delete each prompt file in the commit that closes its ticket (scaffolding dies with the work
   — CLAUDE.md refactor doctrine). Delete this directory when the table is empty.
