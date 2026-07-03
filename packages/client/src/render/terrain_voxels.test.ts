@@ -113,7 +113,7 @@ Deno.test("warp keeps courses gap-free (stones overlap into each other, never ap
   }
 });
 
-Deno.test("civilization axis: disturbanceField scales roughness AND tint mottle per cell", () => {
+Deno.test("disturbance axis: disturbanceField scales roughness AND tint mottle per cell", () => {
   const { hm, mats } = flatChunk(2);
   const relief = () => ({
     surfaceWarp: 0.15,

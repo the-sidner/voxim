@@ -121,7 +121,7 @@ export function buildChunkAtoms(
   surface?: SurfaceFieldInput,
   /** Per-material relief response (`MaterialDef.render.relief`, T-311 P4):
    *  `warp` drives the cliff-stack stones, `surfaceWarp` the floor slabs, and
-   *  `disturbanceField` is THE per-cell wildness axis (1 = wild, 0 =
+   *  `disturbanceField` is THE per-cell disturbance axis (1 = wild, 0 =
    *  civilized) scaling BOTH warps and the tint mottle — worked/trodden
    *  cells read orderly, wilderness rough and mottled. */
   reliefFor?: (materialId: number) => {
@@ -175,8 +175,8 @@ export function buildChunkAtoms(
       // welding within one material's own atoms only holds if every atom of
       // that material agrees on these values.
       const relief = reliefFor?.(m);
-      // Civilization axis: worked stone/ground near trodden paths reads
-      // orderly; the disturbanceField (0=civilized, 1=wild) scales every
+      // Disturbance axis: worked stone/ground near trodden paths reads
+      // orderly; disturbanceField (0=civilized, 1=wild) scales every
       // disturbance channel below.
       const disturb = (relief?.disturbanceField && surface)
         ? evaluateFieldExpr(relief.disturbanceField, (f) => surface.sample(f, cellIdx))

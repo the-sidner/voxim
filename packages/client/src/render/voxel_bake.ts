@@ -285,7 +285,7 @@ export function bakeVoxels(
 
   let vOff = 0, iOff = 0;
   for (const { px, py, pz, moss01, wet01, tintScale, baked } of voxels) {
-    // One tint per voxel; `tintScale` (the civilization axis) collapses the
+    // One tint per voxel; `tintScale` (the disturbance axis) collapses the
     // mottle amplitude toward flat for worked/trodden cells.
     const t = tintScale >= 1 ? tint : {
       brightness: [1 + (tint.brightness[0] - 1) * tintScale, 1 + (tint.brightness[1] - 1) * tintScale] as [number, number],

@@ -53,7 +53,7 @@ export interface MaterialRenderDef {
    *  dispSeed) and oversize into known-solid, so cliffs read hand-stacked.
    *  `surfaceWarp` — the same per-voxel decorrelated warp on the walkable
    *  floor slabs: rough, clod-like ground.
-   *  `disturbanceField` — THE per-cell wildness axis (FieldExpr over the
+   *  `disturbanceField` — THE per-cell disturbance axis (FieldExpr over the
    *  server render fields, boot-cross-checked): 1 = wild, 0 = civilized.
    *  It scales EVERY disturbance channel — surfaceWarp, the cliff-stack
    *  warp, and the per-voxel tint mottle — so worked/trodden cells read
