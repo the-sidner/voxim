@@ -561,7 +561,8 @@ export const modelRefCodec: Serialiser<ModelRefData> = {
 };
 
 // ---- AnimationState ---------------------------------------------------------
-// { layers: AnimationLayer[], weaponActionId: string, ticksIntoAction: u16 }
+// { layers: AnimationLayer[], weaponActionId: string, ticksIntoAction: u16,
+//   dissolutionPhase: f32 }
 //
 // Layer wire format (per layer):
 //   str  clipId
@@ -571,6 +572,9 @@ export const modelRefCodec: Serialiser<ModelRefData> = {
 //   u8   blend         (0 = override, 1 = additive)
 //   f32  speedScaleVal (-1.0 sentinel = "velocity")
 //   f32  speedReference (0 when not applicable)
+//
+// dissolutionPhase (T-311 P5c) is appended AFTER ticksIntoAction — purely
+// additive at the tail, every existing byte offset is unchanged.
 
 export const animationStateCodec: Serialiser<AnimationStateData> = {
   encode(v: AnimationStateData): Uint8Array {
@@ -587,6 +591,7 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
     }
     w.writeStr(v.weaponActionId);
     w.writeU16(v.ticksIntoAction);
+    w.writeF32(v.dissolutionPhase);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): AnimationStateData {
@@ -608,6 +613,7 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
       layers,
       weaponActionId: r.readStr(),
       ticksIntoAction: r.readU16(),
+      dissolutionPhase: r.readF32(),
     };
   },
 };

@@ -26,6 +26,7 @@ import { Crouched } from "../components/tags.ts";
 import { Equipment } from "../components/equipment.ts";
 import type { SwingableData } from "@voxim/content";
 import { AnimationSlots } from "../components/animation_slots.ts";
+import { Resource } from "../components/resource.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("AnimationSystem");
@@ -75,7 +76,7 @@ export class AnimationSystem implements System {
   ): void {
     if (DEBUG_FORCE_REST_POSE) {
       const prev = world.get(entityId, AnimationState);
-      const next: AnimationStateData = { layers: [], weaponActionId: "", ticksIntoAction: 0 };
+      const next: AnimationStateData = { layers: [], weaponActionId: "", ticksIntoAction: 0, dissolutionPhase: 0 };
       if (!animStatesEqual(prev, next)) world.set(entityId, AnimationState, next);
       return;
     }
@@ -150,7 +151,19 @@ export class AnimationSystem implements System {
         // windup stays 0 — pre-active, no trail slices.
       }
 
-      const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
+      // Death-dissolve phase (T-311 P5c) — DERIVED, not mutated. A profiled
+      // corpse carries a `dissolve_timer` Resource (seeded by the
+      // shed_dissolve DeathHook) that counts DOWN from its max; the phase is
+      // just how far it has counted (0 = just died, 1 = about to despawn).
+      // Deriving here (rather than a ResourceSystem `world.mutate` on
+      // AnimationState) avoids a same-tick ordering hazard: ResourceSystem
+      // runs BEFORE AnimationSystem, but AnimationSystem fully REPLACES
+      // AnimationState every tick via world.set — a mutate from ResourceSystem
+      // would just get clobbered by this system's own write.
+      const dissolveRv = world.get(entityId, Resource)?.values["dissolve_timer"];
+      const dissolutionPhase = dissolveRv ? 1 - dissolveRv.value / dissolveRv.max : 0;
+
+      const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction, dissolutionPhase };
       if (!animStatesEqual(prev, next)) {
         world.set(entityId, AnimationState, next);
       }
@@ -312,6 +325,7 @@ function animStatesEqual(a: AnimationStateData | null, b: AnimationStateData): b
   if (!a) return false;
   if (a.weaponActionId !== b.weaponActionId) return false;
   if (a.ticksIntoAction !== b.ticksIntoAction) return false;
+  if (a.dissolutionPhase !== b.dissolutionPhase) return false;
   if (a.layers.length !== b.layers.length) return false;
   for (let i = 0; i < a.layers.length; i++) {
     const la = a.layers[i], lb = b.layers[i];

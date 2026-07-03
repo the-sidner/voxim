@@ -2439,6 +2439,15 @@ export interface AnimationStateData {
   weaponActionId: string;
   /** Elapsed ticks since the current attack started. 0 when not attacking. */
   ticksIntoAction: number;
+  /**
+   * Corrupted-creature death-dissolve phase (T-311 P5c). 0 = intact, 1 =
+   * fully dissolved. DERIVED each tick by `AnimationSystem` from
+   * `Resource.values["dissolve_timer"]` (see `systems/animation.ts`) — the
+   * server writes it, the client drives ALL fray/drift presentation from
+   * this one scalar + the entity's `DissolveProfileDef`. Stays 0 for every
+   * entity that never carries a `dissolve_timer` Resource.
+   */
+  dissolutionPhase: number;
 }
 
 // =============================================================================

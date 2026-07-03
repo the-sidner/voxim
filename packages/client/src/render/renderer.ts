@@ -702,6 +702,7 @@ export class VoximRenderer {
         layers: current?.layers ?? [],
         weaponActionId,
         ticksIntoAction: 0,
+        dissolutionPhase: current?.dissolutionPhase ?? 0,
       };
       mesh.lastAnimUpdateMs = performance.now();
     }

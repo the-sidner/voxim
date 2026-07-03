@@ -124,6 +124,7 @@ export const AnimationState = defineComponent({
     layers: [],
     weaponActionId: "",
     ticksIntoAction: 0,
+    dissolutionPhase: 0,
   }),
 });
 
