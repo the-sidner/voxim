@@ -100,7 +100,7 @@ Select city locations from world map (flat terrain, near water, resource diversi
 Done when: world generation produces N cities at valid locations with initial state files.
 
 ### T-212 · POI runtime + wilderness-stair unlock
-Effort: L   Status: done   (v1 PoiSystem -- 03525ae; registry-dispatch substrate T-245; wave/bossfight/action/puzzle handlers + T-213b trinket-unlock chain -- see commit hashes in this file's closing bookkeeping commit)
+Effort: L   Status: done   (v1 PoiSystem -- 03525ae; registry-dispatch substrate T-245; wave+bossfight -- 8490bb6; action -- c116df9; puzzle -- 09029bf; T-213b trinket-unlock chain -- 1f0d11c)
 
 **v1 landed**: PoiTrigger component + PoiSystem with two dispatch paths:
 
@@ -250,8 +250,7 @@ the landed handlers), and a scripted trinket-consume opens a stair that
 was impassable seconds before (verified live, before/after screenshots).
 
 ### T-213 · Physical stair object — heightmap ramp + step-up walkability
-Effort: M   Status: done   Commit: (T-213b landed in the T-212 v2 arc — see
-commits below; T-213 v1+v2 was 867766f)
+Effort: M   Status: done   Commit: 1f0d11c   (T-213 v1+v2 was 867766f)
 
 **v1 landed**: `applyStairUnlock` helper + "found" stairs (lockedBy === null)
 apply at tile boot. Wilderness plateaus reachable from boot via lerped ramps.
