@@ -339,19 +339,20 @@ When outside, the roof is visible.
 Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
 
 ### T-315 · Terrain-path comb — pull atlas→world→server→wire→client back in line
-Effort: L   Status: todo
+Effort: L   Status: done   Commit: 126ff6e
 
 Multi-agent audit (2026-07-02) of the whole terrain/level-generator path found 73 deduped drift
-findings (27 adversarially confirmed, incl. all 7 high): field grids destroyed on chunk
-unload/reload (ChunkLifecycle sister-bug of T-312b), the dead gen-terrain path, the orphaned+drifted
-terrain_config.json decoy, WALL_HEIGHT as dead GenParam vs hardcoded 2.0 consumers, ContentCache as
-legacy parallel path, nine-copy hash/PRNG family, tuning stranded in code (TERRAIN_DISP_MAG vs the
-unread relief.dispMag knob), and a three-name axis vocabulary. Plan: `TERRAIN_COMB_PLAN.md` —
-six phases: A substrate bugs · B delete-the-dead · C one-value-one-owner · D tuning→content ·
-E single-owner structures (ContentCache, client chunk-state, server chunk-join, atlas assembly) ·
-F naming/honesty sweep. Explicitly defers water/SUN_DIR/CLIFF_* to T-311 P5/P6.
-Done when: all six phases landed (each bullet one commit), `deno check` green, testplay pass after
-A/D/E, and the plan doc marked done with the closing commit hash.
+findings (27 adversarially confirmed, incl. all 7 high). Landed 2026-07-03 as 48 commits in six
+phases (A substrate bugs · B delete-the-dead · C one-value-one-owner · D tuning→content ·
+E single-owner structures · F naming/honesty sweep), each bullet one commit, `deno check` green
+throughout, testplay passes after A/D/E. Highlights: chunk unload/reload keeps all 7 grids; the
+gen-terrain path, zone spawn profiles and the content-request wire protocol deleted wholesale;
+single-owner CHUNK_SIZE/TILE_SIZE/BOUNDARY_KIND vocabulary and one PRNG/noise home (byte-parity
+verified); WALL_HEIGHT/dispMag/bloom/height-shade/LOS tuning promoted to content; ContentCache a
+thin bootstrap read-through; ClientWorld the single chunk-grid owner (delivery order no longer
+load-bearing). Water/SUN_DIR/CLIFF_* stay deferred to T-311 P5/P6 — the water-renderer rebuild
+note moved onto P5 in `VISUAL_DATAMODEL_PLAN.md`. Plan doc `TERRAIN_COMB_PLAN.md` deleted per
+refactor doctrine (don't leave a done document floating).
 
 ## Client Rebuild
 
