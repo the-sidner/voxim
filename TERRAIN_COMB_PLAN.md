@@ -180,10 +180,10 @@ presentation · content ids cross-checked at boot, fail-fast.
 
 ## Phase F · Naming & honesty sweep (last — no churn under the other phases)
 
-- **F1 — One axis, one name, one polarity.** The same field is `disturbanceField` (content),
-  "wildness axis" and "civilization axis" (comments/prose), with both polarities in circulation.
-  Canonical: **disturbance, 0 = civilized/worked, 1 = wild** — matches the shipped content field.
-  Kill the synonyms everywhere, including this plan's own sources.
+- **F1 — One axis, one name, one polarity.** The same field is `disturbanceField` (content); it
+  was also called "wildness axis" and "civilization axis" in comments/prose, with both polarities
+  in circulation. Canonical: **disturbance, 0 = civilized/worked, 1 = wild** — matches the shipped
+  content field. Kill the synonyms everywhere, including this plan's own sources.
 - **F2 — `cx/cy` means chunk coords, cell indices, AND world-space voxel centers** depending on
   file. Rename the colliding locals (chunk→`chunkX/Y`, cell→`cellX/Y`); `VoxelAtom.cx` (center)
   keeps its documented meaning.
