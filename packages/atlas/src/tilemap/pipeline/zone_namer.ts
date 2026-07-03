@@ -14,7 +14,7 @@
  * Adjective pools are seeded by the zone's tile + id so the same zone
  * always gets the same name. Only zones with `area >= NAMED_AREA_MIN_BY_ROLE[role]`
  * receive a non-empty name; smaller zones (micro-thickets between
- * corridors, single-pixel crags) get `""` to avoid HUD spam.
+ * corridors, single-cell crags) get `""` to avoid HUD spam.
  *
  * No POI-driven naming yet (e.g. "the Wolf Den" near a wolf_den POI).
  * That requires the namer to run AFTER the matcher; current pipeline
@@ -38,7 +38,7 @@ import { biomeTag } from "./biome_tag.ts";
  * deadend, pocket), and the substantial wilderness patches (groves,
  * crags). The dozens of micro-thickets between corridors stay anonymous;
  * a player walking through them sees no caption — which matches reality
- * (you don't "enter" a 12-pixel scrub of trees, you walk past it).
+ * (you don't "enter" a 12-cell scrub of trees, you walk past it).
  */
 function namedAreaMinByRole(p: GenParams["zoneGraph"]): Record<ZoneRole, number> {
   return {

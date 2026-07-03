@@ -46,7 +46,7 @@ interface ChamberInfo {
   id: number;
   cx: number;   // world-unit centroid x
   cy: number;   // world-unit centroid y
-  pixelCount: number;
+  cellCount: number;
 }
 
 export interface MobSpawn {
@@ -103,7 +103,7 @@ export function placePois(
   for (const ch of chambers) {
     // Skip tiny chambers — they're not meaningful POI hosts and a 5×5 room
     // wouldn't fit anyway.
-    if (ch.pixelCount < 25) continue;
+    if (ch.cellCount < 25) continue;
 
     // Seed = tileSeed XOR chamberId so different tiles get different POIs
     // but each (tile, chamber) pair is stable across restarts.

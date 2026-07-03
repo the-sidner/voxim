@@ -1,18 +1,18 @@
 /**
- * Stage — per-pixel material ids.
+ * Stage — per-cell material ids.
  *
- * Three classes of pixel and three different decisions:
+ * Three classes of cell and three different decisions:
  *
- *   1. Closed pixel  → pickClosedMaterial(kindOf): STONE / FOREST / WATER
+ *   1. Closed cell  → pickClosedMaterial(kindOf): STONE / FOREST / WATER
  *      / GRASS_MOUND walls each paint their own colour on top of the
  *      raised step.
  *
- *   2. Open pixel that is a CORRIDOR (chamberOf == ROOM_ID_NONE & open)
+ *   2. Open cell that is a CORRIDOR (chamberOf == ROOM_ID_NONE & open)
  *      → a worn-trail material. We pick by surrounding biome so paths
  *      through forest read as packed dirt, paths through stony highlands
  *      as gravel, paths through open meadows as gravel-on-grass.
  *
- *   3. Open pixel inside a chamber/room → biome rule + a high-frequency
+ *   3. Open cell inside a chamber/room → biome rule + a high-frequency
  *      "spread" noise that perturbs the choice locally. Uniform grass
  *      breaks into patches of dirt and gravel; uniform stone gets moss
  *      veins; uniform dirt gets mud and gravel speckles.
@@ -64,13 +64,13 @@ export const materials: Transformer<TerrainState, MaterialsState, GenParams["mat
         const idx = py * gridSize + px;
 
         if (openMask[idx] === 0) {
-          // Closed pixel: kind-driven fallback so the wall reads on flat
+          // Closed cell: kind-driven fallback so the wall reads on flat
           // ground without needing a height step.
           materials[idx] = pickClosedMaterial(kindOf[idx]);
           continue;
         }
 
-        // Open pixel.
+        // Open cell.
         const isCorridor = chamberOf[idx] === ROOM_ID_NONE;
         const detail = fbm(px * fDetail, py * fDetail, seed ^ DETAIL_SUB_SEED, 2);
 
@@ -107,7 +107,7 @@ function pickMaterial(
 }
 
 /**
- * Material for carved corridor pixels. Paths are picked by the prevailing
+ * Material for carved corridor cells. Paths are picked by the prevailing
  * biome — a trail through forest is packed dirt; through stony highlands
  * it's gravel; through cold land it's trodden snow. The carve geometry
  * stays the same; only the visual changes.

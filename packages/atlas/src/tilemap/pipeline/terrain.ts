@@ -1,11 +1,11 @@
 /**
  * Stage 7 — terrain heightmap.
  *
- * Two contributions per pixel:
- *   1. Wall baseline. STONE / FOREST / GRASS_MOUND pixels rise by
+ * Two contributions per cell:
+ *   1. Wall baseline. STONE / FOREST / GRASS_MOUND cells rise by
  *      WALL_HEIGHT from the floor — high enough that the runtime
  *      physics stepHeight can't auto-clear them, so they read as
- *      boundaries. WATER pixels (rivers/ponds) stay at floor height
+ *      boundaries. WATER cells (rivers/ponds) stay at floor height
  *      even though they're closed in `openMask`. Nearest-only
  *      sampling at consumption time prevents wall edges from
  *      averaging into climbable ramps.
@@ -24,7 +24,7 @@ import type { GenParams } from "../../genparams.ts";
 import type { RiversState, TerrainState } from "./state.ts";
 
 /**
- * Default vertical step at every wall pixel — exposed for downstream
+ * Default vertical step at every wall cell — exposed for downstream
  * consumers that need a stable constant (e.g. tile-server's upsampler
  * pre-removes the step before bilinear resampling). Per-world tuning
  * comes through GenParams.terrain.wallHeight; this default mirrors it.
@@ -60,14 +60,14 @@ export const terrain: Transformer<RiversState, TerrainState, GenParams["terrain"
         const idx = py * gridSize + px;
 
         // Smooth biome-driven modulation. Same function for open and closed
-        // pixels so the floor varies naturally; the wall step rides on top.
+        // cells so the floor varies naturally; the wall step rides on top.
         const m = (fbm(px * modFreq, py * modFreq, seed ^ TERRAIN_SUB_SEED, 3) - 0.5) * 2;
         const floor = params.floorBaseline + floorBias + m * modAmp;
 
         // All wall kinds (STONE / FOREST / GRASS_MOUND) raise.  WATER cuts a
         // shallow trench (rivers run below the surrounding floor — T-159); the
         // client renders a translucent water surface back at `floor` height.
-        // OPEN cells stay at floor.  Collision still blocks closed pixels via openMask.
+        // OPEN cells stay at floor.  Collision still blocks closed cells via openMask.
         const k = kindOf[idx];
         const isClosed = openMask[idx] === 0;
         const isWater  = isClosed && k === BoundaryKind.water;

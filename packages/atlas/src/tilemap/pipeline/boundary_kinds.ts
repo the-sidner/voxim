@@ -1,9 +1,9 @@
 /**
  * Stage 6 — boundary kinds.
  *
- * Every closed pixel (openMask = 0) gets a boundary kind id that decides
- * how the pixel will eventually render and what player verbs can transform
- * it. Open pixels get BOUNDARY_KIND_OPEN.
+ * Every closed cell (openMask = 0) gets a boundary kind id that decides
+ * how the cell will eventually render and what player verbs can transform
+ * it. Open cells get BOUNDARY_KIND_OPEN.
  *
  * Three wall kinds in active use, all raised by the terrain stage to the
  * same WALL_HEIGHT (2u, just past the runtime stepHeight so none of them
@@ -12,7 +12,7 @@
  *   STONE       — bare grey rock walls. Picked when the biome is high
  *                 altitude or rugged enough that exposed rock makes sense.
  *   FOREST      — dense vegetation walls; tile-server spawns tree
- *                 entities on top of these pixels at runtime so the wall
+ *                 entities on top of these cells at runtime so the wall
  *                 reads as "you can't push through this wall of trees."
  *   GRASS_MOUND — green grassy berm; the fallback wall when neither of
  *                 the above qualifies.
@@ -20,8 +20,8 @@
  * WATER is a separate non-wall kind set by the river-stamping stage; it
  * stays at floor height and isn't picked from biome (rivers carve it).
  *
- * Selection is rule-based on biome params + per-pixel detail noise.
- * Each closed pixel asks: "what kind of obstacle am I?" — and the rule
+ * Selection is rule-based on biome params + per-cell detail noise.
+ * Each closed cell asks: "what kind of obstacle am I?" — and the rule
  * leans on the same biome that drove the noise field, so transitions
  * across the cell-grid feel coherent.
  *

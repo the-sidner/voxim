@@ -95,28 +95,28 @@ export interface MaterialsState extends TerrainState {
 
 /**
  * One zone in the AnnotatedZoneGraph (T-208). A zone is a connected
- * component of open pixels — either a chamber (with a `chamberOf` tag)
- * or a corridor segment (open pixels with no chamber tag, flooded as
+ * component of open cells — either a chamber (with a `chamberOf` tag)
+ * or a corridor segment (open cells with no chamber tag, flooded as
  * its own component). Adjacency in the zone graph mirrors which zones
- * physically touch through open pixels.
+ * physically touch through open cells.
  *
  * The Tier-6 generator (T-209) consumes this to match POI candidates
  * to zones by `fit.preferredTopology`, `fit.minArea/maxArea`, etc.
  */
 export interface AnnotatedZone {
   id: number;
-  /** Pixel count of the zone. */
+  /** Cell count of the zone. */
   area: number;
-  /** Mean pixel position in grid coords. */
+  /** Mean cell position in grid coords. */
   centroid: { x: number; y: number };
   /** Axis-aligned bounding box in grid coords. */
   bbox: { minX: number; minY: number; maxX: number; maxY: number };
   /** min(bbox.w, bbox.h) / max(bbox.w, bbox.h). 1.0 = square; → 0 elongated. */
   aspectRatio: number;
   /**
-   * Fraction of the zone's boundary pixels that touch the *opposite*
-   * traversal class (path zones touch closed pixels; wilderness zones
-   * touch open pixels). 0.0 = highly accessible; 1.0 = fully surrounded
+   * Fraction of the zone's boundary cells that touch the *opposite*
+   * traversal class (path zones touch closed cells; wilderness zones
+   * touch open cells). 0.0 = highly accessible; 1.0 = fully surrounded
    * by the opposite class.
    */
   enclosure: number;
@@ -124,25 +124,25 @@ export interface AnnotatedZone {
   topologyRole: ZoneRole;
   /**
    * Counts of in-zone kindOf values (T-210). For path zones this is the
-   * histogram of neighbouring closed pixels — what kind of walls
+   * histogram of neighbouring closed cells — what kind of walls
    * surround me. For wilderness zones this is the histogram of the
-   * zone's own pixels — what is this plateau made of.
+   * zone's own cells — what is this plateau made of.
    */
   kindHistogram: Record<number, number>;
   /**
    * Ids of zones adjacent through any boundary transition.
-   * Path↔Path: open-pixel-to-open-pixel.
-   * Path↔Wilderness: open-pixel-to-closed-pixel.
+   * Path↔Path: open-cell-to-open-cell.
+   * Path↔Wilderness: open-cell-to-closed-cell.
    * Wilderness↔Wilderness: never adjacent (always separated by path).
    */
   neighbors: number[];
-  /** True if any portal pixel lies inside this zone (gate entry zone). */
+  /** True if any portal cell lies inside this zone (gate entry zone). */
   isEntry: boolean;
   /** True for corridor-derived path zones; false otherwise. */
   isCorridor: boolean;
   /**
-   * Zone class (T-210). `"path"` = default-walkable (open pixels);
-   * `"wilderness"` = elevated plateau (closed-pixel blob, reached via
+   * Zone class (T-210). `"path"` = default-walkable (open cells);
+   * `"wilderness"` = elevated plateau (closed-cell blob, reached via
    * a stair-gated ascent).
    */
   traversal: "path" | "wilderness";
@@ -154,11 +154,11 @@ export interface AnnotatedZone {
   name: string;
 }
 
-/** Sentinel for `zoneOf` — closed pixels and any non-tracked open pixels. */
+/** Sentinel for `zoneOf` — closed cells and any non-tracked open cells. */
 export const ZONE_ID_NONE = 0xFFFF;
 
 export interface AnnotatedZoneState extends MaterialsState {
-  /** Per-pixel zone id; 0xFFFF for closed pixels. Length = gridSize². */
+  /** Per-cell zone id; 0xFFFF for closed cells. Length = gridSize². */
   zoneOf: Uint16Array;
   /** Indexed by zone id; gaps are possible if some ids were skipped. */
   zones: AnnotatedZone[];

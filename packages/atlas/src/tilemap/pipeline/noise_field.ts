@@ -1,8 +1,8 @@
 /**
  * Stage 1 — sample the noise field used by downstream stages.
  *
- * Produces a per-pixel scalar field (fbm). The chambers stage uses it as
- * a *cost surface* to grow organic chamber shapes (low-noise pixels are
+ * Produces a per-cell scalar field (fbm). The chambers stage uses it as
+ * a *cost surface* to grow organic chamber shapes (low-noise cells are
  * more likely to be carved into a chamber). Other downstream stages
  * sample their own fbm channels with different sub-seeds.
  *

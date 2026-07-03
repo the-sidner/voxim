@@ -90,7 +90,7 @@ async function captureZone(e: MatrixEntry): Promise<ZoneSnapshot> {
 // to 3 as 47 actual corridor sectors emerged.
 //
 // zoneOf changed for fm_a + cd (the disk-paint phase creates new ids
-// in former corridor pixels); fm_b + op are unchanged because their
+// in former corridor cells); fm_b + op are unchanged because their
 // junction layouts happen to produce identical disk-painted regions.
 const EXPECTED: Record<string, { zoneOf: string; zonesJson: string }> = {
   fm_a: { zoneOf: "6f6b89b132d953f9", zonesJson: "1590ce11205fac14" },
@@ -188,7 +188,7 @@ Deno.test("zoneGraph: every entry zone is touched by at least one portal", () =>
     const final = r.final as AnnotatedZoneState;
     const entryZoneIds = new Set(final.zones.filter(z => z.isEntry).map(z => z.id));
     const portalZoneIds = new Set(
-      final.portals.map(p => final.zoneOf[p.pixelY * final.gridSize + p.pixelX]),
+      final.portals.map(p => final.zoneOf[p.cellY * final.gridSize + p.cellX]),
     );
     portalZoneIds.delete(0xFFFF);
     for (const id of entryZoneIds) {

@@ -45,8 +45,8 @@ export interface GenParams {
     sourceAltitude: number;
     /** Chebyshev distance between sources (poor-man's Poisson disk). */
     minSeparation: number;
-    /** Pixel radius of stamped river width (so river is ~2*r+1 px wide). */
-    widthPixels: number;
+    /** Cell radius of stamped river width (so river is ~2*r+1 cells wide). */
+    widthCells: number;
   };
 
   /** Tile-scale noise field that emerges into rooms. */
@@ -64,7 +64,7 @@ export interface GenParams {
   /** Heightmap stage. */
   terrain: {
     /**
-     * Vertical step at every CLIFF wall pixel. Must exceed runtime
+     * Vertical step at every CLIFF wall cell. Must exceed runtime
      * physics stepHeight (currently 0.75u) so cliffs aren't traversable.
      */
     wallHeight: number;
@@ -72,16 +72,16 @@ export interface GenParams {
     floorBaseline: number;
     /** Floor modulation amplitude before biome.ruggedness scaling. */
     floorModAmplitude: number;
-    /** Floor modulation noise frequency (cycles per pixel). */
+    /** Floor modulation noise frequency (cycles per cell). */
     floorModFrequency: number;
     /** Scale applied to (biome.altitude - 0.5) to bias the floor height by
      *  altitude, before modulation. Default 4 → ~[-2, +2]. */
     altitudeBiasScale: number;
   };
 
-  /** Per-pixel material rule selectors. */
+  /** Per-cell material rule selectors. */
   materials: {
-    /** Per-pixel detail noise frequency. */
+    /** Per-cell detail noise frequency. */
     detailFrequency: number;
     /** altitude > X → STONE. */
     stoneAltitudeStrict: number;
@@ -135,9 +135,9 @@ export interface GenParams {
   room: {
     /** Target junction count per tile. Poisson sampler aims for this many. */
     targetCount: number;
-    /** Min separation between junction seeds, in pixels. */
+    /** Min separation between junction seeds, in cells. */
     minSeparation: number;
-    /** Per-room size range when grown, in pixels. */
+    /** Per-room size range when grown, in cells. */
     sizeMin: number;
     sizeMax: number;
     /**
@@ -158,7 +158,7 @@ export interface GenParams {
    * Pipeline: Delaunay triangulation over chamber centroids → Kruskal MST
    * for guaranteed connectivity → keep `loopRate` of the non-tree edges
    * as braids → for each kept edge, ray-march from each centroid toward
-   * the partner to find the chamber-boundary entry/exit pixels (so the
+   * the partner to find the chamber-boundary entry/exit cells (so the
    * carve enters and exits at the chamber walls instead of crossing the
    * interior) → generate `segments + 1` waypoints along the line, with
    * interior waypoints perpendicular-perturbed by `curvature × edge_len`
@@ -168,13 +168,13 @@ export interface GenParams {
    * the curve.
    */
   network: {
-    /** Cap on Delaunay edge length, in pixels. Longer candidates are dropped. */
+    /** Cap on Delaunay edge length, in cells. Longer candidates are dropped. */
     maxEdgeLength: number;
     /** Fraction of non-tree Delaunay edges kept as loops. 0 = tree, 1 = full net. */
     loopRate: number;
     /**
-     * Per-edge brush half-width range, in pixels. 0 = 1px wide path, 1 =
-     * 3px, 2 = 5px. Each edge picks its own width uniformly from this range.
+     * Per-edge brush half-width range, in cells. 0 = 1 cell wide path, 1 =
+     * 3 cells, 2 = 5 cells. Each edge picks its own width uniformly from this range.
      */
     widthMin: number;
     widthMax: number;
@@ -242,11 +242,11 @@ export interface GenParams {
     branchLengthVarianceRange: number;
   };
 
-  /** Per-pixel boundary kind (STONE / FOREST / GRASS_MOUND) selectors. */
+  /** Per-cell boundary kind (STONE / FOREST / GRASS_MOUND) selectors. */
   kinds: {
-    /** Per-pixel detail noise frequency. */
+    /** Per-cell detail noise frequency. */
     detailFrequency: number;
-    /** Closed pixel: altitude > X → STONE. */
+    /** Closed cell: altitude > X → STONE. */
     stoneAltitudeStrict: number;
     /** altitude > X AND ruggedness > Y → STONE. */
     stoneAltitudeRugged: number;
@@ -298,19 +298,19 @@ export interface GenParams {
     pocketAreaMin: number;
     /** Everything else with degree ≤ 1 → "deadend". */
 
-    /** Disk radius (atlas pixels) carved around each qualifying network
+    /** Disk radius (atlas cells) carved around each qualifying network
      *  junction to form a crossroads sector. */
     crossroadsDiskRadius: number;
     /** Minimum junction degree that carves a crossroads disk. */
     crossroadsDegreeMin: number;
-    /** Wilderness blobs smaller than this (pixels) get merged into their
+    /** Wilderness blobs smaller than this (cells) get merged into their
      *  largest neighbour during phase 4b. */
     wildernessMergeThreshold: number;
-    /** Search radius (atlas pixels) for the proximity-based wilderness
+    /** Search radius (atlas cells) for the proximity-based wilderness
      *  merge fallback, when a small blob has no direct adjacency. */
     mergeProximityRadius: number;
 
-    /** Per-role minimum area (atlas pixels) below which nameZone
+    /** Per-role minimum area (atlas cells) below which nameZone
      *  declines to name a sector (reads as too small/insignificant). */
     namedAreaMinArena: number;
     namedAreaMinPlaza: number;
@@ -361,7 +361,7 @@ export interface GenParams {
  *   - 7 chambers per tile with organic noise-derived silhouettes,
  *     connected by curving variable-width corridors.
  *   - noise field is now used purely as a *cost surface* (chamber growth
- *     prefers low-noise pixels). The threshold knob in `noise` is
+ *     prefers low-noise cells). The threshold knob in `noise` is
  *     vestigial under this approach but kept so other consumers
  *     (boundary kinds, materials) still have their hooks.
  *   - vegetation as the default closed kind (low vegetationMoisture cutoff)
@@ -380,7 +380,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   river: {
     sourceAltitude: 0.55,  // more sources → more rivers
     minSeparation: 2,
-    widthPixels: 2,
+    widthCells: 2,
   },
   noise: {
     baseFrequency: 0.022,                // smaller features → noise sculpts chamber walls
@@ -390,7 +390,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     octaves: 5,
   },
   terrain: {
-    // Closed pixels stay at floor height by default — visual contrast is
+    // Closed cells stay at floor height by default — visual contrast is
     // carried by darker materials + tree entities, not by a vertical step.
     // All three wall kinds (STONE, FOREST, GRASS_MOUND) rise by this
     // amount. Must exceed runtime stepHeight (0.75u) so players can't
@@ -587,7 +587,7 @@ export const PRESETS: Record<string, { name: string; description: string; params
     params: {
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.40, biasAltitude: -0.30 },
-      river: { sourceAltitude: 0.40, minSeparation: 1, widthPixels: 3 },
+      river: { sourceAltitude: 0.40, minSeparation: 1, widthCells: 3 },
       noise: {
         baseFrequency: 0.020,
         extraFrequencyPerRuggedness: 0.006,

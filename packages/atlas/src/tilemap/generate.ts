@@ -12,10 +12,10 @@
  *                         chambers[]
  *   5. portalPlacement  — bezier-carve gate→nearest-junction → portals[],
  *                         appends to corridors[], re-labels rooms/roomOf
- *   6. boundaryKinds    — per-pixel kind tagging
+ *   6. boundaryKinds    — per-cell kind tagging
  *   7. rivers           — overlay water onto openMask + kindOf
  *   8. terrain          — heightmap from openMask + kindOf
- *   9. materials        — per-pixel material id
+ *   9. materials        — per-cell material id
  *
  * Each stage is a `Transformer<TIn, TOut, TParams>` (@voxim/levelgen).
  * `pipe()` composes them with type-aware narrowing: reordering or
@@ -51,7 +51,7 @@ import type { ContentService } from "@voxim/content";
 export interface GenerateTileOptions {
   /** Side length of the playable tile in world units. Default 512. */
   tileSize?: number;
-  /** Sample-grid resolution. Default 128 → 4 world units per pixel. */
+  /** Sample-grid resolution. Default 128 → 4 world units per cell. */
   gridSize?: number;
   /** Worldgen tuning. Defaults from DEFAULT_GEN_PARAMS. */
   params?: GenParams;
@@ -127,7 +127,7 @@ export function generateTile(
  * above) and the atlas inspector's "final" tile view must run through it,
  * so the inspector never shows bytes production wouldn't ship.
  *
- * T-214: rasterize() turns the LevelDef into the per-pixel buffers
+ * T-214: rasterize() turns the LevelDef into the per-cell buffers
  * tile-server consumes AND runs the pipeline's invariant verifier —
  * skipping this call (as the inspector's hand-rebuilt path used to)
  * silently skips that check.

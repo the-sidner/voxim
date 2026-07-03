@@ -85,7 +85,7 @@ export interface AtlasTerrainResult {
    * merged them.  Each carries a stable id and a world-unit centroid.
    * Used by `poi_placer.ts` as anchor points for room/mob POIs.
    */
-  chambers: Array<{ id: number; cx: number; cy: number; pixelCount: number }>;
+  chambers: Array<{ id: number; cx: number; cy: number; cellCount: number }>;
   /**
    * Per-voxel zone id at TILE_SIZE² resolution (T-211). 0xFFFF for
    * un-zoned voxels. Tile-server uses this for the "You are in:" HUD.
@@ -323,7 +323,7 @@ export async function loadTerrainFromAtlas(
     world,
     gatePositions,
     chambers: tile.chambers.map((c) => ({
-      id: c.id, cx: c.cx, cy: c.cy, pixelCount: c.pixelCount,
+      id: c.id, cx: c.cx, cy: c.cy, cellCount: c.cellCount,
     })),
     zoneBuffer,
     level:     tile.level,

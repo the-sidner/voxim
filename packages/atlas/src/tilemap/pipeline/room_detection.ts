@@ -2,10 +2,10 @@
  * Stage 2 — connected components of openMask → Room[].
  *
  * Iterative flood-fill (4-connected). Each connected blob becomes one
- * Room with a centroid + pixel count. `roomOf` maps every pixel to its
- * room id, or 0xFFFF for closed pixels.
+ * Room with a centroid + cell count. `roomOf` maps every cell to its
+ * room id, or 0xFFFF for closed cells.
  *
- * The pixel set is intentionally NOT stored on the Room object — recover
+ * The cell set is intentionally NOT stored on the Room object — recover
  * it from `roomOf` when needed. Keeps Rooms small for the wire format.
  */
 
@@ -16,7 +16,7 @@ export const ROOM_ID_NONE = 0xFFFF;
 export interface RoomDetectionInput {
   openMask: Uint8Array;
   gridSize: number;
-  /** World units per pixel. Used to convert centroids to world coords. */
+  /** World units per cell. Used to convert centroids to world coords. */
   px2world: number;
 }
 
@@ -31,7 +31,7 @@ export function runRoomDetection(input: RoomDetectionInput): RoomDetectionOutput
   const roomOf = new Uint16Array(N).fill(ROOM_ID_NONE);
   const rooms: Room[] = [];
 
-  // Per-room centroid accumulators (sum of pixel x/y, count).
+  // Per-room centroid accumulators (sum of cell x/y, count).
   const sumX: number[] = [];
   const sumY: number[] = [];
   const counts: number[] = [];
@@ -76,7 +76,7 @@ export function runRoomDetection(input: RoomDetectionInput): RoomDetectionOutput
       id,
       cx: 0, // filled below
       cy: 0,
-      pixelCount: count,
+      cellCount: count,
     });
   }
 

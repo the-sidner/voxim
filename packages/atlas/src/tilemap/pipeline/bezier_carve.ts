@@ -15,7 +15,7 @@
  * through the endpoints.
  *
  * Each segment is sampled at `samplesPerSegment` parameter values; at
- * each sample a square brush of `halfWidth` pixels is stamped into
+ * each sample a square brush of `halfWidth` cells is stamped into
  * `openMask`. Returns the `Corridor` record so the caller can persist
  * the waypoints on TileInit (the inspector renders centerlines from
  * these by replaying the same Catmull-Rom math).
@@ -24,9 +24,9 @@
 import type { Corridor } from "../types.ts";
 
 export interface CarveSplineInput {
-  /** ≥ 2 waypoints (endpoints + interior). Pixel coords; sub-pixel allowed. */
+  /** ≥ 2 waypoints (endpoints + interior). Cell coords; sub-cell allowed. */
   waypoints: Array<{ x: number; y: number }>;
-  /** Brush half-width (Chebyshev). 0 = 1px wide, 1 = 3px, … */
+  /** Brush half-width (Chebyshev). 0 = 1 cell wide, 1 = 3 cells, … */
   halfWidth: number;
   /** Samples per spline segment. */
   samplesPerSegment: number;
@@ -77,7 +77,7 @@ export function carveSpline(input: CarveSplineInput): Corridor {
   return { kind, waypoints: waypoints.slice(), halfWidth };
 }
 
-/** Open every pixel within Chebyshev `halfWidth` of (x, y). */
+/** Open every cell within Chebyshev `halfWidth` of (x, y). */
 function stampBrush(openMask: Uint8Array, gridSize: number, x: number, y: number, halfWidth: number): void {
   const x0 = Math.max(0, x - halfWidth);
   const x1 = Math.min(gridSize - 1, x + halfWidth);
@@ -140,7 +140,7 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-export function clampPx(v: number, gridSize: number): number {
+export function clampCell(v: number, gridSize: number): number {
   return v < 0 ? 0 : v >= gridSize ? gridSize - 1 : v;
 }
 

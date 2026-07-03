@@ -19,7 +19,7 @@ import type { GenParams } from "../../genparams.ts";
 import type { JunctionsState, NoiseState } from "./state.ts";
 
 export interface Junction {
-  /** Pixel coords. */
+  /** Cell coords. */
   x: number;
   y: number;
 }
@@ -46,8 +46,8 @@ export const junctions: Transformer<NoiseState, JunctionsState, GenParams["room"
   };
 
 /**
- * Bridson Poisson-disk sampling on a pixel grid. Returns up to `target`
- * points each at least `minSeparation` pixels from any other.
+ * Bridson Poisson-disk sampling on a cell grid. Returns up to `target`
+ * points each at least `minSeparation` cells from any other.
  */
 function poissonSeeds(
   gridSize: number, target: number, minSeparation: number, rng: () => number,
