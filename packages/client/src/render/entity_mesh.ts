@@ -721,7 +721,9 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
   }
 
   // Record position snapshot for interpolation (only when position actually changed).
-  // Store the offset-adjusted y so interpolation also renders at the correct height.
+  // world(x,y,z) → three(x,height,y) swap happens here (matches the instant-set
+  // path above and renderer.ts's predicted-position path) — store the
+  // offset-adjusted y so interpolation also renders at the correct height.
   if (pos) {
     mesh.posBuffer.push({
       t: performance.now(),
