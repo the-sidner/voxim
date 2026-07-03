@@ -1833,19 +1833,10 @@ export class TileServer {
     }
 
     // Subsequent ticks will send deltas via the normal AoI loop.
-    // Background: accept the two further client-opened bidi streams in open order —
-    // the content stream (2nd) then the command stream (3rd, T-273) — and serve
-    // each for the lifetime of the session. The client opens them in this order
-    // (tile_connection.ts connect()), so a single reader hands them out in turn.
+    // Background: accept the one further client-opened bidi stream — the
+    // command stream (T-273) — and serve it for the lifetime of the session.
     const bidiReader = (session.incomingBidirectionalStreams as ReadableStream).getReader();
     (async () => {
-      const content = await bidiReader.read();
-      if (!content.done && content.value) {
-        clientSession.serveContent(
-          content.value as { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> },
-          this.content,
-        ).catch(() => {});
-      }
       const command = await bidiReader.read();
       if (!command.done && command.value) {
         clientSession.serveCommands(

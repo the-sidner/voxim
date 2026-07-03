@@ -1,9 +1,8 @@
 /// <reference path="./types/webtransport.d.ts" />
 import type { EntityId } from "@voxim/engine";
 import type { CommandPayload } from "@voxim/protocol";
-import { decodeDatagram, commandDatagramCodec, worldSnapshotCodec, contentRequestCodec, contentResponseCodec, makeFrameReader } from "@voxim/protocol";
-import type { WorldSnapshot, ContentRequest, ContentResponse } from "@voxim/protocol";
-import type { ContentService } from "@voxim/content";
+import { decodeDatagram, commandDatagramCodec, worldSnapshotCodec, makeFrameReader } from "@voxim/protocol";
+import type { WorldSnapshot } from "@voxim/protocol";
 import { InputRingBuffer } from "./input_buffer.ts";
 
 /**
@@ -14,7 +13,6 @@ import { InputRingBuffer } from "./input_buffer.ts";
  *   2. serveCommands()  — reads the client-opened command bidi stream into commandQueue (T-273)
  *   3. sendState()      — called by tick loop, reliable unidirectional stream
  *   4. sendSnapshot()   — called by tick loop, unreliable datagram
- *   5. serveContent()   — serves the client-opened content bidi stream
  */
 export class ClientSession {
   readonly playerId: EntityId;
@@ -162,67 +160,6 @@ export class ClientSession {
       // Connection reset or closed
     } finally {
       reader.releaseLock();
-    }
-  }
-
-  /**
-   * Content stream handler — reads ContentRequests from the client-opened
-   * bidi stream and responds with model/material definitions from the store.
-   *
-   * Long-lived: runs for the lifetime of the session.
-   */
-  async serveContent(
-    stream: { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> },
-    content: ContentService,
-  ): Promise<void> {
-    const reader = (stream.readable as ReadableStream<Uint8Array>).getReader();
-    const writer = (stream.writable as WritableStream<Uint8Array>).getWriter();
-    const { readFrame } = makeFrameReader(reader);
-
-    async function readRequest(): Promise<ContentRequest | null> {
-      const frame = await readFrame();
-      if (!frame) return null;
-      try {
-        return contentRequestCodec.decode(frame);
-      } catch {
-        return null;
-      }
-    }
-
-    try {
-      while (!this._closed) {
-        const req = await readRequest();
-        if (!req) break;
-
-        let resp: ContentResponse;
-
-        if (req.type === "model_req") {
-          const def = content.models.get(req.modelId);
-          resp = def
-            ? { type: "model_def", modelId: req.modelId, version: def.version, def }
-            : { type: "not_found", id: req.modelId };
-        } else if (req.type === "material_req") {
-          const def = content.getMaterialById(req.materialId);
-          resp = def
-            ? { type: "material_def", materialId: req.materialId, def }
-            : { type: "not_found", id: String(req.materialId) };
-        } else {
-          // skeleton_req
-          const def = content.skeletons.get(req.skeletonId);
-          resp = def
-            ? { type: "skeleton_def", skeletonId: req.skeletonId, def }
-            : { type: "not_found", id: req.skeletonId };
-        }
-
-        try {
-          await writer.write(contentResponseCodec.encode(resp));
-        } catch {
-          break;
-        }
-      }
-    } finally {
-      reader.releaseLock();
-      writer.releaseLock();
     }
   }
 

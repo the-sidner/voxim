@@ -84,15 +84,6 @@ export type {
 } from "./src/world_snapshot.ts";
 export { worldSnapshotCodec } from "./src/world_snapshot.ts";
 
-export type {
-  ModelDefinition,
-  MaterialDef,
-  SkeletonDef,
-  ContentRequest,
-  ContentResponse,
-} from "./src/content.ts";
-export { contentRequestCodec, contentResponseCodec } from "./src/content.ts";
-
 export { ComponentType, COMPONENT_TYPE_TO_NAME } from "./src/component_types.ts";
 export { BoundaryKind } from "./src/boundary_kind.ts";
 export { CODEC_BY_WIREID, type WireDecoder } from "./src/codec_registry.ts";

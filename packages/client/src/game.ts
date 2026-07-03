@@ -300,7 +300,7 @@ export class VoximGame {
 
     // Step 4: renderer, content cache, HUD, input — push any world state that
     // arrived during connect() into the renderer now that it exists.
-    this.content = new ContentCache(this.connection);
+    this.content = new ContentCache();
     // Decode the bootstrap blob into a full ContentService (T-177). Receiving
     // this from the same tile-server we just connected to guarantees the
     // client and server agree on content version — no drift, no mismatched
@@ -837,7 +837,6 @@ export class VoximGame {
     const conn = new TileConnection();
     this._wireConnectionHandlers(conn);
     this.connection = conn;
-    if (this.content) this.content.attachConnection(conn);
 
     try {
       const assignedId = await conn.connect(
