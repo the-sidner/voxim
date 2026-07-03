@@ -385,18 +385,6 @@ export class ClientWorld {
     return this.chunks.get(`${chunkX},${chunkY}`)?.materialGrid?.data ?? null;
   }
 
-  /** T-311 P3 render-field grid bundles for a chunk (null until streamed). The
-   *  scatter renderer + future moss/wetness consumers sample their planes. */
-  getVegFieldGrid(chunkX: number, chunkY: number): VegFieldGridData | null {
-    return this.chunks.get(`${chunkX},${chunkY}`)?.vegFieldGrid ?? null;
-  }
-  getSurfaceStateGrid(chunkX: number, chunkY: number): SurfaceStateGridData | null {
-    return this.chunks.get(`${chunkX},${chunkY}`)?.surfaceStateGrid ?? null;
-  }
-  getWaterGrid(chunkX: number, chunkY: number): WaterGridData | null {
-    return this.chunks.get(`${chunkX},${chunkY}`)?.waterGrid ?? null;
-  }
-
   /**
    * Per-cell impassability check. Returns true (open) for unloaded chunks
    * so out-of-tile coordinates don't accidentally block — same convention
