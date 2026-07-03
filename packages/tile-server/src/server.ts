@@ -671,6 +671,17 @@ export class TileServer {
         }
       }
     }
+    // T-311 P5c: every NpcTemplate.dissolveProfileId must resolve — the
+    // shed_dissolve DeathHook and the client bake path both assume it does.
+    for (const tmpl of content.npcTemplates.values()) {
+      if (tmpl.dissolveProfileId && !content.dissolveProfiles.get(tmpl.dissolveProfileId)) {
+        throw new Error(
+          `NpcTemplate "${tmpl.id}" references dissolveProfileId "${tmpl.dissolveProfileId}" ` +
+          `but no such DissolveProfileDef is loaded. ` +
+          `Loaded: [${[...content.dissolveProfiles.ids()].join(", ")}]`,
+        );
+      }
+    }
 
     const actionDispatcher = new ActionDispatcher(
       content, actionGates, actionEffects,

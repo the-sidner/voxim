@@ -1323,6 +1323,47 @@ export interface DecalDef {
   fullIntensityAt?: number;
 }
 
+/**
+ * DissolveProfileDef (T-311 P5c, grammar G6 + I3b) — how a corrupted
+ * creature frays and sheds voxels as it dissolves on death. Referenced by
+ * `NpcTemplate.dissolveProfileId`, boot-cross-checked.
+ *
+ * Rendering is fully in-shader: static per-voxel attributes (which voxels
+ * are "loose", their drift seed) are baked once at model build from each
+ * voxel's bone-relative extremity distance, gated by `frayBandWidth`; the
+ * ONE networked scalar (`AnimationStateData.dissolutionPhase`) plus these
+ * uniforms drive a per-vertex position offset in the vertex shader. NO
+ * per-frame geometry rewrite, NO CPU re-bake.
+ *
+ * `maxSeparatedVoxels` / `maxSeparationDistance` are the I3b hard caps —
+ * content fields (not client constants) so the Studio devtool can display
+ * them and an author can tune per-archetype without a code change. Drifting
+ * voxels are individually outlined by the Sobel/SSAO EdgePass, so these caps
+ * are the whole cost-control story; see VISUAL_DATAMODEL_PLAN.md §I3b.
+ */
+export interface DissolveProfileDef {
+  id: string;
+  /** Fraction (0..1) of the model's extent, measured from each voxel's bone
+   *  outward to the skeleton's root, counted as "loose" (frayed). 0 = only
+   *  the very extremities (fingertips/toes) fray; 1 = the whole body. */
+  frayBandWidth: number;
+  /** Drift speed in world units/second at dissolutionPhase=1 (scales
+   *  linearly with phase below that). */
+  driftSpeed: number;
+  /** I3b hard cap: at most this many voxels (by loose01 descending) ever
+   *  get a nonzero drift offset, regardless of model voxel count. */
+  maxSeparatedVoxels: number;
+  /** I3b hard cap: no drifting voxel may translate further than this many
+   *  world units from its rest position. */
+  maxSeparationDistance: number;
+  /** Ticks the death-dissolve takes end to end — seeds the `dissolve_timer`
+   *  Resource's max (and starting value) on the shed_dissolve DeathHook. */
+  durationTicks: number;
+  /** Easing applied to the raw linear timer fraction before it becomes
+   *  dissolutionPhase. Default "linear" when absent. */
+  phaseCurve?: "linear" | "smoothstep";
+}
+
 // ---- biomes ----
 
 /**
@@ -1489,6 +1530,16 @@ export interface NpcTemplate {
    * must resolve in `ContentService.triggers` (boot-cross-checked).
    */
   triggers?: string[];
+  /**
+   * Corrupted-creature dissolve/fray profile (T-311 P5c, grammar G6) —
+   * `data/dissolve_profiles/{id}.json`. Absent = this archetype never frays
+   * or dissolves on death (a corpse just vanishes, the pre-existing
+   * behaviour). Must resolve in `ContentService.dissolveProfiles`
+   * (boot-cross-checked). Read by the `shed_dissolve` DeathHook to seed the
+   * `dissolve_timer` Resource, and by the client bake path to derive
+   * fray/coreness per voxel.
+   */
+  dissolveProfileId?: string;
 }
 
 // ---- resource nodes ----

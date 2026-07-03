@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, Palette } from "./types.ts";
+  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, Palette } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
@@ -54,7 +54,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
-    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, dissolveProfilesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -79,6 +79,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "atmospheres"),
     readJsonDirOptional(dataDir, "water_styles"),
     readJsonDirOptional(dataDir, "decals"),
+    readJsonDirOptional(dataDir, "dissolve_profiles"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -267,6 +268,10 @@ async function loadContentStoreInternal(
   for (const raw of decalsRaw as DecalDef[]) {
     validateDecalDef(raw);
     store.registerDecal(raw);
+  }
+  for (const raw of dissolveProfilesRaw as DissolveProfileDef[]) {
+    validateDissolveProfileDef(raw);
+    store.registerDissolveProfile(raw);
   }
   for (const s of store.scatter.values()) {
     if (!store.procModels.get(s.procModel)) {
@@ -850,6 +855,33 @@ export function validateDecalDef(def: DecalDef): void {
   if (typeof def.ttlSeconds !== "number" || def.ttlSeconds <= 0
     || typeof def.fadeSeconds !== "number" || def.fadeSeconds < 0) {
     throw new Error(`Decal '${def.id}': 'ttlSeconds' must be > 0 and 'fadeSeconds' ≥ 0`);
+  }
+}
+
+/** Shape-validate one DissolveProfileDef (T-311 P5c). `maxSeparatedVoxels` /
+ *  `maxSeparationDistance` are the I3b hard caps — enforced positive so a
+ *  zeroed-out profile can't silently disable the cost guard. */
+export function validateDissolveProfileDef(def: DissolveProfileDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`DissolveProfileDef: missing or empty id`);
+  }
+  if (typeof def.frayBandWidth !== "number" || def.frayBandWidth < 0 || def.frayBandWidth > 1) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'frayBandWidth' must be in [0,1]`);
+  }
+  if (typeof def.driftSpeed !== "number" || def.driftSpeed < 0) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'driftSpeed' must be ≥ 0`);
+  }
+  if (typeof def.maxSeparatedVoxels !== "number" || def.maxSeparatedVoxels <= 0) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'maxSeparatedVoxels' must be > 0 (I3b hard cap)`);
+  }
+  if (typeof def.maxSeparationDistance !== "number" || def.maxSeparationDistance <= 0) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'maxSeparationDistance' must be > 0 (I3b hard cap)`);
+  }
+  if (typeof def.durationTicks !== "number" || def.durationTicks <= 0) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'durationTicks' must be > 0`);
+  }
+  if (def.phaseCurve !== undefined && def.phaseCurve !== "linear" && def.phaseCurve !== "smoothstep") {
+    throw new Error(`DissolveProfileDef '${def.id}': 'phaseCurve' must be 'linear' | 'smoothstep'`);
   }
 }
 

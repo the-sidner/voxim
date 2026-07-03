@@ -44,6 +44,7 @@ import type {
   AtmosphereDef,
   WaterStyleDef,
   DecalDef,
+  DissolveProfileDef,
   ZoneDef,
   PoiDef,
   PoiRole,
@@ -157,6 +158,15 @@ export interface ContentService {
    * from wire GameEvents and decays them — never saved, never networked.
    */
   readonly decals: ContentRegistryReadonly<DecalDef>;
+
+  /**
+   * Corrupted-creature dissolve/fray profiles keyed by id (T-311 P5c).
+   * Loaded from `data/dissolve_profiles/*.json`; referenced by
+   * `NpcTemplate.dissolveProfileId`. Drives the shed_dissolve DeathHook's
+   * `dissolve_timer` seeding and the client's fray/coreness bake + in-shader
+   * drift. See VISUAL_DATAMODEL_PLAN.md §I3b.
+   */
+  readonly dissolveProfiles: ContentRegistryReadonly<DissolveProfileDef>;
 
   /**
    * Triggers keyed by id (T-259). Reactive couplings loaded from
@@ -320,6 +330,10 @@ export class StaticContentStore implements ContentService {
     kind: "decal",
     idOf: (d) => d.id,
   });
+  public readonly dissolveProfiles = new ContentRegistry<DissolveProfileDef>({
+    kind: "dissolveProfile",
+    idOf: (d) => d.id,
+  });
   public readonly triggers = new ContentRegistry<TriggerDef>({
     kind: "trigger",
     idOf: (t) => t.id,
@@ -466,6 +480,10 @@ export class StaticContentStore implements ContentService {
 
   registerDecal(def: DecalDef): void {
     this.decals.register(def);
+  }
+
+  registerDissolveProfile(def: DissolveProfileDef): void {
+    this.dissolveProfiles.register(def);
   }
 
   registerTrigger(def: TriggerDef): void {

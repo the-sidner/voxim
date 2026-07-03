@@ -1,0 +1,9 @@
+{
+  "id": "drowner_rot",
+  "frayBandWidth": 0.35,
+  "driftSpeed": 0.6,
+  "maxSeparatedVoxels": 48,
+  "maxSeparationDistance": 1.4,
+  "durationTicks": 60,
+  "phaseCurve": "smoothstep"
+}
