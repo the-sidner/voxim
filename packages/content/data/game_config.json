@@ -244,6 +244,10 @@
     }
   },
   "camera": {
+    "backDistance": 23.6,
+    "heightAbove": 35.4,
+    "lookAtBias": 1.0,
+    "fovDeg": 34,
     "followHalfLife": 0.18,
     "maxTurnRateDeg": 180,
     "deadzoneOuterDeg": 20,

@@ -2,16 +2,20 @@
 /**
  * CameraRig — mouse-facing third-person camera (T-317).
  *
- * Geometry: BACK_DISTANCE behind the player (along yaw), HEIGHT_ABOVE above
- * the ground, looking at the player's chest. Yaw is DYNAMIC: it chases the
- * local player's mouse-driven facing so a committed cursor flick swings the
- * camera naturally behind the new heading, while micro-aiming inside a
- * deadzone leaves the world dead still.
+ * Geometry: `backDistance` behind the player (along yaw), `heightAbove` above
+ * the ground, looking at a point `lookAtBias` metres above the player root,
+ * with a `fovDeg` telephoto lens. All four are game_config `camera.*` knobs so
+ * the framing (top-down tactical vs. a lower, closer over-the-shoulder feel)
+ * is pure content tuning. The gaze angle below horizontal is geometric:
+ * atan2(heightAbove − lookAtBias, backDistance) — ≈55° at the shipped
+ * defaults, where a ~1.8m player occupies ~7% of vertical view and the narrow
+ * telephoto FOV keeps the horizon out of frame even on rising terrain
+ * (T-310 phase F: pushed-back long-lens framing flattens perspective into a
+ * more cinematic look at the same on-screen player size).
  *
- * The downward gaze angle is geometric (atan2(HEIGHT - LOOK_AT_BIAS, BACK)
- * ≈ 54° below horizontal). Combined with a narrow FOV that keeps the
- * horizon out of frame even on rising terrain, this gives an "overview"
- * tactical feel while still rendering with depth.
+ * Yaw is DYNAMIC: it chases the local player's mouse-driven facing so a
+ * committed cursor flick swings the camera naturally behind the new heading,
+ * while micro-aiming inside a deadzone leaves the world dead still.
  *
  * Yaw 0 means the camera looks toward +X in game coords (= Three.js +x).
  *
@@ -22,7 +26,7 @@
  * is load-bearing for stability: recomputing facing from the static cursor
  * pixel every frame, or making facing screen-relative, both create a
  * positive feedback loop where the yaw error never shrinks and the world
- * spins forever (see prompts/T-317 analysis). So facing is never smoothed or
+ * spins forever (see the T-317 analysis). So facing is never smoothed or
  * touched by this controller — the controller only reads it as a target.
  *
  * ── Deadzone + hysteresis + damped spring + max rate ──────────────────────
@@ -31,28 +35,26 @@
  * hysteresis band prevents boundary twitch when the cursor hovers near the
  * engage angle. While engaged, yaw moves toward the target with a
  * framerate-corrected critically-damped step, capped at a max angular rate
- * so a 150° flick swings smoothly rather than snapping. All four knobs live
- * in game_config `camera.*` (ContentStore doctrine — no hardcoded feel).
+ * so a 150° flick swings smoothly rather than snapping. All knobs live in
+ * game_config `camera.*` (ContentStore doctrine — no hardcoded feel).
  */
 import * as THREE from "three";
 
-// Geometry tuned so a ~1.8m player occupies ~7% of vertical view.
-// Slant distance ≈ √(BACK² + (HEIGHT-LOOK_AT_BIAS)²) ≈ 35m.
-// Gaze angle below horizontal ≈ atan2(HEIGHT-LOOK_AT_BIAS, BACK) ≈ 55°.
-// Telephoto framing (T-310, phase F): a narrower FOV with the camera pushed back
-// proportionally (×1.18) keeps the player the same on-screen size and the same
-// ~55° gaze, but flattens perspective into a more cinematic, "longer-lens" look.
-const BACK_DISTANCE = 23.6;
-const HEIGHT_ABOVE  = 35.4;
-const LOOK_AT_BIAS  = 1.0;   // look-at point this many metres above player root
-const FOV_DEG       = 34;    // narrower telephoto — flatter, more cinematic depth
 // Boot value only: the yaw before the first facing target exists (join screen,
 // pre-spawn). Once setFacingTarget() is fed a real facing, the controller owns
 // the yaw entirely — this is never a resting orientation the camera returns to.
-const DEFAULT_YAW   = Math.PI / 4;
+const DEFAULT_YAW = Math.PI / 4;
 
-/** Tuning for the yaw-follow controller (from game_config `camera.*`). */
-export interface CameraFollowConfig {
+/** Rig geometry + yaw-follow tuning (from game_config `camera.*`). */
+export interface CameraConfig {
+  /** Metres behind the player along the yaw direction. */
+  backDistance: number;
+  /** Metres above the player's ground position. */
+  heightAbove: number;
+  /** Look-at point this many metres above the player root. */
+  lookAtBias: number;
+  /** Vertical field of view in degrees (telephoto ≈34 at defaults). */
+  fovDeg: number;
   /** Seconds for the engaged chase to close half the remaining yaw error. */
   followHalfLife: number;
   /** Ceiling on angular yaw rate while chasing (degrees per second). */
@@ -79,23 +81,34 @@ export class CameraRig {
   private engaged = false;
   private readonly _target = new THREE.Vector3();
 
-  // Feel knobs (radians), defaulted so the rig is usable before config lands;
-  // configure() overwrites them from game_config at boot.
-  private halfLife    = 0.18;
-  private maxTurnRate = Math.PI;         // rad/s
-  private outerRad    = 20 * Math.PI / 180;
-  private innerRad    = 4  * Math.PI / 180;
+  // Rig geometry + feel knobs. Defaults keep the rig usable pre-bootstrap
+  // (identical to the shipped game_config values); configure() overwrites
+  // them from game_config once the content blob arrives.
+  private backDistance = 23.6;
+  private heightAbove  = 35.4;
+  private lookAtBias   = 1.0;
+  private halfLife     = 0.18;
+  private maxTurnRate  = Math.PI;         // rad/s
+  private outerRad     = 20 * Math.PI / 180;
+  private innerRad     = 4  * Math.PI / 180;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(FOV_DEG, aspect, 0.1, 600);
+    this.camera = new THREE.PerspectiveCamera(34, aspect, 0.1, 600);
   }
 
-  /** Install the tuned follow feel from game_config. Idempotent. */
-  configure(cfg: CameraFollowConfig): void {
-    this.halfLife    = cfg.followHalfLife;
-    this.maxTurnRate = cfg.maxTurnRateDeg * Math.PI / 180;
-    this.outerRad    = cfg.deadzoneOuterDeg * Math.PI / 180;
-    this.innerRad    = cfg.deadzoneInnerDeg * Math.PI / 180;
+  /** Install the rig geometry + follow feel from game_config. Idempotent. */
+  configure(cfg: CameraConfig): void {
+    this.backDistance = cfg.backDistance;
+    this.heightAbove  = cfg.heightAbove;
+    this.lookAtBias   = cfg.lookAtBias;
+    this.halfLife     = cfg.followHalfLife;
+    this.maxTurnRate  = cfg.maxTurnRateDeg * Math.PI / 180;
+    this.outerRad     = cfg.deadzoneOuterDeg * Math.PI / 180;
+    this.innerRad     = cfg.deadzoneInnerDeg * Math.PI / 180;
+    if (this.camera.fov !== cfg.fovDeg) {
+      this.camera.fov = cfg.fovDeg;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   resize(aspect: number): void {
@@ -116,21 +129,21 @@ export class CameraRig {
 
   /**
    * Advance the yaw controller by `dt` seconds, then reposition the camera so
-   * it sits BACK_DISTANCE behind `targetPos` (along the settled yaw) and
-   * HEIGHT_ABOVE above it, looking at the player's chest.
+   * it sits `backDistance` behind `targetPos` (along the settled yaw) and
+   * `heightAbove` above it, looking at the player's chest.
    */
   update(targetPos: THREE.Vector3, dt: number): void {
     this.stepYaw(dt);
 
-    this._target.set(targetPos.x, targetPos.y + LOOK_AT_BIAS, targetPos.z);
+    this._target.set(targetPos.x, targetPos.y + this.lookAtBias, targetPos.z);
 
     const cosY = Math.cos(this.yaw);
     const sinY = Math.sin(this.yaw);
 
     this.camera.position.set(
-      targetPos.x - cosY * BACK_DISTANCE,
-      targetPos.y + HEIGHT_ABOVE,
-      targetPos.z - sinY * BACK_DISTANCE,
+      targetPos.x - cosY * this.backDistance,
+      targetPos.y + this.heightAbove,
+      targetPos.z - sinY * this.backDistance,
     );
     this.camera.lookAt(this._target);
   }

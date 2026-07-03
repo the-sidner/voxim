@@ -2034,11 +2034,22 @@ export interface GameConfig {
       sandAmount: number;
     };
   };
-  /** Mouse-facing camera yaw-follow feel (T-317). The camera's yaw chases the
-   *  local player's mouse-driven facing with a deadzone + hysteresis + a
-   *  critically-damped, rate-capped spring. Client-side presentation only —
-   *  facing itself stays raw gameplay state (never smoothed by these). */
+  /** Mouse-facing camera (T-317): rig geometry + yaw-follow feel. The camera's
+   *  yaw chases the local player's mouse-driven facing with a deadzone +
+   *  hysteresis + a critically-damped, rate-capped spring. Geometry knobs make
+   *  the framing (top-down tactical vs. lower over-the-shoulder) pure content
+   *  tuning. Client-side presentation only — facing itself stays raw gameplay
+   *  state (never smoothed by these). */
   camera: {
+    /** Metres behind the player along the yaw direction. */
+    backDistance: number;
+    /** Metres above the player's ground position. Gaze angle below horizontal
+     *  is atan2(heightAbove − lookAtBias, backDistance). */
+    heightAbove: number;
+    /** Look-at point this many metres above the player root (the "chest"). */
+    lookAtBias: number;
+    /** Vertical field of view in degrees (narrow telephoto at defaults). */
+    fovDeg: number;
     /** Seconds for the engaged chase to close half the remaining yaw error
      *  (framerate-corrected exponential; smaller = snappier). */
     followHalfLife: number;
