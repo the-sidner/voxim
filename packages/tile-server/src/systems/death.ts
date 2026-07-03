@@ -9,7 +9,12 @@
  *   2. Run all registered `DeathHook`s. Hooks can read entity state before
  *      destruction (loot drops, heir spawning, corpse placement).
  *   3. Publish `TileEvents.EntityDied` on the deferred queue.
- *   4. Destroy the entity.
+ *   4. Destroy the entity — UNLESS some hook returned `{ linger: true }`
+ *      (T-311 P5c: a corpse with a death-dissolve profile stays queryable/
+ *      renderable for its dissolve_timer's duration; that Resource's own
+ *      terminal threshold calls world.destroy once the dissolve finishes).
+ *      EntityDied still publishes on schedule either way — "this entity
+ *      died" and "this entity's world slot is now free" are separate facts.
  */
 import type { World, EntityId, Registry } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
@@ -32,9 +37,17 @@ export interface DeathHookContext {
   readonly cause: DeathCause;
 }
 
+/** A hook that wants the entity to keep existing past this tick's
+ *  DeathSystem pass returns `{ linger: true }` (T-311 P5c — a dissolving
+ *  corpse). Any hook voting linger wins; `undefined`/`void` is the default
+ *  "destroy immediately" behaviour every existing hook already has. */
+export interface DeathHookResult {
+  linger?: boolean;
+}
+
 export interface DeathHook {
   readonly id: string;
-  onDeath(ctx: DeathHookContext): void;
+  onDeath(ctx: DeathHookContext): DeathHookResult | void;
 }
 
 export class DeathSystem implements System, DeathRequestPort {
@@ -68,20 +81,22 @@ export class DeathSystem implements System, DeathRequestPort {
       if (!world.isAlive(p.entityId)) continue;
       seen.add(p.entityId);
 
+      let linger = false;
       for (const hookId of this.hooks.ids()) {
-        this.hooks.get(hookId).onDeath({
+        const result = this.hooks.get(hookId).onDeath({
           world,
           events,
           entityId: p.entityId,
           killerId: p.killerId,
           cause: p.cause,
         });
+        if (result?.linger) linger = true;
       }
 
       events.publish(TileEvents.EntityDied, { entityId: p.entityId, killerId: p.killerId });
-      log.debug("death: entity=%s killer=%s cause=%s", p.entityId, p.killerId ?? "none", p.cause);
+      log.debug("death: entity=%s killer=%s cause=%s linger=%s", p.entityId, p.killerId ?? "none", p.cause, linger);
 
-      world.destroy(p.entityId);
+      if (!linger) world.destroy(p.entityId);
     }
   }
 }

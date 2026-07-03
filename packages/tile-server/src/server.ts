@@ -71,6 +71,7 @@ import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, sp
 import { spawnNpcTableResolver } from "./actions/resolvers/spawn_npc_table.ts";
 import { UnlockStairResolver } from "./actions/resolvers/unlock_stair.ts";
 import { bossArenaUnlockHook } from "./deathhooks/boss_arena_unlock.ts";
+import { createShedDissolveHook } from "./deathhooks/shed_dissolve.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
 import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
@@ -440,6 +441,11 @@ export class TileServer {
     // for why the trigger path is structurally unable to see the boss
     // alive by the time it would fire.
     deathHooks.register(bossArenaUnlockHook);
+    // shed_dissolve (T-311 P5c) — corrupted-creature death-dissolve. Same
+    // DeathHook-not-Trigger reasoning as boss_arena_unlock; additionally
+    // votes {linger: true} for profiled entities so DeathSystem defers
+    // world.destroy to the dissolve_timer Resource's terminal threshold.
+    deathHooks.register(createShedDissolveHook(content));
     const deathSystem = new DeathSystem(deathHooks);
 
     // Job handler registry — NpcAiSystem dispatches each NPC's current Job

@@ -20,6 +20,7 @@ export type {
   AtmosphereDef,
   WaterStyleDef,
   DecalDef,
+  DissolveProfileDef,
   MaterialProperties,
   VoxelNode,
   SubObjectRef,
