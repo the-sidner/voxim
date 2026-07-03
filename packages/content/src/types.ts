@@ -2030,6 +2030,22 @@ export interface GameConfig {
       sandAmount: number;
     };
   };
+  /** Fog-of-war LOS gameplay tuning (T-315 D5) — moved out of
+   *  `@voxim/protocol`'s fog.ts, which now keeps only wire-shape constants
+   *  (grid size, cell packing). Server (FogOfWarSystem) and client
+   *  (FogOfWar.updateLocalLOS) each run their own copy of the same LOS
+   *  raycast against these same numbers — byte-parity between the two is
+   *  load-bearing, same as the shared PRNG/noise primitives (T-315 C5). */
+  fogOfWar: {
+    /** Half-angle of the LOS cone in radians (≈55°, total ≈110°). */
+    losHalfAngleRad: number;
+    /** LOS radius in world units. */
+    losRadius: number;
+    /** Number of rays in the cone — 1 ray per degree gives 110 rays. */
+    losRayCount: number;
+    /** Ray walk step in world units. Smaller = fewer cell skips at oblique angles. */
+    losStep: number;
+  };
 }
 
 // ---- tile layout ----

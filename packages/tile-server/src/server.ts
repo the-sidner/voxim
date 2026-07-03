@@ -853,7 +853,7 @@ export class TileServer {
       new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem, modifierSources),
       new PhysicsSystem(content, modifierSources),
       new NoiseSystem(content),
-      new FogOfWarSystem(),
+      new FogOfWarSystem(content),
       // ActionDispatcher advances every actor's slots (posture, locomotion,
       // primary, reaction) from intent + events. The CSM is gone (T-228).
       actionDispatcher,

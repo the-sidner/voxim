@@ -16,9 +16,13 @@
  *   128 → seen-not-current (rendered at uFogSeen)
  *   255 → currently visible (rendered at uFogVisible)
  *
- * LOS algorithm matches the server's `FogOfWarSystem` exactly (same constants
- * imported from `@voxim/protocol`) so client-side `currentlyVisible` and the
- * server-side `seenEver` line up cleanly.
+ * LOS algorithm matches the server's `FogOfWarSystem` exactly (same
+ * `GameConfig.fogOfWar` tuning, applied via {@link FogOfWar.applyLosConfig}
+ * from the bootstrap blob) so client-side `currentlyVisible` and the
+ * server-side `seenEver` line up cleanly. The 4 LOS numbers below start at
+ * the pre-bootstrap fallback (current shipped values) and are overwritten
+ * once the ContentService arrives — same pattern as EdgePass's
+ * PRE_BOOTSTRAP_GRADE / CanopyFadeMaterial's applyConfig (T-315 D2/D3).
  */
 import * as THREE from "three";
 import {
@@ -26,10 +30,6 @@ import {
   FOG_CELL_SIZE,
   FOG_CELL_COUNT,
   FOG_GRID_BYTES,
-  LOS_HALF_ANGLE_RAD,
-  LOS_RADIUS,
-  LOS_RAY_COUNT,
-  LOS_STEP,
   packFogCell,
 } from "@voxim/protocol";
 
@@ -62,6 +62,13 @@ export class FogOfWar {
   /** Last player pose supplied to {@link updateLocalLOS}.  Drives the minimap marker. */
   lastPlayer: { x: number; y: number; facing: number } | null = null;
 
+  /** LOS gameplay tuning — pre-bootstrap fallback (current shipped values),
+   *  overwritten by {@link applyLosConfig} once GameConfig.fogOfWar arrives. */
+  private losHalfAngleRad = (110 * Math.PI / 180) / 2;
+  private losRadius = 40;
+  private losRayCount = 110;
+  private losStep = 0.5;
+
   constructor() {
     this.texture = new THREE.DataTexture(
       this.textureData,
@@ -75,6 +82,16 @@ export class FogOfWar {
     this.texture.wrapS = THREE.ClampToEdgeWrapping;
     this.texture.wrapT = THREE.ClampToEdgeWrapping;
     this.texture.needsUpdate = true;
+  }
+
+  /** Apply LOS gameplay tuning from `GameConfig.fogOfWar` once the bootstrap
+   *  blob arrives — keeps the local prediction byte-parity with the server's
+   *  `FogOfWarSystem`, which reads the same ContentService values. */
+  applyLosConfig(cfg: { losHalfAngleRad: number; losRadius: number; losRayCount: number; losStep: number }): void {
+    this.losHalfAngleRad = cfg.losHalfAngleRad;
+    this.losRadius = cfg.losRadius;
+    this.losRayCount = cfg.losRayCount;
+    this.losStep = cfg.losStep;
   }
 
   // ─── Server message handlers ─────────────────────────────────────────────
@@ -118,16 +135,16 @@ export class FogOfWar {
     // Player's own cell — keep a small lit halo even when wedged.
     setBit(this.currentlyVisible, packFogCellSafe(px, py));
 
-    const startAngle = facing - LOS_HALF_ANGLE_RAD;
-    const angleStep  = (LOS_HALF_ANGLE_RAD * 2) / (LOS_RAY_COUNT - 1);
+    const startAngle = facing - this.losHalfAngleRad;
+    const angleStep  = (this.losHalfAngleRad * 2) / (this.losRayCount - 1);
 
-    for (let r = 0; r < LOS_RAY_COUNT; r++) {
+    for (let r = 0; r < this.losRayCount; r++) {
       const a = startAngle + r * angleStep;
       const dx = Math.cos(a);
       const dy = Math.sin(a);
 
       let lastIdx = -1;
-      for (let s = LOS_STEP; s <= LOS_RADIUS; s += LOS_STEP) {
+      for (let s = this.losStep; s <= this.losRadius; s += this.losStep) {
         const wx = px + dx * s;
         const wy = py + dy * s;
 

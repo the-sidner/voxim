@@ -320,6 +320,10 @@ export class VoximGame {
       // T-311 Phase 2: every LightDef.flickerCurveId resolves to a registered curve.
       crossCheckFlickerCurves(this.contentService);
       crossCheckDecals(this.contentService);
+      // T-315 D5: LOS gameplay tuning moved from protocol/fog.ts to
+      // GameConfig.fogOfWar — keep the client's predicted LOS byte-parity
+      // with the server's FogOfWarSystem, which reads the same values.
+      this.fog.applyLosConfig(this.contentService.getGameConfig().fogOfWar);
       console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons, ${this.contentService.animationLibraries.size} animation libraries`);
     } else {
       console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");
@@ -852,6 +856,7 @@ export class VoximGame {
         this.contentService = await BootstrapSource.load(blob);
         setContentService(this.contentService);
         this.content?.setBootstrapService(this.contentService);
+        this.fog.applyLosConfig(this.contentService.getGameConfig().fogOfWar);
         console.log(`[Game] content service re-hydrated for new tile`);
       }
       console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);

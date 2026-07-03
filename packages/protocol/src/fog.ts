@@ -1,9 +1,10 @@
 /**
- * Fog-of-war shared constants (T-157).
+ * Fog-of-war wire-shape constants (T-157; LOS tuning moved out T-315 D5).
  *
- * Both the server and the client run the same LOS algorithm with these
- * exact numbers.  Don't redefine them in either codebase — import from
- * here so they can never drift.
+ * These describe the fog *bitmap layout* — cell resolution and index
+ * packing — which both server and client must agree on byte-for-byte.
+ * Don't redefine them in either codebase — import from here so they can
+ * never drift.
  *
  * Resolution choice: 256×256 fog cells covering the 512-unit tile means
  * one fog cell per 2×2 world units.  Walls in this world are 2u thick
@@ -11,6 +12,11 @@
  * see the resolution drop at game speed.  `seenEver` is bit-packed
  * (8 KB per tile per player); reveal events use u16 cell indices
  * (256² = 65536 fits exactly in u16).
+ *
+ * LOS *gameplay* tuning (cone angle, radius, ray count, step) is not
+ * wire-shape — it lives in `GameConfig.fogOfWar` (content), not here.
+ * protocol keeps only the wire-shape constants; ContentStore is the only
+ * data path for tuning (see CLAUDE.md doctrine).
  */
 
 /** Fog cells per tile axis. */
@@ -24,18 +30,6 @@ export const FOG_CELL_COUNT = FOG_GRID_SIZE * FOG_GRID_SIZE; // 65536
 
 /** Bytes for the bit-packed `seenEver` bitmap of one tile. */
 export const FOG_GRID_BYTES = FOG_CELL_COUNT / 8; // 8192
-
-/** Half-angle of the LOS cone in radians (≈55°, total ≈110°). */
-export const LOS_HALF_ANGLE_RAD = (110 * Math.PI / 180) / 2;
-
-/** LOS radius in world units. */
-export const LOS_RADIUS = 40;
-
-/** Number of rays in the cone — 1 ray per degree gives 110 rays. */
-export const LOS_RAY_COUNT = 110;
-
-/** Ray walk step in world units.  Smaller = fewer cell skips at oblique angles. */
-export const LOS_STEP = 0.5;
 
 /** Convert a world coord to a fog cell index along one axis. */
 export function fogCellIndex(world: number): number {

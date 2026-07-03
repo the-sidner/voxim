@@ -9,23 +9,17 @@
  * 2×2 world units) and bit-set in the FogState bitmap.  Cells that flipped
  * 0→1 are pushed onto `revealedThisTick` for the send path to drain.
  *
- * Cost: ~LOS_RAY_COUNT × LOS_RADIUS / LOS_STEP cell touches per player per
- * tick — ≈110 × 80 = 8800 probes/player/tick.  Trivial.
+ * Cost: ~losRayCount × losRadius / losStep cell touches per player per
+ * tick — ≈110 × 80 = 8800 probes/player/tick (default GameConfig.fogOfWar
+ * tuning).  Trivial.
  *
  * This system is intentionally **NPC-blind**: only entities carrying
  * FogState are processed.  Spawner installs FogState on the local player
  * spawn path and nowhere else.  No `isNpc` branches needed.
  */
 import type { World } from "@voxim/engine";
-import {
-  FOG_CELL_SIZE,
-  FOG_GRID_SIZE,
-  LOS_HALF_ANGLE_RAD,
-  LOS_RADIUS,
-  LOS_RAY_COUNT,
-  LOS_STEP,
-  packFogCell,
-} from "@voxim/protocol";
+import { FOG_CELL_SIZE, FOG_GRID_SIZE, packFogCell } from "@voxim/protocol";
+import type { ContentService, GameConfig } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, Facing } from "../components/game.ts";
 import { FogState, fogBitSet } from "../components/fog_state.ts";
@@ -37,8 +31,15 @@ export class FogOfWarSystem implements System {
    *  reach us next tick anyway, but ordering makes intent explicit). */
   readonly dependsOn = ["PhysicsSystem"];
 
+  private readonly los: GameConfig["fogOfWar"];
+
+  constructor(private readonly content: ContentService) {
+    this.los = content.getGameConfig().fogOfWar;
+  }
+
   run(world: World, _events: EventEmitter, _dt: number): void {
     const isOpen = buildOpennessLookup(world);
+    const { losHalfAngleRad, losRadius, losRayCount, losStep } = this.los;
 
     for (const { entityId, position, facing } of world.query(Position, Facing)) {
       const fog = world.get(entityId, FogState);
@@ -47,8 +48,8 @@ export class FogOfWarSystem implements System {
       const px = position.x;
       const py = position.y;
       const angle = facing.angle;
-      const startAngle = angle - LOS_HALF_ANGLE_RAD;
-      const angleStep  = (LOS_HALF_ANGLE_RAD * 2) / (LOS_RAY_COUNT - 1);
+      const startAngle = angle - losHalfAngleRad;
+      const angleStep  = (losHalfAngleRad * 2) / (losRayCount - 1);
 
       const seen = fog.seenEver;
       const revealed = fog.revealedThisTick;
@@ -56,13 +57,13 @@ export class FogOfWarSystem implements System {
       // Player's own fog cell is always lit — keeps a halo when wedged.
       tryReveal(seen, revealed, px, py);
 
-      for (let r = 0; r < LOS_RAY_COUNT; r++) {
+      for (let r = 0; r < losRayCount; r++) {
         const a = startAngle + r * angleStep;
         const dx = Math.cos(a);
         const dy = Math.sin(a);
 
         let lastFogIdx = -1;
-        for (let s = LOS_STEP; s <= LOS_RADIUS; s += LOS_STEP) {
+        for (let s = losStep; s <= losRadius; s += losStep) {
           const wx = px + dx * s;
           const wy = py + dy * s;
 
