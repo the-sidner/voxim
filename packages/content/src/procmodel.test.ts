@@ -21,7 +21,7 @@ Deno.test("T-285a: the oak procmodel + forest_oak scatter load", () => {
   assert(forest, "forest_oak scatter registered");
   assertEquals(forest!.procModel, "oak");
   assertEquals(forest!.kind, 2, "forest boundary kind");
-  assertEquals(forest!.pool, 4);
+  assertEquals(forest!.pool, 6);
 });
 
 Deno.test("T-285a: every scatter references a registered procModel (loader cross-check holds)", () => {
