@@ -29,11 +29,11 @@ import type {
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, GameConfig, TileLayout, Prefab,
   ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, Palette,
+  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 20;
+export const BOOTSTRAP_VERSION = 21;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -61,6 +61,7 @@ interface ContentBootstrapJson {
   waterStyles:         WaterStyleDef[];
   decals:              DecalDef[];
   dissolveProfiles:    DissolveProfileDef[];
+  cliffProfiles:       CliffProfileDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
   palette:             Palette;
@@ -139,6 +140,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     waterStyles:         [...service.waterStyles.values()],
     decals:              [...service.decals.values()],
     dissolveProfiles:    [...service.dissolveProfiles.values()],
+    cliffProfiles:       [...service.cliffProfiles.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
     palette:             service.getPalette(),
@@ -229,6 +231,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const w of body.waterStyles ?? [])    store.registerWaterStyle(w);
   for (const d of body.decals ?? [])         store.registerDecal(d);
   for (const d of body.dissolveProfiles ?? []) store.registerDissolveProfile(d);
+  for (const c of body.cliffProfiles ?? [])  store.registerCliffProfile(c);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
   store.setPalette(body.palette);

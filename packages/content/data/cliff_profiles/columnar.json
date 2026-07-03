@@ -1,0 +1,21 @@
+{
+  "id": "columnar",
+  "wallKind": "stone",
+  "erosionStates": {
+    "crisp": {
+      "tierCount": 3,
+      "jitterAmp": 0.12,
+      "edgeChinkiness": 0.2
+    },
+    "weathered": {
+      "tierCount": 4,
+      "jitterAmp": 0.22,
+      "edgeChinkiness": 0.3
+    },
+    "broken": {
+      "tierCount": 5,
+      "jitterAmp": 0.34,
+      "edgeChinkiness": 0.42
+    }
+  }
+}

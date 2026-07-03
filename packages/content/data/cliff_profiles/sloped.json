@@ -1,0 +1,21 @@
+{
+  "id": "sloped",
+  "wallKind": "stone",
+  "erosionStates": {
+    "crisp": {
+      "tierCount": 2,
+      "jitterAmp": 0.08,
+      "edgeChinkiness": 0.12
+    },
+    "weathered": {
+      "tierCount": 2,
+      "jitterAmp": 0.16,
+      "edgeChinkiness": 0.2
+    },
+    "broken": {
+      "tierCount": 3,
+      "jitterAmp": 0.26,
+      "edgeChinkiness": 0.3
+    }
+  }
+}

@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, Palette } from "./types.ts";
+  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
@@ -54,7 +54,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
-    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, dissolveProfilesRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, dissolveProfilesRaw, cliffProfilesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -80,6 +80,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "water_styles"),
     readJsonDirOptional(dataDir, "decals"),
     readJsonDirOptional(dataDir, "dissolve_profiles"),
+    readJsonDirOptional(dataDir, "cliff_profiles"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -272,6 +273,9 @@ async function loadContentStoreInternal(
   for (const raw of dissolveProfilesRaw as DissolveProfileDef[]) {
     validateDissolveProfileDef(raw);
     store.registerDissolveProfile(raw);
+  }
+  for (const raw of cliffProfilesRaw as CliffProfileDef[]) {
+    store.registerCliffProfile(raw);
   }
   for (const s of store.scatter.values()) {
     if (!store.procModels.get(s.procModel)) {

@@ -302,6 +302,38 @@ export interface LightDef {
   flickerCurveId?: string;
 }
 
+/**
+ * Cliff profile (T-311 Phase 6). Resolved by the atlas `cliffStage` for stone
+ * wilderness-perimeter cells (`CliffGrid.profileId`, a stable alphabetical
+ * id→index — see `bootstrap_codec.ts`'s cliffProfiles encode order) and
+ * dispatched client-side through the `cliffVoxeliser` registry keyed by this
+ * `id`. `erosionStates` replaces the retired client-side CLIFF_MIN/STONE_H/
+ * STACK_MAX/EXPOSE_MIN constants — the same numbers, now per-profile content
+ * instead of one hardcoded stacking heuristic. `tierCount` is the course
+ * count for the per-cell vertical stack (v1 terracing is vertical coursing,
+ * NOT a horizontal multi-ring staircase — see T-318); `jitterAmp` feeds the
+ * stack's warp (`render.relief.warp`'s per-profile analogue) and
+ * `edgeChinkiness` the sub-lip corner-displacement extra.
+ */
+export interface CliffProfileDef {
+  id: string;
+  wallKind: "stone";
+  erosionStates: {
+    crisp: CliffErosionState;
+    weathered: CliffErosionState;
+    broken: CliffErosionState;
+  };
+}
+
+export interface CliffErosionState {
+  /** Course count for the per-cell vertical stack (was STACK_MAX's Math.round(depth/STONE_H)). */
+  tierCount: number;
+  /** Exposed-face + course-seam jitter amplitude (was the terrain-voxeliser's warp input). */
+  jitterAmp: number;
+  /** Sub-lip stone corner-displacement extra, scaled by jitterAmp (was CHINK_DISP_SCALE's fixed constant). */
+  edgeChinkiness: number;
+}
+
 // ---- voxel model ----
 
 export interface VoxelNode {

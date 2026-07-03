@@ -45,6 +45,7 @@ import type {
   WaterStyleDef,
   DecalDef,
   DissolveProfileDef,
+  CliffProfileDef,
   ZoneDef,
   PoiDef,
   PoiRole,
@@ -167,6 +168,15 @@ export interface ContentService {
    * drift. See VISUAL_DATAMODEL_PLAN.md §I3b.
    */
   readonly dissolveProfiles: ContentRegistryReadonly<DissolveProfileDef>;
+
+  /**
+   * Cliff profiles keyed by id (T-311 Phase 6). Loaded from
+   * `data/cliff_profiles/*.json`; the atlas `cliffStage` resolves stone
+   * wilderness-perimeter cells against this table (stable alphabetical
+   * id→index) and the client `cliffVoxeliser` registry dispatches on the
+   * same id string. Authoring a new cliff look is a file drop.
+   */
+  readonly cliffProfiles: ContentRegistryReadonly<CliffProfileDef>;
 
   /**
    * Triggers keyed by id (T-259). Reactive couplings loaded from
@@ -334,6 +344,10 @@ export class StaticContentStore implements ContentService {
     kind: "dissolveProfile",
     idOf: (d) => d.id,
   });
+  public readonly cliffProfiles = new ContentRegistry<CliffProfileDef>({
+    kind: "cliffProfile",
+    idOf: (c) => c.id,
+  });
   public readonly triggers = new ContentRegistry<TriggerDef>({
     kind: "trigger",
     idOf: (t) => t.id,
@@ -484,6 +498,10 @@ export class StaticContentStore implements ContentService {
 
   registerDissolveProfile(def: DissolveProfileDef): void {
     this.dissolveProfiles.register(def);
+  }
+
+  registerCliffProfile(def: CliffProfileDef): void {
+    this.cliffProfiles.register(def);
   }
 
   registerTrigger(def: TriggerDef): void {
