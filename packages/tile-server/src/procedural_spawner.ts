@@ -33,12 +33,12 @@ function buildTerrainHeightLookup(world: World): (wx: number, wy: number) => num
     heightChunks.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap.data);
   }
   return (wx: number, wy: number) => {
-    const cx = Math.floor(wx / CHUNK_SIZE);
-    const cy = Math.floor(wy / CHUNK_SIZE);
-    const data = heightChunks.get(`${cx},${cy}`);
+    const chunkX = Math.floor(wx / CHUNK_SIZE);
+    const chunkY = Math.floor(wy / CHUNK_SIZE);
+    const data = heightChunks.get(`${chunkX},${chunkY}`);
     if (!data) return 4.0;
-    const lx = Math.min(CHUNK_SIZE - 1, Math.floor(wx) - cx * CHUNK_SIZE);
-    const ly = Math.min(CHUNK_SIZE - 1, Math.floor(wy) - cy * CHUNK_SIZE);
+    const lx = Math.min(CHUNK_SIZE - 1, Math.floor(wx) - chunkX * CHUNK_SIZE);
+    const ly = Math.min(CHUNK_SIZE - 1, Math.floor(wy) - chunkY * CHUNK_SIZE);
     return data[lx + ly * CHUNK_SIZE];
   };
 }

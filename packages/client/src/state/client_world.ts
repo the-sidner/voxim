@@ -359,12 +359,12 @@ export class ClientWorld {
    * known bounded artifact (see T-311 follow-up — NaN-sentinel + scatter defer).
    */
   getTerrainHeight(wx: number, wy: number): number {
-    const cx = Math.floor(wx / CHUNK_SIZE);
-    const cy = Math.floor(wy / CHUNK_SIZE);
-    const data = this.chunks.get(`${cx},${cy}`)?.heightmap?.data;
+    const chunkX = Math.floor(wx / CHUNK_SIZE);
+    const chunkY = Math.floor(wy / CHUNK_SIZE);
+    const data = this.chunks.get(`${chunkX},${chunkY}`)?.heightmap?.data;
     if (!data) return 0;
-    const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - cx * CHUNK_SIZE)));
-    const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - cy * CHUNK_SIZE)));
+    const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - chunkX * CHUNK_SIZE)));
+    const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - chunkY * CHUNK_SIZE)));
     return data[lx + ly * CHUNK_SIZE] ?? 0;
   }
 
@@ -391,12 +391,12 @@ export class ClientWorld {
    * the server-side lookup uses.
    */
   isOpen(wx: number, wy: number): boolean {
-    const cx = Math.floor(wx / CHUNK_SIZE);
-    const cy = Math.floor(wy / CHUNK_SIZE);
-    const data = this.chunks.get(`${cx},${cy}`)?.openMask?.data;
+    const chunkX = Math.floor(wx / CHUNK_SIZE);
+    const chunkY = Math.floor(wy / CHUNK_SIZE);
+    const data = this.chunks.get(`${chunkX},${chunkY}`)?.openMask?.data;
     if (!data) return true;
-    const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - cx * CHUNK_SIZE)));
-    const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - cy * CHUNK_SIZE)));
+    const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - chunkX * CHUNK_SIZE)));
+    const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - chunkY * CHUNK_SIZE)));
     return data[lx + ly * CHUNK_SIZE] === 1;
   }
 

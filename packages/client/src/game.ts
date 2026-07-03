@@ -434,8 +434,8 @@ export class VoximGame {
     this.buildGhost = new BuildGhostRenderer(
       this.renderer.scene,
       (x, y) => this.world.getTerrainHeight(x, y),
-      (cx, cy) => this.buildOccupancy.stackHeight(cx, cy),
-      (cx, cy) => this._isCellReachable(cx, cy),
+      (cellX, cellY) => this.buildOccupancy.stackHeight(cellX, cellY),
+      (cellX, cellY) => this._isCellReachable(cellX, cellY),
     );
 
     // Hover outline — subscribes to hoverState; decides outline tint per

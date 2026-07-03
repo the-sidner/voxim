@@ -37,13 +37,13 @@ export function generateRivers(
   seed: number,
   params: GenParams["river"],
 ): void {
-  const cellAt = (cx: number, cy: number): WorldCellRecord | null => {
-    if (cx < 0 || cy < 0 || cx >= width || cy >= height) return null;
-    return cells[cy * width + cx];
+  const cellAt = (cellX: number, cellY: number): WorldCellRecord | null => {
+    if (cellX < 0 || cellY < 0 || cellX >= width || cellY >= height) return null;
+    return cells[cellY * width + cellX];
   };
 
   // ---- pick sources --------------------------------------------------
-  const sources: { cx: number; cy: number }[] = [];
+  const sources: { cellX: number; cellY: number }[] = [];
   // Walk in a stable order biased by a per-cell hash so two cells with
   // similar altitudes don't always pick the upper-left one as source.
   const order = cells
@@ -53,7 +53,7 @@ export function generateRivers(
   for (const { c } of order) {
     if (c.biome.altitude < params.sourceAltitude) continue;
     if (tooCloseToExistingSource(c.cellX, c.cellY, sources, params.minSeparation)) continue;
-    sources.push({ cx: c.cellX, cy: c.cellY });
+    sources.push({ cellX: c.cellX, cellY: c.cellY });
   }
 
   // ---- walk each river downhill -------------------------------------
@@ -63,30 +63,30 @@ export function generateRivers(
 }
 
 function tooCloseToExistingSource(
-  cx: number, cy: number,
-  sources: { cx: number; cy: number }[],
+  cellX: number, cellY: number,
+  sources: { cellX: number; cellY: number }[],
   minSeparation: number,
 ): boolean {
   for (const s of sources) {
-    if (Math.abs(s.cx - cx) <= minSeparation
-     && Math.abs(s.cy - cy) <= minSeparation) return true;
+    if (Math.abs(s.cellX - cellX) <= minSeparation
+     && Math.abs(s.cellY - cellY) <= minSeparation) return true;
   }
   return false;
 }
 
 function walkRiver(
-  src: { cx: number; cy: number },
-  cellAt: (cx: number, cy: number) => WorldCellRecord | null,
+  src: { cellX: number; cellY: number },
+  cellAt: (cellX: number, cellY: number) => WorldCellRecord | null,
   seed: number,
 ): void {
   const visited = new Set<string>();
-  let cur = { cx: src.cx, cy: src.cy };
+  let cur = { cellX: src.cellX, cellY: src.cellY };
   let entry: RiverEndpoint | null = null; // null = source (no entry)
 
   while (true) {
-    const cell = cellAt(cur.cx, cur.cy);
+    const cell = cellAt(cur.cellX, cur.cellY);
     if (!cell) break; // walked off the world
-    const key = `${cur.cx},${cur.cy}`;
+    const key = `${cur.cellX},${cur.cellY}`;
     if (visited.has(key)) break; // cycle guard
     visited.add(key);
 
@@ -130,31 +130,31 @@ function sourceTerminal(cell: WorldCellRecord): RiverEndpoint {
 }
 
 function pickDownhillNeighbour(
-  cur: { cx: number; cy: number },
+  cur: { cellX: number; cellY: number },
   curAlt: number,
-  cellAt: (cx: number, cy: number) => WorldCellRecord | null,
-): { cx: number; cy: number } | null {
-  const neighbours: { cx: number; cy: number; alt: number }[] = [];
+  cellAt: (cellX: number, cellY: number) => WorldCellRecord | null,
+): { cellX: number; cellY: number } | null {
+  const neighbours: { cellX: number; cellY: number; alt: number }[] = [];
   for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
-    const n = cellAt(cur.cx + dx, cur.cy + dy);
+    const n = cellAt(cur.cellX + dx, cur.cellY + dy);
     if (!n) continue;
     if (n.biome.altitude >= curAlt) continue;
-    neighbours.push({ cx: n.cellX, cy: n.cellY, alt: n.biome.altitude });
+    neighbours.push({ cellX: n.cellX, cellY: n.cellY, alt: n.biome.altitude });
   }
   if (neighbours.length === 0) return null;
   // Lowest first.
   neighbours.sort((a, b) => a.alt - b.alt);
-  return { cx: neighbours[0].cx, cy: neighbours[0].cy };
+  return { cellX: neighbours[0].cellX, cellY: neighbours[0].cellY };
 }
 
 /** Edge on `from` shared with `to`, plus the offset along that edge. */
 function exitOnSharedEdge(
-  from: { cx: number; cy: number },
-  to: { cx: number; cy: number },
+  from: { cellX: number; cellY: number },
+  to: { cellX: number; cellY: number },
   seed: number,
 ): RiverEndpoint {
-  const dx = to.cx - from.cx;
-  const dy = to.cy - from.cy;
+  const dx = to.cellX - from.cellX;
+  const dy = to.cellY - from.cellY;
   let edge: Edge;
   if      (dx === 1)  edge = "east";
   else if (dx === -1) edge = "west";
@@ -163,14 +163,14 @@ function exitOnSharedEdge(
 
   // Mirror invariant: the offset is keyed on the canonical lower-coord
   // cell of the shared edge, so both sides hash to the same value.
-  let kx: number, ky: number;
+  let keyX: number, keyY: number;
   switch (edge) {
-    case "east":  kx = from.cx;     ky = from.cy;     break;
-    case "west":  kx = from.cx - 1; ky = from.cy;     break;
-    case "south": kx = from.cx;     ky = from.cy;     break;
-    case "north": kx = from.cx;     ky = from.cy - 1; break;
+    case "east":  keyX = from.cellX;     keyY = from.cellY;     break;
+    case "west":  keyX = from.cellX - 1; keyY = from.cellY;     break;
+    case "south": keyX = from.cellX;     keyY = from.cellY;     break;
+    case "north": keyX = from.cellX;     keyY = from.cellY - 1; break;
   }
-  const h = hash2(kx, ky, seed ^ SEED_RIVER_OFFSET);
+  const h = hash2(keyX, keyY, seed ^ SEED_RIVER_OFFSET);
   const span = TILE_WORLD_SIZE - 2 * GATE_INSET;
   const offset = GATE_INSET + h * span;
   return { edge, offset };
