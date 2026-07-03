@@ -119,6 +119,8 @@ export { snapColorToRamp, hexStrToNum } from "./src/palette_snap.ts";
 export { resolveMaterialVariant, materialVariantIndex } from "./src/material_variant.ts";
 export { evaluateFieldExpr, crossCheckFieldExpr, FIELD_NAMES } from "./src/field_expr.ts";
 export type { FieldExpr, FieldTerm, FieldCurve } from "./src/field_expr.ts";
+export { sunArc, timeOfDay01 } from "./src/sun_arc.ts";
+export type { SunArcParams, SunArcResult } from "./src/sun_arc.ts";
 export { mergeMorphTierParams, morphTierParams } from "./src/procmodel_morph.ts";
 export type { VoxelAtom } from "./src/voxel.ts";
 
