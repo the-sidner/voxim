@@ -100,7 +100,7 @@ Select city locations from world map (flat terrain, near water, resource diversi
 Done when: world generation produces N cities at valid locations with initial state files.
 
 ### T-212 · POI runtime + wilderness-stair unlock
-Effort: L   Status: in-progress   (v1 PoiSystem done -- 03525ae; v2 trinket->stair-unlock + boss/wave/puzzle open)
+Effort: L   Status: in-progress   (v1 PoiSystem done -- 03525ae; registry-dispatch substrate done under T-245; wave + bossfight handlers landed -- see commit below; action/puzzle + trinket->stair-unlock open)
 
 **v1 landed**: PoiTrigger component + PoiSystem with two dispatch paths:
 
@@ -117,12 +117,58 @@ player session is within `triggerRadius` and fires the activity on
 first crossing. `fired` flips to true and stays — non-respawning
 behaviour for v1.
 
+**Registry-dispatch landed under T-245**: `PoiSystem` dispatches every
+activity type through a `Registry<PoiActivityHandler>`
+(`packages/tile-server/src/poi/{mod.ts,activity.ts,activities/*}`) —
+`encounter`/`exploration` real, `bossfight`/`action`/`puzzle` stubbed via
+`makeUnimplementedActivity`, boot-cross-checked against every `PoiDef.type`.
+
+**`wave` landed** (see commit below): inter-wave delay is a `wave_timer`
+Resource (`data/resources/wave_timer.json`) seeded on the `PoiTrigger`
+entity; `spawn_next_wave` (a `ResourceEffect`) dispatches the next
+`activity.waves[]` entry on `cross@0`. Spawned NPCs carry a server-only
+`WaveMember{poiInstanceId}` tag; `PoiSystem`'s per-tick `advanceWaves` pass
+(not a new System — bounded, only runs when a `WaveState` entity exists)
+counts survivors and seeds the timer once a dispatched wave clears. No
+hand-rolled countdown. `PoiActivityContext` gained a `triggerId: EntityId`
+field (the `PoiTrigger` entity itself) so activities can stamp
+per-instance server-only state directly onto it.
+
+**`bossfight` landed** (see commit below): boss prefab spawn at centroid
+tagged `BossArenaLink{poiInstanceId, poiDefId}`. Phase-triggered adds are
+content `TriggerDef`s (`data/triggers/{poiDefId}_phase_add_{i}.json`, one
+per `arenaRules.phaseTriggers` entry, `on: damage_taken` / `as: target` /
+`health_below` gate / `internalCooldownTicks: 6000` so the sub-threshold
+condition doesn't re-fire every tick) granted by a new live-presence
+`TriggerSource` (`boss_arena_link`, derives trigger ids from
+`phaseTriggers.length` — no hardcoded fractions/tables in code) and fired
+through a new `spawn_npc_table` action-effect resolver. Boot-cross-checked:
+every bossfight POI's phase-add trigger set must resolve or boot throws.
+
+DEVIATION FROM THE PROMPT (load-bearing correction, not a style choice):
+boss-death arena unlock is a `DeathHook` (`deathhooks/boss_arena_unlock.ts`),
+NOT an `entity_died` content Trigger as the prompt suggested. Proven wrong
+by a dedicated test (`bossfight.test.ts`, "an entity_died Trigger... does
+NOT fire"): `DeathSystem` calls `world.destroy()` on the dying entity in
+the SAME tick, right after publishing `EntityDied`; `TriggerSystem`'s
+buffered collector only drains on ITS OWN next `run()`, and its
+role-iteration gate (`!world.isAlive(ownerId) → continue`,
+`systems/trigger.ts`) silently skips the now-dead boss — the trigger would
+compile, boot-cross-check clean, and never fire at runtime. `DeathHook`
+runs synchronously inside `DeathSystem.run()` BEFORE the destroy — the
+doctrine-correct "read entity state before destruction" extension point,
+same one-handler-plus-one-register() ergonomics.
+
+SCOPE CUT (documented, not silent): `arenaRules.lockEntry` is read but NOT
+enforced. No entity-vs-entity collision substrate exists anywhere in
+tile-server — `PhysicsSystem`'s only collision surface is terrain
+`OpenMask`; its one entity-vs-entity pass is a soft position-separation
+nudge, not a hard block, and wouldn't plausibly gate a static prop anyway.
+Building one is disproportionate to one activity's transient lock. The
+fight is fully playable end-to-end (spawn → phase adds → death → arena-
+clear log); the arena entrance is just skippable-past in v1.
+
 **Remaining (T-212 v2)**:
-- `bossfight` — boss prefab spawn at centroid + arena rules
-  (lockEntry sets a temporary path-zone collision when engaged; HP=0
-  drops it). Adds-table spawns at phase triggers.
-- `wave` — state-machine component cycling through `activity.waves`
-  in order with `interWaveSeconds` delay. Cleared on full clear.
 - `action` — interactable prefab spawn at centroid (chalice pedestal,
   signal brazier, etc.) — needs the entity-hover/click system from
   T-100 to dispatch usage.
@@ -1007,7 +1053,9 @@ stays a per-action design dial the commitment/telegraph work depends on). Keep h
 changes the sword's weight and damage via the live StatContribution schema — voxels feed stats.
 
 ### T-304 · POI activity handlers (T-212 v2) — encounter spawning
-Effort: M   Status: todo   Depends: T-299
+Effort: M   Status: obsolete — superseded by T-245 (registry-dispatch
+substrate + `encounter` handler already landed in
+`packages/tile-server/src/poi/`; see T-212's body). Depends: T-299
 
 Wire the POI activity registry (`Registry<H>`, mirror the action-effect pattern): implement the
 `encounter` handler first (reads a POI mob table, spawns mobs at the trigger centroid, sets aggro on

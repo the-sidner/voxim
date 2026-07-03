@@ -10,7 +10,7 @@
  * "per-type adapter modules" the original PoiSystem comment anticipated.
  */
 
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import type { Registry } from "@voxim/engine";
 import type { ContentService, PoiDef } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
@@ -28,6 +28,10 @@ export interface PoiActivityContext {
   playerId: string;
   /** This POI instance's id (for logging / per-instance state). */
   poiInstanceId: string;
+  /** The PoiTrigger entity itself — activities that need to attach
+   * per-instance server-only state (WaveState, ArenaLock, …) write it
+   * onto this entity rather than materializing a parallel lookup. */
+  triggerId: EntityId;
 }
 
 export interface PoiActivityHandler {

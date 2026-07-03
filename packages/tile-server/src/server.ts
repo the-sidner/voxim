@@ -67,6 +67,8 @@ import { PlacementSystem } from "./systems/placement.ts";
 import { EnclosureSystem } from "./systems/enclosure.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./actions/resolvers/item_use.ts";
+import { spawnNpcTableResolver } from "./actions/resolvers/spawn_npc_table.ts";
+import { bossArenaUnlockHook } from "./deathhooks/boss_arena_unlock.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
 import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
@@ -77,7 +79,9 @@ import { PoiSystem } from "./systems/poi.ts";
 import { newPoiActivityRegistry } from "./poi/mod.ts";
 import { TriggerSystem } from "./systems/trigger.ts";
 import { newTriggerCatalog } from "./triggers/catalog.ts";
-import { newTriggerSourceRegistry, equipmentTriggerSource, npcTemplateTriggerSource } from "./triggers/source.ts";
+import {
+  newTriggerSourceRegistry, equipmentTriggerSource, npcTemplateTriggerSource, bossArenaLinkTriggerSource,
+} from "./triggers/source.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs, STAIR_FOUND_PREFAB_ID, STAIR_LOCKED_PREFAB_ID } from "./stair_spawner.ts";
 import { DeathSystem } from "./systems/death.ts";
@@ -99,6 +103,7 @@ import { expireBuffEffect } from "./resources/effects/expire_buff.ts";
 import { destroySelfEffect } from "./resources/effects/destroy_self.ts";
 import { respawnNodeEffect } from "./resources/effects/respawn_node.ts";
 import { clearCounterReadyEffect } from "./resources/effects/clear_counter_ready.ts";
+import { spawnNextWaveEffect } from "./resources/effects/spawn_next_wave.ts";
 import { startBuffResolver, buffTickResolver } from "./actions/resolvers/buff.ts";
 import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
 import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
@@ -362,6 +367,9 @@ export class TileServer {
     resourceEffects.register(destroySelfEffect);
     resourceEffects.register(respawnNodeEffect);
     resourceEffects.register(clearCounterReadyEffect);
+    // spawn_next_wave: a wave POI's inter-wave wave_timer hits 0 → dispatch
+    // the next wave (T-212 v2).
+    resourceEffects.register(spawnNextWaveEffect);
     const resourceModifiers = newResourceModifierRegistry();
     resourceModifiers.register(equipmentStatModifier);
 
@@ -424,6 +432,11 @@ export class TileServer {
       id: "equip_cleanup",
       onDeath: (ctx) => destroyCarriedItemEntities(ctx.world, ctx.entityId),
     });
+    // boss_arena_unlock (T-212 v2) — bossfight's death-side arena clear.
+    // A DeathHook, not an entity_died Trigger: see components/boss_arena.ts
+    // for why the trigger path is structurally unable to see the boss
+    // alive by the time it would fire.
+    deathHooks.register(bossArenaUnlockHook);
     const deathSystem = new DeathSystem(deathHooks);
 
     // Job handler registry — NpcAiSystem dispatches each NPC's current Job
@@ -486,6 +499,8 @@ export class TileServer {
     actionEffects.register(adjustResourceResolver);
     actionEffects.register(spendItemResolver);
     actionEffects.register(new ApplyItemEffectsResolver(actionEffects));
+    // spawn_npc_table (T-212 v2) — bossfight's phase-adds trigger effect.
+    actionEffects.register(spawnNpcTableResolver);
     // Buffs: start_buff spawns a buff scene-graph child; the child's
     // `buff` ambient action fires buff_tick (DoT/HoT) each tick.
     actionEffects.register(startBuffResolver);
@@ -555,6 +570,9 @@ export class TileServer {
     const triggerSources = newTriggerSourceRegistry();
     triggerSources.register(equipmentTriggerSource);
     triggerSources.register(npcTemplateTriggerSource);
+    // Bossfight phase-adds (T-212 v2) — BossArenaLink presence grants
+    // {poiDefId}_phase_add_{i} triggers; see triggers/source.ts's header.
+    triggerSources.register(bossArenaLinkTriggerSource);
     const triggerSystem = new TriggerSystem(content, triggerCatalog, triggerSources, actionGates, actionEffects);
 
     // NPC sensory system (T-040) — the event-driven half of NPC awareness,
@@ -814,6 +832,24 @@ export class TileServer {
           `PoiActivityHandler is registered. ` +
           `Registered: [${poiActivities.ids().join(", ")}]`,
         );
+      }
+    }
+    // T-212 v2: every bossfight POI's phase-add trigger set
+    // ({poiDefId}_phase_add_{i}, one per arenaRules.phaseTriggers entry —
+    // see triggers/source.ts's bossArenaLinkTriggerSource) and addsTable
+    // must resolve, or the fight silently no-ops adds at runtime instead
+    // of throwing at boot.
+    for (const poi of content.pois.values()) {
+      if (poi.type !== "bossfight") continue;
+      for (let i = 0; i < poi.activity.arenaRules.phaseTriggers.length; i++) {
+        const trigId = `${poi.id}_phase_add_${i}`;
+        if (!content.triggers.get(trigId)) {
+          throw new Error(
+            `POI "${poi.id}" declares ${poi.activity.arenaRules.phaseTriggers.length} ` +
+            `phaseTriggers but TriggerDef "${trigId}" is not loaded. Author ` +
+            `data/triggers/${trigId}.json.`,
+          );
+        }
       }
     }
 

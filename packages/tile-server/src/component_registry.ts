@@ -75,6 +75,8 @@ import { Hearth } from "./components/hearth.ts";
 import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
 import { PoiTrigger } from "./components/poi.ts";
 import { Stair } from "./components/stair.ts";
+import { WaveMember, WaveState } from "./components/wave.ts";
+import { BossArenaLink } from "./components/boss_arena.ts";
 import { NpcJobQueue, NpcTag } from "./components/npcs.ts";
 import { Caravan } from "./components/caravan.ts";
 import { ProjectileData } from "./components/projectile.ts";
@@ -236,6 +238,14 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // Stair runtime marker (T-213). Server-only — placed at every narrative
   // stair anchor; carries lock state for the future unlock pipeline.
   Stair,
+  // Wave-POI runtime state (T-212 v2). WaveMember tags spawned NPCs for the
+  // per-tick survivor count; WaveState lives on the PoiTrigger entity.
+  WaveMember,
+  WaveState,
+  // Bossfight-POI runtime tag (T-212 v2). Written on the spawned boss NPC;
+  // read by the boss_arena_link TriggerSource (phase adds) and the
+  // boss_arena_unlock DeathHook (arena clear, pre-destruction).
+  BossArenaLink,
   NpcTag,
   NpcJobQueue,
   // Caravan (T-048) — a caravan lead NPC's manifest: destination tile +

@@ -1,0 +1,12 @@
+{
+  "id": "tideborn_serpent_phase_add_0",
+  "on": "damage_taken",
+  "as": "target",
+  "conditions": [
+    { "gate": "health_below", "params": { "fraction": 0.66 } }
+  ],
+  "internalCooldownTicks": 6000,
+  "effects": [
+    { "kind": "spawn_npc_table", "params": { "table": "deep_tide_motes" } }
+  ]
+}
