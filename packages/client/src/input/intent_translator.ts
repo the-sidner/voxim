@@ -83,7 +83,9 @@ export class IntentTranslator {
     private readonly router: IntentRouter,
     private readonly getPlayerScreen: () => { x: number; y: number },
     private readonly getCursorFacing: (canvasX: number, canvasY: number) => number | null,
-    /** Fixed camera yaw — the basis for camera-relative movement (T-287). */
+    /** Live camera yaw — the (rotating) basis for camera-relative movement.
+     *  The mouse-facing camera (T-317) makes this dynamic; held-W curves with
+     *  the swinging camera, which is intended third-person locomotion. */
     private readonly getCameraYaw: () => number,
   ) {}
 
@@ -243,14 +245,16 @@ export class IntentTranslator {
   /** Called once per frame by the game loop. */
   buildDatagram(seq: number, tick: number): MovementDatagram {
     // Movement is CAMERA-relative (T-287): W = "into the screen" (away from
-    // the camera along its fixed yaw), D = screen-right — independent of where
+    // the camera along its CURRENT yaw), D = screen-right — independent of where
     // the cursor points. The body still aims at the cursor (`facing` on the
     // wire below), so melee/aim track the cursor while locomotion follows the
-    // screen. Diablo/PoE muscle memory on a fixed-yaw camera.
+    // screen. With the mouse-facing camera (T-317) the yaw rotates as you turn,
+    // so held-W smoothly curves with the swinging camera — third-person
+    // locomotion, re-sampled every input frame so the basis never snaps.
     const yaw = this.getCameraYaw();
     const fwdX =  Math.cos(yaw);
     const fwdY =  Math.sin(yaw);
-    // Screen-right is camera-forward × world-up; for this fixed top-down rig
+    // Screen-right is camera-forward × world-up; for this steeply-angled rig
     // that resolves to the math-CCW perpendicular (-sin, cos), so pressing D
     // strafes to the player-perceived right of the screen.
     const rgtX = -Math.sin(yaw);

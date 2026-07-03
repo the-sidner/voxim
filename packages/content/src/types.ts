@@ -2034,6 +2034,24 @@ export interface GameConfig {
       sandAmount: number;
     };
   };
+  /** Mouse-facing camera yaw-follow feel (T-317). The camera's yaw chases the
+   *  local player's mouse-driven facing with a deadzone + hysteresis + a
+   *  critically-damped, rate-capped spring. Client-side presentation only —
+   *  facing itself stays raw gameplay state (never smoothed by these). */
+  camera: {
+    /** Seconds for the engaged chase to close half the remaining yaw error
+     *  (framerate-corrected exponential; smaller = snappier). */
+    followHalfLife: number;
+    /** Ceiling on angular yaw rate while chasing (degrees per second) — caps a
+     *  hard cursor flick so the world swings smoothly rather than snapping. */
+    maxTurnRateDeg: number;
+    /** Shortest-arc yaw error (degrees) above which the chase engages. Aiming
+     *  micro-movement inside this deadzone leaves the world dead still. */
+    deadzoneOuterDeg: number;
+    /** Shortest-arc yaw error (degrees) below which the chase disengages. The
+     *  outer>inner hysteresis band prevents boundary twitch. */
+    deadzoneInnerDeg: number;
+  };
   /** Fog-of-war LOS gameplay tuning (T-315 D5) — moved out of
    *  `@voxim/protocol`'s fog.ts, which now keeps only wire-shape constants
    *  (grid size, cell packing). Server (FogOfWarSystem) and client

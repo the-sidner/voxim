@@ -367,7 +367,9 @@ export class VoximRenderer {
     const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
     this.cameraRig = new CameraRig(aspect);
     this.camera = this.cameraRig.camera;
-    this.cameraRig.update(this.cameraTarget);
+    // Boot placement before the first frame: dt=0 and no facing target yet, so
+    // the yaw holds at its boot value (join screen / pre-spawn).
+    this.cameraRig.update(this.cameraTarget, 0);
     this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera, this.renderer.domElement);
     this.entities = new EntityMeshRegistry(
       this.scene, this.instancePool, this.weaponActionsMap, this.itemPrefabMap,
@@ -533,6 +535,9 @@ export class VoximRenderer {
     if (cfg) {
       canopyFade.applyConfig(cfg.render);
       setTextureStyleParams(cfg.render.textureStyle);
+      // Mouse-facing camera yaw-follow feel (T-317) — deadzone/hysteresis/
+      // spring/max-rate knobs from game_config.camera.
+      this.cameraRig.configure(cfg.camera);
     }
   }
 
@@ -757,7 +762,8 @@ export class VoximRenderer {
    * Coordinate mapping: world(x, y, z) → three(x, z, y).
    * The ground plane in Three.js space is y = groundHeight (= world z).
    * Returns world-space { x, y } of the intersection, or null if the ray
-   * is parallel to the plane (shouldn't happen for the fixed iso camera).
+   * is parallel to the plane (shouldn't happen for this steeply-angled camera,
+   * whatever its yaw).
    */
   getCursorWorldPos(canvasX: number, canvasY: number, groundHeight: number): { x: number; y: number } | null {
     const w = this.renderer.domElement.clientWidth  || this.renderer.domElement.width;
@@ -1177,7 +1183,18 @@ export class VoximRenderer {
       emesh.group.visible = dx * dx + dz * dz <= CULL_RADIUS_SQ;
     }
 
-    this.cameraRig.update(this.cameraTarget);
+    // Frame dt (seconds), computed here — the camera yaw-follow controller
+    // needs it, and it's reused below for particles/motes. Hoisted above
+    // cameraRig.update so the follow spring integrates over the real frame
+    // time; lastFrameMs is advanced here to hold this frame's timestamp.
+    const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
+    this.lastFrameMs = now;
+
+    // Mouse-facing camera (T-317): the rig's yaw chases the LOCAL player's
+    // predicted facing (not the RTT-late server echo — same value that drives
+    // the local mesh rotation above). Null before spawn → yaw holds boot value.
+    this.cameraRig.setFacingTarget(localFacing ?? null);
+    this.cameraRig.update(this.cameraTarget, dt);
 
     // Day/night lerp + shadow-frustum follow/snap + sky-locked sun disc — all
     // off the now-settled camera target. (After cameraRig.update so the sun disc
@@ -1190,8 +1207,6 @@ export class VoximRenderer {
     this.frameTimings.trailMs = performance.now() - tTrailStart;
 
     // Advance hit spark particles and flicker lights.
-    const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
-    this.lastFrameMs = now;
     this.hitSparkRenderer.update(dt);
     this.dustMotes.update(dt * 1000, this.cameraTarget);
     canopyFade.setWindTime(now);

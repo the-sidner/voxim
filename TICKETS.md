@@ -1362,7 +1362,7 @@ pretend the look is done at T-311/T-312:
   on the POI system. (Home: `## World Generation`.)
 
 ### T-317 · Mouse-facing camera — the rotating camera becomes THE camera (doctrine)
-Effort: M   Status: todo   (PULLED FORWARD — next up, ahead of the prompt queue)
+Effort: M   Status: in-progress   (PULLED FORWARD — next up, ahead of the prompt queue)
 
 **Verdict rendered 2026-07-03:** the user evaluated a live facing-follow prototype (damped
 yaw chase, no deadzone) and adopted the rotating camera as DOCTRINE. Not a mode, no toggle —

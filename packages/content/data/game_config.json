@@ -243,6 +243,12 @@
       "sandAmount": 0.12
     }
   },
+  "camera": {
+    "followHalfLife": 0.18,
+    "maxTurnRateDeg": 180,
+    "deadzoneOuterDeg": 20,
+    "deadzoneInnerDeg": 4
+  },
   "fogOfWar": {
     "losHalfAngleRad": 0.9599310885968813,
     "losRadius": 40,
