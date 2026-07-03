@@ -1362,26 +1362,26 @@ pretend the look is done at T-311/T-312:
   on the POI system. (Home: `## World Generation`.)
 
 ### T-317 · Mouse-facing camera — the rotating camera becomes THE camera (doctrine)
-Effort: M   Status: in-progress   (PULLED FORWARD — next up, ahead of the prompt queue)
+Effort: M   Status: done   Commit: b3874f9 (+ b65f2ae minimap heading cone, fb4323e geometry knobs + tuning)
 
 **Verdict rendered 2026-07-03:** the user evaluated a live facing-follow prototype (damped
 yaw chase, no deadzone) and adopted the rotating camera as DOCTRINE. Not a mode, no toggle —
 the fixed-yaw camera is deleted and facing-follow becomes the client's one camera behaviour.
 
-Same rig geometry (BACK_DISTANCE/HEIGHT/telephoto FOV); yaw permanently chases the local
-player's predicted facing with deadzone + hysteresis + critically-damped spring + max turn
-rate (knobs on game_config `camera.*`). The load-bearing insight from the prototype: facing's
-**mousemove-only, world-pinned** derivation is what keeps the cursor→facing→camera loop
-stable — continuous re-derivation from the cursor pixel, or screen-relative facing, both
-spin forever (analysis in `prompts/T-317-mouse-facing-camera.md`, the execution prompt —
-targeted at Opus). Facing itself stays raw gameplay state; all smoothing lives in the camera.
-Minimap stays north-up and gains a heading indicator. Comment-honesty sweep for every
-"fixed yaw / fixed iso" claim in the same commit. Zero wire/server changes.
+Landed: CameraRig yaw permanently chases the local player's PREDICTED facing with deadzone +
+hysteresis + critically-damped spring + max turn rate; rig geometry (backDistance/heightAbove/
+lookAtBias/fovDeg) AND follow feel (followHalfLife 0.18 s / maxTurnRateDeg 180 /
+deadzoneOuterDeg 20 / deadzoneInnerDeg 4) all live on game_config `camera.*`. The
+load-bearing insight held: facing's **mousemove-only, world-pinned** derivation keeps the
+cursor→facing→camera loop stable — continuous re-derivation from the cursor pixel, or
+screen-relative facing, both spin forever (analysis preserved in camera_rig.ts's header).
+Facing stays raw gameplay state; all smoothing lives in the camera. Minimap stays north-up
+with a camera-heading cone. Comment-honesty sweep done. Zero wire/server changes.
 
-Done when: aiming micro-movement never rotates the world (deadzone verified with real mouse
-input via a Playwright check — testInput can't drive mousemove), committed turns settle behind
-the new heading with no residual creep, tuned defaults recorded, fixed-yaw code and comments
-gone.
+Verified with REAL mouse input (one-off Playwright script driving page.mouse.move against the
+live stack): 4 s of micro-aiming around a world-pinned target moved camera yaw 0.000°; a
+~150° flick converged 140→87→62→55° and held with 0.000° creep over the final second
+(no feedback loop); two-heading screenshots sane. Full suite 580/580 green.
 
 ## Player UX
 
