@@ -1361,33 +1361,27 @@ pretend the look is done at T-311/T-312:
   set-piece); making the procedural world *read* as composed needs authored POI set-pieces + good placement
   on the POI system. (Home: `## World Generation`.)
 
-### T-317 · Facing-follow camera mode — evaluate the rotating iso look
-Effort: M   Status: todo
+### T-317 · Mouse-facing camera — the rotating camera becomes THE camera (doctrine)
+Effort: M   Status: todo   (PULLED FORWARD — next up, ahead of the prompt queue)
 
-Design/look experiment (user request): make the camera rotatable — same rig geometry
-(BACK_DISTANCE/HEIGHT/telephoto FOV, the current position relative to the player), but the yaw
-follows the character's facing instead of staying fixed at `DEFAULT_YAW`. Goal is evaluative:
-SEE how the iso look reads when the world rotates with the player.
+**Verdict rendered 2026-07-03:** the user evaluated a live facing-follow prototype (damped
+yaw chase, no deadzone) and adopted the rotating camera as DOCTRINE. Not a mode, no toggle —
+the fixed-yaw camera is deleted and facing-follow becomes the client's one camera behaviour.
 
-The rig is ready for it: `CameraRig` already owns a `yaw` field and `intent_translator` reads
-`getCameraYaw()` per input frame, so camera-relative movement (T-287/T-290) keeps working
-under a rotating yaw by construction. The one real hazard is the **facing feedback loop**:
-facing is derived from the cursor by raycasting through the LIVE camera
-(`getCursorWorldPos`, updated on mouse-move) — a camera that chases facing re-projects the
-cursor, which re-derives facing. Mitigations: critically-damped yaw spring + max angular rate
-(smoothing lives in the CAMERA, never in the gameplay facing), plus a follow deadzone
-(only chase when the yaw error exceeds a threshold, PoE-soft-follow style); knobs in
-game_config so the feel is tunable without rebuilds.
+Same rig geometry (BACK_DISTANCE/HEIGHT/telephoto FOV); yaw permanently chases the local
+player's predicted facing with deadzone + hysteresis + critically-damped spring + max turn
+rate (knobs on game_config `camera.*`). The load-bearing insight from the prototype: facing's
+**mousemove-only, world-pinned** derivation is what keeps the cursor→facing→camera loop
+stable — continuous re-derivation from the cursor pixel, or screen-relative facing, both
+spin forever (analysis in `prompts/T-317-mouse-facing-camera.md`, the execution prompt —
+targeted at Opus). Facing itself stays raw gameplay state; all smoothing lives in the camera.
+Minimap stays north-up and gains a heading indicator. Comment-honesty sweep for every
+"fixed yaw / fixed iso" claim in the same commit. Zero wire/server changes.
 
-Ships as a runtime-toggleable MODE (debug key + config default) because the deliverable is a
-comparison — fixed-iso vs facing-follow. This is a deliberate UX-mode exception, not a
-migration shim: after the verdict, the losing mode is deleted (or the toggle is promoted to a
-real setting) — the ticket does not close with two half-owned camera behaviours left floating.
-Minimap stays north-up in v1. Stale "fixed iso camera" comments (camera_rig header,
-renderer `getCursorWorldPos` doc, intent_translator basis notes) update honestly in the same
-commit that makes yaw dynamic. Done when: toggle works live, rotation is smooth and playable
-(no cursor-chase spin), both modes screenshot-compared via testplay, and a verdict note lands
-in this ticket.
+Done when: aiming micro-movement never rotates the world (deadzone verified with real mouse
+input via a Playwright check — testInput can't drive mousemove), committed turns settle behind
+the new heading with no residual creep, tuned defaults recorded, fixed-yaw code and comments
+gone.
 
 ## Player UX
 
