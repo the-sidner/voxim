@@ -11,9 +11,9 @@
  * Environment:
  *   ATLAS_PORT            HTTP port. Default 8082.
  *   DATABASE_URL          Postgres URL. Required.
- *   VOXIM_SERVICE_SECRET  Shared secret gating /world/bake + /world/restart
- *                         (T-258). Required (>=16 chars) when VOXIM_ENV=production;
- *                         dev falls back to a default. Read endpoints stay public.
+ *   VOXIM_SERVICE_SECRET  Shared secret gating /world/bake (T-258). Required
+ *                         (>=16 chars) when VOXIM_ENV=production; dev falls
+ *                         back to a default. Read endpoints stay public.
  *   VOXIM_ENV             "production" → fail closed when the secret is unset.
  *   BOOTSTRAP_WORLD_NAME  Name for the auto-baked world. Default "bootstrap".
  *   BOOTSTRAP_WORLD_SEED  Seed for the auto-bake. Default 1.

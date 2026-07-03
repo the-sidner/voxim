@@ -138,6 +138,10 @@ services:
     environment:
       ATLAS_PORT: 8082
       DATABASE_URL: ${DATABASE_URL}
+      # One control-plane secret across all services (T-258) — gates /world/bake.
+      # Without it the atlas silently ran on the dev fallback while every other
+      # service used the real .env value (T-316).
+      VOXIM_SERVICE_SECRET: ${VOXIM_SERVICE_SECRET}
       # Bootstrap-only defaults — used when no worlds row exists yet to
       # auto-bake "world #1" so the stack has something to load. After
       # the bootstrap, the inspector's bake button creates further worlds

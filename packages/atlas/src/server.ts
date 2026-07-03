@@ -13,7 +13,8 @@
  *   GET  /world/cell/:x/:y                one cell from the active world
  *   GET  /world/summaries                 per-tile gateSummary u16 list
  *   POST /world/bake                      ?seed=&width=&height=&name=  → new world row
- *   POST /world/restart                   POST /admin/restart to RESTART_TARGETS
+ *                                         (tile-server + coordinator poll the worlds
+ *                                         repo and self-restart onto a newer bake)
  *
  *   GET  /tile/:cellX/:cellY              full tile_init payload (active world)
  *   POST /tile/:cellX/:cellY/regen        re-derive one tile (active world)
@@ -47,17 +48,11 @@ export interface AtlasServerConfig {
   cellsRepo: AtlasWorldRepo;
   tilesRepo: AtlasTileInitRepo;
   /**
-   * Shared secret gating the mutating control-plane endpoints
-   * (/world/bake, /world/restart) — T-258. Read endpoints + the inspector
-   * UI stay public. Empty string → those endpoints fail closed.
+   * Shared secret gating the mutating control-plane endpoint
+   * (/world/bake) — T-258. Read endpoints + the inspector UI stay
+   * public. Empty string → the endpoint fails closed.
    */
   serviceSecret: string;
-  /**
-   * Comma-separated host:port targets for /world/restart to POST
-   * /admin/restart to. Default: tile-1:14433,coordinator:8083 (compose).
-   * Empty list = restart endpoint is a no-op.
-   */
-  restartTargets?: string[];
   /**
    * Optional content store — when provided, the inspector pipeline
    * endpoint runs the POI-network matcher (T-209) and the response
@@ -167,24 +162,6 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
         id: s.id, label: s.label, paramsKey: s.paramsKey,
       })),
     });
-  }
-
-  if (req.method === "POST" && url.pathname === "/world/restart") {
-    // Control plane (T-258): mutating endpoint — requires the shared secret.
-    if (!verifyServiceSecret(req, cfg.serviceSecret)) {
-      return new Response("unauthorized", { status: 401, headers: { "access-control-allow-origin": "*" } });
-    }
-    const targets = cfg.restartTargets ?? [];
-    const results: Array<{ target: string; ok: boolean; error?: string }> = [];
-    for (const t of targets) {
-      try {
-        const r = await fetch(`http://${t}/admin/restart`, { method: "POST" });
-        results.push({ target: t, ok: r.ok });
-      } catch (e) {
-        results.push({ target: t, ok: false, error: (e as Error).message });
-      }
-    }
-    return jsonOk({ targets: results });
   }
 
   if (req.method === "GET" && url.pathname === "/world/summaries") {

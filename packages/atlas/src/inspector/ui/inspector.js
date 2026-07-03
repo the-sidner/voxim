@@ -12,7 +12,9 @@
  *     - formMeta       — { name, seed, width, height } the bake form is editing
  *
  *   Bake flow:
- *     1. POST /world/bake with body { name, seed, width, height, params }.
+ *     1. POST /world/bake with body { name, seed, width, height, params } and
+ *        the x-voxim-service-secret header (control plane, T-258; the form's
+ *        Secret field, persisted to localStorage — T-316).
  *     2. Atlas inserts a new worlds row + cells + tile_init.
  *     3. Tile-server + coordinator's polling loops detect the new world
  *        within ~5s and exit; docker restarts them against the new world.
@@ -37,6 +39,14 @@ let defaults = null;      // GenParams from GET /genparams/defaults
 let presets = null;       // Record<key, {name, description, params}> from /genparams/presets
 let formParams = null;    // GenParams currently in the form (matches input values)
 let formMeta = { name: "", seed: 1, width: 2, height: 2 };
+
+// Control-plane secret for POST /world/bake (T-258/T-316): sent as the
+// x-voxim-service-secret header. Persisted per browser; defaults to the
+// well-known dev fallback so a secretless local stack works out of the box.
+// Stacks with VOXIM_SERVICE_SECRET set: paste that value into the form once.
+const SECRET_STORE_KEY = "voxim.atlas.serviceSecret";
+const DEV_FALLBACK_SECRET = "dev-local-only-do-not-use-in-prod-0000";
+let serviceSecret = localStorage.getItem(SECRET_STORE_KEY) ?? DEV_FALLBACK_SECRET;
 
 // ---- pipeline / inspector trace state (T-205) ---------------------------
 let stageMeta   = null;       // [{id, label, paramsKey}] from /pipeline/stages
@@ -403,6 +413,9 @@ function renderBakeForm() {
       <input id="f-width" type="number" step="1" min="1" max="32" value="${formMeta.width}"></div>
     <div class="row"><label>Height</label>
       <input id="f-height" type="number" step="1" min="1" max="32" value="${formMeta.height}"></div>
+    <div class="row"><label>Secret</label>
+      <input id="f-secret" type="password" class="full" value="${escape(serviceSecret)}"
+        title="x-voxim-service-secret for POST /world/bake — VOXIM_SERVICE_SECRET from .env, or the dev fallback on secretless stacks"></div>
   </section>`);
 
   // ---- per-slice knob sections ----
@@ -462,6 +475,10 @@ function renderBakeForm() {
       formMeta[m] = m === "name" ? e.target.value : parseFloat(e.target.value);
     });
   }
+  document.getElementById("f-secret").addEventListener("input", (e) => {
+    serviceSecret = e.target.value;
+    localStorage.setItem(SECRET_STORE_KEY, serviceSecret);
+  });
   bakeForm.querySelector("#bake").addEventListener("click", onBake);
   bakeForm.querySelector("#reset-all").addEventListener("click", () => {
     formParams = clone(defaults);
@@ -510,9 +527,18 @@ async function onBake() {
     };
     const res = await fetch("world/bake", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-voxim-service-secret": serviceSecret,
+      },
       body: JSON.stringify(body),
     });
+    if (res.status === 401) {
+      throw new Error(
+        "401 unauthorized — the Secret field must match the atlas's " +
+        "VOXIM_SERVICE_SECRET (see .env; secretless dev stacks use the built-in fallback)",
+      );
+    }
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
     const { baked } = await res.json();
     toast("good", `Baked "${baked.name}". Services will restart in a few seconds…`);
