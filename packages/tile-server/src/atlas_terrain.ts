@@ -22,9 +22,11 @@ import {
   markStairAnchor,
   findRegion,
   mergeGenParams,
+  biomeTag,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
   type TileInitWire, type LevelDef, type FieldPlanes, type DeepPartialGenParams,
+  type BiomeParams,
 } from "@voxim/atlas";
 import {
   TILE_SIZE,
@@ -71,6 +73,14 @@ export interface AtlasTerrainResult {
   tileSeed: number;
   cellX: number;
   cellY: number;
+  /**
+   * The tile's single closed biome tag (T-311 P5a), computed from the cell's
+   * `WorldCellRecord.biome` via `biomeTag()`. One value per tile (BiomeParams
+   * is a per-worldmap-tile scalar) — the render-context selector
+   * AtmosphereDef/WaterStyleDef resolve against. Falls back to "plains" (the
+   * biomeTag() default) if the cell row is unavailable.
+   */
+  biomeTag: string;
   /** The active world the tile was loaded from. Drives save scoping + restart polling. */
   world: WorldRow;
   /**
@@ -245,6 +255,11 @@ export async function loadTerrainFromAtlas(
   // load it for THIS cell to derive GatePositions for the gate system.
   const cells = await cellsRepo.load(world.id);
   const cellRow = cells?.cells.find((c) => c.cellX === cellX && c.cellY === cellY);
+  // T-311 P5a: the tile's single closed biome tag — reuses biome_tag.ts's
+  // existing 8-value ladder (already computed atlas-side for zone naming).
+  // No re-bake needed: WorldCellRecord.biome is per-cell worldmap metadata,
+  // not baked into the tile_init buffer.
+  const tileBiomeTag = cellRow ? biomeTag(cellRow.biome as unknown as BiomeParams) : "plains";
   const gates = (cellRow?.gates ?? {}) as Record<string,
     { offset: number; toCellX: number; toCellY: number } | null>;
   const gatePositions: GatePosition[] = [];
@@ -324,6 +339,7 @@ export async function loadTerrainFromAtlas(
     tileSeed: Number(row.seed),
     cellX,
     cellY,
+    biomeTag: tileBiomeTag,
     world,
     gatePositions,
     chambers: tile.chambers.map((c) => ({

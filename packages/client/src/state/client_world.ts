@@ -30,7 +30,7 @@ export interface PositionState  { x: number; y: number; z: number }
 export interface VelocityState  { x: number; y: number; z: number }
 export interface FacingState    { angle: number }
 export interface HealthState    { current: number; max: number }
-export interface WorldClockState  { ticksElapsed: number; dayLengthTicks: number }
+export interface WorldClockState  { ticksElapsed: number; dayLengthTicks: number; biomeTag: string }
 
 export interface EntityState {
   position?: PositionState;
@@ -403,6 +403,19 @@ export class ClientWorld {
     const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - chunkX * CHUNK_SIZE)));
     const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - chunkY * CHUNK_SIZE)));
     return data[lx + ly * CHUNK_SIZE] === 1;
+  }
+
+  /**
+   * The tile's WorldClock singleton (T-311 P5a), or null before it's spawned.
+   * There is exactly one such entity per tile — a linear scan is cheap next
+   * to entity-state decode and avoids a second cache to keep in sync on tile
+   * transition (entities.clear() already invalidates this for free).
+   */
+  getWorldClock(): WorldClockState | null {
+    for (const [, state] of this.entities) {
+      if (state.worldClock) return state.worldClock;
+    }
+    return null;
   }
 
   clear(): void {

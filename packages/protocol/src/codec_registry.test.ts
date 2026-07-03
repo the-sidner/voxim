@@ -1,8 +1,10 @@
 /**
  * CODEC_BY_WIREID is the client decode loop's dispatch table (T-284) — it must
  * cover every networked component the old 31-case switch handled (or entities
- * silently stop decoding), and the two formerly hand-rolled DataView decodes
- * (health, worldClock) must round-trip with the EXACT byte layout the wire uses.
+ * silently stop decoding). `health` round-trips with the EXACT byte layout the
+ * wire uses; `worldClock` is now a hand-rolled WireWriter/WireReader codec
+ * (T-311 P5a added the `biomeTag` string field), so its test just round-trips
+ * through the registry rather than pinning a fixed byte offset.
  */
 import { assert, assertEquals } from "jsr:@std/assert";
 import { ComponentType, CODEC_BY_WIREID } from "../mod.ts";
@@ -33,13 +35,10 @@ Deno.test("health round-trips through the registry (replaced a hand-rolled f32/f
   assertEquals(CODEC_BY_WIREID.get(ComponentType.health)!.decode(bytes), { current: 72.5, max: 100 });
 });
 
-Deno.test("worldClock round-trips i32/i32 — the exact layout the old inline DataView read", () => {
-  const bytes = worldClockCodec.encode({ ticksElapsed: 12345, dayLengthTicks: 24000 });
-  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  assertEquals(v.getInt32(0, true), 12345);  // ticksElapsed @ 0
-  assertEquals(v.getInt32(4, true), 24000);  // dayLengthTicks @ 4
+Deno.test("worldClock round-trips ticksElapsed/dayLengthTicks/biomeTag (T-311 P5a: hand-rolled WireWriter/WireReader, not a fixed DataView layout — biomeTag is a string, the render-context selector)", () => {
+  const bytes = worldClockCodec.encode({ ticksElapsed: 12345, dayLengthTicks: 24000, biomeTag: "forest" });
   assertEquals(
     CODEC_BY_WIREID.get(ComponentType.worldClock)!.decode(bytes),
-    { ticksElapsed: 12345, dayLengthTicks: 24000 },
+    { ticksElapsed: 12345, dayLengthTicks: 24000, biomeTag: "forest" },
   );
 });

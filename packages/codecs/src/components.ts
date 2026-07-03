@@ -393,12 +393,36 @@ export const healthCodec: Serialiser<HealthData> = buildCodec<HealthData>({
 export interface WorldClockData {
   ticksElapsed: number;
   dayLengthTicks: number;
+  /**
+   * The tile's single closed biome tag (T-311 P5a) — the render-context
+   * selector AtmosphereDef/WaterStyleDef resolve against
+   * (`content.atmospheres.get(biomeTag) ?? content.atmospheres.getOrThrow("default")`).
+   * One value per tile (BiomeParams is a per-worldmap-tile scalar, not
+   * per-cell), computed atlas-side via `biomeTag()`
+   * (packages/atlas/src/tilemap/pipeline/biome_tag.ts) from the tile's
+   * WorldCellRecord.biome. Reuses WorldClock's existing wireId — no new wire
+   * slot burned for this selector.
+   */
+  biomeTag: string;
 }
 
-export const worldClockCodec: Serialiser<WorldClockData> = buildCodec<WorldClockData>({
-  ticksElapsed: { type: "i32" },
-  dayLengthTicks: { type: "i32" },
-});
+/**
+ * Hand-rolled (not `buildCodec`, which has no string field support) —
+ * mirrors `lightEmitterCodec`'s WireWriter/WireReader shape exactly.
+ */
+export const worldClockCodec: Serialiser<WorldClockData> = {
+  encode(v: WorldClockData): Uint8Array {
+    const w = new WireWriter();
+    w.writeI32(v.ticksElapsed);
+    w.writeI32(v.dayLengthTicks);
+    w.writeStr(v.biomeTag);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): WorldClockData {
+    const r = new WireReader(bytes);
+    return { ticksElapsed: r.readI32(), dayLengthTicks: r.readI32(), biomeTag: r.readStr() };
+  },
+};
 
 // (Hunger / Thirst codecs retired — they're server-only Resources now
 // (tile-server/components/resource.ts). Wire ids 7/8 retired in

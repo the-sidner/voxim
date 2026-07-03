@@ -20,6 +20,7 @@ import { GateLink } from "./components/gate.ts";
 import { spawnGates, mirrorPosition } from "./gate.ts";
 import { applyFieldsToChunks, chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
+import { BIOME_TAG_RULES } from "@voxim/atlas";
 import { placePois, spawnMobPois, MOB_NPC_POOL } from "./poi_placer.ts";
 import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, SERVICE_SECRET_HEADER, TileEvents } from "@voxim/protocol";
 import type { EntityDeployedPayload } from "@voxim/protocol";
@@ -570,6 +571,22 @@ export class TileServer {
         );
       }
     }
+    // T-311 P5a: AtmosphereDef selection is `content.atmospheres.get(biomeTag)
+    // ?? content.atmospheres.getOrThrow("default")` — "default" existing is
+    // already enforced at load (loader.ts), so the only new failure mode here
+    // is an authored non-default atmosphere id that doesn't name a real
+    // biomeTag() output (a typo would silently never be selected). Fail fast.
+    {
+      const validTags = new Set(BIOME_TAG_RULES.map((r) => r.tag));
+      for (const atmo of content.atmospheres.values()) {
+        if (atmo.id !== "default" && !validTags.has(atmo.id)) {
+          throw new Error(
+            `AtmosphereDef "${atmo.id}" doesn't match any biomeTag() output ` +
+            `([${[...validTags].join(", ")}, default]) — it can never be selected.`,
+          );
+        }
+      }
+    }
 
     // Trigger primitive (T-259) — the single event→effect bridge. Catalog
     // (closed event-kind vocabulary) + sources (live "who owns which
@@ -1057,7 +1074,7 @@ export class TileServer {
         atlas.kindBuffer,
         atlas.fields, // T-311 P3 render-field planes → VegFieldGrid/SurfaceStateGrid/WaterGrid
       );
-      this.spawnWorldState(content);
+      this.spawnWorldState(content, atlas.biomeTag);
 
       // Boundary decoration (forest trees, stone debris, …) is purely
       // visual and lives client-side now: KindGrid is networked so the
@@ -1070,6 +1087,11 @@ export class TileServer {
       // the loaded chunks now — else scatter/moss/wetness see neutral fields
       // until the next from-scratch gen (T-312b).
       applyFieldsToChunks(this.world, atlas.fields);
+      // T-311 P5a: same bucket as the fields overlay above — biomeTag is
+      // atlas-derived, not gameplay state, so always refresh it from this
+      // boot's atlas classification (also self-heals old saves whose
+      // WorldClock predates the biomeTag field).
+      this.refreshWorldClockBiomeTag(atlas.biomeTag);
     }
 
     const procedural = new ProceduralSpawner(this.world, content, tileSeed);
@@ -1705,13 +1727,27 @@ export class TileServer {
     session.sendStateRaw(encodeFrame(payload));
   }
 
-  private spawnWorldState(content: ContentService): void {
+  private spawnWorldState(content: ContentService, biomeTag: string): void {
     const dayLengthTicks = content.getGameConfig().dayNight.dayLengthTicks;
     const id = newEntityId();
     this.world.create(id);
-    this.world.write(id, WorldClock, { ticksElapsed: 0, dayLengthTicks });
+    this.world.write(id, WorldClock, { ticksElapsed: 0, dayLengthTicks, biomeTag });
     console.log("[TileServer] world-state entity created");
     // Starter entities (workstations, nodes) are declared in tile_layout.json.
+  }
+
+  /**
+   * T-311 P5a: refresh the WorldClock singleton's `biomeTag` from this boot's
+   * atlas-derived value. biomeTag is atlas-derived metadata (not gameplay
+   * state) — same bucket as the render-field grids `applyFieldsToChunks`
+   * overlays onto save-loaded chunks, so a save-loaded tile's biomeTag always
+   * reflects the CURRENT atlas classification, not whatever (or nothing) an
+   * older save encoded.
+   */
+  private refreshWorldClockBiomeTag(biomeTag: string): void {
+    for (const { entityId, worldClock } of this.world.query(WorldClock)) {
+      this.world.write(entityId, WorldClock, { ...worldClock, biomeTag });
+    }
   }
 
   /**

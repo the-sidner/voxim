@@ -24,6 +24,7 @@ export type {
   WorldMap,
 } from "./src/worldmap/types.ts";
 export { EDGES } from "./src/worldmap/types.ts";
+export { biomeTag, BIOME_TAG_RULES } from "./src/tilemap/pipeline/biome_tag.ts";
 
 export { generateTile, tileInitToWire, tileInitFromWire } from "./src/tilemap/generate.ts";
 export type { GenerateTileOptions } from "./src/tilemap/generate.ts";
