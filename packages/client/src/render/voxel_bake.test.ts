@@ -15,6 +15,8 @@ import {
   BOX_INDEX_COUNT,
   BOX_VERT_COUNT,
   computeVertexNormals,
+  driftDirFor,
+  resolveFrayCoreness,
   resolveMossResponse,
   unitBoxIndex,
   unitBoxUV,
@@ -380,4 +382,52 @@ Deno.test("tintScale (T-311 P4): mottle collapses toward flat; absent = byte-ide
   const half = bakeVoxels([{ ...atom, tintScale: 0.5 }], 1);
   const dist = (c: Float32Array) => Math.abs(c[0] - 1) + Math.abs(c[1] - 1) + Math.abs(c[2] - 1);
   assert(dist(half.colors) > 0 && dist(half.colors) < dist(wild.colors), "half scale sits between");
+});
+
+Deno.test("dissolve fray sidecar (T-311 P5c): aFray/aDriftDir only when atoms carry fray01>0; colours+positions untouched", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const rigid = bakeVoxels([atom], 1);
+  assertEquals(rigid.fray, undefined, "no fray01 → no fray plane");
+  assertEquals(rigid.driftDir, undefined, "no fray01 → no driftDir plane");
+
+  const zeroFray = bakeVoxels([{ ...atom, fray01: 0, driftDir: [1, 0, 0] as const }], 1);
+  assertEquals(zeroFray.fray, undefined, "fray01=0 does not count as 'any fray' — stays byte-identical");
+
+  const frayed = bakeVoxels([{ ...atom, fray01: 0.6, driftDir: [1, 0, 0] as const }], 1);
+  assertEquals(frayed.fray?.length, BOX_VERT_COUNT, "one value per vertex");
+  assertEquals(frayed.fray![0], Math.fround(0.6));
+  assertEquals(frayed.driftDir?.length, BOX_VERT_COUNT * 3, "one vec3 per vertex");
+  // The drift is in-shader — the baked positions/colours stay byte-identical.
+  assertEquals(frayed.positions, rigid.positions);
+  assertEquals(frayed.colors, rigid.colors);
+
+  // Mixed: only the frayed atom's verts carry a nonzero value; the rigid
+  // atom's are 0 (the shared Float32Array default).
+  const mixed = bakeVoxels([{ ...atom, fray01: 0.9, driftDir: [0, 1, 0] as const }, { ...atom, cx: 1.5 }], 1);
+  assertEquals(mixed.fray![0], Math.fround(0.9));
+  assertEquals(mixed.fray![BOX_VERT_COUNT], 0);
+});
+
+Deno.test("resolveFrayCoreness (T-311 P5c): 0 within the rigid core, ramps 0→1 across the fray band", () => {
+  // frayBandWidth=0.5 → rigid for the inner 50% of the model extent from the
+  // root, ramping across the outer 50%.
+  assertEquals(resolveFrayCoreness(0, 10, 0.5), 0, "at the root: fully rigid");
+  assertEquals(resolveFrayCoreness(4, 10, 0.5), 0, "still inside the rigid core");
+  assertEquals(resolveFrayCoreness(5, 10, 0.5), 0, "exactly at the band boundary: not yet frayed");
+  assert(resolveFrayCoreness(7.5, 10, 0.5) > 0 && resolveFrayCoreness(7.5, 10, 0.5) < 1, "mid-band: partial fray");
+  assertEquals(resolveFrayCoreness(10, 10, 0.5), 1, "at the farthest extremity: fully loose");
+  assertEquals(resolveFrayCoreness(20, 10, 0.5), 1, "beyond the model extent: clamps to 1");
+  assertEquals(resolveFrayCoreness(5, 10, 0), 0, "band=0 → never frays (degenerate, guarded)");
+  assertEquals(resolveFrayCoreness(5, 0, 0.5), 0, "modelExtent=0 → never frays (guarded, avoids div/0)");
+});
+
+Deno.test("driftDirFor (T-311 P5c): deterministic unit vector, distinct per position", () => {
+  const a = driftDirFor(1, 2, 3);
+  const aAgain = driftDirFor(1, 2, 3);
+  assertEquals(a, aAgain, "same position → same drift direction (no per-frame randomness)");
+  const len = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+  assert(Math.abs(len - 1) < 1e-6, "unit vector");
+
+  const b = driftDirFor(4, 5, 6);
+  assert(a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2], "distinct positions → distinct directions");
 });

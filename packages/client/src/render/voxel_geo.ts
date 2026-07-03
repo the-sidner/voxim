@@ -31,6 +31,11 @@ export function geometryFromBaked(baked: BakedMesh): THREE.BufferGeometry {
   // Optional G6 sidecar (T-311 P4): per-vertex wetness for the wet_specular
   // surface treatment. Only present when some atom carried `wet01`.
   if (baked.wetness) out.setAttribute("aWetness", new THREE.BufferAttribute(baked.wetness, 1));
+  // Optional G6 sidecar (T-311 P5c): per-vertex death-dissolve fray amount +
+  // drift direction for the dissolve_drift vertex shader. Only present when
+  // some atom carried `fray01` (i.e. a profiled corrupted-creature model).
+  if (baked.fray) out.setAttribute("aFray", new THREE.BufferAttribute(baked.fray, 1));
+  if (baked.driftDir) out.setAttribute("aDriftDir", new THREE.BufferAttribute(baked.driftDir, 3));
   if (baked.indices.length > 0) out.setIndex(new THREE.BufferAttribute(baked.indices, 1));
   return out;
 }

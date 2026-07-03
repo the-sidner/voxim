@@ -168,6 +168,16 @@ export interface BakedMesh {
    *  atom carried `wet01`; becomes the `aWetness` attribute consumed by the
    *  `wet_specular` surface treatment. All 24 verts of a voxel share its value. */
   wetness?: Float32Array;
+  /** Per-vertex death-dissolve fray amount 0..1 (T-311 P5c, G6 sidecar) —
+   *  present only when some atom carried `fray01`; becomes the `aFray`
+   *  attribute the dissolve-drift vertex shader multiplies its offset by.
+   *  All 24 verts of a voxel share its value. */
+  fray?: Float32Array;
+  /** Per-vertex death-dissolve drift direction (T-311 P5c, G6 sidecar), a
+   *  static unit vec3 in model space — present only when some atom carried
+   *  `driftDir`; becomes the `aDriftDir` attribute. All 24 verts of a voxel
+   *  share the same 3 components. */
+  driftDir?: Float32Array;
 }
 
 /** Deterministic position hash → [0,1). Independent per `salt`. Exported as
@@ -229,6 +239,39 @@ export function resolveMossResponse(
   };
 }
 
+/**
+ * Death-dissolve fray/coreness (T-311 P5c, G6). A voxel's `loose01` is how
+ * far it sits into the "frayed" extremity band, measured as its distance
+ * from the skeleton's root bone divided by the model's overall extent from
+ * that root — 0 at the root (torso core, never frays), ramping to 1 at the
+ * model's farthest extremity (fingertips/toes/head). `band` (content:
+ * `DissolveProfileDef.frayBandWidth`) is the fraction of that normalised
+ * distance where fray starts: below `1 - band` the voxel is fully rigid
+ * (fray01 = 0); above it, fray01 ramps 0→1 linearly out to the extremity.
+ * Pure — unit-testable without THREE, mirrors `resolveMossResponse`'s shape
+ * (a pure numeric response derived from content + geometry, no side effects).
+ */
+export function resolveFrayCoreness(boneDistance: number, modelExtent: number, band: number): number {
+  if (modelExtent <= 0 || band <= 0) return 0;
+  const normalised = Math.min(1, Math.max(0, boneDistance / modelExtent));
+  const start = Math.max(0, 1 - band);
+  if (normalised <= start) return 0;
+  return (normalised - start) / (1 - start);
+}
+
+/** Deterministic per-voxel drift direction (T-311 P5c) — a unit vector in
+ *  model space, seeded by `voxHash` off the voxel's own bake-time position so
+ *  every voxel of a dissolving creature drifts a fixed direction (no
+ *  per-frame randomness). Salts 10/11/12 are reserved for this — distinct
+ *  from tint's 1/2 and any other voxHash consumer. */
+export function driftDirFor(cx: number, cy: number, cz: number): readonly [number, number, number] {
+  const dx = voxHash(cx, cy, cz, 10) * 2 - 1;
+  const dy = voxHash(cx, cy, cz, 11) * 2 - 1;
+  const dz = voxHash(cx, cy, cz, 12) * 2 - 1;
+  const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+  return [dx / len, dy / len, dz / len];
+}
+
 /** Per-voxel tint (rgb multipliers around 1.0): brightness jitter + a warm/cool
  *  tilt. Tuned subtle — mottles the surface without losing the material's identity.
  *  The hash stays sub-voxel dither; the AMPLITUDE is the content knob, so richness
@@ -263,15 +306,26 @@ export function bakeVoxels(
    *  mossy atoms → byte-identical. */
   moss?: MossResponse,
 ): BakedMesh {
-  const voxels: { px: number; py: number; pz: number; moss01: number; wet01: number; tintScale: number; baked: BakedVoxel }[] = [];
+  const voxels: { px: number; py: number; pz: number; moss01: number; wet01: number; tintScale: number; fray01: number; driftDir: readonly [number, number, number]; baked: BakedVoxel }[] = [];
   let anyWet = false;
+  let anyFray = false;
   for (const a of atoms) {
     if (a.materialId !== materialId) continue;
     // model center → three center (x, z, y); size stays in model axes — the
     // displaced-box bake applies the same swap to the extents internally.
     const px = a.cx, py = a.cz, pz = a.cy;
     if (a.wet01 !== undefined) anyWet = true;
-    voxels.push({ px, py, pz, moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, tintScale: a.tintScale ?? 1, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, a.dispMag ?? mag, a.dispSeed) });
+    if (a.fray01 !== undefined && a.fray01 > 0) anyFray = true;
+    // driftDir is model-space (x,y,z); swap to three-space (x,z,y) the same
+    // way the voxel center does, so the shader's offset stays consistent
+    // with the geometry it's nudging.
+    const [dmx, dmy, dmz] = a.driftDir ?? [0, 0, 0];
+    voxels.push({
+      px, py, pz,
+      moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, tintScale: a.tintScale ?? 1,
+      fray01: a.fray01 ?? 0, driftDir: [dmx, dmz, dmy],
+      baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, a.dispMag ?? mag, a.dispSeed),
+    });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;
@@ -282,9 +336,11 @@ export function bakeVoxels(
   const colors = new Float32Array(vCount * 3);
   const indices = new Uint32Array(voxels.length * BOX_INDEX_COUNT);
   const wetness = anyWet ? new Float32Array(vCount) : undefined;
+  const fray = anyFray ? new Float32Array(vCount) : undefined;
+  const driftDirOut = anyFray ? new Float32Array(vCount * 3) : undefined;
 
   let vOff = 0, iOff = 0;
-  for (const { px, py, pz, moss01, wet01, tintScale, baked } of voxels) {
+  for (const { px, py, pz, moss01, wet01, tintScale, fray01, driftDir, baked } of voxels) {
     // One tint per voxel; `tintScale` (the disturbance axis) collapses the
     // mottle amplitude toward flat for worked/trodden cells.
     const t = tintScale >= 1 ? tint : {
@@ -317,6 +373,12 @@ export function bakeVoxels(
       colors[v * 3 + 1] = tg;
       colors[v * 3 + 2] = tb;
       if (wetness) wetness[v] = wet01;
+      if (fray) fray[v] = fray01;
+      if (driftDirOut) {
+        driftDirOut[v * 3]     = driftDir[0];
+        driftDirOut[v * 3 + 1] = driftDir[1];
+        driftDirOut[v * 3 + 2] = driftDir[2];
+      }
     }
     for (let i = 0; i < BOX_INDEX_COUNT; i++) {
       indices[iOff + i] = UNIT_BOX_INDEX[i] + vOff;
@@ -325,7 +387,12 @@ export function bakeVoxels(
     iOff += BOX_INDEX_COUNT;
   }
 
-  return { positions, normals, uvs, voxelCenter, colors, indices, ...(wetness && { wetness }) };
+  return {
+    positions, normals, uvs, voxelCenter, colors, indices,
+    ...(wetness && { wetness }),
+    ...(fray && { fray }),
+    ...(driftDirOut && { driftDir: driftDirOut }),
+  };
 }
 
 /**

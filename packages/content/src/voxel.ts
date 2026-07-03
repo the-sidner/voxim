@@ -77,4 +77,24 @@ export interface VoxelAtom {
    * mottled. Absent ⇒ full amplitude (byte-identical).
    */
   tintScale?: number;
+  /**
+   * Death-dissolve fray amount 0..1 (T-311 P5c, G6 sidecar) — how "loose"
+   * this voxel is on a corrupted creature's model, derived once at bake time
+   * from the voxel's bone-relative extremity distance (gated by
+   * `DissolveProfileDef.frayBandWidth`). Emitted into an `aFray` vertex
+   * attribute; the in-shader dissolve drift multiplies by this AND by
+   * `AnimationState.dissolutionPhase`, so a voxel with fray01=0 (torso core)
+   * never moves regardless of phase. Absent ⇒ no attribute, bakes
+   * byte-identically — only creature models with a `dissolveProfileId` ever
+   * set this.
+   */
+  fray01?: number;
+  /**
+   * Death-dissolve drift direction (T-311 P5c, G6 sidecar) — a static unit
+   * vector in MODEL space, seeded once per voxel by `voxHash` so every
+   * dissolving voxel drifts a fixed, deterministic direction (no per-frame
+   * randomness, no CPU re-bake). Emitted into an `aDriftDir` vertex
+   * attribute alongside `fray01`. Only meaningful where `fray01 > 0`.
+   */
+  driftDir?: readonly [number, number, number];
 }
