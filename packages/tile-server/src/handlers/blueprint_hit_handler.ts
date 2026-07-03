@@ -7,6 +7,7 @@ import { Blueprint } from "../components/building.ts";
 import type { BlueprintData, BlueprintMaterial } from "../components/building.ts";
 import { Inventory } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
+import { buildChunkIndex } from "../physics/terrain_lookup.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("BlueprintHitHandler");
@@ -131,23 +132,22 @@ function consumeMaterials(slots: InventorySlot[], cost: BlueprintMaterial[]): In
 }
 
 function applyToTerrain(world: World, blueprint: BlueprintData): void {
-  for (const { entityId: chunkId, heightmap } of world.query(Heightmap)) {
-    if (heightmap.chunkX !== blueprint.chunkX || heightmap.chunkY !== blueprint.chunkY) continue;
+  const chunk = buildChunkIndex(world).get(`${blueprint.chunkX},${blueprint.chunkY}`);
+  if (!chunk) return;
+  const { entityId: chunkId, heightmap } = chunk;
 
-    const idx = blueprint.localX + blueprint.localY * CHUNK_SIZE;
+  const idx = blueprint.localX + blueprint.localY * CHUNK_SIZE;
 
-    if (blueprint.heightDelta !== 0) {
-      const newData = new Float32Array(heightmap.data);
-      newData[idx] = heightmap.data[idx] + blueprint.heightDelta;
-      world.set(chunkId, Heightmap, { ...heightmap, data: newData });
-    }
+  if (blueprint.heightDelta !== 0) {
+    const newData = new Float32Array(heightmap.data);
+    newData[idx] = heightmap.data[idx] + blueprint.heightDelta;
+    world.set(chunkId, Heightmap, { ...heightmap, data: newData });
+  }
 
-    const matGrid = world.get(chunkId, MaterialGrid);
-    if (matGrid) {
-      const newMats = new Uint16Array(matGrid.data);
-      newMats[idx] = blueprint.materialId;
-      world.set(chunkId, MaterialGrid, { ...matGrid, data: newMats });
-    }
-    break;
+  const matGrid = world.get(chunkId, MaterialGrid);
+  if (matGrid) {
+    const newMats = new Uint16Array(matGrid.data);
+    newMats[idx] = blueprint.materialId;
+    world.set(chunkId, MaterialGrid, { ...matGrid, data: newMats });
   }
 }

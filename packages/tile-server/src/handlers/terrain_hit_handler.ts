@@ -17,6 +17,7 @@ import { Position, InputState } from "../components/game.ts";
 import { ActiveActions } from "../components/action.ts";
 import { Equipment } from "../components/equipment.ts";
 import { spawnGroundStack } from "../spawner.ts";
+import { buildChunkIndex } from "../physics/terrain_lookup.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("TerrainDigSystem");
@@ -33,6 +34,7 @@ export class TerrainDigSystem implements System {
   run(world: World, _events: EventEmitter, _dt: number): void {
     const cfg = this.content.getGameConfig().terrain;
     const digReach = cfg.digReach;
+    const chunkIndex = buildChunkIndex(world);
 
     for (const { entityId, activeActions, position } of world.query(ActiveActions, Position)) {
       // Fire only on the first active tick of a primary-slot swing action
@@ -72,30 +74,29 @@ export class TerrainDigSystem implements System {
       const localY = ((cellY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const idx = localX + localY * CHUNK_SIZE;
 
-      for (const { entityId: chunkId, heightmap } of world.query(Heightmap)) {
-        if (heightmap.chunkX !== chunkX || heightmap.chunkY !== chunkY) continue;
+      const chunk = chunkIndex.get(`${chunkX},${chunkY}`);
+      if (!chunk) continue;
+      const { entityId: chunkId, heightmap } = chunk;
 
-        const currentHeight = heightmap.data[idx];
-        const newHeight = Math.max(cfg.minDigHeight, snapHeight(currentHeight - totalDig));
-        if (newHeight >= currentHeight) break; // already at or below minimum
+      const currentHeight = heightmap.data[idx];
+      const newHeight = Math.max(cfg.minDigHeight, snapHeight(currentHeight - totalDig));
+      if (newHeight >= currentHeight) continue; // already at or below minimum
 
-        const newData = new Float32Array(heightmap.data);
-        newData[idx] = newHeight;
-        world.set(chunkId, Heightmap, { ...heightmap, data: newData });
+      const newData = new Float32Array(heightmap.data);
+      newData[idx] = newHeight;
+      world.set(chunkId, Heightmap, { ...heightmap, data: newData });
 
-        // T-035: material drop — always spawn as world entity, picked up by the explicit PickUp command
-        const matGrid = world.get(chunkId, MaterialGrid);
-        if (matGrid) {
-          const matId = matGrid.data[idx];
-          const dropType = cfg.materialDrops[String(matId)];
-          if (dropType) {
-            spawnGroundStack(world, this.content, dropType, 1, { x: cx, y: cy, z: currentHeight });
-          }
+      // T-035: material drop — always spawn as world entity, picked up by the explicit PickUp command
+      const matGrid = world.get(chunkId, MaterialGrid);
+      if (matGrid) {
+        const matId = matGrid.data[idx];
+        const dropType = cfg.materialDrops[String(matId)];
+        if (dropType) {
+          spawnGroundStack(world, this.content, dropType, 1, { x: cx, y: cy, z: currentHeight });
         }
-
-        log.info("dug: entity=%s cell=(%d,%d) %.2f→%.2f", entityId, cellX, cellY, currentHeight, newHeight);
-        break;
       }
+
+      log.info("dug: entity=%s cell=(%d,%d) %.2f→%.2f", entityId, cellX, cellY, currentHeight, newHeight);
     }
   }
 }

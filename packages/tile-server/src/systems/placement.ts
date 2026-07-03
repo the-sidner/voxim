@@ -37,8 +37,8 @@ import { Inventory } from "../components/items.ts";
 import { Blueprint } from "../components/building.ts";
 import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
-import { Heightmap, getHeight, snapHeight, CHUNK_SIZE } from "@voxim/world";
-import type { HeightmapData } from "@voxim/world";
+import { getHeight, snapHeight, CHUNK_SIZE } from "@voxim/world";
+import { buildChunkIndex } from "../physics/terrain_lookup.ts";
 
 const log = createLogger("PlacementSystem");
 
@@ -259,10 +259,7 @@ export class PlacementSystem implements System {
     const reachSq = maxReach * maxReach;
 
     // Index terrain heightmaps by chunk for O(1) per-cell height sampling.
-    const hmByChunk = new Map<string, HeightmapData>();
-    for (const { heightmap } of world.query(Heightmap)) {
-      hmByChunk.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap);
-    }
+    const chunkIndex = buildChunkIndex(world);
 
     // Count voxels already stacked per column (existing blueprints), so each new
     // voxel lands on the column top; bumped as we place so cells repeated within
@@ -285,7 +282,7 @@ export class PlacementSystem implements System {
       const chunkY = Math.floor(cellY / CHUNK_SIZE);
       const localX = ((cellX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
       const localY = ((cellY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-      const hm = hmByChunk.get(`${chunkX},${chunkY}`);
+      const hm = chunkIndex.get(`${chunkX},${chunkY}`)?.heightmap;
       const baseZ = hm ? snapHeight(getHeight(hm, localX, localY)) : placerPos.z;
       const key = `${cellX},${cellY}`;
       const layer = stack.get(key) ?? 0;

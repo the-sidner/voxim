@@ -11,7 +11,7 @@
  * same convention the heightmap chunk encodes (flat-topped cells, no
  * bilinear interpolation).  Out-of-tile coordinates return 0 and log once.
  */
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import { Heightmap, OpenMask, getHeight, worldToChunk, worldToLocal, CHUNK_SIZE } from "@voxim/world";
 import type { HeightmapData, OpenMaskData } from "@voxim/world";
 import { createLogger } from "../logger.ts";
@@ -73,4 +73,25 @@ export function buildOpennessLookup(world: World): OpennessFn {
     const ly = Math.floor(localY);
     return om.data[lx + ly * CHUNK_SIZE] === 1;
   };
+}
+
+export interface ChunkIndexEntry {
+  entityId: EntityId;
+  heightmap: HeightmapData;
+}
+
+/**
+ * Build a per-tick chunk index (coord → {entityId, heightmap}) for mutation
+ * paths that need to call world.set(chunkId, Heightmap, ...) — the
+ * read-only buildTerrainLookup only returns a height *value*, not the
+ * entity to write back to. Same rebuild-every-call discipline as
+ * buildTerrainLookup: Heightmap components get replaced wholesale on
+ * dig/build, so a stored index would go stale.
+ */
+export function buildChunkIndex(world: World): Map<string, ChunkIndexEntry> {
+  const index = new Map<string, ChunkIndexEntry>();
+  for (const { entityId, heightmap } of world.query(Heightmap)) {
+    index.set(`${heightmap.chunkX},${heightmap.chunkY}`, { entityId, heightmap });
+  }
+  return index;
 }
