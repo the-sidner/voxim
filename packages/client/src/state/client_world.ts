@@ -137,15 +137,14 @@ export class ClientWorld {
   private readonly readyCoords = new Set<string>();
 
   /**
-   * Subscribe to chunk-ready notifications. Fires once per chunk, the first
-   * time both `heightmap` and `materialGrid` are present on it — those two
-   * are GUARANTEED non-undefined on the chunk passed to the listener. The
-   * other five grid fields (openMask, kindGrid, vegFieldGrid,
-   * surfaceStateGrid, waterGrid) may still be undefined at fire time if a
-   * future delta path ever splits them from the initial spawn; today's
-   * production path always writes all seven together, so in practice they
-   * are present too, but callers that need one of the five should still
-   * null-check it.
+   * Subscribe to chunk-ready notifications. Fires once per chunk, at the
+   * first spawn/delta BATCH boundary where both `heightmap` and
+   * `materialGrid` are present — never mid-decode, so every grid that rode
+   * the same message (openMask, kindGrid, vegFieldGrid, surfaceStateGrid,
+   * waterGrid) is already bound when listeners run. Today's production path
+   * writes all seven together at chunk creation, so in practice all seven
+   * are present; callers that need one of the five non-gating grids should
+   * still null-check it (an old save predating T-311 P3 may lack fields).
    *
    * Replays every chunk already ready so a late-registered listener catches
    * up without waiting for the next delta.
@@ -204,7 +203,6 @@ export class ClientWorld {
         chunk.chunkX = hm.chunkX;
         chunk.chunkY = hm.chunkY;
         chunk.heightmap = hm;
-        this.maybeFireReady(key);
         return;
       }
       case ComponentType.openMask: {
@@ -225,10 +223,7 @@ export class ClientWorld {
         const mg = materialGridCodec.decode(data);
         entity.materialGrid = mg;
         const key = this.chunkCoordByEntity.get(entityId);
-        if (key) {
-          this.chunkFor(key).materialGrid = mg;
-          this.maybeFireReady(key);
-        }
+        if (key) this.chunkFor(key).materialGrid = mg;
         return;
       }
       case ComponentType.vegFieldGrid: {
@@ -269,7 +264,13 @@ export class ClientWorld {
     }
   }
 
-  /** Apply a full entity spawn (all components at initial state). */
+  /** Apply a full entity spawn (all components at initial state).
+   *  Chunk-ready fires only AFTER the whole spawn is applied — never from
+   *  inside a component case — so every grid that rode this spawn (kindGrid,
+   *  the field grids) is already bound when listeners run. Firing mid-decode
+   *  (the old materialGrid-case call) handed scatter a chunk whose kindGrid
+   *  hadn't decoded yet; the one-shot ready event then never re-fired and the
+   *  chunk stayed bare forever (T-315 E2 regression). */
   applySpawn(spawn: BinaryEntitySpawn): void {
     let entity = this.entities.get(spawn.entityId);
     if (!entity) {
@@ -279,6 +280,8 @@ export class ClientWorld {
     for (const comp of spawn.components) {
       this.applyComponentData(entity, spawn.entityId, comp.componentType, comp.data, 0);
     }
+    const key = this.chunkCoordByEntity.get(spawn.entityId);
+    if (key) this.maybeFireReady(key);
   }
 
   /** Apply a single component delta for an already-known entity. */
@@ -289,6 +292,8 @@ export class ClientWorld {
       this.entities.set(delta.entityId, entity);
     }
     this.applyComponentData(entity, delta.entityId, delta.componentType, delta.data, delta.version);
+    const key = this.chunkCoordByEntity.get(delta.entityId);
+    if (key) this.maybeFireReady(key);
   }
 
   /**
