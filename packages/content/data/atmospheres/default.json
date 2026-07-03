@@ -1,0 +1,27 @@
+{
+  "id": "default",
+  "sunArc": {
+    "dawnAzimuthDeg": -95,
+    "duskAzimuthDeg": 21.26,
+    "maxAltitudeDeg": 75.96375653207352,
+    "nightDepthDeg": 20
+  },
+  "mist": {
+    "heightMin": 0.0,
+    "heightMax": 2.5,
+    "densityByPhase": {
+      "dawn": 0.55,
+      "noon": 0.05,
+      "dusk": 0.35,
+      "midnight": 0.2
+    },
+    "color": "#b07a5e"
+  },
+  "godRay": {
+    "intensity": 0.42,
+    "nearFieldRange": 0.85,
+    "decay": 0.97,
+    "strength": 0.3,
+    "color": "#ffedbd"
+  }
+}

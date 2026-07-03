@@ -41,6 +41,7 @@ import type {
   BiomeDef,
   GradeDef,
   LightDef,
+  AtmosphereDef,
   DecalDef,
   ZoneDef,
   PoiDef,
@@ -130,6 +131,15 @@ export interface ContentService {
    * file drop. See VISUAL_DATAMODEL_PLAN.md (grammar G7-adjacent).
    */
   readonly lights: ContentRegistryReadonly<LightDef>;
+
+  /**
+   * Atmosphere definitions keyed by id (T-311 Phase 5a, grammar G7). Loaded
+   * from `data/atmospheres/*.json`; selected per-tile via `WorldClock.biomeTag`
+   * with a `"default"` fallback. Owns the sun path (sun_arc.ts params), ground
+   * mist band, and near-field god-ray params — NOT day/night colour (that
+   * stays on `Palette.phases`). Authoring a new atmosphere is a file drop.
+   */
+  readonly atmospheres: ContentRegistryReadonly<AtmosphereDef>;
 
   /**
    * Ephemeral combat decals keyed by id (T-311 P4). Loaded from
@@ -288,6 +298,10 @@ export class StaticContentStore implements ContentService {
     kind: "light",
     idOf: (l) => l.id,
   });
+  public readonly atmospheres = new ContentRegistry<AtmosphereDef>({
+    kind: "atmosphere",
+    idOf: (a) => a.id,
+  });
   public readonly decals = new ContentRegistry<DecalDef>({
     kind: "decal",
     idOf: (d) => d.id,
@@ -426,6 +440,10 @@ export class StaticContentStore implements ContentService {
 
   registerLight(def: LightDef): void {
     this.lights.register(def);
+  }
+
+  registerAtmosphere(def: AtmosphereDef): void {
+    this.atmospheres.register(def);
   }
 
   registerDecal(def: DecalDef): void {

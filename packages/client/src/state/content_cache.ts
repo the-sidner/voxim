@@ -15,7 +15,7 @@
  * `.then()` off them with a stale-guard pattern that assumes a microtask
  * boundary.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, GameConfig } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, GameConfig } from "@voxim/content";
 
 export class ContentCache {
   /**
@@ -92,6 +92,13 @@ export class ContentCache {
    *  bootstrap service is wired or if the id is unknown. */
   getLight(id: string): LightDef | null {
     return this.bootstrapService?.lights.get(id) ?? null;
+  }
+
+  /** Atmosphere definition by id (T-311 P5a), from the bootstrap blob. Null
+   *  until the bootstrap service is wired or if the id is unknown — callers
+   *  fall back to `getAtmosphere("default")`. */
+  getAtmosphere(id: string): AtmosphereDef | null {
+    return this.bootstrapService?.atmospheres.get(id) ?? null;
   }
 
   /** Singleton game config, from the bootstrap blob. Null until the bootstrap

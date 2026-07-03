@@ -175,6 +175,64 @@ export interface GradeDef {
 }
 
 /**
+ * Atmosphere definition (T-311 Phase 5a, grammar G7). Selected by
+ * `WorldClock.biomeTag` (the tile's single closed biome-tag, resolved through
+ * ContentService with a `default.json` fallback — the tile-wide render-context
+ * selector this phase introduces). Deliberately does NOT re-carry day/night
+ * sky/fog/sun/ambient colour ramps — those already live on `Palette.phases`,
+ * keyed by the same four phase names `sunArc`'s dawn/noon/dusk boundaries
+ * match (0.25/0.5/0.75); AtmosphereDef owns only the axes palette.phases
+ * doesn't: the sun's geometric path, ground mist, and god-rays.
+ */
+export interface AtmosphereDef {
+  id: string;
+  /** Sun path — altitude/azimuth as a function of time-of-day (sun_arc.ts). */
+  sunArc: {
+    dawnAzimuthDeg: number;
+    duskAzimuthDeg: number;
+    maxAltitudeDeg: number;
+    nightDepthDeg: number;
+  };
+  /** Ground-hugging mist band (GroundMistLayer, an EdgePass composite term —
+   *  not a separate render pass). Height band is world-Y, relative to sea
+   *  level (not player-relative — a fog-of-war-style world reconstruction). */
+  mist: {
+    heightMin: number;
+    heightMax: number;
+    /** Density multiplier per named day phase (same 4 names as Palette.phases;
+     *  falls back to 0 for an unlisted phase — mist is opt-in per phase). */
+    densityByPhase: Record<string, number>;
+    /** sRGB hex mist tint. */
+    color: string;
+  };
+  /**
+   * God-ray (light-shaft) params for the existing screen-space radial-scatter
+   * pass (god_ray_pass.ts) — NOT a shadow-map volumetric march. v1 is
+   * deliberately NEAR-FIELD ONLY: the march samples the half-res bloom
+   * bright-target within a fixed UV radius, which in practice stays inside
+   * the sun shadow camera's ±60u frustum at the current camera framing —
+   * widening/cascading the frustum for a true long-range shaft is explicitly
+   * out of scope this phase (VISUAL_DATAMODEL_PLAN.md Phase 5 caveat).
+   */
+  godRay: {
+    /** Per-step contribution (GodRayPass uWeight). */
+    intensity: number;
+    /** How far toward the sun UV the march reaches (GodRayPass uDensity).
+     *  Near-field-only ceiling: keep this small enough that SAMPLES=24 steps
+     *  never reach past the shadow frustum's on-screen projection at the
+     *  default camera framing (empirically ~0.85 today; do not widen without
+     *  re-verifying against the frustum via testplay). */
+    nearFieldRange: number;
+    /** Per-step brightness falloff (GodRayPass uDecay). */
+    decay: number;
+    /** Composite strength added into the HDR scene (EdgePass uGodRayStrength). */
+    strength: number;
+    /** sRGB hex shaft tint (EdgePass uGodRayColor). */
+    color: string;
+  };
+}
+
+/**
  * Light definition (T-311 Phase 2). "A light" is content: a warm/corruption/cold
  * family, a base colour + radius + intensity, whether it is eligible to cast a
  * real PointLight (`castsPool` — vs glowing through its emissive flame voxels

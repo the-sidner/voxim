@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  DecalDef, Palette } from "./types.ts";
+  AtmosphereDef, DecalDef, Palette } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
@@ -54,7 +54,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
-    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, decalsRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, decalsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -76,6 +76,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "scatter"),
     readJsonDirOptional(dataDir, "grades"),
     readJsonDirOptional(dataDir, "lights"),
+    readJsonDirOptional(dataDir, "atmospheres"),
     readJsonDirOptional(dataDir, "decals"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
@@ -241,6 +242,16 @@ async function loadContentStoreInternal(
   for (const raw of lightsRaw as LightDef[]) {
     validateLightDef(raw);
     store.registerLight(raw);
+  }
+  for (const raw of atmospheresRaw as AtmosphereDef[]) {
+    validateAtmosphereDef(raw);
+    store.registerAtmosphere(raw);
+  }
+  if (!store.atmospheres.get("default")) {
+    throw new Error(
+      `[content] no "default" AtmosphereDef loaded — data/atmospheres/default.json ` +
+      `must exist as the selector fallback.`,
+    );
   }
   for (const raw of decalsRaw as DecalDef[]) {
     validateDecalDef(raw);
@@ -709,6 +720,49 @@ export function validateLightDef(def: LightDef): void {
   }
   for (const k of ["baseColor", "radius", "intensity"] as const) {
     if (typeof def[k] !== "number") throw new Error(`Light '${def.id}': '${k}' must be a number`);
+  }
+}
+
+/** Shape-validate one AtmosphereDef (T-311 P5a). Cross-checked at boot against
+ *  `WorldClock.biomeTag`'s closed tag vocabulary is the SELECTOR's job (server
+ *  boot, T-315 A6 house pattern) — this only validates the def's own shape. */
+export function validateAtmosphereDef(def: AtmosphereDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`AtmosphereDef: missing or empty id`);
+  }
+  const sa = def.sunArc;
+  if (!sa || typeof sa !== "object") {
+    throw new Error(`Atmosphere '${def.id}': 'sunArc' must be an object`);
+  }
+  for (const k of ["dawnAzimuthDeg", "duskAzimuthDeg", "maxAltitudeDeg", "nightDepthDeg"] as const) {
+    if (typeof sa[k] !== "number") {
+      throw new Error(`Atmosphere '${def.id}': sunArc.${k} must be a number`);
+    }
+  }
+  const m = def.mist;
+  if (!m || typeof m !== "object") {
+    throw new Error(`Atmosphere '${def.id}': 'mist' must be an object`);
+  }
+  if (typeof m.heightMin !== "number" || typeof m.heightMax !== "number" || m.heightMax < m.heightMin) {
+    throw new Error(`Atmosphere '${def.id}': mist.heightMin/heightMax must be numbers with heightMax >= heightMin`);
+  }
+  if (!m.densityByPhase || typeof m.densityByPhase !== "object") {
+    throw new Error(`Atmosphere '${def.id}': 'mist.densityByPhase' must be an object`);
+  }
+  if (typeof m.color !== "string" || m.color.length === 0) {
+    throw new Error(`Atmosphere '${def.id}': 'mist.color' must be a non-empty hex string`);
+  }
+  const g = def.godRay;
+  if (!g || typeof g !== "object") {
+    throw new Error(`Atmosphere '${def.id}': 'godRay' must be an object`);
+  }
+  for (const k of ["intensity", "nearFieldRange", "decay", "strength"] as const) {
+    if (typeof g[k] !== "number") {
+      throw new Error(`Atmosphere '${def.id}': godRay.${k} must be a number`);
+    }
+  }
+  if (typeof g.color !== "string" || g.color.length === 0) {
+    throw new Error(`Atmosphere '${def.id}': 'godRay.color' must be a non-empty hex string`);
   }
 }
 
