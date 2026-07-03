@@ -168,11 +168,29 @@ Building one is disproportionate to one activity's transient lock. The
 fight is fully playable end-to-end (spawn → phase adds → death → arena-
 clear log); the arena entrance is just skippable-past in v1.
 
-**Remaining (T-212 v2)**:
-- `action` — interactable prefab spawn at centroid (chalice pedestal,
-  signal brazier, etc.) — needs the entity-hover/click system from
-  T-100 to dispatch usage.
-- `puzzle` — reserves `data/puzzles/` content category; each puzzle
+**`action` landed** (see commit below): interactable prefab (chalice
+pedestal / signal brazier — reused existing `model_altar`/`model_campfire`
+geometry, no new voxel authoring) spawns at the centroid, tagged a new
+NETWORKED marker `PoiInteractable{poiInstanceId, verb, consumable}`
+(wire id 57) — server-only wouldn't work here: the client's hover/click
+`canHandle()` only sees `entityState` fields, which only exist for
+networked components (confirmed by reading `workstationBuffer`/
+`container`/`traderInventory`'s identical pattern). New
+`CommandType.UseEntity` (26, payload: entityId string) — PickUp/
+LoadWorkstation semantics don't fit ("use this prop, maybe consume it,
+fire POI effects" is not an inventory transfer or a buffer op). Handling
+lives inside `PoiSystem` (a second command-driven dispatch source, not a
+new System, via `prepare()`/`pendingCommands` — same doctrine as the
+wave-advance pass): proximity-gated on `crafting.interactRange`, grants
+the owning POI's `reward.extras` via a new shared `poi/reward.ts` helper
+(lore → `LoreInternalised`, stack → `spawnGroundStack`; "unique" trinket
+drops deferred, logged not silent — see the T-213b section), destroys the
+prop if `consumable`. Client: `makePoiInteractableHandler` in
+`interactable_handlers.ts` sends `UseEntity` directly on click (one-shot
+verbs, no panel), registered in `game.ts`; hover outline gained a violet
+tint for POI props.
+
+**`puzzle`** — reserves `data/puzzles/` content category; each puzzle
   template defines its own internal rules (lever sequences,
   reflection paths, valve sequences). Solving the puzzle fires the
   reward path.

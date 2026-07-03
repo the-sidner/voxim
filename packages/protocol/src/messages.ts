@@ -157,7 +157,13 @@ export const enum CommandType {
                           //   Server gates dynasty/kind/capacity/reach (T-077/T-078).
   ContainerWithdraw = 25, // payload: u8 strLen + UTF-8 containerId + u8 slotIndex — pull the chest
                           //   slot back into the player's inventory. Server gates dynasty/reach.
-  // 26-255 reserved for future commands
+  UseEntity         = 26, // payload: u8 strLen + UTF-8 entityId — use a world-prop entity carrying
+                          //   PoiInteractable or Lever (POI `action`/`puzzle` activities, T-212 v2).
+                          //   Server validates proximity via crafting.interactRange; fires the
+                          //   owning POI's reward via the shared poi/reward.ts grant helper.
+                          //   Not PickUp (no inventory transfer) or LoadWorkstation (no buffer) —
+                          //   "use this prop, maybe consume it, fire POI effects" is a new shape.
+  // 27-255 reserved for future commands
 }
 
 /**
@@ -196,6 +202,7 @@ export type CommandPayload =
   | { cmd: CommandType.LoadWorkstation; inventorySlot: number; bufferSlot: number }
   | { cmd: CommandType.TakeWorkstation; bufferSlot: number }
   | { cmd: CommandType.PickUp;          entityId: string }
+  | { cmd: CommandType.UseEntity;       entityId: string }
   | { cmd: CommandType.ContainerDeposit;  containerId: string; fromInventorySlot: number }
   | { cmd: CommandType.ContainerWithdraw; containerId: string; slotIndex: number }
   | { cmd: CommandType.DebugGiveItem;  itemType: string; quantity: number }

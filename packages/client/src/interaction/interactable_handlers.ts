@@ -116,3 +116,21 @@ export function makeGroundItemHandler(
     onClick: (t) => { pickup(t.entityId); return true; },
   };
 }
+
+/**
+ * `action`/`puzzle` POI world props (chalice pedestal, signal brazier,
+ * lever, …). Identified by the "poiInteractable" networked component
+ * (T-212 v2). Click sends CommandType.UseEntity directly — these are
+ * one-shot verbs ("drink"/"light"/"pull"), not inventory UIs, so no panel.
+ */
+export function makePoiInteractableHandler(
+  use: (entityId: string) => void,
+): EntityInteractionHandler {
+  return {
+    id: "poi_interactable",
+    priority: 8,
+    interactionRange: 3,
+    canHandle: (t) => t.entityState.raw.has("poiInteractable"),
+    onClick: (t) => { use(t.entityId); return true; },
+  };
+}

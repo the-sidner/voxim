@@ -67,6 +67,8 @@ export const ComponentType = {
   vegFieldGrid:       54,  // T-311 P3: per-cell canopyLight/corruption/fertility (render fields, never collision)
   surfaceStateGrid:   55,  // T-311 P3: per-cell wetness/overgrowth/wear/variantIndex/ruinAge/traffic
   waterGrid:          56,  // T-311 P3: per-cell water surface level (f32, NaN = no water)
+  poiInteractable:    57,  // T-212 v2: `action`/`puzzle` POI world-prop marker — client's hover/click
+                           //   detects it the same way it detects workstationBuffer/container/traderInventory
   // 49 (parent) — defined in @voxim/engine/src/scene.ts; engine owns the
   //    scene-graph primitive (co-equal with World), so its wire id lives
   //    there. Reserved here so the numbering map stays visible. Never reuse.

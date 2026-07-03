@@ -48,6 +48,7 @@ function outlineCategoryFor(state: EntityState | null): OutlineCategory | null {
   if (state.workstationBuffer)    return { tint: 0xffc060 };  // amber
   if (state.raw.has("resource_node")) return { tint: 0xffe080 };  // warm yellow
   if (state.itemData)             return { tint: 0x80e0ff };  // cyan
+  if (state.raw.has("poiInteractable")) return { tint: 0xd080ff };  // violet — POI world props
   return null;
 }
 

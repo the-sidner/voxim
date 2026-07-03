@@ -27,6 +27,7 @@ export type {
   ActorSlotsData,
   ActiveActionState,
   ActiveActionsData,
+  PoiInteractableData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
@@ -53,6 +54,7 @@ export {
   nameCodec,
   actorSlotsCodec,
   activeActionsCodec,
+  poiInteractableCodec,
   WIRE_LIMITS,
 } from "./src/components.ts";
 

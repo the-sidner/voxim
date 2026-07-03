@@ -1812,3 +1812,34 @@ export const activeActionsCodec: Serialiser<ActiveActionsData> = {
 // (CharacterStateMachine codec retired — the CSM was fully replaced by the
 // action primitive (ActiveActions + ActionDispatcher); the client mirrors
 // behaviour from AnimationState now. Wire id 45 retired, never reuse.)
+
+// ---- PoiInteractable ---------------------------------------------------------
+// Marker on the world-prop entity an `action`/`puzzle` POI activity spawns
+// (chalice pedestal, signal brazier, lever, …). Networked so the client's
+// hover/click can detect it the same way it detects workstationBuffer/
+// container/traderInventory (T-212 v2) — `canHandle()` keys off entityState
+// field presence, which only exists for networked components.
+
+export interface PoiInteractableData {
+  poiInstanceId: string;
+  verb: string;
+  consumable: boolean;
+}
+
+export const poiInteractableCodec: Serialiser<PoiInteractableData> = {
+  encode(v: PoiInteractableData): Uint8Array {
+    const w = new WireWriter();
+    w.writeStr(v.poiInstanceId);
+    w.writeStr(v.verb);
+    w.writeU8(v.consumable ? 1 : 0);
+    return w.toBytes();
+  },
+  decode(b: Uint8Array): PoiInteractableData {
+    const r = new WireReader(b);
+    return {
+      poiInstanceId: r.readStr(),
+      verb:          r.readStr(),
+      consumable:    r.readU8() === 1,
+    };
+  },
+};

@@ -1,0 +1,12 @@
+{
+  "id": "signal_brazier",
+  "modelId": "model_campfire",
+  "components": {
+    "lightEmitter": {
+      "color": 16740384,
+      "intensity": 1.4,
+      "radius": 18.0,
+      "lightDefId": "signal_pyre"
+    }
+  }
+}

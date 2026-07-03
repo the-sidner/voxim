@@ -169,6 +169,15 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       return u8;
     }
 
+    case CommandType.UseEntity: {
+      const strBytes = new TextEncoder().encode(cmd.entityId);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      return u8;
+    }
+
     case CommandType.ContainerDeposit: {
       const strBytes = new TextEncoder().encode(cmd.containerId);
       const u8 = new Uint8Array(1 + strBytes.byteLength + 1);
@@ -314,6 +323,12 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const strLen = bytes[0];
       const entityId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
       return { cmd: CommandType.PickUp, entityId };
+    }
+
+    case CommandType.UseEntity: {
+      const strLen = bytes[0];
+      const entityId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      return { cmd: CommandType.UseEntity, entityId };
     }
 
     case CommandType.ContainerDeposit: {

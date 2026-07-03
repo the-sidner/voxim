@@ -35,7 +35,7 @@ import { DecalRenderer } from "./render/decal_renderer.ts";
 import { crossCheckDecals } from "./render/decal_sources.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler, makePoiInteractableHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
@@ -168,6 +168,19 @@ export class VoximGame {
       if (m.kind === "build") modeState.value = { ...m, brush: { ...m.brush, spacing } };
     },
     exit: (): void => { modeState.value = { kind: "normal" }; },
+  };
+
+  /**
+   * Interact test hook (T-212 v2): sends `CommandType.UseEntity` directly,
+   * bypassing hover/click. Needed because `testInput`'s `pressKey` deliberately
+   * skips the E/Escape UI dispatches (see `intent_translator.ts`'s doc
+   * comment) — there is no key-driven path to a world-prop interact for the
+   * harness to exercise, same as `buildProbe` bypasses the build-mode UI.
+   */
+  readonly interactProbe = {
+    use: (entityId: string): void => {
+      this._sendCommand({ cmd: CommandType.UseEntity, entityId });
+    },
   };
 
   /**
@@ -425,6 +438,9 @@ export class VoximGame {
     this.interactionSystem.register(resourceNodeHandler);
     this.interactionSystem.register(makeGroundItemHandler((entityId) =>
       this._sendCommand({ cmd: CommandType.PickUp, entityId }),
+    ));
+    this.interactionSystem.register(makePoiInteractableHandler((entityId) =>
+      this._sendCommand({ cmd: CommandType.UseEntity, entityId }),
     ));
     this.renderer.setInteractionSystem(this.interactionSystem);
 

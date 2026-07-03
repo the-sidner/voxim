@@ -7,7 +7,9 @@
  */
 
 import { defineComponent } from "@voxim/engine";
-import { WireReader, WireWriter } from "@voxim/codecs";
+import { ComponentType } from "@voxim/protocol";
+import { WireReader, WireWriter, poiInteractableCodec } from "@voxim/codecs";
+import type { PoiInteractableData } from "@voxim/codecs";
 
 /**
  * Marker entity placed at every narrative POI's zone centroid at tile
@@ -59,4 +61,24 @@ export const PoiTrigger = defineComponent({
     triggerRadius: 6,
     fired:         false,
   }),
+});
+
+/**
+ * Marker on the world-prop entity an `action`/`puzzle` POI activity spawns
+ * at its centroid (chalice pedestal, signal brazier, lever, …). Networked
+ * (T-212 v2) — the client's hover/click interaction system keys off
+ * component presence in `entityState`, the same way it detects
+ * workstationBuffer/container/traderInventory; a server-only marker would
+ * be invisible to the client's `canHandle()` checks. `verb`/`consumable`
+ * mirror the owning `PoiActivityAction`/puzzle-lever's authored data so the
+ * server's `CommandType.UseEntity` handler doesn't need a second content
+ * lookup keyed by instance id.
+ */
+export type { PoiInteractableData };
+
+export const PoiInteractable = defineComponent({
+  name: "poiInteractable" as const,
+  wireId: ComponentType.poiInteractable,
+  codec: poiInteractableCodec,
+  default: (): PoiInteractableData => ({ poiInstanceId: "", verb: "use", consumable: false }),
 });

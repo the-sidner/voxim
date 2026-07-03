@@ -25,13 +25,16 @@
 
 import type { World, EntityId } from "@voxim/engine";
 import type { ContentService, PoiDef, PoiActivityWave } from "@voxim/content";
-import type { System, EventEmitter } from "../system.ts";
+import { CommandType } from "@voxim/protocol";
+import type { CommandPayload } from "@voxim/protocol";
+import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
-import { PoiTrigger } from "../components/poi.ts";
+import { PoiTrigger, PoiInteractable } from "../components/poi.ts";
 import { WaveMember, WaveState } from "../components/wave.ts";
 import { upsertResourceKey } from "../resources/mutate.ts";
 import { Resource } from "../components/resource.ts";
 import type { PoiActivityRegistry } from "../poi/mod.ts";
+import { grantPoiReward } from "../poi/reward.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("PoiSystem");
@@ -45,13 +48,21 @@ const log = createLogger("PoiSystem");
 export type ListPlayersFn = () => IterableIterator<string>;
 
 export class PoiSystem implements System {
+  private _commands: ReadonlyMap<string, CommandPayload[]> = new Map();
+
   constructor(
     private readonly content: ContentService,
     private readonly activities: PoiActivityRegistry,
     private readonly listPlayers: ListPlayersFn,
   ) {}
 
+  prepare(_serverTick: number, ctx: TickContext): void {
+    this._commands = ctx.pendingCommands;
+  }
+
   run(world: World, events: EventEmitter, _dt: number): void {
+    this.handleUseEntity(world, events);
+
     const triggers = world.query(PoiTrigger, Position);
     if (triggers.length === 0) return;
 
@@ -84,6 +95,60 @@ export class PoiSystem implements System {
     }
 
     this.advanceWaves(world);
+  }
+
+  /**
+   * `CommandType.UseEntity` (T-212 v2) — the `action`/`puzzle` activities'
+   * "use this world prop" command. Kept inside PoiSystem's tick (a second
+   * command-driven dispatch source, not a new System) per the ticket's own
+   * doctrine. Proximity-gated like `CraftingSystem._handlePickUp`; grants
+   * the owning POI's reward via the shared `poi/reward.ts` helper and, if
+   * `consumable`, destroys the interactable so the POI can't be re-used.
+   */
+  private handleUseEntity(world: World, events: EventEmitter): void {
+    if (this._commands.size === 0) return;
+    const interactRange = this.content.getGameConfig().crafting.interactRange;
+
+    for (const [playerId, commands] of this._commands) {
+      if (!world.isAlive(playerId)) continue;
+      for (const cmd of commands) {
+        if (cmd.cmd !== CommandType.UseEntity) continue;
+        this.useEntity(world, events, playerId, cmd.entityId as EntityId, interactRange);
+      }
+    }
+  }
+
+  private useEntity(
+    world: World, events: EventEmitter, playerId: EntityId, entityId: EntityId, interactRange: number,
+  ): void {
+    const interactable = world.get(entityId, PoiInteractable);
+    if (!interactable) return;
+    const propPos = world.get(entityId, Position);
+    const playerPos = world.get(playerId, Position);
+    if (!propPos || !playerPos) return;
+
+    const dx = playerPos.x - propPos.x, dy = playerPos.y - propPos.y;
+    if (dx * dx + dy * dy > interactRange * interactRange) {
+      log.debug("use_entity: player=%s entity=%s out of range", playerId, entityId);
+      return;
+    }
+
+    // Find the owning POI def via the PoiTrigger sharing this instance id.
+    const trigger = world.query(PoiTrigger).find((t) => t.poiTrigger.poiInstanceId === interactable.poiInstanceId);
+    const def = trigger ? this.content.pois.get(trigger.poiTrigger.poiDefId) : null;
+    if (!def) {
+      log.warn("use_entity: entity=%s poiInstanceId=%s has no resolvable POI def", entityId, interactable.poiInstanceId);
+      return;
+    }
+
+    grantPoiReward(world, this.content, events, def.reward, playerId, propPos);
+    log.info(
+      "use_entity: player=%s used %s (verb=%s) on POI %s",
+      playerId.slice(-6), entityId, interactable.verb, interactable.poiInstanceId,
+    );
+    if (interactable.consumable) {
+      world.destroy(entityId);
+    }
   }
 
   /**

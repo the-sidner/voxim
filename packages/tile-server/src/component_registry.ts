@@ -73,7 +73,7 @@ import { Hitbox } from "./components/hitbox.ts";
 import { GateLink } from "./components/gate.ts";
 import { Hearth } from "./components/hearth.ts";
 import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
-import { PoiTrigger } from "./components/poi.ts";
+import { PoiTrigger, PoiInteractable } from "./components/poi.ts";
 import { Stair } from "./components/stair.ts";
 import { WaveMember, WaveState } from "./components/wave.ts";
 import { BossArenaLink } from "./components/boss_arena.ts";
@@ -189,6 +189,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // def + codec; wire id 49 is reserved in @voxim/protocol. Inert until
   // a consumer calls the World hierarchy APIs.
   Parent,
+  // PoiInteractable (T-212 v2) — action/puzzle POI world-prop marker.
+  // Networked so the client's hover/click interaction system can detect
+  // it in entityState, same as workstationBuffer/container/traderInventory.
+  PoiInteractable,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
