@@ -338,6 +338,17 @@ When the player entity is inside the enclosure, the roof is hidden (player sees 
 When outside, the roof is visible.
 Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
 
+### T-316 · Atlas inspector bake button 401s — control-plane secret never wired
+Effort: S   Status: done   Commit: 1a9291c
+
+T-258 gated POST /world/bake behind x-voxim-service-secret, but the inspector UI never sent the
+header and the dev/base compose never passed VOXIM_SERVICE_SECRET to the atlas container (it ran
+on the dev fallback while tile/gateway used the real .env value — a silent cross-service secret
+mismatch). Fixed: bake form carries a persisted Secret field (localStorage, dev-fallback default;
+paste the .env value once on stacks that set one), compose feeds atlas the .env secret, and the
+never-wired /world/restart endpoint + restartTargets config were deleted — the tile's own 5s
+worlds-repo poll + self-restart is the real refresh mechanism and needs no push channel.
+
 ### T-315 · Terrain-path comb — pull atlas→world→server→wire→client back in line
 Effort: L   Status: done   Commit: 126ff6e
 
