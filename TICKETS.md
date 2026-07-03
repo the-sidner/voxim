@@ -1490,6 +1490,54 @@ live stack): 4 s of micro-aiming around a world-pinned target moved camera yaw 0
 ~150° flick converged 140→87→62→55° and held with 0.000° creep over the final second
 (no feedback loop); two-heading screenshots sane. Full suite 580/580 green.
 
+### T-318 · Terraced cliffs — CliffProfileDef + CliffGrid (T-311 Phase 6)
+Effort: L   Status: in-progress   Plan: `VISUAL_DATAMODEL_PLAN.md` §Phase 6
+
+Cliff shape stops being a client-side voxeliser heuristic and becomes atlas-authored terrain.
+The atlas resolves wilderness-perimeter cells into tier bands via a new `CliffProfileDef`
+content category, emits a new **`CliffGrid`** chunk component `{profileId, erosion, tier,
+edge}`, and the client deletes its `CLIFF_MIN`/`STONE_H`/`STACK_MAX`/`EXPOSE_MIN` trigger
+heuristics in `terrain_voxels.ts` in favour of a `cliffVoxeliser` registry dispatched by
+profile id (columnar/broken/sloped/stone_stair). Collision agrees with render by construction.
+Overhang stays dropped (I3a). This closes T-315's last deferred item ("Water/SUN_DIR/CLIFF_*
+stay deferred to T-311 P5/P6").
+
+**CliffGrid field-set matrix (I1 discipline, written before any wireId is minted):**
+
+| Field | Width | Consumers | Deferred consumers |
+|---|---|---|---|
+| `profileId` | u8 | client `cliffVoxeliser` dispatch (string id resolved via a stable alphabetical id→index table, mirroring `JsonSource`'s own load-order rule), Studio Cliff panel | none — closed v1 vocabulary (columnar/broken/sloped/stone_stair), room to grow to 256 |
+| `erosion` | u8 (3 states: crisp/weathered/broken) | client voxeliser (jitter/wear look), Studio | none — v1 ships exactly 3 states |
+| `tier` | u8 | client voxeliser (course index within the per-cell stack) | none — NOT the authority for stack height (the profile's fixed `tierCount` is); reserved for a future per-cell-depth read |
+| `edge` | u8 (0/1) | client voxeliser (stack only on the outward lip, not buried interior wall cells), Studio collision overlay | none |
+
+All four fields are u8 planes reusing `codecs/src/components.ts`'s existing
+`encodeU8Planes`/`decodeU8Planes` RLE helpers verbatim (this data is mostly zero outside
+wilderness perimeters). `profileId` is the **first real instance** of the I3c-style
+content-version-checked stable index — `SurfaceStateGrid.variantIndex` (P3) does not actually
+have one yet (it's an inline threshold formula, not a content lookup); this ticket does not
+retrofit that gap, it only avoids repeating it.
+
+**v1 scope decision (flagged for review):** "stepped heightmap" ships as **vertical coursing
+within one wall cell's column** (`CliffGrid.tier` selects which course to stack, exactly like
+today's client `Math.round(depth/STONE_H)`), NOT a horizontal multi-cell staircase with
+walkable intermediate ledges. `Heightmap` stays byte-identical to the pre-P6 single-`wallStep`
+output. This keeps collision-agreement trivially true by construction (physics reads
+`Heightmap` directly, `stepHeight=0.75` vs `wallStep=2.0`/`3.0` — nothing walkable changes) and
+satisfies "player cannot walk up a raw tier step" a fortiori. A true horizontal terrace
+(thicker wall band, new openMask semantics, `applyStairUnlock` rework) is a materially larger
+scope, deferred to a future phase if wanted.
+
+**v1 scope narrowing:** only `wallKind: "stone"` cells get a `CliffProfileDef` (`profileId`
+stays 0/"none" on FOREST/GRASS_MOUND walls) — matching the four named profile ids' stone/cliff
+framing. The pre-existing client stacking heuristic applied to ANY material past `CLIFF_MIN`
+depth; forest/grass-mound walls lose their depth-based stacked look until a future profile
+ships for those wall kinds. Flagged as a player-visible regression risk to confirm post-merge.
+
+Done when: wire+content+atlas+client+physics land per the checklist below, full suite green,
+and (post-merge, live stack) a re-bake shows real stepped/eroded cliff variety with stairs
+still walkable and CliffGrid surviving chunk unload/reload.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
