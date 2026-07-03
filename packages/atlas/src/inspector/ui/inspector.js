@@ -140,7 +140,7 @@ const KNOB_CONFIG = {
   river: {
     sourceAltitude: { step: 0.01, min: 0, max: 1 },
     minSeparation:  { step: 1, min: 0, integer: true },
-    widthPixels:    { step: 1, min: 1, max: 16, integer: true },
+    widthCells:     { step: 1, min: 1, max: 16, integer: true },
   },
   noise: {
     baseFrequency:               { step: 0.001, min: 0 },
@@ -198,7 +198,7 @@ const KNOB_HINT = {
   river: {
     sourceAltitude: "Min altitude to start a river. Lower → more rivers.",
     minSeparation:  "Cells between river sources. Lower → denser.",
-    widthPixels:    "River brush radius. Larger → wider rivers.",
+    widthCells:     "River brush radius. Larger → wider rivers.",
   },
   noise: {
     baseFrequency:               "Higher → finer noise detail (chamber walls more wiggly).",
