@@ -9,9 +9,9 @@ import { ComponentType, COMPONENT_TYPE_TO_NAME, CODEC_BY_WIREID } from "@voxim/p
 import { CHUNK_SIZE } from "@voxim/world";
 // Only the terrain-grid codecs are referenced directly (their decode has chunk-
 // binding side effects); every other component decodes through CODEC_BY_WIREID.
-import { heightmapCodec, openMaskCodec, kindGridCodec, materialGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec } from "@voxim/codecs";
+import { heightmapCodec, openMaskCodec, kindGridCodec, materialGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec, cliffGridCodec } from "@voxim/codecs";
 import type {
-  VegFieldGridData, SurfaceStateGridData, WaterGridData,
+  VegFieldGridData, SurfaceStateGridData, WaterGridData, CliffGridData,
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
   ResourceData, ActionCooldownsData, ActiveActionsData,
@@ -50,6 +50,7 @@ export interface EntityState {
   vegFieldGrid?: VegFieldGridData;
   surfaceStateGrid?: SurfaceStateGridData;
   waterGrid?: WaterGridData;
+  cliffGrid?: CliffGridData;
   modelRef?: ModelRefData;
   animationState?: AnimationStateData;
   equipment?: EquipmentData;
@@ -106,6 +107,7 @@ export interface ClientChunk {
   vegFieldGrid?: VegFieldGridData;
   surfaceStateGrid?: SurfaceStateGridData;
   waterGrid?: WaterGridData;
+  cliffGrid?: CliffGridData;
 }
 
 /** Fields guaranteed non-undefined on a ClientChunk once `onChunkReady` fires. */
@@ -245,6 +247,13 @@ export class ClientWorld {
         entity.waterGrid = wg;
         const key = this.chunkCoordByEntity.get(entityId);
         if (key) this.chunkFor(key).waterGrid = wg;
+        return;
+      }
+      case ComponentType.cliffGrid: {
+        const cg = cliffGridCodec.decode(data);
+        entity.cliffGrid = cg;
+        const key = this.chunkCoordByEntity.get(entityId);
+        if (key) this.chunkFor(key).cliffGrid = cg;
         return;
       }
     }

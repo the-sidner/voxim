@@ -5,12 +5,12 @@
  * as players, NPCs, and items.
  */
 import { defineComponent } from "@voxim/engine";
-import { heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec } from "@voxim/codecs";
-import type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData } from "@voxim/codecs";
+import { heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec, cliffGridCodec } from "@voxim/codecs";
+import type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData, CliffGridData } from "@voxim/codecs";
 import { ComponentType } from "@voxim/protocol";
 import { CHUNK_CELLS } from "./terrain.ts";
 
-export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData };
+export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData, CliffGridData };
 
 /**
  * Heightmap component.
@@ -126,5 +126,24 @@ export const WaterGrid = defineComponent({
   codec: waterGridCodec,
   default: (): WaterGridData => ({
     surfaceLevel: new Float32Array(CHUNK_CELLS).fill(NaN),
+  }),
+});
+
+/**
+ * CliffGrid — per-cell terraced-cliff descriptor (T-311 P6): profileId (content
+ * CliffProfileDef stable index, 0 = "none"), erosion state, course tier, and
+ * edge (outward lip vs buried interior wall). NEVER consulted for collision —
+ * physics floors against Heightmap; the client voxeliser dispatches on
+ * profileId to build the stacked-stone look.
+ */
+export const CliffGrid = defineComponent({
+  name: "cliffGrid" as const,
+  wireId: ComponentType.cliffGrid,
+  codec: cliffGridCodec,
+  default: (): CliffGridData => ({
+    profileId: new Uint8Array(CHUNK_CELLS),
+    erosion: new Uint8Array(CHUNK_CELLS),
+    tier: new Uint8Array(CHUNK_CELLS),
+    edge: new Uint8Array(CHUNK_CELLS),
   }),
 });

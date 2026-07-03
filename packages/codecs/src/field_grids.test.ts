@@ -6,8 +6,8 @@
  */
 import { assert, assertEquals } from "jsr:@std/assert";
 import {
-  vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec,
-  type VegFieldGridData, type SurfaceStateGridData, type WaterGridData,
+  vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec, cliffGridCodec,
+  type VegFieldGridData, type SurfaceStateGridData, type WaterGridData, type CliffGridData,
 } from "./components.ts";
 
 const N = 1024;
@@ -69,4 +69,26 @@ Deno.test("T-311: WaterGrid round-trips water/dry runs with NaN sentinel", () =>
 Deno.test("T-311: all-dry WaterGrid packs tiny", () => {
   const bytes = waterGridCodec.encode({ surfaceLevel: new Float32Array(N).fill(NaN) });
   assert(bytes.length < 16, `all-dry packs to a single skip run (${bytes.length} bytes)`);
+});
+
+Deno.test("T-311 P6: CliffGrid round-trips all 4 planes (varied / uniform / alternating)", () => {
+  for (const planes of [
+    { profileId: varied(1), erosion: varied(2), tier: varied(3), edge: varied(4) },
+    { profileId: uniform(0), erosion: uniform(2), tier: uniform(3), edge: uniform(1) },
+    { profileId: alternating, erosion: uniform(0), tier: varied(9), edge: alternating },
+  ] as CliffGridData[]) {
+    const out = cliffGridCodec.decode(cliffGridCodec.encode(planes));
+    assertEquals(out.profileId, planes.profileId);
+    assertEquals(out.erosion, planes.erosion);
+    assertEquals(out.tier, planes.tier);
+    assertEquals(out.edge, planes.edge);
+  }
+});
+
+Deno.test("T-311 P6: all-zero CliffGrid packs tiny (RLE wins)", () => {
+  const z: CliffGridData = {
+    profileId: uniform(0), erosion: uniform(0), tier: uniform(0), edge: uniform(0),
+  };
+  const bytes = cliffGridCodec.encode(z);
+  assert(bytes.length < 64, `coherent field packs small (${bytes.length} bytes)`);
 });

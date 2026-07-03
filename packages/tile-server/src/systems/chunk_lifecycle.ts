@@ -26,9 +26,9 @@ import { newEntityId } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import {
   Heightmap, MaterialGrid, OpenMask, KindGrid,
-  VegFieldGrid, SurfaceStateGrid, WaterGrid,
+  VegFieldGrid, SurfaceStateGrid, WaterGrid, CliffGrid,
   type HeightmapData, type MaterialGridData, type OpenMaskData, type KindGridData,
-  type VegFieldGridData, type SurfaceStateGridData, type WaterGridData,
+  type VegFieldGridData, type SurfaceStateGridData, type WaterGridData, type CliffGridData,
 } from "@voxim/world";
 import type { System, EventEmitter } from "../system.ts";
 import { Position } from "../components/game.ts";
@@ -49,6 +49,7 @@ interface CachedChunk {
   vegFieldGrid: VegFieldGridData;
   surfaceStateGrid: SurfaceStateGridData;
   waterGrid: WaterGridData;
+  cliffGrid: CliffGridData;
 }
 
 export class ChunkLifecycleSystem implements System {
@@ -122,7 +123,7 @@ export class ChunkLifecycleSystem implements System {
     }
   }
 
-  /** Deep-copy a chunk's seven grid components, or null if any is missing. */
+  /** Deep-copy a chunk's eight grid components, or null if any is missing. */
   private snapshot(world: World, id: EntityId): CachedChunk | null {
     const hm = world.get(id, Heightmap);
     const mg = world.get(id, MaterialGrid);
@@ -131,7 +132,8 @@ export class ChunkLifecycleSystem implements System {
     const vg = world.get(id, VegFieldGrid);
     const sg = world.get(id, SurfaceStateGrid);
     const wg = world.get(id, WaterGrid);
-    if (!hm || !mg || !om || !kg || !vg || !sg || !wg) return null;
+    const cg = world.get(id, CliffGrid);
+    if (!hm || !mg || !om || !kg || !vg || !sg || !wg || !cg) return null;
     return {
       heightmap: { data: hm.data.slice(), chunkX: hm.chunkX, chunkY: hm.chunkY },
       materialGrid: { data: mg.data.slice() },
@@ -151,6 +153,12 @@ export class ChunkLifecycleSystem implements System {
         traffic: sg.traffic.slice(),
       },
       waterGrid: { surfaceLevel: wg.surfaceLevel.slice() },
+      cliffGrid: {
+        profileId: cg.profileId.slice(),
+        erosion: cg.erosion.slice(),
+        tier: cg.tier.slice(),
+        edge: cg.edge.slice(),
+      },
     };
   }
 
@@ -183,6 +191,12 @@ export class ChunkLifecycleSystem implements System {
       traffic: cached.surfaceStateGrid.traffic.slice(),
     });
     world.write(id, WaterGrid, { surfaceLevel: cached.waterGrid.surfaceLevel.slice() });
+    world.write(id, CliffGrid, {
+      profileId: cached.cliffGrid.profileId.slice(),
+      erosion: cached.cliffGrid.erosion.slice(),
+      tier: cached.cliffGrid.tier.slice(),
+      edge: cached.cliffGrid.edge.slice(),
+    });
   }
 
   /** Test/diagnostics: number of chunks currently held in the unload cache. */

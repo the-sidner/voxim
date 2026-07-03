@@ -244,6 +244,27 @@ export const surfaceStateGridCodec: Serialiser<SurfaceStateGridData> = {
   },
 };
 
+export interface CliffGridData {
+  /** Content CliffProfileDef stable index (0 = "none", not a cliff cell). */
+  profileId: Uint8Array;
+  /** Erosion state 0=crisp / 1=weathered / 2=broken. */
+  erosion: Uint8Array;
+  /** Course index within the per-cell stack (client voxeliser only; not the
+   *  authority for stack height — the profile's tierCount is). */
+  tier: Uint8Array;
+  /** 1 = outward lip (stack here); 0 = buried interior wall cell. */
+  edge: Uint8Array;
+}
+export const cliffGridCodec: Serialiser<CliffGridData> = {
+  encode(d: CliffGridData): Uint8Array {
+    return encodeU8Planes([d.profileId, d.erosion, d.tier, d.edge]);
+  },
+  decode(b: Uint8Array): CliffGridData {
+    const [profileId, erosion, tier, edge] = decodeU8Planes(b);
+    return { profileId, erosion, tier, edge };
+  },
+};
+
 export interface WaterGridData {
   /** Per-cell water surface level in world units; NaN = no water. 1024 cells. */
   surfaceLevel: Float32Array;

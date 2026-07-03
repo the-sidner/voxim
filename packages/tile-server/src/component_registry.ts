@@ -21,7 +21,7 @@
 // deno-lint-ignore-file no-explicit-any
 import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
 import { Parent } from "@voxim/engine";
-import { Heightmap, KindGrid, MaterialGrid, OpenMask, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "@voxim/world";
+import { Heightmap, KindGrid, MaterialGrid, OpenMask, VegFieldGrid, SurfaceStateGrid, WaterGrid, CliffGrid } from "@voxim/world";
 import {
   AnimationState,
   Facing,
@@ -112,6 +112,9 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   VegFieldGrid,
   SurfaceStateGrid,
   WaterGrid,
+  // T-311 P6 — per-cell terraced-cliff descriptor (profileId/erosion/tier/edge).
+  // Never collision; drives the client cliffVoxeliser registry.
+  CliffGrid,
   Position,
   Velocity,
   Facing,

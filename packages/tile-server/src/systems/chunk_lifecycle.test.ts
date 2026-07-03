@@ -14,7 +14,7 @@ import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
 import {
   CHUNK_SIZE, Heightmap, MaterialGrid, OpenMask, KindGrid,
-  VegFieldGrid, SurfaceStateGrid, WaterGrid,
+  VegFieldGrid, SurfaceStateGrid, WaterGrid, CliffGrid,
 } from "@voxim/world";
 import { createChunk, setChunkHeights } from "@voxim/world";
 import { Position } from "../components/game.ts";
@@ -156,6 +156,12 @@ Deno.test("system: distant chunk is cached + destroyed past grace, then restored
   w.write(chunkId, WaterGrid, {
     surfaceLevel: new Float32Array(CHUNK_SIZE * CHUNK_SIZE).fill(3.5),
   });
+  w.write(chunkId, CliffGrid, {
+    profileId: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(111),
+    erosion: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(1),
+    tier: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(2),
+    edge: new Uint8Array(CHUNK_SIZE * CHUNK_SIZE).fill(1),
+  });
 
   // Player far away in the opposite corner — chunk (15,15) is out of range.
   const player = newEntityId();
@@ -226,4 +232,14 @@ Deno.test("system: distant chunk is cached + destroyed past grace, then restored
   const water = w.get(id, WaterGrid);
   assert(water !== null, "WaterGrid restored");
   assertEquals(water!.surfaceLevel[0], 3.5);
+
+  // T-311 P6: CliffGrid must survive the same round-trip — a missing/reset
+  // grid here would silently flatten every terraced cliff back to "none" on
+  // every unload/reload cycle, the T-315 A1 sister-bug scenario.
+  const cliff = w.get(id, CliffGrid);
+  assert(cliff !== null, "CliffGrid restored");
+  assertEquals(cliff!.profileId[0], 111);
+  assertEquals(cliff!.erosion[0], 1);
+  assertEquals(cliff!.tier[0], 2);
+  assertEquals(cliff!.edge[0], 1);
 });

@@ -4,8 +4,8 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
-import { Heightmap, MaterialGrid, OpenMask, KindGrid, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "./components.ts";
-import type { VegFieldGridData, SurfaceStateGridData } from "./components.ts";
+import { Heightmap, MaterialGrid, OpenMask, KindGrid, VegFieldGrid, SurfaceStateGrid, WaterGrid, CliffGrid } from "./components.ts";
+import type { VegFieldGridData, SurfaceStateGridData, CliffGridData } from "./components.ts";
 import { CHUNK_CELLS } from "./terrain.ts";
 
 /**
@@ -54,6 +54,15 @@ export function createChunk(world: World, chunkX: number, chunkY: number): Entit
   });
   world.write(id, WaterGrid, {
     surfaceLevel: new Float32Array(CHUNK_CELLS).fill(NaN),
+  });
+
+  // T-311 P6 — CliffGrid, same neutral-default convention (profileId 0 = "no
+  // cliff here", mirrors KindGrid's 0=OPEN). Atlas emission lands separately.
+  world.write(id, CliffGrid, {
+    profileId: new Uint8Array(CHUNK_CELLS),
+    erosion: new Uint8Array(CHUNK_CELLS),
+    tier: new Uint8Array(CHUNK_CELLS),
+    edge: new Uint8Array(CHUNK_CELLS),
   });
 
   return id;
@@ -129,4 +138,10 @@ export function setChunkSurfaceState(world: World, chunkId: EntityId, data: Surf
 export function setChunkWater(world: World, chunkId: EntityId, surfaceLevel: Float32Array): void {
   if (!world.get(chunkId, WaterGrid)) throw new Error(`setChunkWater: chunk ${chunkId} has no WaterGrid`);
   world.write(chunkId, WaterGrid, { surfaceLevel });
+}
+
+/** Overwrite a chunk's CliffGrid (T-311 P6) — atlas-derived terraced-cliff descriptors. */
+export function setChunkCliffGrid(world: World, chunkId: EntityId, data: CliffGridData): void {
+  if (!world.get(chunkId, CliffGrid)) throw new Error(`setChunkCliffGrid: chunk ${chunkId} has no CliffGrid`);
+  world.write(chunkId, CliffGrid, data);
 }

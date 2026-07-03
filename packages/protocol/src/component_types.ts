@@ -69,6 +69,7 @@ export const ComponentType = {
   waterGrid:          56,  // T-311 P3: per-cell water surface level (f32, NaN = no water)
   poiInteractable:    57,  // T-212 v2: `action`/`puzzle` POI world-prop marker — client's hover/click
                            //   detects it the same way it detects workstationBuffer/container/traderInventory
+  cliffGrid:          58,  // T-311 P6: per-cell profileId/erosion/tier/edge for the terraced-cliff voxeliser
   // 49 (parent) — defined in @voxim/engine/src/scene.ts; engine owns the
   //    scene-graph primitive (co-equal with World), so its wire id lives
   //    there. Reserved here so the numbering map stays visible. Never reuse.
