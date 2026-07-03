@@ -62,6 +62,11 @@ export class FogOfWar {
   /** Last player pose supplied to {@link updateLocalLOS}.  Drives the minimap marker. */
   lastPlayer: { x: number; y: number; facing: number } | null = null;
 
+  /** Current camera yaw (radians), pushed each frame by game.ts. Drives the
+   *  minimap's north-up heading cone so orientation survives camera rotation
+   *  (T-317). 0 = camera looks toward +X game (== canvas +x). */
+  cameraYaw = 0;
+
   /** LOS gameplay tuning — pre-bootstrap fallback (current shipped values),
    *  overwritten by {@link applyLosConfig} once GameConfig.fogOfWar arrives. */
   private losHalfAngleRad = (110 * Math.PI / 180) / 2;

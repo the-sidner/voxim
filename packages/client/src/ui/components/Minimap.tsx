@@ -94,6 +94,24 @@ export function Minimap() {
         const cx = (player.x / TILE_WORLD_SIZE) * MINIMAP_SIZE;
         const cy = (player.y / TILE_WORLD_SIZE) * MINIMAP_SIZE;
 
+        // Camera heading cone (T-317): the map stays north-up, so a translucent
+        // wedge opening toward the camera's view direction (yaw) keeps
+        // orientation legible as the mouse-facing camera swings. yaw 0 = +X
+        // game = canvas +x, matching the facing-marker convention below.
+        const ca = fog.cameraYaw;
+        const coneLen = MINIMAP_SIZE * 0.5;
+        const coneHalf = 0.42; // ≈24° half-angle; roughly the on-screen frustum
+        const cgrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coneLen);
+        cgrad.addColorStop(0, "rgba(217, 120, 38, 0.22)");
+        cgrad.addColorStop(1, "rgba(217, 120, 38, 0)");
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(ca - coneHalf) * coneLen, cy + Math.sin(ca - coneHalf) * coneLen);
+        ctx.lineTo(cx + Math.cos(ca + coneHalf) * coneLen, cy + Math.sin(ca + coneHalf) * coneLen);
+        ctx.closePath();
+        ctx.fillStyle = cgrad;
+        ctx.fill();
+
         const r = 6;
         const a = player.facing;
         const tipX = cx + Math.cos(a) * r;

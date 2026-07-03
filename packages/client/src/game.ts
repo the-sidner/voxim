@@ -1023,6 +1023,10 @@ export class VoximGame {
 
     this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null, localMovement, localCrouch);
 
+    // Push the now-settled camera yaw to the fog state so the north-up minimap
+    // can draw a heading cone that rotates with the camera (T-317).
+    if (this.renderer) this.fog.cameraYaw = this.renderer.cameraRig.getYaw();
+
     const tPostStart = performance.now();
     // Update world-space entity health bars + gate labels (frame-driven, not reactive)
     if (this.overlay) {
