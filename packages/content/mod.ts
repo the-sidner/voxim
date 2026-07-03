@@ -105,6 +105,7 @@ export type {
   ResourceDef,
   ResourceRateModifierRef,
   ResourceThreshold,
+  PuzzleDef,
   ProcModelDef,
   ScatterDef,
   GameConfig,

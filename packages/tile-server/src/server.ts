@@ -77,6 +77,7 @@ import { TerrainDigSystem } from "./systems/terrain_dig.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
 import { PoiSystem } from "./systems/poi.ts";
 import { newPoiActivityRegistry } from "./poi/mod.ts";
+import { newPuzzleKindRegistry } from "./poi/puzzle_kinds/mod.ts";
 import { TriggerSystem } from "./systems/trigger.ts";
 import { newTriggerCatalog } from "./triggers/catalog.ts";
 import {
@@ -850,6 +851,27 @@ export class TileServer {
             `data/triggers/${trigId}.json.`,
           );
         }
+      }
+    }
+    // T-212 v2: every puzzle POI's puzzleId must resolve to a loaded
+    // PuzzleDef, and that def's `kind` must resolve to a registered
+    // PuzzleKindHandler — same fail-fast stance as every other content-id
+    // cross-check (T-315 A6 house pattern).
+    const puzzleKinds = newPuzzleKindRegistry();
+    for (const poi of content.pois.values()) {
+      if (poi.type !== "puzzle") continue;
+      const puzzleDef = content.puzzles.get(poi.activity.puzzleId);
+      if (!puzzleDef) {
+        throw new Error(
+          `POI "${poi.id}" references puzzleId "${poi.activity.puzzleId}" but no ` +
+          `PuzzleDef is loaded. Loaded: [${[...content.puzzles.ids()].join(", ")}]`,
+        );
+      }
+      if (!puzzleKinds.has(puzzleDef.kind)) {
+        throw new Error(
+          `Puzzle "${puzzleDef.id}" has kind "${puzzleDef.kind}" but no ` +
+          `PuzzleKindHandler is registered. Registered: [${puzzleKinds.ids().join(", ")}]`,
+        );
       }
     }
 

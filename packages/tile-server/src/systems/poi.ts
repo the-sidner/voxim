@@ -31,11 +31,15 @@ import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
 import { PoiTrigger, PoiInteractable } from "../components/poi.ts";
 import { WaveMember, WaveState } from "../components/wave.ts";
+import { Lever } from "../components/puzzle.ts";
 import { upsertResourceKey } from "../resources/mutate.ts";
 import { Resource } from "../components/resource.ts";
 import type { PoiActivityRegistry } from "../poi/mod.ts";
 import { grantPoiReward } from "../poi/reward.ts";
+import { newPuzzleKindRegistry } from "../poi/puzzle_kinds/mod.ts";
 import { createLogger } from "../logger.ts";
+
+const puzzleKinds = newPuzzleKindRegistry();
 
 const log = createLogger("PoiSystem");
 
@@ -133,11 +137,24 @@ export class PoiSystem implements System {
       return;
     }
 
-    // Find the owning POI def via the PoiTrigger sharing this instance id.
+    // Find the owning POI trigger + def via the shared poiInstanceId join.
     const trigger = world.query(PoiTrigger).find((t) => t.poiTrigger.poiInstanceId === interactable.poiInstanceId);
     const def = trigger ? this.content.pois.get(trigger.poiTrigger.poiDefId) : null;
-    if (!def) {
+    if (!def || !trigger) {
       log.warn("use_entity: entity=%s poiInstanceId=%s has no resolvable POI def", entityId, interactable.poiInstanceId);
+      return;
+    }
+
+    // Puzzle levers carry their own component and route to the puzzle-kind
+    // registry's `use()` (wrong/right-order tracking) instead of the plain
+    // action reward-grant path.
+    if (world.has(entityId, Lever)) {
+      const puzzleDef = def.type === "puzzle" ? this.content.puzzles.get(def.activity.puzzleId) : null;
+      if (!puzzleDef) return;
+      puzzleKinds.get(puzzleDef.kind).use(
+        { world, events, content: this.content, def, pos: propPos, poiInstanceId: interactable.poiInstanceId, triggerId: trigger.entityId },
+        playerId, entityId,
+      );
       return;
     }
 

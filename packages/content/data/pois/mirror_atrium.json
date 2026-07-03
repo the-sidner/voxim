@@ -5,8 +5,8 @@
 
   "type": "puzzle",
   "activity": {
-    "puzzleId":        "reflection_path",
-    "params":          { "mirrors": 6, "beams": 3, "showHints": false },
+    "puzzleId":        "lever_sequence",
+    "params":          { "length": 6, "showHints": false },
     "failurePenalty":  "none"
   },
 

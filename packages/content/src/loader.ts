@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
+import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
   DecalDef, Palette } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
@@ -53,7 +53,7 @@ async function loadContentStoreInternal(
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw,
+    biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
     procModelsRaw, scatterRaw, gradesRaw, lightsRaw, decalsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
@@ -71,6 +71,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "pois"),
     readJsonDirOptional(dataDir, "resources"),
     readJsonDirOptional(dataDir, "triggers"),
+    readJsonDirOptional(dataDir, "puzzles"),
     readJsonDirOptional(dataDir, "procmodels"),
     readJsonDirOptional(dataDir, "scatter"),
     readJsonDirOptional(dataDir, "grades"),
@@ -215,6 +216,11 @@ async function loadContentStoreInternal(
   for (const raw of triggersRaw as TriggerDef[]) {
     validateTriggerDef(raw);
     store.registerTrigger(raw);
+  }
+
+  for (const raw of puzzlesRaw as PuzzleDef[]) {
+    validatePuzzleDef(raw);
+    store.registerPuzzle(raw);
   }
 
   // Procedural models + scatter (T-285) — visual-only content the client's
@@ -649,6 +655,20 @@ export function validateTriggerDef(def: TriggerDef): void {
     if (!e || typeof e.kind !== "string" || e.kind.length === 0) {
       throw new Error(`Trigger '${def.id}': every effect needs a non-empty 'kind'`);
     }
+  }
+}
+
+/**
+ * Shape-validate one PuzzleDef (T-212 v2). `kind` membership in the
+ * puzzle-kind registry (`poi/puzzle_kinds/mod.ts`) is the tile-server's
+ * boot cross-check, same stance as TriggerDef's effect/gate checks.
+ */
+export function validatePuzzleDef(def: PuzzleDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`PuzzleDef: missing or empty id`);
+  }
+  if (typeof def.kind !== "string" || def.kind.length === 0) {
+    throw new Error(`Puzzle '${def.id}': 'kind' must be a non-empty string`);
   }
 }
 

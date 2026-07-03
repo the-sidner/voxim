@@ -77,6 +77,7 @@ import { PoiTrigger, PoiInteractable } from "./components/poi.ts";
 import { Stair } from "./components/stair.ts";
 import { WaveMember, WaveState } from "./components/wave.ts";
 import { BossArenaLink } from "./components/boss_arena.ts";
+import { PuzzleState, Lever } from "./components/puzzle.ts";
 import { NpcJobQueue, NpcTag } from "./components/npcs.ts";
 import { Caravan } from "./components/caravan.ts";
 import { ProjectileData } from "./components/projectile.ts";
@@ -250,6 +251,10 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // read by the boss_arena_link TriggerSource (phase adds) and the
   // boss_arena_unlock DeathHook (arena clear, pre-destruction).
   BossArenaLink,
+  // Puzzle-POI runtime state (T-212 v2, lever_sequence). PuzzleState lives
+  // on the PoiTrigger entity; Lever tags each spawned lever prop.
+  PuzzleState,
+  Lever,
   NpcTag,
   NpcJobQueue,
   // Caravan (T-048) — a caravan lead NPC's manifest: destination tile +

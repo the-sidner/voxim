@@ -1080,6 +1080,23 @@ export interface TriggerDef {
   effects: TriggerEffect[];
 }
 
+// ---- puzzles (T-212 v2) ----
+
+/**
+ * A puzzle TEMPLATE — the shared mechanics of one puzzle `kind`
+ * (`data/puzzles/{id}.json`). A `puzzle` POI's `activity.puzzleId`
+ * references one of these; per-instance tuning (lever count, hints) lives
+ * on the POI's own `activity.params`, not here — the template names the
+ * MECHANISM (dispatched through `puzzle_kinds/mod.ts`'s registry), the POI
+ * instance supplies the PARAMS, same split `ActionDef`/per-use params use.
+ */
+export interface PuzzleDef {
+  id: string;
+  /** Registry key dispatched in `poi/puzzle_kinds/mod.ts`. v1 ships exactly
+   * one: "lever_sequence". */
+  kind: string;
+}
+
 // ---- procedural models (T-285) ----
 
 /**

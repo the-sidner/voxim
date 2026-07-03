@@ -54,6 +54,7 @@ import type {
   ActionDef,
   ResourceDef,
   TriggerDef,
+  PuzzleDef,
   ProcModelDef,
   ScatterDef,
 } from "./types.ts";
@@ -145,6 +146,15 @@ export interface ContentService {
    * See TRIGGER_PRIMITIVE_PLAN.md.
    */
   readonly triggers: ContentRegistryReadonly<TriggerDef>;
+
+  /**
+   * Puzzle templates keyed by id (T-212 v2). Loaded from `data/puzzles/*.json`
+   * — a `puzzle` POI's `activity.puzzleId` references one; the template names
+   * the mechanics `kind` dispatched through `poi/puzzle_kinds/mod.ts`'s
+   * registry. Per-instance tuning (lever count, hints) stays on the POI's own
+   * `activity.params`.
+   */
+  readonly puzzles: ContentRegistryReadonly<PuzzleDef>;
 
   /**
    * Procedural model families keyed by id (T-285). Each names a client
@@ -286,6 +296,10 @@ export class StaticContentStore implements ContentService {
     kind: "trigger",
     idOf: (t) => t.id,
   });
+  public readonly puzzles = new ContentRegistry<PuzzleDef>({
+    kind: "puzzle",
+    idOf: (p) => p.id,
+  });
   public readonly procModels = new ContentRegistry<ProcModelDef>({
     kind: "procModel",
     idOf: (p) => p.id,
@@ -420,6 +434,10 @@ export class StaticContentStore implements ContentService {
 
   registerTrigger(def: TriggerDef): void {
     this.triggers.register(def);
+  }
+
+  registerPuzzle(def: PuzzleDef): void {
+    this.puzzles.register(def);
   }
 
   registerProcModel(def: ProcModelDef): void {

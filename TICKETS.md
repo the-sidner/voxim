@@ -190,10 +190,36 @@ prop if `consumable`. Client: `makePoiInteractableHandler` in
 verbs, no panel), registered in `game.ts`; hover outline gained a violet
 tint for POI props.
 
-**`puzzle`** — reserves `data/puzzles/` content category; each puzzle
-  template defines its own internal rules (lever sequences,
-  reflection paths, valve sequences). Solving the puzzle fires the
-  reward path.
+**`puzzle` landed** (see commit below): new content category `data/puzzles/`
+(`PuzzleDef{id, kind}` — a `puzzle` POI's `activity.puzzleId` names a
+template; the template's `kind` dispatches through a second registry,
+`poi/puzzle_kinds/mod.ts`, mirroring "dispatch by template kind through a
+registry" — a registry-of-registries: the POI registry dispatches on
+`def.type`, this one dispatches again on the puzzle's `kind`). v1 ships
+one kind: `lever_sequence` — N lever prop entities (reused `model_torch`
+geometry) in an arc at the centroid; the solve order is a deterministic
+Fisher-Yates permutation seeded from `hash32(poiInstanceId)` (same POI
+instance always has the same solution within a tile's lifetime — no
+save persistence for POI/puzzle state, matching WaveState/BossArenaLink).
+Lever presses reuse `CommandType.UseEntity` (a new `Lever{poiInstanceId,
+leverIndex}` component distinguishes a lever click from a plain `action`
+interactable click in `PoiSystem.useEntity` — no second command). Wrong
+pull -> `failurePenalty:"reset"` resets progress (the only value any
+authored puzzle POI uses; "damage"/"none" accepted but no-op, logged
+TODO). Full correct sequence -> solved + grants the reward via the same
+`poi/reward.ts` helper `action` uses. Boot-cross-checked: every puzzle
+POI's `puzzleId` must resolve to a loaded `PuzzleDef`, and that def's
+`kind` must resolve to a registered `PuzzleKindHandler`.
+
+DRIFT FIXED IN THE SAME COMMIT: `mirror_atrium.json` (`puzzleId:
+"reflection_path"`) and `tideflow_locks.json` (`puzzleId: "valve_sequence"`)
+referenced templates beyond v1's "ship ONE template" scope — repointed
+both onto `lever_sequence` (both are already "solve this to open the
+gate" POIs; a lever sequence is a reasonable stand-in) rather than
+disabling via `roles: []`, since the boot cross-check would otherwise
+throw. `reflection_path`/`valve_sequence` are a follow-up if that puzzle
+FLAVOR (not just mechanic) is wanted later.
+
 - Stair runtime UNLOCK on trinket consumption — currently locked
   stairs stay locked forever. Needs the trinket-inventory checkpoint
   (when a player picks up trinket X, scan stairs whose `lockedBy === X`
