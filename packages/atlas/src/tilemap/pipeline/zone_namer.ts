@@ -25,6 +25,8 @@
 import { hashString, splitSeed } from "@voxim/levelgen";
 import type { ZoneRole } from "@voxim/content";
 import type { GenParams } from "../../genparams.ts";
+import type { BiomeParams } from "../../worldmap/types.ts";
+import { biomeTag } from "./biome_tag.ts";
 
 /**
  * Per-role naming thresholds, read from `params.namedAreaMin*`
@@ -110,32 +112,13 @@ const ROLE_NOUN: Record<ZoneRole, string[]> = {
   morass:     ["Mire", "Marsh", "Bog", "Slough"],
 };
 
-/**
- * Map biome params to a coarse tag for adjective lookup. Mirrors the
- * threshold logic in poi_network.ts/biomeMatches; the same tile reads
- * as the same biome from both views.
- */
-function biomeTag(biome: {
-  altitude: number; moisture: number; temperature: number; ruggedness: number;
-}): string {
-  if (biome.moisture > 0.6 && biome.altitude < 0.4)                return "swamp";
-  if (biome.altitude > 0.7)                                         return "mountains";
-  if (biome.temperature < 0.25)                                     return "tundra";
-  if (biome.temperature > 0.65 && biome.moisture < 0.3)             return "desert";
-  if (biome.altitude < 0.35 && biome.moisture > 0.4)                return "shore";
-  if (biome.altitude > 0.4 && biome.altitude < 0.75)                return "hills";
-  if (biome.altitude < 0.5 && biome.ruggedness < 0.4)               return "plains";
-  if (biome.moisture > 0.45 && biome.altitude < 0.7)                return "forest";
-  return "plains";
-}
-
 export function nameZone(
   tileSeed: number,
   zoneId: number,
   area: number,
   role: ZoneRole,
   traversal: "path" | "wilderness",
-  biome: { altitude: number; moisture: number; temperature: number; ruggedness: number },
+  biome: BiomeParams,
   params: GenParams["zoneGraph"],
 ): string {
   if (!shouldNameZone(area, role, params)) return "";

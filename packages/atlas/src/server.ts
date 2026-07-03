@@ -26,7 +26,7 @@
 
 import { serveDir } from "@std/http/file-server";
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
-import { generateTile, tileInitToWire } from "./tilemap/generate.ts";
+import { assembleTileInit, generateTile, tileInitToWire } from "./tilemap/generate.ts";
 import {
   decodeState,
   encodeState,
@@ -35,8 +35,6 @@ import {
   type StageTrace,
 } from "./tilemap/instrumented_runner.ts";
 import { ORDERED_STAGES, type StageId } from "./tilemap/pipeline/stages.ts";
-import { deriveGateSummary } from "./tilemap/summary.ts";
-import type { TileInit } from "./tilemap/types.ts";
 import { bakeWorld, tileSeedFor } from "./bake.ts";
 import type { WorldCellRecord } from "./worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, PRESETS, mergeGenParams, type DeepPartialGenParams, type GenParams } from "./genparams.ts";
@@ -399,18 +397,19 @@ async function runTilePipeline(
     stageOrder: body.stageOrder,
   });
 
-  // Encode the final tile (re-uses tileInitToWire by constructing a
-  // TileInit shape from the materials-stage final state) and every
-  // intermediate state into wire form. Trace passes through as-is.
+  // Encode the final tile and every intermediate state into wire form.
+  // Trace passes through as-is.
   const intermediates = body.intermediates === false
     ? {}
     : Object.fromEntries(
         Object.entries(result.intermediates).map(([k, v]) => [k, encodeState(v)]),
       );
 
-  // For the "final" view, the inspector can reuse the existing tile
-  // render path that consumes TileInitWire — so we emit that too.
-  const tile = generateTileInitFromFinal(result.final, cellX, cellY, tileSeed);
+  // For the "final" view, the inspector runs the SAME assembleTileInit()
+  // the production bake path uses — rasterize() + invariant check
+  // included — so the inspector never shows bytes production wouldn't
+  // ship.
+  const tile = assembleTileInit(result.final);
 
   return jsonOk({
     tileId: tileIdFor(cellX, cellY),
@@ -423,32 +422,6 @@ async function runTilePipeline(
     intermediates,
     cacheSize: cache.size,
   });
-}
-
-function generateTileInitFromFinal(
-  final: ReturnType<typeof runInstrumented>["final"],
-  cellX: number,
-  cellY: number,
-  _tileSeed: number,
-): TileInit {
-  return {
-    cellX, cellY,
-    tileSize:  final.tileSize,
-    gridSize:  final.gridSize,
-    openMask:  final.openMask,
-    roomOf:    final.roomOf,
-    rooms:     final.rooms,
-    chamberOf: final.chamberOf,
-    chambers:  final.chambers,
-    corridors: final.corridors,
-    portals:   final.portals,
-    gateSummary: deriveGateSummary(final.portals),
-    heightMap: final.heightMap,
-    materials: final.materials,
-    kindOf:    final.kindOf,
-    level:     final.level,
-    fields:    final.fields,
-  };
 }
 
 async function getOrGenerateTile(

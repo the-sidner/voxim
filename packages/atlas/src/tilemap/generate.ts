@@ -117,17 +117,29 @@ export function generateTile(
 
   const s = pipeline(initial);
 
-  // T-214: rasterize the LevelDef into the per-pixel buffers tile-
-  // server consumes. Today the function is a passthrough that returns
-  // the buffers the pipeline stages produced + runs the invariant
-  // verifier; future commits move buffer production into it.
+  return assembleTileInit(s);
+}
+
+/**
+ * Assemble the wire-facing `TileInit` from a pipeline's final `FieldsState`.
+ * This is the ONE place that turns pipeline scratch state into the shape
+ * tile-server consumes — both the production bake path (`generateTile`
+ * above) and the atlas inspector's "final" tile view must run through it,
+ * so the inspector never shows bytes production wouldn't ship.
+ *
+ * T-214: rasterize() turns the LevelDef into the per-pixel buffers
+ * tile-server consumes AND runs the pipeline's invariant verifier —
+ * skipping this call (as the inspector's hand-rebuilt path used to)
+ * silently skips that check.
+ */
+export function assembleTileInit(s: FieldsState): TileInit {
   const buffers = rasterize(s);
 
   return {
-    cellX:    worldCell.cellX,
-    cellY:    worldCell.cellY,
-    tileSize,
-    gridSize,
+    cellX:    s.worldCell.cellX,
+    cellY:    s.worldCell.cellY,
+    tileSize: s.tileSize,
+    gridSize: s.gridSize,
     openMask:   buffers.openMask,
     roomOf:     s.roomOf,
     rooms:      s.rooms,

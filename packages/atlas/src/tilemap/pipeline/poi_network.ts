@@ -41,6 +41,8 @@ import { mulberry32 } from "@voxim/engine";
 import { BoundaryKind } from "@voxim/protocol";
 import type { ContentService, PoiDef } from "@voxim/content";
 import type { GenParams } from "../../genparams.ts";
+import type { BiomeParams } from "../../worldmap/types.ts";
+import { biomeMatches } from "./biome_tag.ts";
 import type {
   AnnotatedZone, AnnotatedZoneState, DagShape,
   PoiInstance, PoiNetworkState, ResolvedGate,
@@ -221,7 +223,7 @@ interface ScoredCandidate {
 function scoreCandidates(
   zones: AnnotatedZone[],
   pois: PoiDef[],
-  biome: { altitude: number; moisture: number; temperature: number; ruggedness: number },
+  biome: BiomeParams,
   params: GenParams["poiNetwork"],
 ): ScoredCandidate[] {
   const out: ScoredCandidate[] = [];
@@ -246,7 +248,7 @@ function scoreCandidates(
 function fitScore(
   poi: PoiDef,
   zone: AnnotatedZone,
-  biome: { altitude: number; moisture: number; temperature: number; ruggedness: number },
+  biome: BiomeParams,
   params: GenParams["poiNetwork"],
 ): number {
   // Hard rejects
@@ -303,29 +305,6 @@ const KIND_TAG_TO_ID: Record<string, number> = {
   water:       BoundaryKind.water,
   grass_mound: BoundaryKind.grassMound,
 };
-
-function biomeMatches(
-  biome: { altitude: number; moisture: number; temperature: number; ruggedness: number },
-  required: string[],
-): boolean {
-  // Translate biome params back into the same loose tag-space the worldmap
-  // emits (the boundary_kinds stage already encodes these thresholds; we
-  // mirror them here so POI matching reads the same "story" the player
-  // would). Conservative tags: anything roughly stoney+rugged → "mountains",
-  // wet+low → "swamp", etc. Multi-tag matches when any tag in `required`
-  // hits.
-  for (const tag of required) {
-    if (tag === "forest"    && biome.moisture > 0.45 && biome.altitude < 0.7)    return true;
-    if (tag === "hills"     && biome.altitude > 0.4  && biome.altitude < 0.75)   return true;
-    if (tag === "mountains" && biome.altitude > 0.7)                              return true;
-    if (tag === "plains"    && biome.altitude < 0.5  && biome.ruggedness < 0.4)   return true;
-    if (tag === "swamp"     && biome.moisture > 0.6  && biome.altitude < 0.4)     return true;
-    if (tag === "desert"    && biome.temperature > 0.65 && biome.moisture < 0.3)  return true;
-    if (tag === "tundra"    && biome.temperature < 0.25)                          return true;
-    if (tag === "shore"     && biome.altitude < 0.35 && biome.moisture > 0.4)     return true;
-  }
-  return false;
-}
 
 // ---------------------------------------------------------------------
 // Phase 2 — selection
@@ -657,7 +636,7 @@ function classifyDagShape(
 function emitDegraded(
   zones: AnnotatedZone[],
   pois: PoiDef[],
-  biome: { altitude: number; moisture: number; temperature: number; ruggedness: number },
+  biome: BiomeParams,
   params: GenParams["poiNetwork"],
   _stairCtx: StairContext,
 ): SolverResult {
