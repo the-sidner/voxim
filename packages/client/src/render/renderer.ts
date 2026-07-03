@@ -1037,6 +1037,13 @@ export class VoximRenderer {
     for (const [id, mesh] of this.entities.all) {
       if (mesh.boneGroups && mesh.skeletonId && this.content) {
         const anim = mesh.animationState;
+        // Death-dissolve (T-311 P5c): push the server-derived phase into
+        // this entity's dissolve-drift uniforms every frame — no-op array
+        // for every entity that never resolved a DissolveProfileDef.
+        if (mesh.dissolveUniforms.length > 0) {
+          const phase = anim?.dissolutionPhase ?? 0;
+          for (const u of mesh.dissolveUniforms) u.uPhase.value = phase;
+        }
         const skeleton   = this.content.getSkeletonSync(mesh.skeletonId);
         const clipIndex  = this.content.getClipIndex(mesh.skeletonId);
         const maskIndex  = this.content.getMaskIndex(mesh.skeletonId);

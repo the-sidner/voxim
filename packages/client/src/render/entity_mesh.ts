@@ -24,6 +24,7 @@ import { bakeVoxels } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import type { VoxelAtom } from "@voxim/content";
 import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
+import type { DissolveUniforms } from "./dissolve_shader.ts";
 
 // Shared placeholder geometries — never disposed individually
 const GEO_BODY  = new THREE.BoxGeometry(0.8, 1.8, 0.8);
@@ -194,6 +195,16 @@ export interface EntityMeshGroup {
    * presentational — no wire or server involvement.
    */
   layerFades: Map<string, LayerFade>;
+  /**
+   * Death-dissolve drift uniform bundles (T-311 P5c) — one per merged
+   * sub-mesh material that carries the `aFray`/`aDriftDir` bake sidecar
+   * (i.e. this entity resolved a `DissolveProfileDef`). Empty for every
+   * entity without a profile. Pushed from `AnimationState.dissolutionPhase`
+   * once per frame by the renderer's per-entity animation loop, the same
+   * way `CanopyFade.update()` pushes `uPlayerY` — Three.js re-reads
+   * `.value` at draw time, no shader recompile needed per frame.
+   */
+  dissolveUniforms: DissolveUniforms[];
 }
 
 // ---- create ----
@@ -228,6 +239,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     nameLabelText: "",
     rollLiftY: 0,
     layerFades: new Map(),
+    dissolveUniforms: [],
   };
   updateEntityMesh(mesh, state);
   syncNameLabel(mesh, state);
@@ -368,6 +380,7 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
   mesh.attachments.clear();
   mesh.boneSlotTransforms.clear();
   mesh.boneSprings.clear(); // drop stale spring state so a model swap doesn't ease from a garbage pose
+  mesh.dissolveUniforms = []; // drop refs to about-to-be-disposed materials' uniform bundles
 
   // 2. Bone hierarchy — traverse disposes body-part voxels inside bone groups.
   if (mesh.boneGroups) {
