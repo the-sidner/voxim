@@ -17,10 +17,9 @@
 import * as THREE from "three";
 import type { ContentService, ScatterDef } from "@voxim/content";
 import { evaluateFieldExpr, morphTierParams } from "@voxim/content";
-import type { VegFieldGridData, SurfaceStateGridData, WaterGridData } from "@voxim/codecs";
 import { CHUNK_SIZE } from "@voxim/world";
 import { mix32 } from "@voxim/engine";
-import type { ClientWorld } from "../state/client_world.ts";
+import type { ClientChunk, ClientWorld } from "../state/client_world.ts";
 import { bakeVoxels } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial } from "./voxel_material.ts";
@@ -57,17 +56,13 @@ export class ScatterRenderer {
   private readonly decorated = new Set<string>();
   /** Built variant pools: scatterId → per-variant archetype-id lists. */
   private readonly pools = new Map<string, string[][]>();
-  /** Chunks queued during loading (drained across frames). `retries` bounds the
-   *  wait for a chunk's material grid to arrive before giving up on floor scatter. */
-  private readonly queue: Array<{ coord: string; kinds: Uint16Array; retries?: number }> = [];
+  /** Chunks queued during loading (drained across frames) — ready chunks only,
+   *  since `onChunkReady` already guarantees heightmap+materialGrid (and, in
+   *  practice, every other grid: production always writes all seven grid
+   *  components together at chunk creation). No retry machinery needed. */
+  private readonly queue: Array<{ coord: string; chunk: ClientChunk }> = [];
   private active = false;
   private draining = false;
-  /** True when any ScatterDef keys on a ground material → decoration must wait
-   *  for the chunk's material grid, not just its kind grid. */
-  private readonly needsMaterials: boolean;
-  /** True when any ScatterDef drives density off a FieldExpr → decoration must
-   *  wait for the chunk's VegFieldGrid/SurfaceStateGrid to stream (T-311 P4). */
-  private readonly needsFields: boolean;
   /** ScatterDefs grouped/ordered once; the cell walk consults kind or material. */
   private readonly defs: ScatterDef[];
 
@@ -80,10 +75,10 @@ export class ScatterRenderer {
   ) {
     registerBuiltinGenerators();
     this.defs = [...content.scatter.values()];
-    this.needsMaterials = this.defs.some((d) => d.material !== undefined);
-    this.needsFields = this.defs.some((d) => d.densityField !== undefined || d.morphField !== undefined);
-    world.onChunkKinds((coord, kinds) => {
-      if (!this.decorated.has(coord)) this.queue.push({ coord, kinds });
+    world.onChunkReady((coord, chunk) => {
+      if (!this.decorated.has(coord) && chunk.kindGrid) {
+        this.queue.push({ coord, chunk: chunk as ClientChunk });
+      }
       if (this.active) this.scheduleDrain();
     });
   }
@@ -96,9 +91,7 @@ export class ScatterRenderer {
     this.scheduleDrain();
   }
 
-  /** Process one frame's worth of the queue, re-scheduling while work remains.
-   *  Chunks whose material grid hasn't arrived defer (bounded by a retry cap) so
-   *  floor scatter still lands once the grid streams in. */
+  /** Process one frame's worth of the queue, re-scheduling while work remains. */
   private scheduleDrain(): void {
     if (this.draining || !this.active) return;
     this.draining = true;
@@ -110,10 +103,7 @@ export class ScatterRenderer {
       for (let i = 0; i < n && performance.now() < deadline; i++) {
         const item = this.queue.shift();
         if (!item) break;
-        if (!this.decorateChunk(item.coord, item.kinds)) {
-          const retries = (item.retries ?? 0) + 1;
-          if (retries < 180) this.queue.push({ ...item, retries });  // ~3 s, then give up
-        }
+        this.decorateChunk(item.coord, item.chunk);
       }
       if (this.queue.length > 0) this.scheduleDrain();
     });
@@ -168,31 +158,30 @@ export class ScatterRenderer {
     return variants;
   }
 
-  /** Returns true once the chunk is decorated; false to DEFER (its material grid
-   *  hasn't streamed in yet) so the caller can retry on a later frame. */
-  private decorateChunk(coord: string, kinds: Uint16Array): boolean {
-    if (this.decorated.has(coord)) return true;
+  /** Decorate one chunk. `onChunkReady` already guarantees heightmap +
+   *  materialGrid; kindGrid is checked at the queue-push site above.
+   *  vegFieldGrid/surfaceStateGrid/waterGrid ride the same chunk entity and
+   *  production always writes them alongside heightmap/materialGrid, so no
+   *  defer/retry is needed here — a def whose field genuinely never arrives
+   *  (an old save predating T-311 P3) just reads a flat/neutral density. */
+  private decorateChunk(coord: string, chunk: ClientChunk): void {
+    if (this.decorated.has(coord)) return;
 
     const sep = coord.indexOf(",");
     const cx = Number(coord.slice(0, sep));
     const cy = Number(coord.slice(sep + 1));
+    const kinds = chunk.kindGrid!.data;
 
     // Floor scatter keys on the GROUND material (grass/moss → ferns, mushrooms,
     // tufts) which lives on KindGrid=OPEN(0) cells; wall scatter keys on the
-    // KindGrid kind (trees on FOREST walls). Resolve the material grid once;
-    // defer the whole chunk until it has arrived if any def needs it.
-    const materials = this.world.getMaterialData(cx, cy);
-    if (this.needsMaterials && !materials) return false;
-
-    // T-311 P4: per-cell density reads the render-field grids. Defer until they
-    // stream (the retry queue gives ~3s); resolve once per chunk.
-    const veg = this.needsFields ? this.world.getVegFieldGrid(cx, cy) : null;
-    const surf = this.needsFields ? this.world.getSurfaceStateGrid(cx, cy) : null;
-    const water = this.needsFields ? this.world.getWaterGrid(cx, cy) : null;
-    if (this.needsFields && (!veg || !surf)) return false;
+    // KindGrid kind (trees on FOREST walls).
+    const materials = chunk.materialGrid.data;
+    const veg = chunk.vegFieldGrid ?? null;
+    const surf = chunk.surfaceStateGrid ?? null;
+    const water = chunk.waterGrid ?? null;
 
     this.decorated.add(coord);
-    if (this.defs.length === 0) return true;
+    if (this.defs.length === 0) return;
 
     for (const def of this.defs) {
       const basePool = this.ensurePool(def, 0);
@@ -241,7 +230,7 @@ export class ScatterRenderer {
         for (let lx = half; lx < CHUNK_SIZE; lx += def.stride) {
           const cellIdx = lx + ly * CHUNK_SIZE;
           const match = matIds !== undefined
-            ? matIds.has(materials![cellIdx])
+            ? matIds.has(materials[cellIdx])
             : kinds[cellIdx] === def.kind;
           if (!match) continue;
 
@@ -300,7 +289,6 @@ export class ScatterRenderer {
         }
       }
     }
-    return true;
   }
 
   /** Drop every scatter handle on tile transition. Archetypes (geometry +

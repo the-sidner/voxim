@@ -14,8 +14,7 @@
  * radius from the player have their groups hidden.
  */
 import * as THREE from "three";
-import type { HeightmapData, MaterialGridData, SurfaceStateGridData, VegFieldGridData, WaterGridData } from "@voxim/codecs";
-import type { EntityState } from "../state/client_world.ts";
+import type { ClientChunk, ClientWorld, EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
@@ -212,14 +211,10 @@ export class VoximRenderer {
   private readonly terrainMeshes  = new Map<string, THREE.Mesh[]>();
   /** Gate marker pillars (T-145), keyed by entityId. World-space group containing pillar mesh. */
   private gateMarkers!: GateMarkerRenderer; // set in constructor (needs camera + renderer)
-  private readonly terrainHmaps   = new Map<string, HeightmapData>();
-  private readonly terrainMats    = new Map<string, MaterialGridData>();
-  /** SurfaceStateGrid per chunk — the moss-creep overgrowth source (T-311 P4). */
-  private readonly terrainSurf    = new Map<string, SurfaceStateGridData>();
-  /** VegFieldGrid per chunk — feeds relief.surfaceWarpField sampling (T-311 P4). */
-  private readonly terrainVeg     = new Map<string, VegFieldGridData>();
-  /** WaterGrid per chunk — feeds the `surfaceLevel` FieldExpr term (T-315 A2). */
-  private readonly terrainWater   = new Map<string, WaterGridData>();
+  /** Single chunk-grid owner (T-315 E2) — heightmap/materialGrid/surfaceStateGrid/
+   *  vegFieldGrid/waterGrid all read through here now; the renderer keeps no
+   *  parallel copy of any of them, only the built THREE.Mesh output. */
+  private world: ClientWorld | null = null;
   /** Entity-mesh lifecycle — live animated meshes + pooled-prop positions + the
    *  async spawn→build state machine (T-282). The renderer reaches the meshes
    *  through `entities.all` / `entities.get(id)` for its per-frame pose loop. */
@@ -495,6 +490,13 @@ export class VoximRenderer {
     this.edgePass.setTileSize(FOG_GRID_SIZE * FOG_CELL_SIZE);
   }
 
+  /** Wire the ClientWorld (T-315 E2) — the renderer reads chunk grid data
+   *  (heightmap/materialGrid/surfaceStateGrid/vegFieldGrid/waterGrid) through
+   *  it instead of keeping its own parallel copies. */
+  setClientWorld(world: ClientWorld): void {
+    this.world = world;
+  }
+
   setContentCache(cache: ContentCache): void {
     this.content = cache;
     this.entities.setContent(cache);
@@ -537,15 +539,8 @@ export class VoximRenderer {
 
   // ---- terrain ----
 
-  updateTerrain(heightmap: HeightmapData, materials: MaterialGridData, surf?: SurfaceStateGridData, veg?: VegFieldGridData, water?: WaterGridData): void {
-    const cx = heightmap.chunkX, cy = heightmap.chunkY;
-    const key = `${cx},${cy}`;
-
-    this.terrainHmaps.set(key, heightmap);
-    this.terrainMats.set(key, materials);
-    if (surf) this.terrainSurf.set(key, surf);
-    if (veg) this.terrainVeg.set(key, veg);
-    if (water) this.terrainWater.set(key, water);
+  updateTerrain(chunk: ClientChunk): void {
+    const cx = chunk.chunkX, cy = chunk.chunkY;
 
     // Each cell's column floors to the lowest of its FOUR neighbours, so the new
     // chunk changes the cliff depth along every shared edge — rebuild all four
@@ -559,8 +554,9 @@ export class VoximRenderer {
 
   private _rebuildChunk(cx: number, cy: number): void {
     const key = `${cx},${cy}`;
-    const hm = this.terrainHmaps.get(key);
-    const mat = this.terrainMats.get(key);
+    const chunk = this.world?.getChunk(cx, cy);
+    const hm = chunk?.heightmap;
+    const mat = chunk?.materialGrid;
     if (!hm || !mat) return;
 
     // Tear down the chunk's previous mesh set as a unit — a rebuild can add or
@@ -577,9 +573,9 @@ export class VoximRenderer {
     // Surface fields (T-311 P4): thread the chunk's SurfaceStateGrid planes +
     // the per-material render responses into the atom build; atoms carry the
     // G6 sidecar scalars (`moss01`, `wet01`).
-    const surf = this.terrainSurf.get(key);
-    const veg = this.terrainVeg.get(key) ?? null;
-    const water = this.terrainWater.get(key) ?? null;
+    const surf = chunk?.surfaceStateGrid;
+    const veg = chunk?.vegFieldGrid ?? null;
+    const water = chunk?.waterGrid ?? null;
     const surfaceInput = surf
       ? {
         overgrowth: surf.overgrowth,
@@ -596,10 +592,10 @@ export class VoximRenderer {
     // Re-express the chunk as voxel atoms (column boxes) bucketed by material,
     // then bake one mesh per material through the shared voxel pipeline (T-283).
     const byMat = buildChunkAtoms(hm, mat, {
-      N: this.terrainHmaps.get(`${cx},${cy - 1}`) ?? null,
-      E: this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
-      S: this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
-      W: this.terrainHmaps.get(`${cx - 1},${cy}`) ?? null,
+      N: this.world?.getChunk(cx, cy - 1)?.heightmap ?? null,
+      E: this.world?.getChunk(cx + 1, cy)?.heightmap ?? null,
+      S: this.world?.getChunk(cx, cy + 1)?.heightmap ?? null,
+      W: this.world?.getChunk(cx - 1, cy)?.heightmap ?? null,
     }, surfaceInput,
       // Per-material relief response (render.relief, T-311 P4).
       (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief);
@@ -646,11 +642,6 @@ export class VoximRenderer {
         (me.material as THREE.Material).dispose();
       }
       this.terrainMeshes.delete(key);
-      this.terrainHmaps.delete(key);
-      this.terrainMats.delete(key);
-      this.terrainSurf.delete(key);
-      this.terrainVeg.delete(key);
-      this.terrainWater.delete(key);
       this._chunkOverlay.removeChunk(chunkX, chunkY);
     }
   }

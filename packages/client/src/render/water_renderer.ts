@@ -13,10 +13,13 @@
  * enough motion to read as water at game speed.  `tick(now)` from the
  * render loop bumps the `uTime` uniform.
  *
- * The renderer subscribes to `ClientWorld.onChunkKinds` (same hook the
- * forest props use) and pulls the heightmap out of `ClientWorld` at the
- * same time.  If kindGrid arrives before heightmap, decoration is queued
- * and replayed on the next tick.
+ * The renderer subscribes to `ClientWorld.onChunkReady` (same hook the
+ * scatter renderer uses) and pulls the heightmap out of `ClientWorld` at the
+ * same time. `onChunkReady` already guarantees heightmap is present, so the
+ * pending/tryBuild queue below is provably a no-op today; left in place
+ * rather than deleted because T-311 P5 rebuilds this file wholesale around
+ * `WaterGrid.surfaceLevel` anyway (see TERRAIN_COMB_PLAN.md's "what we
+ * deliberately do NOT touch").
  */
 import * as THREE from "three";
 import { BoundaryKind } from "@voxim/protocol";
@@ -168,7 +171,9 @@ export class WaterRenderer {
   constructor(scene: THREE.Scene, world: ClientWorld) {
     this.scene = scene;
     this.world = world;
-    world.onChunkKinds((coord, kinds) => this.onKinds(coord, kinds));
+    world.onChunkReady((coord, chunk) => {
+      if (chunk.kindGrid) this.onKinds(coord, chunk.kindGrid.data);
+    });
   }
 
   /** Called every frame from the render loop to advance the wave animation. */

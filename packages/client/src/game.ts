@@ -21,6 +21,7 @@ import { brushCells, type Cell } from "./input/build_line.ts";
 import { BuildOccupancy } from "./state/build_occupancy.ts";
 import { snapHeight } from "@voxim/world";
 import { ClientWorld } from "./state/client_world.ts";
+import type { ClientChunk } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { FogOfWar } from "./state/fog_of_war.ts";
 import { VoximRenderer } from "./render/renderer.ts";
@@ -331,6 +332,7 @@ export class VoximGame {
     this.renderer = new VoximRenderer(canvas);
     this.renderer.setLocalPlayer(this.playerId!);
     setLocalPlayerId(this.playerId!);
+    this.renderer.setClientWorld(this.world);
     this.renderer.setContentCache(this.content);
     // Renderer-facing weapon actions + item prefabs sourced from the
     // bootstrap-delivered ContentService (T-177 phase 3).  Items are
@@ -571,7 +573,10 @@ export class VoximGame {
           }
           // During loading: don't push to renderer yet — keeps JS thread free so
           // QUIC flow control isn't starved.  _finishLoading() flushes everything.
-          if (this.loadingComplete) this.renderer?.updateTerrain(state.heightmap, state.materialGrid, state.surfaceStateGrid, state.vegFieldGrid, state.waterGrid);
+          if (this.loadingComplete) {
+            const chunk = this.world.getChunk(state.heightmap.chunkX, state.heightmap.chunkY);
+            if (chunk?.heightmap && chunk.materialGrid) this.renderer?.updateTerrain(chunk as ClientChunk);
+          }
         } else if (state.gateLink && state.position) {
           // Gate entities are rendered as standalone navigational markers,
           // not via the regular entity mesh path (no modelRef, no skeleton).
@@ -1666,7 +1671,9 @@ export class VoximGame {
     let terrainCount = 0, entityCount = 0, gateCount = 0;
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap && state.materialGrid) {
-        this.renderer?.updateTerrain(state.heightmap, state.materialGrid, state.surfaceStateGrid, state.vegFieldGrid, state.waterGrid); terrainCount++;
+        const chunk = this.world.getChunk(state.heightmap.chunkX, state.heightmap.chunkY);
+        if (chunk?.heightmap && chunk.materialGrid) this.renderer?.updateTerrain(chunk as ClientChunk);
+        terrainCount++;
       } else if (state.gateLink && state.position) {
         const groundZ = this.world.getTerrainHeight(state.position.x, state.position.y);
         this.renderer?.updateGateMarker(

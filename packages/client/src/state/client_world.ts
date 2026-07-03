@@ -84,58 +84,95 @@ function makeEntity(): EntityState {
   return { raw: new Map(), versions: new Map() };
 }
 
+/**
+ * One chunk's decoded terrain grids, keyed by "chunkX,chunkY" in
+ * `ClientWorld`'s single chunk map. `heightmap` and `materialGrid` are the
+ * only fields guaranteed present — they're the two components every chunk
+ * entity always carries (game.ts's loading gate has always been
+ * `state.heightmap && state.materialGrid`). The other five ride the same
+ * chunk entity but ship as separate wire components; production always
+ * writes all seven together at chunk creation (`chunksFromBuffers`), so in
+ * practice they arrive in the SAME spawn message — but nothing here assumes
+ * that ordering: fields are filled in as their deltas/spawn-components
+ * decode, in whatever order they arrive.
+ */
+export interface ClientChunk {
+  chunkX: number;
+  chunkY: number;
+  heightmap: HeightmapData;
+  materialGrid: MaterialGridData;
+  openMask?: OpenMaskData;
+  kindGrid?: KindGridData;
+  vegFieldGrid?: VegFieldGridData;
+  surfaceStateGrid?: SurfaceStateGridData;
+  waterGrid?: WaterGridData;
+}
+
+/** Fields guaranteed non-undefined on a ClientChunk once `onChunkReady` fires. */
+type ReadyChunk = ClientChunk & Required<Pick<ClientChunk, "heightmap" | "materialGrid">>;
+
 export class ClientWorld {
   private readonly entities = new Map<string, EntityState>();
   private lastSnapshotTick = -1;
-  /** Heightmap data indexed by "chunkX,chunkY" for O(1) terrain height queries. */
-  private readonly chunkHeightmaps = new Map<string, Float32Array>();
+
+  /** Single grid owner: one entry per chunk coord, filled in as grid
+   *  components decode (in any order). Replaces the old seven parallel
+   *  chunk* maps. */
+  private readonly chunks = new Map<string, Partial<ClientChunk>>();
   /**
-   * OpenMask data indexed by "chunkX,chunkY". Drives client-side
-   * impassability checks in the predictor so we don't rubber-band on
-   * boundaries that don't show up as a heightmap step (vegetation, water).
-   * Keyed by the SAME coord the heightmap is keyed by — they ride together
-   * on the same chunk entity.
-   */
-  private readonly chunkOpenMasks = new Map<string, Uint8Array>();
-  /**
-   * KindGrid data indexed by "chunkX,chunkY". Drives client-side
-   * decoration of closed cells (forest pixels render trees, stone
-   * pixels render rocks, …) so trees etc. don't have to exist as
-   * server entities. Same key convention as the heightmap/openMask.
-   */
-  private readonly chunkKinds = new Map<string, Uint16Array>();
-  private readonly chunkMaterials = new Map<string, Uint16Array>();
-  // T-311 P3 render-field grids (the full plane bundles — scatter samples several planes).
-  private readonly chunkVegFields = new Map<string, VegFieldGridData>();
-  private readonly chunkSurfaceStates = new Map<string, SurfaceStateGridData>();
-  private readonly chunkWaterGrids = new Map<string, WaterGridData>();
-  /**
-   * Reverse map: chunk entityId → "chunkX,chunkY". Lets us index the
-   * OpenMask / KindGrid deliveries (which don't carry chunkX/chunkY
-   * themselves) into the per-coord caches via the chunk's already-known
-   * heightmap key.
+   * Reverse map: chunk entityId → "chunkX,chunkY". The wire's openMask/
+   * kindGrid/vegFieldGrid/surfaceStateGrid/waterGrid components don't carry
+   * their own chunkX/chunkY — this recovers the coord so their deltas can
+   * still find (or create) the right `chunks` entry even if they arrive
+   * before the chunk's heightmap.
    */
   private readonly chunkCoordByEntity = new Map<string, string>();
   /**
-   * Listeners notified after a chunk gains both its heightmap (so we
-   * know the coord) and its kindGrid (so renderers have something to
-   * decorate). Renderers register here to spawn forest/rock props on
-   * demand instead of polling.
+   * Listeners notified once a chunk reaches "ready" (heightmap + materialGrid
+   * both present — the same bar game.ts's loading gate has always used).
+   * Renderers register here to build terrain/scatter/water for a chunk
+   * instead of polling or hand-rolling their own retry queues.
    */
-  private readonly kindListeners: Array<(coord: string, kinds: Uint16Array) => void> = [];
+  private readonly readyListeners: Array<(coord: string, chunk: ReadyChunk) => void> = [];
+  private readonly readyCoords = new Set<string>();
 
-  onChunkKinds(listener: (coord: string, kinds: Uint16Array) => void): void {
-    this.kindListeners.push(listener);
-    // Replay any chunks already loaded so a late-registered renderer
-    // catches up without waiting for the next delta.
-    for (const [coord, data] of this.chunkKinds) listener(coord, data);
+  /**
+   * Subscribe to chunk-ready notifications. Fires once per chunk, the first
+   * time both `heightmap` and `materialGrid` are present on it — those two
+   * are GUARANTEED non-undefined on the chunk passed to the listener. The
+   * other five grid fields (openMask, kindGrid, vegFieldGrid,
+   * surfaceStateGrid, waterGrid) may still be undefined at fire time if a
+   * future delta path ever splits them from the initial spawn; today's
+   * production path always writes all seven together, so in practice they
+   * are present too, but callers that need one of the five should still
+   * null-check it.
+   *
+   * Replays every chunk already ready so a late-registered listener catches
+   * up without waiting for the next delta.
+   */
+  onChunkReady(listener: (coord: string, chunk: ReadyChunk) => void): void {
+    this.readyListeners.push(listener);
+    for (const coord of this.readyCoords) {
+      const chunk = this.chunks.get(coord);
+      if (chunk && isReady(chunk)) listener(coord, chunk);
+    }
   }
 
-  private bindKinds(coord: string, data: Uint16Array): void {
-    const prev = this.chunkKinds.get(coord);
-    if (prev === data) return;
-    this.chunkKinds.set(coord, data);
-    for (const fn of this.kindListeners) fn(coord, data);
+  private chunkFor(coord: string): Partial<ClientChunk> {
+    let c = this.chunks.get(coord);
+    if (!c) {
+      c = {};
+      this.chunks.set(coord, c);
+    }
+    return c;
+  }
+
+  private maybeFireReady(coord: string): void {
+    if (this.readyCoords.has(coord)) return;
+    const chunk = this.chunks.get(coord);
+    if (!chunk || !isReady(chunk)) return;
+    this.readyCoords.add(coord);
+    for (const fn of this.readyListeners) fn(coord, chunk);
   }
 
   private applyComponentData(
@@ -153,65 +190,66 @@ export class ClientWorld {
     entity.versions.set(typeId, version);
 
     // Terrain-grid components have decode SIDE EFFECTS (binding chunk data into
-    // this.chunk* maps, with a back-reference dance because openMask/kindGrid
-    // arrive without chunk coords) beyond setting entity.X — so they stay
-    // explicit. Everything else is registry-dispatched (T-284): one codec lookup
-    // by wire id, assigned to the same-named EntityState field.
+    // the single `chunks` map, with a back-reference dance because openMask/
+    // kindGrid/etc. arrive without chunk coords) beyond setting entity.X — so
+    // they stay explicit. Everything else is registry-dispatched (T-284): one
+    // codec lookup by wire id, assigned to the same-named EntityState field.
     switch (typeId) {
       case ComponentType.heightmap: {
         const hm = heightmapCodec.decode(data);
         entity.heightmap = hm;
         const key = `${hm.chunkX},${hm.chunkY}`;
-        this.chunkHeightmaps.set(key, hm.data);
         this.chunkCoordByEntity.set(entityId, key);
-        if (entity.openMask) this.chunkOpenMasks.set(key, entity.openMask.data);
-        if (entity.kindGrid) this.bindKinds(key, entity.kindGrid.data);
-        if (entity.materialGrid) this.chunkMaterials.set(key, entity.materialGrid.data);
-        if (entity.vegFieldGrid) this.chunkVegFields.set(key, entity.vegFieldGrid);
-        if (entity.surfaceStateGrid) this.chunkSurfaceStates.set(key, entity.surfaceStateGrid);
-        if (entity.waterGrid) this.chunkWaterGrids.set(key, entity.waterGrid);
+        const chunk = this.chunkFor(key);
+        chunk.chunkX = hm.chunkX;
+        chunk.chunkY = hm.chunkY;
+        chunk.heightmap = hm;
+        this.maybeFireReady(key);
         return;
       }
       case ComponentType.openMask: {
         const om = openMaskCodec.decode(data);
         entity.openMask = om;
         const key = this.chunkCoordByEntity.get(entityId);
-        if (key) this.chunkOpenMasks.set(key, om.data);
+        if (key) this.chunkFor(key).openMask = om;
         return;
       }
       case ComponentType.kindGrid: {
         const kg = kindGridCodec.decode(data);
         entity.kindGrid = kg;
         const key = this.chunkCoordByEntity.get(entityId);
-        if (key) this.bindKinds(key, kg.data);
+        if (key) this.chunkFor(key).kindGrid = kg;
         return;
       }
       case ComponentType.materialGrid: {
         const mg = materialGridCodec.decode(data);
         entity.materialGrid = mg;
         const key = this.chunkCoordByEntity.get(entityId);
-        if (key) this.chunkMaterials.set(key, mg.data);
+        if (key) {
+          this.chunkFor(key).materialGrid = mg;
+          this.maybeFireReady(key);
+        }
         return;
       }
       case ComponentType.vegFieldGrid: {
         const vg = vegFieldGridCodec.decode(data);
         entity.vegFieldGrid = vg;
         const key = this.chunkCoordByEntity.get(entityId);
-        if (key) this.chunkVegFields.set(key, vg);
+        if (key) this.chunkFor(key).vegFieldGrid = vg;
         return;
       }
       case ComponentType.surfaceStateGrid: {
         const sg = surfaceStateGridCodec.decode(data);
         entity.surfaceStateGrid = sg;
         const key = this.chunkCoordByEntity.get(entityId);
-        if (key) this.chunkSurfaceStates.set(key, sg);
+        if (key) this.chunkFor(key).surfaceStateGrid = sg;
         return;
       }
       case ComponentType.waterGrid: {
         const wg = waterGridCodec.decode(data);
         entity.waterGrid = wg;
         const key = this.chunkCoordByEntity.get(entityId);
-        if (key) this.chunkWaterGrids.set(key, wg);
+        if (key) this.chunkFor(key).waterGrid = wg;
         return;
       }
     }
@@ -306,6 +344,13 @@ export class ClientWorld {
     return this.entities.entries();
   }
 
+  /** The chunk at (chunkX, chunkY), or undefined if no grid data has arrived
+   *  yet. Fields beyond heightmap/materialGrid may be undefined even once
+   *  the chunk exists — see `onChunkReady`'s doc for the guarantee. */
+  getChunk(chunkX: number, chunkY: number): Partial<ClientChunk> | undefined {
+    return this.chunks.get(`${chunkX},${chunkY}`);
+  }
+
   /**
    * Sample terrain height at a world position via NEAREST cell (matches the
    * server's terrain_lookup, which is explicitly non-bilinear — feet/props must
@@ -316,7 +361,7 @@ export class ClientWorld {
   getTerrainHeight(wx: number, wy: number): number {
     const cx = Math.floor(wx / CHUNK_SIZE);
     const cy = Math.floor(wy / CHUNK_SIZE);
-    const data = this.chunkHeightmaps.get(`${cx},${cy}`);
+    const data = this.chunks.get(`${cx},${cy}`)?.heightmap?.data;
     if (!data) return 0;
     const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - cx * CHUNK_SIZE)));
     const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - cy * CHUNK_SIZE)));
@@ -328,7 +373,7 @@ export class ClientWorld {
    * decorators that key off chunk-local cells (forest props, water surface).
    */
   getHeightmapData(chunkX: number, chunkY: number): Float32Array | null {
-    return this.chunkHeightmaps.get(`${chunkX},${chunkY}`) ?? null;
+    return this.chunks.get(`${chunkX},${chunkY}`)?.heightmap?.data ?? null;
   }
 
   /**
@@ -337,19 +382,19 @@ export class ClientWorld {
    * grass/moss, etc. — not just by the wall-only KindGrid.
    */
   getMaterialData(chunkX: number, chunkY: number): Uint16Array | null {
-    return this.chunkMaterials.get(`${chunkX},${chunkY}`) ?? null;
+    return this.chunks.get(`${chunkX},${chunkY}`)?.materialGrid?.data ?? null;
   }
 
   /** T-311 P3 render-field grid bundles for a chunk (null until streamed). The
    *  scatter renderer + future moss/wetness consumers sample their planes. */
   getVegFieldGrid(chunkX: number, chunkY: number): VegFieldGridData | null {
-    return this.chunkVegFields.get(`${chunkX},${chunkY}`) ?? null;
+    return this.chunks.get(`${chunkX},${chunkY}`)?.vegFieldGrid ?? null;
   }
   getSurfaceStateGrid(chunkX: number, chunkY: number): SurfaceStateGridData | null {
-    return this.chunkSurfaceStates.get(`${chunkX},${chunkY}`) ?? null;
+    return this.chunks.get(`${chunkX},${chunkY}`)?.surfaceStateGrid ?? null;
   }
   getWaterGrid(chunkX: number, chunkY: number): WaterGridData | null {
-    return this.chunkWaterGrids.get(`${chunkX},${chunkY}`) ?? null;
+    return this.chunks.get(`${chunkX},${chunkY}`)?.waterGrid ?? null;
   }
 
   /**
@@ -360,7 +405,7 @@ export class ClientWorld {
   isOpen(wx: number, wy: number): boolean {
     const cx = Math.floor(wx / CHUNK_SIZE);
     const cy = Math.floor(wy / CHUNK_SIZE);
-    const data = this.chunkOpenMasks.get(`${cx},${cy}`);
+    const data = this.chunks.get(`${cx},${cy}`)?.openMask?.data;
     if (!data) return true;
     const lx = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wx - cx * CHUNK_SIZE)));
     const ly = Math.max(0, Math.min(CHUNK_SIZE - 1, Math.floor(wy - cy * CHUNK_SIZE)));
@@ -369,13 +414,12 @@ export class ClientWorld {
 
   clear(): void {
     this.entities.clear();
-    this.chunkHeightmaps.clear();
-    this.chunkOpenMasks.clear();
-    this.chunkKinds.clear();
-    this.chunkMaterials.clear();
-    this.chunkVegFields.clear();
-    this.chunkSurfaceStates.clear();
-    this.chunkWaterGrids.clear();
+    this.chunks.clear();
     this.chunkCoordByEntity.clear();
+    this.readyCoords.clear();
   }
+}
+
+function isReady(chunk: Partial<ClientChunk>): chunk is ReadyChunk {
+  return chunk.heightmap !== undefined && chunk.materialGrid !== undefined;
 }
