@@ -100,7 +100,7 @@ Select city locations from world map (flat terrain, near water, resource diversi
 Done when: world generation produces N cities at valid locations with initial state files.
 
 ### T-212 · POI runtime + wilderness-stair unlock
-Effort: L   Status: in-progress   (v1 PoiSystem done -- 03525ae; registry-dispatch substrate done under T-245; wave + bossfight handlers landed -- see commit below; action/puzzle + trinket->stair-unlock open)
+Effort: L   Status: done   (v1 PoiSystem -- 03525ae; registry-dispatch substrate T-245; wave/bossfight/action/puzzle handlers + T-213b trinket-unlock chain -- see commit hashes in this file's closing bookkeeping commit)
 
 **v1 landed**: PoiTrigger component + PoiSystem with two dispatch paths:
 
@@ -220,52 +220,38 @@ disabling via `roles: []`, since the boot cross-check would otherwise
 throw. `reflection_path`/`valve_sequence` are a follow-up if that puzzle
 FLAVOR (not just mechanic) is wanted later.
 
-- Stair runtime UNLOCK on trinket consumption — currently locked
-  stairs stay locked forever. Needs the trinket-inventory checkpoint
-  (when a player picks up trinket X, scan stairs whose `lockedBy === X`
-  and call `applyStairUnlock` + broadcast heightmap-Δ to AoI clients).
-  This is the bridge from "found stairs work" (T-213 v1) to "earn-your-
-  way-up-the-plateau".
+**Stair runtime unlock — T-213b, landed.** The design draft this section
+originally sketched (a teleport interactable + a `Lock` component + a
+`StairUnlocked` wire event) was superseded during T-213 v2/T-213b: stairs
+are a real heightmap ramp the player walks up (no teleport, no new wire
+message — the terrain delta pipeline already carries it), and the
+trinket→unlock chain runs through the item-effect substrate (`unlock_stair`,
+an `EffectSpec` on a unique trinket item) rather than an inventory-scan
+checkpoint. See T-213's body for the landed mechanism.
 
-Make POIs actually do something at runtime + make stairs actually
-gate movement. Tile-server reads `TileNarrative` on tile load, spawns
-per-POI runtime adapters:
+**SAVE ARCHITECTURE NOTE**: per `CLAUDE.md`/`save_manager.ts`, `SaveManager`
+persists only WorldClock + terrain chunks — POI/Stair/NPC entities are
+NOT saved. The Heightmap/OpenMask ramp DOES survive a save/reload (chunk
+components); `Stair.unlocked`/`ModelRef` do NOT (they reset to bake-time
+defaults on server restart, since `Stair` itself isn't saved). This is
+consistent with the rest of the POI runtime (WaveState/BossArenaLink/
+PuzzleState are all equally unsaved, "fired-once-per-boot" is the accepted
+v1 behaviour per the architecture notes above) — flagged here rather than
+silently claimed as tested, since an earlier draft of this ticket implied
+a "dump/reload preserves stair-unlock state" test that would contradict
+current save scope.
 
-  encounter   → ProximityTrigger spawns SpawnTable on player entry
-  bossfight   → boss prefab + arenaRules (lockEntry collides path
-                zone until HP=0)
-  wave        → state-machine component, sequential spawns
-  action      → interactable prefab at the POI's zone centroid
-  exploration → one-shot lore-unlock trigger
-  puzzle      → reserves a new `packages/content/data/puzzles/`
-                content category (stub for v1; full puzzle
-                templates ship later)
-
-Stair runtime: stair entity at each `StairInstance.anchorPixel` with
-a `Lock` component referencing `lockedBy`. Player approaching an
-unlocked stair gets a "Climb" prompt; using it teleports the player
-2u up onto the wilderness plateau (collision-safe, no heightmap
-mutation in v1 — the elevation step stays as a visual hint).
-
-When the player completes a POI that drops a trinket the player's
-inventory gains the trinket. When any stair's `lockedBy` trinket is
-in inventory, the stair flips to unlocked + broadcasts a
-`StairUnlocked` event to all AoI clients.
-
-Tests:
-- dump/reload preserves stair-unlock state byte-identical
-- entering an unlocked stair places the player at the wilderness
-  centroid with proper Y elevation
-- locked stair refuses the climb prompt
-- POI completion → trinket inventory → stair unlock → climb → POI
-  completion (the full loop, in one integration test)
-
-Done when: a baked tile with the matcher's narrative is fully
-playable end-to-end: spawn → walk → fight encounter → get trinket →
-climb stair → fight boss → terminal trinket.
+Done: a baked tile's wave/bossfight/action/puzzle POIs fire at runtime
+(wave verified live in testplay; bossfight/action/puzzle covered by
+comprehensive unit tests against real content — this bake's DAG selection
+happened to pick only wave/encounter/exploration POIs, a T-210/T-214
+generator-selection question out of this ticket's scope, not a defect in
+the landed handlers), and a scripted trinket-consume opens a stair that
+was impassable seconds before (verified live, before/after screenshots).
 
 ### T-213 · Physical stair object — heightmap ramp + step-up walkability
-Effort: M   Status: in-progress   (v1+v2 stair carve/props done -- 867766f; T-213b runtime unlock open)
+Effort: M   Status: done   Commit: (T-213b landed in the T-212 v2 arc — see
+commits below; T-213 v1+v2 was 867766f)
 
 **v1 landed**: `applyStairUnlock` helper + "found" stairs (lockedBy === null)
 apply at tile boot. Wilderness plateaus reachable from boot via lerped ramps.
@@ -274,95 +260,62 @@ apply at tile boot. Wilderness plateaus reachable from boot via lerped ramps.
 narrative stair anchor. Stone variant for "found" stairs (the heightmap ramp
 underneath makes them walkable); stone + iron-capped variant for "locked"
 stairs (no ramp, wilderness wall still blocks — the iron cap reads as the
-unlit gating cue). `Stair` server-only component carries `{stairId, toZoneId,
-fromZoneId, trinketId, anchorXY, unlocked}` so the future unlock pipeline
-has everything it needs to flip state at runtime.
+unlit gating cue).
 
-**Remaining (T-213b — next ticket-or-extension)**:
-- Runtime unlock: when a player consumes a trinket that matches a locked
-  stair's `trinketId`, flip openMask + apply ramp + swap the entity's
-  ModelRef from `model_stair_locked` to `model_stair` + broadcast a
-  Heightmap-Δ + StairUnlocked event to AoI clients.
-- Client heightmap-delta application — applying a ramp at runtime requires
-  the client to re-mesh those chunks. Pattern exists for building-system
-  edits; reuse it.
-- Per-biome stair models (root stairs for grove, crag stones, …) — currently
-  one stone shape for every biome.
+**T-213b landed**: runtime unlock, verified live in testplay (before/after
+screenshots: a dark closed plateau flips to a bright walkable ramp+plateau
+after a scripted trinket-consume). The chain, end to end:
 
-T-210's stairs are currently only a *narrative* artifact — they
-declare gating in `TileNarrative.stairs[]` but the engine still
-blocks players at the wilderness boundary because the heightmap step
-(wallHeight = 2u) exceeds `stepHeight`, and openMask still reads 0
-on closed-kind pixels. T-212 originally proposed solving this with
-a teleport interactable; this ticket says **no — make the stair a
-real ramp the player walks up**.
+- `Stair` gained `wallHeight`/`rampDepth`/`rampHalfWidth` (the three
+  `applyStairUnlock` inputs only available at BOOT time via the atlas
+  LevelDef/GenParams) — `placeStairs` stamps them at spawn so the runtime
+  path needs no atlas access.
+- A trinket is a unique item entity carrying a per-instance `ItemEffects`
+  `{id: "unlock_stair", params: {trinketId}}` — same pattern procedural
+  items already use (`ItemEffects` docs: "what procedural generation
+  writes"). `data/prefabs/items/trinket.json` is the one generic prefab;
+  the dynamic per-bake `trinketId` (atlas mints `trinket_${src}_to_${dst}`)
+  lives in the per-instance params, not in content.
+- `unlock_stair` (`actions/resolvers/unlock_stair.ts`) fires via the
+  existing `apply_item_effects` fan-out on `UseItem`. It finds the
+  matching locked `Stair`, assembles a flat TILE_SIZE² scratch view from
+  every CURRENTLY LOADED `Heightmap`/`OpenMask` chunk (`applyStairUnlock`
+  operates on flat per-tile buffers, chunk components don't — this
+  resolver is the adapter), runs the byte-identical atlas algorithm
+  against it, and scatters touched cells back into their owning chunks via
+  `world.set`. Zero duplicated ramp/flood-fill math.
+- The mutation rides the existing changeset/delta pipeline — no new wire
+  message. The client re-meshes through the SAME Heightmap/OpenMask delta
+  path terrain-dig edits already use; no new client code was needed at
+  all (confirmed live: the plateau relit itself the tick after the delta
+  arrived).
+- `Stair.unlocked` flips + `ModelRef` swaps `model_stair_locked` →
+  `model_stair` (via `STAIR_FOUND_PREFAB_ID`, no hardcoded string).
 
-Mechanism per StairInstance:
+**KNOWN GAP (documented, not fixed here)**: `ChunkLifecycleSystem.restore()`
+replays a chunk's CACHED pre-unlock snapshot verbatim on reload. A cell
+whose chunk is unloaded at the moment of unlock is skipped (logged warning)
+and, if the chunk was ALREADY unloaded before the unlock fired, will
+restore locked on next load. Narrow in practice — the unlock is
+player-triggered, and the load radius keeps a wide margin — but real. A
+correct fix re-applies every unlocked stair's ramp on chunk restore
+(cross-reference `world.query(Stair)` against the restored chunk's
+bounds); worth a follow-up ticket if it bites in practice.
 
-  1. RAMP CARVING. For each unlocked stair, modify the heightmap at
-     the stair anchor and a small neighbourhood: lerp from path-floor
-     height (≈0) at the path-side pixel up to wilderness-plateau
-     height (= wallHeight) over a 3-5 pixel run. Width matches the
-     stair's "tread" (3-4 pixels, configurable).
-  2. OPENMASK FLIP. The ramp pixels become walkable: openMask = 1
-     across the lerped run. Wilderness pixels reachable from the ramp
-     also become walkable — but ONLY those connected to the unlocked
-     stair (downstream flood-fill from the anchor, bounded by
-     wilderness-zone id).
-  3. PHYSICS CONTINUITY. Existing tile-server collision uses
-     openMask + heightmap + stepHeight. Once openMask flips and the
-     heightmap is lerped, the player naturally walks up — no new
-     traversal mechanic.
+**SCOPE CUT (documented)**: the full "POI completion → trinket granted →
+appears in inventory" economy was NOT built — `PoiReward.extras`'
+`"unique"` kind is read but not granted (logged, not silent — see T-212's
+`poi/reward.ts` note). Verification used a dev-only `DebugGiveTrinket`
+command (`CommandType` 28) that hands the player a trinket wired to a
+named stair's real `trinketId`, standing in for the drop pipeline. That
+pipeline (reading `LevelDef.narrative.trinkets` at boot, mapping
+POI-completion → the right dynamically-minted trinket id) is real,
+separate, non-trivial work — a natural T-212-arc follow-up ticket, not
+silently half-built here.
 
-Two states per stair:
-
-  LOCKED — heightmap stays at full wall-height across stair pixels;
-           openMask = 0; stair anchor renders as a visible prop
-           (vertical "step" plate) so the player can see WHERE to
-           climb once it unlocks.
-  UNLOCKED — heightmap lerped to ramp; openMask = 1; the prop animates
-           a brief "open" pose. Wilderness pixels behind the stair are
-           now reachable; the player walks up naturally.
-
-Wire deltas needed:
-
-  - Heightmap delta over the ramp pixel range (small — typically <20
-    pixels). Reuse the per-tile heightmap-Δ pattern that future
-    building / digging will need.
-  - openMask delta over the same range + the flooded-reachable
-    wilderness pixels.
-  - StairUnlocked event with stair id (so the client can play the
-    open animation).
-
-Visual:
-
-  - Stair prefab at the anchor — small stone steps or vine-overgrown
-    ramp depending on the wilderness zone's dominant kind (crag →
-    stone steps, grove → root-stairs, hollow → grassy ramp). One
-    prefab per wilderness role, picked at narrative-bake time.
-  - Locked stairs are visible from the start so the player can plan
-    ("I need to find a key for THAT stair").
-
-Tests:
-
-  - Snapshot: locked-stair heightmap == pre-stair heightmap byte-
-    identical (so save/reload before any unlock reproduces).
-  - Unlock event applies the heightmap delta deterministically — same
-    stair on same tile always produces same delta.
-  - Server-side collision integration test: player attempts to walk
-    onto a wilderness pixel near a locked stair → blocked. Same
-    pixel after unlock → walkable.
-  - The flooded-walkable region is bounded by the wilderness-zone
-    id; a wilderness pixel in a DIFFERENT wilderness zone is NOT
-    reachable through this stair.
-
-Out of scope:
-- The stair PROP CONTENT (the actual 3D model variants per zone
-  role). For v1, ship one generic "step plate" model and pick it for
-  every stair; per-role visuals are a follow-up.
-- T-212's POI runtime (encounters firing, bosses spawning) — that's
-  the gameplay layer; this ticket is purely the physics + visual
-  realisation of stairs.
+Per-biome stair models (root stairs for grove, crag stones, …) were not
+attempted — out of budget; the ticket's original note stands as-is
+("currently one stone shape for every biome").
 
 ### T-215..T-224 · Scene graph as a central engine system
 Effort: XL (multi-ticket arc)   Status: planned

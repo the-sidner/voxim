@@ -68,6 +68,7 @@ import { EnclosureSystem } from "./systems/enclosure.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./actions/resolvers/item_use.ts";
 import { spawnNpcTableResolver } from "./actions/resolvers/spawn_npc_table.ts";
+import { UnlockStairResolver } from "./actions/resolvers/unlock_stair.ts";
 import { bossArenaUnlockHook } from "./deathhooks/boss_arena_unlock.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
@@ -502,6 +503,12 @@ export class TileServer {
     actionEffects.register(new ApplyItemEffectsResolver(actionEffects));
     // spawn_npc_table (T-212 v2) — bossfight's phase-adds trigger effect.
     actionEffects.register(spawnNpcTableResolver);
+    // unlock_stair (T-213b) — a trinket's use_item effect. Reads
+    // `this.zoneBuffer` via a lazy accessor: registration happens here
+    // (early boot), but zoneBuffer is only assigned after
+    // loadTerrainFromAtlas runs later in start() — the closure reads it
+    // fresh at call time, not at registration time, so ordering is safe.
+    actionEffects.register(new UnlockStairResolver(() => this.zoneBuffer));
     // Buffs: start_buff spawns a buff scene-graph child; the child's
     // `buff` ambient action fires buff_tick (DoT/HoT) each tick.
     actionEffects.register(startBuffResolver);
@@ -981,7 +988,7 @@ export class TileServer {
     // standing at the path/wilderness boundary.
     if (atlas.level.edges.stairs.length) {
       placeStairs(
-        this.world, content, atlas.level, atlas.heightBuffer, TILE_SIZE,
+        this.world, content, atlas.level, atlas.heightBuffer, TILE_SIZE, atlas.wallHeight,
       );
     }
     console.log(

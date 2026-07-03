@@ -163,7 +163,12 @@ export const enum CommandType {
                           //   owning POI's reward via the shared poi/reward.ts grant helper.
                           //   Not PickUp (no inventory transfer) or LoadWorkstation (no buffer) —
                           //   "use this prop, maybe consume it, fire POI effects" is a new shape.
-  // 27-255 reserved for future commands
+  DebugGiveTrinket  = 28, // payload: u8 strLen + UTF-8 stairId — dev-only cheat (T-213b): finds the
+                          //   Stair entity by stairId and hands the player a unique trinket item
+                          //   wired (via per-instance ItemEffects) to its trinketId. Stands in for
+                          //   the full POI-completion -> trinket-drop economy, which is separate,
+                          //   larger, out-of-scope work (see TICKETS.md T-212).
+  // 27, 29-255 reserved for future commands
 }
 
 /**
@@ -210,6 +215,7 @@ export type CommandPayload =
   | { cmd: CommandType.DebugSetTime;   hour: number }
   | { cmd: CommandType.DebugTeleport;  worldX: number; worldY: number }
   | { cmd: CommandType.DebugSetStat;   stat: string; value: number }
+  | { cmd: CommandType.DebugGiveTrinket; stairId: string }
   | { cmd: CommandType.Respawn };
 
 export interface CommandDatagram {

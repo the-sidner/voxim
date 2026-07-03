@@ -33,6 +33,17 @@ export interface StairData {
   anchorY: number;
   /** True once unlocked (either at boot for "found" stairs or by trinket). */
   unlocked: boolean;
+  /**
+   * T-213b: the three `applyStairUnlock` inputs that were only available
+   * at BOOT time (from the atlas LevelDef + GenParams, both out of scope
+   * by the time a runtime effect resolver fires). Stamped here so the
+   * runtime unlock path needs no atlas access at all — see
+   * `stair_spawner.ts`'s `placeStairs`, which already has these in local
+   * scope from the StairEdge + genParams it's called with.
+   */
+  wallHeight: number;
+  rampDepth: number;
+  rampHalfWidth: number;
 }
 
 export const Stair = defineComponent({
@@ -48,6 +59,9 @@ export const Stair = defineComponent({
       w.writeF32(v.anchorX);
       w.writeF32(v.anchorY);
       w.writeU8(v.unlocked ? 1 : 0);
+      w.writeF32(v.wallHeight);
+      w.writeF32(v.rampDepth);
+      w.writeF32(v.rampHalfWidth);
       return w.toBytes();
     },
     decode(b: Uint8Array): StairData {
@@ -60,6 +74,9 @@ export const Stair = defineComponent({
         anchorX:    r.readF32(),
         anchorY:    r.readF32(),
         unlocked:   r.readU8() === 1,
+        wallHeight:    r.readF32(),
+        rampDepth:     r.readF32(),
+        rampHalfWidth: r.readF32(),
       };
     },
   },
@@ -71,5 +88,8 @@ export const Stair = defineComponent({
     anchorX:    0,
     anchorY:    0,
     unlocked:   false,
+    wallHeight:    2,
+    rampDepth:     5,
+    rampHalfWidth: 2,
   }),
 });

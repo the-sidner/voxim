@@ -15,6 +15,7 @@
  *   DebugTeleport  — teleport the player to world coordinates (X, Y)
  *   DebugSetStat   — set health or stamina to an exact value
  */
+import { newEntityId } from "@voxim/engine";
 import type { World, EntityId } from "@voxim/engine";
 import { CommandType } from "@voxim/protocol";
 import type { ContentService } from "@voxim/content";
@@ -22,8 +23,10 @@ import type { System, EventEmitter, TickContext } from "../system.ts";
 import type { CommandPayload } from "@voxim/protocol";
 import { Position, Health } from "../components/game.ts";
 import { Resource } from "../components/resource.ts";
-import { Inventory } from "../components/items.ts";
+import { Inventory, ItemData } from "../components/items.ts";
 import type { InventorySlot } from "../components/items.ts";
+import { ItemEffects } from "../components/instance.ts";
+import { Stair } from "../components/stair.ts";
 import { WorldClock } from "../components/world.ts";
 import { spawnPrefab } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
@@ -62,6 +65,9 @@ export class DebugCommandSystem implements System {
             break;
           case CommandType.DebugSetStat:
             this._setStat(world, entityId, cmd.stat, cmd.value);
+            break;
+          case CommandType.DebugGiveTrinket:
+            this._giveTrinket(world, entityId, cmd.stairId);
             break;
         }
       }
@@ -121,6 +127,42 @@ export class DebugCommandSystem implements System {
     if (!pos) return;
     world.set(entityId, Position, { ...pos, x: worldX, y: worldY });
     log.info("debug_teleport: entity=%s x=%.1f y=%.1f", entityId, worldX, worldY);
+  }
+
+  /**
+   * DebugGiveTrinket (T-213b) — dev-only cheat standing in for the full
+   * POI-completion -> trinket-drop economy (out of scope for this ticket,
+   * see TICKETS.md T-212). Finds the Stair entity by `stairId`, spawns a
+   * unique `trinket` item entity carrying a per-instance `ItemEffects`
+   * wired to that stair's exact `trinketId` (the same pattern procedural
+   * items use — one generic prefab, per-instance effect params), and adds
+   * it to the player's inventory.
+   */
+  private _giveTrinket(world: World, playerId: EntityId, stairId: string): void {
+    const stair = world.query(Stair).find((s) => s.stair.stairId === stairId)?.stair;
+    if (!stair) {
+      log.warn("debug_give_trinket: unknown stairId '%s'", stairId);
+      return;
+    }
+    if (stair.trinketId === "") {
+      log.warn("debug_give_trinket: stair '%s' is a 'found' stair (no trinketId)", stairId);
+      return;
+    }
+    const inv = world.get(playerId, Inventory);
+    if (!inv) return;
+    if (inv.slots.length >= inv.capacity) {
+      log.debug("debug_give_trinket: player=%s inventory full", playerId);
+      return;
+    }
+
+    const itemId = newEntityId();
+    world.create(itemId);
+    world.write(itemId, ItemData, { prefabId: "trinket", quantity: 1 });
+    world.write(itemId, ItemEffects, {
+      effects: [{ id: "unlock_stair", params: { trinketId: stair.trinketId } }],
+    });
+    world.set(playerId, Inventory, { ...inv, slots: [...inv.slots, { kind: "unique", entityId: itemId }] });
+    log.info("debug_give_trinket: player=%s stair=%s trinketId=%s item=%s", playerId, stairId, stair.trinketId, itemId);
   }
 
   private _setStat(world: World, entityId: EntityId, stat: string, value: number): void {
