@@ -1,5 +1,5 @@
 /**
- * Stage 7 — terrain heightmap.
+ * Stage 8 — terrain heightmap.
  *
  * Two contributions per cell:
  *   1. Wall baseline. STONE / FOREST / GRASS_MOUND cells rise by

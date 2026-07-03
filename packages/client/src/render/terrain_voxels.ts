@@ -104,7 +104,7 @@ export interface SurfaceFieldInput {
   /** True when the material authors `render.wetness` → atoms carry `wet01`. */
   wets: (materialId: number) => boolean;
   /** Generic normalised field read (shared `sampleField` over the chunk's
-   *  Veg/SurfaceState/Water grids) — evaluates `relief.surfaceWarpField`. */
+   *  Veg/SurfaceState/Water grids) — evaluates `relief.disturbanceField`. */
   sample: (field: string, cellIdx: number) => number;
 }
 
@@ -132,7 +132,7 @@ export function buildChunkAtoms(
   } | undefined,
 ): Map<number, VoxelAtom[]> {
   const offX = hm.chunkX * CHUNK;
-  const offZ = hm.chunkY * CHUNK;
+  const offZ = hm.chunkY * CHUNK; // model-space Y (south) offset — becomes three.js Z only via the coords.ts swap, NOT yet in three-space here.
   const H = (cx: number, cy: number): number => hm.data[cx + cy * CHUNK];
 
   // Neighbour height in one direction; for an edge cell read the adjacent chunk's
@@ -272,7 +272,7 @@ export function buildChunkAtoms(
       // Flat / shallow cell → one column box (top at h, floor at h-depth).
       // Surface roughness (T-311 P4): with `relief.surfaceWarp` the slab warps
       // its corners INDEPENDENTLY (own dispSeed) — rough, clod-like ground —
-      // modulated 0..1 per cell by the optional `surfaceWarpField` FieldExpr
+      // modulated 0..1 per cell by the optional `disturbanceField` FieldExpr
       // (e.g. traffic-inverted: wilderness rough, trodden paths smooth). The
       // slab OVERSIZES into known-solid (sideways into neighbour slabs, down
       // into the earth) so corner gaps only ever reveal another slab.

@@ -36,9 +36,11 @@ export interface MaterialProperties {
  * Per-material RENDER look block (T-311 Phase 0a). The shape is FROZEN here in
  * one commit (VISUAL_DATAMODEL_PLAN.md invariant I2) so the visual axes that
  * extend it — texture / tint / relief / wetness / reflect / moss / glow — never
- * re-break the schema. Only `textureStyle` has a consumer today; the rest are
- * reserved and read by later phases. Every field optional; absent = engine
- * default (so adding the block to a material is a pure file-drop, no code edit).
+ * re-break the schema. Every field here now has a live client consumer
+ * (textureStyle, tintJitter, relief, wetness, reflect, mossBlend); the shape
+ * stays frozen (I2) so future visual axes extend it without another schema
+ * break. Every field optional; absent = engine default (so adding the block
+ * to a material is a pure file-drop, no code edit).
  */
 export interface MaterialRenderDef {
   /** Surface-texture style id → client TextureStyle registry (grammar G4,
@@ -1119,8 +1121,10 @@ export interface ProcModelDef {
 export interface ScatterDef {
   id: string;
   /** KindGrid boundary kind that drives the cell walk (e.g. forest = 2).
-   *  Used when `material` is absent (wall-kind scatter like trees on FOREST). */
-  kind: number;
+   *  Required when `material` is absent; ignored (may be omitted) when
+   *  `material` is present — the two are mutually exclusive dispatch keys,
+   *  never both consumed. */
+  kind?: number;
   /** Optional: match the per-cell GROUND material NAME(s) instead of the KindGrid
    *  kind, so plants/rocks scatter on the walkable floor (dirt forest-floor, grass,
    *  moss, …) which is KindGrid=OPEN(0). A list matches any of the named materials.

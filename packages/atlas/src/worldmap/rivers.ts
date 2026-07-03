@@ -27,8 +27,9 @@ import { hash2 } from "@voxim/levelgen";
 import { TILE_WORLD_SIZE, GATE_INSET, type Edge, type RiverEndpoint, type WorldCellRecord } from "./types.ts";
 import type { GenParams } from "../genparams.ts";
 
-const SEED_RIVER_PICK   = 0x70007001;
-const SEED_RIVER_OFFSET = 0x70007003;
+const SEED_RIVER_PICK          = 0x70007001;
+const SEED_RIVER_OFFSET        = 0x70007003;
+const SEED_RIVER_SOURCE_JITTER = 0xfeed;
 
 export function generateRivers(
   cells: WorldCellRecord[],
@@ -122,7 +123,7 @@ function walkRiver(
 function sourceTerminal(cell: WorldCellRecord): RiverEndpoint {
   // A modest jitter from cell centre using cell coords + biome — same
   // input twice, same point.
-  const jitter = (hash2(cell.cellX, cell.cellY, 0xfeed) - 0.5) * (TILE_WORLD_SIZE * 0.4);
+  const jitter = (hash2(cell.cellX, cell.cellY, SEED_RIVER_SOURCE_JITTER) - 0.5) * (TILE_WORLD_SIZE * 0.4);
   return {
     x: TILE_WORLD_SIZE / 2 + jitter,
     y: TILE_WORLD_SIZE / 2 - jitter,

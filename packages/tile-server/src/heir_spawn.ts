@@ -29,7 +29,10 @@ import { Hearth } from "./components/hearth.ts";
 export interface HeirSpawn {
   x: number;
   y: number;
-  /** Undefined → spawner samples terrain height (matches the default-spawn path). */
+  /** Undefined → spawner drops the heir at a fixed default height
+   *  (spawner.ts's `ov.z ?? 4.0`); PhysicsSystem settles it onto real
+   *  terrain height within the next tick or two (matches the default-spawn
+   *  path — same z=undefined convention). */
   z: number | undefined;
   /** True when the hearth was destroyed → spawn injured + below max health. */
   weakened: boolean;

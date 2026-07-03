@@ -126,7 +126,7 @@ function buildWaterGeo(
   let vBase = 0;
 
   const offX = chunkX * CHUNK_SIZE;
-  const offZ = chunkY * CHUNK_SIZE;
+  const offZ = chunkY * CHUNK_SIZE; // already three.js Z directly — this geometry is built in three-space, no model/world swap pending (cf. terrain_voxels.ts's offZ, which is model-Y pre-swap).
 
   for (let ly = 0; ly < CHUNK_SIZE; ly++) {
     for (let lx = 0; lx < CHUNK_SIZE; lx++) {

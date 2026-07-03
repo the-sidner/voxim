@@ -19,6 +19,7 @@ import {
   unitBoxIndex,
   unitBoxUV,
 } from "./voxel_bake.ts";
+import { TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
 import type { VoxelAtom } from "@voxim/content";
 
 // ---- THREE reference implementations (the pre-T-067 synchronous path) ----
@@ -271,7 +272,7 @@ Deno.test("bakeVoxels constant-mag keeps a shared cliff-edge corner crack-free (
   // coincide at (1.0, 4, 0) and (1.0, 4, 1) — exactly the seam terrain must not crack.
   const deep:    VoxelAtom = { cx: 0.5, cy: 0.5, cz: 2.5,   sx: 1, sy: 1, sz: 3,    materialId: 1 };
   const shallow: VoxelAtom = { cx: 1.5, cy: 0.5, cz: 3.875, sx: 1, sy: 1, sz: 0.25, materialId: 1 };
-  const TERRAIN_MAG = 0.10 * 0.25; // = TERRAIN_DISP_MAG (0.10 * HEIGHT_STEP)
+  const TERRAIN_MAG = TERRAIN_DISP_MAG;
 
   // Count vertices of A that EXACTLY equal some vertex of B (merged positions are
   // already translated to three-world space, so coincidence = shared world corner).
@@ -291,7 +292,9 @@ Deno.test("bakeVoxels constant-mag keeps a shared cliff-edge corner crack-free (
   const bC = bakeVoxels([shallow], 1, TERRAIN_MAG);
   assertEquals(countShared(aC.positions, bC.positions) >= 2, true, "constant mag must weld the shared cliff-top corners");
 
-  // Default per-voxel mag: deep→0.10*1, shallow→0.10*0.25 differ, so the shared
+  // Default per-voxel mag: omitting `mag` falls back to "10% of the voxel's own
+  // smallest edge" (bakeVoxels' own default, unrelated to TERRAIN_DISP_MAG) —
+  // deep (sz=3) and shallow (sz=0.25) get different magnitudes, so the shared
   // corners displace apart → the seam cracks (this is the bug the override fixes).
   const aD = bakeVoxels([deep], 1);
   const bD = bakeVoxels([shallow], 1);

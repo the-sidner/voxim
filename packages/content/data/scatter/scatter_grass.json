@@ -1,6 +1,5 @@
 {
   "id": "scatter_grass",
-  "kind": 0,
   "material": [
     "dirt",
     "grass",

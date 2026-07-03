@@ -6,7 +6,11 @@
  *   2. Diff against session.knownEntities to find spawns and despawns
  *   3. Return a BinaryStateMessage ready to encode and send
  *
- * Terrain chunks (Heightmap/MaterialGrid entities) are always visible and never despawn.
+ * Terrain chunks (Heightmap/MaterialGrid entities) currently loaded in the world
+ * are always in this session's AoI — no distance culling within AoI itself.
+ * ChunkLifecycleSystem (T-064) unloads/reloads chunk entities by proximity
+ * independently; when a chunk is unloaded its entity is destroyed and flows
+ * through the normal destroy diff below like any other entity leaving AoI.
  * Positioned entities are filtered by GameConfig.network.aoiRadius.
  */
 

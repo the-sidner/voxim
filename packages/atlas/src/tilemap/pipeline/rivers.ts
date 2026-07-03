@@ -1,5 +1,5 @@
 /**
- * Stage — rasterise the cell's river segments into the openMask and
+ * Stage 7 — rasterise the cell's river segments into the openMask and
  * tag the touched cells as BOUNDARY_KIND_WATER.
  *
  * Runs AFTER boundary kinds (so kinds has already tagged the noise-built

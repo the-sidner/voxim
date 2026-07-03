@@ -182,9 +182,13 @@ function buildMaterialMap(content: ContentService): {
   // the level's paths + clearings + ground variety actually read.
   map.set(MATERIAL_MOSS,   byName("moss"));
   map.set(MATERIAL_PATH,   byName("path"));
-  // Atlas's WATER falls back to mud — content has no water material yet.
-  // When phase 4 boundary kinds land, water boundaries will own their own
-  // visual instead of leaning on the ground material.
+  // Atlas's WATER ground cell falls back to mud — this is the riverbed/
+  // lakebed floor rendered beneath the translucent water surface
+  // (water_renderer.ts derives the surface separately from KindGrid), not
+  // a placeholder for a missing water material. content/data/materials/
+  // water.json exists but has no render.relief block (authored as a bare
+  // physical-properties stub) and isn't a sane riverbed look — mud stays
+  // intentional.
   map.set(MATERIAL_WATER,  byName("mud"));
   return { materialMap: map, defaultMaterialId: byName("dirt") };
 }

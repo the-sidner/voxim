@@ -1,5 +1,5 @@
 /**
- * Render-field derivation (T-311 Phase 3, commit 2 core). Pure, deterministic
+ * Stage 12 — render-field derivation (T-311 Phase 3, commit 2 core). Pure, deterministic
  * `signals → 10 per-cell planes` for the VegFieldGrid / SurfaceStateGrid /
  * WaterGrid chunk components. Computed at atlas `gridSize` from data the pipeline
  * already produces (kindOf, heightMap, chamberOf) + a per-cell path level the

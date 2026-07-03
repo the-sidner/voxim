@@ -71,7 +71,7 @@ import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
 import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
 import { WorkstationHitHandler } from "./handlers/workstation_hit_handler.ts";
-import { TerrainDigSystem } from "./handlers/terrain_hit_handler.ts";
+import { TerrainDigSystem } from "./systems/terrain_dig.ts";
 import { DayNightSystem } from "./systems/day_night.ts";
 import { PoiSystem } from "./systems/poi.ts";
 import { newPoiActivityRegistry } from "./poi/mod.ts";

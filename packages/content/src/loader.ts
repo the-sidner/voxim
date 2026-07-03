@@ -729,8 +729,16 @@ export function validateScatterDef(def: ScatterDef): void {
   if (typeof def.procModel !== "string" || def.procModel.length === 0) {
     throw new Error(`Scatter '${def.id}': 'procModel' must be a non-empty id`);
   }
-  if (typeof def.kind !== "number" || !Number.isInteger(def.kind) || def.kind < 0) {
-    throw new Error(`Scatter '${def.id}': 'kind' must be a non-negative integer boundary kind`);
+  // 'kind' and 'material' are mutually exclusive dispatch keys (mirrors
+  // scatter_renderer.ts's own `matIds !== undefined ? ... : kinds[cellIdx] === def.kind`
+  // branch): 'kind' is required when 'material' is absent, and must be
+  // omitted (never silently ignored) when 'material' is present.
+  if (def.material === undefined) {
+    if (typeof def.kind !== "number" || !Number.isInteger(def.kind) || def.kind < 0) {
+      throw new Error(`Scatter '${def.id}': 'kind' must be a non-negative integer boundary kind (required when 'material' is absent)`);
+    }
+  } else if (def.kind !== undefined) {
+    throw new Error(`Scatter '${def.id}': 'kind' is ignored when 'material' is set — omit it`);
   }
   if (typeof def.pool !== "number" || def.pool < 1 || !Number.isInteger(def.pool)) {
     throw new Error(`Scatter '${def.id}': 'pool' must be a positive integer`);

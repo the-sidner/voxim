@@ -1,5 +1,5 @@
 /**
- * Stage — per-cell material ids.
+ * Stage 9 — per-cell material ids.
  *
  * Three classes of cell and three different decisions:
  *
