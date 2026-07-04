@@ -5,15 +5,23 @@
  * directional sun (with its shadow camera + the basis vectors used to snap the
  * shadow frustum), the visible sun disc, the hemisphere fill, and the scene's
  * fog + background. The renderer drives it once per frame with
- * `update(cameraTarget, cameraPos)` after the camera has settled — the lerp
- * toward the current phase target plus the shadow-frustum follow/snap and the
- * sky-locked sun disc.
+ * `update(cameraTarget, cameraPos, timeOfDay01)` after the camera has settled
+ * — the lerp toward the current phase target plus the shadow-frustum
+ * follow/snap and the sky-locked sun disc.
  *
  * This is distinct from LightManager (per-entity point lights / torches) — that
  * stays renderer-injected and is unrelated to the environment.
+ *
+ * T-311 P5a: the sun direction is no longer a fixed constant. It's the
+ * server's WorldClock time-of-day fed through `sunArc()` (content, pure) each
+ * frame — "server-authoritative" means driven by the server's clock, nothing
+ * else (the wire carries WorldClock data; the client derives the direction).
+ * `AtmosphereDef.sunArc` supplies the path params; day/night COLOUR stays on
+ * `Palette.phases` (unchanged) — this phase only replaces the direction axis.
  */
 import * as THREE from "three";
-import type { Palette } from "@voxim/content";
+import type { Palette, AtmosphereDef } from "@voxim/content";
+import { sunArc, type SunArcParams } from "@voxim/content";
 
 /** Lighting definition for a given time-of-day phase. */
 interface DayPhaseLight {
@@ -63,10 +71,18 @@ function copyPhase(dst: DayPhaseLight, src: DayPhaseLight): void {
 function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t; }
 
 /**
- * Normalized direction FROM the world origin TOWARD the sun.
- * Used for both the DirectionalLight position and the visible sun sphere.
+ * The pre-bootstrap fallback sun-arc params — reproduces the retired fixed
+ * `SUN_DIR = (20,100,-15).normalize()` at noon exactly (pinned in
+ * sun_arc.test.ts). Used only until `applyAtmosphere()` swaps in the
+ * authored `data/atmospheres/default.json` values (same pattern as
+ * EdgePass's PRE_BOOTSTRAP_GRADE).
  */
-const SUN_DIR = new THREE.Vector3(20, 100, -15).normalize();
+const PRE_BOOTSTRAP_SUN_ARC: SunArcParams = {
+  dawnAzimuthDeg: -95,
+  duskAzimuthDeg: 21.26,
+  maxAltitudeDeg: 75.96375653207352,
+  nightDepthDeg: 20,
+};
 
 /**
  * Direction FROM the origin TOWARD the cool rim/back light — roughly opposite the
@@ -92,13 +108,21 @@ export class EnvironmentLighting {
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
   /**
-   * Shadow camera basis vectors (pre-computed from the fixed SUN_DIR).
-   * Used to snap the shadow frustum in shadow-UV space rather than world X/Z —
-   * world-axis snapping leaves residual swimming along the perpendicular axis
-   * whenever the shadow camera isn't aligned with the world grid.
+   * Shadow camera basis vectors, RECOMPUTED every frame in update() from the
+   * live sun direction (T-311 P5a — the sun arcs now, so a constructor-time
+   * precompute would go stale). Used to snap the shadow frustum in shadow-UV
+   * space rather than world X/Z — world-axis snapping leaves residual
+   * swimming along the perpendicular axis whenever the shadow camera isn't
+   * aligned with the world grid. A few vector ops per frame; no dirty-flag
+   * caching cleverness — just recompute unconditionally.
    */
-  private readonly _shadowCamRight: THREE.Vector3;
-  private readonly _shadowCamUp: THREE.Vector3;
+  private readonly _shadowCamRight = new THREE.Vector3();
+  private readonly _shadowCamUp = new THREE.Vector3();
+  /** Live normalized direction FROM the world origin TOWARD the sun, recomputed
+   *  each frame in update() from sunArc(timeOfDay01, sunArcParams). */
+  private readonly _sunDir = new THREE.Vector3();
+  /** Sun-path params — the pre-bootstrap fallback until applyAtmosphere(). */
+  private sunArcParams: SunArcParams = PRE_BOOTSTRAP_SUN_ARC;
   /** Visible sun disc in the sky. */
   private readonly sunMesh: THREE.Mesh;
   /** Hemisphere sky/ground ambient. */
@@ -116,8 +140,14 @@ export class EnvironmentLighting {
   constructor(private readonly scene: THREE.Scene) {
     // ---- lighting ----
     // Strong directional sun — dominates shading so flat-shaded faces read clearly.
+    // Seed the initial direction from the pre-bootstrap arc's noon position;
+    // update() overwrites this every frame once the render loop starts.
+    {
+      const noon = sunArc(0.5, this.sunArcParams).dir;
+      this._sunDir.set(noon.x, noon.y, noon.z);
+    }
     this.sun = new THREE.DirectionalLight(0xfffde0, 2.5);
-    this.sun.position.copy(SUN_DIR).multiplyScalar(100);
+    this.sun.position.copy(this._sunDir).multiplyScalar(100);
     this.sun.castShadow = true;
     // 2048 map over the same ±60 frustum = 4× the texel density of the old 1024,
     // so penumbrae read clean instead of pixel-staired. PCFSoftShadowMap (set on
@@ -137,15 +167,9 @@ export class EnvironmentLighting {
     // Target must be in the scene so Three.js updates its world matrix each frame.
     this.scene.add(this.sun.target);
 
-    // Pre-compute shadow camera basis vectors from the fixed SUN_DIR.
-    // Three.js lookAt: camLocalZ = normalize(eye - target) = SUN_DIR.
-    // camLocalX = normalize(cross(worldUp, SUN_DIR)); camLocalY = cross(SUN_DIR, camLocalX).
-    // Snapping in these axes (not world X/Z) eliminates shadow swimming on non-axis geometry.
-    {
-      const up = new THREE.Vector3(0, 1, 0);
-      this._shadowCamRight = new THREE.Vector3().crossVectors(up, SUN_DIR).normalize();
-      this._shadowCamUp    = new THREE.Vector3().crossVectors(SUN_DIR, this._shadowCamRight).normalize();
-    }
+    // Seed the shadow-camera basis from the same initial direction; update()
+    // recomputes it every frame from here on (see _shadowCamRight's doc).
+    this.recomputeShadowCamBasis();
 
     // Ambient fill — brightened so shadowed cliff walls are readable, not black
     // voids. Colors are neutral placeholders, overwritten by applyPalette() from
@@ -197,6 +221,15 @@ export class EnvironmentLighting {
     copyPhase(this.lightTgt, noon);
   }
 
+  /**
+   * Apply a content AtmosphereDef's sun-path params (T-311 P5a). Only the
+   * geometric path — day/night COLOUR stays on Palette.phases (applyPalette).
+   * The next update() call picks up the new params immediately.
+   */
+  applyAtmosphere(atmo: AtmosphereDef): void {
+    this.sunArcParams = atmo.sunArc;
+  }
+
   /** Set the target lighting for a named day phase (lerped toward each frame). */
   setPhase(phase: string): void {
     const p = this.phaseLights[phase] ?? this.phaseLights.noon;
@@ -215,6 +248,28 @@ export class EnvironmentLighting {
     return target.copy(this.sunMesh.position);
   }
 
+  /** Live normalized direction FROM the world origin TOWARD the sun (this
+   *  frame's sunArc() result) — the single sun owner every other consumer
+   *  (water shader, future reflection streak) reads instead of carrying its
+   *  own constant. */
+  getSunDirection(target: THREE.Vector3): THREE.Vector3 {
+    return target.copy(this._sunDir);
+  }
+
+  /**
+   * Recompute the shadow-camera basis vectors from the CURRENT `_sunDir`.
+   * Three.js lookAt: camLocalZ = normalize(eye - target) = sunDir.
+   * camLocalX = normalize(cross(worldUp, sunDir)); camLocalY = cross(sunDir, camLocalX).
+   * Called once per frame from update() (the sun arcs continuously now, so a
+   * one-time constructor precompute would go stale) — a handful of vector
+   * ops, cheap enough not to need dirty-flag caching.
+   */
+  private recomputeShadowCamBasis(): void {
+    const up = new THREE.Vector3(0, 1, 0);
+    this._shadowCamRight.crossVectors(up, this._sunDir).normalize();
+    this._shadowCamUp.crossVectors(this._sunDir, this._shadowCamRight).normalize();
+  }
+
   /** Toggle sun shadow casting (debug). Returns the new state. */
   toggleShadows(): boolean {
     this.sun.castShadow = !this.sun.castShadow;
@@ -222,12 +277,26 @@ export class EnvironmentLighting {
   }
 
   /**
-   * Per-frame: lerp the current lighting toward the phase target and apply it to
-   * the sun/hemi/sky/fog, then keep the shadow frustum centered on the camera
+   * Per-frame: recompute the live sun direction from the server clock,
+   * lerp the current lighting toward the phase target and apply it to the
+   * sun/hemi/sky/fog, then keep the shadow frustum centered on the camera
    * target (texel-snapped to kill swimming) and the sun disc fixed in the sky
    * relative to the camera. Called after the camera has settled for the frame.
+   *
+   * `timeOfDay01` is the server WorldClock's time-of-day fraction — the ONLY
+   * server-derived input; the direction itself is computed here (pure
+   * function, T-311 P5a), never sent over the wire.
    */
-  update(cameraTarget: THREE.Vector3, cameraPos: THREE.Vector3): void {
+  update(cameraTarget: THREE.Vector3, cameraPos: THREE.Vector3, timeOfDay01: number): void {
+    // Recompute the live sun direction + its shadow-camera basis. The sun
+    // arcs continuously now, so both must be per-frame, not a one-time
+    // constructor precompute.
+    {
+      const { dir } = sunArc(timeOfDay01, this.sunArcParams);
+      this._sunDir.set(dir.x, dir.y, dir.z);
+      this.recomputeShadowCamBasis();
+    }
+
     // Smoothly transition day/night lighting (per-frame lerp toward target)
     const L = 0.015; // lerp speed — full transition over ~4 s at 60 fps
     this.lightCur.sky.lerp(this.lightTgt.sky, L);
@@ -250,6 +319,9 @@ export class EnvironmentLighting {
     // Cool rim/back fill: a sky-tinted cool shifted away from the warm sun, at
     // ~28% of the sun's intensity (plus a small night floor as a moon-fill). It
     // tracks the camera like the sun so the lit band follows the player.
+    // RIM_DIR stays a fixed art-directed opposite-fill (not physically the
+    // anti-sun) — deriving it from the arc's azimuth+180° is a follow-up,
+    // out of scope this phase.
     this.rim.color.copy(this.lightCur.sky).lerp(COOL_RIM_TINT, 0.5);
     this.rim.intensity = this.lightCur.sunIntensity * 0.28 + 0.06;
     this.rim.position.copy(cameraTarget).addScaledVector(RIM_DIR, 100);
@@ -257,9 +329,9 @@ export class EnvironmentLighting {
 
     // Keep sun shadow frustum centered on the player area.
     // Both position and target must move together — only the direction between
-    // them (SUN_DIR) defines where shadows fall, not the absolute world position.
+    // them (_sunDir) defines where shadows fall, not the absolute world position.
     this.sun.target.position.copy(cameraTarget);
-    this.sun.position.copy(cameraTarget).addScaledVector(SUN_DIR, 100);
+    this.sun.position.copy(cameraTarget).addScaledVector(this._sunDir, 100);
 
     // Snap shadow frustum to its own texel grid (in shadow-camera UV space) to
     // eliminate shadow swimming.  Snapping in world X/Z leaves residual drift
@@ -293,6 +365,6 @@ export class EnvironmentLighting {
     // Keep the sun sphere fixed in the sky relative to the camera
     this.sunMesh.position
       .copy(cameraPos)
-      .addScaledVector(SUN_DIR, 350);
+      .addScaledVector(this._sunDir, 350);
   }
 }

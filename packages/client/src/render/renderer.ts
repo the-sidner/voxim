@@ -34,7 +34,7 @@ import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "
 import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
-import { solveSwingPose, applyLocomotionPose, applyCrouchPose } from "@voxim/content";
+import { solveSwingPose, applyLocomotionPose, applyCrouchPose, timeOfDay01 } from "@voxim/content";
 import type { BoneRotation, LocoState } from "@voxim/content";
 import { CHUNK_SIZE } from "@voxim/world";
 
@@ -260,12 +260,22 @@ export class VoximRenderer {
   private cameraTarget = new THREE.Vector3(256, 4, 256);
   private localPlayerId: string | null = null;
   private content: ContentCache | null = null;
+  /** Atmosphere id currently applied to envLighting/EdgePass/water — re-checked
+   *  each frame against the live WorldClock.biomeTag (T-311 P5a) so a tile
+   *  transition or a biome change re-selects without a special-cased hook;
+   *  null until the first successful apply so the very first frame always runs. */
+  private appliedAtmosphereId: string | null = null;
 
   /** Smooth animation tick — advances at server tick rate (20 Hz) based on real time. */
   private smoothTick = 0;
   private lastKnownServerTick = -1;
   private lastServerTickMs = 0;
   private lastFrameMs = 0;
+  /** Same smooth-tick extrapolation as smoothTick, for WorldClock.ticksElapsed
+   *  (T-311 P5a) — the sun arc advances at 60fps between the 20Hz server
+   *  ticks instead of stepping. */
+  private lastKnownWorldClockTicks = -1;
+  private lastWorldClockMs = 0;
 
   /** Full-res render target — 3D scene is drawn here before post-processing. */
   private readonly pixelTarget: THREE.WebGLRenderTarget;
@@ -282,6 +292,7 @@ export class VoximRenderer {
   private readonly godRay: GodRayPass;
   private readonly _sunWorld = new THREE.Vector3();
   private readonly _sunUV = new THREE.Vector2();
+  private readonly _sunDirScratch = new THREE.Vector3();
   /** 3rd-person camera vertical sample range above/below player Y for height
    *  shading — content-driven via GradeDef.heightShadeBelow/Above (T-315 D2);
    *  these hold the pre-bootstrap fallback until a grade arrives. */
@@ -887,6 +898,14 @@ export class VoximRenderer {
     return this.envLighting.toggleShadows();
   }
 
+  /** Live sun direction (T-311 P5a) — the single sun owner every other
+   *  consumer (water shader) reads instead of carrying its own constant.
+   *  Plain {x,y,z} (game.ts stays THREE-free) — valid after this frame's
+   *  render() has called envLighting.update(). */
+  getSunDirection(): { x: number; y: number; z: number } {
+    return this.envLighting.getSunDirection(this._sunDirScratch);
+  }
+
   /**
    * Diagnostic — walk the scene and log a breakdown by object kind.
    * For InstancedMesh nodes, logs both the slot count and triangles per
@@ -1198,8 +1217,34 @@ export class VoximRenderer {
 
     // Day/night lerp + shadow-frustum follow/snap + sky-locked sun disc — all
     // off the now-settled camera target. (After cameraRig.update so the sun disc
-    // tracks this frame's camera position.)
-    this.envLighting.update(this.cameraTarget, this.camera.position);
+    // tracks this frame's camera position.) T-311 P5a: the sun direction is a
+    // pure function of the server WorldClock's time-of-day — extrapolate
+    // smoothly between the 20 Hz server ticks via wall-clock elapsed time
+    // (same smoothTick idiom above) rather than stepping once per network
+    // update.
+    const clock = this.world?.getWorldClock();
+    let t01 = 0.5;
+    if (clock) {
+      if (clock.ticksElapsed !== this.lastKnownWorldClockTicks) {
+        this.lastKnownWorldClockTicks = clock.ticksElapsed;
+        this.lastWorldClockMs = now;
+      }
+      const smoothTicks = clock.ticksElapsed + (now - this.lastWorldClockMs) / 50;
+      t01 = timeOfDay01(smoothTicks, clock.dayLengthTicks);
+
+      // Re-select the atmosphere off the live biomeTag (T-311 P5a) — cheap
+      // Map lookups, re-checked every frame rather than special-cased into
+      // setContentCache/setClientWorld's differing call order per tile
+      // transition (WorldClock's entity spawn can decode after either).
+      if (this.content && clock.biomeTag !== this.appliedAtmosphereId) {
+        const atmo = this.content.getAtmosphere(clock.biomeTag) ?? this.content.getAtmosphere("default");
+        if (atmo) {
+          this.envLighting.applyAtmosphere(atmo);
+          this.appliedAtmosphereId = clock.biomeTag;
+        }
+      }
+    }
+    this.envLighting.update(this.cameraTarget, this.camera.position, t01);
 
     // Update weapon tip trail ribbons for all currently attacking entities.
     const tTrailStart = performance.now();

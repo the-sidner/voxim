@@ -17,9 +17,10 @@
  * scatter renderer uses) and pulls the heightmap out of `ClientWorld` at the
  * same time. `onChunkReady` already guarantees heightmap is present, so the
  * pending/tryBuild queue below is provably a no-op today; left in place
- * rather than deleted because T-311 P5 rebuilds this file wholesale around
- * `WaterGrid.surfaceLevel` anyway (see TERRAIN_COMB_PLAN.md's "what we
- * deliberately do NOT touch").
+ * rather than deleted because T-311 P5b rebuilds this file wholesale around
+ * `WaterGrid.surfaceLevel` (this P5a commit only threads the shared
+ * `uSunDir` uniform in via `setSunDirection()` — EnvironmentLighting is now
+ * the single sun owner, no local constant survives here).
  */
 import * as THREE from "three";
 import { BoundaryKind } from "@voxim/protocol";
@@ -102,8 +103,11 @@ function buildWaterMaterial(): THREE.ShaderMaterial {
       uShallow: { value: new THREE.Color(paletteToken("waterShallow")) },
       uDeep:    { value: new THREE.Color(paletteToken("waterDeep")) },
       uOpacity: { value: 0.62 },
-      // Matches SUN_DIR in environment_lighting.ts — keep in sync if the sun moves.
-      uSunDir:  { value: new THREE.Vector3(20, 100, -15).normalize() },
+      // T-311 P5a: no local default — EnvironmentLighting is the single sun
+      // owner now (renderer.ts calls setSunDirection() once per frame with
+      // its live sunArc() direction). (0,1,0) here is a harmless placeholder
+      // before the first frame runs.
+      uSunDir:  { value: new THREE.Vector3(0, 1, 0) },
     },
     transparent: true,
     depthWrite:  false,
@@ -186,6 +190,14 @@ export class WaterRenderer {
         if (this.tryBuild(coord, kinds)) this.pending.delete(coord);
       }
     }
+  }
+
+  /** T-311 P5a: read the shared sun direction from EnvironmentLighting (the
+   *  single sun owner) instead of carrying a local constant. Called once per
+   *  frame from game.ts (plain {x,y,z} — game.ts stays THREE-free), after
+   *  renderer.render() has updated envLighting. */
+  setSunDirection(dir: { x: number; y: number; z: number }): void {
+    (this.material.uniforms.uSunDir.value as THREE.Vector3).set(dir.x, dir.y, dir.z);
   }
 
   /** Drop every water mesh — used on tile transitions. */

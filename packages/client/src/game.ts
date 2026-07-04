@@ -1039,6 +1039,11 @@ export class VoximGame {
 
     this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null, localMovement, localCrouch);
 
+    // T-311 P5a: thread this frame's live sun direction (EnvironmentLighting
+    // is the single sun owner) into the water shader's shared uniform —
+    // after render() so envLighting has already recomputed it this frame.
+    if (this.renderer) this.waterRenderer?.setSunDirection(this.renderer.getSunDirection());
+
     // Push the now-settled camera yaw to the fog state so the north-up minimap
     // can draw a heading cone that rotates with the camera (T-317).
     if (this.renderer) this.fog.cameraYaw = this.renderer.cameraRig.getYaw();
