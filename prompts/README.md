@@ -16,12 +16,12 @@ pre-baked so an implementation agent (Sonnet) can execute without re-deriving th
 |---|--------|-------|-------|
 | 1 | `T-317-mouse-facing-camera.md` | client/feel | **DOCTRINE, pulled forward — run with OPUS**; fixed camera dies |
 | 2 | `T-212-T-213b-poi-runtime-v2.md` | gameplay | independent of the render arc |
-| 3 | `T-311-P5a-sun-arc-atmosphere.md` | render/content | kills SUN_DIR |
-| 4 | `T-311-P5b-water.md` | render/content | needs P5a's sun owner |
 | 5 | `T-311-P5c-dissolves.md` | render/wire/content | I3b gate first; independent of a/b |
 | 6 | `T-311-P6-terraced-cliffs.md` | atlas/wire/client ✶ | re-bake; heaviest |
 | 7 | `T-282-renderer-breakup-closeout.md` | audit/cleanup | anytime |
 | 8 | `T-186-body-recipes-layer2.md` | content/client | Step 0 reconciles vs T-301/T-302 |
+
+(P5a/P5b done — their prompt files deleted per the rule below, lane/atmosphere.)
 
 - Delete each prompt file in the commit that closes its ticket (scaffolding dies with the work
   — CLAUDE.md refactor doctrine). Delete this directory when the table is empty.
