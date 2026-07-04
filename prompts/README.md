@@ -16,7 +16,7 @@ pre-baked so an implementation agent (Sonnet) can execute without re-deriving th
 |---|--------|-------|-------|
 | 1 | `T-317-mouse-facing-camera.md` | client/feel | **DOCTRINE, pulled forward — run with OPUS**; fixed camera dies |
 | 2 | `T-212-T-213b-poi-runtime-v2.md` | gameplay | independent of the render arc |
-| 5 | `T-311-P5c-dissolves.md` | render/wire/content | I3b gate first; independent of a/b |
+| 5 | ~~`T-311-P5c-dissolves.md`~~ | render/wire/content | **DONE on `lane/creatures`** modulo I3b harness measurement (deferred to post-merge, no live stack in that lane) — file deleted in the closing commit |
 | 6 | `T-311-P6-terraced-cliffs.md` | atlas/wire/client ✶ | re-bake; heaviest |
 | 7 | `T-282-renderer-breakup-closeout.md` | audit/cleanup | anytime |
 | 8 | `T-186-body-recipes-layer2.md` | content/client | Step 0 reconciles vs T-301/T-302 |

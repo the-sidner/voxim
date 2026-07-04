@@ -1301,6 +1301,38 @@ no render-to-texture, no probe, no SSR (the full planar probe stays a named T-31
 610/610 green throughout. This closes the atmosphere lane's scope (P5a+P5b); P5c (creatures) and P6
 (terrain) remain, owned by other lanes.
 
+**Phase 5c LANDED on `lane/creatures` (creature fragmentation, G6/I3b — see
+`prompts/T-311-P5c-dissolves.md`):** `dissolutionPhase` f32 appended to
+`AnimationStateData` (wire id 14 unchanged, purely additive tail field) —
+DERIVED each tick by `AnimationSystem` from `Resource.values["dissolve_timer"]`,
+never mutated by ResourceSystem directly (ResourceSystem runs before
+AnimationSystem in declared order, and AnimationSystem fully replaces
+AnimationState via `world.set` every tick, so a same-tick `world.mutate` from
+elsewhere would be silently clobbered). `DissolveProfileDef` content category
+(`data/dissolve_profiles/*.json`, mirrors DecalDef's plumbing; one profile
+authored, `drowner_rot`) + `NpcTemplate.dissolveProfileId`, boot-cross-checked.
+**Architecture correction vs. the prompt's literal wording:** death-dissolve
+start is a `shed_dissolve` **DeathHook**, not an `entity_died` Trigger — the
+pinned `bossfight.test.ts` test ("an entity_died Trigger ... does NOT fire")
+already proves that wiring is structurally inert (TriggerSystem's buffered
+drain runs one tick after DeathSystem has already `world.destroy()`-ed the
+entity; see `components/boss_arena.ts`'s header). `DeathHook.onDeath` gained an
+optional `{ linger: true }` return so a profiled corpse can defer
+`world.destroy` to its `dissolve_timer` Resource's terminal threshold
+(`cross@0` → the already-registered `destroy_self` effect) instead of despawning
+same-tick; default behaviour for every other death (players, non-profiled NPCs,
+the boss) is unchanged. Client: G6 sidecar extended (`VoxelAtom.fray01`/
+`driftDir` → `aFray`/`aDriftDir`, byte-identical when absent) + an isolated,
+cleanly-revertible in-shader drift patch (`dissolve_shader.ts`, per-vertex
+`transformed +=` offset only, zero CPU re-bake) + a Studio Dissolve panel
+showing the I3b caps live. **I3b MEASUREMENT DEFERRED TO POST-MERGE** — this
+lane has no live stack (see lane rules); the exact synthetic-crowd
+measurement procedure and pass/fail bar are in the lane's final report. Known
+v1 scope gap (documented at `ContentCache.getSoleDissolveProfileSync`): the
+wire carries no per-entity archetype id, so the client resolves "the sole
+registered profile" rather than a true per-entity lookup — correct today
+(one profile exists) and a safe no-op the moment a second is authored.
+
 ### T-312b · re-apply atlas render-fields on save-load
 Effort: S   Status: done   Commit: 1248388
 SaveManager's `CHUNK_DEFS` persist only Heightmap/MaterialGrid/OpenMask/KindGrid; the T-311 render-field

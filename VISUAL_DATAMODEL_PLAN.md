@@ -211,6 +211,15 @@ phase (prove the data arrives). FieldExpr/FieldSampler substrate lands here (wit
 - **Creature fragmentation (G6)** — `voxel_creature` generator + fray/coreness sidecar + `DissolveProfileDef`
   shader (in-shader drift) + one `dissolutionPhase` f32 on `AnimationStateData` + a `shed_voxels` effect /
   `shed_dissolve` DeathHook. Honour **I3b**.
+  **LANDED on `lane/creatures` (T-311 P5c) modulo I3b measurement:** `dissolutionPhase` +
+  `DissolveProfileDef` + `shed_dissolve` DeathHook (not a Trigger — `entity_died` is
+  structurally unable to see the dying entity alive, per the pinned `bossfight.test.ts`
+  proof) + `dissolve_timer` Resource + the fray/coreness sidecar (`VoxelAtom.fray01`/
+  `driftDir`, bone-distance-derived, no `voxel_creature` generator needed — reuses
+  `biped_skeletal`) + the in-shader drift patch, all landed against the real drowner
+  content. **I3b's harness measurement is DEFERRED TO POST-MERGE** (no live stack in that
+  lane) — see the lane report / TICKETS.md T-311 progress note for the exact procedure;
+  the shader commit is isolated and `git revert`-safe if the gate fails.
 - **Water (cheap reflection, deferred probe)** — ship `WaterStyleDef` + `render.wetness`/`render.reflect`
   via G4, and a **cheap** reflection (screen-space emissive-streak + sky-gradient weighted by wetness — the
   `image-gen-3` torch-streak look). **Defer the full planar probe** to a named follow-on arc.
