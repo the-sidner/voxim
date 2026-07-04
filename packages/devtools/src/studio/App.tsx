@@ -9,8 +9,9 @@ import { AnimationEditor } from "./animation-editor/AnimationEditor.tsx";
 import { MaterialEditor } from "./material-editor/MaterialEditor.tsx";
 import { ProcModelEditor } from "./procmodel-editor/ProcModelEditor.tsx";
 import { DissolveEditor } from "./dissolve-editor/DissolveEditor.tsx";
+import { CliffEditor } from "./cliff-editor/CliffEditor.tsx";
 
-type Route = "voxel" | "anim" | "material" | "procmodel" | "dissolve";
+type Route = "voxel" | "anim" | "material" | "procmodel" | "dissolve" | "cliff";
 
 function currentRoute(): Route {
   const h = (globalThis as { location?: Location }).location?.hash ?? "";
@@ -18,6 +19,7 @@ function currentRoute(): Route {
   if (h === "#material") return "material";
   if (h === "#procmodel") return "procmodel";
   if (h === "#dissolve") return "dissolve";
+  if (h === "#cliff") return "cliff";
   return "voxel";
 }
 
@@ -43,7 +45,8 @@ export function App() {
           : route === "anim" ? <AnimationEditor />
           : route === "material" ? <MaterialEditor />
           : route === "procmodel" ? <ProcModelEditor />
-          : <DissolveEditor />}
+          : route === "dissolve" ? <DissolveEditor />
+          : <CliffEditor />}
       </div>
     </>
   );
@@ -73,6 +76,10 @@ function TopBar({ route, onPick }: { route: Route; onPick: (r: Route) => void })
         class={`dt-tab ${route === "dissolve" ? "is-active" : ""}`}
         onClick={() => onPick("dissolve")}
       >Dissolve</button>
+      <button
+        class={`dt-tab ${route === "cliff" ? "is-active" : ""}`}
+        onClick={() => onPick("cliff")}
+      >Cliff</button>
     </div>
   );
 }
