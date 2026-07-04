@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, DecalDef, Palette } from "./types.ts";
+  AtmosphereDef, WaterStyleDef, DecalDef, Palette } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
@@ -54,7 +54,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
-    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, decalsRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -77,6 +77,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "grades"),
     readJsonDirOptional(dataDir, "lights"),
     readJsonDirOptional(dataDir, "atmospheres"),
+    readJsonDirOptional(dataDir, "water_styles"),
     readJsonDirOptional(dataDir, "decals"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
@@ -250,6 +251,16 @@ async function loadContentStoreInternal(
   if (!store.atmospheres.get("default")) {
     throw new Error(
       `[content] no "default" AtmosphereDef loaded — data/atmospheres/default.json ` +
+      `must exist as the selector fallback.`,
+    );
+  }
+  for (const raw of waterStylesRaw as WaterStyleDef[]) {
+    validateWaterStyleDef(raw);
+    store.registerWaterStyle(raw);
+  }
+  if (!store.waterStyles.get("default")) {
+    throw new Error(
+      `[content] no "default" WaterStyleDef loaded — data/water_styles/default.json ` +
       `must exist as the selector fallback.`,
     );
   }
@@ -763,6 +774,54 @@ export function validateAtmosphereDef(def: AtmosphereDef): void {
   }
   if (typeof g.color !== "string" || g.color.length === 0) {
     throw new Error(`Atmosphere '${def.id}': 'godRay.color' must be a non-empty hex string`);
+  }
+}
+
+/** Shape-validate one WaterStyleDef (T-311 P5b). */
+export function validateWaterStyleDef(def: WaterStyleDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`WaterStyleDef: missing or empty id`);
+  }
+  for (const k of ["shallowColor", "deepColor"] as const) {
+    if (typeof def[k] !== "string" || def[k].length === 0) {
+      throw new Error(`WaterStyle '${def.id}': '${k}' must be a non-empty hex string`);
+    }
+  }
+  if (typeof def.opacity !== "number") {
+    throw new Error(`WaterStyle '${def.id}': 'opacity' must be a number`);
+  }
+  const w = def.waves;
+  if (!w || typeof w !== "object") {
+    throw new Error(`WaterStyle '${def.id}': 'waves' must be an object`);
+  }
+  for (const k of ["amplitude", "frequencyX", "frequencyZ", "speed"] as const) {
+    if (!Array.isArray(w[k]) || w[k].length !== 3) {
+      throw new Error(`WaterStyle '${def.id}': waves.${k} must be a 3-element array`);
+    }
+  }
+  for (const k of ["normalScale", "lumDivisor"] as const) {
+    if (typeof w[k] !== "number") {
+      throw new Error(`WaterStyle '${def.id}': waves.${k} must be a number`);
+    }
+  }
+  const f = def.fresnel;
+  if (!f || typeof f !== "object") {
+    throw new Error(`WaterStyle '${def.id}': 'fresnel' must be an object`);
+  }
+  for (const k of ["exponent", "tintStrength", "opacityBoost"] as const) {
+    if (typeof f[k] !== "number") {
+      throw new Error(`WaterStyle '${def.id}': fresnel.${k} must be a number`);
+    }
+  }
+  const s = def.specular;
+  if (!s || typeof s !== "object") {
+    throw new Error(`WaterStyle '${def.id}': 'specular' must be an object`);
+  }
+  if (typeof s.exponent !== "number") {
+    throw new Error(`WaterStyle '${def.id}': specular.exponent must be a number`);
+  }
+  if (!Array.isArray(s.gain) || s.gain.length !== 3) {
+    throw new Error(`WaterStyle '${def.id}': specular.gain must be a 3-element array`);
   }
 }
 

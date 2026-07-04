@@ -571,17 +571,27 @@ export class TileServer {
         );
       }
     }
-    // T-311 P5a: AtmosphereDef selection is `content.atmospheres.get(biomeTag)
-    // ?? content.atmospheres.getOrThrow("default")` — "default" existing is
-    // already enforced at load (loader.ts), so the only new failure mode here
-    // is an authored non-default atmosphere id that doesn't name a real
-    // biomeTag() output (a typo would silently never be selected). Fail fast.
+    // T-311 P5a/P5b: AtmosphereDef/WaterStyleDef selection is
+    // `content.X.get(biomeTag) ?? content.X.getOrThrow("default")` —
+    // "default" existing is already enforced at load (loader.ts) for both,
+    // so the only new failure mode here is an authored non-default id that
+    // doesn't name a real biomeTag() output (a typo would silently never be
+    // selected). Fail fast, same pattern for both content categories that
+    // share this render-context key.
     {
       const validTags = new Set(BIOME_TAG_RULES.map((r) => r.tag));
       for (const atmo of content.atmospheres.values()) {
         if (atmo.id !== "default" && !validTags.has(atmo.id)) {
           throw new Error(
             `AtmosphereDef "${atmo.id}" doesn't match any biomeTag() output ` +
+            `([${[...validTags].join(", ")}, default]) — it can never be selected.`,
+          );
+        }
+      }
+      for (const style of content.waterStyles.values()) {
+        if (style.id !== "default" && !validTags.has(style.id)) {
+          throw new Error(
+            `WaterStyleDef "${style.id}" doesn't match any biomeTag() output ` +
             `([${[...validTags].join(", ")}, default]) — it can never be selected.`,
           );
         }

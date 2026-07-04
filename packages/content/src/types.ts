@@ -233,6 +233,53 @@ export interface AtmosphereDef {
 }
 
 /**
+ * Water style definition (T-311 Phase 5b, grammar G7 water axis). Selected
+ * per-tile via the SAME `WorldClock.biomeTag` render-context key P5a's
+ * AtmosphereDef uses, same boot cross-check pattern, same `"default"`
+ * fallback. Freezes today's water_renderer.ts shader constants verbatim as
+ * the default style's JSON values (zero look-change) — a biome-specific
+ * style can diverge later since these are self-contained hex colours, not a
+ * palette-token indirection (palette tokens are a separate single-source-of-
+ * truth axis; a WaterStyleDef needs to be complete on its own).
+ *
+ * `waves` mirrors the FRAG shader's `h`/`dhdx`/`dhdz` computation 1:1 — three
+ * additive sine terms, each `amplitude * sin(freqX*x + freqZ*z + speed*t)`
+ * (a term with `freqX=0` or `freqZ=0` is effectively single-axis; the third
+ * "cross" term today has both non-zero). `normalScale` is the dhdx/dhdz ->
+ * surface-normal perturbation strength; `lumDivisor` remaps the raw height
+ * field into the shallow<->deep mix (`clamp(0.5 + 0.5*(h/lumDivisor), 0, 1)`).
+ */
+export interface WaterStyleDef {
+  id: string;
+  /** Base shallow/deep tint (sRGB hex) — the water_renderer FRAG's uShallow/uDeep. */
+  shallowColor: string;
+  deepColor: string;
+  /** Base alpha before the fresnel-rim boost (uOpacity). */
+  opacity: number;
+  waves: {
+    amplitude: [number, number, number];
+    frequencyX: [number, number, number];
+    frequencyZ: [number, number, number];
+    /** Signed — a negative speed runs the term's phase backward. */
+    speed: [number, number, number];
+    normalScale: number;
+    lumDivisor: number;
+  };
+  /** Fresnel rim: exponent + how much it lightens toward shallow + how much
+   *  it boosts alpha at grazing angles. */
+  fresnel: {
+    exponent: number;
+    tintStrength: number;
+    opacityBoost: number;
+  };
+  /** Blinn specular sun-glint exponent + colour gain. */
+  specular: {
+    exponent: number;
+    gain: [number, number, number];
+  };
+}
+
+/**
  * Light definition (T-311 Phase 2). "A light" is content: a warm/corruption/cold
  * family, a base colour + radius + intensity, whether it is eligible to cast a
  * real PointLight (`castsPool` — vs glowing through its emissive flame voxels

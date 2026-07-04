@@ -18,6 +18,7 @@ export type {
   GradeDef,
   LightDef,
   AtmosphereDef,
+  WaterStyleDef,
   DecalDef,
   MaterialProperties,
   VoxelNode,

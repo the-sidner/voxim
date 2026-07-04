@@ -1,0 +1,23 @@
+{
+  "id": "default",
+  "shallowColor": "#3f5a5c",
+  "deepColor": "#1c3038",
+  "opacity": 0.62,
+  "waves": {
+    "amplitude": [1.0, 1.0, 0.6],
+    "frequencyX": [0.6, 0.0, 0.9],
+    "frequencyZ": [0.0, 0.55, 0.9],
+    "speed": [0.9, -0.7, 1.7],
+    "normalScale": 0.14,
+    "lumDivisor": 2.6
+  },
+  "fresnel": {
+    "exponent": 3.0,
+    "tintStrength": 0.6,
+    "opacityBoost": 0.3
+  },
+  "specular": {
+    "exponent": 80.0,
+    "gain": [1.9, 1.7, 1.3]
+  }
+}

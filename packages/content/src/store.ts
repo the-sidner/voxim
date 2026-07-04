@@ -42,6 +42,7 @@ import type {
   GradeDef,
   LightDef,
   AtmosphereDef,
+  WaterStyleDef,
   DecalDef,
   ZoneDef,
   PoiDef,
@@ -140,6 +141,15 @@ export interface ContentService {
    * stays on `Palette.phases`). Authoring a new atmosphere is a file drop.
    */
   readonly atmospheres: ContentRegistryReadonly<AtmosphereDef>;
+
+  /**
+   * Water style definitions keyed by id (T-311 Phase 5b, grammar G7). Loaded
+   * from `data/water_styles/*.json`; selected per-tile via the SAME
+   * `WorldClock.biomeTag` key AtmosphereDef uses, same `"default"` fallback.
+   * Owns wave/fresnel/specular shader params + base shallow/deep colour —
+   * water_renderer.ts reads it instead of hardcoded shader literals.
+   */
+  readonly waterStyles: ContentRegistryReadonly<WaterStyleDef>;
 
   /**
    * Ephemeral combat decals keyed by id (T-311 P4). Loaded from
@@ -302,6 +312,10 @@ export class StaticContentStore implements ContentService {
     kind: "atmosphere",
     idOf: (a) => a.id,
   });
+  public readonly waterStyles = new ContentRegistry<WaterStyleDef>({
+    kind: "waterStyle",
+    idOf: (w) => w.id,
+  });
   public readonly decals = new ContentRegistry<DecalDef>({
     kind: "decal",
     idOf: (d) => d.id,
@@ -444,6 +458,10 @@ export class StaticContentStore implements ContentService {
 
   registerAtmosphere(def: AtmosphereDef): void {
     this.atmospheres.register(def);
+  }
+
+  registerWaterStyle(def: WaterStyleDef): void {
+    this.waterStyles.register(def);
   }
 
   registerDecal(def: DecalDef): void {
