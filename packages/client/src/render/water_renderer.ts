@@ -65,6 +65,7 @@ const FRAG = /* glsl */`
   uniform float uFresnelOpacityBoost;
   uniform float uSpecularExponent;
   uniform vec3  uSpecularGain;
+  uniform vec3  uSkyColor;   // current lerped sky colour (EnvironmentLighting, T-311 P5b)
 
   void main() {
     // Travelling-wave height field + its analytic gradient → a perturbed surface
@@ -101,6 +102,16 @@ const FRAG = /* glsl */`
     float spec = pow(max(dot(N, H), 0.0), uSpecularExponent);
     col += spec * uSpecularGain;
 
+    // Cheap sky-streak reflection (T-311 P5b, no probe/SSR): the view
+    // vector reflected off the perturbed normal, tinted by the current sky
+    // colour and weighted by the SAME fresnel rim already driving the
+    // shallow-tint lightening — a stretched streak at grazing angles that
+    // reads as "reflecting the sky" (the image-gen-3 torch-streak look)
+    // without any render-to-texture machinery.
+    vec3 R = reflect(-V, N);
+    float skyWeight = fres * max(R.y, 0.0);
+    col += uSkyColor * skyWeight * 0.5;
+
     float alpha = clamp(uOpacity + fres * uFresnelOpacityBoost, 0.0, 0.96);
     gl_FragColor = vec4(col, alpha);
   }
@@ -129,6 +140,10 @@ function buildWaterMaterial(style: WaterStyleDef): THREE.ShaderMaterial {
       uFresnelOpacityBoost: { value: 0 },
       uSpecularExponent:    { value: 0 },
       uSpecularGain:        { value: new THREE.Vector3() },
+      // Sky colour for the cheap reflection streak (T-311 P5b) — no local
+      // default; renderer.ts calls setSkyColor() once per frame with
+      // EnvironmentLighting's live lerped sky colour.
+      uSkyColor:            { value: new THREE.Color(0x808080) },
     },
     transparent: true,
     depthWrite:  false,
@@ -273,6 +288,13 @@ export class WaterRenderer {
    *  renderer.render() has updated envLighting. */
   setSunDirection(dir: { x: number; y: number; z: number }): void {
     (this.material.uniforms.uSunDir.value as THREE.Vector3).set(dir.x, dir.y, dir.z);
+  }
+
+  /** Read the current lerped sky colour from EnvironmentLighting (T-311
+   *  P5b) — drives the cheap sky-streak reflection term. Called once per
+   *  frame from game.ts (plain 0xRRGGBB number — game.ts stays THREE-free). */
+  setSkyColor(hex: number): void {
+    (this.material.uniforms.uSkyColor.value as THREE.Color).setHex(hex);
   }
 
   /** Drop every water mesh — used on tile transitions. */

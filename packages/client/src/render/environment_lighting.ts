@@ -256,6 +256,13 @@ export class EnvironmentLighting {
     return target.copy(this._sunDir);
   }
 
+  /** Current lerped sky colour (T-311 P5b) — the water surface's cheap
+   *  sky-streak reflection term reads this instead of a fixed tint, so the
+   *  streak warms at dusk / cools at night with the rest of the scene. */
+  getSkyColor(target: THREE.Color): THREE.Color {
+    return target.copy(this.lightCur.sky);
+  }
+
   /**
    * Recompute the shadow-camera basis vectors from the CURRENT `_sunDir`.
    * Three.js lookAt: camLocalZ = normalize(eye - target) = sunDir.

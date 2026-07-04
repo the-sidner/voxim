@@ -19,7 +19,7 @@ import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab, AtmosphereDef } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
 import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
-import { applySurfaceTreatment } from "./surface_treatments.ts";
+import { applySurfaceTreatment, setWetReflectSkyColor } from "./surface_treatments.ts";
 import { sampleField } from "./field_sample.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial, setEmissiveHdrScale } from "./voxel_material.ts";
@@ -305,6 +305,7 @@ export class VoximRenderer {
   private readonly _sunWorld = new THREE.Vector3();
   private readonly _sunUV = new THREE.Vector2();
   private readonly _sunDirScratch = new THREE.Vector3();
+  private readonly _skyColorScratch = new THREE.Color();
   /** 3rd-person camera vertical sample range above/below player Y for height
    *  shading — content-driven via GradeDef.heightShadeBelow/Above (T-315 D2);
    *  these hold the pre-bootstrap fallback until a grade arrives. */
@@ -647,6 +648,12 @@ export class VoximRenderer {
       if (wet && baked.wetness) {
         applySurfaceTreatment("wet_specular", m, { gloss: wet.gloss, darken: wet.darken });
       }
+      // Cheap wetness-weighted sky reflection (T-311 P5b): same aWetness
+      // input, a separate consumer (render.reflect, reserved since G4).
+      const reflect = matDef?.render?.reflect;
+      if (reflect && baked.wetness) {
+        applySurfaceTreatment("wet_reflect", m, { strength: reflect.strength, tint: reflect.tint });
+      }
       const me = new THREE.Mesh(geo, m);
       me.name = "terrain";
       me.castShadow = true;
@@ -917,6 +924,12 @@ export class VoximRenderer {
    *  render() has called envLighting.update(). */
   getSunDirection(): { x: number; y: number; z: number } {
     return this.envLighting.getSunDirection(this._sunDirScratch);
+  }
+
+  /** Current lerped sky colour (T-311 P5b) — the water sky-streak reflection
+   *  term reads this. Plain 0xRRGGBB number (game.ts stays THREE-free). */
+  getSkyColor(): number {
+    return this.envLighting.getSkyColor(this._skyColorScratch).getHex();
   }
 
   /**
@@ -1263,6 +1276,10 @@ export class VoximRenderer {
       }
     }
     this.envLighting.update(this.cameraTarget, this.camera.position, t01);
+    // Cheap wetness-weighted sky reflection (T-311 P5b): every wet_reflect-
+    // treated ground material shares one uniform object, updated here once
+    // per frame (same shared-uniform idiom canopyFade uses for wind time).
+    setWetReflectSkyColor(this.getSkyColor());
 
     // Ground mist (T-311 P5a, GroundMistLayer): lerp this frame's phase
     // density weight toward the current AtmosphereDef's target the same way
