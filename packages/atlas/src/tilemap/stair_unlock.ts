@@ -23,6 +23,15 @@
  * buffers ship through the existing terrain chunk path. Heightmap
  * lerps for run-time unlocks will need a delta wire format later
  * (T-212 territory).
+ *
+ * T-311 P6 coexistence note: this module needed NO changes for terraced
+ * cliffs. `applyStairUnlock` is height-agnostic (it lerps whatever
+ * heightBuffer values it's given) and never touches CliffGrid — the ramp
+ * cells it carves simply keep whatever CliffGrid values the atlas
+ * `cliffStage` assigned them (typically edge=0/profileId=0, since a ramp
+ * cell already reads as open ground, not a cliff perimeter). Physics
+ * agrees for the same reason CliffGrid never gates collision anywhere:
+ * `buildTerrainLookup`/`buildOpennessLookup` read only Heightmap/OpenMask.
  */
 
 export interface StairAnchor {
