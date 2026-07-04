@@ -479,10 +479,11 @@ export class VoximGame {
       this.decals = new DecalRenderer(this.renderer.instancePool, this.contentService, this.world);
     }
 
-    // Water surface (T-159) — translucent overlay over WATER cells, animated
-    // via a uTime-driven shader.  Same KindGrid hook the forest renderer
-    // uses; no server-side water entities.
-    this.waterRenderer = new WaterRenderer(this.renderer.scene, this.world);
+    // Water surface (T-159, rebuilt T-311 P5b) — translucent overlay over
+    // WaterGrid.surfaceLevel cells, styled by the WaterStyleDef selected via
+    // WorldClock.biomeTag. Same onChunkReady hook the scatter renderer uses;
+    // no server-side water entities.
+    this.waterRenderer = new WaterRenderer(this.renderer.scene, this.world, this.contentService);
 
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
