@@ -1269,6 +1269,23 @@ voxel-disturbance channel: surface roughness, cliff-stack warp, and NEW the per-
 (`VoxelAtom.tintScale`, 25% floor) — trodden/worked cells read flat + uniform + orderly, wilderness
 rough + mottled. `path` authors `disturbanceField: []` (empty expr = always civilized). Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
 T-310 arcing sun) + creature fragmentation (G6/I3b) + cheap water reflection.
+**Phase 5a LANDED (lane/atmosphere):** `sun_arc.ts` (dependency-free pure altitude/azimuth/direction
+function, unit-tested incl. midnight-wrap continuity) + `AtmosphereDef` content category (sun path, ground
+mist, near-field god-ray params — day/night COLOUR stays on `Palette.phases`, not duplicated). **Resolved
+the I2 render-context-key gap**: 0b/0c/0d were deliberately deferred and never actually landed (verified —
+`GradeDef` still hardcodes `cache.getGrade("default")`); P5a builds the selector as `WorldClock.biomeTag`
+(reuses the existing wireId 23, no new wire field), computed atlas-side via the existing `biomeTag()` ladder
+(already used by zone_namer) from the tile's `WorldCellRecord.biome` — one value per tile, no re-bake
+needed since biome is DB cell metadata, not baked into the tile_init buffer. `environment_lighting.ts`
+now computes the sun direction every frame from the server clock via `sunArc()`; the shadow-camera basis
+is recomputed per-frame (was a one-time precompute); `SUN_DIR` is deleted everywhere (grep-swept). Ground
+mist landed as an EdgePass composite term (reuses the pass's existing depth reconstruction — no new
+render target) with per-phase density from `AtmosphereDef.mist`. God-ray params (the existing
+screen-space radial-scatter pass, near-field-only by construction) now come from `AtmosphereDef.godRay`
+instead of hardcoded literals. Zero look-change at noon (pinned regression in `sun_arc.test.ts`). Full
+suite 605/605 green throughout; atlas snapshot suite unaffected (biomeTag is additive metadata, not baked
+into any buffer). Next: **Phase 5b** — WaterStyleDef + water_renderer rebuild, reusing this same
+biomeTag selector.
 
 ### T-312b · re-apply atlas render-fields on save-load
 Effort: S   Status: done   Commit: 1248388

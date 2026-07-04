@@ -96,6 +96,9 @@ the exact half-migrated state the doctrine forbids. Phase 0a freezes the **full 
 sub-fields optional) in one commit even though consumers land later; and **one** networked per-player
 **render-context key** (a small struct: `biomeId` + phase/zone keys) is defined up front — atmosphere,
 grade, and future per-region selectors all read it. No three separate small wire bumps.
+**Addendum (P5a):** 0b/0c/0d were deliberately deferred (never landed) — the render-context key actually
+lands in P5a as `WorldClock.biomeTag` (reuses the existing wireId, atlas-derived per-tile closed tag, no
+new wire field), the first real consumer being `AtmosphereDef`; `WaterStyleDef` (P5b) reuses the same key.
 
 ### I3 · Settle the three doctrine-edge decisions explicitly, in writing.
 - **(a) Overhang is DROPPED from v1.** A single-height `Heightmap` cannot express an undercut → a rendered
@@ -197,6 +200,14 @@ phase (prove the data arrives). FieldExpr/FieldSampler substrate lands here (wit
   **canopy-gated god-rays** sampling the real sun shadow map. **Server-authoritative sun altitude/azimuth**
   on the day-phase payload (shafts + shadows agree) — *replaces* the client `SUN_DIR` constant, and **water
   reads this same sun source** (sequence: sun-arc lands before/with water).
+  **P5a LANDED:** `sun_arc.ts` (pure altitude/azimuth/direction), `AtmosphereDef` (sun path + mist +
+  god-ray params — day/night COLOUR stays on `Palette.phases`, not duplicated), the render-context
+  selector landed as `WorldClock.biomeTag` (see I2 addendum below — reuses the existing wireId, no new
+  wire field), `environment_lighting.ts` computing the sun direction every frame + a per-frame shadow
+  basis, `SUN_DIR` deleted, GroundMistLayer as an EdgePass composite term (not a new pass — reuses the
+  existing depth reconstruction), and god-ray params sourced from content (the existing screen-space
+  radial-scatter pass, near-field-only, documented as such — not a shadow-map volumetric march).
+  Water's own rebuild is P5b, next.
 - **Creature fragmentation (G6)** — `voxel_creature` generator + fray/coreness sidecar + `DissolveProfileDef`
   shader (in-shader drift) + one `dissolutionPhase` f32 on `AnimationStateData` + a `shed_voxels` effect /
   `shed_dissolve` DeathHook. Honour **I3b**.
