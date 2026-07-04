@@ -210,11 +210,16 @@ export class EntityMeshRegistry {
           // disposed during the async model prefetch above.
           if (this.instancePool.has(entityId) || this.meshes.get(entityId) !== capture) return;
           const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
+          // Death-dissolve (T-311 P5c): see ContentCache.getSoleDissolveProfileSync's
+          // doc comment for the known v1 limitation (no per-entity archetype id
+          // on the wire yet) — undefined here means "bake byte-identically",
+          // which is also what happens for every non-corrupted entity today.
+          const dissolveProfile = this.content!.getSoleDissolveProfileSync() ?? undefined;
           // Build the skeleton's per-sub-object meshes — one merged mesh per
           // material through the bakeVoxels kitchen (T-281). A character is tens
           // of voxels, so the bake is sub-millisecond on the main thread; the
           // off-thread pool + collector/cursor coupling it replaced is gone.
-          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams);
+          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams, dissolveProfile);
           // Re-attach hover outline + resize the pick box to fit the freshly
           // built meshes — both attach via the entity's group, which now
           // holds real geometry instead of the placeholder.

@@ -15,7 +15,7 @@
  * `.then()` off them with a stale-guard pattern that assumes a microtask
  * boundary.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef } from "@voxim/content";
 
 export class ContentCache {
   /**
@@ -112,6 +112,28 @@ export class ContentCache {
    *  service is wired. */
   getGameConfig(): GameConfig | null {
     return this.bootstrapService?.getGameConfig() ?? null;
+  }
+
+  /**
+   * KNOWN V1 LIMITATION (T-311 P5c): the wire carries no per-entity
+   * archetype/prefab id, so the client cannot resolve WHICH
+   * `DissolveProfileDef` an entity's `NpcTemplate.dissolveProfileId`
+   * pointed to — `ModelRefData.modelId` is a shared skeleton
+   * ("biped_skeletal") across every biped, not a per-archetype key, and
+   * the doctrine constraint here is "no more than the one f32 field" on
+   * the wire. Until a follow-on adds real per-entity identity (a second
+   * wire field, or splitting bipeds into per-archetype modelIds), this
+   * returns the SOLE registered profile when exactly one exists — correct
+   * for this phase's one corrupted creature (drowner_rot), and the
+   * ambiguity is a no-op today since there's nothing to disambiguate
+   * against. Returns null the moment a second profile is authored, so a
+   * silently-wrong guess never ships — the caller (entity_mesh_registry)
+   * treats null as "no dissolve" (byte-identical bake), not a crash.
+   */
+  getSoleDissolveProfileSync(): DissolveProfileDef | null {
+    const profiles = this.bootstrapService?.dissolveProfiles;
+    if (!profiles || profiles.size !== 1) return null;
+    return profiles.values().next().value ?? null;
   }
 
   getSkeletonSync(skeletonId: string): SkeletonDef | undefined {

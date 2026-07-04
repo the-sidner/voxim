@@ -16,15 +16,15 @@
  */
 import * as THREE from "three";
 import type { EntityState } from "../state/client_world.ts";
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject, DissolveProfileDef } from "@voxim/content";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { paletteToken } from "./palette.ts";
 import { modelToThree } from "./coords.ts";
-import { bakeVoxels } from "./voxel_bake.ts";
+import { bakeVoxels, resolveFrayCoreness, driftDirFor } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import type { VoxelAtom } from "@voxim/content";
 import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
-import type { DissolveUniforms } from "./dissolve_shader.ts";
+import { registerDissolveDrift, type DissolveUniforms } from "./dissolve_shader.ts";
 
 // Shared placeholder geometries — never disposed individually
 const GEO_BODY  = new THREE.BoxGeometry(0.8, 1.8, 0.8);
@@ -418,23 +418,57 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
 }
 
 /**
+ * Death-dissolve bake input (T-311 P5c) — resolved once per sub-object by
+ * the caller (it needs the skeleton's bone-distance-from-root, which
+ * `buildMergedSubMeshes` doesn't have access to on its own) and passed
+ * through so `bakeVoxels` gets `fray01`/`driftDir` atoms. Absent for the
+ * overwhelming majority of sub-objects (only a `dissolveProfileId`-bearing
+ * entity's bone_segment sub-objects ever carry one) — every other call
+ * site's atoms stay byte-identical (no fray01/driftDir fields at all).
+ */
+export interface DissolveBakeSpec {
+  /** This sub-object's bone's normalised distance-from-root, 0..1 (already
+   *  divided by the skeleton's overall extent) — see `boneDistanceFrac`. */
+  boneDistanceFrac: number;
+  frayBandWidth: number;
+  maxSeparationDistance: number;
+}
+
+/**
  * Build one MERGED THREE.Mesh per material for a sub-object's voxels (T-281) —
  * replaces the N-per-node `buildVoxelMesh` path through the `bakeVoxels` kitchen.
  * Geometrically identical (each voxel bakes to the same absolute model→three
  * position) but collapses a sub-object into ~1 draw per material and drops the
  * fragile bake-cursor coupling. `scale` is the sub-object's voxel size.
+ *
+ * `dissolve`, when present, seeds each atom's `fray01`/`driftDir` from the
+ * sub-object's precomputed bone-distance fraction (uniform across every
+ * voxel of this sub-object — bone-level granularity, not per-voxel; a bone
+ * segment is a handful of voxels, so this is coarse but cheap and correct
+ * enough for v1) and registers the dissolve-drift shader patch on each
+ * resulting material, collecting the per-material uniform bundle into
+ * `dissolveUniformsOut`.
  */
 function buildMergedSubMeshes(
   nodes: ReadonlyArray<{ x: number; y: number; z: number; materialId: number }>,
   scale: { x: number; y: number; z: number },
   materials: Map<number, MaterialDef>,
   onTop: boolean,
+  dissolve?: DissolveBakeSpec,
+  dissolveUniformsOut?: DissolveUniforms[],
 ): THREE.Mesh[] {
-  const atoms: VoxelAtom[] = nodes.map((n) => ({
-    cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
-    sx: scale.x, sy: scale.y, sz: scale.z,
-    materialId: n.materialId,
-  }));
+  const fray01 = dissolve
+    ? resolveFrayCoreness(dissolve.boneDistanceFrac, 1, dissolve.frayBandWidth)
+    : 0;
+  const atoms: VoxelAtom[] = nodes.map((n) => {
+    const cx = n.x * scale.x, cy = n.y * scale.y, cz = n.z * scale.z;
+    return {
+      cx, cy, cz,
+      sx: scale.x, sy: scale.y, sz: scale.z,
+      materialId: n.materialId,
+      ...(fray01 > 0 && { fray01, driftDir: driftDirFor(cx, cy, cz) }),
+    };
+  });
   const matIds = new Set<number>();
   for (const n of nodes) matIds.add(n.materialId);
   const meshes: THREE.Mesh[] = [];
@@ -442,7 +476,11 @@ function buildMergedSubMeshes(
     const matDef = materials.get(matId);
     const baked = bakeVoxels(atoms, matId, undefined, matDef?.render?.tintJitter);
     if (baked.indices.length === 0) continue;
-    const mesh = new THREE.Mesh(geometryFromBaked(baked), buildVoxelMaterial(matDef, matId, onTop));
+    const material = buildVoxelMaterial(matDef, matId, onTop);
+    if (fray01 > 0 && dissolve && dissolveUniformsOut) {
+      dissolveUniformsOut.push(registerDissolveDrift(material, dissolve.maxSeparationDistance));
+    }
+    const mesh = new THREE.Mesh(geometryFromBaked(baked), material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     meshes.push(mesh);
@@ -451,6 +489,49 @@ function buildMergedSubMeshes(
 }
 
 // ---- upgrade to skeleton model ----
+
+/**
+ * Death-dissolve bone-distance table (T-311 P5c) — for every bone, its
+ * cumulative rest-offset length from the skeleton root (bones with no
+ * parent), and the overall extent (the farthest bone's distance). Used to
+ * fray a bone-segment sub-object based on how far out on the limb it sits
+ * (root/torso never fray, extremities do) WITHOUT touching `VoxelNode` or
+ * `bone_segment.json` — every shared biped model stays byte-identical for
+ * any entity that doesn't resolve a `DissolveProfileDef`.
+ *
+ * Bone-level granularity (not per-voxel): a bone segment is a handful of
+ * voxels sharing one rigid transform, so "how loose is this LIMB" is the
+ * natural grain here — finer per-voxel variation isn't worth the
+ * complexity for a v1 corrupted-creature look.
+ */
+export interface BoneDistanceTable {
+  /** boneId → cumulative distance from root (model-space units, unscaled). */
+  distance: Map<string, number>;
+  /** The farthest bone's distance — the normalising divisor. 0 if the
+   *  skeleton has a single bone (guarded by callers via resolveFrayCoreness's
+   *  own modelExtent<=0 check). */
+  maxDistance: number;
+}
+
+export function boneSegmentLength(b: SkeletonDef["bones"][number]): number {
+  return Math.sqrt(b.restX * b.restX + b.restY * b.restY + b.restZ * b.restZ);
+}
+
+/** Pure — unit-testable without THREE. Bones must be parent-first ordered
+ *  (the same authoring convention `upgradeToSkeletonModel` already relies on
+ *  for building the Group hierarchy in one pass). Exported for direct
+ *  testing (T-311 P5c). */
+export function computeBoneDistanceTable(skeleton: SkeletonDef): BoneDistanceTable {
+  const distance = new Map<string, number>();
+  let maxDistance = 0;
+  for (const bone of skeleton.bones) {
+    const parentDist = bone.parent !== null ? (distance.get(bone.parent) ?? 0) : 0;
+    const d = parentDist + boneSegmentLength(bone);
+    distance.set(bone.id, d);
+    if (d > maxDistance) maxDistance = d;
+  }
+  return { distance, maxDistance };
+}
 
 /** Per-bone rest-axis morph multipliers (x/y/z), derived from morph params. */
 interface BoneMorphScales {
@@ -523,6 +604,16 @@ export function upgradeToSkeletonModel(
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
   morphParams?: Record<string, number>,
+  /**
+   * Death-dissolve profile (T-311 P5c) — when present, every bone-attached
+   * sub-object gets fray01/driftDir atoms derived from its bone's distance
+   * from the skeleton root (see `computeBoneDistanceTable`), and the
+   * resulting materials register the dissolve-drift shader patch. The
+   * caller resolves WHICH profile applies (currently: the sole registered
+   * `DissolveProfileDef`, since the wire carries no per-entity archetype
+   * id — see `entity_mesh_registry.ts`'s call site for the exact caveat).
+   */
+  dissolveProfile?: DissolveProfileDef,
 ): void {
   clearMeshContent(mesh);
 
@@ -562,6 +653,11 @@ export function upgradeToSkeletonModel(
     boneGroups.set(bone.id, bg);
   }
 
+  // Death-dissolve (T-311 P5c): precompute the bone-distance table once for
+  // the whole skeleton so every sub-object's fray amount is a cheap lookup.
+  const boneDistances = dissolveProfile ? computeBoneDistanceTable(skeleton) : undefined;
+  const dissolveUniforms: DissolveUniforms[] = [];
+
   // Attach resolved sub-object voxels to their bone groups (or entity root)
   const voxelMeshes: THREE.Mesh[] = [];
   for (const sub of resolvedSubs) {
@@ -596,7 +692,16 @@ export function upgradeToSkeletonModel(
     // Sub-objects parented to mesh.group (sub.boneId is null) get factor
     // 1.0 — they aren't part of the morphed skeleton.
     const subScale = skeletonSubScale(sub, scale, morph);
-    for (const m of buildMergedSubMeshes(subDef.nodes, subScale, materials, false)) {
+    const dissolveSpec: DissolveBakeSpec | undefined = dissolveProfile && boneDistances && sub.boneId
+      ? {
+          boneDistanceFrac: boneDistances.maxDistance > 0
+            ? (boneDistances.distance.get(sub.boneId) ?? 0) / boneDistances.maxDistance
+            : 0,
+          frayBandWidth: dissolveProfile.frayBandWidth,
+          maxSeparationDistance: dissolveProfile.maxSeparationDistance,
+        }
+      : undefined;
+    for (const m of buildMergedSubMeshes(subDef.nodes, subScale, materials, false, dissolveSpec, dissolveUniforms)) {
       subGroup.add(m);
       voxelMeshes.push(m);
     }
@@ -604,6 +709,7 @@ export function upgradeToSkeletonModel(
 
   mesh.boneGroups = boneGroups;
   mesh.voxelMeshes = voxelMeshes;
+  mesh.dissolveUniforms = dissolveUniforms;
   mesh.modelId = def.id;
   mesh.skeletonId = skeleton.id;
 
