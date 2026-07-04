@@ -17,7 +17,7 @@ import * as THREE from "three";
 import type { ClientChunk, ClientWorld, EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab, AtmosphereDef } from "@voxim/content";
-import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
+import { buildChunkAtoms, TERRAIN_DISP_MAG, type CliffFieldInput } from "./terrain_voxels.ts";
 import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
 import { applySurfaceTreatment, setWetReflectSkyColor } from "./surface_treatments.ts";
 import { sampleField } from "./field_sample.ts";
@@ -618,6 +618,26 @@ export class VoximRenderer {
       }
       : undefined;
 
+    // Cliff fields (T-311 P6): thread the chunk's CliffGrid planes + the
+    // client's stable profileId→CliffProfileDef.id index (I3c) into the atom
+    // build; profileOf/erosionOf resolve against the bootstrap content.
+    const cliffGrid = chunk?.cliffGrid;
+    const cliffInput: CliffFieldInput | undefined = cliffGrid
+      ? {
+        grid: cliffGrid,
+        profileOf: (profileId: number) => {
+          if (profileId === 0) return undefined;
+          return this.content?.getCliffProfileIndex()[profileId - 1];
+        },
+        erosionOf: (profileIdStr: string, erosionIdx: number) => {
+          const def = this.content?.getCliffProfile(profileIdStr);
+          if (!def) return undefined;
+          const key = erosionIdx === 0 ? "crisp" : erosionIdx === 1 ? "weathered" : "broken";
+          return def.erosionStates[key];
+        },
+      }
+      : undefined;
+
     // Re-express the chunk as voxel atoms (column boxes) bucketed by material,
     // then bake one mesh per material through the shared voxel pipeline (T-283).
     const byMat = buildChunkAtoms(hm, mat, {
@@ -627,7 +647,8 @@ export class VoximRenderer {
       W: this.world?.getChunk(cx - 1, cy)?.heightmap ?? null,
     }, surfaceInput,
       // Per-material relief response (render.relief, T-311 P4).
-      (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief);
+      (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief,
+      cliffInput);
     const meshes: THREE.Mesh[] = [];
     for (const [matId, atoms] of byMat) {
       const matDef = this.content?.getMaterialSync(matId);

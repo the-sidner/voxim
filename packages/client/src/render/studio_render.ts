@@ -25,3 +25,14 @@ export {
 } from "./surface_treatments.ts";
 export { registerDissolveDrift } from "./dissolve_shader.ts";
 export type { DissolveUniforms } from "./dissolve_shader.ts";
+export { buildChunkAtoms } from "./terrain_voxels.ts";
+export type { ChunkNeighbours, SurfaceFieldInput, CliffFieldInput } from "./terrain_voxels.ts";
+export {
+  getCliffVoxeliser,
+  registerBuiltinCliffVoxelisers,
+  cliffVoxeliserIds,
+  crossCheckCliffVoxelisers,
+  buildCliffProfileIndex,
+} from "./cliff_voxeliser.ts";
+export type { CliffVoxeliser, CliffBuildContext } from "./cliff_voxeliser.ts";
+>>>>>>> a1902dc (client: cliffVoxeliser registry + CLIFF_* deletion (T-311 P6))

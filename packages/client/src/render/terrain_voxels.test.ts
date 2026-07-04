@@ -1,9 +1,11 @@
 /**
- * Terrain voxelisation (T-310 terraces + T-311 warp). Pure, headless.
+ * Terrain voxelisation (T-310 terraces + T-311 warp + T-311 P6 cliffVoxeliser
+ * dispatch). Pure, headless.
  */
 import { assert, assertEquals } from "jsr:@std/assert";
-import { buildChunkAtoms } from "./terrain_voxels.ts";
+import { buildChunkAtoms, type CliffFieldInput } from "./terrain_voxels.ts";
 import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
+import type { CliffErosionState } from "@voxim/content";
 
 const CHUNK = 32;
 
@@ -13,6 +15,42 @@ function flatChunk(h: number): { hm: HeightmapData; mats: MaterialGridData } {
     mats: { data: new Uint16Array(CHUNK * CHUNK).fill(3) },
   };
 }
+
+/**
+ * A synthetic CliffFieldInput: every closed cell where `edgeAt(cx,cy)` is
+ * true gets profileId 1 → the built-in "columnar" cliffVoxeliser (the real
+ * production registry, per the Swing-Inspector discipline of exercising the
+ * shipped path rather than re-implementing it in the test). Mirrors the
+ * atlas's CliffGrid shape.
+ */
+function cliffInputFrom(edgeAt: (cx: number, cy: number) => boolean, erosion: CliffErosionState): CliffFieldInput {
+  const n = CHUNK * CHUNK;
+  const grid = {
+    profileId: new Uint8Array(n),
+    erosion: new Uint8Array(n),
+    tier: new Uint8Array(n),
+    edge: new Uint8Array(n),
+  };
+  for (let cy = 0; cy < CHUNK; cy++) {
+    for (let cx = 0; cx < CHUNK; cx++) {
+      if (!edgeAt(cx, cy)) continue;
+      const i = cx + cy * CHUNK;
+      grid.edge[i] = 1;
+      grid.profileId[i] = 1;
+    }
+  }
+  return {
+    grid,
+    profileOf: (id) => (id === 1 ? "columnar" : undefined),
+    erosionOf: (id) => (id === "columnar" ? erosion : undefined),
+  };
+}
+
+/** tierCount 5 / jitterAmp 0 matches the retired STACK_MAX=5 cap with warp
+ *  off, for the structural (non-warp) assertions. */
+const NO_WARP_EROSION: CliffErosionState = { tierCount: 5, jitterAmp: 0, edgeChinkiness: 0.3 };
+/** jitterAmp 0.3 matches the old tests' `relief: { warp: 0.3 }` fixture. */
+const WARP_EROSION: CliffErosionState = { tierCount: 5, jitterAmp: 0.3, edgeChinkiness: 1 };
 
 Deno.test("terrace: a 1-voxel-wide ridge still renders (both sides exposed)", () => {
   const { hm, mats } = flatChunk(2);
@@ -32,11 +70,34 @@ Deno.test("terrace: a 1-voxel-wide ridge still renders (both sides exposed)", ()
   }
 });
 
+Deno.test("T-311 P6: absent cliff input and an all-zero CliffGrid produce byte-identical output", () => {
+  const { hm, mats } = flatChunk(2);
+  for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
+  const absent = [...buildChunkAtoms(hm, mats, {}).values()].flat();
+  const allZeroCliff = cliffInputFrom(() => false, NO_WARP_EROSION); // never marks edge=1
+  const withZeroGrid = [...buildChunkAtoms(hm, mats, {}, undefined, undefined, allZeroCliff).values()].flat();
+  assertEquals(withZeroGrid, absent, "an all-zero CliffGrid must fall through to the pre-P6 flat/slab path unchanged");
+});
+
+Deno.test("T-311 P6: an edge cell whose profileId resolves to nothing falls through gracefully", () => {
+  const { hm, mats } = flatChunk(2);
+  for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
+  const absent = [...buildChunkAtoms(hm, mats, {}).values()].flat();
+  const unresolvable: CliffFieldInput = {
+    grid: cliffInputFrom((cx) => cx === 15, NO_WARP_EROSION).grid,
+    profileOf: () => undefined, // simulates a version-drifted index
+    erosionOf: () => undefined,
+  };
+  const withUnresolvable = [...buildChunkAtoms(hm, mats, {}, undefined, undefined, unresolvable).values()].flat();
+  assertEquals(withUnresolvable, absent, "an unresolvable profile must not crash or stack — falls through to the flat/slab path");
+});
+
 Deno.test("cliff cells stack full-footprint stones: contiguous courses, base to lip", () => {
   const { hm, mats } = flatChunk(2);
   // West half raised: a single long cliff along x=16 (one exposed side per cell).
   for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
-  const byMat = buildChunkAtoms(hm, mats, {});
+  const cliff = cliffInputFrom((cx) => cx === 15, NO_WARP_EROSION);
+  const byMat = buildChunkAtoms(hm, mats, {}, undefined, undefined, cliff);
   const edge = [...byMat.values()].flat()
     .filter((a) => a.cx > 15 && a.cx < 16 && a.cy > 15.9 && a.cy < 17.1 && a.sz > 0.3)
     .sort((a, b) => (b.cz) - (a.cz));
@@ -57,10 +118,12 @@ Deno.test("warp: exposed faces + course seams jitter; lip, base and welds stay e
   const { hm, mats } = flatChunk(2);
   // West half raised → cliff cells at x=15, EAST face exposed, WEST face welded.
   for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
-  const relief = (matId: number) => (matId === 3 ? { warp: 0.3 } : undefined);
-  const plain = [...buildChunkAtoms(hm, mats, {}).values()].flat();
-  const warpedA = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat();
-  const warpedB = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat();
+  const edgeAt = (cx: number) => cx === 15;
+  const plainCliff = cliffInputFrom(edgeAt, NO_WARP_EROSION);
+  const warpCliff = cliffInputFrom(edgeAt, WARP_EROSION);
+  const plain = [...buildChunkAtoms(hm, mats, {}, undefined, undefined, plainCliff).values()].flat();
+  const warpedA = [...buildChunkAtoms(hm, mats, {}, undefined, undefined, warpCliff).values()].flat();
+  const warpedB = [...buildChunkAtoms(hm, mats, {}, undefined, undefined, warpCliff).values()].flat();
   assertEquals(warpedA, warpedB, "warp is deterministic");
   assertEquals(plain.length, warpedA.length, "warp never adds/removes boxes");
 
@@ -83,7 +146,7 @@ Deno.test("warp: exposed faces + course seams jitter; lip, base and welds stay e
     assert((w.cx - w.sx / 2) <= (p.cx - p.sx / 2) + 1e-9, "welded face never pulls outward");
     // Exposed EAST face jitters, bounded by the amplitude.
     const dEast = (w.cx + w.sx / 2) - (p.cx + p.sx / 2);
-    assert(Math.abs(dEast) <= 0.15 + 1e-9, `east-face jitter bounded, got ${dEast}`);
+    assert(Math.abs(dEast) <= 0.3 + 1e-9, `east-face jitter bounded, got ${dEast}`);
     if (dEast !== 0) faceJitter = true;
     // Course seams move (uneven coursework) but stay bounded.
     if (Math.abs(w.cz - p.cz) > 1e-9) seamJitter = true;
@@ -101,8 +164,8 @@ Deno.test("warp: exposed faces + course seams jitter; lip, base and welds stay e
 Deno.test("warp keeps courses gap-free (stones overlap into each other, never apart)", () => {
   const { hm, mats } = flatChunk(2);
   for (let y = 0; y < CHUNK; y++) for (let x = 0; x < 16; x++) hm.data[x + y * CHUNK] = 4.5;
-  const relief = () => ({ warp: 0.3 });
-  const stack = [...buildChunkAtoms(hm, mats, {}, undefined, relief).values()].flat()
+  const cliff = cliffInputFrom((cx) => cx === 15, WARP_EROSION);
+  const stack = [...buildChunkAtoms(hm, mats, {}, undefined, undefined, cliff).values()].flat()
     .filter((a) => a.cx > 14.6 && a.cx < 16.4 && a.cy > 15.9 && a.cy < 17.1 && a.sz > 0.3 && a.sz < 2.5)
     .sort((a, b) => b.cz - a.cz);
   assert(stack.length >= 2);

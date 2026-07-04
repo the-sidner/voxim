@@ -15,7 +15,7 @@
  * `.then()` off them with a stale-guard pattern that assumes a microtask
  * boundary.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, CliffProfileDef } from "@voxim/content";
 
 export class ContentCache {
   /**
@@ -27,6 +27,7 @@ export class ContentCache {
   /** Wired by Game.start once the bootstrap blob has been decoded. */
   setBootstrapService(svc: ContentService | null): void {
     this.bootstrapService = svc;
+    this.cliffProfileIndex = null; // a fresh blob may carry a different profile roster
   }
 
   /** Returns the model definition. */
@@ -162,5 +163,25 @@ export class ContentCache {
    * memoized on the bootstrap ContentService. */
   getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[] {
     return this.bootstrapService?.getHitboxTemplate(modelId, seed, scale) ?? [];
+  }
+
+  /** Stable alphabetical id→index table for CliffProfileDef (T-311 P6, I3c) —
+   *  the SAME order the atlas `cliffStage` builds. Index 0 in the returned
+   *  array corresponds to wire index 1 (0 is reserved = "no cliff here").
+   *  Cached per bootstrap wiring (rebuilt on reconnect via setBootstrapService). */
+  private cliffProfileIndex: ReadonlyArray<string> | null = null;
+  getCliffProfileIndex(): ReadonlyArray<string> {
+    if (!this.cliffProfileIndex) {
+      const svc = this.bootstrapService;
+      this.cliffProfileIndex = svc
+        ? [...svc.cliffProfiles.values()].map((p) => p.id).sort((a, b) => a.localeCompare(b))
+        : [];
+    }
+    return this.cliffProfileIndex;
+  }
+
+  /** CliffProfileDef by id, from the bootstrap blob. */
+  getCliffProfile(id: string): CliffProfileDef | undefined {
+    return this.bootstrapService?.cliffProfiles.get(id);
   }
 }

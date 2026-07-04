@@ -29,11 +29,12 @@
  * an observed case. The shared world-position lattice keeps terrain welded
  * to on-lattice placed/dug voxels too.
  */
-import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
-import type { VoxelAtom, FieldExpr } from "@voxim/content";
+import type { HeightmapData, MaterialGridData, CliffGridData } from "@voxim/codecs";
+import type { VoxelAtom, FieldExpr, CliffErosionState } from "@voxim/content";
 import { evaluateFieldExpr } from "@voxim/content";
 import { HEIGHT_STEP } from "@voxim/world";
 import { voxHash } from "./voxel_bake.ts";
+import { getCliffVoxeliser, type CliffBuildContext } from "./cliff_voxeliser.ts";
 
 const CHUNK = 32;
 
@@ -54,28 +55,30 @@ export const TERRAIN_DISP_MAG = 0.18 * HEIGHT_STEP;
 // disturbanceField/dispMag, not here, so these stay local consts rather
 // than promoting onto render.relief.
 const MOTTLE_FLOOR = 0.25;         // tintScale floor at full disturbance recede
-const COURSE_JITTER_SCALE = 0.5;   // cliff course-boundary z-jitter vs corner warp
-const CHINK_DISP_SCALE = 0.3;      // sub-lip stone corner-disp extra vs warpAmp
 const OVERLAP_MARGIN = 0.05;       // oversize-into-known-solid safety margin
 const SURFACE_ROUGH_MIN = 0.02;    // surfAmp threshold below which a slab stays flat
+// Per-side exposure geometry for a cliff cell's warp jitter direction — NOT
+// the cliff TRIGGER (that's the server's CliffGrid.edge flag now); this is
+// local "which faces of the stack are outward vs welded" geometry, same
+// threshold the retired EXPOSE_MIN heuristic used.
+const CLIFF_SIDE_EXPOSE_MIN = 0.5;
 
-// ---- Stacked-voxel cliff edges (T-311 P4 — replaces the T-310 inset ziggurat).
-// A cliff cell (a plateau edge or a forest/stone wall) is voxelised as a STACK
-// of full-footprint stone-height boxes from the cliff base to the lip. NO inset
-// geometry — the hand-stacked read comes entirely from the per-voxel language:
-// exposed-face warp (`render.relief.warp`), per-voxel tint, corner displacement,
-// and the Sobel outline inking each stone individually. This also removes the
-// whole family of recede-degeneration bugs (a 1-wide ridge double-inset itself
-// to negative width and vanished). Real geometry derived deterministically from
-// the heightmap; collision stays the heightmap (barrier), so the two-tier
-// gating (stairs) is untouched. NOTE: still the client-voxeliser stopgap; real
-// cliff shape folds into the terrain DATA MODEL (server-authoritative stepped
-// Heightmap) in T-311 Phase 6, which retires this trigger — the stacked-stone
-// LANGUAGE (warp/tint/displacement) survives it, living on the atoms.
-const CLIFF_MIN   = 1.2;   // expose depth (world units) above which we stack
-const STONE_H     = 0.7;   // target stone height (stack quantum)
-const STACK_MAX   = 5;     // cap boxes per cliff cell (perf bound; deeper → taller stones)
-const EXPOSE_MIN  = 0.5;   // a side is "exposed" when its neighbour is this much lower
+// ---- Stacked-voxel cliff edges (T-311 P6 — server-authoritative CliffGrid
+// retires the T-311 P4 client-heuristic trigger). A cliff cell is voxelised
+// as a STACK of full-footprint stone-height boxes from the cliff base to the
+// lip, dispatched through the `cliffVoxeliser` registry keyed by the cell's
+// `CliffGrid.profileId` (resolved to a `CliffProfileDef.id` string via the
+// client's stable alphabetical id→index table — see cliff_voxeliser.ts). NO
+// inset geometry — the hand-stacked read comes entirely from the per-voxel
+// language: exposed-face warp, per-voxel tint, corner displacement, and the
+// Sobel outline inking each stone individually. Real geometry derived
+// deterministically from the heightmap; collision stays the heightmap
+// (barrier), so the two-tier gating (stairs) is untouched. The TRIGGER used
+// to be a client-side depth heuristic (CLIFF_MIN/STONE_H/STACK_MAX/
+// EXPOSE_MIN, retired this phase) — now it's the server's CliffGrid.edge
+// flag; the stacked-stone LANGUAGE (warp/tint/displacement) survives on the
+// atoms, now parameterized by the resolved CliffProfileDef instead of fixed
+// constants.
 
 /** The four cardinal neighbour chunks' heightmaps (null when not yet streamed). */
 export interface ChunkNeighbours {
@@ -109,6 +112,23 @@ export interface SurfaceFieldInput {
 }
 
 /**
+ * Cliff-field input (T-311 P6): the chunk's server-authoritative CliffGrid
+ * planes plus the resolved profile→erosion-state lookup. `profileOf` maps a
+ * wire `profileId` (the stable alphabetical index, 0 = "none") to the
+ * `CliffProfileDef.id` string the `cliffVoxeliser` registry dispatches on,
+ * and the erosion state numbers for that profile at the cell's erosion
+ * index (0=crisp/1=weathered/2=broken). Absent/all-zero `edge` planes fall
+ * through to the flat/shallow single-column-box path unchanged.
+ */
+export interface CliffFieldInput {
+  grid: CliffGridData;
+  /** wire profileId → CliffProfileDef.id string (client's stable index table). */
+  profileOf: (profileId: number) => string | undefined;
+  /** CliffProfileDef.id + erosion index → the resolved erosion-state numbers. */
+  erosionOf: (profileIdStr: string, erosionIdx: number) => CliffErosionState | undefined;
+}
+
+/**
  * Build one chunk's terrain atoms, bucketed by materialId (each bucket bakes into
  * one mesh). Neighbour heightmaps supply the column-floor depth for edge cells; a
  * missing neighbour falls back to "neighbour height = h" (no wall toward the
@@ -130,6 +150,7 @@ export function buildChunkAtoms(
     surfaceWarp?: number;
     disturbanceField?: FieldExpr;
   } | undefined,
+  cliff?: CliffFieldInput,
 ): Map<number, VoxelAtom[]> {
   const offX = hm.chunkX * CHUNK;
   const offZ = hm.chunkY * CHUNK; // model-space Y (south) offset — becomes three.js Z only via the coords.ts swap, NOT yet in three-space here.
@@ -186,87 +207,31 @@ export function buildChunkAtoms(
       const tintScale = relief?.disturbanceField ? MOTTLE_FLOOR + (1 - MOTTLE_FLOOR) * disturb : undefined;
       const dispMagBase = relief?.dispMag ?? TERRAIN_DISP_MAG;
 
-      if (depth > CLIFF_MIN) {
-        // ---- Stacked-voxel cliff: full-footprint stone boxes piled from the
-        // base to the lip. Sub-lip stones jitter their EXPOSED faces by
-        // ±warp/2 (deterministic voxHash off the face's world position + stone
-        // top, so every stone differs but chunk rebuilds are identical); the
-        // WELDED faces (toward equal/higher neighbours) never move — no slit
-        // opens into the void under the adjacent plateau slab — and z is
-        // untouched (stone courses stay contiguous; the walking surface at h
-        // is the top stone's exact top face). The TOP stone stays fully exact:
-        // it IS the plateau lip, and the collision edge lives there.
-        const expE = (h - hE) > EXPOSE_MIN;
-        const expW = (h - hW) > EXPOSE_MIN;
-        const expS = (h - hS) > EXPOSE_MIN;
-        const expN = (h - hN) > EXPOSE_MIN;
-        const n = Math.min(STACK_MAX, Math.max(2, Math.round(depth / STONE_H)));
-        const bh = depth / n;
-        const warpAmp = (relief?.warp ?? 0) * disturb;
-        // Course boundaries between stones, z-jittered ±warp/4 (per cell +
-        // course, deterministic) so the horizontal seams run UNEVEN like real
-        // coursework. Both stones at a seam share the jittered boundary —
-        // courses stay contiguous; the lip (index 0) and the base stay exact.
-        const zb: number[] = [h];
-        for (let i = 1; i < n; i++) {
-          const jitter = warpAmp > 0 ? (voxHash(offX + cx, offZ + cy, i, 7) - 0.5) * warpAmp * COURSE_JITTER_SCALE : 0;
-          zb.push(h - i * bh + jitter);
+      // ---- Stacked-voxel cliff (T-311 P6): the trigger is the SERVER's
+      // CliffGrid.edge flag, not a client depth heuristic — "does the atlas
+      // say this is a cliff-perimeter cell", replacing the retired
+      // `depth > CLIFF_MIN` client trigger. profileId resolves to a
+      // CliffProfileDef.id string via the client's stable index table;
+      // dispatch through the registered voxeliser for that profile.
+      const cliffEdge = cliff?.grid.edge[cellIdx] === 1;
+      const profileIdStr = cliffEdge ? cliff!.profileOf(cliff!.grid.profileId[cellIdx]) : undefined;
+      const voxeliser = profileIdStr ? getCliffVoxeliser(profileIdStr) : undefined;
+      if (voxeliser) {
+        const erosion = cliff!.erosionOf(profileIdStr!, cliff!.grid.erosion[cellIdx]);
+        if (erosion) {
+          const expE = (h - hE) > CLIFF_SIDE_EXPOSE_MIN;
+          const expW = (h - hW) > CLIFF_SIDE_EXPOSE_MIN;
+          const expS = (h - hS) > CLIFF_SIDE_EXPOSE_MIN;
+          const expN = (h - hN) > CLIFF_SIDE_EXPOSE_MIN;
+          const ctx: CliffBuildContext = {
+            x0: offX + cx, y0: offZ + cy, h, depth,
+            expE, expW, expS, expN,
+            erosion, materialId: m, tintScale, dispMagBase,
+            mossBias, og01, wet01,
+          };
+          for (const atom of voxeliser.build(ctx)) bucket.push(atom);
+          continue;
         }
-        zb.push(h - depth);
-        // Sub-lip stones displace their corners HARDER than the terrain
-        // constant — a shared seam vertex then offsets differently per side,
-        // opening deliberate chinks between stones (never on the lip).
-        const stoneDisp = warpAmp > 0 ? dispMagBase + warpAmp * CHINK_DISP_SCALE : undefined;
-        // Independently-warped stones open corner gaps; a gap must only ever
-        // reveal ANOTHER stone, never the bright world behind the wall. So
-        // every sub-lip stone is OVERSIZED into known-solid: up into the stone
-        // above, down into the one below / the base, and sideways into the
-        // hill on welded sides — clipping is deliberate and invisible. The
-        // overlap exceeds the max corner roll (dispMag), so even a fully
-        // rolled-back corner still sits inside the neighbouring stone.
-        const overlap = stoneDisp !== undefined ? stoneDisp + OVERLAP_MARGIN : 0;
-        for (let i = 0; i < n; i++) {
-          let zTop = zb[i], zBot = zb[i + 1];
-          let x0 = offX + cx, x1 = offX + cx + 1;
-          let y0 = offZ + cy, y1 = offZ + cy + 1;
-          if (warpAmp > 0 && i > 0) {
-            if (expE) x1 += (voxHash(x1, y0, zTop, 3) - 0.5) * warpAmp;
-            if (expW) x0 += (voxHash(x0, y0, zTop, 4) - 0.5) * warpAmp;
-            if (expS) y1 += (voxHash(x0, y1, zTop, 5) - 0.5) * warpAmp;
-            if (expN) y0 += (voxHash(x0, y0, zTop, 6) - 0.5) * warpAmp;
-            zTop += overlap;          // clip up into the stone above (lip stays exact)
-            zBot -= overlap;          // clip down into the stone below / the base
-            if (!expE) x1 += overlap; // clip into the hill on welded sides
-            if (!expW) x0 -= overlap;
-            if (!expS) y1 += overlap;
-            if (!expN) y0 -= overlap;
-          }
-          bucket.push({
-            cx: (x0 + x1) / 2,
-            cy: (y0 + y1) / 2,
-            cz: (zTop + zBot) / 2,
-            sx: x1 - x0, sy: y1 - y0, sz: zTop - zBot,
-            materialId: m,
-            // Sub-lip stones warp their corners INDEPENDENTLY (own dispSeed):
-            // each pokes out of the merged wall and clips into its neighbours
-            // — per-stone facet normals then light every stone differently.
-            // The lip stone stays welded to the plateau (walk surface).
-            ...(i > 0 && stoneDisp !== undefined && {
-              dispMag: stoneDisp,
-              dispSeed: 1 + Math.floor(voxHash(offX + cx, offZ + cy, i, 8) * 0xffff),
-            }),
-            ...(tintScale !== undefined && { tintScale }),
-            // The top stone reads as floor; the face stones below gather moss
-            // in their seams (jointBoost) — "oldest stone most swallowed".
-            ...(og01 > 0 && {
-              moss01: i === 0
-                ? og01 * mossBias!.floor
-                : Math.min(1, og01 * mossBias!.wall * (1 + mossBias!.joint)),
-            }),
-            ...(wet01 !== undefined && { wet01 }),
-          });
-        }
-        continue;
       }
 
       // Flat / shallow cell → one column box (top at h, floor at h-depth).

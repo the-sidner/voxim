@@ -90,9 +90,9 @@ function makeEntity(): EntityState {
  * `ClientWorld`'s single chunk map. `heightmap` and `materialGrid` are the
  * only fields guaranteed present — they're the two components every chunk
  * entity always carries (game.ts's loading gate has always been
- * `state.heightmap && state.materialGrid`). The other five ride the same
+ * `state.heightmap && state.materialGrid`). The other six ride the same
  * chunk entity but ship as separate wire components; production always
- * writes all seven together at chunk creation (`chunksFromBuffers`), so in
+ * writes all eight together at chunk creation (`chunksFromBuffers`), so in
  * practice they arrive in the SAME spawn message — but nothing here assumes
  * that ordering: fields are filled in as their deltas/spawn-components
  * decode, in whatever order they arrive.
@@ -118,15 +118,15 @@ export class ClientWorld {
   private lastSnapshotTick = -1;
 
   /** Single grid owner: one entry per chunk coord, filled in as grid
-   *  components decode (in any order). Replaces the old seven parallel
+   *  components decode (in any order). Replaces the old parallel
    *  chunk* maps. */
   private readonly chunks = new Map<string, Partial<ClientChunk>>();
   /**
    * Reverse map: chunk entityId → "chunkX,chunkY". The wire's openMask/
-   * kindGrid/vegFieldGrid/surfaceStateGrid/waterGrid components don't carry
-   * their own chunkX/chunkY — this recovers the coord so their deltas can
-   * still find (or create) the right `chunks` entry even if they arrive
-   * before the chunk's heightmap.
+   * kindGrid/vegFieldGrid/surfaceStateGrid/waterGrid/cliffGrid components
+   * don't carry their own chunkX/chunkY — this recovers the coord so their
+   * deltas can still find (or create) the right `chunks` entry even if they
+   * arrive before the chunk's heightmap.
    */
   private readonly chunkCoordByEntity = new Map<string, string>();
   /**
@@ -143,10 +143,11 @@ export class ClientWorld {
    * first spawn/delta BATCH boundary where both `heightmap` and
    * `materialGrid` are present — never mid-decode, so every grid that rode
    * the same message (openMask, kindGrid, vegFieldGrid, surfaceStateGrid,
-   * waterGrid) is already bound when listeners run. Today's production path
-   * writes all seven together at chunk creation, so in practice all seven
-   * are present; callers that need one of the five non-gating grids should
-   * still null-check it (an old save predating T-311 P3 may lack fields).
+   * waterGrid, cliffGrid) is already bound when listeners run. Today's
+   * production path writes all eight together at chunk creation, so in
+   * practice all eight are present; callers that need one of the six
+   * non-gating grids should still null-check it (an old save predating
+   * T-311 P3/P6 may lack fields).
    *
    * Replays every chunk already ready so a late-registered listener catches
    * up without waiting for the next delta.

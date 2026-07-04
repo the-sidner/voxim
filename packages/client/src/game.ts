@@ -58,6 +58,7 @@ import { BootstrapSource } from "@voxim/content";
 import { crossCheckProcModels } from "./render/procmodel/mod.ts";
 import { crossCheckTextureStyles } from "./render/material_textures.ts";
 import { crossCheckFlickerCurves } from "./render/flicker_curves.ts";
+import { crossCheckCliffVoxelisers } from "./render/cliff_voxeliser.ts";
 import type { ContentService, Prefab, ToolData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
@@ -334,6 +335,8 @@ export class VoximGame {
       // T-311 Phase 2: every LightDef.flickerCurveId resolves to a registered curve.
       crossCheckFlickerCurves(this.contentService);
       crossCheckDecals(this.contentService);
+      // T-311 P6: every CliffProfileDef.id resolves to a registered cliffVoxeliser.
+      crossCheckCliffVoxelisers(this.contentService);
       // T-315 D5: LOS gameplay tuning moved from protocol/fog.ts to
       // GameConfig.fogOfWar — keep the client's predicted LOS byte-parity
       // with the server's FogOfWarSystem, which reads the same values.
