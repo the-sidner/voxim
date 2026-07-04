@@ -16,7 +16,7 @@
 import * as THREE from "three";
 import type { ClientChunk, ClientWorld, EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { WeaponActionDef, Prefab } from "@voxim/content";
+import type { WeaponActionDef, Prefab, AtmosphereDef } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
 import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
 import { applySurfaceTreatment } from "./surface_treatments.ts";
@@ -265,6 +265,18 @@ export class VoximRenderer {
    *  transition or a biome change re-selects without a special-cased hook;
    *  null until the first successful apply so the very first frame always runs. */
   private appliedAtmosphereId: string | null = null;
+  /** The currently-applied AtmosphereDef (T-311 P5a) — GroundMistLayer reads
+   *  its mist params off here each frame (EdgePass.setMist). */
+  private currentAtmosphere: AtmosphereDef | null = null;
+  /** Current lerped mist density weight — smoothed toward
+   *  `mist.densityByPhase[currentDayPhase]` the same way envLighting's
+   *  lightCur lerps colors, so mist doesn't snap on a phase change. */
+  private mistWeightCur = 0;
+  /** Last day-phase name set via setDayPhase() (DayPhaseChanged events) —
+   *  mist's phase weight follows the same discrete-phase bucket the colour
+   *  ramp does, not a continuous curve (no second FieldExpr-shaped mechanism
+   *  for a 4-point lookup). */
+  private currentDayPhase = "noon";
 
   /** Smooth animation tick — advances at server tick rate (20 Hz) based on real time. */
   private smoothTick = 0;
@@ -840,6 +852,7 @@ export class VoximRenderer {
    */
   setDayPhase(phase: string): void {
     this.envLighting.setPhase(phase);
+    this.currentDayPhase = phase;
   }
 
   // ---- debug ----
@@ -1240,11 +1253,23 @@ export class VoximRenderer {
         const atmo = this.content.getAtmosphere(clock.biomeTag) ?? this.content.getAtmosphere("default");
         if (atmo) {
           this.envLighting.applyAtmosphere(atmo);
+          this.currentAtmosphere = atmo;
           this.appliedAtmosphereId = clock.biomeTag;
         }
       }
     }
     this.envLighting.update(this.cameraTarget, this.camera.position, t01);
+
+    // Ground mist (T-311 P5a, GroundMistLayer): lerp this frame's phase
+    // density weight toward the current AtmosphereDef's target the same way
+    // envLighting's lightCur lerps colors, so mist doesn't snap on a phase
+    // change; params (band/color) are static per atmosphere, only reapplied
+    // when they change.
+    if (this.currentAtmosphere) {
+      const target = this.currentAtmosphere.mist.densityByPhase[this.currentDayPhase] ?? 0;
+      this.mistWeightCur += (target - this.mistWeightCur) * 0.015;
+      this.edgePass.setMist(this.currentAtmosphere.mist, this.mistWeightCur);
+    }
 
     // Update weapon tip trail ribbons for all currently attacking entities.
     const tTrailStart = performance.now();

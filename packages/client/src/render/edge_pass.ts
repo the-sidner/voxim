@@ -81,6 +81,10 @@ const FRAG = /* glsl */`
   uniform sampler2D tGodRay;           // half-res radial light-shaft buffer
   uniform float     uGodRayStrength;   // light-shaft intensity (0 = off)
   uniform vec3      uGodRayColor;      // warm shaft tint
+  uniform vec3      uMistColor;        // ground-mist tint (T-311 P5a, GroundMistLayer)
+  uniform float     uMistHeightMin;    // world-Y band floor the mist pools in
+  uniform float     uMistHeightMax;    // world-Y band ceiling (fully faded above this)
+  uniform float     uMistWeight;       // this phase's density (0 = off), from AtmosphereDef
   uniform mat4      uProjInv;
   uniform mat4      uViewInv;
   uniform float     uTileSize;          // world units per tile axis (= fog texture side)
@@ -349,6 +353,26 @@ const FRAG = /* glsl */`
       color.rgb *= fogBrightness(fogVal);
     }
 
+    // ---- Ground mist (T-311 P5a, GroundMistLayer / plan G7) -------------
+    // Reuses the SAME depth-reconstruction trick as fog-of-war above, but in
+    // its OWN unconditional block: fog-of-war's reconstruction is gated on
+    // uTileSize > 0.0 (no tile loaded yet), which would incorrectly also
+    // skip mist. Params (band, color, phase weight) all come from the
+    // current AtmosphereDef. Depth-based, so it composites BEFORE the
+    // vignette/grim-grade block (mist is atmospheric - it should get graded
+    // like everything else) and right next to fog-of-war (the other
+    // depth-based atmospheric effect).
+    if (depth < 0.9999 && uMistWeight > 0.0) {
+      vec4 ndc     = vec4(vUv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+      vec4 viewPos = uProjInv * ndc;
+      viewPos     /= viewPos.w;
+      vec4 world   = uViewInv * viewPos;
+
+      // 1 at/below uMistHeightMin, 0 at/above uMistHeightMax, smooth between.
+      float mistFactor = (1.0 - smoothstep(uMistHeightMin, uMistHeightMax, world.y)) * uMistWeight;
+      color.rgb = mix(color.rgb, uMistColor, clamp(mistFactor, 0.0, 1.0));
+    }
+
     // ---- Vignette (presentation) ----------------------------------------
     // A gentle corner falloff focuses the eye on the player and keeps the
     // lifted scene feeling close and grim. Subtle — never a hard black frame.
@@ -408,6 +432,13 @@ export class EdgePass {
         tGodRay:        { value: blackTex },
         uGodRayStrength: { value: 0.3 },
         uGodRayColor:    { value: new THREE.Color(1.0, 0.93, 0.74) },  // warm shaft
+        // Mist defaults to OFF (uMistWeight 0) until setMist() applies the
+        // current AtmosphereDef — matches data/atmospheres/default.json's
+        // shape, no visible seam before the bootstrap arrives.
+        uMistColor:     { value: new THREE.Color(0xb07a5e) },
+        uMistHeightMin: { value: 0.0 },
+        uMistHeightMax: { value: 2.5 },
+        uMistWeight:    { value: 0.0 },
         uProjInv:      { value: new THREE.Matrix4() },
         uViewInv:      { value: new THREE.Matrix4() },
         uTileSize:     { value: 0.0 },           // 0 disables fog (no tile yet)
@@ -556,6 +587,21 @@ export class EdgePass {
   /** Bind the live god-ray (light-shaft) texture. */
   setGodRayTexture(tex: THREE.Texture): void {
     this.material.uniforms.tGodRay.value = tex;
+  }
+
+  /**
+   * Apply the current AtmosphereDef's ground-mist params (T-311 P5a,
+   * GroundMistLayer) + this frame's phase density weight (already resolved
+   * by the caller from `mist.densityByPhase` the same way lightCur lerps —
+   * a plain per-phase lookup, not a second FieldExpr-shaped mechanism for a
+   * 4-point curve). Called once per tile transition (params) / per frame
+   * (phaseWeight) from the renderer's per-frame update, alongside setGrade.
+   */
+  setMist(mist: { heightMin: number; heightMax: number; color: string }, phaseWeight: number): void {
+    (this.material.uniforms.uMistColor.value as THREE.Color).set(mist.color);
+    this.material.uniforms.uMistHeightMin.value = mist.heightMin;
+    this.material.uniforms.uMistHeightMax.value = mist.heightMax;
+    this.material.uniforms.uMistWeight.value = phaseWeight;
   }
 
   /** Advance the animated film grain (seconds). */
