@@ -1286,6 +1286,20 @@ instead of hardcoded literals. Zero look-change at noon (pinned regression in `s
 suite 605/605 green throughout; atlas snapshot suite unaffected (biomeTag is additive metadata, not baked
 into any buffer). Next: **Phase 5b** — WaterStyleDef + water_renderer rebuild, reusing this same
 biomeTag selector.
+**Phase 5b LANDED (lane/atmosphere):** `WaterStyleDef` content category (wave/fresnel/specular shader
+params + base colour, `data/water_styles/default.json` freezing today's literals verbatim) — selected via
+the SAME `WorldClock.biomeTag` key P5a's AtmosphereDef uses (the point where I2's "one render-context key,
+not three wire bumps" promise is actually redeemed: two independent consumers now share it). `water_renderer.ts`
+rebuilt wholesale on `WaterGrid.surfaceLevel`: the KindGrid-derivation path, the client-mirrored
+`RIVER_DEPTH` constant, and the pending/tryBuild wait machinery are all deleted (closes the T-315 comb
+note); geometry now merges contiguous same-height row runs into single quads (unit-tested, 5 new headless
+tests — no THREE scene dependency needed for pure geometry). Cheap wetness-weighted reflection shipped as
+two additive consumers of the wet_specular's existing `aWetness` input: a sky-tinted `reflect()` term in
+the water shader (EnvironmentLighting is now also the single sky-colour owner via `getSkyColor()`), and a
+new `wet_reflect` SurfaceTreatment for wet ground materials (`render.reflect`, unused since G4 until now) —
+no render-to-texture, no probe, no SSR (the full planar probe stays a named T-313 follow-on). Full suite
+610/610 green throughout. This closes the atmosphere lane's scope (P5a+P5b); P5c (creatures) and P6
+(terrain) remain, owned by other lanes.
 
 ### T-312b · re-apply atlas render-fields on save-load
 Effort: S   Status: done   Commit: 1248388

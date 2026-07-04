@@ -214,10 +214,13 @@ phase (prove the data arrives). FieldExpr/FieldSampler substrate lands here (wit
 - **Water (cheap reflection, deferred probe)** — ship `WaterStyleDef` + `render.wetness`/`render.reflect`
   via G4, and a **cheap** reflection (screen-space emissive-streak + sky-gradient weighted by wetness — the
   `image-gen-3` torch-streak look). **Defer the full planar probe** to a named follow-on arc.
-  **`WaterStyleDef` + the `water_renderer.ts` rebuild LANDED** (P5b): the file now reads
+  **P5b LANDED — the whole bullet.** `WaterStyleDef` + the `water_renderer.ts` rebuild: the file now reads
   `WaterGrid.surfaceLevel` directly (the KindGrid dependency, the mirrored `RIVER_DEPTH` constant, and the
-  pending/tryBuild wait machinery are all deleted — closes the T-315 comb note that lived here) and styles
-  itself from the selected `WaterStyleDef`. The cheap reflection streak is next.
+  pending/tryBuild wait machinery are all deleted — closed the T-315 comb note that lived here) and styles
+  itself from the selected `WaterStyleDef`. Cheap reflection shipped as two additive consumers of the same
+  `aWetness` input `wet_specular` reads: a sky-tinted `reflect()` term in the water shader, and a new
+  `wet_reflect` SurfaceTreatment for wet ground materials (`render.reflect`) — no render-to-texture, no
+  probe, no SSR. The full planar probe stays deferred (T-313 already tracks it as a named follow-on).
 - *Caveat (review §6):* the shadow frustum is ±60u; on-screen shafts beyond that fall back to a uniform
   smear → either widen/cascade the frustum (real engine work, scope it) or author god-rays as **near-field
   only** and say which in the AtmosphereDefs.
