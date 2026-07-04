@@ -589,6 +589,15 @@ export class EdgePass {
     this.material.uniforms.tGodRay.value = tex;
   }
 
+  /** Composite strength/tint for the god-ray buffer, from the current
+   *  AtmosphereDef.godRay (T-311 P5a) — `GodRayPass.setParams` covers the
+   *  march itself (uDensity/uDecay/uWeight); this covers how EdgePass adds
+   *  the result into the HDR scene. Called once per atmosphere change. */
+  setGodRayParams(strength: number, color: string): void {
+    this.material.uniforms.uGodRayStrength.value = strength;
+    (this.material.uniforms.uGodRayColor.value as THREE.Color).set(color);
+  }
+
   /**
    * Apply the current AtmosphereDef's ground-mist params (T-311 P5a,
    * GroundMistLayer) + this frame's phase density weight (already resolved

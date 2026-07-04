@@ -1255,6 +1255,10 @@ export class VoximRenderer {
           this.envLighting.applyAtmosphere(atmo);
           this.currentAtmosphere = atmo;
           this.appliedAtmosphereId = clock.biomeTag;
+          // God-ray params are static per atmosphere (unlike mist's per-phase
+          // weight) — applied once here, not every frame.
+          this.godRay.setParams(atmo.godRay);
+          this.edgePass.setGodRayParams(atmo.godRay.strength, atmo.godRay.color);
         }
       }
     }
