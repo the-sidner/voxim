@@ -1491,7 +1491,7 @@ live stack): 4 s of micro-aiming around a world-pinned target moved camera yaw 0
 (no feedback loop); two-heading screenshots sane. Full suite 580/580 green.
 
 ### T-318 · Terraced cliffs — CliffProfileDef + CliffGrid (T-311 Phase 6)
-Effort: L   Status: in-progress   Plan: `VISUAL_DATAMODEL_PLAN.md` §Phase 6
+Effort: L   Status: done   Commit: c9e1013   Plan: `VISUAL_DATAMODEL_PLAN.md` §Phase 6
 
 Cliff shape stops being a client-side voxeliser heuristic and becomes atlas-authored terrain.
 The atlas resolves wilderness-perimeter cells into tier bands via a new `CliffProfileDef`
@@ -1537,6 +1537,59 @@ ships for those wall kinds. Flagged as a player-visible regression risk to confi
 Done when: wire+content+atlas+client+physics land per the checklist below, full suite green,
 and (post-merge, live stack) a re-bake shows real stepped/eroded cliff variety with stairs
 still walkable and CliffGrid surviving chunk unload/reload.
+
+**Landed** (`38e4514` wire · `335125a` content · `ebebb80` atlas emission · `a1902dc` client
+voxeliser · `46f5c7b` physics verification · `c9e1013` Studio panel): CliffGrid wireId 58
+(after poiInteractable 57), all-zero content first, full ChunkLifecycleSystem
+snapshot/restore + round-trip test coverage. `CliffProfileDef` content category
+(BOOTSTRAP_VERSION 17→18) with four authored profiles (columnar/broken/sloped/stone_stair).
+Atlas `cliffStage` — the 13th pipeline stage (extended `@voxim/levelgen`'s `pipe()` overload
+list 12→13), placed zoneGraph→cliff→poiNetwork→fields, resolving stone wilderness-perimeter
+cells against `content.cliffProfiles` via a stable alphabetical id→index table (the first real
+I3c instance). Client `cliffVoxeliser` registry (`packages/client/src/render/
+cliff_voxeliser.ts`) replaces the retired `CLIFF_MIN`/`STONE_H`/`STACK_MAX`/`EXPOSE_MIN`
+constants in the same commit; the trigger is now the server's `CliffGrid.edge` flag, not a
+depth heuristic; falls through byte-identically when cliff input is absent/all-zero/
+unresolvable (version-drift safety, test-verified). Physics collision-agreement verified by
+construction — `terrain_lookup.ts` reads only Heightmap/OpenMask, never CliffGrid; three new
+physics tests pin "wall blocks regardless of CliffGrid content", "raw wallStep exceeds
+stepHeight", "stair ramp walks while adjacent CliffGrid-edge wall still blocks". Studio Cliff
+panel (`cliff-editor/CliffEditor.tsx`) previews through the real `buildChunkAtoms`+
+`getCliffVoxeliser`+`bakeVoxels` pipeline with an erosion-state picker and a collision-overlay
+toggle (honestly inert in v1 — collision and render top are identical by construction, no
+divergence exists to surface yet).
+
+**Scope decision (flag for future work):** v1 terracing is **vertical coursing within one wall
+cell's column**, not a horizontal multi-ring staircase with walkable intermediate ledges —
+`Heightmap` is BYTE-IDENTICAL to the pre-P6 single-`wallStep` output (confirmed:
+`generate.snapshot.test.ts` stayed green unmodified, no `ATLAS_SNAPSHOT_CAPTURE` needed). This
+is the single biggest scope call in this ticket; a future phase revisiting "real" horizontal
+terraces (thicker wall bands, new openMask semantics, `applyStairUnlock` rework) should read
+this ticket's body + `VISUAL_DATAMODEL_PLAN.md` §Phase 6 first. Also flagged: v1 only covers
+`wallKind: "stone"` cells (forest/grassMound/water walls lose their pre-P6 depth-based stacking
+look until a future profile ships for those kinds) — a player-visible regression risk to
+confirm post-merge on the live stack.
+
+**This closes T-315's last deferred item** ("Water/SUN_DIR/CLIFF_* stay deferred to T-311
+P5/P6" — water/SUN_DIR were T-311 P5's remit, CLIFF_* is this ticket's).
+
+Post-merge (live stack only, per lane rules — no docker/testplay/bake ran in this lane):
+re-bake a fresh world (`?seed=7&width=2&height=2`), confirm the tile self-restarts onto it,
+testplay at a wilderness edge to confirm stepped/eroded cliff variety renders, stairs stay
+walkable, a player cannot walk up a raw tier step, and CliffGrid survives a chunk unload/reload
+walk (walk far away and back — the T-315 A1 sister-bug scenario).
+
+### T-319 · SurfaceStateGrid.variantIndex has no I3c stable-index cross-check
+Effort: S   Status: todo
+
+Found while writing T-318's field-set matrix: `SurfaceStateGrid.variantIndex` (T-311 P3) is
+derived by an inline `corruption[i] > threshold ? 1 : 0` formula in the atlas `fields.ts`, not
+by resolving against a real `content.materials[...].variants` id table — there is no boot
+cross-check asserting "atlas's variant-id table == bootstrap's variant-id table" the way T-318's
+`CliffGrid.profileId` now has. Not urgent (the two-state 0/1 index can't drift today), but worth
+a real stable-index table + cross-check if `MaterialStateLadder` variants grow past two states.
+Done when: `variantIndex` resolves through a real content lookup with the same alphabetical
+id→index discipline `CliffGrid.profileId` established.
 
 ## Player UX
 

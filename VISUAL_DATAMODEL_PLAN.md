@@ -234,14 +234,28 @@ phase (prove the data arrives). FieldExpr/FieldSampler substrate lands here (wit
   smear → either widen/cascade the frustum (real engine work, scope it) or author god-rays as **near-field
   only** and say which in the AtmosphereDefs.
 
-### Phase 6 ✶ · Server-authoritative terraced cliffs (supersedes 0b; the G5 proof)
-Atlas resolves perimeter cells into tier bands via **`CliffProfileDef`** + emits the **stepped `Heightmap`**
-AND a **`CliffGrid`** {profile/erosion/tier/edge}. Client **deletes `CLIFF_*`** and voxelises the
-authoritative heights, dispatching `profileId` through a **`cliffVoxeliser` registry**
-(columnar/broken/sloped/stone_stair). Collision agrees because physics floors against the same stepped
-heights. **Overhang dropped (I3a).** Scree via the world-lattice seeding.
+### Phase 6 ✶ · Server-authoritative terraced cliffs (supersedes 0b; the G5 proof) — LANDED (T-318)
+Atlas resolves perimeter cells into tier bands via **`CliffProfileDef`** + emits a **`CliffGrid`**
+{profile/erosion/tier/edge}. Client **deletes `CLIFF_*`** and voxelises the authoritative cells,
+dispatching `profileId` through a **`cliffVoxeliser` registry** (columnar/broken/sloped/stone_stair).
+Collision agrees because physics floors against `Heightmap`. **Overhang dropped (I3a).**
 - *Deliverable:* real stepped cliffs with 3 erosion states, collision+render agree, `CLIFF_*` deleted;
   Studio Cliff panel with a **collision-overlay** toggle; re-bake.
+- **Scope decision landed (see T-318):** "stepped heightmap" shipped as **vertical coursing within one
+  wall cell's column** (`CliffGrid.tier` selects the course; `Heightmap` stays byte-identical to the
+  pre-P6 single-`wallStep` output), NOT a horizontal multi-ring staircase with walkable intermediate
+  ledges. This keeps collision-agreement true by construction (confirmed: `buildTerrainLookup`/
+  `buildOpennessLookup` read only Heightmap/OpenMask, never CliffGrid) and needed zero changes to
+  `stair_unlock.ts` (height-agnostic). A true horizontal terrace is a materially larger scope (thicker
+  wall bands, new openMask semantics, `applyStairUnlock` rework) deferred to a future phase if wanted.
+  Scree via the world-lattice seeding was NOT pursued this phase (not load-bearing for the collision/
+  render-agreement proof); tracked as a small follow-up if the look needs it.
+- **v1 scope narrowing (flagged, needs a follow-up look pass):** only `wallKind: "stone"` cells get a
+  `CliffProfileDef` — forest/grassMound/water walls stay `profileId=0`, losing the pre-P6 client's
+  depth-based stacking look for those wall kinds until a future profile ships for them.
+- **profileId is the FIRST real instance of the I3c stable content-index pattern** — `SurfaceStateGrid.
+  variantIndex` (Phase 3) still has no such mechanism (an inline threshold formula, not a content
+  lookup); this phase did not retrofit that pre-existing gap, only avoided repeating it.
 
 ### Phase 7 ✶ · Modular settlements + roads (LATER — the largest axis, scoped)
 **Not a 3-file primitive — a procedural-city composer.** Scope to: land
