@@ -8,14 +8,16 @@ import { VoxelEditor } from "./voxel-editor/VoxelEditor.tsx";
 import { AnimationEditor } from "./animation-editor/AnimationEditor.tsx";
 import { MaterialEditor } from "./material-editor/MaterialEditor.tsx";
 import { ProcModelEditor } from "./procmodel-editor/ProcModelEditor.tsx";
+import { DissolveEditor } from "./dissolve-editor/DissolveEditor.tsx";
 
-type Route = "voxel" | "anim" | "material" | "procmodel";
+type Route = "voxel" | "anim" | "material" | "procmodel" | "dissolve";
 
 function currentRoute(): Route {
   const h = (globalThis as { location?: Location }).location?.hash ?? "";
   if (h === "#anim") return "anim";
   if (h === "#material") return "material";
   if (h === "#procmodel") return "procmodel";
+  if (h === "#dissolve") return "dissolve";
   return "voxel";
 }
 
@@ -40,7 +42,8 @@ export function App() {
         {route === "voxel" ? <VoxelEditor />
           : route === "anim" ? <AnimationEditor />
           : route === "material" ? <MaterialEditor />
-          : <ProcModelEditor />}
+          : route === "procmodel" ? <ProcModelEditor />
+          : <DissolveEditor />}
       </div>
     </>
   );
@@ -66,6 +69,10 @@ function TopBar({ route, onPick }: { route: Route; onPick: (r: Route) => void })
         class={`dt-tab ${route === "procmodel" ? "is-active" : ""}`}
         onClick={() => onPick("procmodel")}
       >ProcModel</button>
+      <button
+        class={`dt-tab ${route === "dissolve" ? "is-active" : ""}`}
+        onClick={() => onPick("dissolve")}
+      >Dissolve</button>
     </div>
   );
 }

@@ -112,6 +112,7 @@ const WRITABLE_PREFIXES = [
   "skeletons/",
   "materials/",   // T-311 Phase 1b — the Studio Material editor writes render blocks
   "procmodels/",  // T-311 Phase 1a — the Studio ProcModel editor writes tuned params
+  "dissolve_profiles/", // T-311 P5c — the Studio Dissolve editor writes fray/cap tuning
 ];
 
 function isWritablePath(file: string): boolean {

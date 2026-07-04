@@ -6,7 +6,7 @@
  * kitchen + the material / texture factory only, never game.ts or networking) so
  * the studio bundle stays lean. Exposed as the `@voxim/client/render` subpath.
  */
-export { bakeVoxels, bakeSubModel, resolveMossResponse } from "./voxel_bake.ts";
+export { bakeVoxels, bakeSubModel, resolveMossResponse, resolveFrayCoreness, driftDirFor } from "./voxel_bake.ts";
 export type { BakedMesh, TintJitter, MossResponse } from "./voxel_bake.ts";
 export { geometryFromBaked } from "./voxel_geo.ts";
 export { buildVoxelMaterial } from "./voxel_material.ts";
@@ -23,3 +23,5 @@ export {
   registerBuiltinSurfaceTreatments,
   surfaceTreatmentIds,
 } from "./surface_treatments.ts";
+export { registerDissolveDrift } from "./dissolve_shader.ts";
+export type { DissolveUniforms } from "./dissolve_shader.ts";
