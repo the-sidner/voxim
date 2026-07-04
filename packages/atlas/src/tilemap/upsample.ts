@@ -32,6 +32,7 @@
 
 import type { TileInit } from "./types.ts";
 import type { FieldPlanes } from "./pipeline/fields.ts";
+import type { CliffPlanes } from "./pipeline/cliff.ts";
 import { levelToZoneOf } from "./level/types.ts";
 
 /** Nearest-resample a gridSize² plane to targetSize² (T-311 P3). Render fields
@@ -62,6 +63,17 @@ function upsampleFieldPlanes(f: FieldPlanes, g: number, target: number): FieldPl
     ruinAge:     nearestResample(f.ruinAge, g, target),
     traffic:     nearestResample(f.traffic, g, target),
     surfaceLevel: nearestResample(f.surfaceLevel, g, target),
+  };
+}
+
+/** Nearest-resample the cliff planes (T-311 P6) — discrete descriptors, same
+ *  rationale as the render fields (never bilinear a profile/erosion id). */
+function upsampleCliffPlanes(c: CliffPlanes, g: number, target: number): CliffPlanes {
+  return {
+    profileId: nearestResample(c.profileId, g, target),
+    erosion:   nearestResample(c.erosion, g, target),
+    tier:      nearestResample(c.tier, g, target),
+    edge:      nearestResample(c.edge, g, target),
   };
 }
 
@@ -109,6 +121,8 @@ export interface UpsampleOutput {
   zoneBuffer: Uint16Array;
   /** T-311 P3 render-field planes, nearest-resampled to targetSize². */
   fields: FieldPlanes;
+  /** T-311 P6 cliff planes, nearest-resampled to targetSize². */
+  cliff: CliffPlanes;
 }
 
 export function upsampleTile(tile: TileInit, options: UpsampleOptions): UpsampleOutput {
@@ -190,5 +204,6 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
   }
 
   const fields = upsampleFieldPlanes(tile.fields, g, targetSize);
-  return { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields };
+  const cliff = upsampleCliffPlanes(tile.cliff, g, targetSize);
+  return { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields, cliff };
 }

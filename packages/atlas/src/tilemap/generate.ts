@@ -37,6 +37,7 @@ import { rivers } from "./pipeline/rivers.ts";
 import { terrain } from "./pipeline/terrain.ts";
 import { materials } from "./pipeline/materials.ts";
 import { zoneGraph } from "./pipeline/zone_graph.ts";
+import { cliffStage } from "./pipeline/cliff.ts";
 import { poiNetwork } from "./pipeline/poi_network.ts";
 import { fieldsStage } from "./pipeline/fields.ts";
 import { deriveGateSummary } from "./summary.ts";
@@ -111,6 +112,7 @@ export function generateTile(
     bind(terrain,         params.terrain,    tileSeed),
     bind(materials,       params.materials,  tileSeed),
     bind(zoneGraph,       params.zoneGraph,  tileSeed),
+    bind(cliffStage,      params.cliff,      tileSeed),
     bind(poiNetwork,      params.poiNetwork, tileSeed),
     bind(fieldsStage,     params.fields,     tileSeed),
   );
@@ -158,6 +160,7 @@ export function assembleTileInit(s: FieldsState): TileInit {
     // `levelToZoneOf(level)` on the consumer side.
     level:      s.level,
     fields:     s.fields,
+    cliff:      s.cliff,
   };
 }
 
@@ -183,6 +186,7 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     gateSummary: t.gateSummary,
     level:     t.level,
     fieldsB64: encodeFieldsB64(t.fields),
+    cliffB64:  encodeCliffB64(t.cliff),
   };
 }
 
@@ -216,6 +220,27 @@ function decodeFieldsB64(m: Record<string, string> | undefined, cells: number): 
     variantIndex: u8("variantIndex"), ruinAge: u8("ruinAge"), traffic: u8("traffic"),
     surfaceLevel: f32("surfaceLevel"),
   };
+}
+
+/** Encode the cliff planes to a name→base64 map (T-311 P6). u8-only — simpler than fields'. */
+function encodeCliffB64(c: TileInit["cliff"]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(c)) {
+    out[k] = bytesToBase64(new Uint8Array((v as ArrayBufferView).buffer, (v as ArrayBufferView).byteOffset, (v as ArrayBufferView).byteLength));
+  }
+  return out;
+}
+
+/** Decode the name→base64 cliff map back into typed planes. Absent map (a
+ *  world baked before T-311 P6) → all-zero planes of gridSize² so an old DB
+ *  payload loads without crashing; a re-bake fills them. */
+function decodeCliffB64(m: Record<string, string> | undefined, cells: number): TileInit["cliff"] {
+  if (!m) {
+    const z = () => new Uint8Array(cells);
+    return { profileId: z(), erosion: z(), tier: z(), edge: z() };
+  }
+  const u8 = (k: string) => base64ToBytes(m[k]);
+  return { profileId: u8("profileId"), erosion: u8("erosion"), tier: u8("tier"), edge: u8("edge") };
 }
 
 export function tileInitFromWire(w: TileInitWire): TileInit {
@@ -269,6 +294,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     gateSummary: w.gateSummary,
     level:     w.level,
     fields:    decodeFieldsB64(w.fieldsB64, w.gridSize * w.gridSize),
+    cliff:     decodeCliffB64(w.cliffB64, w.gridSize * w.gridSize),
   };
 }
 

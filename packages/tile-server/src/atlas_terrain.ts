@@ -25,7 +25,7 @@ import {
   biomeTag,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
-  type TileInitWire, type LevelDef, type FieldPlanes, type DeepPartialGenParams,
+  type TileInitWire, type LevelDef, type FieldPlanes, type CliffPlanes, type DeepPartialGenParams,
   type BiomeParams,
 } from "@voxim/atlas";
 import {
@@ -63,6 +63,8 @@ export interface AtlasTerrainResult {
   kindBuffer: Uint16Array;
   /** T-311 P3 render-field planes at TILE_SIZE², sliced into the chunk grids. */
   fields: FieldPlanes;
+  /** T-311 P6 cliff planes at TILE_SIZE², sliced into the CliffGrid chunk component. */
+  cliff: CliffPlanes;
   /**
    * Initial gate-summary u16 from atlas. Tile-server publishes this to
    * coordinator on boot so the world-graph aggregate gets seeded; phase
@@ -279,7 +281,7 @@ export async function loadTerrainFromAtlas(
   const tile = tileInitFromWire(row.payload as unknown as TileInitWire);
   const { materialMap, defaultMaterialId } = buildMaterialMap(content);
   const genParams = mergeGenParams(world.params as unknown as DeepPartialGenParams);
-  const { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields } = upsampleTile(tile, {
+  const { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields, cliff } = upsampleTile(tile, {
     targetSize: TILE_SIZE,
     materialMap,
     defaultMaterialId,
@@ -335,6 +337,7 @@ export async function loadTerrainFromAtlas(
     openBuffer,
     kindBuffer,
     fields,
+    cliff,
     gateSummary: tile.gateSummary,
     tileSeed: Number(row.seed),
     cellX,

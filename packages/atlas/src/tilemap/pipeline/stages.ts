@@ -23,6 +23,7 @@ import { rivers } from "./rivers.ts";
 import { terrain } from "./terrain.ts";
 import { materials } from "./materials.ts";
 import { zoneGraph } from "./zone_graph.ts";
+import { cliffStage } from "./cliff.ts";
 import { poiNetwork } from "./poi_network.ts";
 import { fieldsStage } from "./fields.ts";
 import type { GenParams } from "../../genparams.ts";
@@ -30,7 +31,7 @@ import type { GenParams } from "../../genparams.ts";
 export type StageId =
   | "noiseField" | "junctions" | "network" | "rooms" | "portalPlacement"
   | "boundaryKinds" | "rivers" | "terrain" | "materials" | "zoneGraph"
-  | "poiNetwork" | "fields";
+  | "cliff" | "poiNetwork" | "fields";
 
 export interface StageMeta {
   id: StageId;
@@ -53,6 +54,7 @@ export const ORDERED_STAGES: ReadonlyArray<StageMeta> = [
   { id: "terrain",         transformer: terrain         as Transformer<unknown, unknown, unknown>, paramsKey: "terrain",   label: "Terrain" },
   { id: "materials",       transformer: materials       as Transformer<unknown, unknown, unknown>, paramsKey: "materials", label: "Materials" },
   { id: "zoneGraph",       transformer: zoneGraph       as Transformer<unknown, unknown, unknown>, paramsKey: "zoneGraph",  label: "Zone graph" },
+  { id: "cliff",           transformer: cliffStage      as Transformer<unknown, unknown, unknown>, paramsKey: "cliff",      label: "Cliff terraces" },
   { id: "poiNetwork",      transformer: poiNetwork      as Transformer<unknown, unknown, unknown>, paramsKey: "poiNetwork", label: "POI network" },
   { id: "fields",          transformer: fieldsStage     as Transformer<unknown, unknown, unknown>, paramsKey: "fields",     label: "Render fields" },
 ];

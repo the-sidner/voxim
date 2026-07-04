@@ -21,6 +21,8 @@ export type {
   WaterStyleDef,
   DecalDef,
   DissolveProfileDef,
+  CliffProfileDef,
+  CliffErosionState,
   MaterialProperties,
   VoxelNode,
   SubObjectRef,

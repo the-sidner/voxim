@@ -301,6 +301,13 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
       h ^= hashString(JSON.stringify(s.zones));
       h ^= hashString(JSON.stringify((s.level as { regions: unknown }).regions));
       break;
+    case "cliff": {
+      // T-311 P6 — same "never let a new stage's output go unhashed"
+      // discipline the T-315 A5 fields fix established.
+      const c = s.cliff as Record<string, ArrayBufferView>;
+      for (const k of Object.keys(c).sort()) h ^= hashBytes(viewOf(c[k]));
+      break;
+    }
     case "poiNetwork":
       // T-214: narrative + stairs are now on state.level; their JSON
       // shape is the canonical hash input for the matcher's output.

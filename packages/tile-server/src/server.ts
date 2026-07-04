@@ -1100,6 +1100,7 @@ export class TileServer {
         atlas.openBuffer,
         atlas.kindBuffer,
         atlas.fields, // T-311 P3 render-field planes → VegFieldGrid/SurfaceStateGrid/WaterGrid
+        atlas.cliff,  // T-311 P6 cliff planes → CliffGrid
       );
       this.spawnWorldState(content, atlas.biomeTag);
 
@@ -1113,7 +1114,7 @@ export class TileServer {
       // atlas output, deliberately excluded from the save, so overlay them onto
       // the loaded chunks now — else scatter/moss/wetness see neutral fields
       // until the next from-scratch gen (T-312b).
-      applyFieldsToChunks(this.world, atlas.fields);
+      applyFieldsToChunks(this.world, atlas.fields, atlas.cliff);
       // T-311 P5a: same bucket as the fields overlay above — biomeTag is
       // atlas-derived, not gameplay state, so always refresh it from this
       // boot's atlas classification (also self-heals old saves whose

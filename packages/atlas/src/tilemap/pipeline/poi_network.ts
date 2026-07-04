@@ -44,8 +44,8 @@ import type { GenParams } from "../../genparams.ts";
 import type { BiomeParams } from "../../worldmap/types.ts";
 import { biomeMatches } from "./biome_tag.ts";
 import type {
-  AnnotatedZone, AnnotatedZoneState, DagShape,
-  PoiInstance, PoiNetworkState, ResolvedGate,
+  AnnotatedZone, AnnotatedZoneState, CliffState, DagShape,
+  PoiInstance, ResolvedGate,
   StairInstance, TileNarrative, TrinketInstance,
 } from "./state.ts";
 import type {
@@ -64,7 +64,7 @@ import type {
  * tests that exercise `generateTile` without a content store stay
  * deterministic.
  */
-export const poiNetwork: Transformer<AnnotatedZoneState, PoiNetworkState, GenParams["poiNetwork"]> =
+export const poiNetwork: Transformer<CliffState, CliffState, GenParams["poiNetwork"]> =
   (state, seed, params) => {
     const regionIdByZoneId = new Map<number, RegionId>();
     for (const r of state.level.regions) regionIdByZoneId.set(r.zoneId, r.id);

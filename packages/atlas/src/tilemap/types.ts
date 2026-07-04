@@ -11,6 +11,7 @@
 import type { Edge } from "../worldmap/types.ts";
 import type { LevelDef } from "./level/types.ts";
 import type { FieldPlanes } from "./pipeline/fields.ts";
+import type { CliffPlanes } from "./pipeline/cliff.ts";
 
 /** Default side length of the playable tile in world units. */
 export const DEFAULT_TILE_SIZE = 512;
@@ -173,6 +174,13 @@ export interface TileInit {
    * SurfaceStateGrid/WaterGrid chunk components by the tile-server. Render-only.
    */
   fields: FieldPlanes;
+
+  /**
+   * T-311 P6 — per-cell terraced-cliff planes (profileId/erosion/tier/edge),
+   * length gridSize² each. Upsampled + sliced into the CliffGrid chunk
+   * component by the tile-server. Render-only, never collision.
+   */
+  cliff: CliffPlanes;
 }
 
 /**
@@ -203,4 +211,6 @@ export interface TileInitWire {
   level: LevelDef;
   /** T-311 P3 — render-field planes, base64-encoded raw bytes per plane name. */
   fieldsB64: Record<string, string>;
+  /** T-311 P6 — cliff planes, base64-encoded raw bytes per plane name. */
+  cliffB64: Record<string, string>;
 }

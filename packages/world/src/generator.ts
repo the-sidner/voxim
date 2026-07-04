@@ -24,9 +24,9 @@
 
 import type { World, EntityId } from "@voxim/engine";
 import type { BiomeDef, ZoneDef } from "@voxim/content";
-import { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness, setChunkKinds, setChunkVegField, setChunkSurfaceState, setChunkWater } from "./chunk.ts";
-import { Heightmap, VegFieldGrid, SurfaceStateGrid, WaterGrid } from "./components.ts";
-import type { VegFieldGridData, SurfaceStateGridData } from "./components.ts";
+import { createChunk, setChunkHeights, setChunkMaterials, setChunkOpenness, setChunkKinds, setChunkVegField, setChunkSurfaceState, setChunkWater, setChunkCliffGrid } from "./chunk.ts";
+import { Heightmap, VegFieldGrid, SurfaceStateGrid, WaterGrid, CliffGrid } from "./components.ts";
+import type { VegFieldGridData, SurfaceStateGridData, CliffGridData } from "./components.ts";
 import { CHUNK_SIZE, CHUNK_CELLS, CHUNKS_PER_TILE_SIDE, TILE_SIZE, snapHeight } from "./terrain.ts";
 
 /**
@@ -47,6 +47,16 @@ export interface FieldsBufferInput {
   wetness: Uint8Array; overgrowth: Uint8Array; wear: Uint8Array;
   variantIndex: Uint8Array; ruinAge: Uint8Array; traffic: Uint8Array;
   surfaceLevel: Float32Array;
+}
+
+/**
+ * T-311 P6 cliff planes at TILE_SIZE². Same parallel-contract discipline as
+ * `FieldsBufferInput` — a deliberate structural mirror of atlas's CliffPlanes
+ * (packages/atlas/src/tilemap/pipeline/cliff.ts) bridged the same way at
+ * tile-server's atlas_terrain.ts call site. Sliced per chunk into CliffGrid.
+ */
+export interface CliffBufferInput {
+  profileId: Uint8Array; erosion: Uint8Array; tier: Uint8Array; edge: Uint8Array;
 }
 import {
   fbm,
@@ -436,6 +446,30 @@ function sliceFieldsForChunk(fields: FieldsBufferInput, cx: number, cy: number):
   return { veg, surf, water };
 }
 
+/**
+ * Slice the tile-wide cliff planes into ONE chunk's CliffGrid (T-311 P6).
+ * Sibling of `sliceFieldsForChunk`, reusing the SAME chunk-projection math —
+ * shared by `chunksFromBuffers` (fresh gen) and `applyFieldsToChunks`
+ * (save-load overlay) so the two paths can never drift.
+ */
+function sliceCliffForChunk(cliff: CliffBufferInput, cx: number, cy: number): CliffGridData {
+  const profileId = new Uint8Array(CHUNK_CELLS);
+  const erosion = new Uint8Array(CHUNK_CELLS);
+  const tier = new Uint8Array(CHUNK_CELLS);
+  const edge = new Uint8Array(CHUNK_CELLS);
+  for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+      const flatIdx = (cx * CHUNK_SIZE + lx) + (cy * CHUNK_SIZE + ly) * TILE_SIZE;
+      const chunkIdx = lx + ly * CHUNK_SIZE;
+      profileId[chunkIdx] = cliff.profileId[flatIdx];
+      erosion[chunkIdx] = cliff.erosion[flatIdx];
+      tier[chunkIdx] = cliff.tier[flatIdx];
+      edge[chunkIdx] = cliff.edge[flatIdx];
+    }
+  }
+  return { profileId, erosion, tier, edge };
+}
+
 export function chunksFromBuffers(
   world: World,
   heightBuffer: Float32Array,
@@ -443,6 +477,7 @@ export function chunksFromBuffers(
   openBuffer?: Uint8Array,
   kindBuffer?: Uint16Array,
   fields?: FieldsBufferInput,
+  cliff?: CliffBufferInput,
 ): EntityId[] {
   const chunkIds: EntityId[] = [];
 
@@ -478,6 +513,9 @@ export function chunksFromBuffers(
         setChunkSurfaceState(world, id, surf);
         setChunkWater(world, id, water);
       }
+      if (cliff) {
+        setChunkCliffGrid(world, id, sliceCliffForChunk(cliff, cx, cy));
+      }
 
       chunkIds[cx + cy * CHUNKS_PER_TILE_SIDE] = id;
     }
@@ -494,7 +532,7 @@ export function chunksFromBuffers(
  * here. Writes via `world.write` (not the guarded `setChunk*`) so it ADDS the
  * components even on a chunk reconstructed from a save that never had them.
  */
-export function applyFieldsToChunks(world: World, fields: FieldsBufferInput): void {
+export function applyFieldsToChunks(world: World, fields: FieldsBufferInput, cliff?: CliffBufferInput): void {
   for (const { entityId } of world.query(Heightmap)) {
     const hm = world.get(entityId, Heightmap);
     if (!hm) continue;
@@ -502,6 +540,9 @@ export function applyFieldsToChunks(world: World, fields: FieldsBufferInput): vo
     world.write(entityId, VegFieldGrid, veg);
     world.write(entityId, SurfaceStateGrid, surf);
     world.write(entityId, WaterGrid, { surfaceLevel: water });
+    if (cliff) {
+      world.write(entityId, CliffGrid, sliceCliffForChunk(cliff, hm.chunkX, hm.chunkY));
+    }
   }
 }
 

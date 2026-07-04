@@ -18,7 +18,7 @@ import { fbm } from "@voxim/levelgen";
 import { BoundaryKind } from "@voxim/protocol";
 import { RIVER_DEPTH } from "./terrain.ts";
 import { ZONE_ID_NONE } from "./state.ts";
-import type { PoiNetworkState, FieldsState } from "./state.ts";
+import type { CliffState, FieldsState } from "./state.ts";
 
 /** Own fbm channel for the fertility dapple (noise stage uses …3001). */
 const DAPPLE_SUB_SEED = 0x30003002;
@@ -208,7 +208,7 @@ export function deriveFieldPlanes(input: FieldDeriveInput): FieldPlanes {
  * Atlas inspector (heat overlays / tuning) now and threaded to the chunk grids +
  * re-bake in a follow-up. Adds no mutation to the existing buffers.
  */
-export const fieldsStage: Transformer<PoiNetworkState, FieldsState, FieldParams> =
+export const fieldsStage: Transformer<CliffState, FieldsState, FieldParams> =
   (state, seed, params) => {
     const n = state.gridSize * state.gridSize;
     const pathLevel = new Uint8Array(n);

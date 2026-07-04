@@ -354,6 +354,16 @@ export interface GenParams {
     /** fertility corruption term: (1 - damp × corruption/255). */
     fertilityCorruptionDamp: number;
   };
+
+  /** T-311 P6 — CliffGrid derivation (per-zone erosion-state hash thresholds).
+   *  Stone wilderness-perimeter cells only (v1 scope); forest/grass_mound
+   *  walls stay undecorated (profileId 0 = "none"). */
+  cliff: {
+    /** hash255(chamber/zone, tileSeed) below this → "crisp" erosion. */
+    erosionCrispMax: number;
+    /** ...between erosionCrispMax and this → "weathered"; above → "broken". */
+    erosionWeatheredMax: number;
+  };
 }
 
 /**
@@ -505,6 +515,10 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     fertilityCanopyGain:     0.6,
     fertilityCorruptionDamp: 0.5,
   },
+  cliff: {
+    erosionCrispMax:     85,   // hash255 < 85  → crisp     (~1/3)
+    erosionWeatheredMax: 170,  // 85..170       → weathered (~1/3); above → broken
+  },
 };
 
 // ---- named presets -------------------------------------------------------
@@ -648,6 +662,7 @@ function cloneParams(p: GenParams): GenParams {
     zoneGraph:  { ...p.zoneGraph },
     poiNetwork: { ...p.poiNetwork },
     fields:     { ...p.fields },
+    cliff:      { ...p.cliff },
   };
 }
 

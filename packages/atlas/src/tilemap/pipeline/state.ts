@@ -260,11 +260,22 @@ export interface TileNarrative {
 export type PoiNetworkState = AnnotatedZoneState;
 
 /**
+ * After the `cliff` stage (T-311 Phase 6): the per-cell terraced-cliff
+ * planes {profileId, erosion, tier, edge} for stone wilderness-perimeter
+ * cells. Runs immediately after `zoneGraph`, before `poiNetwork`/`fields`.
+ */
+export interface CliffState extends AnnotatedZoneState {
+  cliff: import("./cliff.ts").CliffPlanes;
+}
+
+/**
  * After the `fields` stage (T-311 P3): the per-cell render-field planes derived
  * from the topology + biome. Read by the Atlas inspector (heat overlays) and,
  * in a follow-up, threaded to the VegFieldGrid/SurfaceStateGrid/WaterGrid chunk
- * components. Adds no mutation to the existing buffers.
+ * components. Adds no mutation to the existing buffers. Chains through
+ * `CliffState` (T-311 P6) since `cliff` runs before `fields` in stage order —
+ * `PoiNetworkState → CliffState → FieldsState`.
  */
-export interface FieldsState extends PoiNetworkState {
+export interface FieldsState extends CliffState {
   fields: import("./fields.ts").FieldPlanes;
 }
