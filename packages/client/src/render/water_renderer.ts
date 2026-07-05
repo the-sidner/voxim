@@ -98,8 +98,21 @@ const FRAG = /* glsl */`
 
     // Sun glint (Blinn) on the perturbed normal — a tight HDR highlight that the
     // bloom pass turns into glittering sparkle on the crests.
+    //
+    // Gating by dot(N,H)^exponent alone is not enough to confine the glint to
+    // crests: when the sun sits near zenith AND the camera looks down steeply
+    // (both true at noon with this game's ~55°-pitch chase camera), the
+    // half-vector H lands close to vertical everywhere, and normalScale only
+    // tilts N a few degrees even at max wave height — so dot(N,H) stays high
+    // across nearly the WHOLE surface, not just the peaks, and the "highlight"
+    // becomes a flat near-white wash (the porcelain-water bug, T-311 P5b fix).
+    // lum (already the 0..1 wave-height proxy driving the deep<->shallow
+    // tint) is a camera/sun-independent measure of "how close to a crest this
+    // texel is" — smoothstep it so the glint only switches on near actual
+    // peaks, regardless of viewing/sun geometry.
+    float crest = smoothstep(0.75, 0.97, lum);
     vec3 H = normalize(uSunDir + V);
-    float spec = pow(max(dot(N, H), 0.0), uSpecularExponent);
+    float spec = pow(max(dot(N, H), 0.0), uSpecularExponent) * crest;
     col += spec * uSpecularGain;
 
     // Cheap sky-streak reflection (T-311 P5b, no probe/SSR): the view
