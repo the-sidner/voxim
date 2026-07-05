@@ -128,6 +128,55 @@ Deno.test("shed_dissolve: a player entity (no NpcTag) is unaffected — hook no-
   assertEquals(world.isAlive(id), false, "players never carry NpcTag — always destroyed same tick as before");
 });
 
+Deno.test("shed_dissolve: the health<=0 sweep must not re-kill a lingering corpse (dissolve_timer decays under the REAL tick loop)", () => {
+  // Live-found bug (T-311 P5c I3b measurement): a lingering corpse keeps
+  // Health.current = 0, so DeathSystem's composed-lethal sweep re-requested
+  // its death EVERY tick — re-running shed_dissolve, whose world.set re-seeded
+  // dissolve_timer back to full AFTER ResourceSystem's decrement in the same
+  // tick's op-log. Net: the timer sat pinned at max forever and no corpse
+  // ever dissolved. The sibling tests missed it because none re-ran
+  // DeathSystem after the linger vote. This test drives the real per-tick
+  // system order (ResourceSystem then DeathSystem, one changeset per tick).
+  const content = newContent();
+  content.registerResource({
+    id: "dissolve_timer", scope: "entity", bounds: { min: 0, max: 1 }, rate: -20,
+    thresholds: [{ at: 0, dir: "below", edge: "cross", effect: "destroy_self" }],
+  });
+  const fx = newResourceEffectRegistry();
+  fx.register(destroySelfEffect);
+  const resources = new ResourceSystem(content, fx, newResourceModifierRegistry(), noDeaths, newModifierSourceRegistry());
+  const hooks = new Registry<DeathHook>();
+  hooks.register(createShedDissolveHook(content));
+  const death = new DeathSystem(hooks);
+
+  const world = new World();
+  const events = new EventBus();
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, Health, { current: 0, max: 55 });
+  world.write(id, NpcTag, { npcType: "test_drowner", name: "Drowner" });
+
+  function tick(): void {
+    resources.run(world, events, DT);
+    death.run(world, events, DT);
+    world.applyChangeset();
+  }
+
+  tick(); // death sweep fires, hook seeds dissolve_timer = 4/4, linger vote
+  assertEquals(world.isAlive(id), true);
+  assertEquals(world.get(id, Resource)!.values.dissolve_timer.value, 4);
+
+  tick(); // ResourceSystem 4 -> 3; the sweep must NOT re-seed it back to 4
+  assertEquals(world.get(id, Resource)!.values.dissolve_timer.value, 3,
+    "a lingering corpse's dissolve_timer must decay — the health<=0 sweep re-killed it and re-seeded the timer");
+
+  tick(); // 3 -> 2
+  tick(); // 2 -> 1
+  assert(world.isAlive(id), "still lingering one tick before the terminal cross");
+  tick(); // 1 -> 0: crosses below 0, destroy_self removes the corpse
+  assertEquals(world.isAlive(id), false, "corpse removed exactly once the timer finishes");
+});
+
 Deno.test("dissolve_timer: cross@0 -> destroy_self removes the lingering corpse once the dissolve finishes", () => {
   const content = newContent();
   content.registerResource({
