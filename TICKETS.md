@@ -1325,9 +1325,19 @@ the boss) is unchanged. Client: G6 sidecar extended (`VoxelAtom.fray01`/
 `driftDir` → `aFray`/`aDriftDir`, byte-identical when absent) + an isolated,
 cleanly-revertible in-shader drift patch (`dissolve_shader.ts`, per-vertex
 `transformed +=` offset only, zero CPU re-bake) + a Studio Dissolve panel
-showing the I3b caps live. **I3b MEASUREMENT DEFERRED TO POST-MERGE** — this
-lane has no live stack (see lane rules); the exact synthetic-crowd
-measurement procedure and pass/fail bar are in the lane's final report. Known
+showing the I3b caps live. **I3b MEASUREMENT: PASS** (post-merge, live stack,
+2026-07-06): 6 drowners killed in one burst via the new `DebugKillEntity` dev
+command (harness commit 148446f); baseline with 14+ live drowners on screen
+POST 0.3–0.8 ms (median ~0.45), during 6 simultaneous dissolves POST
+0.4–1.2 ms across 6 mid-dissolve samples in two runs — worst-case increase
++0.75 ms, typical +0.2–0.5 ms, within the ≤~1–2 ms bar (headless software-GL,
+so absolute costs are conservative). GL stayed inside its baseline noise band
+(8–14 ms). The measurement also FOUND AND FIXED a shipped P5c bug: no corpse
+ever dissolved live — DeathSystem's health<=0 sweep re-killed the lingering
+corpse every tick and shed_dissolve re-seeded `dissolve_timer` back to 60/60
+after each ResourceSystem decrement (commit 87843e6, regression-pinned in
+shed_dissolve.test.ts; the lane's tests never re-ran DeathSystem after the
+linger vote). Known
 v1 scope gap (documented at `ContentCache.getSoleDissolveProfileSync`): the
 wire carries no per-entity archetype id, so the client resolves "the sole
 registered profile" rather than a true per-entity lookup — correct today
