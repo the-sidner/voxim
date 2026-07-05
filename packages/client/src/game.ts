@@ -1533,6 +1533,10 @@ export class VoximGame {
         this._sendCommand({ cmd: CommandType.DebugSetStat, stat: action.stat, value: action.value });
         break;
 
+      case "debug_kill_entity":
+        this._sendCommand({ cmd: CommandType.DebugKillEntity, entityId: action.entityId });
+        break;
+
       case "equip":
         this._sendCommand({ cmd: CommandType.Equip, fromInventorySlot: action.fromSlot });
         break;

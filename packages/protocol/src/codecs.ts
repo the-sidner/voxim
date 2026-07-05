@@ -249,6 +249,15 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       return u8;
     }
 
+    case CommandType.DebugKillEntity: {
+      const strBytes = new TextEncoder().encode(cmd.entityId);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      return u8;
+    }
+
     case CommandType.Respawn:
       return new Uint8Array(0);
   }
@@ -390,6 +399,12 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const strLen = bytes[0];
       const stairId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
       return { cmd: CommandType.DebugGiveTrinket, stairId };
+    }
+
+    case CommandType.DebugKillEntity: {
+      const strLen = bytes[0];
+      const entityId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      return { cmd: CommandType.DebugKillEntity, entityId };
     }
 
     case CommandType.Respawn:

@@ -168,7 +168,13 @@ export const enum CommandType {
                           //   wired (via per-instance ItemEffects) to its trinketId. Stands in for
                           //   the full POI-completion -> trinket-drop economy, which is separate,
                           //   larger, out-of-scope work (see TICKETS.md T-212).
-  // 27, 29-255 reserved for future commands
+  // 27 reserved for future commands
+  DebugKillEntity   = 29, // payload: u8 strLen + UTF-8 entityId — dev-only cheat (T-311 P5c I3b
+                          //   harness): sets the named entity's Health.current to 0 via the
+                          //   proper deferred world.mutate write, so DeathSystem + death hooks
+                          //   (e.g. shed_dissolve) run exactly as they would from real combat.
+                          //   Lets the I3b dissolve-cost measurement kill an arbitrary NPC.
+  // 30-255 reserved for future commands
 }
 
 /**
@@ -216,6 +222,7 @@ export type CommandPayload =
   | { cmd: CommandType.DebugTeleport;  worldX: number; worldY: number }
   | { cmd: CommandType.DebugSetStat;   stat: string; value: number }
   | { cmd: CommandType.DebugGiveTrinket; stairId: string }
+  | { cmd: CommandType.DebugKillEntity; entityId: string }
   | { cmd: CommandType.Respawn };
 
 export interface CommandDatagram {

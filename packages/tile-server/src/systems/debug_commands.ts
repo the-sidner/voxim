@@ -14,6 +14,7 @@
  *   DebugSetTime   — snap the world clock to a specific hour (0–24)
  *   DebugTeleport  — teleport the player to world coordinates (X, Y)
  *   DebugSetStat   — set health or stamina to an exact value
+ *   DebugKillEntity — zero an arbitrary entity's health (DeathSystem + death hooks run normally)
  */
 import { newEntityId } from "@voxim/engine";
 import type { World, EntityId } from "@voxim/engine";
@@ -68,6 +69,9 @@ export class DebugCommandSystem implements System {
             break;
           case CommandType.DebugGiveTrinket:
             this._giveTrinket(world, entityId, cmd.stairId);
+            break;
+          case CommandType.DebugKillEntity:
+            this._killEntity(world, cmd.entityId as EntityId);
             break;
         }
       }
@@ -189,5 +193,24 @@ export class DebugCommandSystem implements System {
       default:
         log.warn("debug_set_stat: unknown stat '%s'", stat);
     }
+  }
+
+  /**
+   * DebugKillEntity (T-311 P5c I3b harness) — zero the named entity's Health
+   * through the same deferred `world.mutate` every other Health writer uses
+   * (health_hit_handler.ts, skill_effects.ts, buff.ts), so DeathSystem sees a
+   * committed 0-health entity next tick exactly as it would from real combat
+   * damage — DeathSystem + any death hooks (e.g. the drowner's shed_dissolve)
+   * run unmodified. Lets the harness kill an arbitrary NPC by id (no reach/
+   * ownership gate — this is a dev-only cheat, same trust level as the other
+   * DebugX commands, gated by devMode at the top of run()).
+   */
+  private _killEntity(world: World, entityId: EntityId): void {
+    if (!world.isAlive(entityId) || !world.has(entityId, Health)) {
+      log.warn("debug_kill_entity: entity '%s' not found or has no Health", entityId);
+      return;
+    }
+    world.mutate(entityId, Health, (h) => ({ ...h, current: 0 }));
+    log.info("debug_kill_entity: entity=%s", entityId);
   }
 }

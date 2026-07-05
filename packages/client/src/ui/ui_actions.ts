@@ -55,6 +55,7 @@ export type UIAction =
   | { type: "debug_set_time";   hour: number }
   | { type: "debug_teleport";   worldX: number; worldY: number }
   | { type: "debug_set_stat";   stat: "health" | "stamina"; value: number }
+  | { type: "debug_kill_entity"; entityId: string }
 
   // Building
   | { type: "place_blueprint"; structureType: string; worldX: number; worldY: number }
