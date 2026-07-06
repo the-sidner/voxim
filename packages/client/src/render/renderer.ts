@@ -32,6 +32,7 @@ import { EntityMeshRegistry } from "./entity_mesh_registry.ts";
 import { EnvironmentLighting } from "./environment_lighting.ts";
 import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "./entity_mesh.ts";
 import { computeTelegraphLayer } from "./telegraph.ts";
+import { computeIframeFlash, applyIframeFlash } from "./iframe_flash.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
 import { solveSwingPose, applyLocomotionPose, applyCrouchPose, timeOfDay01 } from "@voxim/content";
@@ -1046,6 +1047,11 @@ export class VoximRenderer {
           const phase = anim?.dissolutionPhase ?? 0;
           for (const u of mesh.dissolveUniforms) u.uPhase.value = phase;
         }
+        // Readable i-frame flash (T-298): a client-derived bone-shine while
+        // dodge_roll's dash phase (the i-frame window) is live — the player
+        // SEES why the dodge worked. Every entity's voxelMeshes carry their
+        // own material instances, so this never bleeds across entities.
+        applyIframeFlash(mesh, computeIframeFlash(mesh.activeActions, (id) => this.content!.getAction(id)));
         const skeleton   = this.content.getSkeletonSync(mesh.skeletonId);
         const clipIndex  = this.content.getClipIndex(mesh.skeletonId);
         const maskIndex  = this.content.getMaskIndex(mesh.skeletonId);
