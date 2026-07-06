@@ -31,6 +31,8 @@ export type {
   TradeCompletedEvent,
   LoreExternalisedEvent,
   LoreInternalisedEvent,
+  EnclosureChangedEvent,
+  EnclosedCell,
 } from "./src/messages.ts";
 
 export {
@@ -67,6 +69,7 @@ export type {
   TradeCompletedPayload,
   LoreExternalisedPayload,
   LoreInternalisedPayload,
+  EnclosureChangedPayload,
 } from "./src/tile_events.ts";
 
 export {

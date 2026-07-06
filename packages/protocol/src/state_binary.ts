@@ -34,6 +34,7 @@
  *   LoreExternalised  uuid entityId, str fragmentId
  *   LoreInternalised  uuid entityId, str fragmentId
  *   HitSpark          f32 x, f32 y, f32 z, str attackerPart, str victimPart
+ *   EnclosureChanged  u16 numCells, per cell: u16 x, u16 y
  */
 
 import type { Serialiser } from "@voxim/engine";
@@ -216,6 +217,11 @@ function encodeEvent(w: WireWriter, ev: GameEvent): void {
       w.writeStr(ev.topologyRole);
       w.writeU8(ev.traversal === "wilderness" ? 1 : 0);
       break;
+    case "EnclosureChanged":
+      w.writeU8(EventType.EnclosureChanged);
+      w.writeU16(ev.cells.length);
+      for (const c of ev.cells) { w.writeU16(c.x); w.writeU16(c.y); }
+      break;
   }
 }
 
@@ -317,6 +323,12 @@ function decodeEvent(r: WireReader): GameEvent {
       const topologyRole = r.readStr();
       const traversal    = r.readU8() === 1 ? "wilderness" : "path";
       return { type: "ZoneEntered", playerId, zoneId, zoneName, topologyRole, traversal };
+    }
+    case EventType.EnclosureChanged: {
+      const count = r.readU16();
+      const cells: { x: number; y: number }[] = [];
+      for (let i = 0; i < count; i++) cells.push({ x: r.readU16(), y: r.readU16() });
+      return { type: "EnclosureChanged", cells };
     }
     default:
       throw new Error(`Unknown event type ID: ${typeId}`);

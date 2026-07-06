@@ -55,6 +55,33 @@ Deno.test("T-271: a Healed event round-trips (entityId + amount)", () => {
   }
 });
 
+Deno.test("T-066: an EnclosureChanged event round-trips its full cell list", () => {
+  const msg = emptyMsg();
+  msg.events = [{
+    type: "EnclosureChanged",
+    cells: [{ x: 10, y: 20 }, { x: 11, y: 20 }, { x: 511, y: 0 }],
+  }];
+  const decoded = binaryStateMessageCodec.decode(binaryStateMessageCodec.encode(msg));
+  assertEquals(decoded.events.length, 1);
+  const ev = decoded.events[0];
+  assertEquals(ev.type, "EnclosureChanged");
+  if (ev.type === "EnclosureChanged") {
+    assertEquals(ev.cells, [{ x: 10, y: 20 }, { x: 11, y: 20 }, { x: 511, y: 0 }]);
+  }
+});
+
+Deno.test("T-066: an empty EnclosureChanged cell list round-trips (all walls opened)", () => {
+  const msg = emptyMsg();
+  msg.events = [{ type: "EnclosureChanged", cells: [] }];
+  const decoded = binaryStateMessageCodec.decode(binaryStateMessageCodec.encode(msg));
+  assertEquals(decoded.events.length, 1);
+  const ev = decoded.events[0];
+  assertEquals(ev.type, "EnclosureChanged");
+  if (ev.type === "EnclosureChanged") {
+    assertEquals(ev.cells, []);
+  }
+});
+
 Deno.test("T-250: an empty removals list decodes to empty and doesn't desync the stream", () => {
   const msg = emptyMsg();
   // Put something after the removals section so a mis-sized removals read

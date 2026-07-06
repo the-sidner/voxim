@@ -51,6 +51,16 @@ export const TileEvents = {
   TradeCompleted: Symbol("TradeCompleted"),
   LoreExternalised: Symbol("LoreExternalised"),
   LoreInternalised: Symbol("LoreInternalised"),
+  /**
+   * Published by EnclosureSystem (T-065 server core, T-066 wire face) after
+   * it recomputes the enclosed-cell set and it differs from last time. Tile-
+   * wide broadcast (like DayPhaseChanged) — not scoped to one player, since
+   * a building's roof is visible to everyone near it. Carries the FULL
+   * current enclosed-cell set (not a diff): the client rebuilds its roof
+   * geometry wholesale on each change, which is simpler and cheap (an
+   * enclosure recomputes only on wall completion, not every tick).
+   */
+  EnclosureChanged: Symbol("EnclosureChanged"),
 } as const;
 
 export interface EntityDiedPayload {
@@ -180,4 +190,18 @@ export interface LoreExternalisedPayload {
 export interface LoreInternalisedPayload {
   entityId: EntityId;
   fragmentId: string;
+}
+
+/**
+ * One sealed world cell, integer coordinates (floor of the world position —
+ * matches EnclosureSystem.isEnclosed's convention).
+ */
+export interface EnclosedCell {
+  x: number;
+  y: number;
+}
+
+export interface EnclosureChangedPayload {
+  /** The full enclosed-cell set after this recompute (not a diff). */
+  cells: EnclosedCell[];
 }

@@ -250,7 +250,8 @@ export type GameEvent =
   | LoreExternalisedEvent
   | LoreInternalisedEvent
   | ZoneEnteredEvent
-  | HealedEvent;
+  | HealedEvent
+  | EnclosureChangedEvent;
 
 /**
  * Fired when a player crosses a zone boundary or spawns (T-211). The
@@ -404,4 +405,24 @@ export interface LoreInternalisedEvent {
   type: "LoreInternalised";
   entityId: EntityId;
   fragmentId: string;
+}
+
+/** One sealed world cell, integer coordinates. */
+export interface EnclosedCell {
+  x: number;
+  y: number;
+}
+
+/**
+ * Fired by EnclosureSystem (T-065 server core, T-066 wire face) whenever its
+ * recomputed enclosed-cell set differs from last time — a wall ring closing
+ * or a hole reopening. Tile-wide broadcast, like DayPhaseChanged: every
+ * connected client sees the same roofs, so there's no per-player filtering.
+ * Carries the FULL current set (not a diff/delta) — the client discards its
+ * previous roof geometry and rebuilds from this list each time, which stays
+ * simple given how rarely walls change.
+ */
+export interface EnclosureChangedEvent {
+  type: "EnclosureChanged";
+  cells: EnclosedCell[];
 }
