@@ -627,8 +627,9 @@ export class TileServer {
 
     // Enclosure detection (T-065, server core) — caches which world cells are
     // sealed inside walls, recomputing only on a wall-change signal
-    // (BuildingCompleted). The protocol EnclosureChanged event + client roof
-    // rendering are T-066; this stays server-local for now.
+    // (BuildingCompleted). Publishes TileEvents.EnclosureChanged on a
+    // recompute that actually changes the set; EventRouter forwards it to
+    // every client so the roof renderer can rebuild (T-066).
     const enclosureSystem = new EnclosureSystem();
 
     // T-259 content cross-checks — every TriggerDef's `on` must be a

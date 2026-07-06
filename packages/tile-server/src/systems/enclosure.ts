@@ -29,10 +29,13 @@
  * (the same edit gate phase 6D mentions), route it through `markDirty()` too.
  *
  * Queryable state: `isEnclosed(worldX, worldY)` — the dual of how other
- * systems expose derived state (NpcSensory's job writes, FogOfWar's grid). The
- * protocol `EnclosureChanged` event + client roof rendering are T-066; this
- * system deliberately publishes nothing on the wire yet (server-local, the way
- * buff/modifier/resource state started).
+ * systems expose derived state (NpcSensory's job writes, FogOfWar's grid).
+ *
+ * Wire face (T-066): on a recompute whose resulting set differs from the
+ * previous one, `run` publishes `TileEvents.EnclosureChanged` with the full
+ * new cell set (day_night.ts's DayPhaseChanged shape — a tile-wide broadcast,
+ * not scoped to one player). The EventRouter/AoI plumbing forwards it to
+ * every connected client so the client roof renderer can rebuild.
  */
 import type { World, EventBus } from "@voxim/engine";
 import { Heightmap, OpenMask, CHUNK_SIZE } from "@voxim/world";
@@ -80,29 +83,40 @@ export class EnclosureSystem implements System {
     this.dirty = true;
   }
 
-  run(world: World, _events: EventEmitter, _dt: number): void {
+  run(world: World, events: EventEmitter, _dt: number): void {
     if (!this.dirty) return;
     this.dirty = false;
 
     const { grid, originX, originY } = buildWallGrid(world);
+    let next: Set<string>;
     if (!grid) {
       // No loaded chunks → nothing can be enclosed.
-      if (this.enclosed.size) this.enclosed = new Set();
-      return;
-    }
-    const local = detectEnclosedCells(grid);
+      next = new Set();
+    } else {
+      const local = detectEnclosedCells(grid);
 
-    // Re-key from grid-local cells to absolute WORLD cells so queries can use
-    // entity world positions directly.
-    const next = new Set<string>();
-    for (const key of local) {
-      const comma = key.indexOf(",");
-      const lx = Number(key.slice(0, comma));
-      const ly = Number(key.slice(comma + 1));
-      next.add(cellKey(originX + lx, originY + ly));
+      // Re-key from grid-local cells to absolute WORLD cells so queries can use
+      // entity world positions directly.
+      next = new Set();
+      for (const key of local) {
+        const comma = key.indexOf(",");
+        const lx = Number(key.slice(0, comma));
+        const ly = Number(key.slice(comma + 1));
+        next.add(cellKey(originX + lx, originY + ly));
+      }
     }
+
+    const changed = !setsEqual(this.enclosed, next);
     this.enclosed = next;
-    log.debug("recomputed enclosure: %d enclosed cells", next.size);
+    if (changed) {
+      log.debug("recomputed enclosure: %d enclosed cells", next.size);
+      events.publish(TileEvents.EnclosureChanged, {
+        cells: [...next].map((key) => {
+          const comma = key.indexOf(",");
+          return { x: Number(key.slice(0, comma)), y: Number(key.slice(comma + 1)) };
+        }),
+      });
+    }
   }
 
   /**
@@ -113,10 +127,17 @@ export class EnclosureSystem implements System {
     return this.enclosed.has(cellKey(Math.floor(worldX), Math.floor(worldY)));
   }
 
-  /** Read-only view of the enclosed world-cell set (for T-066 / tests). */
+  /** Read-only view of the enclosed world-cell set (for tests). */
   enclosedCells(): ReadonlySet<string> {
     return this.enclosed;
   }
+}
+
+/** True if two string sets contain exactly the same members. */
+function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
 }
 
 /**

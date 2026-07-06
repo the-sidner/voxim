@@ -105,6 +105,10 @@ function isEventRelevant(
       // (other players' zone changes don't drive its HUD). Server still
       // emits to AoI so spectator UIs / observability tools can listen.
       return ev.playerId === playerId;
+    case "EnclosureChanged":
+      // Tile-wide broadcast, like DayPhaseChanged — every connected client
+      // rebuilds its roof geometry off the same cell set.
+      return true;
     default:
       // TypeScript enforces exhaustiveness: adding a new GameEvent type without
       // a matching case here will produce a compile error.

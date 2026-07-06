@@ -195,5 +195,9 @@ export class EventRouter {
     bus.subscribe(TileEvents.LoreInternalised, (p: { entityId: EntityId; fragmentId: string }) => {
       push({ type: "LoreInternalised", entityId: p.entityId, fragmentId: p.fragmentId });
     });
+
+    bus.subscribe(TileEvents.EnclosureChanged, (p: { cells: { x: number; y: number }[] }) => {
+      push({ type: "EnclosureChanged", cells: p.cells });
+    });
   }
 }
