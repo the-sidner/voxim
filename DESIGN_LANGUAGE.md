@@ -148,12 +148,14 @@ design_language_check.ts`) verifies at client boot:
 
 1. Every `ProcModelDef.generator` resolves to a registered generator (delegates to the existing
    procmodel registry — restates the invariant this doc's vocabulary depends on).
-2. Every material NAME referenced anywhere in a `ProcModelDef.params`/`morphTiers` tree, and every
+2. Every material NAME referenced anywhere in a `ProcModelDef`'s BASE `params` tree, and every
    `ScatterDef.material`, resolves to a registered `MaterialDef`.
-3. **No signal hue on structural mass** (§3): for every material that is NOT tagged `decal` and is
-   NOT itself a designated signal material (`torch_mat`, `corrupted`) and carries no
-   `MaterialVariant`/`morphTiers` exemption context, its resolved (palette-snapped) color must not
-   equal a `palette.signal` swatch.
+3. **No signal hue on structural mass** (§3), checked against BASE `params` only: for every
+   material that is NOT tagged `decal` and is NOT itself a designated signal material (its name
+   maps to a signal swatch in `palette.materials` — `torch_mat`→ember, `corrupted`→rot), its
+   resolved (palette-snapped) color must not equal a `palette.signal` swatch. A `ProcModelDef`'s
+   `morphTiers` material references are exempt from this rule by design (§3 item 3) — the
+   state-ladder morph IS the sanctioned way for structural mass to shift toward a signal hue.
 4. **Character-class generators emit at the ground plane**: a `ProcModelDef` opted into
    `class: "character"` must produce atoms whose lowest voxel face sits at model-space `z ≈ 0`
    (within tolerance), so a generated body always roots at its placement point instead of floating

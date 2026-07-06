@@ -58,6 +58,7 @@ import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { BootstrapSource } from "@voxim/content";
 import { crossCheckProcModels } from "./render/procmodel/mod.ts";
+import { crossCheckDesignLanguage } from "./render/procmodel/design_language_check.ts";
 import { crossCheckTextureStyles } from "./render/material_textures.ts";
 import { crossCheckFlickerCurves } from "./render/flicker_curves.ts";
 import { crossCheckCliffVoxelisers } from "./render/cliff_voxeliser.ts";
@@ -342,6 +343,10 @@ export class VoximGame {
       // to a registered generator and every ScatterDef.procModel resolves — the
       // client twin of server.ts's content cross-checks (generators live here).
       crossCheckProcModels(this.contentService);
+      // T-301: every ProcModel/Scatter material resolves, no signal hue lands
+      // on structural mass, character-class generators emit at the ground
+      // plane — the boot-enforced twin of DESIGN_LANGUAGE.md.
+      crossCheckDesignLanguage(this.contentService);
       // T-311 Phase 0a: every MaterialDef.render.textureStyle resolves to a
       // registered TextureStyle (the client twin of the procmodel cross-check).
       crossCheckTextureStyles(this.contentService);

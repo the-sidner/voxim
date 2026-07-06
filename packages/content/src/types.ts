@@ -1313,6 +1313,16 @@ export interface ProcModelDef {
    */
   // deno-lint-ignore no-explicit-any
   morphTiers?: ReadonlyArray<Record<string, any>>;
+  /**
+   * Design-language class marker (T-301, DESIGN_LANGUAGE.md §6 item 4).
+   * `"character"` opts this generator into the boot coherence check's
+   * ground-plane invariant: its emitted atoms must root at model-space
+   * `z ≈ 0` (ADR: a generated body always anchors at its placement point).
+   * Absent = an environment-scale generator (tree/boulder/foliage today),
+   * not checked against the ground-plane invariant. First real consumer is
+   * T-302's `humanoid_grammar`.
+   */
+  class?: "character";
 }
 
 /**
