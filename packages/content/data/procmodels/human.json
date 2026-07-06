@@ -1,0 +1,8 @@
+{
+  "id": "human",
+  "generator": "humanoid_grammar",
+  "class": "character",
+  "params": {
+    "skeletonId": "biped"
+  }
+}

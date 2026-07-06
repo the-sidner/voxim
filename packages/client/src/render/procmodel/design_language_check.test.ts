@@ -168,8 +168,11 @@ Deno.test("T-301: a character-class generator emitting AT the ground plane passe
   crossCheckDesignLanguage(ok); // must not throw
 });
 
-Deno.test("T-301: no procModel declares class:'character' yet — the ground-plane check is a no-op today", () => {
-  for (const pm of content.procModels.values()) {
-    assert(pm.class !== "character", `"${pm.id}" unexpectedly declares class:"character" — update this test's premise`);
-  }
+Deno.test("T-302: humanoid_grammar (procmodels/human.json) is a real class:'character' generator and passes the ground-plane check", () => {
+  const humanProcModel = content.procModels.get("human");
+  assert(humanProcModel, "'human' procModel should exist (T-302)");
+  assert(humanProcModel!.class === "character", "'human' should declare class:'character'");
+  // crossCheckDesignLanguage() above already ran this generator against the
+  // real content and would have thrown if it weren't ground-anchored —
+  // reaching here is the pass.
 });

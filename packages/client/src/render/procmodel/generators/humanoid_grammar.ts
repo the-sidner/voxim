@@ -73,8 +73,14 @@ export const humanoidGrammar: Generator = (_seed, params, ctx: GeneratorContext)
     throw new Error(`[humanoid_grammar] unknown skeleton "${p.skeletonId}"`);
   }
   const boneIndex = new Map(skeleton.bones.map((b) => [b.id, b]));
-  const boneTransforms = solveSkeleton(skeleton, boneIndex, REST_POSE, 1);
-  const byBone = humanoidGrammarByBone(skeleton, {}, ctx.resolveMaterial);
+  // Neutral morph scope: every declared morph at multiplier 1.0 (the
+  // skeleton's authored rest proportions, not a random per-seed sample) —
+  // solveSkeleton with an all-1.0 scope collapses to REST_POSE's plain rest
+  // offsets, matching the atoms this scope also produces.
+  const neutralMorphs: Record<string, number> = {};
+  for (const m of skeleton.morphParams ?? []) neutralMorphs[m.id] = 1.0;
+  const boneTransforms = solveSkeleton(skeleton, boneIndex, REST_POSE, 1, neutralMorphs);
+  const byBone = humanoidGrammarByBone(skeleton, neutralMorphs, ctx.resolveMaterial);
 
   const out: VoxelAtom[] = [];
   for (const [boneId, atoms] of byBone) {
