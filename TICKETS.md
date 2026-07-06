@@ -2093,7 +2093,7 @@ noise). Found + fixed:
   type-checks.
 
 ### T-261 · Place gates + arrivals at the carved corridor offset
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 79526f4
 
 Split from T-256 gap 4. Gates spawn at edge MIDPOINTS (`gatePositionForEdge` /
 `mirrorPosition` use `TILE_SIZE / 2`) while atlas carves the only walkable corridor at the
@@ -2110,3 +2110,18 @@ risks gates landing in walls (worse than the known-wrong-but-safe midpoint).
 
 Done when: a gate sits on its carved corridor and a handed-off player arrives on an open
 cell, verified against the atlas OpenMask.
+
+**Done.** `GatePosition.offset` now carries `cellRow.gates[edge].offset` straight through
+(it's already world-unit — `WorldCellRecord.offset`/atlas `Portal.offset`, `TILE_WORLD_SIZE
+=== TILE_SIZE`, both 512 — no `TILE_SIZE / tile.gridSize` rescale needed, unlike
+pixel-indexed fields such as `stair.anchorPixel`). `gatePositionForEdge`/`mirrorPosition`
+place along the edge at that offset instead of the midpoint; `mirrorPosition` reuses the
+SAME offset for the destination edge via the worldmap's mirror invariant (a shared border
+carries one offset on both cells). `GateLink` (networked) gained an `offset` field alongside
+its existing `edge`/`radius` so `initiateHandoff` reads the live gate's offset at crossing
+time. Added `gate.test.ts` (no prior coverage) asserting end-to-end propagation and that the
+MIRROR_INSET ping-pong guard still holds at a non-midpoint offset. **Live-render OpenMask
+verification did not happen in this lane (no live stack available)** — see the
+post-merge checklist: re-bake, then confirm via the atlas inspector / testplay that a gate
+sits on its corridor and a crossing lands on an open cell for at least one non-midpoint
+gate.
