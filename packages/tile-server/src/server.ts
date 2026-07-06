@@ -1580,7 +1580,7 @@ export class TileServer {
     // the re-spawn coordinates and the Position overlay so spawnPrefab and the
     // overlay agree.
     if (gateLink) {
-      const arrival = mirrorPosition(body.z, gateLink.edge);
+      const arrival = mirrorPosition(body.z, gateLink.edge, gateLink.offset);
       body.x = arrival.x; body.y = arrival.y; body.z = arrival.z;
       body.player.position = arrival;
     }

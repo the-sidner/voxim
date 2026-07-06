@@ -42,7 +42,7 @@ function spawnGate(w: World, dest: string, x: number, y: number): void {
   const id = newEntityId();
   w.create(id);
   w.write(id, Position, { x, y, z: 0 });
-  w.write(id, GateLink, { destinationTileId: dest, edge: "north", radius: 6 });
+  w.write(id, GateLink, { destinationTileId: dest, edge: "north", radius: 6, offset: 256 });
 }
 
 Deno.test("caravanEscort: plan picks the gate matching the manifest destination", () => {

@@ -1686,6 +1686,15 @@ export interface GateLinkData {
   edge: GateEdge;
   /** World units; visualisation matches the proximity trigger. */
   radius: number;
+  /**
+   * World-unit offset along the edge's perpendicular axis where the atlas-
+   * carved corridor actually reaches this edge (T-261). Same quantity as
+   * atlas's `GateSpec.offset` / `Portal.offset` — no rescale. Used to place
+   * the gate on the carved corridor instead of the edge midpoint, and (via
+   * the cross-tile mirror invariant) to compute the correct arrival point
+   * on the destination tile's matching edge.
+   */
+  offset: number;
 }
 
 const GATE_EDGE_TO_INT: Record<GateEdge, number> = {
@@ -1699,6 +1708,7 @@ export const gateLinkCodec: Serialiser<GateLinkData> = {
     w.writeStr(v.destinationTileId);
     w.writeU8(GATE_EDGE_TO_INT[v.edge]);
     w.writeF32(v.radius);
+    w.writeF32(v.offset);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): GateLinkData {
@@ -1706,7 +1716,8 @@ export const gateLinkCodec: Serialiser<GateLinkData> = {
     const destinationTileId = r.readStr();
     const edge = INT_TO_GATE_EDGE[r.readU8()] ?? "north";
     const radius = r.readF32();
-    return { destinationTileId, edge, radius };
+    const offset = r.readF32();
+    return { destinationTileId, edge, radius, offset };
   },
 };
 

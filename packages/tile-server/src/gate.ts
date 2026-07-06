@@ -22,6 +22,18 @@ export interface GatePosition {
   edge: "north" | "south" | "east" | "west";
   /** Tile id on the other side of the gate (the destination). */
   toTileId: string;
+  /**
+   * World-unit offset along the edge's perpendicular axis (atlas
+   * `GateSpec.offset` / `Portal.offset`, already in world units — same
+   * quantity tile-server's TILE_SIZE and atlas's TILE_WORLD_SIZE both
+   * measure, no rescale needed). This is where the carved gate corridor
+   * (portal_placement.ts) actually reaches the edge; placing the gate
+   * anywhere else (e.g. the edge midpoint) can land it in a closed pixel.
+   * Mirror invariant (atlas worldmap/types.ts): the same offset is shared
+   * by both cells across a border, so it also gives the correct arrival
+   * point on the destination tile's matching edge.
+   */
+  offset: number;
 }
 
 /**
@@ -46,28 +58,42 @@ const MIRROR_INSET = GATE_INSET + GATE_RADIUS * 2 + 4; // 24 units in
 
 interface XY { x: number; y: number; }
 
-/** Given an edge, the horizontal (x, y) world position where a gate on that edge sits. */
-export function gatePositionForEdge(edge: GatePosition["edge"]): XY {
+/**
+ * Given an edge and the carved corridor's along-edge offset (world units,
+ * atlas `GateSpec.offset` — see `GatePosition.offset`), the horizontal
+ * (x, y) world position where the gate sits: `offset` along the edge, inset
+ * `GATE_INSET` from it. Placing at the raw edge midpoint (the pre-T-261
+ * behaviour) ignored where atlas actually carved the corridor and could
+ * land the trigger in a closed pixel.
+ */
+export function gatePositionForEdge(edge: GatePosition["edge"], offset: number): XY {
   switch (edge) {
-    case "north": return { x: TILE_SIZE / 2, y: GATE_INSET };
-    case "south": return { x: TILE_SIZE / 2, y: TILE_SIZE - GATE_INSET };
-    case "west":  return { x: GATE_INSET,    y: TILE_SIZE / 2 };
-    case "east":  return { x: TILE_SIZE - GATE_INSET, y: TILE_SIZE / 2 };
+    case "north": return { x: offset, y: GATE_INSET };
+    case "south": return { x: offset, y: TILE_SIZE - GATE_INSET };
+    case "west":  return { x: GATE_INSET,    y: offset };
+    case "east":  return { x: TILE_SIZE - GATE_INSET, y: offset };
   }
 }
 
 /**
  * Where a player crossing through the *given* edge should arrive on the
  * destination tile. Mirrors the edge: east → west, north → south, etc.
+ * `offset` is the shared corridor offset (mirror invariant — the same
+ * value on both sides of the border, see `GatePosition.offset`), so it
+ * places the arrival point on the destination's carved corridor too.
  * Used to compute the post-handoff Position so the player lands just
- * inside the destination's matching gate.
+ * inside the destination's matching gate, on an open cell.
  */
-export function mirrorPosition(currentZ: number, edge: GatePosition["edge"]): { x: number; y: number; z: number } {
+export function mirrorPosition(
+  currentZ: number,
+  edge: GatePosition["edge"],
+  offset: number,
+): { x: number; y: number; z: number } {
   switch (edge) {
-    case "north": return { x: TILE_SIZE / 2, y: TILE_SIZE - MIRROR_INSET, z: currentZ };
-    case "south": return { x: TILE_SIZE / 2, y: MIRROR_INSET,             z: currentZ };
-    case "west":  return { x: TILE_SIZE - MIRROR_INSET, y: TILE_SIZE / 2, z: currentZ };
-    case "east":  return { x: MIRROR_INSET,             y: TILE_SIZE / 2, z: currentZ };
+    case "north": return { x: offset, y: TILE_SIZE - MIRROR_INSET, z: currentZ };
+    case "south": return { x: offset, y: MIRROR_INSET,             z: currentZ };
+    case "west":  return { x: TILE_SIZE - MIRROR_INSET, y: offset, z: currentZ };
+    case "east":  return { x: MIRROR_INSET,             y: offset, z: currentZ };
   }
 }
 
@@ -76,13 +102,14 @@ export function spawnGates(world: World, gates: GatePosition[]): EntityId[] {
   const ids: EntityId[] = [];
   for (const gate of gates) {
     const id = newEntityId();
-    const pos = gatePositionForEdge(gate.edge);
+    const pos = gatePositionForEdge(gate.edge, gate.offset);
     world.create(id);
     world.write(id, Position, { x: pos.x, y: pos.y, z: 0 });
     world.write(id, GateLink, {
       destinationTileId: gate.toTileId,
       edge: gate.edge,
       radius: GATE_RADIUS,
+      offset: gate.offset,
     });
     ids.push(id);
   }

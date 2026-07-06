@@ -19,5 +19,5 @@ export const GateLink = defineComponent({
   name: "gateLink" as const,
   wireId: ComponentType.gateLink,
   codec: gateLinkCodec,
-  default: (): GateLinkData => ({ destinationTileId: "", edge: "north", radius: 4 }),
+  default: (): GateLinkData => ({ destinationTileId: "", edge: "north", radius: 4, offset: 0 }),
 });

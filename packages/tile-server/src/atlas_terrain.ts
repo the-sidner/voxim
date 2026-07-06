@@ -268,13 +268,16 @@ export async function loadTerrainFromAtlas(
   for (const edge of ["north", "east", "south", "west"] as const) {
     const g = gates[edge];
     if (!g) continue;
-    // Note: GatePosition is currently edge-only (offset lives inside
-    // atlas's tile_init.portals[]). Until tile-server's gate system honours
-    // per-edge offsets, gates spawn at edge midpoints — a small visual
-    // disagreement vs. the inspector's gate dots.
+    // g.offset is already world units (WorldCellRecord.gates[].offset /
+    // atlas Portal.offset — TILE_WORLD_SIZE === TILE_SIZE, no rescale) and
+    // is exactly where portal_placement.ts carved the gate's corridor to
+    // the edge (T-261). Passed straight through so the gate trigger and
+    // the mirrored arrival point both sit on the open corridor instead of
+    // the raw edge midpoint.
     gatePositions.push({
       edge,
       toTileId: `${g.toCellX}_${g.toCellY}`,
+      offset: g.offset,
     });
   }
 
