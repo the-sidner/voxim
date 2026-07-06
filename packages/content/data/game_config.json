@@ -161,19 +161,62 @@
     "displacedHealthFraction": 0.5
   },
   "injuries": {
-    "broken_leg": { "modifiers": [{ "stat": "moveSpeed", "op": "mul", "value": 0.7 }] },
-    "deep_gash":  { "modifiers": [{ "stat": "armorReduction", "op": "add", "value": -0.08 }] },
-    "displaced":  { "combatEligible": false, "modifiers": [{ "stat": "moveSpeed", "op": "mul", "value": 0.7 }] }
+    "broken_leg": {
+      "modifiers": [
+        {
+          "stat": "moveSpeed",
+          "op": "mul",
+          "value": 0.7
+        }
+      ]
+    },
+    "deep_gash": {
+      "modifiers": [
+        {
+          "stat": "armorReduction",
+          "op": "add",
+          "value": -0.08
+        }
+      ]
+    },
+    "displaced": {
+      "combatEligible": false,
+      "modifiers": [
+        {
+          "stat": "moveSpeed",
+          "op": "mul",
+          "value": 0.7
+        }
+      ]
+    }
   },
   "species": {
-    "human": { "modifiers": [] },
-    "dwarf": { "modifiers": [
-      { "stat": "armorReduction", "op": "add", "value": 0.1 },
-      { "stat": "moveSpeed", "op": "mul", "value": 0.92 }
-    ] },
-    "elf": { "modifiers": [
-      { "stat": "moveSpeed", "op": "mul", "value": 1.1 }
-    ] }
+    "human": {
+      "modifiers": []
+    },
+    "dwarf": {
+      "modifiers": [
+        {
+          "stat": "armorReduction",
+          "op": "add",
+          "value": 0.1
+        },
+        {
+          "stat": "moveSpeed",
+          "op": "mul",
+          "value": 0.92
+        }
+      ]
+    },
+    "elf": {
+      "modifiers": [
+        {
+          "stat": "moveSpeed",
+          "op": "mul",
+          "value": 1.1
+        }
+      ]
+    }
   },
   "persistence": {
     "saveIntervalTicks": 6000
@@ -252,7 +295,7 @@
     "heightAbove": 35.4,
     "lookAtBias": 1.0,
     "fovDeg": 34,
-    "mouseSensitivity": 0.0022,
+    "mouseSensitivity": 0.007,
     "invertY": false,
     "pitchRestDeg": 55,
     "pitchMinDeg": 45,
