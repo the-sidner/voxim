@@ -1889,7 +1889,8 @@ The old packages/devtools/voxel-editor retires at the end (T-191z).
 Phasing → sub-tickets T-191a..e + T-191z.
 
 ### T-186 · Procedural character body generator (skeleton + voxel mesh)
-Effort: L   Status: in-progress   (Layer 1 morph gen done via T-190; Layer 2 voxel recipe unbuilt)
+Effort: L   Status: in-progress   (Layer 1 done via T-190; Layer 2 recipe voxelizer done, see below —
+auxiliary work below remains open)
 
 **Layer 1 delivered as part of T-190.** Sub-object voxel chunks now
 stretch alongside bones via the existing morphParams table. Remaining
@@ -1929,6 +1930,41 @@ Two layers:
     affect body MASS distribution, not just length — e.g. "broad
     shoulders + narrow waist", "thick thighs", limb taper, asymmetric
     builds — things that uniform per-axis scaling can't express.
+
+**Layer 2 delivered (lane "body", branch lane/body):** `BodyRecipeDef`/
+`BodyPartRecipeDef` schema on `SkeletonDef` (`packages/content/src/types.ts`),
+a shared pure evaluator (`packages/content/src/body_recipe.ts` —
+`evaluateBodyRecipe`/`resolveBodyPartDims`/`bodyPartCapsule`/
+`crossCheckBodyRecipe`, reusing `formula.ts` for morph-scaled expressions), a
+`bodyRecipe` block on `biped.json` covering all 16 bones and all 10
+morphParams (not just the 6 named in this ticket's prose above — biped grew
+`right/leftArmScale` and `right/leftLegScale` since this text was written).
+`bone_segment.json` and `scripts/build_skeletal.ts` are deleted outright —
+every humanoid prefab (player/drowner/rotten_knight/villager/bandit/archer/
+merchant, all `modelId: biped_skeletal`) now renders a recipe-voxelized body
+instead of the 1-voxel-wide bone-colored debug cylinders every one of them
+actually rendered through before this ticket (a placeholder, not a design
+target — the "reads as a body, not a stick figure" bar was used instead of
+byte-parity with that placeholder). Single source of truth for mesh AND
+collision: `hitbox_derive.ts`'s skeletal-capsule fallback now resolves a
+recipe-covered bone's capsule via the SAME `bodyPartCapsule()` dimensions the
+mesh voxelizer used (previously a wholly separate hardcoded `BONE_RADIUS`
+table, decoupled from any voxel geometry — the risk this ticket's "if
+hitboxes derive from authored voxels" bullet named turned out to already be
+latent rather than active, since the debug cylinders were never hit-boxed at
+all; this landing is the first time collision and visuals share one source).
+Studio: a Morph panel in `AnimationEditor.tsx` previews the recipe live
+against slider values through the real `evaluateBodyRecipe()`. Payoff:
+`bandit.json` morphRanges tuned for a thick-set silhouette (wide shoulders,
+narrow hips, stocky legs) alongside `drowner.json`'s already-lanky profile.
+Also fixed in the same lane: a latent hitbox-template cache-collision bug
+(cache key didn't include morphValues) and a client mesh-build bug
+(`entity_mesh_registry.ts` wasn't passing `ModelRef.morphValues` into the
+mesh-build's `resolveMorphParams` call, so per-instance morph overrides never
+reached the VISUAL body, only pose/hitbox-debug). See T-302's body for the
+humanoid_grammar porting note this reduces to. NOT done: the auxiliary work
+below (posture overlay, character-creator UI, foot IK) — ticket stays
+in-progress for that residual.
 
 Auxiliary work:
   - Posture-overlay layer: small additive AnimationLayer composed from
