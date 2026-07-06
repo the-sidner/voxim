@@ -417,7 +417,7 @@ InstancePool, fed by models/terrain/placement/ghost), one **palette authority**
 the new (replace, don't accrete). Phases are ordered cheapest-identity-win first.
 
 ### T-279 · Client rebuild (umbrella)
-Effort: XL (multi-phase arc)   Status: planned
+Effort: XL (multi-phase arc)   Status: done   (all phases T-280–T-286 landed; the client-rebuild arc is complete)
 
 Tracks the arc in `CLIENT_REBUILD_PLAN.md`: a general internal-architecture sweep
 + a central voxel-build pipeline (place single voxel / line of voxels with
@@ -1410,7 +1410,7 @@ overhang from v1, the `dissolves` shader is a deliberate capped amendment to "no
 and `variantIndex` is a content-version-checked stable index. Open designer questions tracked in the plan.
 
 ### T-310 · AAA graphics pass — detail + light + atmosphere over the comic voxel look
-Effort: L   Status: in-progress
+Effort: L   Status: done   (A–F + follow-ups landed; the two trailing deferrals — arcing sun + in-world water verify — were delivered by T-311 P5a/P5b, 2026-07-06)
 
 Elevate the render to AAA production feel WITHOUT abandoning the comic/pixel-art identity. Phases:
 - [x] A — Foundation: 1.5–2× supersample (clean comic edges, no aliasing), HalfFloat HDR scene
