@@ -1090,7 +1090,7 @@ torsoHeight, shoulderWidth, headSize, hipWidth, right/leftArmScale, right/leftLe
 the count whenever T-302 is picked up.
 
 ### T-303 · Voxel-to-stats slice — Composed sword + material-derived stats
-Effort: M   Status: todo   Depends: T-301
+Effort: M   Status: done   Commit: 7964cd0   Depends: T-301
 
 Author one Composed sword prefab (blade/grip slots with `materialCategories` + `statContributions`)
 and implement the unused `deriveItemStats` `_parts` path: sum `material.properties[property] ×
@@ -1099,6 +1099,14 @@ reach/attackRange stat. DECISION (user): voxels feed **weight/damage/reach, NOT 
 stays a per-action design dial the commitment/telegraph work depends on). Keep hardcoded
 `swingable.damage` as fallback when Composed is absent. DONE: swapping the blade material measurably
 changes the sword's weight and damage via the live StatContribution schema — voxels feed stats.
+
+`composed_sword` (blade/grip slots) exercises the schema: blade contributes hardness→damage +
+density→weight, grip contributes density→weight only, both additive on top of the prefab's
+hardcoded `swingable.damage` base (never replacing it). `attackRange` derives from the Composed
+item's whole-model AABB longest axis × modelScale (no per-slot sub-model exists yet, so this is a
+stand-in — nothing downstream reads it yet, same as before this ticket). Verified against real
+content in `derive_item_stats.test.ts`: iron blade → damage 27, steel blade → damage 30, weight
+differs too; `iron_sword` (non-Composed) unchanged at damage 25 with `attackRange` undefined.
 
 ### T-304 · POI activity handlers (T-212 v2) — encounter spawning
 Effort: M   Status: obsolete — superseded by T-245 (registry-dispatch
