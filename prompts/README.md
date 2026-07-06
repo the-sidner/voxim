@@ -14,12 +14,12 @@ pre-baked so an implementation agent can execute without re-deriving the design.
 
 | # | Prompt | Scope | Notes |
 |---|--------|-------|-------|
-| 1 | `T-282-renderer-breakup-closeout.md` | audit/cleanup | anytime; audit-then-close |
-| 2 | `T-186-body-recipes-layer2.md` | content/client | Step 0 reconciles vs T-301/T-302 |
+| 1 | `T-186-body-recipes-layer2.md` | content/client | Step 0 reconciles vs T-301/T-302 |
 
 Done and their prompt files deleted with the closing commit (CLAUDE.md refactor doctrine):
 T-317 (mouse-facing camera), T-212/T-213b (POI runtime v2), T-311 P5a/P5b/P5c (atmosphere/water/
-dissolves), T-311 P6 (terraced cliffs).
+dissolves), T-311 P6 (terraced cliffs), T-282 (renderer breakup closeout — audit-only, all
+remaining items dropped as moot/not-worth-it).
 
 - Delete each prompt file in the commit that closes its ticket. Delete this directory when the
   table is empty.

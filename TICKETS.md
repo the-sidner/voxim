@@ -504,7 +504,7 @@ Done when: models + props bake through one `bakeVoxels` path; an entity can carr
 mixed-size voxels; draw calls collapse; the parity test still passes.
 
 ### T-282 · Client rebuild Phase 2 — renderer breakup (scene-graph; subsumes T-223)
-Effort: L   Status: in-progress   (renderer breakup substantively COMPLETE — 50% cut; only low-value polish remains)
+Effort: L   Status: done   Commit: 2a880a7
 
 FIVE cohesive units lifted out of the renderer god-class — renderer 2120 → 1063
 lines, a 50% cut (T-281 had already shrunk it by deleting the bake-worker pool +
@@ -534,27 +534,40 @@ per-node path):
 All verified each step: deno check (4 targets), grep-zero invariant, 9/9 render
 unit tests, ANIM 7/7, screenshot identical to baseline.
 
-REMAINING (low-value polish — the core goal is met, see below):
-  · OPTIONAL: extract terrain mesh management (terrainMeshes/Hmaps/Mats +
-    updateTerrain/_rebuildChunk/removeTerrain + the cull loop + colorForMat) into
-    a `TerrainMeshManager` to chase the ~800-line target. Note: terrain is
-    already LOW-coupling (its own maps + methods) — this is line-count cosmetics,
-    not untangling, so it's deferred unless the <800 target is wanted for its own
-    sake. (T-283 rewrites terrain into voxels anyway — may moot this.)
-  · OPTIONAL: `scene` → private behind `addLayer`/`removeLayer`. Marginal: the
-    renderer already NEWs the one scene and hands refs to its subsystems; only ~3
-    external reachers (game.ts ×2, hover_outline) touch it. Visibility nicety.
-  · NOT DOING — the `velocity={0,0,0}` "hack": on inspection it is SOUND, not a
-    hack. The synthesis is in applySnapshot (the unreliable movement datagram, a
-    flat vx/vy/vz struct); the registry's settle test asks "is it moving?" via
-    MAGNITUDE, which is the functionally-correct question (an item at rest has
-    ~zero velocity regardless of component presence). A protocol change to make
-    presence honest would be high-effort for zero behavioral gain. Closed.
+CLOSEOUT AUDIT (2026-07-06, re-verified against HEAD 213b94f — T-282 closeout prompt):
+  · DROPPED (premise inverted) — terrain mesh extraction: T-315 E2 (c731a1f)
+    already deleted terrainHmaps/terrainMats/terrainSurf/terrainVeg/terrainWater
+    (ClientWorld is now the single chunk-grid owner) and T-280/T-283 already
+    deleted colorForMat/MAT_COLORS. What remains (`terrainMeshes` map +
+    updateTerrain/_rebuildChunk/removeTerrain, ~140 lines) is now MORE
+    content/world-entangled than when this was written — T-311 P4/P5/P6 threaded
+    moss/wetness/reflect/relief/cliff-profile lookups straight into
+    `_rebuildChunk` against `this.content`/`this.world`. Extraction is now
+    higher-effort AND lower-value than the original "low-coupling, cosmetic-only"
+    framing assumed. Renderer is 1482 lines today (growth is 100% orthogonal
+    post-FX/atmosphere/water/cliff work from T-310/T-311/T-315, not god-class
+    re-coupling) — the ~800-line target is moot as a north star either way.
+  · DROPPED (not worth it, reaffirmed) — `scene` → private behind
+    addLayer/removeLayer: still exactly 3 external reachers (game.ts ×2,
+    hover_outline.ts). But WaterRenderer and BuildGhostRenderer both hold the
+    raw THREE.Scene as a constructor-captured field and call .add/.remove on it
+    across their lifetime, and EnvironmentLighting — T-282's OWN prior
+    extraction — takes THREE.Scene directly in its constructor too. The
+    codebase's established pattern (set by this ticket) is "subsystems take the
+    raw Scene"; privatizing renderer.scene would fight that precedent for a
+    self-described marginal visibility nicety.
+  · Already closed (`velocity={0,0,0}`) — unchanged, carried forward verbatim.
+  · Opportunistic dead-surface sweep (renderer.ts post-T-315): scripted a
+    near-zero-usage pass over every private field/method; zero genuine
+    candidates (all debug toggles/accessors are live-called from game.ts). E2
+    already swept this boundary (3 dead ClientWorld accessors) so an empty
+    second pass here is expected, not a gap.
 Done when: the core goal — the god-class's COUPLED responsibilities (entity
-lifecycle, trail, gates, lighting) out of the renderer — is MET. The renderer is
-now scene/camera/post-FX + the render() pipeline + (low-coupling) terrain, at
-1063 lines. The remaining items are optional line-count/visibility polish; this
-ticket can close here or carry the optional terrain extraction.
+lifecycle, trail, gates, lighting) out of the renderer — is MET, and every
+remaining item is resolved one way or another. Both met: FIVE units extracted
+(50% cut at the time), and all three closeout items above are dropped with a
+recorded reason. No source changes landed in the closeout — nothing found
+cleared the worth-it bar.
 
 ### T-283 · Client rebuild Phase 3 — terrain becomes voxels
 Effort: L   Status: done   Commit: bf2ff74
