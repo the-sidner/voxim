@@ -15,7 +15,7 @@
  * `.then()` off them with a stale-guard pattern that assumes a microtask
  * boundary.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, CliffProfileDef, ActionDef } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, CliffProfileDef, ActionDef, ProcModelDef } from "@voxim/content";
 
 export class ContentCache {
   /**
@@ -139,6 +139,13 @@ export class ContentCache {
 
   getSkeletonSync(skeletonId: string): SkeletonDef | undefined {
     return this.bootstrapService?.skeletons.get(skeletonId);
+  }
+
+  /** ProcModelDef by id (T-306) — the generated-equipment render path resolves
+   *  a weapon's `swingable.bladeGrammar` / an armor prefab's `armorGrammar` to
+   *  its generator params to bake voxels off the item's seed. */
+  getProcModelSync(procModelId: string): ProcModelDef | undefined {
+    return this.bootstrapService?.procModels.get(procModelId);
   }
 
   /**

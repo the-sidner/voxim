@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, MaterialGeneratorPreferences, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData } from "./types.ts";
+  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData, ArmorData } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { crossCheckBodyRecipe } from "./body_recipe.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
@@ -310,14 +310,21 @@ async function loadContentStoreInternal(
       throw new Error(`[content] model "${m.id}" references unknown procModel "${m.procModelId}"`);
     }
   }
-  // T-306: a weapon prefab's swingable.bladeGrammar must resolve (membership
-  // only — the generator itself is a client-side concern checked by
-  // crossCheckDesignLanguage, same split as procModelId above).
+  // T-306: a weapon prefab's swingable.bladeGrammar / an armor prefab's
+  // armor.armorGrammar must resolve (membership only — the generator itself is
+  // a client-side concern checked by crossCheckDesignLanguage, same split as
+  // procModelId above).
   for (const p of store.prefabs.values()) {
     const swingable = p.components["swingable"] as SwingableData | undefined;
     if (swingable?.bladeGrammar && !store.procModels.get(swingable.bladeGrammar)) {
       throw new Error(
         `[content] prefab "${p.id}" swingable.bladeGrammar references unknown procModel "${swingable.bladeGrammar}"`,
+      );
+    }
+    const armor = p.components["armor"] as ArmorData | undefined;
+    if (armor?.armorGrammar && !store.procModels.get(armor.armorGrammar)) {
+      throw new Error(
+        `[content] prefab "${p.id}" armor.armorGrammar references unknown procModel "${armor.armorGrammar}"`,
       );
     }
   }

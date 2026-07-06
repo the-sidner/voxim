@@ -1,0 +1,14 @@
+{
+  "_comment": "T-306: procedural leg greaves — armor.armorGrammar -> plate_armor_iron, rendered at the upper_leg_l/r bones (ARMOR_SLOTS: legs -> 4 leg bones; plate_armor_iron authors upper_leg_l/r plates). Seed-unique per wearer.",
+  "id": "plate_greaves",
+  "modelId": "generated_armor",
+  "components": {
+    "equippable": { "slots": ["legs"] },
+    "armor": {
+      "reduction": 0.12,
+      "staminaPenalty": 0.08,
+      "armorGrammar": "plate_armor_iron"
+    },
+    "weight": { "baseWeight": 2.0 }
+  }
+}

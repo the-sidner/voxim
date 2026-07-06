@@ -1143,7 +1143,7 @@ drowners has visibly distinct silhouettes despite sharing clips/skeleton — che
 animation cost, works on authored OR generated (T-302) bodies.
 
 ### T-306 · blade_grammar + armor_grammar — procedural equipment
-Effort: L   Status: todo   Depends: T-301, T-302, T-303
+Effort: L   Status: done   Commit: 0fab251, 46f69a0   Depends: T-301, T-302, T-303
 
 Two generators on the ProcModel substrate: `blade_grammar` (LIMB spine + SOLID pommel + SHELL guard;
 straight/curved/serrated; material per the density bands) emitting trace metadata the `weapon_trace`
@@ -1152,6 +1152,29 @@ resolver re-derives server-side from the same seed at prefab-load (zero wire cos
 blade shape and an NPC's armor are seed-unique, the swing hitbox follows the generated blade, and
 stats can feed off the emitted materials (composes with T-303). The vision-4 capstone; depends on the
 language + body + stats work landing first.
+
+**How it landed:** the two geometry evaluators live in `@voxim/content` (`blade_grammar.ts` /
+`armor_grammar.ts`, THREE-free) — the `body_recipe.ts`/`humanoid_grammar` "one evaluator, two
+consumers" pattern (T-302) applied to equipment. `deriveBladeGeometry(seed, params)` is the
+trace-relevant core: the SERVER's `weapon_trace` resolver calls it to override the equipped
+weapon-action's `swingPath.length`/`radius` before sweeping the hit capsule, and the CLIENT's
+registered `blade_grammar` generator bakes the visual voxels' LIMB spine to the SAME
+`deriveBladeGeometry().length` — so the visible blade and the swept hitbox are one geometry, from
+one seed, and can never drift (the T-186 hitbox-parity class of bug). Seed = `hash32(weaponEntityId)`,
+re-derived independently on both sides from the already-networked `EquipmentSlot.entityId` (zero wire
+cost, no new field). `armor_grammar` emits SHELL plates keyed by bone (`armorGrammarByBone`, seed
+mixed with the boneId so each plate varies independently), merged per-bone into the wearer's baked
+mesh via the exact bone-parented `THREE.Group` anchor authored armor already uses (`syncArmorSlot`).
+Additive schema: `SwingableData.bladeGrammar` / `ArmorData.armorGrammar` (boot-cross-checked for
+membership in `loader.ts`; generators cross-checked by `crossCheckProcModels`/`crossCheckDesignLanguage`),
+`NpcTemplate.armorItemTypes` (each slot its own item entity → own seed → seed-unique plate per NPC).
+Content: 3 blade procmodels (iron straight, steel curved, iron serrated) + `procedural_sword` (Composed
+slots feed the T-303 stat path); `plate_armor_iron` + plate_chest/helm/greaves; `shield_knight` now
+wields the generated sword and wears the plate set. Parity is unit-tested
+(`packages/content/src/blade_grammar.test.ts`: client baked-blade extent == server swept length for a
+fixed seed) + `armor_grammar.test.ts` + the client wrapper-delegation test. Verified in-lane
+(type-check matrix + full suite 813 green, bundle rebuilds); live-stack testplay is the
+post-merge step.
 
 ## Procedural Animation
 

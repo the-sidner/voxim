@@ -1,0 +1,8 @@
+{
+  "_comment": "T-306: bone-parented anchor for armor_grammar plates — empty nodes (the visual voxels come from the generator at bake time, keyed off armor.armorGrammar). Same declarative-anchor role generated_blade.json plays for weapons.",
+  "id": "generated_armor",
+  "version": 1,
+  "nodes": [],
+  "subObjects": [],
+  "materials": []
+}

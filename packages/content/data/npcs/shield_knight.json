@@ -13,5 +13,10 @@
   "fleeTicks": 0,
   "seekFoodTicks": 9999,
   "speedMultiplier": 0.9,
-  "weaponItemType": "shield_knight_sword"
+  "weaponItemType": "procedural_sword",
+  "armorItemTypes": {
+    "chest": "plate_chest",
+    "head": "plate_helm",
+    "legs": "plate_greaves"
+  }
 }

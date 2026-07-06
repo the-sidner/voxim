@@ -716,7 +716,21 @@ export interface PlaceableData {
  */
 export interface EffectSpec { id: string; params?: Record<string, unknown>; }
 export interface IlluminatorData { radius: number; color: number; intensity: number; lightDefId: string; }
-export interface ArmorData { reduction: number; staminaPenalty: number; }
+export interface ArmorData {
+  reduction: number;
+  staminaPenalty: number;
+  /**
+   * T-306 — names a `ProcModelDef` (generator: "armor_grammar") whose SHELL
+   * plates are THIS armor piece's geometry, merged per-bone into the wearer's
+   * baked mesh (entity_mesh_registry.ts syncArmorSlot → armorGrammarByBone,
+   * the same per-bone THREE.Group mechanism humanoid_grammar bodies ride).
+   * Boot-cross-checked against `store.procModels` membership. Purely visual
+   * (armorReduction is a scalar, not geometry) — no server consumer. Seed is
+   * `hash32(armorItemEntityId)` so each NPC's plate is seed-unique. Absent →
+   * the piece renders its authored `modelId` model (unchanged path).
+   */
+  armorGrammar?: string;
+}
 export interface MaterialSourceData { materialName: string; }
 export interface ComposedData { slots: ItemSlotDef[]; }
 export type StackableData = Record<never, never>;

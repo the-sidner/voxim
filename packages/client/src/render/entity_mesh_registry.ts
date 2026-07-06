@@ -27,9 +27,12 @@ import type {
   Prefab,
   AnimationStateData,
   SkeletonDef,
+  BladeGrammarParams,
+  ArmorGrammarParams,
 } from "@voxim/content";
-import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
+import { resolveSubObjects, resolveMorphParams, bladeGrammarAtoms } from "@voxim/content";
 import { humanoidGrammarByBone } from "./procmodel/generators/humanoid_grammar.ts";
+import { armorGrammarByBone } from "./procmodel/generators/armor_grammar.ts";
 import type { HoverOutlineSink } from "./renderer.ts";
 import { modelToThree } from "./coords.ts";
 import {
@@ -40,6 +43,8 @@ import {
   ensureBoneAttachment,
   attachModelToSlot,
   attachArmorToSlot,
+  attachAtomsToSlot,
+  armorSlotScale,
   detachModelFromSlot,
   disposeEntityMesh,
   type EntityMeshGroup,
@@ -61,6 +66,25 @@ import { CHUNK_SIZE } from "@voxim/world";
  * tests magnitude (not presence) to avoid deferring all props forever.
  */
 const VELOCITY_EPSILON_SQ = 0.01;
+
+/**
+ * Deterministic string hash (FNV-1a) → a procedural seed from an EntityId
+ * (T-306). Byte-identical to the tile-server's `spawner.ts` / combat.ts
+ * `hash32` (used for `ModelRef.seed` / the weapon_trace blade override) so
+ * an equipped item's generated blade / armor plate is seed-unique with the
+ * SAME seed both sides — derived independently from the already-networked
+ * EquipmentSlot.entityId, zero wire cost. (Kept as a local copy to match the
+ * existing convention — the same hash is duplicated at several call sites
+ * across tile-server/client rather than centralised.)
+ */
+function hash32(s: string): number {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
 
 // Reusable scratch vectors for per-frame attachment placement (no per-call alloc).
 const _attachTmp   = new THREE.Vector3();
@@ -437,18 +461,21 @@ export class EntityMeshRegistry {
       : { x: 0.35, y: 0.35, z: 0.35 };
 
     // ── Weapon (main_hand): entity-root anchor, repositioned per-frame ──────
-    this.syncHandSlot(mesh, "main_hand", eq?.weapon?.prefabId ?? null, entityScale);
+    this.syncHandSlot(mesh, "main_hand", eq?.weapon ?? null, entityScale);
 
     // ── Off-hand: entity-root anchor, follows hand_l bone per-frame ──────────
-    this.syncHandSlot(mesh, "off_hand", eq?.offHand?.prefabId ?? null, entityScale);
+    this.syncHandSlot(mesh, "off_hand", eq?.offHand ?? null, entityScale);
 
     // ── Armor: bone-parented anchors at the sub-object transform ─────────────
+    // T-306: the item's ENTITY id is the seed source for armor_grammar plates,
+    // so the whole slot ({entityId, prefabId}) is threaded through, not just
+    // the prefabId.
     for (const [equipSlot, renderSlots] of Object.entries(ARMOR_SLOTS)) {
-      const prefabId = (eq as Record<string, { prefabId: string } | null> | undefined)?.[equipSlot]?.prefabId ?? null;
-      const prefab   = prefabId ? this.itemPrefabs.get(prefabId) : null;
+      const slot = (eq as Record<string, { entityId: string; prefabId: string } | null> | undefined)?.[equipSlot] ?? null;
+      const prefab   = slot ? this.itemPrefabs.get(slot.prefabId) : null;
       const modelId  = prefab?.modelId ?? null;
       for (const { renderSlotId, boneId } of renderSlots) {
-        this.syncArmorSlot(mesh, renderSlotId, boneId, modelId, entityScale);
+        this.syncArmorSlot(mesh, renderSlotId, boneId, modelId, slot?.entityId ?? null, prefab ?? null, entityScale);
       }
     }
   }
@@ -460,19 +487,28 @@ export class EntityMeshRegistry {
   private syncHandSlot(
     mesh: EntityMeshGroup,
     slotId: string,
-    prefabId: string | null,
+    slot: { entityId: string; prefabId: string } | null,
     _entityScale: { x: number; y: number; z: number },
   ): void {
-    const prefab  = prefabId ? this.itemPrefabs.get(prefabId) : null;
+    const prefabId = slot?.prefabId ?? null;
+    const prefab  = (prefabId ? this.itemPrefabs.get(prefabId) : null) ?? null;
     const modelId = prefab?.modelId ?? null;
+    // T-306: a generated blade shares one anchor `modelId` (`generated_blade`)
+    // across every procedural sword, so the modelId-unchanged early-exit can't
+    // tell two different generated swords apart — key the generated case on the
+    // ITEM entity id too.
+    const bladeGrammarId = (prefab?.components?.["swingable"] as { bladeGrammar?: string } | undefined)?.bladeGrammar ?? null;
+    const itemId = slot?.entityId ?? null;
 
     const existing = mesh.attachments.get(slotId);
-    if (modelId === (existing?.modelId ?? null)) return;
+    const unchanged = modelId === (existing?.modelId ?? null) &&
+      (!bladeGrammarId || itemId === (existing?.builtItemId ?? null));
+    if (unchanged) return;
 
     detachModelFromSlot(mesh, slotId);
     if (slotId === "main_hand") mesh.bladeDimensions = null;
     const existingSlot = mesh.attachments.get(slotId);
-    if (existingSlot) existingSlot.bladeAttach = null;
+    if (existingSlot) { existingSlot.bladeAttach = null; existingSlot.builtItemId = null; }
     if (!modelId) return;
 
     const pendingSlot = ensureAttachment(mesh, slotId);
@@ -487,6 +523,17 @@ export class EntityMeshRegistry {
     // second multiplication.
     const weaponScale = prefab?.modelScale ?? 1.0;
     const voxelScale = { x: weaponScale, y: weaponScale, z: weaponScale };
+
+    // T-306: a blade_grammar weapon bakes its held model from the generator's
+    // seed-unique atoms (blade_grammar emits along model +z, matching the
+    // authored-sword convention below), NOT the empty-nodes anchor model. The
+    // seed is hash32(itemEntityId) — the SAME derivation the server's
+    // weapon_trace resolver uses (see combat.ts) so the visible blade and the
+    // swept hitbox share one geometry.
+    if (bladeGrammarId && itemId) {
+      this.bakeGeneratedBlade(mesh, slotId, modelId, itemId, bladeGrammarId, prefab, weaponScale);
+      return;
+    }
 
     this.loadSlotModel(mesh, slotId, modelId, (def, mats) => {
       // AABB scan in model coords. Model Z is the blade-axis (voxel-rendered
@@ -545,6 +592,88 @@ export class EntityMeshRegistry {
   }
 
   /**
+   * T-306 — bake a hand slot from a `blade_grammar` generator's seed-unique
+   * atoms (a procedural weapon) instead of the empty-nodes anchor model.
+   * Synchronous (a blade is tens of voxels): resolve the procModel, run the
+   * shared `bladeGrammarAtoms` core with `seed = hash32(itemEntityId)` (the
+   * SAME seed the server's weapon_trace derives independently → hit == visual),
+   * scale to the weapon's `modelScale`, and attach through the atom bake path.
+   * bladeDimensions (trail/anchor) come from the baked atoms' AABB exactly as
+   * the authored path derives them from `def.nodes`.
+   */
+  private bakeGeneratedBlade(
+    mesh: EntityMeshGroup,
+    slotId: string,
+    modelId: string,
+    itemId: string,
+    bladeGrammarId: string,
+    prefab: Prefab | null,
+    weaponScale: number,
+  ): void {
+    if (!this.content) return;
+    const procModel = this.content.getProcModelSync(bladeGrammarId);
+    const currentSlot = mesh.attachments.get(slotId);
+    if (!procModel || !mesh.boneGroups || currentSlot?.modelId !== modelId) return;
+
+    const seed = hash32(itemId);
+    const rawAtoms = bladeGrammarAtoms(seed, procModel.params as BladeGrammarParams, (name) => {
+      const m = this.content!.getMaterialByName(name);
+      if (!m) throw new Error(`[blade_grammar] procModel "${bladeGrammarId}" uses unknown material "${name}"`);
+      return m.id;
+    });
+    // Scale generator atoms (authored in world units) by the weapon's modelScale.
+    const atoms = rawAtoms.map((a) => ({
+      ...a,
+      cx: a.cx * weaponScale, cy: a.cy * weaponScale, cz: a.cz * weaponScale,
+      sx: a.sx * weaponScale, sy: a.sy * weaponScale, sz: a.sz * weaponScale,
+    }));
+
+    // AABB in model space (blade axis = model +z, per blade_grammar). Anchor
+    // the model's lowest z (pommel butt) at the hand bone, same as the authored
+    // path — model z → three.js y (buildVoxelMesh swap), so shift +(-minZ) on y.
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let minY = Infinity;
+    for (const a of atoms) {
+      minX = Math.min(minX, a.cx - a.sx / 2); maxX = Math.max(maxX, a.cx + a.sx / 2);
+      minY = Math.min(minY, a.cy - a.sy / 2); maxY = Math.max(maxY, a.cy + a.sy / 2);
+      minZ = Math.min(minZ, a.cz - a.sz / 2); maxZ = Math.max(maxZ, a.cz + a.sz / 2);
+    }
+    const mats = new Map<number, MaterialDef>();
+    for (const a of atoms) {
+      const m = this.content.getMaterialSync(a.materialId);
+      if (m) mats.set(a.materialId, m);
+    }
+    const anchorOffset = { x: 0, y: -minZ, z: 0 };
+    attachAtomsToSlot(mesh, slotId, modelId, atoms, mats, false, anchorOffset);
+
+    if (slotId === "main_hand") {
+      mesh.bladeDimensions = {
+        length: (maxZ - minZ),
+        halfCross: Math.max(maxX - minX, maxY - minY) / 2,
+      };
+    }
+
+    const swingable = (prefab?.components?.["swingable"] as
+      | { chain?: { light: string; heavy: string }[] }
+      | undefined);
+    const primaryAction = swingable?.chain?.[0]?.light
+      ? this.weaponActions.get(swingable.chain[0].light)
+      : undefined;
+    const slotHoldBone = SLOT_REST_BONE[slotId] ?? primaryAction?.holdHand ?? "hand_r";
+    const newSlot = mesh.attachments.get(slotId);
+    if (newSlot) {
+      newSlot.builtItemId = itemId;
+      if (primaryAction?.blade) {
+        newSlot.bladeAttach = {
+          base: [primaryAction.blade.baseLocal[0], primaryAction.blade.baseLocal[1], primaryAction.blade.baseLocal[2]],
+          tip:  [primaryAction.blade.tipLocal[0],  primaryAction.blade.tipLocal[1],  primaryAction.blade.tipLocal[2]],
+          holdBone: slotHoldBone,
+        };
+      }
+    }
+  }
+
+  /**
    * Sync a single bone-parented armor slot.
    *
    * The anchor is parented to the bone group and positioned at the sub-object
@@ -556,12 +685,21 @@ export class EntityMeshRegistry {
     renderSlotId: string,
     boneId: string,
     modelId: string | null,
+    itemId: string | null,
+    prefab: Prefab | null,
     entityScale: { x: number; y: number; z: number },
   ): void {
+    // T-306: an armor_grammar piece shares one anchor modelId across every
+    // instance — key the generated case on the item entity id too, same as
+    // the generated-blade hand slot.
+    const armorGrammarId = (prefab?.components?.["armor"] as { armorGrammar?: string } | undefined)?.armorGrammar ?? null;
     const existing = mesh.attachments.get(renderSlotId);
-    if (modelId === (existing?.modelId ?? null)) return;
+    const unchanged = modelId === (existing?.modelId ?? null) &&
+      (!armorGrammarId || itemId === (existing?.builtItemId ?? null));
+    if (unchanged) return;
 
     detachModelFromSlot(mesh, renderSlotId);
+    if (existing) existing.builtItemId = null;
     if (!modelId) return;
 
     const boneGroup = mesh.boneGroups!.get(boneId);
@@ -577,11 +715,74 @@ export class EntityMeshRegistry {
     );
     pendingSlot.modelId = modelId;  // reserve
 
+    // T-306: a generated armor plate bakes from armor_grammar's seed-unique
+    // bone-LOCAL atoms (armorGrammarByBone), attached under the SAME bone-
+    // parented anchor authored armor uses — so a generated plate poses with
+    // the limb for free (the per-bone Group mechanism T-302 established).
+    if (armorGrammarId && itemId) {
+      this.bakeGeneratedArmor(mesh, renderSlotId, boneId, modelId, itemId, armorGrammarId, entityScale);
+      return;
+    }
+
     this.loadSlotModel(mesh, renderSlotId, modelId, (def, mats) => {
       // Armor voxels bake synchronously through the bakeVoxels kitchen (T-281),
       // one merged mesh per material at the slot's armor scale.
       attachArmorToSlot(mesh, renderSlotId, def, mats, entityScale);
     });
+  }
+
+  /**
+   * T-306 — bake a bone-parented armor slot from an `armor_grammar` generator's
+   * seed-unique bone-LOCAL atoms (a procedural plate) instead of an authored
+   * model. Synchronous (a plate is a handful of voxels): resolve the procModel,
+   * run `armorGrammarByBone` with `seed = hash32(itemEntityId)` for the ONE
+   * bone this render slot covers, and attach through the atom bake path under
+   * the bone's anchor (already positioned/parented by ensureBoneAttachment).
+   */
+  private bakeGeneratedArmor(
+    mesh: EntityMeshGroup,
+    renderSlotId: string,
+    boneId: string,
+    modelId: string,
+    itemId: string,
+    armorGrammarId: string,
+    entityScale: { x: number; y: number; z: number },
+  ): void {
+    if (!this.content) return;
+    const procModel = this.content.getProcModelSync(armorGrammarId);
+    const skeleton = mesh.skeletonId ? this.content.getSkeletonSync(mesh.skeletonId) : undefined;
+    const currentSlot = mesh.attachments.get(renderSlotId);
+    if (!procModel || !skeleton || currentSlot?.modelId !== modelId) return;
+
+    const seed = hash32(itemId);
+    // armorGrammarByBone builds every plate the params declare; take only the
+    // one bone this render slot covers (armor pieces map one equipment slot to
+    // several bone render slots — legs → 4 bones — each its own plate).
+    const byBone = armorGrammarByBone(seed, skeleton, procModel.params as ArmorGrammarParams, (name) => {
+      const m = this.content!.getMaterialByName(name);
+      if (!m) throw new Error(`[armor_grammar] procModel "${armorGrammarId}" uses unknown material "${name}"`);
+      return m.id;
+    });
+    const atoms = byBone.get(boneId);
+    if (!atoms || atoms.length === 0) { if (currentSlot) currentSlot.modelId = null; return; }
+
+    const mats = new Map<number, MaterialDef>();
+    for (const a of atoms) {
+      const m = this.content.getMaterialSync(a.materialId);
+      if (m) mats.set(a.materialId, m);
+    }
+    // Scale bone-local atoms to the slot's armor scale (entityScale × the slot's
+    // stored armorSubScale), matching attachArmorToSlot — armorGrammarByBone
+    // emits in bone-local model units (the recipe convention).
+    const armorScale = armorSlotScale(mesh, renderSlotId, entityScale) ?? entityScale;
+    const scaled = atoms.map((a) => ({
+      ...a,
+      cx: a.cx * armorScale.x, cy: a.cy * armorScale.y, cz: a.cz * armorScale.z,
+      sx: a.sx * armorScale.x, sy: a.sy * armorScale.y, sz: a.sz * armorScale.z,
+    }));
+    attachAtomsToSlot(mesh, renderSlotId, modelId, scaled, mats, true);
+    const newSlot = mesh.attachments.get(renderSlotId);
+    if (newSlot) newSlot.builtItemId = itemId;
   }
 
   /**

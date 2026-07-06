@@ -1,0 +1,14 @@
+{
+  "_comment": "T-306: procedural helm — armor.armorGrammar -> plate_armor_iron, rendered at the head bone (ARMOR_SLOTS: head -> head). Seed-unique per wearer.",
+  "id": "plate_helm",
+  "modelId": "generated_armor",
+  "components": {
+    "equippable": { "slots": ["head"] },
+    "armor": {
+      "reduction": 0.15,
+      "staminaPenalty": 0.05,
+      "armorGrammar": "plate_armor_iron"
+    },
+    "weight": { "baseWeight": 1.5 }
+  }
+}

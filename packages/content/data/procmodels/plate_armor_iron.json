@@ -1,0 +1,35 @@
+{
+  "_comment": "T-306: procedural iron plate armor — SHELL plates keyed by bone, merged per-bone into the wearer's baked mesh (armor_grammar). skeletonId scopes the registered flat generator's rest-pose flatten (boot check / preview); the live render path (syncArmorSlot -> armorGrammarByBone) takes only the bone its render slot covers. Each plate is a thin covering layer over the body-recipe limb, seed-mixed with the boneId so torso/limb plates vary independently. Not class:'character' (plates aren't ground-anchored bodies).",
+  "id": "plate_armor_iron",
+  "generator": "armor_grammar",
+  "params": {
+    "skeletonId": "biped",
+    "voxelSize": 0.06,
+    "plates": {
+      "torso_upper": {
+        "thicknessRange": [0.05, 0.09],
+        "coverageRange": [0.8, 1.0],
+        "halfWidth": 0.16,
+        "material": "iron"
+      },
+      "head": {
+        "thicknessRange": [0.04, 0.07],
+        "coverageRange": [0.6, 0.85],
+        "halfWidth": 0.12,
+        "material": "iron"
+      },
+      "upper_leg_l": {
+        "thicknessRange": [0.04, 0.07],
+        "coverageRange": [0.55, 0.8],
+        "halfWidth": 0.09,
+        "material": "iron"
+      },
+      "upper_leg_r": {
+        "thicknessRange": [0.04, 0.07],
+        "coverageRange": [0.55, 0.8],
+        "halfWidth": 0.09,
+        "material": "iron"
+      }
+    }
+  }
+}

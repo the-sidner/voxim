@@ -1,0 +1,14 @@
+{
+  "_comment": "T-306: procedural chest plate — armor.armorGrammar -> plate_armor_iron. Each wearer's plate is seed-unique (armor item's own EntityId -> seed). Rendered by armor_grammar's per-bone atoms merged into the wearer's baked mesh at the torso_upper bone (ARMOR_SLOTS: chest -> torso_upper).",
+  "id": "plate_chest",
+  "modelId": "generated_armor",
+  "components": {
+    "equippable": { "slots": ["chest"] },
+    "armor": {
+      "reduction": 0.2,
+      "staminaPenalty": 0.1,
+      "armorGrammar": "plate_armor_iron"
+    },
+    "weight": { "baseWeight": 3.0 }
+  }
+}

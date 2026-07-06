@@ -94,8 +94,11 @@ export function deriveBladeGeometry(seed: number, params: BladeGrammarParams): B
  * Emit the blade's `VoxelAtom[]`: LIMB spine (tapered box stack along local
  * +Y, matching the weapon model convention `model_sword_basic.json` used) +
  * SOLID pommel at the grip end + SHELL guard at the blade/grip seam.
- * Model space: x=right (blade width), y=forward (blade axis — the model's
- * existing sword convention), z=up (blade thickness).
+ * Model space: x=right (blade width), y=forward (blade thickness), z=up (the
+ * BLADE AXIS) — matching the held-weapon convention `model_sword_basic.json`
+ * uses (blade extends along model +z) so `syncHandSlot`'s AABB anchor +
+ * length measurement work identically for a generated blade. The blade
+ * extends +z from the guard; the pommel/grip run -z; the guard sits at z=0.
  */
 export function bladeGrammarAtoms(
   seed: number,
@@ -103,7 +106,7 @@ export function bladeGrammarAtoms(
   resolveMaterial: (name: string) => number,
 ): VoxelAtom[] {
   const geo = deriveBladeGeometry(seed, params);
-  const rng = makePrng(seed ^ 0x5a5a5a5a); // independent stream from per-tooth/style jitter, decorrelated from the geometry draws above
+  const rng = makePrng(seed ^ 0x5a5a5a5a); // independent stream for per-tooth/style jitter, decorrelated from the geometry draws above
   const bladeMat = resolveMaterial(params.materials.blade);
   const guardMat = resolveMaterial(params.materials.guard);
   const pommelMat = resolveMaterial(params.materials.pommel);
@@ -111,45 +114,45 @@ export function bladeGrammarAtoms(
   const atoms: VoxelAtom[] = [];
 
   const pommelLen = Math.max(vs, geo.length * params.pommelLengthFrac);
-  const guardY = 0; // blade/grip seam sits at model-space y=0; pommel extends -y, blade extends +y
+  const guardZ = 0; // blade/grip seam at model-space z=0; pommel/grip run -z, blade runs +z
   const bladeHalfWidth = Math.max(vs / 2, geo.radius * 1.5);
 
-  // ---- SOLID pommel — a small cap at the grip end (-y), tapering slightly
+  // ---- SOLID pommel + grip — a stack at the grip end (-z), tapering slightly
   // toward the butt so it reads as load-bearing bulk, not a floating box. ----
   const pommelSteps = Math.max(1, Math.round(pommelLen / vs));
   for (let i = 0; i < pommelSteps; i++) {
-    const cy = guardY - (i + 0.5) * vs;
+    const cz = guardZ - (i + 0.5) * vs;
     const t = i / pommelSteps; // 0 at guard, 1 at butt
     const w = bladeHalfWidth * (1 - 0.3 * t);
-    atoms.push({ cx: 0, cy, cz: 0, sx: w * 2, sy: vs, sz: w * 2, materialId: pommelMat });
+    atoms.push({ cx: 0, cy: 0, cz, sx: w * 2, sy: w * 2, sz: vs, materialId: pommelMat });
   }
 
   // ---- SHELL guard — a thin cross-piece at the seam, wider than the blade
   // and the pommel so it reads as a separate covering layer (DESIGN_LANGUAGE
-  // §1 SHELL: "reads as separate from what it covers"). ----
+  // §1 SHELL: "reads as separate from what it covers"). Wide in x, thin in z. ----
   const guardHalf = Math.max(bladeHalfWidth * 1.4, params.guardHalfWidth);
-  atoms.push({ cx: 0, cy: guardY, cz: 0, sx: guardHalf * 2, sy: vs, sz: vs * 0.6, materialId: guardMat });
+  atoms.push({ cx: 0, cy: 0, cz: guardZ, sx: guardHalf * 2, sy: vs, sz: vs * 0.6, materialId: guardMat });
 
   // ---- LIMB spine — the blade proper, tapering toward the tip, extending
-  // +y from the guard. `curved` bows the spine's x-offset via a sine profile
-  // peaking at curveOffset; `serrated` notches alternating -x teeth along
-  // the trailing edge. Both keep the SAME tip-length/radius the capsule
-  // sweep uses — only the visual spine's per-step placement varies. ----
+  // +z from the guard. `curved` bows the spine's x-offset via a sine profile
+  // peaking at curveOffset; `serrated` notches alternating -x teeth along the
+  // trailing edge. Both keep the SAME tip-length/radius the capsule sweep
+  // uses — only the visual spine's per-step placement varies. ----
   const spineSteps = Math.max(1, Math.round(geo.length / vs));
   for (let i = 0; i < spineSteps; i++) {
     const t = (i + 0.5) / spineSteps; // 0 at guard, 1 at tip
-    const cy = guardY + (i + 0.5) * vs;
+    const cz = guardZ + (i + 0.5) * vs;
     const taperW = bladeHalfWidth * (1 - 0.6 * t); // tapers toward the tip
     let cx = 0;
     if (params.style === "curved") {
       cx = Math.sin(t * Math.PI) * geo.curveOffset;
     }
-    atoms.push({ cx, cy, cz: 0, sx: taperW * 2, sy: vs, sz: vs * 0.5, materialId: bladeMat });
+    atoms.push({ cx, cy: 0, cz, sx: taperW * 2, sy: vs * 0.5, sz: vs, materialId: bladeMat });
     if (params.style === "serrated" && i % 2 === 0 && i < spineSteps - 1) {
       const toothDepth = taperW * (0.3 + rng() * 0.3);
       atoms.push({
-        cx: cx - taperW - toothDepth * 0.5, cy, cz: 0,
-        sx: toothDepth, sy: vs * 0.6, sz: vs * 0.35,
+        cx: cx - taperW - toothDepth * 0.5, cy: 0, cz,
+        sx: toothDepth, sy: vs * 0.35, sz: vs * 0.6,
         materialId: bladeMat,
       });
     }

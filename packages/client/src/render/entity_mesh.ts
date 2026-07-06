@@ -80,6 +80,17 @@ export interface AttachmentSlot {
    * maneuver. Set per-slot so each hand can hold a different blade.
    */
   bladeAttach: { base: [number, number, number]; tip: [number, number, number]; holdBone: string } | null;
+  /**
+   * T-306 — the ITEM entity id this slot's voxels were baked for, when the
+   * slot holds a procedurally-generated piece (blade_grammar weapon /
+   * armor_grammar plate). Generated items share one anchor `modelId` (e.g.
+   * `generated_blade`) across every instance, so the modelId-unchanged
+   * early-exit can't tell two different generated swords apart — this field
+   * is the extra equality key that forces a re-bake when the equipped item
+   * ENTITY changes even though its anchor modelId didn't. Null/absent for
+   * authored (non-generated) items.
+   */
+  builtItemId?: string | null;
 }
 
 export interface EntityMeshGroup {
@@ -1057,6 +1068,38 @@ export function attachModelToSlot(
   if (anchorOffset) modelGroup.position.set(anchorOffset.x, anchorOffset.y, anchorOffset.z);
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
+}
+
+/**
+ * T-306 — attach a slot from PRE-BUILT `VoxelAtom[]` (a blade_grammar /
+ * armor_grammar generator's output) instead of an authored `ModelDefinition`.
+ * The atoms are ALREADY in the target voxel scale (the generator emits in
+ * world units — voxelSize is a param), so unlike `attachModelToSlot` there is
+ * no per-model uniform scale here; the caller applies any anchor offset. Bakes
+ * through the SAME `buildMeshesFromAtoms` tail every authored/recipe path uses,
+ * so a generated blade inherits the identical edge-ink / flat-shading / palette
+ * look. `modelId` labels the slot (the shared anchor id, e.g. `generated_blade`)
+ * so the modelId-unchanged early-exit keeps working; `syncHandSlot` also tracks
+ * `builtItemId` to force a re-bake when the specific equipped item changes.
+ */
+export function attachAtomsToSlot(
+  mesh: EntityMeshGroup,
+  slotId: string,
+  modelId: string,
+  atoms: ReadonlyArray<VoxelAtom>,
+  materials: Map<number, MaterialDef>,
+  onTop = false,
+  anchorOffset?: { x: number; y: number; z: number },
+): void {
+  const slot = ensureAttachment(mesh, slotId);
+  detachModelFromSlot(mesh, slotId);
+
+  const modelGroup = new THREE.Group();
+  modelGroup.name = `generated:${modelId}`;
+  for (const m of buildMeshesFromAtoms(atoms, materials, onTop)) modelGroup.add(m);
+  if (anchorOffset) modelGroup.position.set(anchorOffset.x, anchorOffset.y, anchorOffset.z);
+  slot.anchor.add(modelGroup);
+  slot.modelId = modelId;
 }
 
 /**
