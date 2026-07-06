@@ -45,6 +45,7 @@ import { ActiveActions } from "../../components/action.ts";
 import type { HitHandler, HitContext } from "../../hit_handler.ts";
 import type { StateHistoryBuffer, TickSnapshot, EntitySnapshot } from "../../state_history.ts";
 import { dispatchSweepHit } from "../../combat/sweep.ts";
+import { pickAimAssistTarget, type AimCandidate } from "../../combat/aim_assist.ts";
 import type { EffectResolver, ResolveContext } from "../effect.ts";
 import { createLogger } from "../../logger.ts";
 
@@ -53,6 +54,9 @@ const log = createLogger("weapon_trace");
 interface TraceScratch {
   rewindTick: number;
   hits: { entityId: string; bodyPart: string }[];
+  /** Soft aim-assist (T-320): facing chosen on the active-enter tick and held
+   *  for the whole active phase so the swing/orientation doesn't drift back. */
+  aimFacing?: number;
 }
 
 /** Equipped-weapon geometry + stats for the wielder, or unarmed defaults. */
@@ -156,8 +160,33 @@ export class WeaponTraceResolver implements EffectResolver {
     const ax = attackerSnap?.x ?? world.get(entityId, Position)?.x ?? 0;
     const ay = attackerSnap?.y ?? world.get(entityId, Position)?.y ?? 0;
     const az = attackerSnap?.z ?? world.get(entityId, Position)?.z ?? 0;
-    const attackFacing = attackerSnap?.facing ?? world.get(entityId, InputState)?.facing ?? 0;
+    let attackFacing = attackerSnap?.facing ?? world.get(entityId, InputState)?.facing ?? 0;
     const origin: Vec3 = { x: ax, y: ay, z: az };
+
+    // Soft aim-assist (T-320): on the active-enter tick pick the best enemy in
+    // the frontal cone and orient the swing toward it; persist that facing so
+    // the whole (possibly multi-tick) active phase stays oriented without
+    // re-picking mid-swing. Candidates come from the SAME rewound snapshot the
+    // sweep uses so the chosen angle matches the swept geometry.
+    const aim = content.getGameConfig().combat.aimAssist;
+    if (ctx.edge === "enter" || scratch.aimFacing === undefined) {
+      const candidates: AimCandidate[] = snap.entities.map((e) => ({ entityId: e.entityId, x: e.x, y: e.y }));
+      const picked = pickAimAssistTarget(world, entityId, ax, ay, attackFacing, candidates, {
+        rangeUnits: aim.rangeUnits,
+        halfAngleRad: aim.halfAngleDeg * Math.PI / 180,
+      });
+      if (picked) scratch.aimFacing = picked.facing;
+    }
+    if (scratch.aimFacing !== undefined) {
+      attackFacing = scratch.aimFacing;
+      // Orient the actor for the active phase. world.set wins over PhysicsSystem's
+      // earlier deferred Facing set (ordered op-log, same tick); world.write to
+      // InputState makes next tick's physics re-derive the same facing so the
+      // snap persists across the whole active phase instead of reverting.
+      world.set(entityId, Facing, { angle: attackFacing });
+      const input = world.get(entityId, InputState);
+      if (input) world.write(entityId, InputState, { ...input, facing: attackFacing });
+    }
 
     // When the action carries an authored swingPath, the hit sweeps the capsule
     // along that arc directly (no clip sampling) — the SAME hilt→tip path the

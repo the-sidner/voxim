@@ -27,6 +27,10 @@
       "attackArcHalf": 1.0471975511965976,
       "staminaCostPerSwing": 5
     },
+    "aimAssist": {
+      "rangeUnits": 4.0,
+      "halfAngleDeg": 60
+    },
     "projectileDefaults": {
       "spawnOffset": {
         "fwd": 0.6,

@@ -1907,6 +1907,19 @@ export interface GameConfig {
     unarmedBladeRadius: number;
     unarmed: DerivedItemStats;
     /**
+     * Soft aim-assist (T-320): on an attack's active tick the combat resolver
+     * orients the swing (+ the actor's Facing) toward the best enemy inside a
+     * frontal cone — nearest by a distance-dominant cost with angular offset as
+     * the tiebreak. No hard lock-on; if no enemy is in cone the swing goes
+     * straight ahead. Server-authoritative (identical for mouse and pad).
+     */
+    aimAssist: {
+      /** Max distance (world units) an enemy can be and still be snapped to. */
+      rangeUnits: number;
+      /** Half-angle (degrees) of the frontal cone about the actor's facing. */
+      halfAngleDeg: number;
+    };
+    /**
      * Fallback projectile spawn parameters used only when a ranged weapon
      * action has no explicit ProjectileActionConfig.spawnOffset. Values are
      * entity-local (fwd, right, up) coordinates applied via localToWorld
