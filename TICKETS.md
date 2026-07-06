@@ -373,7 +373,7 @@ builds on. Snapshot determinism stays the invariant across every
 phase.
 
 ### T-066 · Client roof rendering for enclosed areas
-Effort: M   Status: done   Commit: 6c47b39
+Effort: M   Status: done   Commit: 3957db0
 
 On `EnclosureChanged` event, client generates roof geometry over the enclosure polygon.
 When the player entity is inside the enclosure, the roof is hidden (player sees interior).
