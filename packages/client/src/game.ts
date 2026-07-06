@@ -139,6 +139,22 @@ export class VoximGame {
   };
 
   /**
+   * Camera scene-probe hook (T-320), reached via `_voxim_game.cameraProbe`.
+   * Pointer-lock free-look CANNOT be driven headless — the browser only
+   * delivers movementX/Y while a real cursor is locked, which Playwright's
+   * synthetic mouse can't produce. This injects look deltas straight into the
+   * rig (the same seam pointer lock feeds) and reads yaw/pitch back, so the
+   * harness can confirm the world rotates and pitch clamps. Mirrors the sibling
+   * testInput/buildProbe/interactProbe injection pattern.
+   */
+  readonly cameraProbe = {
+    rotate: (dxPixels: number, dyPixels: number): void =>
+      this.renderer?.cameraRig.applyLookDelta(dxPixels, dyPixels),
+    yaw: (): number => this.renderer?.cameraRig.getYaw() ?? 0,
+    pitch: (): number => this.renderer?.cameraRig.getPitch() ?? 0,
+  };
+
+  /**
    * Build-mode test hook (T-284): enter build mode for a blueprint so the harness
    * can screenshot the ghost (the per-frame cursor resolve then populates the
    * preview from the mouse position). Mirrors the `select_blueprint` UI action.
