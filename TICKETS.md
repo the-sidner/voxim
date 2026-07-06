@@ -373,12 +373,33 @@ builds on. Snapshot determinism stays the invariant across every
 phase.
 
 ### T-066 · Client roof rendering for enclosed areas
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 6c47b39
 
 On `EnclosureChanged` event, client generates roof geometry over the enclosure polygon.
 When the player entity is inside the enclosure, the roof is hidden (player sees interior).
 When outside, the roof is visible.
 Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
+
+Landed: T-065's EnclosureSystem deliberately shipped server-local, "publishing
+nothing on the wire yet" — the `EnclosureChanged` protocol event + emission this
+ticket's own body calls for didn't exist, so building it was in-scope, not a
+separate blocking prerequisite (detection itself already existed). Added
+`EnclosureChanged` (EventType id 18, TileEvents symbol, GameEvent variant) carrying
+the server's full current enclosed-cell set as `{x,y}` pairs — a tile-wide
+broadcast like `DayPhaseChanged`, since a roof is visible to every nearby client,
+not just the builder. `EnclosureSystem.run` now diffs each recompute against the
+previous set and publishes only on an actual change (idempotent recomputes, the
+common case, stay silent). Client `RoofRenderer` groups the flat cell list into
+4-connected components (the server has no per-building notion — one polygon per
+sealed shell is a client-side grouping, not a wire concept), builds one merged-quad
+mesh per component (`buildRoofGeometry`, the same greedy row-run merge
+`water_renderer.ts` uses), at `getTerrainHeight(cell) + game_config.building.
+roofHeightAboveFloor` (new content field, matches atlas's `WALL_HEIGHT`). Hidden
+per-piece each frame off the player's predicted position — the same call site
+driving canopyFade/fog LOS. New `"roof"` palette token → `"timber"` swatch, no
+hardcoded hex. `enclosure.test.ts` (new) covers the System-level wiring
+(wall-grid assembly, change-detection, dirty-flag gating); `roof_renderer.test.ts`
+(new) covers the pure grouping/geometry logic headless.
 
 ### T-316 · Atlas inspector bake button 401s — control-plane secret never wired
 Effort: S   Status: done   Commit: 1a9291c
