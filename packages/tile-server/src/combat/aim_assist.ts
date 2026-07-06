@@ -72,7 +72,13 @@ export function pickAimAssistTarget(
   for (const c of candidates) {
     if (c.entityId === attackerId) continue;
     if (!world.isAlive(c.entityId)) continue;
-    if (world.get(c.entityId, Health) === null) continue;
+    const health = world.get(c.entityId, Health);
+    // Excludes a lingering dissolve corpse (T-311 P5c): DeathSystem keeps a
+    // corpse `world.isAlive` for its dissolve_timer's duration when a hook
+    // votes `{ linger: true }`, at Health.current === 0 — alive-but-dead, and
+    // it still carries Hitbox/NpcTag, so without this check the sweep could
+    // snap a swing onto a corpse.
+    if (health === null || health.current <= 0) continue;
     // Same "is a combat target" signal the sweep uses.
     const hitbox = world.get(c.entityId, Hitbox);
     if (!hitbox || hitbox.parts.length === 0) continue;

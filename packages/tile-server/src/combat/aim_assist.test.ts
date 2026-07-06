@@ -134,3 +134,17 @@ Deno.test("aim-assist: a dead enemy still in the candidate list is ignored", () 
   const picked = pickAimAssistTarget(w, me, 0, 0, 0, candidates, CFG);
   assertEquals(picked, null);
 });
+
+Deno.test("aim-assist: a lingering dissolve corpse (alive, Health.current=0) is ignored", () => {
+  // T-311 P5c: a death hook can vote { linger: true }, which keeps the corpse
+  // world.isAlive (not destroyed) for its dissolve_timer's duration, at
+  // Health.current === 0, still carrying Hitbox + NpcTag. The picker must not
+  // snap a swing onto it just because isAlive/Health-presence both pass.
+  const w = new World();
+  const me = spawnPlayer(w);
+  const corpse = spawnTarget(w, 2, 0, true);
+  w.write(corpse, Health, { current: 0, max: 100 }); // killed, but never destroyed
+  assert(w.isAlive(corpse));
+  const picked = pickAimAssistTarget(w, me, 0, 0, 0, candidatesOf(w), CFG);
+  assertEquals(picked, null);
+});

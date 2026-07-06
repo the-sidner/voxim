@@ -8,8 +8,9 @@ import type { HoverTarget } from "./intents.ts";
 
 // ---- HoverState ----------------------------------------------------------
 
-/** What the cursor is over right now. Updated each frame by the
- *  InteractionSystem (entity raycast) plus terrain-cell projection. */
+/** The nearest in-range interactable right now (T-320: proximity, not a
+ *  cursor). Updated each frame by InteractionSystem's nearest-interactable
+ *  scan; the hover outline + Use-key prompt read this same signal. */
 export const hoverState = signal<HoverTarget>({ kind: "none" });
 
 // ---- HoldState -----------------------------------------------------------
