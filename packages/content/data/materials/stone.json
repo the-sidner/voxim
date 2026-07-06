@@ -18,6 +18,10 @@
     "stone",
     "mineral"
   ],
+  "generatorPreferences": {
+    "density_range": [0.05, 0.3],
+    "layerable": true
+  },
   "render": {
     "textureStyle": "stone",
     "mossBlend": {

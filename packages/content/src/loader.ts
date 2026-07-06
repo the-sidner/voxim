@@ -21,7 +21,7 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
+import type { MaterialDef, MaterialProperties, MaterialGeneratorPreferences, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
   AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { crossCheckBodyRecipe } from "./body_recipe.ts";
@@ -118,6 +118,12 @@ async function loadContentStoreInternal(
     // T-311 P4: the disturbanceField FieldExpr must reference known planes.
     if (mat.render?.relief?.disturbanceField) {
       crossCheckFieldExpr(mat.render.relief.disturbanceField, `Material '${mat.name}' relief.disturbanceField`);
+    }
+    // T-301: generatorPreferences is an authoring HINT, not a required
+    // schema — but if authored, its shape must be sane (fail-fast, same
+    // stance as every other content validation in this loop).
+    if (mat.generatorPreferences) {
+      validateGeneratorPreferences(mat.name, mat.generatorPreferences);
     }
     store.registerMaterial(mat);
   }
@@ -1206,6 +1212,36 @@ export function validateActionCrossRefs(defs: ActionDef[]): void {
         }
       }
     }
+  }
+}
+
+/**
+ * T-301: `generatorPreferences` is an authoring hint (never required), but
+ * an authored range must be a real [min,max] range and any authored 0-1
+ * fraction must actually lie in [0,1] — a swapped or out-of-bounds hint would
+ * silently mislead every future generator that reads it. Fail fast, matching
+ * every other content validation in this file.
+ */
+function validateGeneratorPreferences(materialName: string, prefs: MaterialGeneratorPreferences): void {
+  const where = `Material '${materialName}' generatorPreferences`;
+  const checkRange = (name: string, r?: [number, number]) => {
+    if (!r) return;
+    const [lo, hi] = r;
+    if (!(lo <= hi)) {
+      throw new Error(`[content] ${where}.${name} must be [min,max] with min<=max, got [${lo}, ${hi}]`);
+    }
+  };
+  checkRange("density_range", prefs.density_range);
+  checkRange("thickness_range", prefs.thickness_range);
+  if (prefs.density_range) {
+    for (const v of prefs.density_range) {
+      if (v < 0 || v > 1) {
+        throw new Error(`[content] ${where}.density_range values must be in [0,1], got ${v}`);
+      }
+    }
+  }
+  if (prefs.emission !== undefined && (prefs.emission < 0 || prefs.emission > 1)) {
+    throw new Error(`[content] ${where}.emission must be in [0,1], got ${prefs.emission}`);
   }
 }
 

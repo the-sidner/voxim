@@ -18,6 +18,11 @@
     "ground",
     "vegetation"
   ],
+  "generatorPreferences": {
+    "density_range": [0.5, 1.0],
+    "thickness_range": [0.05, 0.15],
+    "layerable": true
+  },
   "render": {
     "textureStyle": "organic",
     "relief": {

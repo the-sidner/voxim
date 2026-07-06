@@ -17,5 +17,10 @@
   "tags": [
     "organic",
     "vegetation"
-  ]
+  ],
+  "generatorPreferences": {
+    "density_range": [0.4, 0.9],
+    "thickness_range": [0.05, 0.12],
+    "layerable": true
+  }
 }

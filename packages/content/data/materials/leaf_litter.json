@@ -17,5 +17,10 @@
   "tags": [
     "ground",
     "vegetation"
-  ]
+  ],
+  "generatorPreferences": {
+    "density_range": [0.6, 1.0],
+    "thickness_range": [0.02, 0.06],
+    "layerable": true
+  }
 }

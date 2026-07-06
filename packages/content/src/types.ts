@@ -113,6 +113,33 @@ export interface MaterialVariant {
   addsTags?: readonly string[];
 }
 
+/**
+ * Generator-facing authoring hints (T-301, `DESIGN_LANGUAGE.md` §5) — an
+ * additive, fully-optional block a ProcModel generator MAY read for a
+ * material-appropriate default instead of a hardcoded literal. Absence is
+ * valid; populated only on materials with an obvious value (existing content
+ * is byte-unchanged unless a value is authored). Never required for a
+ * material to be usable — this is a hint, not a schema the loader enforces
+ * presence of.
+ */
+export interface MaterialGeneratorPreferences {
+  /** Suggested per-cell/per-instance placement density [min,max] (0-1),
+   *  DESIGN_LANGUAGE.md §4's semantic density bands per tag. */
+  density_range?: [number, number];
+  /** Suggested SHELL/SCATTER-FLECK thickness in world units (bark rind,
+   *  armor plate, fur tuft length) — NOT a SOLID/LIMB bulk dimension. */
+  thickness_range?: [number, number];
+  /** Whether this material suits G3 MaterialStateLadder layering (blended/
+   *  stacked as a SHELL over another material — moss over stone, rot over
+   *  flesh) rather than only appearing as solid bulk. */
+  layerable?: boolean;
+  /** Suggested emissive intensity [0,1] for generator-driven glow accents
+   *  (embers, runes, eyes) — a HINT for "if a generator adds a glowing
+   *  accent voxel using this material, here's a reasonable value";
+   *  independent of the material's own authored `emissive` field. */
+  emission?: number;
+}
+
 export interface MaterialDef {
   id: MaterialId;
   name: string;        // unique string key used by the craft system
@@ -133,6 +160,10 @@ export interface MaterialDef {
   /** State-ladder variants (T-311 Phase 2, grammar G3) — selected by a
    *  server-authoritative index. Reserved; consumer lands in Phase 2. */
   variants?: readonly MaterialVariant[];
+  /** Generator-facing authoring hints (T-301) — see `MaterialGeneratorPreferences`
+   *  and `DESIGN_LANGUAGE.md` §5. Absent = no hint authored (generators fall
+   *  back to their own defaults). */
+  generatorPreferences?: MaterialGeneratorPreferences;
 }
 
 /**

@@ -18,6 +18,10 @@
     "organic",
     "wood"
   ],
+  "generatorPreferences": {
+    "density_range": [0.05, 0.25],
+    "layerable": false
+  },
   "render": {
     "textureStyle": "wood"
   }

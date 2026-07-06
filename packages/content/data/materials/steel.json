@@ -19,6 +19,11 @@
     "alloy",
     "iron"
   ],
+  "generatorPreferences": {
+    "density_range": [0, 0.02],
+    "thickness_range": [0.04, 0.15],
+    "layerable": false
+  },
   "render": {
     "textureStyle": "metal"
   }
