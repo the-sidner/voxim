@@ -6176,6 +6176,52 @@ Done when: hostile tree loads from data; NPC AI ticks against the loaded
 tree; adding "skittish" or "patrol" archetypes is a content-only change
 with no code edits.
 
+### T-191 · Devtools rebuild
+Effort: L   Status: done   (closed 2026-07-06 closeout audit — superseded/delivered by the Studio arc)
+
+Scrap the current voxel-editor and build a coherent two-tool suite:
+voxel/model designer + animation editor. Hard separation between data
+tooling (Layer A — operates on raw ModelDefinition / SkeletonDef /
+AnimationClip JSON, zero game-content imports) and game-content
+overlays (Layer B — loads ContentService, lets you preview the
+artifact in a game-like scene with prefab equipment / state machines /
+maneuvers).
+
+Lives next to atlas as a single served Deno+esbuild+Preact app with
+two top-level routes (/voxel, /anim) sharing a common shell.
+
+The old packages/devtools/voxel-editor retires at the end (T-191z).
+
+Phasing → sub-tickets T-191a..e + T-191z.
+
+**CLOSEOUT VERDICT (2026-07-06):** the umbrella's own closing condition
+("closes when T-191z + T-191e land") is satisfied — both already landed:
+T-191z (retire the old voxel-editor) is `done`; T-191e (weapon-sweep
+debugger) is `obsolete`. `packages/devtools/src/studio/` (`App.tsx`)
+delivers, and exceeds, what this ticket asked for: one served
+Deno+esbuild+Preact app, hash-routed (`voxel`/`anim`/`material`/
+`procmodel`/`dissolve`/`cliff`), sharing one `shell/` (Layout, ViewportPane,
+AssetBrowser, content_loader, file_io). T-191a–d (shell+viewport+asset
+browser, voxel editor Layer A, animation editor Layer A, Layer-B
+game-content overlays) are all `done` — see their entries above/below.
+T-311's Phase 1–5 work then extended the SAME shell with Material,
+ProcModel, Dissolve, and Cliff panels (commits `57cf815`, `0f6f73d`,
+`b793537`, `a46e14a`, `0b4b819`, `00231aa`, `9181b1a`) — a superset of the
+original two-route ask, not a parallel tool. No separate
+`packages/devtools/voxel-editor` directory exists any more (confirmed:
+`ls packages/devtools/src/` shows only `studio/`; the sole `voxel-editor/`
+left is the Studio's own Layer-A panel, `studio/voxel-editor/`) — nothing
+further for T-191z to do.
+
+**Flagged, not silently dropped:** T-191e's `obsolete` rationale ("zero
+swingPath in content") was invalidated three days after its closure by
+T-307, which re-introduced `SwingPathDef` wholesale. `AnimationEditor.tsx`
+still carries a dead stub comment pointing at the unbuilt tooling. Rather
+than reopen a ticket whose described mechanism (`clip_overrides/` +
+clip-blend comparison) no longer matches the post-T-307/T-308 attachment
+model (swingPath + aimLimb IK, not clip blending), this is tracked as a
+fresh, honestly-scoped ticket: see T-322 (`## Procedural Animation`).
+
 ### T-191a · Devtools shell + 3D viewport + asset browser + file IO
 Effort: M   Status: done
 

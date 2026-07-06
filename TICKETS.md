@@ -717,24 +717,6 @@ from a generator; spawned NPCs get generated names; voxel editor
 spawns procedural sub-objects via the same registry; adding a new
 algorithm is one file in algorithms/ + zero changes elsewhere.
 
-### T-191 · Devtools rebuild
-Effort: L   Status: todo   (umbrella -- shell+voxel+anim Layer A shipped; closes when T-191z + T-191e land)
-
-Scrap the current voxel-editor and build a coherent two-tool suite:
-voxel/model designer + animation editor. Hard separation between data
-tooling (Layer A — operates on raw ModelDefinition / SkeletonDef /
-AnimationClip JSON, zero game-content imports) and game-content
-overlays (Layer B — loads ContentService, lets you preview the
-artifact in a game-like scene with prefab equipment / state machines /
-maneuvers).
-
-Lives next to atlas as a single served Deno+esbuild+Preact app with
-two top-level routes (/voxel, /anim) sharing a common shell.
-
-The old packages/devtools/voxel-editor retires at the end (T-191z).
-
-Phasing → sub-tickets T-191a..e + T-191z.
-
 ### T-186 · Procedural character body generator (skeleton + voxel mesh)
 Effort: L   Status: in-progress   (Layer 1 done via T-190; Layer 2 recipe voxelizer done, see below —
 auxiliary work below remains open)
