@@ -16,6 +16,7 @@
 import type { Transformer } from "@voxim/levelgen";
 import { fbm } from "@voxim/levelgen";
 import { BoundaryKind } from "@voxim/protocol";
+import { materialVariantIds } from "@voxim/content";
 import { RIVER_DEPTH } from "./terrain.ts";
 import { ZONE_ID_NONE } from "./state.ts";
 import type { CliffState, FieldsState } from "./state.ts";
@@ -61,6 +62,17 @@ export interface FieldDeriveInput {
   moisture: number;
   /** Tile seed for the deterministic chamber-age hash. */
   tileSeed: number;
+  /**
+   * Stable alphabetical index of the "corrupted" `MaterialVariant` on the
+   * `stone` MaterialDef (I3c — SAME `materialVariantIds()` table the client
+   * resolves `SurfaceStateGrid.variantIndex` through), resolved via
+   * `materialVariantIds()` — NOT a raw literal (T-319). -1 when no content
+   * store is available (unit tests / a content-less pipeline run) or the
+   * `stone` material has no "corrupted" variant; the derivation then leaves
+   * every cell at index 0 ("base"), mirroring `cliffStage`'s "no-op without
+   * content" stance.
+   */
+  corruptedVariantIdx: number;
   /** Tunable derivation weights. */
   params: FieldParams;
 }
@@ -122,7 +134,7 @@ function spread(seed: Uint8Array, gridSize: number, passes: number, decay: numbe
 }
 
 export function deriveFieldPlanes(input: FieldDeriveInput): FieldPlanes {
-  const { gridSize, kindOf, heightMap, chamberOf, pathLevel, moisture, tileSeed, params } = input;
+  const { gridSize, kindOf, heightMap, chamberOf, pathLevel, moisture, tileSeed, corruptedVariantIdx, params } = input;
   const n = gridSize * gridSize;
 
   const canopyLight = new Uint8Array(n);
@@ -192,8 +204,14 @@ export function deriveFieldPlanes(input: FieldDeriveInput): FieldPlanes {
       (corruption[i] / 255) * (ruinAge[i] / 255) * (1 - traffic[i] / 255) * 255,
     );
 
-    // variantIndex: two-state v1 — base (0) vs corrupted (1) past a threshold.
-    variantIndex[i] = corruption[i] > params.variantCorruptThreshold ? 1 : 0;
+    // variantIndex: two-state v1 — base (0) vs the resolved "corrupted"
+    // MaterialVariant's stable alphabetical index past a threshold (I3c;
+    // T-319). corruptedVariantIdx < 0 (no content / no such variant) leaves
+    // every cell at the "base" index 0, matching cliffStage's content-less
+    // all-zero stance.
+    variantIndex[i] = corruptedVariantIdx >= 0 && corruption[i] > params.variantCorruptThreshold
+      ? corruptedVariantIdx
+      : 0;
   }
 
   return { canopyLight, corruption, fertility, wetness, overgrowth, wear, variantIndex, ruinAge, traffic, surfaceLevel };
@@ -219,6 +237,13 @@ export const fieldsStage: Transformer<CliffState, FieldsState, FieldParams> =
       if (!zone || zone.traversal !== "path") continue;
       pathLevel[i] = zone.isCorridor ? 255 : 160;
     }
+    // T-319: resolve "corrupted" through the SAME stable alphabetical
+    // id→index table (`materialVariantIds`) the client resolves
+    // `SurfaceStateGrid.variantIndex` through — not a bare literal `1`. -1
+    // (no content / stone has no "corrupted" variant) leaves variantIndex at
+    // 0 for every cell, mirroring `cliffStage`'s content-less stance.
+    const stone = state.content?.materials.get("stone");
+    const corruptedVariantIdx = stone ? materialVariantIds(stone).indexOf("corrupted") : -1;
     const fields = deriveFieldPlanes({
       gridSize: state.gridSize,
       kindOf: state.kindOf,
@@ -227,6 +252,7 @@ export const fieldsStage: Transformer<CliffState, FieldsState, FieldParams> =
       pathLevel,
       moisture: state.worldCell.biome.moisture,
       tileSeed: seed,
+      corruptedVariantIdx,
       params,
     });
     return { ...state, fields };

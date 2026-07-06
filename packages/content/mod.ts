@@ -123,7 +123,7 @@ export type {
   TileTraderListing,
 } from "./src/types.ts";
 export { snapColorToRamp, hexStrToNum } from "./src/palette_snap.ts";
-export { resolveMaterialVariant, materialVariantIndex } from "./src/material_variant.ts";
+export { resolveMaterialVariant, materialVariantIndex, materialVariantIds } from "./src/material_variant.ts";
 export { evaluateFieldExpr, crossCheckFieldExpr, FIELD_NAMES } from "./src/field_expr.ts";
 export type { FieldExpr, FieldTerm, FieldCurve } from "./src/field_expr.ts";
 export { sunArc, timeOfDay01 } from "./src/sun_arc.ts";

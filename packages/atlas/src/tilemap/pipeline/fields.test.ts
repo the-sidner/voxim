@@ -28,6 +28,7 @@ function baseInput(): FieldDeriveInput {
   pathLevel[idx(2, 6)] = 200;
   return {
     gridSize: G, kindOf, heightMap, chamberOf, pathLevel, moisture: 0.5, tileSeed: 12345,
+    corruptedVariantIdx: -1, // no content store in this pure-core fixture (T-319)
     params: {
       forestShadowPasses: 3, forestShadowDecay: 0.72,
       waterSpreadPasses: 4, waterSpreadDecay: 0.78,
@@ -96,4 +97,26 @@ Deno.test("T-311: full deriveFieldPlanes is deterministic", () => {
   assertEquals(a.canopyLight, b.canopyLight);
   assertEquals(a.corruption, b.corruption);
   assertEquals(a.fertility, b.fertility);
+});
+
+Deno.test("T-319: corruptedVariantIdx -1 (no content) leaves variantIndex at 0 everywhere, even past threshold", () => {
+  const input = baseInput();
+  input.params.variantCorruptThreshold = 0; // every non-zero corruption cell crosses
+  const f = deriveFieldPlanes(input);
+  assert(f.corruption[idx(5, 5)] > 0, "chamber cell has non-zero corruption (precondition)");
+  assertEquals(f.variantIndex[idx(5, 5)], 0, "no content → variantIndex stays 0 (base)");
+});
+
+Deno.test("T-319: a resolved corruptedVariantIdx is written past the threshold, 0 below it", () => {
+  const probe = deriveFieldPlanes(baseInput()); // sample real corruption values first
+  const hi = probe.corruption[idx(5, 5)]; // chamber cell — ruinAge-boosted
+  const lo = probe.corruption[idx(7, 7)]; // non-chamber cell — no ruinAge term
+  assert(hi > lo, "chamber cell reads more corrupt than a non-chamber cell (precondition)");
+
+  const input = baseInput();
+  input.corruptedVariantIdx = 3; // e.g. "corrupted" resolved to stable index 3
+  input.params.variantCorruptThreshold = (hi + lo) / 2; // strictly between the two observed values
+  const f = deriveFieldPlanes(input);
+  assertEquals(f.variantIndex[idx(5, 5)], 3, "past threshold → the resolved stable index");
+  assertEquals(f.variantIndex[idx(7, 7)], 0, "below threshold → base index 0");
 });

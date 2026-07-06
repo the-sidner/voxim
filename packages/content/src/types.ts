@@ -100,7 +100,10 @@ export interface MaterialRenderDef {
  * models BOTH two-state (sacred↔corrupted) and N-state decay
  * (fresh→weathered→decayed) + settlement upgrade-stages. Selected by a
  * SERVER-authoritative index resolved by STABLE string `id`→index at boot (never
- * raw array position — invariant I3c). Reserved shape; consumer lands in Phase 2.
+ * raw array position — invariant I3c). Resolved via `materialVariantIds()` (the
+ * alphabetical stable-index table, same discipline `CliffGrid.profileId`
+ * established, T-318/T-319); the atlas `fields` stage writes the resolved index
+ * into `SurfaceStateGrid.variantIndex`.
  */
 export interface MaterialVariant {
   id: string;

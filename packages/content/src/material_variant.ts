@@ -3,12 +3,15 @@
  * `MaterialVariant` to a base `MaterialDef`, producing the effective def the
  * renderer bakes. ONE ladder models both two-state (sacred↔corrupted) and N-state
  * decay (fresh→weathered→decayed). THREE-free (content stays renderer-agnostic);
- * used by the Studio Material preview now and by the per-cell consumer once the
- * server SurfaceStateGrid.variantIndex lands (Phase 3).
+ * used by the Studio Material preview and by the atlas `fields` stage's
+ * `SurfaceStateGrid.variantIndex` derivation (T-319).
  *
- * Selection is by a STABLE string id (invariant I3c) — `materialVariantIndex`
- * maps an authored id to its array position so reordering the JSON can't silently
- * remap cells; the per-cell grid will store that resolved index.
+ * Selection is by a STABLE string id (invariant I3c), same alphabetical
+ * id→index discipline `CliffGrid.profileId` established (T-318) — NOT raw
+ * JSON array position, so reordering a material's `variants` array in its
+ * JSON file can't silently remap a per-cell wire index. `materialVariantIds`
+ * is the ordered id table (index 0..N-1 = wire value); `materialVariantIndex`
+ * resolves an id through that same table.
  */
 import type { MaterialDef } from "./types.ts";
 import { clamp01 } from "./field_expr.ts";
@@ -45,19 +48,35 @@ function applyHslShift(color: number, shift?: { h: number; s: number; l: number 
   return hslToRgb(h + shift.h, clamp01(s + shift.s), clamp01(l + shift.l));
 }
 
-/** Array index of the variant with `id`, or -1 if the material has no such variant. */
+/**
+ * The stable alphabetical id→index table for `def.variants` (I3c) — index 0..N-1
+ * is the wire value `SurfaceStateGrid.variantIndex` stores, SAME discipline
+ * `buildCliffProfileIndex` uses for `CliffGrid.profileId`. Empty array if the
+ * material has no variants. Recomputed on demand (variant lists are tiny;
+ * no caching needed, mirroring `materialVariantIndex`'s existing cost).
+ */
+export function materialVariantIds(def: MaterialDef): readonly string[] {
+  if (!def.variants) return [];
+  return [...def.variants].map((v) => v.id).sort((a, b) => a.localeCompare(b));
+}
+
+/** Stable alphabetical index of the variant with `id`, or -1 if the material
+ *  has no such variant (I3c — NOT raw JSON array position). */
 export function materialVariantIndex(def: MaterialDef, id: string): number {
-  return def.variants ? def.variants.findIndex((v) => v.id === id) : -1;
+  return materialVariantIds(def).indexOf(id);
 }
 
 /**
- * The effective MaterialDef for `def` under variant `index`. Out-of-range or no
- * variants → the base def unchanged. colorOverride wins over colorShift;
- * emissiveCracks overrides emissive; addsTags append (server stat-derivation must
- * decide whether to honour them — the renderer ignores tags).
+ * The effective MaterialDef for `def` under variant `index` (a stable
+ * alphabetical index per `materialVariantIds`, NOT raw array position).
+ * Out-of-range or no variants → the base def unchanged. colorOverride wins
+ * over colorShift; emissiveCracks overrides emissive; addsTags append (server
+ * stat-derivation must decide whether to honour them — the renderer ignores
+ * tags).
  */
 export function resolveMaterialVariant(def: MaterialDef, index: number): MaterialDef {
-  const variant = def.variants?.[index];
+  const id = materialVariantIds(def)[index];
+  const variant = id !== undefined ? def.variants?.find((v) => v.id === id) : undefined;
   if (!variant) return def;
   const color = variant.colorOverride ?? applyHslShift(def.color, variant.colorShift);
   const emissive = variant.emissiveCracks ?? def.emissive;
