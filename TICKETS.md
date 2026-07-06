@@ -913,7 +913,7 @@ transitions are visibly smoothed (no single-frame limb snap), verified frame-by-
 harness. Optional follow-up: sync locomotion clip time to fractional ticks for 60fps-smooth walk.
 
 ### T-292 · Combat impact juice — hit feedback, hitstop, knockback emphasis
-Effort: M   Status: todo   Depends: T-287
+Effort: M   Status: done   Commit: 54d469f   Depends: T-287
 
 CORRECTED 2026-06-24 after verifying the code (the analysis reader was wrong here, as it was on
 lighting): the combat mechanics are NOT invisible. `health_hit_handler` already installs
@@ -975,7 +975,7 @@ later → swing is locked and completes, dodge dropped; getting staggered still 
 the testplay harness.
 
 ### T-296 · Hitstop on weapon contact
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 54d469f
 
 Add `ActionDef.hitStopTicks` (default 0). The `weapon_trace` resolver, on a landed hit, freezes
 attacker+target movement for N ticks via resolver-local scratch (reuse the rewind-tick scratch
@@ -984,7 +984,7 @@ freeze. Tune light=2, heavy=4-5. DONE: hitting an enemy produces a visible 2-5 t
 a heavy swing reads heavier than a light one. No wire change beyond the contact event.
 
 ### T-297 · Telegraph lead clip for actions
-Effort: M   Status: todo   Depends: T-295
+Effort: M   Status: done   Commit: 8a13e0f   Depends: T-295
 
 Add optional `ActionDef.animation.preWindup {clipId, ticks}`; bootstrap codec carries it;
 `skeleton_evaluator` plays the pre-clip for `ticks` before the `windup:enter` clip (server already
@@ -994,7 +994,7 @@ DONE: a heavy enemy visibly winds up before its hitbox goes live; a player can r
 it; falls back cleanly when `preWindup` is absent.
 
 ### T-298 · Readable i-frames + recovery-exposure visuals
-Effort: M   Status: todo   Depends: T-295
+Effort: M   Status: done   Commit: 0132bc6   Depends: T-295
 
 `skeleton_evaluator` reads `dodge_roll`'s `ticksInPhase` to render a flash / bone-shine during the
 i-frame window (client-only, existing server state — the player SEES why the dodge worked). Add an
@@ -1004,7 +1004,7 @@ clip. DONE: the i-frame window is visually obvious; a whiffed heavy swing leaves
 window.
 
 ### T-299 · Two committed hostile archetypes + global rear multiplier
-Effort: M   Status: todo   Depends: T-295, T-297
+Effort: M   Status: done   Commit: e80cb25   Depends: T-295, T-297
 
 Author a **Heavy-Thrower** (the ONE slow showcase enemy against the fast global pace: a single
 uninterruptible telegraphed overhead via `committed:true` + a new heavy weapon_action + an
@@ -1015,7 +1015,9 @@ exception. DONE: each enemy rewards a distinct defense — dodge-through the thr
 readable from telegraph alone. Pure content + a BT variant.
 
 ### T-300 · Curated showcase tile_layout — the teaching outpost
-Effort: S   Status: done   Commit: 5f88375   (landed ahead of T-299 — placed existing enemies; new archetypes still T-299)
+Effort: S   Status: done   Commit: 5f88375   (landed ahead of T-299 — placed existing enemies; T-299's
+`heavy_thrower`/`shield_knight` NpcTemplates now exist and can be dropped into `tile_layout.json` in a
+follow-up pass — this ticket's own placements are unchanged)
 
 Rewrite `tile_layout.json` into a curated opening scene: keep the stations + trader, add a craft
 pavilion (forge+anvil+nearby iron ore/coal), a 2-3 drowner marsh-edge, a rotten_knight ruin, the
