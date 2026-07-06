@@ -469,12 +469,35 @@ function buildMergedSubMeshes(
       ...(fray01 > 0 && { fray01, driftDir: driftDirFor(cx, cy, cz) }),
     };
   });
+  return buildMeshesFromAtoms(atoms, materials, onTop, dissolve, dissolveUniformsOut);
+}
+
+/**
+ * Bake merged THREE.Mesh(es) — one per material — from already-built
+ * VoxelAtom[]. Shared tail of `buildMergedSubMeshes` (authored sub-object
+ * nodes → atoms) and the T-186 Layer 2 recipe path (`evaluateBodyRecipe`'s
+ * atoms are already built) so both meshing routes bake through the identical
+ * dissolve/material/geometry pipeline.
+ */
+function buildMeshesFromAtoms(
+  atoms: ReadonlyArray<VoxelAtom>,
+  materials: Map<number, MaterialDef>,
+  onTop: boolean,
+  dissolve?: DissolveBakeSpec,
+  dissolveUniformsOut?: DissolveUniforms[],
+): THREE.Mesh[] {
+  const fray01 = dissolve
+    ? resolveFrayCoreness(dissolve.boneDistanceFrac, 1, dissolve.frayBandWidth)
+    : 0;
+  const withFray = fray01 > 0
+    ? atoms.map((a) => ({ ...a, fray01, driftDir: driftDirFor(a.cx, a.cy, a.cz) }))
+    : atoms;
   const matIds = new Set<number>();
-  for (const n of nodes) matIds.add(n.materialId);
+  for (const a of atoms) matIds.add(a.materialId);
   const meshes: THREE.Mesh[] = [];
   for (const matId of matIds) {
     const matDef = materials.get(matId);
-    const baked = bakeVoxels(atoms, matId, undefined, matDef?.render?.tintJitter);
+    const baked = bakeVoxels(withFray, matId, undefined, matDef?.render?.tintJitter);
     if (baked.indices.length === 0) continue;
     const material = buildVoxelMaterial(matDef, matId, onTop);
     if (fray01 > 0 && dissolve && dissolveUniformsOut) {
@@ -614,6 +637,17 @@ export function upgradeToSkeletonModel(
    * id — see `entity_mesh_registry.ts`'s call site for the exact caveat).
    */
   dissolveProfile?: DissolveProfileDef,
+  /**
+   * T-186 Layer 2 — recipe-driven body volumes, already voxelized by the
+   * caller (`evaluateBodyRecipe(skeleton.bodyRecipe, morphParams, ...)`) so
+   * this function stays pure Three.js meshing with no formula evaluation.
+   * Atoms are bone-local MODEL space (already morph-scaled — the recipe's
+   * formulas read the same `morphParams` passed above), keyed by boneId.
+   * Merged into the same per-bone Group `resolvedSubs` attaches to, so a
+   * partially-migrated skeleton (some bones on recipe, some still on
+   * authored sub-objects) renders both without a dual-path flag.
+   */
+  recipeAtoms?: ReadonlyMap<string, VoxelAtom[]>,
 ): void {
   clearMeshContent(mesh);
 
@@ -707,6 +741,33 @@ export function upgradeToSkeletonModel(
     }
   }
 
+  // T-186 Layer 2 — attach recipe-voxelized body parts to their bone group.
+  // Atoms are already fully resolved (morph-scaled, MODEL-space, bone-local)
+  // by evaluateBodyRecipe, so no further per-bone scale multiply here — that
+  // would double-apply the morph the recipe's own formulas already encode.
+  if (recipeAtoms) {
+    for (const [boneId, atoms] of recipeAtoms) {
+      const parent = boneGroups.get(boneId);
+      if (!parent || atoms.length === 0) continue;
+      const dissolveSpec: DissolveBakeSpec | undefined = dissolveProfile && boneDistances
+        ? {
+            boneDistanceFrac: boneDistances.maxDistance > 0
+              ? (boneDistances.distance.get(boneId) ?? 0) / boneDistances.maxDistance
+              : 0,
+            frayBandWidth: dissolveProfile.frayBandWidth,
+            maxSeparationDistance: dissolveProfile.maxSeparationDistance,
+          }
+        : undefined;
+      const subGroup = new THREE.Group();
+      subGroup.name = `recipe:${boneId}`;
+      parent.add(subGroup);
+      for (const m of buildMeshesFromAtoms(atoms, materials, false, dissolveSpec, dissolveUniforms)) {
+        subGroup.add(m);
+        voxelMeshes.push(m);
+      }
+    }
+  }
+
   mesh.boneGroups = boneGroups;
   mesh.voxelMeshes = voxelMeshes;
   mesh.dissolveUniforms = dissolveUniforms;
@@ -752,6 +813,18 @@ export function upgradeToSkeletonModel(
         // Bottom face = node center - half voxel height
         const voxelBottomY = boneY + subOffsetY + (node.z - 0.5) * subScaleZ;
         if (voxelBottomY < minVoxelY) minVoxelY = voxelBottomY;
+      }
+    }
+    // T-186 Layer 2: recipe atoms are already morph-resolved model units
+    // (the recipe's own formulas fold in the morph, unlike subScaleZ above)
+    // — only the entity's uniform scale.z applies on top.
+    if (recipeAtoms) {
+      for (const [boneId, atoms] of recipeAtoms) {
+        const boneY = boneWorldY.get(boneId) ?? 0;
+        for (const atom of atoms) {
+          const voxelBottomY = boneY + (atom.cz - atom.sz / 2) * scale.z;
+          if (voxelBottomY < minVoxelY) minVoxelY = voxelBottomY;
+        }
       }
     }
     mesh.groundOffsetWorld = Math.max(0, -minVoxelY);

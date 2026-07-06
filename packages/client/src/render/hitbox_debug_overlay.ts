@@ -187,7 +187,7 @@ export class HitboxDebugOverlay implements ManagedOverlay {
       const boneIndex   = ctx.content.getBoneIndex(skeletonId);
       const clipIndex   = ctx.content.getClipIndex(skeletonId);
       const maskIndex   = ctx.content.getMaskIndex(skeletonId);
-      const template    = ctx.content.getHitboxTemplate(modelId, modelSeed, modelScale);
+      const template    = ctx.content.getHitboxTemplate(modelId, modelSeed, modelScale, modelMorphs);
       if (template.length === 0) continue;
 
       const poseRotations = animationState?.layers.length

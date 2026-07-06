@@ -58,7 +58,7 @@ export class HitboxSystem implements System {
       const boneIndex    = this.content.getBoneIndex(skeleton.id);
       const clipIndex    = this.content.getClipIndex(skeleton.id);
       const maskIndex    = this.content.getMaskIndex(skeleton.id);
-      const template     = this.content.getHitboxTemplate(modelRef.modelId, modelRef.seed, modelRef.scaleX);
+      const template     = this.content.getHitboxTemplate(modelRef.modelId, modelRef.seed, modelRef.scaleX, modelRef.morphValues);
 
       // Get or create pooled maps for this entity.
       let poseMap = this.posePool.get(entityId);

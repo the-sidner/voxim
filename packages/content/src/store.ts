@@ -243,8 +243,16 @@ export interface ContentService {
   getRecipeGraph(): RecipeGraph;
   /** Cached bone index (Map<boneId, BoneDef>) — built once per skeleton type. */
   getBoneIndex(skeletonId: string): ReadonlyMap<string, BoneDef>;
-  /** Cached hitbox template per (modelId, seed, scale). */
-  getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[];
+  /**
+   * Cached hitbox template per (modelId, seed, scale, morphValues). morphValues
+   * only matters for skeletons carrying a bodyRecipe (T-186 Layer 2) — every
+   * other model's template is identical regardless of what's passed. Pass the
+   * SAME morphValues the entity's ModelRef carries (resolveMorphParams's raw
+   * override input, not the resolved output) so two entities sharing a
+   * modelId+seed+scale but different per-instance morphs never collide in
+   * the cache.
+   */
+  getHitboxTemplate(modelId: string, seed: number, scale: number, morphValues?: Record<string, number>): HitboxPartTemplate[];
   /** Cached clip lookup map (clipId → AnimationClip) per skeleton type. */
   getClipIndex(skeletonId: string): ReadonlyMap<string, AnimationClip>;
   /** Cached bone mask lookup map (maskId → BoneMask) per skeleton type. */
@@ -670,8 +678,16 @@ export class StaticContentStore implements ContentService {
     return idx;
   }
 
-  getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[] {
-    const key = `${modelId}:${seed}:${scale}`;
+  getHitboxTemplate(modelId: string, seed: number, scale: number, morphValues?: Record<string, number>): HitboxPartTemplate[] {
+    // T-186 Layer 2: fold morphValues into the cache key. Every pre-existing
+    // model (no bodyRecipe) ignores the resolved morphParams entirely inside
+    // deriveHitboxTemplate, so this only adds cache entries for skeletons
+    // that actually vary by morph — it never changes cached output for
+    // anything else.
+    const morphKey = morphValues
+      ? Object.keys(morphValues).sort().map((k) => `${k}=${morphValues[k]}`).join(",")
+      : "";
+    const key = `${modelId}:${seed}:${scale}:${morphKey}`;
     let tmpl = this.hitboxTemplateCache.get(key);
     if (!tmpl) {
       // Inline adapter — keeps the legacy `getModel` shape out of the public
@@ -682,7 +698,9 @@ export class StaticContentStore implements ContentService {
         getModelAabb: (id) => this.modelAabb.get(id) ?? null,
         getSkeleton: (id) => this.skeletons.get(id) ?? null,
       };
-      tmpl = deriveHitboxTemplate(modelId, seed, adapter, scale);
+      const skeleton = this.getSkeletonForModel(modelId);
+      const resolvedMorphParams = skeleton ? resolveMorphParams(skeleton, seed, morphValues) : undefined;
+      tmpl = deriveHitboxTemplate(modelId, seed, adapter, scale, resolvedMorphParams);
       this.hitboxTemplateCache.set(key, tmpl);
     }
     return tmpl;

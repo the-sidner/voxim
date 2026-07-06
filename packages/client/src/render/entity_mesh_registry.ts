@@ -28,7 +28,7 @@ import type {
   AnimationStateData,
   SkeletonDef,
 } from "@voxim/content";
-import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
+import { resolveSubObjects, resolveMorphParams, evaluateBodyRecipe } from "@voxim/content";
 import type { AabbHalfExtents, InteractionSystem } from "../interaction/interaction_system.ts";
 import type { HoverOutlineSink } from "./renderer.ts";
 import { modelToThree } from "./coords.ts";
@@ -209,17 +209,35 @@ export class EntityMeshRegistry {
           // Stale guard: the entity may have transitioned to a prop or been
           // disposed during the async model prefetch above.
           if (this.instancePool.has(entityId) || this.meshes.get(entityId) !== capture) return;
-          const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0);
+          // modelRef.morphValues carries per-instance overrides (T-180, e.g.
+          // drowner's longer arms, rotten_knight's giant right arm) — passing
+          // them through is what makes the recipe body (and the skeleton
+          // itself) actually vary per archetype instead of always resolving
+          // the seed-randomized default. Previously omitted here (a latent
+          // bug: the pose/hitbox-debug paths already passed overrides via
+          // mesh.modelMorphs, only this mesh-BUILD call didn't).
+          const morphParams = resolveMorphParams(skeleton, modelRef.seed ?? 0, modelRef.morphValues);
           // Death-dissolve (T-311 P5c): see ContentCache.getSoleDissolveProfileSync's
           // doc comment for the known v1 limitation (no per-entity archetype id
           // on the wire yet) — undefined here means "bake byte-identically",
           // which is also what happens for every non-corrupted entity today.
           const dissolveProfile = this.content!.getSoleDissolveProfileSync() ?? undefined;
+          // T-186 Layer 2: recipe-driven body volumes replace authored
+          // bone_segment sub-objects — voxelize once per morph resolution,
+          // keyed by boneId, merged into upgradeToSkeletonModel's per-bone
+          // Groups alongside (not instead of) any remaining authored subs.
+          const recipeAtoms = skeleton.bodyRecipe
+            ? evaluateBodyRecipe(skeleton.bodyRecipe, morphParams, (name) => {
+                const m = this.content!.getMaterialByName(name);
+                if (!m) throw new Error(`[entity_mesh] bodyRecipe on skeleton "${skeleton.id}" uses unknown material "${name}"`);
+                return m.id;
+              })
+            : undefined;
           // Build the skeleton's per-sub-object meshes — one merged mesh per
           // material through the bakeVoxels kitchen (T-281). A character is tens
           // of voxels, so the bake is sub-millisecond on the main thread; the
           // off-thread pool + collector/cursor coupling it replaced is gone.
-          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams, dissolveProfile);
+          upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams, dissolveProfile, recipeAtoms);
           // Re-attach hover outline + resize the pick box to fit the freshly
           // built meshes — both attach via the entity's group, which now
           // holds real geometry instead of the placeholder.

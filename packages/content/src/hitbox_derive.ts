@@ -29,6 +29,7 @@ import type { BoneTransform } from "./skeleton_solver.ts";
 import { quatFromEulerXYZ, applyQuat } from "./ik_solver.ts";
 import type { Quat } from "./ik_solver.ts";
 import { mulberry32 as makePrng } from "@voxim/engine";
+import { bodyPartCapsule } from "./body_recipe.ts";
 
 /** Minimum capsule radius in voxel units. Parts below this threshold are skipped. */
 const MIN_RADIUS_VOXELS = 0.1;
@@ -145,19 +146,35 @@ export interface HitboxContentAdapter {
  * The bone rest-pose offset is NOT accumulated here — it is applied dynamically
  * by applyHitboxTemplate using live bone world transforms from solveSkeleton.
  *
- * @param modelId  Root model to derive hitbox for.
- * @param seed     Procedural seed — must match ModelRef.seed for this entity.
- * @param content  HitboxContentAdapter (ContentService or ContentCache) for model lookups.
- * @param scale    Uniform entity scale (e.g. 0.35). Converts voxel units to world units.
+ * @param modelId      Root model to derive hitbox for.
+ * @param seed         Procedural seed — must match ModelRef.seed for this entity.
+ * @param content      HitboxContentAdapter (ContentService or ContentCache) for model lookups.
+ * @param scale        Uniform entity scale (e.g. 0.35). Converts voxel units to world units.
+ * @param morphParams  Resolved morph values (store.ts's resolveMorphParams() output — the
+ *   SAME values the mesh voxelizer and the FK solve use). Only consulted for skeletons
+ *   carrying a `bodyRecipe` (T-186 Layer 2) — every other model ignores it, byte-identical.
  */
 export function deriveHitboxTemplate(
   modelId: string,
   seed: number,
   content: HitboxContentAdapter,
   scale: number,
+  morphParams?: Record<string, number>,
 ): HitboxPartTemplate[] {
   const model = content.getModel(modelId);
   if (!model) return [];
+
+  // Skeletal model with NO authored sub-objects at all (T-186 Layer 2: every
+  // body part is recipe-covered, so bone_segment.json's sub-objects are gone
+  // outright) — go straight to skeleton-driven capsule derivation instead of
+  // falling through to a single whole-model AABB fallback.
+  if ((!model.subObjects || model.subObjects.length === 0) && model.skeletonId && content.getSkeleton) {
+    const skeleton = content.getSkeleton(model.skeletonId);
+    if (skeleton) {
+      const skeletalParts = deriveSkeletalCapsules(skeleton, scale, morphParams);
+      if (skeletalParts.length > 0) return skeletalParts;
+    }
+  }
 
   // Leaf model — no sub-objects, fall back to voxel-derived AABB
   if (!model.subObjects || model.subObjects.length === 0) {
@@ -214,7 +231,7 @@ export function deriveHitboxTemplate(
     if (model.skeletonId && content.getSkeleton) {
       const skeleton = content.getSkeleton(model.skeletonId);
       if (skeleton) {
-        const skeletalParts = deriveSkeletalCapsules(skeleton, scale);
+        const skeletalParts = deriveSkeletalCapsules(skeleton, scale, morphParams);
         if (skeletalParts.length > 0) return skeletalParts;
       }
     }
@@ -245,15 +262,27 @@ const DEFAULT_BONE_RADIUS = 0.20;
 const TERMINAL_NUB_LENGTH = 0.30;
 
 /**
- * Build per-bone capsule templates from a skeleton. Each non-terminal bone
- * gets a capsule from its origin to its first-declared child's rest offset;
- * terminals (no children) get a short nub along their local +Y axis (Mixamo
- * convention: bone-local +Y = bone direction).
+ * Build per-bone capsule templates from a skeleton. For bones the skeleton's
+ * `bodyRecipe` (T-186 Layer 2) covers, the capsule comes from
+ * `bodyPartCapsule()` — the SAME resolved dimensions the mesh voxelizer just
+ * filled, so collision can't drift from the visible body. Bones the recipe
+ * doesn't cover fall back to the pre-T-186 behavior: a capsule from the
+ * bone's origin to its first-declared child's rest offset, hardcoded
+ * BONE_RADIUS; terminals (no children) get a short nub along local +Y
+ * (Mixamo convention: bone-local +Y = bone direction).
  *
  * Templates are bone-local in solver space, ready for applyHitboxTemplate
  * to wrap each tick with live BoneTransforms.
  */
-function deriveSkeletalCapsules(skeleton: SkeletonDef, scale: number): HitboxPartTemplate[] {
+function deriveSkeletalCapsules(
+  skeleton: SkeletonDef,
+  scale: number,
+  morphParams?: Record<string, number>,
+): HitboxPartTemplate[] {
+  const recipeParts = skeleton.bodyRecipe
+    ? new Map(skeleton.bodyRecipe.parts.map((p) => [p.boneId, p]))
+    : undefined;
+
   // Build parent → first-child map. First-declared child is the "primary"
   // anatomical child (spine over limbs, head over arms), matching the
   // build_skeletal.ts visualization convention.
@@ -274,6 +303,24 @@ function deriveSkeletalCapsules(skeleton: SkeletonDef, scale: number): HitboxPar
     // The synthetic root has no associated body volume — its visible child
     // (torso_lower) carries its own capsule.
     if (bone.parent === null) continue;
+
+    const recipePart = recipeParts?.get(bone.id);
+    if (recipePart) {
+      // T-186 Layer 2: same dimensions the mesh voxelizer used for this
+      // bone — a bone-local capsule along local +Z, matching the recipe's
+      // own authoring convention (see body_recipe.ts's docstring).
+      const c = bodyPartCapsule(recipePart, morphParams ?? {});
+      const radius = c.radius * scale;
+      if (radius < MIN_RADIUS_VOXELS * scale) continue;
+      parts.push({
+        id: bone.id,
+        boneId: bone.id,
+        fromX: c.fromX * scale, fromY: c.fromZ * scale, fromZ: -c.fromY * scale,
+        toX:   c.toX   * scale, toY:   c.toZ   * scale, toZ:   -c.toY  * scale,
+        radius,
+      });
+      continue;
+    }
 
     const radius = (BONE_RADIUS[bone.id] ?? DEFAULT_BONE_RADIUS) * scale;
     if (radius < MIN_RADIUS_VOXELS * scale) continue;

@@ -159,10 +159,13 @@ export class ContentCache {
     return this.bootstrapService?.getModelAabb(modelId) ?? null;
   }
 
-  /** Hitbox capsule templates for a (modelId, seed, scale) combination —
-   * memoized on the bootstrap ContentService. */
-  getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[] {
-    return this.bootstrapService?.getHitboxTemplate(modelId, seed, scale) ?? [];
+  /** Hitbox capsule templates for a (modelId, seed, scale, morphValues)
+   * combination — memoized on the bootstrap ContentService. morphValues only
+   * matters for skeletons with a bodyRecipe (T-186 Layer 2); pass the
+   * entity's ModelRef.morphValues so per-instance overrides produce a
+   * matching hitbox. */
+  getHitboxTemplate(modelId: string, seed: number, scale: number, morphValues?: Record<string, number>): HitboxPartTemplate[] {
+    return this.bootstrapService?.getHitboxTemplate(modelId, seed, scale, morphValues) ?? [];
   }
 
   /** Stable alphabetical id→index table for CliffProfileDef (T-311 P6, I3c) —
