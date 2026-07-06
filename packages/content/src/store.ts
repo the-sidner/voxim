@@ -34,6 +34,8 @@ import type {
   BoneDef,
   AnimationLibrary,
   ItemPart,
+  ItemSlotDef,
+  ComposedData,
   DerivedItemStats,
   Recipe,
   NpcTemplate,
@@ -238,6 +240,18 @@ export interface ContentService {
   findPoisByTag(tag: string): readonly PoiDef[];
 
   // ---- derived caches ----
+  /**
+   * Derive an item's stat block from its prefab. When the prefab carries a
+   * `Composed` behaviour (`components.composed.slots`) AND the caller passes
+   * matching `parts` (one `ItemPart` per filled slot), each slot's
+   * `statContributions` are summed in: `stat += material.properties[property]
+   * × multiplier`, added on top of the base value derived from the prefab's
+   * other components (T-303). Materials are resolved by `ItemPart.materialName`
+   * against `this.materials`; a part naming an unknown material or a slot with
+   * no matching part is skipped (no throw — this is a runtime stat query, not
+   * boot validation). Voxels feed weight/damage/reach — swing speed stays a
+   * per-action design dial (DECISION, T-303).
+   */
   deriveItemStats(prefabId: string, parts?: ItemPart[], quality?: number): DerivedItemStats;
   /** Reverse index: producers by item, recipes by workstation, primitive items. */
   getRecipeGraph(): RecipeGraph;
@@ -612,7 +626,7 @@ export class StaticContentStore implements ContentService {
 
   // ---- derived ----
 
-  deriveItemStats(prefabId: string, _parts?: ItemPart[], quality = 1): DerivedItemStats {
+  deriveItemStats(prefabId: string, parts?: ItemPart[], quality = 1): DerivedItemStats {
     const prefab = this.prefabs.get(prefabId);
     if (!prefab) return { weight: 1 };
 
@@ -623,6 +637,7 @@ export class StaticContentStore implements ContentService {
     const tool = c["tool"] as { toolType?: string; durability?: number } | undefined;
     const swingable = c["swingable"] as { damage?: number; durability?: number } | undefined;
     const armorDur = c["armor"] as { durability?: number } | undefined;
+    const composed = c["composed"] as ComposedData | undefined;
 
     const stats: DerivedItemStats = { weight: weight?.baseWeight ?? 1 };
     // Durability (T-086): equippable/usable items get a per-instance ceiling.
@@ -654,6 +669,45 @@ export class StaticContentStore implements ContentService {
     }
     if (tool?.toolType) stats.toolType = tool.toolType;
     if (swingable?.damage !== undefined) stats.damage = swingable.damage * quality;
+
+    // Composed material slots (T-303): each filled slot sums
+    // `material.properties[property] × multiplier` into the named stat, on
+    // top of whatever base value the behaviour components above already set
+    // (e.g. a Composed sword still keeps its hardcoded swingable.damage as a
+    // base — the blade material ADDS to it, it doesn't replace it). A slot
+    // with no matching part, or a part naming an unknown material, is
+    // skipped — this derivation never throws at query time.
+    if (composed && parts && parts.length > 0) {
+      const partBySlot = new Map(parts.map((p) => [p.slot, p.materialName]));
+      for (const slot of composed.slots) {
+        const materialName = partBySlot.get(slot.id);
+        if (materialName === undefined) continue;
+        const material = this.materials.get(materialName);
+        if (!material) continue;
+        for (const contrib of slot.statContributions) {
+          const propValue = material.properties[contrib.property];
+          const delta = propValue * contrib.multiplier * quality;
+          (stats[contrib.stat] as number) = ((stats[contrib.stat] as number) ?? 0) + delta;
+        }
+      }
+    }
+
+    // Reach (T-303, optional): a Composed item's overall model AABB length
+    // (its longest axis, in model-local units × modelScale) stands in for
+    // blade+grip reach until a per-slot sub-model exists. Only set when the
+    // prefab is Composed — a plain item's swingable geometry is whatever the
+    // WeaponActionDef's swingPath already authors, and reach staying absent
+    // there is correct (no regression for non-Composed weapons).
+    if (composed && prefab.modelId) {
+      const aabb = this.modelAabb.get(prefab.modelId);
+      if (aabb) {
+        const extX = aabb.maxX - aabb.minX;
+        const extY = aabb.maxY - aabb.minY;
+        const extZ = aabb.maxZ - aabb.minZ;
+        const scale = prefab.modelScale ?? 1;
+        stats.attackRange = Math.max(extX, extY, extZ) * scale;
+      }
+    }
 
     return stats;
   }
