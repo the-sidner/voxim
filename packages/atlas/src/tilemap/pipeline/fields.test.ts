@@ -4,7 +4,9 @@
  */
 import { assert, assertEquals } from "jsr:@std/assert";
 import { BoundaryKind } from "@voxim/protocol";
-import { deriveFieldPlanes, type FieldDeriveInput } from "./fields.ts";
+import { JsonSource } from "@voxim/content";
+import type { MaterialDef } from "@voxim/content";
+import { deriveFieldPlanes, crossCheckVariantIndex, type FieldDeriveInput } from "./fields.ts";
 import { RIVER_DEPTH } from "./terrain.ts";
 
 const G = 8;
@@ -119,4 +121,27 @@ Deno.test("T-319: a resolved corruptedVariantIdx is written past the threshold, 
   const f = deriveFieldPlanes(input);
   assertEquals(f.variantIndex[idx(5, 5)], 3, "past threshold → the resolved stable index");
   assertEquals(f.variantIndex[idx(7, 7)], 0, "below threshold → base index 0");
+});
+
+Deno.test("T-319: crossCheckVariantIndex passes on the real content ('stone' has a 'corrupted' variant)", async () => {
+  const content = await JsonSource.load();
+  crossCheckVariantIndex(content); // throws on a gap — reaching here is the pass
+});
+
+Deno.test("T-319: crossCheckVariantIndex throws when 'stone' has no 'corrupted' variant", () => {
+  const bad = {
+    materials: { get: (id: string) => id === "stone" ? ({ variants: [{ id: "mossy" }] } as unknown as MaterialDef) : undefined },
+  } as unknown as Parameters<typeof crossCheckVariantIndex>[0];
+  let threw = false;
+  try { crossCheckVariantIndex(bad); } catch { threw = true; }
+  assert(threw, "missing 'corrupted' variant rejected");
+});
+
+Deno.test("T-319: crossCheckVariantIndex throws when there is no 'stone' MaterialDef at all", () => {
+  const bad = {
+    materials: { get: () => undefined },
+  } as unknown as Parameters<typeof crossCheckVariantIndex>[0];
+  let threw = false;
+  try { crossCheckVariantIndex(bad); } catch { threw = true; }
+  assert(threw, "missing 'stone' material rejected");
 });

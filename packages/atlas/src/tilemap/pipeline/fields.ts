@@ -17,6 +17,7 @@ import type { Transformer } from "@voxim/levelgen";
 import { fbm } from "@voxim/levelgen";
 import { BoundaryKind } from "@voxim/protocol";
 import { materialVariantIds } from "@voxim/content";
+import type { ContentService } from "@voxim/content";
 import { RIVER_DEPTH } from "./terrain.ts";
 import { ZONE_ID_NONE } from "./state.ts";
 import type { CliffState, FieldsState } from "./state.ts";
@@ -257,3 +258,24 @@ export const fieldsStage: Transformer<CliffState, FieldsState, FieldParams> =
     });
     return { ...state, fields };
   };
+
+/**
+ * Atlas boot cross-check (T-319, I3c) — the `stone` MaterialDef must carry a
+ * "corrupted" variant, so `fieldsStage`'s `materialVariantIds(stone).indexOf
+ * ("corrupted")` resolves to a real index instead of silently degrading to
+ * -1 (every cell frozen at the "base" variantIndex regardless of corruption).
+ * Fail-fast at content load, mirroring `crossCheckCliffVoxelisers`'s
+ * "resolves through a real content lookup" contract on the client side.
+ */
+export function crossCheckVariantIndex(content: ContentService): void {
+  const stone = content.materials.get("stone");
+  if (!stone) {
+    throw new Error(`[fields] no "stone" MaterialDef loaded — SurfaceStateGrid.variantIndex needs it.`);
+  }
+  if (!materialVariantIds(stone).includes("corrupted")) {
+    throw new Error(
+      `[fields] "stone" MaterialDef has no "corrupted" variant — SurfaceStateGrid.variantIndex ` +
+      `would silently stay 0 (base) for every cell (variants: ${materialVariantIds(stone).join(", ") || "none"}).`,
+    );
+  }
+}
