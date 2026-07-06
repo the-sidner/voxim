@@ -504,7 +504,7 @@ Done when: models + props bake through one `bakeVoxels` path; an entity can carr
 mixed-size voxels; draw calls collapse; the parity test still passes.
 
 ### T-282 · Client rebuild Phase 2 — renderer breakup (scene-graph; subsumes T-223)
-Effort: L   Status: done   Commit: 2a880a7
+Effort: L   Status: done   Commit: dbed554
 
 FIVE cohesive units lifted out of the renderer god-class — renderer 2120 → 1063
 lines, a 50% cut (T-281 had already shrunk it by deleting the bake-worker pool +
