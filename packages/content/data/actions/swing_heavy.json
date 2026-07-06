@@ -40,6 +40,10 @@
   },
   "priority": 5,
   "hitStopTicks": 5,
+  "preWindup": {
+    "clipId": "sword_and_shield_power_up",
+    "ticks": 2
+  },
   "effects": [
     {
       "phase": "active:enter",

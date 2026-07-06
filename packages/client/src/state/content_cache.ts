@@ -15,7 +15,7 @@
  * `.then()` off them with a stale-guard pattern that assumes a microtask
  * boundary.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, CliffProfileDef } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, CliffProfileDef, ActionDef } from "@voxim/content";
 
 export class ContentCache {
   /**
@@ -139,6 +139,17 @@ export class ContentCache {
 
   getSkeletonSync(skeletonId: string): SkeletonDef | undefined {
     return this.bootstrapService?.skeletons.get(skeletonId);
+  }
+
+  /**
+   * ActionDef by id, from the bootstrap blob (T-297/T-298). The client's
+   * phase-driven visuals (telegraph lead clip, i-frame flash) read
+   * `preWindup`/`phases` off the same content id the server names in the
+   * already-networked `ActiveActions.states[slot].actionId` — no separate
+   * codec, since `ActionDef[]` rides the bootstrap blob JSON-serialised.
+   */
+  getAction(actionId: string): ActionDef | undefined {
+    return this.bootstrapService?.actions.get(actionId);
   }
 
   getClipIndex(skeletonId: string): ReadonlyMap<string, AnimationClip> {

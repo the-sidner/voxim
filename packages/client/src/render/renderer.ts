@@ -31,6 +31,7 @@ import { GateMarkerRenderer } from "./gate_marker.ts";
 import { EntityMeshRegistry } from "./entity_mesh_registry.ts";
 import { EnvironmentLighting } from "./environment_lighting.ts";
 import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "./entity_mesh.ts";
+import { computeTelegraphLayer } from "./telegraph.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
 import { solveSwingPose, applyLocomotionPose, applyCrouchPose, timeOfDay01 } from "@voxim/content";
@@ -1049,10 +1050,20 @@ export class VoximRenderer {
         const clipIndex  = this.content.getClipIndex(mesh.skeletonId);
         const maskIndex  = this.content.getMaskIndex(mesh.skeletonId);
 
+        // Telegraph lead clip (T-297): an optional tell appended on top of the
+        // server-projected layers for the first `preWindup.ticks` of the
+        // primary slot's first phase — purely client-derived from the
+        // already-networked ActiveActions + the ActionDef's preWindup, no
+        // wire change. Absent for every action that doesn't author one.
+        const telegraph = this.content
+          ? computeTelegraphLayer(mesh.activeActions, (id) => this.content!.getAction(id), mesh.lastAnimUpdateMs, now)
+          : null;
+        const rawLayers = telegraph ? [...(anim?.layers ?? []), telegraph] : (anim?.layers ?? []);
+
         // Crossfade the raw 20Hz layer snapshot so state transitions (idle→walk,
         // swing in/out) ease in/out instead of hard-cutting the pose (T-291).
-        const layers = blendAnimationLayers(mesh.layerFades, anim?.layers ?? [], animDtMs);
-        const animForPose = anim ? { ...anim, layers } : null;
+        const layers = blendAnimationLayers(mesh.layerFades, rawLayers, animDtMs);
+        const animForPose = anim ? { ...anim, layers } : (telegraph ? { layers, weaponActionId: "", ticksIntoAction: 0, dissolutionPhase: 0 } : null);
 
         // Fused pose pipeline: locomotion lean (base) → swing overlay → IK, all
         // composed on one skeleton. The swing producer takes a basePose, so the

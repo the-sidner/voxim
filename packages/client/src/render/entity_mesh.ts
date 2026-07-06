@@ -17,6 +17,7 @@
 import * as THREE from "three";
 import type { EntityState } from "../state/client_world.ts";
 import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject, DissolveProfileDef } from "@voxim/content";
+import type { ActiveActionsData } from "@voxim/codecs";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { paletteToken } from "./palette.ts";
 import { modelToThree } from "./coords.ts";
@@ -105,6 +106,16 @@ export interface EntityMeshGroup {
   boneSlotTransforms: Map<string, { x: number; y: number; z: number; scale: number }>;
   /** Cached animation state — used by the renderer for per-frame pose evaluation. */
   animationState: AnimationStateData | null;
+  /**
+   * Cached action runtime (T-297/T-298) — slot → {actionId, phase,
+   * ticksInPhase}, mirrored from `EntityState.activeActions` for EVERY AoI
+   * entity (not just the local player's cast bar). The renderer reads this
+   * to derive phase-driven visuals purely client-side: the telegraph lead
+   * clip (`preWindup`) and the dodge i-frame flash both key off phase name +
+   * ticksInPhase here, cross-referenced against the ActionDef via
+   * ContentCache.getAction() — no new wire field.
+   */
+  activeActions: ActiveActionsData | null;
   /** Wall-clock ms when animationState was last updated — used to extrapolate ticksIntoAction between server ticks. */
   lastAnimUpdateMs: number;
   /**
@@ -223,6 +234,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     boneSprings: new Map(),
     crouchEased: 0,
     animationState: state.animationState ?? null,
+    activeActions: state.activeActions ?? null,
     lastAnimUpdateMs: performance.now(),
     velocityX: state.velocity?.x ?? 0,
     velocityY: state.velocity?.y ?? 0,
@@ -928,6 +940,9 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
   if (state.animationState !== undefined) {
     mesh.animationState = state.animationState;
     mesh.lastAnimUpdateMs = performance.now();
+  }
+  if (state.activeActions !== undefined) {
+    mesh.activeActions = state.activeActions;
   }
   if (state.velocity !== undefined) {
     mesh.velocityX = state.velocity.x;
