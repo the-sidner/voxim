@@ -411,8 +411,6 @@ export class VoximGame {
     this.intentRouter = new IntentRouter();
     this.input = new IntentTranslator(
       this.intentRouter,
-      () => this.renderer!.getPlayerScreenPos(),
-      (cx, cy) => this.renderer!.getCursorFacing(cx, cy),
       () => this.renderer!.cameraRig.getYaw(),
     );
     this.inputCapture = new InputCapture(canvas, this.input.handle, (e) => {

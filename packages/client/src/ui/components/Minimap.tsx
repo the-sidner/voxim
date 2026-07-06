@@ -94,10 +94,10 @@ export function Minimap() {
         const cx = (player.x / TILE_WORLD_SIZE) * MINIMAP_SIZE;
         const cy = (player.y / TILE_WORLD_SIZE) * MINIMAP_SIZE;
 
-        // Camera heading cone (T-317): the map stays north-up, so a translucent
-        // wedge opening toward the camera's view direction (yaw) keeps
-        // orientation legible as the mouse-facing camera swings. yaw 0 = +X
-        // game = canvas +x, matching the facing-marker convention below.
+        // Camera heading cone: the map stays north-up, so a translucent wedge
+        // opening toward the camera's view direction (yaw) keeps orientation
+        // legible as the free-look camera swings (T-320). yaw 0 = +X game =
+        // canvas +x, matching the facing-marker convention below.
         const ca = fog.cameraYaw;
         const coneLen = MINIMAP_SIZE * 0.5;
         const coneHalf = 0.42; // ≈24° half-angle; roughly the on-screen frustum

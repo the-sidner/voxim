@@ -804,10 +804,6 @@ export class VoximRenderer {
 
   // ---- camera ----
 
-  getPlayerScreenPos(): { x: number; y: number } {
-    return this.getEntityScreenPos(this.localPlayerId ?? "") ?? { x: 0, y: 0 };
-  }
-
   /**
    * Unproject canvas pixel coordinates onto the world ground plane.
    *
@@ -835,28 +831,6 @@ export class VoximRenderer {
     if (!result) return null;
     // three.x = world.x, three.z = world.y
     return { x: hit.x, y: hit.z };
-  }
-
-  /**
-   * Cursor-to-facing for the local player: raycast the cursor onto the ground
-   * plane at the player's current Y, then return atan2(dy, dx) from player to
-   * cursor in game-space (X, Y) — directly usable as `facing` on the wire.
-   * Returns null if the local player has no mesh yet or the ray misses.
-   */
-  getCursorFacing(canvasX: number, canvasY: number): number | null {
-    if (!this.localPlayerId) return null;
-    const mesh = this.entities.get(this.localPlayerId);
-    if (!mesh) return null;
-    // Ground plane = local player's current Y (Three.js y = game z = height).
-    const hit = this.getCursorWorldPos(canvasX, canvasY, mesh.group.position.y);
-    if (!hit) return null;
-    // Player position in game coords: three.x = game.x, three.z = game.y.
-    const px = mesh.group.position.x;
-    const py = mesh.group.position.z;
-    const dx = hit.x - px;
-    const dy = hit.y - py;
-    if (dx === 0 && dy === 0) return null;
-    return Math.atan2(dy, dx);
   }
 
   /** Project an entity's world position to canvas pixel coordinates, or null if not found. */
@@ -1186,9 +1160,10 @@ export class VoximRenderer {
 
     // Override the local player's transform with client-side prediction so the
     // body tracks input without a server round-trip. Position comes from the
-    // predictor; facing/rotation comes from the locally-tracked cursor angle
-    // (T-287) — updateEntityMesh only ever sets rotation from the networked
-    // facing, which lags by RTT and made swings sweep from a stale orientation.
+    // predictor; facing/rotation comes from the locally-tracked movement
+    // heading (T-320) — updateEntityMesh only ever sets rotation from the
+    // networked facing, which lags by RTT and made swings sweep from a stale
+    // orientation.
     if (this.localPlayerId) {
       const localMesh = this.entities.all.get(this.localPlayerId);
       if (localMesh) {

@@ -101,7 +101,7 @@ const FRAG = /* glsl */`
     //
     // Gating by dot(N,H)^exponent alone is not enough to confine the glint to
     // crests: when the sun sits near zenith AND the camera looks down steeply
-    // (both true at noon with this game's ~55°-pitch chase camera), the
+    // (both true at noon with this game's ~55°-pitch free-look camera), the
     // half-vector H lands close to vertical everywhere, and normalScale only
     // tilts N a few degrees even at max wave height — so dot(N,H) stays high
     // across nearly the WHOLE surface, not just the peaks, and the "highlight"

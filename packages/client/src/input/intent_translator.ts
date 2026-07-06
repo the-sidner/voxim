@@ -20,7 +20,12 @@
  *   build  + LMB-up   → build-action  (place / anchor)
  *   build  + RMB-up   → build-undo    (pop anchor or exit)
  *   build  + ESC      → build-cancel
- *   any    + KeyE-down → interact (with current hover)
+ *   any    + KeyE-down → interact (nearest interactable)
+ *
+ * Facing (T-320): the body faces its camera-relative MOVEMENT direction while
+ * moving and HOLDS the last facing when idle — it is no longer cursor-derived
+ * (no cursor exists under free-look pointer lock). This carries on the wire and
+ * drives the local body prediction; idle never snaps to a default heading.
  *
  * UI events: when the click target is an interactive UI element, world
  * intents are suppressed — the UI's own onClick handlers run.
@@ -42,6 +47,7 @@ import { holdState, hoverState, modeState } from "./context.ts";
 import type { IntentRouter } from "./intent_router.ts";
 import type { RawEvent } from "./input_capture.ts";
 import { targetIsInteractiveUI } from "./input_capture.ts";
+import { facingFromMove } from "./facing.ts";
 
 const GAME_KEYS = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD",
@@ -55,9 +61,10 @@ const GAME_KEYS = new Set([
 
 export class IntentTranslator {
   private readonly keys = new Set<string>();
-  /** Player facing — updated each mouse-move from cursor-on-ground raycast.
-   *  Exposed via `get facing()` so the renderer can predict the local body's
-   *  rotation without the server round-trip (T-287). */
+  /** Player facing — the camera-relative movement heading, updated in
+   *  buildDatagram while moving and HELD when idle (T-320). Exposed via
+   *  `get facing()` so the renderer predicts the local body's rotation without
+   *  the server round-trip. */
   private _facing = 0;
   /** Accumulated one-shot bits cleared each buildDatagram(). */
   private pendingActions = 0;
@@ -81,11 +88,9 @@ export class IntentTranslator {
 
   constructor(
     private readonly router: IntentRouter,
-    private readonly getPlayerScreen: () => { x: number; y: number },
-    private readonly getCursorFacing: (canvasX: number, canvasY: number) => number | null,
     /** Live camera yaw — the (rotating) basis for camera-relative movement.
-     *  The mouse-facing camera (T-317) makes this dynamic; held-W curves with
-     *  the swinging camera, which is intended third-person locomotion. */
+     *  Free-look (T-320) makes this dynamic; held-W curves with the camera as
+     *  the player rotates it, which is intended third-person locomotion. */
     private readonly getCameraYaw: () => number,
   ) {}
 
@@ -170,12 +175,12 @@ export class IntentTranslator {
   // ---- mouse handling ----------------------------------------------------
 
   private onMouseMove(e: Extract<RawEvent, { kind: "mouse-move" }>): void {
+    // Facing is no longer cursor-derived (T-320) — it follows the movement
+    // heading in buildDatagram. We still capture the canvas coords because
+    // build mode's cursor-plane voxel placement (`_resolveVoxelHit`) reads
+    // them via mouseX/mouseY while pointer lock is released for build.
     this.mouseCanvasX = e.canvasX;
     this.mouseCanvasY = e.canvasY;
-    // Cursor → player facing: raycast onto the ground plane at player Y.
-    // The renderer owns the camera + player position so it does the projection.
-    const f = this.getCursorFacing(e.canvasX, e.canvasY);
-    if (f !== null) this._facing = f;
   }
 
   private onMouseDown(e: Extract<RawEvent, { kind: "mouse-down" }>): void {
@@ -244,13 +249,11 @@ export class IntentTranslator {
 
   /** Called once per frame by the game loop. */
   buildDatagram(seq: number, tick: number): MovementDatagram {
-    // Movement is CAMERA-relative (T-287): W = "into the screen" (away from
-    // the camera along its CURRENT yaw), D = screen-right — independent of where
-    // the cursor points. The body still aims at the cursor (`facing` on the
-    // wire below), so melee/aim track the cursor while locomotion follows the
-    // screen. With the mouse-facing camera (T-317) the yaw rotates as you turn,
-    // so held-W smoothly curves with the swinging camera — third-person
-    // locomotion, re-sampled every input frame so the basis never snaps.
+    // Movement is CAMERA-relative: W = "into the screen" (away from the camera
+    // along its CURRENT yaw), D = screen-right. Under free-look (T-320) the yaw
+    // rotates as the player rotates the camera, so held-W smoothly curves with
+    // it — third-person locomotion, re-sampled every input frame so the basis
+    // never snaps. The body faces this movement heading (`facing` below).
     const yaw = this.getCameraYaw();
     const fwdX =  Math.cos(yaw);
     const fwdY =  Math.sin(yaw);
@@ -268,6 +271,10 @@ export class IntentTranslator {
 
     const len = Math.sqrt(movX * movX + movY * movY);
     if (len > 0) { movX /= len; movY /= len; }
+
+    // Facing follows the movement heading while moving; holds last when idle
+    // (T-320) — never snaps to a default on key-release.
+    this._facing = facingFromMove(this._facing, movX, movY);
 
     let held = 0;
     if (this.keys.has("ControlLeft") || this.keys.has("ControlRight")) held |= ACTION_CROUCH;
@@ -298,7 +305,8 @@ export class IntentTranslator {
   get mouseX(): number { return this.mouseCanvasX; }
   get mouseY(): number { return this.mouseCanvasY; }
 
-  /** Cursor-derived facing (radians). The local, un-round-tripped value the
-   *  renderer applies to the local mesh for predicted body rotation (T-287). */
+  /** Movement-heading facing (radians), held when idle (T-320). The local,
+   *  un-round-tripped value the renderer applies to the local mesh for
+   *  predicted body rotation. */
   get facing(): number { return this._facing; }
 }
