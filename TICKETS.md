@@ -1509,6 +1509,8 @@ pretend the look is done at T-311/T-312:
 
 ### T-317 · Mouse-facing camera — the rotating camera becomes THE camera (doctrine)
 Effort: M   Status: done   Commit: b3874f9 (+ b65f2ae minimap heading cone, fb4323e geometry knobs + tuning)
+Control model SUPERSEDED by T-320 (2026-07-06): the chase controller + cursor-facing raycast are
+deleted; free-look pointer-lock + movement-facing replaced them. This entry records shipped history.
 
 **Verdict rendered 2026-07-03:** the user evaluated a live facing-follow prototype (damped
 yaw chase, no deadzone) and adopted the rotating camera as DOCTRINE. Not a mode, no toggle —
@@ -1631,7 +1633,8 @@ Done when: `variantIndex` resolves through a real content lookup with the same a
 id→index discipline `CliffGrid.profileId` established.
 
 ### T-320 · Controller-native camera + control rework — free-look, movement-facing, soft aim-assist
-Effort: L   Status: in-progress   (SUPERSEDES T-317's control model — user verdict 2026-07-06 after playing T-317)
+Effort: L   Status: done   (SUPERSEDES T-317's control model — user verdict 2026-07-06 after playing T-317)
+Commit: 3df78b8 (camera rig) · d6f7528 (facing=move-dir) · 7fe1e53 (soft aim-assist) · 7e2b16a (interaction proximity) · 71950f6 (camera probe) · this (close-out)
 
 The mouse-facing model (T-317: cursor drives facing, camera chases it) is replaced by a
 controller-native Witcher/Souls scheme. **User decisions (2026-07-06):** free-look camera under
@@ -1667,6 +1670,39 @@ deltas for a scene-probe check, and leave the raw pointer-lock FEEL as a manual 
 Done when: no cursor; mouse/pad rotates the camera with a small pitch pan; character faces where it
 moves; attacks auto-orient to the best nearby enemy; nearest interactable prompts on a Use key;
 T-317's cursor-facing + chase code and comments are gone; zero new wire fields.
+
+**Landed** (`3df78b8` camera rig · `d6f7528` facing=move-dir · `7fe1e53` aim-assist · `7e2b16a`
+interaction proximity · `71950f6` camera probe · this close-out): CameraRig rewritten to direct
+`applyLookDelta` yaw + clamped pitch (pitchRest 55° / pitchMin 45° / pitchMax 62°, rest framing
+byte-identical to T-317 — asserted); the whole follow controller + `setFacingTarget` deleted.
+`PointerLockController` owns the lock lifecycle (canvas click engages, any open panel OR build mode
+releases via a Preact effect on `uiState.openPanels`/`modeState`, never auto-re-locks). Facing is
+now the held-when-idle camera-relative movement heading (`facingFromMove`); `getCursorFacing` +
+the dead `getPlayerScreenPos` are gone (`getCursorWorldPos` KEPT — build-mode voxel placement still
+needs it). Soft aim-assist (`combat/aim_assist.ts` `pickAimAssistTarget`) fires on active-enter,
+picks the best in-cone enemy by a distance-dominant cost, and orients the swing + actor Facing for
+the active phase; hostility is the NpcTag-presence-differs axis (symmetric, no isNpc branch, never
+friendly), candidates from the rewound snapshot; `game_config.combat.aimAssist` = rangeUnits 4 /
+halfAngleDeg 60; zero new wire fields. Interaction rewritten to nearest-interactable proximity
+(`interaction/nearest.ts`) + Use (E) key `activateNearest` — the whole PICK_LAYER raycast/pick-box
+lifecycle deleted, LMB is pure attack, every kind (workstation/container/trader/job_board/
+resource_node/ground_item/poiInteractable) preserved. Four pure unit tests carry the correctness
+(rig yaw/pitch+clamp, facingFromMove hold-when-idle, aim-assist target pick, nearest-interactable);
+`_voxim_game.cameraProbe` carries the headless scene-probe. Full suite 696/696 green. Live-verified:
+scene-probe rotate(300,0) → yaw +0.66 rad exactly, pitch clamps 62°/45°, two headings 90° apart
+rotate the world with no horizon flood; interaction selection fires end-to-end; a live swing near
+NPCs runs the aim-assist resolver with no errors.
+
+**Deliberate v1 cuts (possible T-321 follow-up):** hard lock-on, target-cycling, and camera
+target-framing are OUT by design — aim-assist is soft (orient-only, no lock state, no camera
+framing). Also flagged: aim-assist has no team/faction model yet — it snaps to any hostile
+Health+Hitbox entity across the NpcTag axis, so once factions land the NpcTag-differs predicate in
+`pickAimAssistTarget` must become a real team check so it doesn't snap to a friendly NPC. Manual
+user checks (un-headless — the raw FEEL): pointer-lock free-look feel + click-to-lock/Esc-to-unlock
+round-trip; menu-release round-trip (open Inventory/Equipment/Stats/Trade → cursor returns, panel
+clickable, close → re-lock on canvas click); build-mode cursor return; invert-Y + mouseSensitivity
++ pitch-band taste; the blade snapping satisfyingly to the right enemy in a melee; the body reading
+correctly as it turns to its move direction while strafing.
 
 ## Player UX
 

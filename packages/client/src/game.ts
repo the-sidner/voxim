@@ -1052,8 +1052,10 @@ export class VoximGame {
       // `currentlyVisible` arc is computed here; `seenEver` is server-driven
       // and arrives via BinaryStateMessage's fogSnapshot / fogReveals.
       if (px !== undefined && py !== undefined) {
-        // Local cursor facing (T-287) so the vision cone tracks the cursor
-        // immediately, not a server round-trip late; fall back to networked.
+        // Local movement-heading facing (T-320) so the vision cone tracks the
+        // character's heading immediately, not a server round-trip late; fall
+        // back to networked. The cone follows where the body faces (where it
+        // moves), which is the natural third-person free-look vision.
         const facing = this.input?.facing ?? this.world.get(this.playerId)?.facing?.angle ?? 0;
         this.fog.updateLocalLOS(px, py, facing, (x, y) => this.world.isOpen(x, y));
       }
