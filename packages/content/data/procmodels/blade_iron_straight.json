@@ -1,0 +1,18 @@
+{
+  "_comment": "T-306: procedural sword blade — LIMB spine (iron) + SOLID pommel (iron) + SHELL guard (copper). deriveBladeGeometry(seed, params) yields this weapon instance's length/radius; the server weapon_trace resolver re-derives the SAME numbers from the same seed to sweep the hitbox (zero wire cost). Consumed only by the client generator (visual) + server (geometry); not a scatter procModel.",
+  "id": "blade_iron_straight",
+  "generator": "blade_grammar",
+  "params": {
+    "style": "straight",
+    "lengthRange": [2.1, 2.7],
+    "radiusRange": [0.05, 0.08],
+    "voxelSize": 0.12,
+    "pommelLengthFrac": 0.12,
+    "guardHalfWidth": 0.22,
+    "materials": {
+      "blade": "iron",
+      "guard": "copper",
+      "pommel": "iron"
+    }
+  }
+}

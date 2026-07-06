@@ -1,0 +1,19 @@
+{
+  "_comment": "T-306: procedural curved sabre — the LIMB spine bows perpendicular to its axis (sine profile peaking at curveRange midpoint); the swept hitbox stays the same straight capsule (curve is visual, per blade_grammar.ts). SHELL guard + SOLID pommel as steel.",
+  "id": "blade_steel_curved",
+  "generator": "blade_grammar",
+  "params": {
+    "style": "curved",
+    "lengthRange": [2.2, 2.8],
+    "radiusRange": [0.05, 0.07],
+    "curveRange": [0.12, 0.28],
+    "voxelSize": 0.12,
+    "pommelLengthFrac": 0.1,
+    "guardHalfWidth": 0.2,
+    "materials": {
+      "blade": "steel",
+      "guard": "steel",
+      "pommel": "steel"
+    }
+  }
+}

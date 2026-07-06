@@ -231,6 +231,13 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
   if (template?.weaponItemType) {
     eq.weapon = spawnEquipEntity(world, content, template.weaponItemType as string);
   }
+  // T-306: archetype-declared armor, each slot its own item entity (own
+  // EntityId → own seed) so armor_grammar-backed pieces render seed-unique
+  // per NPC instance even when many NPCs share one NpcTemplate.
+  for (const [slot, prefabId] of Object.entries(template?.armorItemTypes ?? {})) {
+    if (!prefabId) continue;
+    eq[slot as keyof EquipmentData] = spawnEquipEntity(world, content, prefabId);
+  }
   world.write(id, Equipment, eq);
 
   // No LoreLoadout for NPCs (T-260b): it existed for strike slots, which

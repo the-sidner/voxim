@@ -139,6 +139,17 @@ export { deriveHitboxTemplate, applyHitboxTemplate } from "./src/hitbox_derive.t
 export type { ResolvedBodyPartDims, BodyPartCapsule } from "./src/body_recipe.ts";
 export { evaluateBodyRecipe, resolveBodyPartDims, bodyPartCapsule, crossCheckBodyRecipe } from "./src/body_recipe.ts";
 
+// ---- blade_grammar / armor_grammar shared cores (T-306) ----
+// THREE-free geometry evaluators the client's registered ProcModel
+// generators AND (blade_grammar only) the server's weapon_trace resolver
+// both call — the same "one evaluator, two consumers" pattern as
+// body_recipe.ts, so a generated weapon's visual blade and its swept hitbox
+// can never drift apart.
+export type { BladeStyle, BladeGrammarParams, BladeGeometry } from "./src/blade_grammar.ts";
+export { deriveBladeGeometry, bladeGrammarAtoms } from "./src/blade_grammar.ts";
+export type { ArmorPlateSpec, ArmorGrammarParams } from "./src/armor_grammar.ts";
+export { armorGrammarAtoms } from "./src/armor_grammar.ts";
+
 // ---- sweep math (shared server + client) ----
 export type { Vec3 } from "./src/sweep_math.ts";
 export { localToWorld, segSegDistSq, segSegContactPoint, segSegContactInfo } from "./src/sweep_math.ts";

@@ -1,0 +1,18 @@
+{
+  "_comment": "T-306: procedural serrated blade — the LIMB spine notches alternating teeth along its trailing edge (per-tooth depth jitter from an independent rng stream); the swept hitbox stays a single straight capsule. Iron blade, worn_iron pommel, copper guard.",
+  "id": "blade_iron_serrated",
+  "generator": "blade_grammar",
+  "params": {
+    "style": "serrated",
+    "lengthRange": [1.9, 2.4],
+    "radiusRange": [0.06, 0.09],
+    "voxelSize": 0.12,
+    "pommelLengthFrac": 0.13,
+    "guardHalfWidth": 0.24,
+    "materials": {
+      "blade": "iron",
+      "guard": "copper",
+      "pommel": "worn_iron"
+    }
+  }
+}

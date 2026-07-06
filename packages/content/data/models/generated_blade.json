@@ -1,0 +1,8 @@
+{
+  "_comment": "T-306: held-model anchor for a blade_grammar weapon — empty nodes (the visual voxels come from the generator at bake time, keyed off swingable.bladeGrammar, not authored here). Same declarative-anchor role generated_human.json plays for humanoid_grammar bodies: the prefab needs a modelId to resolve, but the geometry is generator-sourced.",
+  "id": "generated_blade",
+  "version": 1,
+  "nodes": [],
+  "subObjects": [],
+  "materials": []
+}

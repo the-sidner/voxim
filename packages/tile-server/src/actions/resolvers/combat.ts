@@ -28,10 +28,12 @@ import { newEntityId } from "@voxim/engine";
 import {
   localToWorld,
   evaluateAnimationLayers, solveSkeleton, applyQuat, sampleSwingPath,
+  deriveBladeGeometry,
 } from "@voxim/content";
 import type {
   ContentService, DerivedItemStats, SwingableData, WeaponActionDef,
   AnimationLayer, AnimationClip, BoneMask, BoneDef, SkeletonDef, Vec3,
+  BladeGrammarParams,
 } from "@voxim/content";
 import { Position, Facing, Velocity, InputState, ModelRef } from "../../components/game.ts";
 import { Resource } from "../../components/resource.ts";
@@ -67,6 +69,25 @@ interface TraceScratch {
   hitStopTargets?: { entityId: string; untilTick: number }[];
 }
 
+/**
+ * Deterministic string hash (FNV-1a) — derives an entity's procedural seed
+ * from its EntityId. Byte-identical to `spawner.ts`'s `hash32` (used for
+ * `installVisualShell`'s `ModelRef.seed`) and the client's copy in
+ * `scatter_renderer.ts` / `entity_mesh_registry.ts`'s equipment sync (T-306)
+ * — every consumer that needs "the seed this entity would have gotten"
+ * without a ModelRef component (equipped item entities don't carry one)
+ * re-derives it from the entityId string identically on both sides, so a
+ * generated weapon's blade is seed-unique with ZERO wire cost.
+ */
+function hash32(s: string): number {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
 /** Equipped-weapon geometry + stats for the wielder, or unarmed defaults. */
 function weaponContext(world: World, entityId: EntityId, content: ContentService) {
   const cfg = content.getGameConfig().combat;
@@ -93,7 +114,21 @@ function weaponContext(world: World, entityId: EntityId, content: ContentService
     const entry = swingable.chain[(sc?.index ?? 0) % swingable.chain.length];
     weaponActionId = sc?.heavy ? entry.heavy : entry.light;
   }
-  return { stats, prefabId, weaponActionId };
+  // T-306: a generated blade overrides the authored swingPath's length/radius
+  // scalars with this SPECIFIC weapon instance's own geometry — same seed
+  // (hash32(weaponEnt)) and same pure `deriveBladeGeometry` call the client's
+  // registered blade_grammar generator uses to bake the held-model voxels, so
+  // the swept hit capsule always matches what the player sees in-hand.
+  let bladeOverride: { length: number; radius: number } | undefined;
+  if (swingable?.bladeGrammar && weaponEnt) {
+    const procModel = content.procModels.get(swingable.bladeGrammar);
+    if (procModel) {
+      const seed = hash32(weaponEnt);
+      const geo = deriveBladeGeometry(seed, procModel.params as BladeGrammarParams);
+      bladeOverride = { length: geo.length, radius: geo.radius };
+    }
+  }
+  return { stats, prefabId, weaponActionId, bladeOverride };
 }
 
 
@@ -110,7 +145,7 @@ export class WeaponTraceResolver implements EffectResolver {
     if (ctx.edge === "exit") return;
     const { world, events, entityId, content } = ctx;
 
-    const { stats, weaponActionId: derived } = weaponContext(world, entityId, content);
+    const { stats, weaponActionId: derived, bladeOverride } = weaponContext(world, entityId, content);
     // An action may pin its weapon geometry/timing via params (T-254 —
     // signature moves like sword_overhead trace their own arc regardless
     // of the equipped weapon's chain). Default: the equipped weapon.
@@ -154,7 +189,15 @@ export class WeaponTraceResolver implements EffectResolver {
     const maskIndex = content.getMaskIndex(skeleton.id);
     const boneIndex = content.getBoneIndex(skeleton.id);
     const handBone = action.holdHand ?? "hand_r";
-    const bladeRadius = action.swingPath?.radius ?? action.blade.radius;
+    // T-306: a generated blade's own length/radius (re-derived from the
+    // weapon entity's seed, same pure function the client's blade_grammar
+    // generator bakes voxels from) overrides the authored swingPath's
+    // scalars — the swept capsule always matches the specific weapon
+    // instance in-hand, not just the shared action's stock geometry.
+    const swingPath = action.swingPath && bladeOverride
+      ? { ...action.swingPath, length: bladeOverride.length, radius: bladeOverride.radius }
+      : action.swingPath;
+    const bladeRadius = swingPath?.radius ?? action.blade.radius;
 
     const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
     const tCurr = Math.min((action.windupTicks + ticksInPhase) / totalTicks, 1);
@@ -200,11 +243,11 @@ export class WeaponTraceResolver implements EffectResolver {
     // along that arc directly (no clip sampling) — the SAME hilt→tip path the
     // client renders, so the blade you see is the blade that hits. Falls back to
     // clip-sampled blade geometry for actions still without an authored swing.
-    const bladeCurr = action.swingPath
-      ? computeSwingBladeWorld(action.swingPath, tCurr, modelRef.scaleX, origin, attackFacing)
+    const bladeCurr = swingPath
+      ? computeSwingBladeWorld(swingPath, tCurr, modelRef.scaleX, origin, attackFacing)
       : computeBladeWorld(action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone, skeleton, clipIndex, maskIndex, boneIndex, tCurr, modelRef.scaleX, modelRef.morphValues, origin, attackFacing);
-    const bladePrev = action.swingPath
-      ? computeSwingBladeWorld(action.swingPath, tPrev, modelRef.scaleX, origin, attackFacing)
+    const bladePrev = swingPath
+      ? computeSwingBladeWorld(swingPath, tPrev, modelRef.scaleX, origin, attackFacing)
       : computeBladeWorld(action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone, skeleton, clipIndex, maskIndex, boneIndex, tPrev, modelRef.scaleX, modelRef.morphValues, origin, attackFacing);
     if (!bladeCurr || !bladePrev) return;
 

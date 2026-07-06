@@ -641,6 +641,30 @@ export interface SwingableData {
    * scaled by the per-instance quality multiplier.
    */
   damage?: number;
+  /**
+   * T-306 — names a `ProcModelDef` (generator: "blade_grammar") whose blade
+   * is THIS weapon's own geometry rather than an authored `model_sword_*`.
+   * Boot-cross-checked (loader.ts) against `store.procModels` membership,
+   * same discipline as `ModelDefinition.procModelId` (T-302). When present:
+   *   - the client bakes the weapon's held-model voxels from
+   *     `bladeGrammarAtoms(seed, procModel.params, resolveMaterial)` instead
+   *     of the prefab's static `ModelDefinition.nodes` (entity_mesh_registry.ts
+   *     syncHandSlot).
+   *   - the server's `weapon_trace` resolver overrides the equipped weapon
+   *     action's `swingPath.length`/`radius` with
+   *     `deriveBladeGeometry(seed, procModel.params)` before sweeping the
+   *     hit capsule — same seed, same pure function, so the visible blade
+   *     and the hitbox can never diverge (the T-186 hitbox-parity class of
+   *     bug this ticket explicitly guards against).
+   * `seed` in both cases is `hash32(weaponEntityId)` — the SAME derivation
+   * `installVisualShell` uses for every other entity's ModelRef.seed,
+   * computed independently client/server from the already-networked
+   * EquipmentSlot.entityId (zero wire cost — no new field). Absent → this
+   * weapon's blade geometry is whatever its WeaponActionDef's authored
+   * `swingPath`/`blade` already provides (no regression for authored
+   * weapons like `iron_sword`).
+   */
+  bladeGrammar?: string;
 }
 export interface ToolData { toolType: string; }
 export interface DeployableData { prefabId: string; }
@@ -1631,6 +1655,17 @@ export interface NpcTemplate {
   speedMultiplier?: number;
   /** Item type to equip as weapon at spawn (e.g. "wolf_bite"). Null/absent = unarmed. */
   weaponItemType?: string;
+  /**
+   * Armor item prefabs to equip at spawn, keyed by EquipmentData slot name
+   * (T-306; mirrors the player's `startingEquipment`, which is per-instance
+   * data on PrefabPlayerData — NPCs have no per-spawn override for this, so
+   * it lives on the archetype template instead). Each entry spawns its own
+   * item entity (spawnEquipEntity) with its own EntityId, so an armor piece
+   * naming a `generatorPreferences`/`armor_grammar`-backed model renders a
+   * seed-unique plate per NPC instance even when many NPCs share one
+   * NpcTemplate. Absent/omitted slots stay unequipped.
+   */
+  armorItemTypes?: Partial<Record<"head" | "chest" | "legs" | "feet" | "back", string>>;
   /**
    * Trigger ids this archetype carries innately (T-259c) — the
    * `npc_template` TriggerSource reads them live via NpcTag.npcType.
