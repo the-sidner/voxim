@@ -1623,7 +1623,7 @@ walkable, a player cannot walk up a raw tier step, and CliffGrid survives a chun
 walk (walk far away and back — the T-315 A1 sister-bug scenario).
 
 ### T-319 · SurfaceStateGrid.variantIndex has no I3c stable-index cross-check
-Effort: S   Status: todo
+Effort: S   Status: done   Commit: 781877e
 
 Found while writing T-318's field-set matrix: `SurfaceStateGrid.variantIndex` (T-311 P3) is
 derived by an inline `corruption[i] > threshold ? 1 : 0` formula in the atlas `fields.ts`, not
@@ -1633,6 +1633,28 @@ cross-check asserting "atlas's variant-id table == bootstrap's variant-id table"
 a real stable-index table + cross-check if `MaterialStateLadder` variants grow past two states.
 Done when: `variantIndex` resolves through a real content lookup with the same alphabetical
 id→index discipline `CliffGrid.profileId` established.
+
+**Landed** (`dc7defa` content+atlas core · `781877e` boot cross-check): `materialVariantIds(def)`
+(`packages/content/src/material_variant.ts`) gives `MaterialDef.variants` the same alphabetical
+stable id→index table `CliffGrid.profileId` established (T-318) — sorted by id, not raw JSON
+array position, so reordering a `variants[]` array in its JSON file can't silently remap the wire
+index; `materialVariantIndex`/`resolveMaterialVariant` resolve through the same table. The atlas
+`fields` stage resolves the "corrupted" state through `materialVariantIds(stone).indexOf
+("corrupted")` (via the optional `state.content`, same pattern `cliffStage` uses) instead of a
+bare literal `1`; -1 (no content / no such variant) leaves every cell at index 0 ("base"),
+mirroring `cliffStage`'s content-less all-zero stance byte-for-byte — snapshot-safe (no test reads
+`fields`/`variantIndex` output; content-less atlas paths unaffected). `crossCheckVariantIndex`
+(`packages/atlas/src/tilemap/pipeline/fields.ts`, exported off `@voxim/atlas`) fails fast at atlas
+boot (`packages/atlas/main.ts`, right after content loads) if `stone` ever loses its "corrupted"
+variant — the alternative was a silent variantIndex=0 for every cell, no error.
+
+**Behaviour note (flagged for the live stack):** a real re-bake now writes `variantIndex=0` for
+the "corrupted" state (stone's variants sorted alphabetically: `corrupted` < `mossy` → index 0),
+where the old literal wrote `1`. No render regression today — there is still no consumer
+resolving `SurfaceStateGrid.variantIndex` back to an actual `MaterialVariant` per-cell (only
+Studio's `MaterialEditor` calls `resolveMaterialVariant` today, off a UI-picked index, and
+`field_sample.ts` reads the raw byte as an unrelated [0,1] FieldExpr scalar) — this only matters
+once a real per-cell variant-resolving consumer lands.
 
 ### T-320 · Controller-native camera + control rework — free-look, movement-facing, soft aim-assist
 Effort: L   Status: done   (SUPERSEDES T-317's control model — user verdict 2026-07-06 after playing T-317)
