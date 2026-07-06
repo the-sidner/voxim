@@ -451,6 +451,20 @@ export interface ModelDefinition {
   materials: MaterialId[];
   /** Which skeleton archetype drives this model's bone sub-objects (if any). */
   skeletonId?: string;
+  /**
+   * T-302 — names the `ProcModelDef` (client procmodel registry) whose
+   * `class: "character"` generator produces this model's body, marking it
+   * `generated: true` rather than authored. Boot-cross-checked (loader.ts)
+   * against `store.procModels` membership; the client's
+   * `crossCheckDesignLanguage` additionally verifies the referenced
+   * ProcModelDef is `class: "character"` and its `params.skeletonId` matches
+   * this model's own `skeletonId` (both sides must agree on which skeleton
+   * they're describing). Absent ⇒ the model's body comes from the skeleton's
+   * `bodyRecipe` directly (unchanged, e.g. every existing `biped_skeletal`
+   * humanoid) or from authored sub-object voxels — this field only marks
+   * "this specific model's body is generator-sourced, not authored."
+   */
+  procModelId?: string;
 }
 
 export interface ModelRefData {
@@ -1718,6 +1732,18 @@ export interface Prefab {
   modelId?: string;
   /** Multiplier applied on top of the base entity scale at spawn. Defaults to 1. */
   modelScale?: number;
+  /**
+   * T-302 — documents that `modelId` names a model whose body is procedurally
+   * GENERATED (`ModelDefinition.procModelId` names a `class: "character"`
+   * ProcModel generator) rather than authored. Purely declarative — spawning
+   * and rendering read `modelId` exactly as before; this field exists so a
+   * prefab's own JSON is self-describing (and greppable) about which path
+   * its body takes, without needing to cross-reference the model file. Not
+   * boot-cross-checked against the model's actual `procModelId` (the model
+   * file is the single source of truth for the wiring; this is prefab-level
+   * documentation of intent, same spirit as a `_comment` field but typed).
+   */
+  generated?: boolean;
   /**
    * Per-prefab animation slot map: AnimationSystem slot name → clipId on the
    * entity's skeleton.  Lets two prefabs sharing the same skeleton play

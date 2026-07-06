@@ -1,0 +1,13 @@
+{
+  "_comment": "T-302: proves the humanoid_grammar path end-to-end -- modelId points at generated_human.json (procModelId: 'human'), so this NPC's body comes from the humanoid_grammar generator via humanoidGrammarByBone, not the authored biped_skeletal path every other NPC prefab still uses. Same skeleton, same shared body_recipe.ts evaluator underneath -- only the model-anchor and this declarative marker differ.",
+  "id": "generated_test_npc",
+  "extends": "_playable_character",
+  "modelId": "generated_human",
+  "modelScale": 1.4,
+  "generated": true,
+  "components": {
+    "npc": {
+      "npcType": "generated_test_npc"
+    }
+  }
+}

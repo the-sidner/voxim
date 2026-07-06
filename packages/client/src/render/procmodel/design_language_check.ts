@@ -25,6 +25,13 @@
  *      model-space z≈0 (the ground-plane invariant) — runs the real
  *      generator (seed 1, its own default params) and checks the lowest
  *      voxel face.
+ *   5. A `ModelDefinition.procModelId` (T-302 — marks a "generated: true"
+ *      body) must resolve to a `class: "character"` ProcModelDef whose
+ *      `params.skeletonId` matches the model's OWN `skeletonId` — the two
+ *      sides of the generated-body wiring must agree on which skeleton
+ *      they describe. loader.ts already cross-checks the id resolves at
+ *      all (shared server+client concern); this is the client-only half
+ *      (class + skeleton agreement) that needs the design-language rules.
  */
 import type { ContentService, MaterialDef } from "@voxim/content";
 import { getGenerator, generatorIds } from "./registry.ts";
@@ -154,6 +161,31 @@ export function crossCheckDesignLanguage(content: ContentService): void {
         `[design_language] character-class procModel "${pm.id}" does not emit at the ground plane: ` +
         `lowest voxel face is at z=${minZ.toFixed(3)}, expected ≈0 (±${GROUND_PLANE_TOLERANCE}). ` +
         `A generated body must root at its placement point (DESIGN_LANGUAGE.md §6 item 4).`,
+      );
+    }
+  }
+
+  // --- 5. generated-body model ↔ procModel agreement ---
+  // `content.models` is defensive-only here (not `?? []`'d away): every real
+  // ContentService always has it, but several fixtures above are deliberately
+  // partial doubles exercising only checks 1-4.
+  for (const model of content.models?.values() ?? []) {
+    if (!model.procModelId) continue;
+    const pm = content.procModels.get(model.procModelId); // membership already cross-checked by loader.ts
+    if (!pm) continue;
+    if (pm.class !== "character") {
+      throw new Error(
+        `[design_language] model "${model.id}" names procModel "${pm.id}" as its generated body, ` +
+        `but "${pm.id}" is not class:"character" — a generated-body procModel must opt into the ` +
+        `ground-plane invariant (DESIGN_LANGUAGE.md §6 item 4).`,
+      );
+    }
+    const paramsSkeletonId = (pm.params as { skeletonId?: string } | undefined)?.skeletonId;
+    if (paramsSkeletonId !== model.skeletonId) {
+      throw new Error(
+        `[design_language] model "${model.id}" (skeletonId "${model.skeletonId}") names procModel ` +
+        `"${pm.id}" whose params.skeletonId is "${paramsSkeletonId}" — the generated-body model and ` +
+        `its generator must describe the SAME skeleton.`,
       );
     }
   }

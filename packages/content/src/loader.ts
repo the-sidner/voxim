@@ -300,6 +300,16 @@ async function loadContentStoreInternal(
       );
     }
   }
+  // T-302: a model's procModelId must resolve (membership only — the
+  // generator itself, and the class:"character"/skeletonId agreement, are
+  // client-side concerns checked by crossCheckDesignLanguage where the
+  // generator registry lives; this loader is shared server+client and only
+  // owns the "does the id exist at all" half, same split as scatter above).
+  for (const m of store.models.values()) {
+    if (m.procModelId && !store.procModels.get(m.procModelId)) {
+      throw new Error(`[content] model "${m.id}" references unknown procModel "${m.procModelId}"`);
+    }
+  }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
   store.setGameConfig(gameConfig);
