@@ -99,6 +99,18 @@ export const humanoidGrammar: Generator = (_seed, params, ctx: GeneratorContext)
         y: t.pos.y + rotated.y,
         z: t.pos.z + rotated.z,
       };
+      // NOTE: only the atom CENTER is rotated into the bone's world
+      // orientation — sx/sy/sz stay axis-aligned to MODEL space rather than
+      // rotating with the bone. Fine for this flatten's only two consumers
+      // (the boot ground-plane check, which only reads cz, and a possible
+      // Studio rest-pose preview): every voxel is still correctly PLACED,
+      // only its box axes ignore steep bone rotations (e.g. the ~90° arm/leg
+      // rest rotations in biped.json), which reads as slightly axis-skewed
+      // cubes on close inspection rather than a hard bug. The live render
+      // path (`humanoidGrammarByBone` + `upgradeToSkeletonModel`'s per-bone
+      // Group) is unaffected — it never rotates atoms itself, THREE.Group
+      // rotation handles it, so this simplification is confined to the
+      // flatten-only path.
       out.push({
         ...a,
         cx: worldSolver.x,
