@@ -4226,6 +4226,61 @@ Basic inventory panel: grid of carried items, item info on hover, drag-to-equip.
 showing current vs. max encumbrance. Must reflect real-time updates from server state.
 Done when: player can view, equip, and drop items from inventory.
 
+## Heritage & Dynasty
+
+### T-077 · Family library — tome storage at workbench
+Effort: M   Status: done   (server substrate; deposit/withdraw UI deferred to T-072/T-076)
+
+A special chest entity associated with the family workbench serves as the library. Stores Lore
+tome items (T-018). Persists across character deaths (it is a world entity, not character
+inventory). Heir can interact with it during the respawn ritual.
+Done when: tomes placed in the library chest persist after character death; heir can access them.
+
+### T-078 · Family treasury — gear storage across deaths
+Effort: S   Status: done   (server substrate; equip-during-ritual UI deferred to T-072/T-076)
+
+A second chest entity at the family workbench serves as the treasury. Stores equipment items.
+Same persistence model as the library (T-077). Heir equips from here during respawn ritual.
+Done when: items stored in treasury persist across deaths; heir can equip them.
+
+Done (T-077 + T-078 share one primitive): a server-only **`Container`** component
+([components/container.ts]) — entity-ref slots holding UNIQUE item entities (so each tome's
+`Inscribed` and each weapon's `Durability`/`QualityStamped` is preserved per-instance, unlike the
+stack-only `WorkstationBuffer`), gated by `kind` (library=tome / treasury=equipment) + `dynastyId`
+(stamped from the placer's Heritage on deploy via `stampContainerOwner`). Two deployable chest
+prefabs (`library_chest`/`treasury_chest`) + kits + recipes, plus the long-missing `tome`/
+`blank_tome` prefabs the lore path already referenced (now boot-cross-checked). `storeInContainer`/
+`withdrawFromContainer` ([systems/container.ts]) are dynasty+kind+capacity-gated entity-ref MOVES
+(never copy/destroy). **Persistence** is the core work: `SaveManager` (VXM2 v4) now round-trips a
+chest fixture AND the unique item entities its slots reference — a new `KIND_ITEM` record carrying
+each item's instance components with the UUID preserved, emitted before the chest so slot refs
+re-resolve on load (`ItemEffects` was also registered so it stops silently dropping on overlay).
+"Persists across death" holds because the chest is its own world entity — `equip_cleanup`/disconnect
+only walk a holder's `Equipment`/`Inventory`, never a `Container`. 17 deno tests (`container_ops`,
+`container_persistence`): round-trip, death-survival, store/withdraw gates, heir-withdraw-and-equip.
+**Deferred (client-drift):** networked Container + the deposit/withdraw + ritual UI — server-first,
+network later, the same call buffs/modifiers/ActiveActions made.
+
+### T-079 · Heir spawn at family workbench
+Effort: M   Status: done
+
+On character death, instead of direct respawn, create a new character entity at the family
+workbench position. If the workbench was destroyed, heir spawns at a fallback location (tile
+origin) in a weakened state.
+Done when: death spawns an heir at the workbench; no workbench = displaced spawn.
+
+Done: happy-path hearth spawn shipped in T-270; this closes the **destroyed-hearth weakened
+fallback**. `resolveHeirSpawn(world, content, hearthAnchor, tileId)` ([heir_spawn.ts]) decides
+the heir's spawn from the account `hearthAnchor` + LIVE world: standing hearth (a `WorkstationTag`
+entity within `player.hearthDetectRadius` of the anchor) → spawn there; anchor here but no
+workstation → the hearth is destroyed → displaced to default spawn + `weakened`. No destroy-event
+plumbing needed — "still standing" is derived from world state. The hearth anchor is now cached
+per-player at join (`playerHearthAnchors`) so an in-session respawn (no join msg) reaches it; this
+also fixed the prior bug where `respawnPlayer` passed `null` and always fell to default spawn.
+Weakened = the T-008 `Injury` pipeline: `installPlayer` writes the new `game_config.injuries.displaced`
+debuff (moveSpeed ×0.7 through the modifier fold) + starts the heir at `displacedHealthFraction`
+(0.5) of max HP. Server-only, no wire/save change. 6 deno tests in `heir_spawn.test.ts`.
+
 ## World / Environment
 
 ### T-089 · Light emission system (torch, fireplace, hearth)
@@ -4537,6 +4592,35 @@ anchor (no segment yet); LMB again places a wall segment from anchor to
 cursor and re-anchors at the new cell; RMB tap pops the anchor and
 returns to free-cursor preview; ESC exits build mode; unequipping the
 hammer also exits.
+
+## Species
+
+### T-085 · Species visual variants — skeleton archetype mapping
+Effort: M   Status: done   Commit: adf348a
+
+Species definitions include a `skeletonArchetype` field that maps to a different skeleton
+definition. Dwarf skeleton is shorter and wider; human is the default. Visual differentiation
+without new animations — same animation set, different bone proportions.
+Done when: a dwarf character renders with dwarf skeleton proportions; animations play on both.
+
+Landed as `SpeciesDef.morphValues` (game_config.species), not a separate `skeletonArchetype` +
+skeleton file — T-179/T-180 retired per-creature skeletons before this ticket was picked up;
+every humanoid (species included) shares the one `biped` skeleton and differentiates through
+`SkeletonDef.morphParams`-keyed proportions (the same mechanism drowner/rotten_knight already
+use, T-180). Dwarf: `legLength`/`torsoHeight` down, `shoulderWidth`/`hipWidth` up (shorter+wider);
+elf: the inverse (taller+slender); human: no entry (baseline body). Wired into
+`installVisualShell`/`sampleMorphValues` in spawner.ts — species morphs are the base, a
+species-named key wins over T-190's per-instance morphRanges sampling (so a dwarf reads as
+consistently short+wide, not randomised back toward human), an authored `prefab.morphValues`
+still wins over species (most specific). Only the player installer resolves a `speciesId`, so
+this is a no-op for NPCs — matches CLAUDE.md's "NPCs carry no Species/LoreLoadout" note. Boot
+cross-check in server.ts: every `species.*.morphValues` key must resolve against the player
+model's skeleton `morphParams`, alongside the existing default-species check. Same clip set,
+same skeleton, zero new animations — proportions alone read as a different build. Unit-tested
+in character_creation.test.ts (dwarf shorter+wider / elf taller+slender / deterministic-per-seed
+/ species-silent human / unresolved speciesId is inert).
+
+---
 
 ## Engine / Netcode
 
@@ -6673,6 +6757,63 @@ Completes the combat-feedback loop (red damage / green heal). Codec round-trip t
 server tests + protocol tests green; client bundles.
 
 Done when: casting a heal shows a green +N rise off the healed entity.
+
+### T-274 · Dev docker stack errors — devtools crash-loop, gateway WT rebind storm, coordinator crash
+Effort: S   Status: done   (three root-caused fixes from a bug-hunt; verified live)
+
+`deno task compose-fresh` surfaced three real errors (separate from the known GatewayLink dial
+noise). Found + fixed:
+- **devtools crash-loop**: `docker/devtools.Dockerfile` still ran the deleted `scripts/build_voxel_editor.ts`
+  (T-191z removed the script + `dev.ts`/`serve_devtools.ts` refs but missed the Dockerfile) → container
+  exited 1 → `restart: unless-stopped` looped it forever. Fix: drop it from the cache + CMD (studio only).
+- **gateway loses UDP/8080 WT listener for good**: every `deno run --watch=./packages` backend (gateway/
+  coordinator/atlas/tiles) restarted whenever the client-dev/devtools esbuild watchers rewrote their
+  `dist/` bundles (which live under the bind-mounted `./packages`). On that restart the gateway couldn't
+  rebind UDP/8080 (Address already in use) → fell back to HTTP-only permanently → killed every tile↔gateway
+  + coordinator↔gateway WT link (the permanent GatewayLink "timed out" flood was a *symptom* of this).
+  Fix: `--watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**` on every
+  watch service. NOTE: Deno's `--watch-exclude` does NOT comma-split — a single `a,b` value is one literal
+  pattern that never matches; you must pass REPEATED flags. Verified live: touching dist no longer restarts
+  the backends; the gateway keeps its WT listener.
+- **coordinator crash on WT timeout**: `packages/coordinator/main.ts` lacked the `unhandledrejection` guard
+  that `tile-server/main.ts` has, so a transient dial timeout (escaping the GatewayLink retry loop as an
+  un-awaited rejection) killed the process. Fix: mirror the tile-server guard. Also fixed a pre-existing
+  `coordinator.ts:162` TS error (`setInterval` → `ReturnType<typeof setInterval>`) so the package
+  type-checks.
+
+### T-261 · Place gates + arrivals at the carved corridor offset
+Effort: M   Status: done   Commit: 79526f4
+
+Split from T-256 gap 4. Gates spawn at edge MIDPOINTS (`gatePositionForEdge` /
+`mirrorPosition` use `TILE_SIZE / 2`) while atlas carves the only walkable corridor at the
+shared `gate.offset` (`atlas_terrain.ts:192-205` reads `g.offset` then discards it; the
+`GatePosition` wire type is edge-only). So a gate trigger — and the mirrored arrival point —
+can land in a closed pixel: the gate is physically unreachable, or the handed-off player
+arrives stuck in a wall.
+
+Fix shape: carry the along-edge `offset` on `GatePosition` (scaled atlas-pixels → world units
+via `TILE_SIZE / tile.gridSize`); `gatePositionForEdge` + `mirrorPosition` place along the
+edge at that offset instead of the midpoint. Deferred from T-256 because it needs the live
+multi-process render + an open-pixel check to verify the offset scale — shipping it blind
+risks gates landing in walls (worse than the known-wrong-but-safe midpoint).
+
+Done when: a gate sits on its carved corridor and a handed-off player arrives on an open
+cell, verified against the atlas OpenMask.
+
+**Done.** `GatePosition.offset` now carries `cellRow.gates[edge].offset` straight through
+(it's already world-unit — `WorldCellRecord.offset`/atlas `Portal.offset`, `TILE_WORLD_SIZE
+=== TILE_SIZE`, both 512 — no `TILE_SIZE / tile.gridSize` rescale needed, unlike
+pixel-indexed fields such as `stair.anchorPixel`). `gatePositionForEdge`/`mirrorPosition`
+place along the edge at that offset instead of the midpoint; `mirrorPosition` reuses the
+SAME offset for the destination edge via the worldmap's mirror invariant (a shared border
+carries one offset on both cells). `GateLink` (networked) gained an `offset` field alongside
+its existing `edge`/`radius` so `initiateHandoff` reads the live gate's offset at crossing
+time. Added `gate.test.ts` (no prior coverage) asserting end-to-end propagation and that the
+MIRROR_INSET ping-pong guard still holds at a non-midpoint offset. **Live-render OpenMask
+verification did not happen in this lane (no live stack available)** — see the
+post-merge checklist: re-bake, then confirm via the atlas inspector / testplay that a gate
+sits on its corridor and a crossing lands on an open cell for at least one non-midpoint
+gate.
 
 ## Retired / superseded / deferred
 
