@@ -1047,8 +1047,24 @@ Implement `humanoid_grammar(seed, params, ctx) → VoxelAtom[]` (T-186 Layer 2):
 + LIMB arms/legs that FILL limb volume from the existing 6 morph keys, organic surface per
 DESIGN_LANGUAGE.md, ground-anchored, fail-fast on missing materials. Add a `generated:true` prefab
 path so a test NPC spawns from a generated body, not the authored `biped_skeletal`. DONE: a generated
-character reads as solid mass at gameplay distance, varies by seed, animates on the existing
-skeleton. Reuses bakeVoxels / the morph wire path / skeleton infra; no wire or schema-breaking change.
+character reads as solid mass at gameplay distance, varies by seed, organic surface, animates on the
+existing skeleton. Reuses bakeVoxels / the morph wire path / skeleton infra; no wire or schema-breaking change.
+
+**Reconciliation note (T-186 Layer 2, lane "body"):** the recipe-driven body voxelizer now exists
+— `packages/content/src/body_recipe.ts` (`evaluateBodyRecipe`/`crossCheckBodyRecipe`) + a
+`bodyRecipe` block on `data/skeletons/biped.json` — built directly under T-186 since T-301's
+generator substrate (`DESIGN_LANGUAGE.md`, `generatorPreferences`, the boot coherence check) had
+not landed. T-302 reduces to: port `body_recipe.ts`'s capsule/tapered-box volume evaluator onto
+the future `humanoid_grammar` substrate once T-301 lands (organic surface noise per
+DESIGN_LANGUAGE.md, ground-anchored placement, fail-fast material checks) — the morph-parameterised
+dimension math AND the hitbox/visual single-source-of-truth wiring (both the mesh build and
+`hitbox_derive.ts`'s skeletal-capsule path now read the same recipe output) do not need to be
+redone, only re-hosted behind the grammar's generator id. Not marked obsolete: T-301's vocabulary
+(organic surface treatment, seed-driven silhouette variety within one morph value) is a strict
+superset of what a fixed geometric-primitive recipe provides. Note: T-302's prose above still says
+"the existing 6 morph keys" — `biped.json` actually declares 10 (armLength, legLength,
+torsoHeight, shoulderWidth, headSize, hipWidth, right/leftArmScale, right/leftLegScale); update
+the count whenever T-302 is picked up.
 
 ### T-303 · Voxel-to-stats slice — Composed sword + material-derived stats
 Effort: M   Status: todo   Depends: T-301
