@@ -32,6 +32,7 @@ import { HoverOutlineRenderer } from "./render/hover_outline.ts";
 import { ScatterRenderer } from "./render/scatter_renderer.ts";
 import { seedFromTileId } from "@voxim/world";
 import { WaterRenderer } from "./render/water_renderer.ts";
+import { RoofRenderer } from "./render/roof_renderer.ts";
 import { DecalRenderer } from "./render/decal_renderer.ts";
 import { crossCheckDecals } from "./render/decal_sources.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
@@ -241,6 +242,7 @@ export class VoximGame {
    *  the single-tile world; the gateway path overrides it. */
   private tileId = "0_0";
   private waterRenderer: WaterRenderer | null = null;
+  private roofRenderer: RoofRenderer | null = null;
   private decals: DecalRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
@@ -505,6 +507,17 @@ export class VoximGame {
     // WorldClock.biomeTag. Same onChunkReady hook the scatter renderer uses;
     // no server-side water entities.
     this.waterRenderer = new WaterRenderer(this.renderer.scene, this.world, this.contentService);
+
+    // Roof rendering over enclosed interiors (T-066). EnclosureSystem (server,
+    // T-065) publishes the full enclosed-cell set on change; this renderer
+    // groups it into per-building meshes and hides whichever one currently
+    // contains the player (see the EnclosureChanged event handler + the
+    // per-frame updateVisibility call below).
+    this.roofRenderer = new RoofRenderer(
+      this.renderer.scene,
+      this.world,
+      this.contentService?.getGameConfig().building.roofHeightAboveFloor ?? 2.0,
+    );
 
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
@@ -836,6 +849,9 @@ export class VoximGame {
               if (ev.zoneName) pushToast(`Entering: ${ev.zoneName}`, "info");
             }
             break;
+          case "EnclosureChanged":
+            this.roofRenderer?.onEnclosureChanged(ev.cells);
+            break;
         }
       }
     };
@@ -878,6 +894,7 @@ export class VoximGame {
     this.scatter?.reset();
     this.decals?.reset();
     this.waterRenderer?.clear();
+    this.roofRenderer?.clear();
     this.world.clear();
     this.buildOccupancy.clear();
     this.renderer?.clearWorld();
@@ -1067,6 +1084,11 @@ export class VoximGame {
         // moves), which is the natural third-person free-look vision.
         const facing = this.input?.facing ?? this.world.get(this.playerId)?.facing?.angle ?? 0;
         this.fog.updateLocalLOS(px, py, facing, (x, y) => this.world.isOpen(x, y));
+      }
+      // Roof hide-when-inside (T-066): same predicted-position source as the
+      // canopy fade / fog LOS above.
+      if (px !== undefined && py !== undefined) {
+        this.roofRenderer?.updateVisibility(px, py);
       }
     }
 
@@ -1745,6 +1767,8 @@ export class VoximGame {
     this.scatter = null;
     this.waterRenderer?.clear();
     this.waterRenderer = null;
+    this.roofRenderer?.dispose();
+    this.roofRenderer = null;
     this.decals?.reset();
     this.decals = null;
     this.inputCapture?.dispose();
