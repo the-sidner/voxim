@@ -3,6 +3,14 @@
   "extends": "_playable_character",
   "modelId": "biped_skeletal",
   "modelScale": 1.4,
+  "morphRanges": {
+    "shoulderWidth": { "min": 1.15, "max": 1.4 },
+    "hipWidth":      { "min": 0.8,  "max": 0.95 },
+    "torsoHeight":   { "min": 0.95, "max": 1.1 },
+    "legLength":     { "min": 0.75, "max": 0.95 },
+    "rightArmScale": { "min": 1.1,  "max": 1.4 },
+    "leftArmScale":  { "min": 1.1,  "max": 1.4 }
+  },
   "components": {
     "npc": {
       "npcType": "bandit"
