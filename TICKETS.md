@@ -1630,6 +1630,44 @@ a real stable-index table + cross-check if `MaterialStateLadder` variants grow p
 Done when: `variantIndex` resolves through a real content lookup with the same alphabetical
 id→index discipline `CliffGrid.profileId` established.
 
+### T-320 · Controller-native camera + control rework — free-look, movement-facing, soft aim-assist
+Effort: L   Status: todo   (SUPERSEDES T-317's control model — user verdict 2026-07-06 after playing T-317)
+
+The mouse-facing model (T-317: cursor drives facing, camera chases it) is replaced by a
+controller-native Witcher/Souls scheme. **User decisions (2026-07-06):** free-look camera under
+POINTER LOCK; soft AIM-ASSIST for targeting (no hard lock-on in v1).
+
+Four coupled changes, all REPLACE (no toggle, no legacy path — T-317's chase controller +
+cursor-facing raycast are DELETED):
+1. **Camera = direct rotation.** Rig yaw is driven directly by mouse-X delta under pointer lock
+   (right stick on a pad). The whole T-317 follow controller (deadzone/hysteresis/spring/max-rate/
+   `setFacingTarget`) goes. Add a **clamped PITCH** axis (mouse-Y → small up/down pan, clamped to a
+   narrow band around the shipped ~55° gaze). Pointer lock: click canvas engages; Esc / opening a
+   menu releases (cursor returns for UI). Sensitivity + invert-Y + pitch range are game_config
+   `camera.*` knobs (repurpose the freed follow-knob slots).
+2. **Facing = movement direction**, not the cursor. The character faces its camera-relative WASD
+   move direction while moving, holds last facing when idle. The wire `facing` carries this
+   (delete `getCursorFacing`/the cursor→ground raycast). This is the load-bearing inversion of
+   T-317 — no cursor means no cursor feedback loop.
+3. **Soft aim-assist (server-authoritative).** On an attack's active tick the combat resolver
+   picks the best target = nearest enemy inside a frontal cone (proximity × alignment to facing,
+   within `camera`/combat-config range+angle) and orients the swing (+ the actor's Facing) toward
+   it for the active phase. No lock state, no camera framing. Lives server-side (authoritative,
+   mouse/pad-agnostic) in the hit_resolver/combat resolver path. Replaces "the blade goes exactly
+   where the cursor pointed" with "the blade snaps to the best nearby threat."
+4. **Interaction = proximity, not hover-click.** Cursor hover→click is gone; highlight the NEAREST
+   interactable in range (generalize the existing `_nearestGroundItem` + `hoverState` into a
+   proximity selector over interactables) + a Use key → the existing `CommandType.UseEntity`.
+
+Verification reality: pointer-lock free-look CANNOT be driven by the testInput harness. So unit-test
+the LOGIC hard (rig yaw/pitch from injected deltas; facing=move-dir; **soft aim-assist target pick
+as a deterministic server test** — spawn enemies at angles, start an attack, assert the swing
+orients to the best one; interaction proximity pick), add a debug hook to inject camera-rotate
+deltas for a scene-probe check, and leave the raw pointer-lock FEEL as a manual pass the user runs.
+Done when: no cursor; mouse/pad rotates the camera with a small pitch pan; character faces where it
+moves; attacks auto-orient to the best nearby enemy; nearest interactable prompts on a Use key;
+T-317's cursor-facing + chase code and comments are gone; zero new wire fields.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
