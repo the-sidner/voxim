@@ -35,4 +35,3 @@ export {
   buildCliffProfileIndex,
 } from "./cliff_voxeliser.ts";
 export type { CliffVoxeliser, CliffBuildContext } from "./cliff_voxeliser.ts";
->>>>>>> a1902dc (client: cliffVoxeliser registry + CLIFF_* deletion (T-311 P6))
