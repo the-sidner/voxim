@@ -29,7 +29,6 @@ import type {
   SkeletonDef,
 } from "@voxim/content";
 import { resolveSubObjects, resolveMorphParams, evaluateBodyRecipe } from "@voxim/content";
-import type { AabbHalfExtents, InteractionSystem } from "../interaction/interaction_system.ts";
 import type { HoverOutlineSink } from "./renderer.ts";
 import { modelToThree } from "./coords.ts";
 import {
@@ -105,7 +104,6 @@ export class EntityMeshRegistry {
   // Mutable deps set after construction by the renderer's setter delegations.
   private content: ContentCache | null = null;
   private localPlayerId: string | null = null;
-  private interaction: InteractionSystem | null = null;
   private hover: HoverOutlineSink | null = null;
 
   constructor(
@@ -120,7 +118,6 @@ export class EntityMeshRegistry {
 
   setContent(c: ContentCache): void { this.content = c; }
   setLocalPlayer(id: string | null): void { this.localPlayerId = id; }
-  setInteraction(s: InteractionSystem | null): void { this.interaction = s; }
   setHover(s: HoverOutlineSink | null): void { this.hover = s; }
 
   // ---- render-loop accessors ----
@@ -162,7 +159,6 @@ export class EntityMeshRegistry {
       mesh.group.name = "entity";
       this.scene.add(mesh.group);
       this.meshes.set(entityId, mesh);
-      this.interaction?.addEntity(entityId);
     } else {
       updateEntityMesh(mesh, state);
     }
@@ -238,11 +234,10 @@ export class EntityMeshRegistry {
           // of voxels, so the bake is sub-millisecond on the main thread; the
           // off-thread pool + collector/cursor coupling it replaced is gone.
           upgradeToSkeletonModel(capture, def, skeleton, resolvedSubs, subModelDefs, mats, scale, morphParams, dissolveProfile, recipeAtoms);
-          // Re-attach hover outline + resize the pick box to fit the freshly
-          // built meshes — both attach via the entity's group, which now
-          // holds real geometry instead of the placeholder.
+          // Re-attach the hover outline to the freshly built meshes — it
+          // attaches via the entity's group, which now holds real geometry
+          // instead of the placeholder.
           this.hover?.notifyEntityRebuilt(entityId);
-          this.interaction?.refreshEntityShape(entityId);
           capture.modelSeed   = modelRef.seed  ?? 0;
           capture.modelScale  = modelRef.scaleX ?? 0;
           capture.modelMorphs = modelRef.morphValues;
@@ -266,11 +261,10 @@ export class EntityMeshRegistry {
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
           // InstancePool bakes the entity's position into an instance matrix
-          // once and never updates it; the pick box is sized once at this point
-          // too.  So we MUST defer the transition until the entity has actually
-          // settled — ejected ground items have non-zero velocity while flying,
-          // and freezing them mid-arc strands the visual + pick box at random
-          // air positions.
+          // once and never updates it.  So we MUST defer the transition until
+          // the entity has actually settled — ejected ground items have
+          // non-zero velocity while flying, and freezing them mid-arc strands
+          // the visual at a random air position.
           //
           // Test on velocity MAGNITUDE rather than presence: applySnapshot
           // writes velocity = {0,0,0} for every entity in every snapshot
@@ -294,8 +288,6 @@ export class EntityMeshRegistry {
           const rotationY = state.facing?.angle ?? 0;
           this._addStaticProp(entityId, worldPos, def, resolvedSubs, subModelDefs, mats, scale, rotationY);
           this.propPositions.set(entityId, worldPos);
-          const halfExtents = computePropHalfExtents(def, resolvedSubs, subModelDefs, scale);
-          this.interaction?.addStaticEntity(entityId, worldPos, this.scene, halfExtents);
         }
       }).catch(() => {});
     }
@@ -392,7 +384,6 @@ export class EntityMeshRegistry {
     }
     const mesh = this.meshes.get(entityId);
     if (mesh) {
-      this.interaction?.removeEntity(entityId);
       this.lightManager.remove(entityId, mesh.group);
       this.debug.removeEntity(entityId);
       this.scene.remove(mesh.group);
@@ -708,72 +699,3 @@ export class EntityMeshRegistry {
   }
 }
 
-/**
- * Walk every voxel of a static prop's main model + sub-objects in three.js
- * coordinates and return its AABB as half-extents + centre for the
- * InteractionSystem pick box.  Sub-objects are honoured so trees with
- * branches and props with offset attachments get the correct footprint
- * (the cached getModelAabb only covers main-model nodes).
- *
- * model(x, y, z) → three(x*sx, z*sz, y*sy) — same convention as
- * voxel_bake.bakeSubModel().
- */
-function computePropHalfExtents(
-  def: ModelDefinition,
-  resolvedSubs: ResolvedSubObject[],
-  subModelDefs: Map<string, ModelDefinition>,
-  scale: { x: number; y: number; z: number },
-): AabbHalfExtents {
-  let minX =  Infinity, minY =  Infinity, minZ =  Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-  // Voxel n occupies [n, n+1) on each axis.  Three.js corners after scale.
-  const accumulate = (
-    nodes: ModelDefinition["nodes"],
-    sx: number, sy: number, sz: number,
-    ox = 0, oy = 0, oz = 0,
-  ): void => {
-    for (const n of nodes) {
-      // model(x,y,z) → three(x*sx, z*sz, y*sy)
-      const aX =  n.x      * sx + ox;
-      const bX = (n.x + 1) * sx + ox;
-      const aY =  n.z      * sz + oy;
-      const bY = (n.z + 1) * sz + oy;
-      const aZ =  n.y      * sy + oz;
-      const bZ = (n.y + 1) * sy + oz;
-      if (aX < minX) minX = aX; if (bX > maxX) maxX = bX;
-      if (aY < minY) minY = aY; if (bY > maxY) maxY = bY;
-      if (aZ < minZ) minZ = aZ; if (bZ > maxZ) maxZ = bZ;
-    }
-  };
-
-  accumulate(def.nodes, scale.x, scale.y, scale.z);
-  for (const sub of resolvedSubs) {
-    const subDef = subModelDefs.get(sub.modelId);
-    if (!subDef) continue;
-    const t = sub.transform;
-    const sx = scale.x * t.scaleX;
-    const sy = scale.y * t.scaleY;
-    const sz = scale.z * t.scaleZ;
-    // Sub-object position uses the same model→three mapping; rotations are
-    // ignored here (small rotated parts barely shift the AABB and fixing
-    // it correctly would mean transforming each voxel through a 4×4 — not
-    // worth the cost for a click target).
-    const ox = t.x * scale.x;
-    const oy = t.z * scale.z;
-    const oz = t.y * scale.y;
-    accumulate(subDef.nodes, sx, sy, sz, ox, oy, oz);
-  }
-
-  if (!isFinite(minX)) {
-    return { hx: 0.4, hy: 0.9, hz: 0.4, cx: 0, cy: 0.9, cz: 0 };
-  }
-  return {
-    hx: (maxX - minX) / 2,
-    hy: (maxY - minY) / 2,
-    hz: (maxZ - minZ) / 2,
-    cx: (maxX + minX) / 2,
-    cy: (maxY + minY) / 2,
-    cz: (maxZ + minZ) / 2,
-  };
-}

@@ -31,7 +31,6 @@ import { GateMarkerRenderer } from "./gate_marker.ts";
 import { EntityMeshRegistry } from "./entity_mesh_registry.ts";
 import { EnvironmentLighting } from "./environment_lighting.ts";
 import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "./entity_mesh.ts";
-import type { InteractionSystem } from "../interaction/interaction_system.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
 import { solveSwingPose, applyLocomotionPose, applyCrouchPose, timeOfDay01 } from "@voxim/content";
@@ -772,10 +771,6 @@ export class VoximRenderer {
   }
 
   // ---- interaction system ----
-
-  setInteractionSystem(is: InteractionSystem | null): void {
-    this.entities.setInteraction(is);
-  }
 
   /**
    * Register the hover outline renderer.  The registry notifies it when an

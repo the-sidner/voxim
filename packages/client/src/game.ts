@@ -91,13 +91,6 @@ export interface GameConfig {
   creation?: CharacterCreation;
 }
 
-/**
- * Range (world units) for the E-key "grab nearest item" fallback.  Slightly
- * larger than the server's pickupRadius so the client request always reaches
- * the server when the player perceives the item as close — the server makes
- * the final call and rejects out-of-range requests silently.
- */
-const E_PICKUP_FALLBACK_RANGE = 3.0;
 
 export class VoximGame {
   private connection: TileConnection = new TileConnection();
@@ -440,8 +433,10 @@ export class VoximGame {
       (dx, dy) => this.renderer?.cameraRig.applyLookDelta(dx, dy),
     );
 
-    // Interaction system — entity hover highlight + click dispatch.
-    this.interactionSystem = new InteractionSystem(this.renderer, this.world);
+    // Interaction system — nearest-interactable proximity selection + Use key
+    // (T-320). Selects the closest matching entity each frame and drives the
+    // hover outline off proximity; the Use (E) key activates the selection.
+    this.interactionSystem = new InteractionSystem(this.world);
     this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
     this.interactionSystem.register(makeContainerHandler((entityId) => this._openContainer(entityId)));
     this.interactionSystem.register(makeTraderHandler((entityId) => this._openTrader(entityId)));
@@ -453,7 +448,6 @@ export class VoximGame {
     this.interactionSystem.register(makePoiInteractableHandler((entityId) =>
       this._sendCommand({ cmd: CommandType.UseEntity, entityId }),
     ));
-    this.renderer.setInteractionSystem(this.interactionSystem);
 
     this._registerIntentHandlers();
 
@@ -1001,9 +995,14 @@ export class VoximGame {
         predictedPos = this.predictor.step(datagram.seq, physicsInput, dt, terrainFn, isOpenFn);
       }
     }
-    // Update hover highlight — must happen after input so mouse coords are current
-    if (this.input && this.interactionSystem) {
-      this.interactionSystem.update(this.input.mouseX, this.input.mouseY);
+    // Re-select the nearest interactable off the player's position (T-320) —
+    // proximity, not cursor. Prefer the predicted position so selection tracks
+    // smooth client motion; fall back to the networked snapshot.
+    if (this.interactionSystem && this.playerId) {
+      const me = this.world.get(this.playerId)?.position;
+      const px = predictedPos?.x ?? me?.x;
+      const py = predictedPos?.y ?? me?.y;
+      if (px !== undefined && py !== undefined) this.interactionSystem.update(px, py);
     }
     // Publish the cursor's resolved voxel target so build-mode subscribers
     // (ghost renderer) read it reactively. Done every frame so the ghost tracks
@@ -1108,31 +1107,6 @@ export class VoximGame {
    * check so the panel can never claim to interact with something the
    * server would refuse.
    */
-  /**
-   * Find the closest ground-item entity to the local player within `range`.
-   * Used as the E-key fallback when the cursor isn't on a specific entity —
-   * scanning the loaded world is cheap (a few hundred entities at most) and
-   * keeps pickup forgiving without requiring precise cursor aim.
-   */
-  private _nearestGroundItem(range: number): string | null {
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return null;
-    const px = me.position.x, py = me.position.y;
-    const r2 = range * range;
-    let bestId: string | null = null;
-    let bestDist = Infinity;
-    for (const [entityId, state] of this.world.entries()) {
-      if (!state.itemData || !state.position) continue;
-      const dx = state.position.x - px;
-      const dy = state.position.y - py;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > r2 || d2 >= bestDist) continue;
-      bestDist = d2;
-      bestId = entityId;
-    }
-    return bestId;
-  }
-
   private _openWorkstation(entityId: string): void {
     const ws = this.world.get(entityId);
     if (!ws?.workstationBuffer || !ws.workstationTag || !ws.position) return;
@@ -1332,61 +1306,36 @@ export class VoximGame {
   private _registerIntentHandlers(): void {
     const router = this.intentRouter!;
 
-    // World hover-aware interact (E key).  Cursor-driven first:
-    //   ground item under cursor → PickUp
-    //   workstation under cursor → open panel
-    // When nothing's under the cursor, fall back to the nearest ground item
-    // within E_PICKUP_FALLBACK_RANGE — drops landing two cells from the
-    // depleted node should be grabbable without aiming the cursor at them.
-    // The server validates range again via game_config.items.pickupRadius.
+    // Use key (E) — activate the nearest interactable (T-320). Selection is
+    // proximity-based every frame (InteractionSystem), so this just fires the
+    // matching handler for the current selection: workstation/container/
+    // job_board/trader open a panel, POI props → UseEntity, ground item →
+    // PickUp. Resource nodes fall through (you swing at them). Unifies the old
+    // cursor-first + nearest-ground-item fallback into one proximity path.
     router.register({
       id: "world-interact",
       priority: 50,
       claim: (intent: Intent) => {
         if (intent.kind !== "interact") return false;
-        if (intent.hover.kind === "entity") {
-          const entity = this.world.get(intent.hover.entityId);
-          if (entity?.workstationBuffer) {
-            this._openWorkstation(intent.hover.entityId);
-            return true;
-          }
-          if (entity?.container) {
-            this._openContainer(intent.hover.entityId);
-            return true;
-          }
-          if (entity?.itemData) {
-            this._sendCommand({ cmd: CommandType.PickUp, entityId: intent.hover.entityId });
-            return true;
-          }
-        }
-        const nearest = this._nearestGroundItem(E_PICKUP_FALLBACK_RANGE);
-        if (nearest) this._sendCommand({ cmd: CommandType.PickUp, entityId: nearest });
+        const me = this.playerId ? this.world.get(this.playerId) : null;
+        const px = me?.position?.x ?? 0;
+        const py = me?.position?.y ?? 0;
+        this.interactionSystem?.activateNearest(px, py);
         return true;
       },
     });
 
-    // World main action (LMB release). Today the server picks the swing
-    // variant from chargeMs (T-129); the client just forwards the bit on
-    // the next datagram. The translator already sets ACTION_USE_SKILL +
-    // chargeMs, so this handler exists mainly to claim the intent so other
-    // handlers don't double-fire on the same release.
+    // World main action (LMB release). LMB is now PURELY the swing (T-320) —
+    // entity "click to open" is gone (no cursor); interaction is the Use key.
+    // The server picks the swing variant from chargeMs (T-129); the translator
+    // already set ACTION_USE_SKILL + chargeMs, so this handler only claims the
+    // intent so other handlers don't double-fire on the same release.
     router.register({
       id: "world-attack",
       priority: 40,
       claim: (intent: Intent) => {
         if (intent.kind !== "world-main-action") return false;
-        // Pre-route entity click to the interaction system (workstation
-        // open, etc.). LMB-pickup-anything legacy goes through here too:
-        // a click on a workstation opens its panel even via LMB, matching
-        // the previous onLmbClick behavior.
-        if (intent.hover.kind === "entity") {
-          const me = this.playerId ? this.world.get(this.playerId) : null;
-          const px = me?.position?.x ?? 0;
-          const py = me?.position?.y ?? 0;
-          this.interactionSystem?.handleClick(this.input!.mouseX, this.input!.mouseY, px, py);
-        }
-        // The actual swing is sent through the next datagram via
-        // pendingActions/chargeMs in the translator. Nothing to do here.
+        // The actual swing rides the next datagram via pendingActions/chargeMs.
         return true;
       },
     });
