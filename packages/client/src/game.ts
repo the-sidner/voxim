@@ -13,6 +13,7 @@ import { connectViaGateway } from "./connection/gateway_client.ts";
 import { TileConnection } from "./connection/tile_connection.ts";
 import type { CharacterCreation } from "./connection/tile_connection.ts";
 import { InputCapture } from "./input/input_capture.ts";
+import { PointerLockController } from "./input/pointer_lock.ts";
 import { IntentRouter } from "./input/intent_router.ts";
 import { IntentTranslator } from "./input/intent_translator.ts";
 import type { Intent } from "./input/intents.ts";
@@ -121,6 +122,7 @@ export class VoximGame {
   private overlay: WorldOverlay | null = null;
   private input: IntentTranslator | null = null;
   private inputCapture: InputCapture | null = null;
+  private pointerLock: PointerLockController | null = null;
   private intentRouter: IntentRouter | null = null;
   private animFrameId = 0;
   private playerId: string | null = null;
@@ -431,6 +433,14 @@ export class VoximGame {
     // _voxim_game.testInput hook below; this covers real-key coverage too.
     canvas.tabIndex = 0;
     canvas.focus();
+
+    // Free-look pointer lock (T-320): a canvas click engages lock and mouse
+    // deltas drive the camera yaw/pitch directly; opening a panel or entering
+    // build mode auto-releases so the cursor returns for UI / voxel placement.
+    this.pointerLock = new PointerLockController(
+      canvas,
+      (dx, dy) => this.renderer?.cameraRig.applyLookDelta(dx, dy),
+    );
 
     // Interaction system — entity hover highlight + click dispatch.
     this.interactionSystem = new InteractionSystem(this.renderer, this.world);
@@ -1765,6 +1775,8 @@ export class VoximGame {
     this.decals = null;
     this.inputCapture?.dispose();
     this.inputCapture = null;
+    this.pointerLock?.dispose();
+    this.pointerLock = null;
     this.input = null;
     this.intentRouter = null;
     this.connection.close();

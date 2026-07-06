@@ -248,10 +248,11 @@
     "heightAbove": 35.4,
     "lookAtBias": 1.0,
     "fovDeg": 34,
-    "followHalfLife": 0.18,
-    "maxTurnRateDeg": 180,
-    "deadzoneOuterDeg": 20,
-    "deadzoneInnerDeg": 4
+    "mouseSensitivity": 0.0022,
+    "invertY": false,
+    "pitchRestDeg": 55,
+    "pitchMinDeg": 45,
+    "pitchMaxDeg": 62
   },
   "fogOfWar": {
     "losHalfAngleRad": 0.9599310885968813,

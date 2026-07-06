@@ -2239,34 +2239,35 @@ export interface GameConfig {
       sandAmount: number;
     };
   };
-  /** Mouse-facing camera (T-317): rig geometry + yaw-follow feel. The camera's
-   *  yaw chases the local player's mouse-driven facing with a deadzone +
-   *  hysteresis + a critically-damped, rate-capped spring. Geometry knobs make
-   *  the framing (top-down tactical vs. lower over-the-shoulder) pure content
-   *  tuning. Client-side presentation only — facing itself stays raw gameplay
-   *  state (never smoothed by these). */
+  /** Free-look pointer-lock camera (T-320): rig geometry + look feel. Yaw and
+   *  pitch are driven DIRECTLY by mouse deltas under pointer lock (a pad right
+   *  stick would use the same seam) — no follow controller, no deadzone/spring.
+   *  Geometry knobs make the framing (top-down tactical vs. lower
+   *  over-the-shoulder) pure content tuning. Pitch is clamped to a narrow band
+   *  around the shipped rest gaze so the horizon never floods in (keeps the
+   *  T-310 F telephoto property). Client-side presentation only. */
   camera: {
-    /** Metres behind the player along the yaw direction. */
+    /** Metres behind the player along the yaw direction (at rest pitch). */
     backDistance: number;
-    /** Metres above the player's ground position. Gaze angle below horizontal
-     *  is atan2(heightAbove − lookAtBias, backDistance). */
+    /** Metres above the player's ground position (at rest pitch). Rest gaze
+     *  angle below horizontal is atan2(heightAbove − lookAtBias, backDistance). */
     heightAbove: number;
     /** Look-at point this many metres above the player root (the "chest"). */
     lookAtBias: number;
     /** Vertical field of view in degrees (narrow telephoto at defaults). */
     fovDeg: number;
-    /** Seconds for the engaged chase to close half the remaining yaw error
-     *  (framerate-corrected exponential; smaller = snappier). */
-    followHalfLife: number;
-    /** Ceiling on angular yaw rate while chasing (degrees per second) — caps a
-     *  hard cursor flick so the world swings smoothly rather than snapping. */
-    maxTurnRateDeg: number;
-    /** Shortest-arc yaw error (degrees) above which the chase engages. Aiming
-     *  micro-movement inside this deadzone leaves the world dead still. */
-    deadzoneOuterDeg: number;
-    /** Shortest-arc yaw error (degrees) below which the chase disengages. The
-     *  outer>inner hysteresis band prevents boundary twitch. */
-    deadzoneInnerDeg: number;
+    /** Radians of yaw/pitch applied per look-delta pixel (mouse sensitivity). */
+    mouseSensitivity: number;
+    /** When true, moving the mouse up pitches the gaze down (flight invert). */
+    invertY: boolean;
+    /** Rest pitch (degrees below horizontal) — reproduces the T-317 gaze. */
+    pitchRestDeg: number;
+    /** Lower pitch clamp (degrees below horizontal) — smaller = flatter. */
+    pitchMinDeg: number;
+    /** Upper pitch clamp (degrees below horizontal) — larger = steeper. Keep
+     *  the band narrow: a wide pitch floods the horizon in and reopens
+     *  fog/draw-distance issues (T-310 F). */
+    pitchMaxDeg: number;
   };
   /** Fog-of-war LOS gameplay tuning (T-315 D5) — moved out of
    *  `@voxim/protocol`'s fog.ts, which now keeps only wire-shape constants

@@ -1631,7 +1631,7 @@ Done when: `variantIndex` resolves through a real content lookup with the same a
 id→index discipline `CliffGrid.profileId` established.
 
 ### T-320 · Controller-native camera + control rework — free-look, movement-facing, soft aim-assist
-Effort: L   Status: todo   (SUPERSEDES T-317's control model — user verdict 2026-07-06 after playing T-317)
+Effort: L   Status: in-progress   (SUPERSEDES T-317's control model — user verdict 2026-07-06 after playing T-317)
 
 The mouse-facing model (T-317: cursor drives facing, camera chases it) is replaced by a
 controller-native Witcher/Souls scheme. **User decisions (2026-07-06):** free-look camera under

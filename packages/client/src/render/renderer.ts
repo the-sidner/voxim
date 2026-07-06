@@ -559,8 +559,8 @@ export class VoximRenderer {
     if (cfg) {
       canopyFade.applyConfig(cfg.render);
       setTextureStyleParams(cfg.render.textureStyle);
-      // Mouse-facing camera yaw-follow feel (T-317) — deadzone/hysteresis/
-      // spring/max-rate knobs from game_config.camera.
+      // Free-look camera geometry + sensitivity/pitch-band knobs (T-320) from
+      // game_config.camera.
       this.cameraRig.configure(cfg.camera);
     }
   }
@@ -1257,17 +1257,15 @@ export class VoximRenderer {
       emesh.group.visible = dx * dx + dz * dz <= CULL_RADIUS_SQ;
     }
 
-    // Frame dt (seconds), computed here — the camera yaw-follow controller
-    // needs it, and it's reused below for particles/motes. Hoisted above
-    // cameraRig.update so the follow spring integrates over the real frame
-    // time; lastFrameMs is advanced here to hold this frame's timestamp.
+    // Frame dt (seconds), computed here — reused below for particles/motes.
+    // lastFrameMs is advanced here to hold this frame's timestamp.
     const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
     this.lastFrameMs = now;
 
-    // Mouse-facing camera (T-317): the rig's yaw chases the LOCAL player's
-    // predicted facing (not the RTT-late server echo — same value that drives
-    // the local mesh rotation above). Null before spawn → yaw holds boot value.
-    this.cameraRig.setFacingTarget(localFacing ?? null);
+    // Free-look camera (T-320): yaw/pitch are driven directly by pointer-lock
+    // mouse deltas via cameraRig.applyLookDelta (wired in game.ts), not derived
+    // from facing. update() just re-places the camera from the current
+    // (yaw, pitch) each frame around the player target.
     this.cameraRig.update(this.cameraTarget, dt);
 
     // Day/night lerp + shadow-frustum follow/snap + sky-locked sun disc — all
