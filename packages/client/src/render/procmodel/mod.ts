@@ -9,6 +9,7 @@ import { treeGrammar } from "./generators/tree_grammar.ts";
 import { boulderGrammar } from "./generators/boulder_grammar.ts";
 import { foliageTuft } from "./generators/foliage_tuft.ts";
 import { mushroom } from "./generators/mushroom.ts";
+import { humanoidGrammar } from "./generators/humanoid_grammar.ts";
 
 let _registered = false;
 
@@ -20,6 +21,7 @@ export function registerBuiltinGenerators(): void {
   registerGenerator("boulder_grammar", boulderGrammar);
   registerGenerator("foliage_tuft", foliageTuft);
   registerGenerator("mushroom", mushroom);
+  registerGenerator("humanoid_grammar", humanoidGrammar);
 }
 
 /**

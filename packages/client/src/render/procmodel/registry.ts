@@ -11,12 +11,19 @@
  * height-AO — is inherited downstream through `bakeVoxels` for free, and a
  * generator could move server-side later if a procmodel ever needs a hitbox.
  */
-import type { VoxelAtom } from "@voxim/content";
+import type { SkeletonDef, VoxelAtom } from "@voxim/content";
 
 /** What a generator needs from the runtime beyond its own seed + params. */
 export interface GeneratorContext {
   /** Resolve a material NAME (carried in the procmodel params) → numeric id. */
   resolveMaterial(name: string): number;
+  /**
+   * Resolve a skeleton id → its SkeletonDef (T-302). Optional — only
+   * `humanoid_grammar`-shaped generators (params carrying a `skeletonId`)
+   * need bone hierarchy + morphParams to place body volumes; every
+   * environment-scale generator (tree/boulder/foliage) ignores it.
+   */
+  getSkeleton?(skeletonId: string): SkeletonDef | undefined;
 }
 
 /** A generator: a pure, deterministic `(seed, params, ctx) → VoxelAtom[]`. */

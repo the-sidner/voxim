@@ -28,7 +28,8 @@ import type {
   AnimationStateData,
   SkeletonDef,
 } from "@voxim/content";
-import { resolveSubObjects, resolveMorphParams, evaluateBodyRecipe } from "@voxim/content";
+import { resolveSubObjects, resolveMorphParams } from "@voxim/content";
+import { humanoidGrammarByBone } from "./procmodel/generators/humanoid_grammar.ts";
 import type { HoverOutlineSink } from "./renderer.ts";
 import { modelToThree } from "./coords.ts";
 import {
@@ -218,12 +219,17 @@ export class EntityMeshRegistry {
           // on the wire yet) — undefined here means "bake byte-identically",
           // which is also what happens for every non-corrupted entity today.
           const dissolveProfile = this.content!.getSoleDissolveProfileSync() ?? undefined;
-          // T-186 Layer 2: recipe-driven body volumes replace authored
+          // T-186 Layer 2 / T-302: recipe-driven body volumes replace authored
           // bone_segment sub-objects — voxelize once per morph resolution,
           // keyed by boneId, merged into upgradeToSkeletonModel's per-bone
           // Groups alongside (not instead of) any remaining authored subs.
+          // humanoidGrammarByBone is the humanoid_grammar generator's
+          // per-bone entry point (bone-LOCAL atoms, for live pose) — it
+          // wraps the same evaluateBodyRecipe() core the registered flat
+          // generator also builds on, so there is exactly one body-volume
+          // evaluator behind both call sites.
           const recipeAtoms = skeleton.bodyRecipe
-            ? evaluateBodyRecipe(skeleton.bodyRecipe, morphParams, (name) => {
+            ? humanoidGrammarByBone(skeleton, morphParams, (name) => {
                 const m = this.content!.getMaterialByName(name);
                 if (!m) throw new Error(`[entity_mesh] bodyRecipe on skeleton "${skeleton.id}" uses unknown material "${name}"`);
                 return m.id;

@@ -139,7 +139,10 @@ export function crossCheckDesignLanguage(content: ContentService): void {
     if (pm.class !== "character") continue;
     const gen = getGenerator(pm.generator);
     if (!gen) continue; // already thrown above; keeps this loop defensive-only
-    const ctx = { resolveMaterial: (name: string) => content.materials.getOrThrow(name).id };
+    const ctx = {
+      resolveMaterial: (name: string) => content.materials.getOrThrow(name).id,
+      getSkeleton: (skeletonId: string) => content.skeletons.get(skeletonId),
+    };
     const atoms = gen(1, pm.params, ctx);
     if (atoms.length === 0) {
       throw new Error(`[design_language] character-class procModel "${pm.id}" produced no atoms — cannot verify ground-plane anchoring`);
