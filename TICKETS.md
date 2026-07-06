@@ -1634,7 +1634,7 @@ id→index discipline `CliffGrid.profileId` established.
 
 ### T-320 · Controller-native camera + control rework — free-look, movement-facing, soft aim-assist
 Effort: L   Status: done   (SUPERSEDES T-317's control model — user verdict 2026-07-06 after playing T-317)
-Commit: 3df78b8 (camera rig) · d6f7528 (facing=move-dir) · 7fe1e53 (soft aim-assist) · 7e2b16a (interaction proximity) · 71950f6 (camera probe) · this (close-out)
+Commit: 3df78b8 (camera rig) · d6f7528 (facing=move-dir) · 7fe1e53 (soft aim-assist) · 7e2b16a (interaction proximity) · 71950f6 (camera probe) · 7557a0a (close-out)
 
 The mouse-facing model (T-317: cursor drives facing, camera chases it) is replaced by a
 controller-native Witcher/Souls scheme. **User decisions (2026-07-06):** free-look camera under
