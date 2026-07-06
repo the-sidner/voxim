@@ -1064,30 +1064,44 @@ emit at the ground plane. DONE: the doc exists, the schema carries hints, boot f
 clashing generator — it unblocks every later generator's param + proportion choices.
 
 ### T-302 · humanoid_grammar — Layer 2 procedural character bodies
-Effort: L   Status: todo   Depends: T-301
+Effort: L   Status: done   Commit: 1ad63f8, 2015427, b3f5053
 
 Implement `humanoid_grammar(seed, params, ctx) → VoxelAtom[]` (T-186 Layer 2): emit SOLID torso/head
-+ LIMB arms/legs that FILL limb volume from the existing 6 morph keys, organic surface per
++ LIMB arms/legs that FILL limb volume from the existing 10 morph keys, organic surface per
 DESIGN_LANGUAGE.md, ground-anchored, fail-fast on missing materials. Add a `generated:true` prefab
 path so a test NPC spawns from a generated body, not the authored `biped_skeletal`. DONE: a generated
 character reads as solid mass at gameplay distance, varies by seed, organic surface, animates on the
 existing skeleton. Reuses bakeVoxels / the morph wire path / skeleton infra; no wire or schema-breaking change.
 
-**Reconciliation note (T-186 Layer 2, lane "body"):** the recipe-driven body voxelizer now exists
-— `packages/content/src/body_recipe.ts` (`evaluateBodyRecipe`/`crossCheckBodyRecipe`) + a
-`bodyRecipe` block on `data/skeletons/biped.json` — built directly under T-186 since T-301's
-generator substrate (`DESIGN_LANGUAGE.md`, `generatorPreferences`, the boot coherence check) had
-not landed. T-302 reduces to: port `body_recipe.ts`'s capsule/tapered-box volume evaluator onto
-the future `humanoid_grammar` substrate once T-301 lands (organic surface noise per
-DESIGN_LANGUAGE.md, ground-anchored placement, fail-fast material checks) — the morph-parameterised
-dimension math AND the hitbox/visual single-source-of-truth wiring (both the mesh build and
-`hitbox_derive.ts`'s skeletal-capsule path now read the same recipe output) do not need to be
-redone, only re-hosted behind the grammar's generator id. Not marked obsolete: T-301's vocabulary
-(organic surface treatment, seed-driven silhouette variety within one morph value) is a strict
-superset of what a fixed geometric-primitive recipe provides. Note: T-302's prose above still says
-"the existing 6 morph keys" — `biped.json` actually declares 10 (armLength, legLength,
-torsoHeight, shoulderWidth, headSize, hipWidth, right/leftArmScale, right/leftLegScale); update
-the count whenever T-302 is picked up.
+**How it landed:** ported, not reimplemented — `body_recipe.ts`'s evaluator (`evaluateBodyRecipe`)
+stays the ONE body-volume evaluator; `humanoid_grammar.ts` (client procmodel generators) re-hosts it
+behind two shapes. `humanoidGrammarByBone(skeleton, morphParams, resolveMaterial)` is the per-bone
+`Map<boneId, VoxelAtom[]>` `entity_mesh_registry.ts` calls at render time (bone-LOCAL atoms, posed
+live under each bone's Group — unchanged behavior, just re-routed off the recipe evaluator instead of
+calling it directly). The registered `humanoidGrammar` generator (the standard
+`(seed, params, ctx) => VoxelAtom[]` shape the boot check calls) flattens the SAME per-bone atoms into
+one MODEL-space list at the skeleton's rest pose, via `solveSkeleton`/`REST_POSE` (the shared FK
+solver `hitbox_derive.ts` already used) — this is what makes `crossCheckDesignLanguage`'s ground-plane
+check (§6 item 4, previously a no-op) load-bearing for the first time. `GeneratorContext` gained an
+optional `getSkeleton` resolver (additive; every other generator ignores it). Organic surface noise
+needed no bespoke pass — `bakeVoxels`'s default `vertexDisp` already displaces every atom, same as
+tree/boulder/mushroom. Per-seed variety is unchanged: it lives in the pre-existing
+spawner→`morphRanges`→`resolveMorphParams` pipeline (T-190/T-305), which still feeds
+`humanoidGrammarByBone` — the registered generator's own rest-pose flatten is a fixed boot-check/
+preview shape, not the per-instance render path, so it intentionally does not vary by seed itself.
+
+Content: `data/procmodels/human.json` (`class: "character"`, `params.skeletonId: "biped"`) is the
+first real `class:"character"` ProcModelDef. `ModelDefinition.procModelId` (new, optional) declares
+"this model's body is generator-sourced"; `loader.ts` cross-checks membership (shared server+client),
+`crossCheckDesignLanguage` additionally verifies `class:"character"` + skeletonId agreement (client-
+only, since the generator registry is client-only). `data/models/generated_human.json` is
+`biped_skeletal.json`'s twin naming `procModelId: "human"`; `Prefab.generated?: boolean` is a
+declarative marker (spawning is unchanged — `modelId` drives everything, same as before);
+`data/prefabs/generated_test_npc.json` + `data/npcs/generated_test_npc.json` spawn a real NPC through
+`generated_human`, proving the path end-to-end without touching any other humanoid's authored
+`biped_skeletal` path. Verified in-lane only (type-check + `deno test -A packages/`, 790 green,
+including `hitbox_derive.test.ts` untouched) — no live-stack testplay per lane rules; see
+`postMergeChecklist` in the lane's closing report for the exact live-stack verification procedure.
 
 ### T-303 · Voxel-to-stats slice — Composed sword + material-derived stats
 Effort: M   Status: done   Commit: 7964cd0   Depends: T-301
@@ -2106,9 +2120,13 @@ Also fixed in the same lane: a latent hitbox-template cache-collision bug
 (`entity_mesh_registry.ts` wasn't passing `ModelRef.morphValues` into the
 mesh-build's `resolveMorphParams` call, so per-instance morph overrides never
 reached the VISUAL body, only pose/hitbox-debug). See T-302's body for the
-humanoid_grammar porting note this reduces to. NOT done: the auxiliary work
-below (posture overlay, character-creator UI, foot IK) — ticket stays
-in-progress for that residual.
+humanoid_grammar porting note this reduces to — **T-302 landed**: the
+evaluator is unchanged (still the one body-volume evaluator) but is now
+reached through `humanoid_grammar.ts`'s `humanoidGrammarByBone`/
+`humanoidGrammar` on the ProcModel generator substrate instead of a direct
+`evaluateBodyRecipe()` call from `entity_mesh_registry.ts`. NOT done: the
+auxiliary work below (posture overlay, character-creator UI, foot IK) —
+ticket stays in-progress for that residual.
 
 Auxiliary work:
   - Posture-overlay layer: small additive AnimationLayer composed from
