@@ -3915,6 +3915,308 @@ fixed seed) + `armor_grammar.test.ts` + the client wrapper-delegation test. Veri
 (type-check matrix + full suite 813 green, bundle rebuilds); live-stack testplay is the
 post-merge step.
 
+## Procedural Animation
+
+### T-307 · Authored swingPath + procedural full-body swing
+Effort: L   Status: done   Commit: 4f9007b
+
+Re-introduced `SwingPathDef` (authored blade arc) on `WeaponActionDef`; authored 9 default swings;
+`solveSwingPose` derives the whole body from the hilt path (spine twist+lean, weapon-arm IK with
+blade·aim=1.0 so hit==visual, off-hand counter). Ported to game: server hit sweeps hilt→tip directly,
+client renders the producer over locomotion. Replaces borrowed Mixamo melee clips for swing actions.
+
+## AAA Graphics
+
+### T-312b · re-apply atlas render-fields on save-load
+Effort: S   Status: done   Commit: 1248388
+SaveManager's `CHUNK_DEFS` persist only Heightmap/MaterialGrid/OpenMask/KindGrid; the T-311 render-field
+grids are deterministic atlas output and deliberately excluded. But the save-load path skipped
+`chunksFromBuffers` entirely, so reloaded chunks carried NO field grids until the next from-scratch gen —
+scatter/moss/wetness saw neutral fields and the client received none (found live: a watcher restart
+reloaded a fieldless auto-save and field-driven scatter went silent). FIXED: `world.applyFieldsToChunks`
+overlays the atlas planes onto loaded chunks (writes via `world.write` so it adds the components even on a
+save that never had them); `server.ts` calls it in the `loaded` branch. Factored `sliceFieldsForChunk()`
+as the single tile→chunk projection shared by `chunksFromBuffers` + the overlay so they can't drift.
+
+The 2026-06-26 strategy pivot (user): stop the incremental client-render tweaking; achieve the visual
+goals through **planned data-model extensions/refactors** across server→content→client — *the way the
+animation arc was built* — with **authoring + live-preview Studio devtools** on the way. This is a
+REFACTOR not new architecture (the five primitives + ProcModel/Scatter T-285 already prove the pattern).
+
+**Refined 2026-06-26 against the full `data/fake-art` art bible** (see `ART_DIRECTION.md`). The bible's
+concept-sheets ARE data-model specs; the gap is wider than the original three hacks (per-voxel tint hash,
+`DRAW_FN` numeric switch, client `CLIFF_*` terrace) — it's a *family*, plus a missing scene layer
+(atmosphere/grade/lighting/decals/creatures/water). Crucially the bible reduces to **7 reusable grammar
+primitives** (PerCellServerFieldGrid · FieldExpr · MaterialStateLadder · SurfaceTreatment+TextureStyle
+registry · ProceduralAssemblyKit · PerVoxel attribute sidecar · AuthoredEnvParamSet) — model the grammar
+once, not N features.
+
+Reworked 8-phase plan (0–7): (0) freeze the **complete** `MaterialDef.render` block + one render-context
+wire key + registries; (1) Studio Material + ProcModel panels (real shipped runtime); (2) MaterialStateLadder
++ GradeDef + LightDef/LightBudget — no re-bake; (3 ✶) the **single** wire break — unified per-cell field
+grids (Veg/SurfaceState/Water, subsuming the old OvergrowthGrid); (4) field consumers (scatter/moss/wetness/
+decals); (5) AtmosphereDef + server sun-arc + creature fragmentation (G6 in-shader dissolve) + cheap water
+reflection; (6 ✶) server-authoritative terraced cliffs (G5, deletes `CLIFF_*`); (7 ✶) modular settlements +
+roads — LATER, def-shape + one strategy only. **Three hard invariants before any code:** (I1) freeze the
+per-grid field-set matrix before minting any chunk wireId — grids are permanent; wire cost is the initial
+chunk-stream flood (`MAX_CHUNK_SPAWNS_PER_TICK=20`, chunks never leave AoI), packed codecs mandatory;
+(I2) `MaterialDef.render` full shape + the one render-context key land in Phase 0, frozen; (I3) drop
+overhang from v1, the `dissolves` shader is a deliberate capped amendment to "no per-frame voxel offset",
+and `variantIndex` is a content-version-checked stable index. Open designer questions tracked in the plan.
+
+### T-310 · AAA graphics pass — detail + light + atmosphere over the comic voxel look
+Effort: L   Status: done   (A–F + follow-ups landed; the two trailing deferrals — arcing sun + in-world water verify — were delivered by T-311 P5a/P5b, 2026-07-06)
+
+Elevate the render to AAA production feel WITHOUT abandoning the comic/pixel-art identity. Phases:
+- [x] A — Foundation: 1.5–2× supersample (clean comic edges, no aliasing), HalfFloat HDR scene
+  buffer, 2048 PCF-soft shadow map. Commit (phase A).
+- [x] B — Voxel detail: real screen-space AO (depth-only, geometry-agnostic — handles voxels of any
+  size) in the EdgePass for contact/seam darkening. Chose SSAO over baked vertex AO to avoid the
+  worker/parity risk. Richer per-material textures left as an optional follow-up.
+- [x] C — Lighting: cool rim/back DirectionalLight for silhouette separation + warm/cool contrast.
+  Arcing sun deferred (needs per-phase sun direction in the palette schema) — follow-up.
+- [x] D — Atmosphere: HDR bloom on emissive/sun (BloomPass → EdgePass, before ACES), FogExp2 aerial
+  perspective, regrade (exposure 1.62 / saturation 1.5 / deeper vignette). Outlines kept.
+- [x] E — Environment FX: ambient dust motes, additive glowing weapon trails (HDR leading edge),
+  soft round hit sparks (was squares; dropped a hot-path console.log), stylized water
+  (fresnel rim + HDR sun glint). **Foliage wind sway deferred** — shared onBeforeCompile surgery
+  with canopyFade + a foliage flag; low screenshot-verifiability. Follow-up.
+- [x] F — Camera: telephoto framing (FOV 40→34, distance ×1.18) for flatter cinematic depth.
+
+Follow-ups landed (same arc, after A–F): **foliage wind sway** (canopyFade wind option, verified via
+two-frame motion diff); **richer material textures** (tileable value-noise weathering patches under
+the grain); **hit-impact flash** (expanding additive billboard pool on each hit).
+
+Still deferred: **arcing sun** per day-phase (long raking dawn/dusk shadows — needs per-phase sun
+direction + recomputing the shadow-cam basis when SUN_DIR moves each frame; low screenshot-
+verifiability at the fixed test time-of-day); **verify the new stylized water in-world** (no water
+cell was reachable from the test-play spawn — the shader is robust + type-checks but is visually
+unconfirmed); optional normal/roughness detail maps once a PBR path is ever wanted.
+
+Invariants to defend: keep `flatShading:true` + the Sobel ink (the comic grammar); keep the
+single `buildVoxelMaterial` factory; preserve the terrain no-crack constant-displacement guarantee;
+keep tone/sRGB hand-rolled in EdgePass (don't double-encode via renderer toneMapping); new post
+passes follow the existing hand-rolled fullscreen-quad pattern (no EffectComposer).
+
+### T-317 · Mouse-facing camera — the rotating camera becomes THE camera (doctrine)
+Effort: M   Status: done   Commit: b3874f9 (+ b65f2ae minimap heading cone, fb4323e geometry knobs + tuning)
+Control model SUPERSEDED by T-320 (2026-07-06): the chase controller + cursor-facing raycast are
+deleted; free-look pointer-lock + movement-facing replaced them. This entry records shipped history.
+
+**Verdict rendered 2026-07-03:** the user evaluated a live facing-follow prototype (damped
+yaw chase, no deadzone) and adopted the rotating camera as DOCTRINE. Not a mode, no toggle —
+the fixed-yaw camera is deleted and facing-follow becomes the client's one camera behaviour.
+
+Landed: CameraRig yaw permanently chases the local player's PREDICTED facing with deadzone +
+hysteresis + critically-damped spring + max turn rate; rig geometry (backDistance/heightAbove/
+lookAtBias/fovDeg) AND follow feel (followHalfLife 0.18 s / maxTurnRateDeg 180 /
+deadzoneOuterDeg 20 / deadzoneInnerDeg 4) all live on game_config `camera.*`. The
+load-bearing insight held: facing's **mousemove-only, world-pinned** derivation keeps the
+cursor→facing→camera loop stable — continuous re-derivation from the cursor pixel, or
+screen-relative facing, both spin forever (analysis preserved in camera_rig.ts's header).
+Facing stays raw gameplay state; all smoothing lives in the camera. Minimap stays north-up
+with a camera-heading cone. Comment-honesty sweep done. Zero wire/server changes.
+
+Verified with REAL mouse input (one-off Playwright script driving page.mouse.move against the
+live stack): 4 s of micro-aiming around a world-pinned target moved camera yaw 0.000°; a
+~150° flick converged 140→87→62→55° and held with 0.000° creep over the final second
+(no feedback loop); two-heading screenshots sane. Full suite 580/580 green.
+
+### T-318 · Terraced cliffs — CliffProfileDef + CliffGrid (T-311 Phase 6)
+Effort: L   Status: done   Commit: c9e1013   Plan: `VISUAL_DATAMODEL_PLAN.md` §Phase 6
+
+Cliff shape stops being a client-side voxeliser heuristic and becomes atlas-authored terrain.
+The atlas resolves wilderness-perimeter cells into tier bands via a new `CliffProfileDef`
+content category, emits a new **`CliffGrid`** chunk component `{profileId, erosion, tier,
+edge}`, and the client deletes its `CLIFF_MIN`/`STONE_H`/`STACK_MAX`/`EXPOSE_MIN` trigger
+heuristics in `terrain_voxels.ts` in favour of a `cliffVoxeliser` registry dispatched by
+profile id (columnar/broken/sloped/stone_stair). Collision agrees with render by construction.
+Overhang stays dropped (I3a). This closes T-315's last deferred item ("Water/SUN_DIR/CLIFF_*
+stay deferred to T-311 P5/P6").
+
+**CliffGrid field-set matrix (I1 discipline, written before any wireId is minted):**
+
+| Field | Width | Consumers | Deferred consumers |
+|---|---|---|---|
+| `profileId` | u8 | client `cliffVoxeliser` dispatch (string id resolved via a stable alphabetical id→index table, mirroring `JsonSource`'s own load-order rule), Studio Cliff panel | none — closed v1 vocabulary (columnar/broken/sloped/stone_stair), room to grow to 256 |
+| `erosion` | u8 (3 states: crisp/weathered/broken) | client voxeliser (jitter/wear look), Studio | none — v1 ships exactly 3 states |
+| `tier` | u8 | client voxeliser (course index within the per-cell stack) | none — NOT the authority for stack height (the profile's fixed `tierCount` is); reserved for a future per-cell-depth read |
+| `edge` | u8 (0/1) | client voxeliser (stack only on the outward lip, not buried interior wall cells), Studio collision overlay | none |
+
+All four fields are u8 planes reusing `codecs/src/components.ts`'s existing
+`encodeU8Planes`/`decodeU8Planes` RLE helpers verbatim (this data is mostly zero outside
+wilderness perimeters). `profileId` is the **first real instance** of the I3c-style
+content-version-checked stable index — `SurfaceStateGrid.variantIndex` (P3) does not actually
+have one yet (it's an inline threshold formula, not a content lookup); this ticket does not
+retrofit that gap, it only avoids repeating it.
+
+**v1 scope decision (flagged for review):** "stepped heightmap" ships as **vertical coursing
+within one wall cell's column** (`CliffGrid.tier` selects which course to stack, exactly like
+today's client `Math.round(depth/STONE_H)`), NOT a horizontal multi-cell staircase with
+walkable intermediate ledges. `Heightmap` stays byte-identical to the pre-P6 single-`wallStep`
+output. This keeps collision-agreement trivially true by construction (physics reads
+`Heightmap` directly, `stepHeight=0.75` vs `wallStep=2.0`/`3.0` — nothing walkable changes) and
+satisfies "player cannot walk up a raw tier step" a fortiori. A true horizontal terrace
+(thicker wall band, new openMask semantics, `applyStairUnlock` rework) is a materially larger
+scope, deferred to a future phase if wanted.
+
+**v1 scope narrowing:** only `wallKind: "stone"` cells get a `CliffProfileDef` (`profileId`
+stays 0/"none" on FOREST/GRASS_MOUND walls) — matching the four named profile ids' stone/cliff
+framing. The pre-existing client stacking heuristic applied to ANY material past `CLIFF_MIN`
+depth; forest/grass-mound walls lose their depth-based stacked look until a future profile
+ships for those wall kinds. Flagged as a player-visible regression risk to confirm post-merge.
+
+Done when: wire+content+atlas+client+physics land per the checklist below, full suite green,
+and (post-merge, live stack) a re-bake shows real stepped/eroded cliff variety with stairs
+still walkable and CliffGrid surviving chunk unload/reload.
+
+**Landed** (`38e4514` wire · `335125a` content · `ebebb80` atlas emission · `a1902dc` client
+voxeliser · `46f5c7b` physics verification · `c9e1013` Studio panel): CliffGrid wireId 58
+(after poiInteractable 57), all-zero content first, full ChunkLifecycleSystem
+snapshot/restore + round-trip test coverage. `CliffProfileDef` content category
+(BOOTSTRAP_VERSION 17→18) with four authored profiles (columnar/broken/sloped/stone_stair).
+Atlas `cliffStage` — the 13th pipeline stage (extended `@voxim/levelgen`'s `pipe()` overload
+list 12→13), placed zoneGraph→cliff→poiNetwork→fields, resolving stone wilderness-perimeter
+cells against `content.cliffProfiles` via a stable alphabetical id→index table (the first real
+I3c instance). Client `cliffVoxeliser` registry (`packages/client/src/render/
+cliff_voxeliser.ts`) replaces the retired `CLIFF_MIN`/`STONE_H`/`STACK_MAX`/`EXPOSE_MIN`
+constants in the same commit; the trigger is now the server's `CliffGrid.edge` flag, not a
+depth heuristic; falls through byte-identically when cliff input is absent/all-zero/
+unresolvable (version-drift safety, test-verified). Physics collision-agreement verified by
+construction — `terrain_lookup.ts` reads only Heightmap/OpenMask, never CliffGrid; three new
+physics tests pin "wall blocks regardless of CliffGrid content", "raw wallStep exceeds
+stepHeight", "stair ramp walks while adjacent CliffGrid-edge wall still blocks". Studio Cliff
+panel (`cliff-editor/CliffEditor.tsx`) previews through the real `buildChunkAtoms`+
+`getCliffVoxeliser`+`bakeVoxels` pipeline with an erosion-state picker and a collision-overlay
+toggle (honestly inert in v1 — collision and render top are identical by construction, no
+divergence exists to surface yet).
+
+**Scope decision (flag for future work):** v1 terracing is **vertical coursing within one wall
+cell's column**, not a horizontal multi-ring staircase with walkable intermediate ledges —
+`Heightmap` is BYTE-IDENTICAL to the pre-P6 single-`wallStep` output (confirmed:
+`generate.snapshot.test.ts` stayed green unmodified, no `ATLAS_SNAPSHOT_CAPTURE` needed). This
+is the single biggest scope call in this ticket; a future phase revisiting "real" horizontal
+terraces (thicker wall bands, new openMask semantics, `applyStairUnlock` rework) should read
+this ticket's body + `VISUAL_DATAMODEL_PLAN.md` §Phase 6 first. Also flagged: v1 only covers
+`wallKind: "stone"` cells (forest/grassMound/water walls lose their pre-P6 depth-based stacking
+look until a future profile ships for those kinds) — a player-visible regression risk to
+confirm post-merge on the live stack.
+
+**This closes T-315's last deferred item** ("Water/SUN_DIR/CLIFF_* stay deferred to T-311
+P5/P6" — water/SUN_DIR were T-311 P5's remit, CLIFF_* is this ticket's).
+
+Post-merge (live stack only, per lane rules — no docker/testplay/bake ran in this lane):
+re-bake a fresh world (`?seed=7&width=2&height=2`), confirm the tile self-restarts onto it,
+testplay at a wilderness edge to confirm stepped/eroded cliff variety renders, stairs stay
+walkable, a player cannot walk up a raw tier step, and CliffGrid survives a chunk unload/reload
+walk (walk far away and back — the T-315 A1 sister-bug scenario).
+
+### T-319 · SurfaceStateGrid.variantIndex has no I3c stable-index cross-check
+Effort: S   Status: done   Commit: 781877e
+
+Found while writing T-318's field-set matrix: `SurfaceStateGrid.variantIndex` (T-311 P3) is
+derived by an inline `corruption[i] > threshold ? 1 : 0` formula in the atlas `fields.ts`, not
+by resolving against a real `content.materials[...].variants` id table — there is no boot
+cross-check asserting "atlas's variant-id table == bootstrap's variant-id table" the way T-318's
+`CliffGrid.profileId` now has. Not urgent (the two-state 0/1 index can't drift today), but worth
+a real stable-index table + cross-check if `MaterialStateLadder` variants grow past two states.
+Done when: `variantIndex` resolves through a real content lookup with the same alphabetical
+id→index discipline `CliffGrid.profileId` established.
+
+**Landed** (`dc7defa` content+atlas core · `781877e` boot cross-check): `materialVariantIds(def)`
+(`packages/content/src/material_variant.ts`) gives `MaterialDef.variants` the same alphabetical
+stable id→index table `CliffGrid.profileId` established (T-318) — sorted by id, not raw JSON
+array position, so reordering a `variants[]` array in its JSON file can't silently remap the wire
+index; `materialVariantIndex`/`resolveMaterialVariant` resolve through the same table. The atlas
+`fields` stage resolves the "corrupted" state through `materialVariantIds(stone).indexOf
+("corrupted")` (via the optional `state.content`, same pattern `cliffStage` uses) instead of a
+bare literal `1`; -1 (no content / no such variant) leaves every cell at index 0 ("base"),
+mirroring `cliffStage`'s content-less all-zero stance byte-for-byte — snapshot-safe (no test reads
+`fields`/`variantIndex` output; content-less atlas paths unaffected). `crossCheckVariantIndex`
+(`packages/atlas/src/tilemap/pipeline/fields.ts`, exported off `@voxim/atlas`) fails fast at atlas
+boot (`packages/atlas/main.ts`, right after content loads) if `stone` ever loses its "corrupted"
+variant — the alternative was a silent variantIndex=0 for every cell, no error.
+
+**Behaviour note (flagged for the live stack):** a real re-bake now writes `variantIndex=0` for
+the "corrupted" state (stone's variants sorted alphabetically: `corrupted` < `mossy` → index 0),
+where the old literal wrote `1`. No render regression today — there is still no consumer
+resolving `SurfaceStateGrid.variantIndex` back to an actual `MaterialVariant` per-cell (only
+Studio's `MaterialEditor` calls `resolveMaterialVariant` today, off a UI-picked index, and
+`field_sample.ts` reads the raw byte as an unrelated [0,1] FieldExpr scalar) — this only matters
+once a real per-cell variant-resolving consumer lands.
+
+### T-320 · Controller-native camera + control rework — free-look, movement-facing, soft aim-assist
+Effort: L   Status: done   (SUPERSEDES T-317's control model — user verdict 2026-07-06 after playing T-317)
+Commit: 3df78b8 (camera rig) · d6f7528 (facing=move-dir) · 7fe1e53 (soft aim-assist) · 7e2b16a (interaction proximity) · 71950f6 (camera probe) · 7557a0a (close-out)
+
+The mouse-facing model (T-317: cursor drives facing, camera chases it) is replaced by a
+controller-native Witcher/Souls scheme. **User decisions (2026-07-06):** free-look camera under
+POINTER LOCK; soft AIM-ASSIST for targeting (no hard lock-on in v1).
+
+Four coupled changes, all REPLACE (no toggle, no legacy path — T-317's chase controller +
+cursor-facing raycast are DELETED):
+1. **Camera = direct rotation.** Rig yaw is driven directly by mouse-X delta under pointer lock
+   (right stick on a pad). The whole T-317 follow controller (deadzone/hysteresis/spring/max-rate/
+   `setFacingTarget`) goes. Add a **clamped PITCH** axis (mouse-Y → small up/down pan, clamped to a
+   narrow band around the shipped ~55° gaze). Pointer lock: click canvas engages; Esc / opening a
+   menu releases (cursor returns for UI). Sensitivity + invert-Y + pitch range are game_config
+   `camera.*` knobs (repurpose the freed follow-knob slots).
+2. **Facing = movement direction**, not the cursor. The character faces its camera-relative WASD
+   move direction while moving, holds last facing when idle. The wire `facing` carries this
+   (delete `getCursorFacing`/the cursor→ground raycast). This is the load-bearing inversion of
+   T-317 — no cursor means no cursor feedback loop.
+3. **Soft aim-assist (server-authoritative).** On an attack's active tick the combat resolver
+   picks the best target = nearest enemy inside a frontal cone (proximity × alignment to facing,
+   within `camera`/combat-config range+angle) and orients the swing (+ the actor's Facing) toward
+   it for the active phase. No lock state, no camera framing. Lives server-side (authoritative,
+   mouse/pad-agnostic) in the hit_resolver/combat resolver path. Replaces "the blade goes exactly
+   where the cursor pointed" with "the blade snaps to the best nearby threat."
+4. **Interaction = proximity, not hover-click.** Cursor hover→click is gone; highlight the NEAREST
+   interactable in range (generalize the existing `_nearestGroundItem` + `hoverState` into a
+   proximity selector over interactables) + a Use key → the existing `CommandType.UseEntity`.
+
+Verification reality: pointer-lock free-look CANNOT be driven by the testInput harness. So unit-test
+the LOGIC hard (rig yaw/pitch from injected deltas; facing=move-dir; **soft aim-assist target pick
+as a deterministic server test** — spawn enemies at angles, start an attack, assert the swing
+orients to the best one; interaction proximity pick), add a debug hook to inject camera-rotate
+deltas for a scene-probe check, and leave the raw pointer-lock FEEL as a manual pass the user runs.
+Done when: no cursor; mouse/pad rotates the camera with a small pitch pan; character faces where it
+moves; attacks auto-orient to the best nearby enemy; nearest interactable prompts on a Use key;
+T-317's cursor-facing + chase code and comments are gone; zero new wire fields.
+
+**Landed** (`3df78b8` camera rig · `d6f7528` facing=move-dir · `7fe1e53` aim-assist · `7e2b16a`
+interaction proximity · `71950f6` camera probe · this close-out): CameraRig rewritten to direct
+`applyLookDelta` yaw + clamped pitch (pitchRest 55° / pitchMin 45° / pitchMax 62°, rest framing
+byte-identical to T-317 — asserted); the whole follow controller + `setFacingTarget` deleted.
+`PointerLockController` owns the lock lifecycle (canvas click engages, any open panel OR build mode
+releases via a Preact effect on `uiState.openPanels`/`modeState`, never auto-re-locks). Facing is
+now the held-when-idle camera-relative movement heading (`facingFromMove`); `getCursorFacing` +
+the dead `getPlayerScreenPos` are gone (`getCursorWorldPos` KEPT — build-mode voxel placement still
+needs it). Soft aim-assist (`combat/aim_assist.ts` `pickAimAssistTarget`) fires on active-enter,
+picks the best in-cone enemy by a distance-dominant cost, and orients the swing + actor Facing for
+the active phase; hostility is the NpcTag-presence-differs axis (symmetric, no isNpc branch, never
+friendly), candidates from the rewound snapshot; `game_config.combat.aimAssist` = rangeUnits 4 /
+halfAngleDeg 60; zero new wire fields. Interaction rewritten to nearest-interactable proximity
+(`interaction/nearest.ts`) + Use (E) key `activateNearest` — the whole PICK_LAYER raycast/pick-box
+lifecycle deleted, LMB is pure attack, every kind (workstation/container/trader/job_board/
+resource_node/ground_item/poiInteractable) preserved. Four pure unit tests carry the correctness
+(rig yaw/pitch+clamp, facingFromMove hold-when-idle, aim-assist target pick, nearest-interactable);
+`_voxim_game.cameraProbe` carries the headless scene-probe. Full suite 696/696 green. Live-verified:
+scene-probe rotate(300,0) → yaw +0.66 rad exactly, pitch clamps 62°/45°, two headings 90° apart
+rotate the world with no horizon flood; interaction selection fires end-to-end; a live swing near
+NPCs runs the aim-assist resolver with no errors.
+
+**Deliberate v1 cuts (possible T-321 follow-up):** hard lock-on, target-cycling, and camera
+target-framing are OUT by design — aim-assist is soft (orient-only, no lock state, no camera
+framing). Also flagged: aim-assist has no team/faction model yet — it snaps to any hostile
+Health+Hitbox entity across the NpcTag axis, so once factions land the NpcTag-differs predicate in
+`pickAimAssistTarget` must become a real team check so it doesn't snap to a friendly NPC. Manual
+user checks (un-headless — the raw FEEL): pointer-lock free-look feel + click-to-lock/Esc-to-unlock
+round-trip; menu-release round-trip (open Inventory/Equipment/Stats/Trade → cursor returns, panel
+clickable, close → re-lock on canvas click); build-mode cursor return; invert-Y + mouseSensitivity
++ pitch-band taste; the blade snapping satisfyingly to the right enemy in a melee; the body reading
+correctly as it turns to its move direction while strafing.
+
 ## Player UX
 
 ### T-073 · Inventory UI
