@@ -32,6 +32,8 @@ export type {
   ModelRefData,
   BoneDef,
   SkeletonDef,
+  BodyRecipeDef,
+  BodyPartRecipeDef,
   AnimationKeyframe,
   AnimationClip,
   AnimationLibrary,
@@ -132,6 +134,10 @@ export type { VoxelAtom } from "./src/voxel.ts";
 // ---- hitbox derivation and application ----
 export type { HitboxPartTemplate, HitboxContentAdapter } from "./src/hitbox_derive.ts";
 export { deriveHitboxTemplate, applyHitboxTemplate } from "./src/hitbox_derive.ts";
+
+// ---- body-recipe voxelizer (T-186 Layer 2) ----
+export type { ResolvedBodyPartDims, BodyPartCapsule } from "./src/body_recipe.ts";
+export { evaluateBodyRecipe, resolveBodyPartDims, bodyPartCapsule, crossCheckBodyRecipe } from "./src/body_recipe.ts";
 
 // ---- sweep math (shared server + client) ----
 export type { Vec3 } from "./src/sweep_math.ts";

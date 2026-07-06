@@ -24,6 +24,7 @@ import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
   AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
+import { crossCheckBodyRecipe } from "./body_recipe.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
@@ -141,6 +142,11 @@ async function loadContentStoreInternal(
 
   for (const raw of skeletonsRaw as SkeletonDef[]) {
     store.registerSkeleton(raw);
+    // T-186 Layer 2: a skeleton's bodyRecipe part must name a real bone and
+    // every formula field must resolve (at both morph extremes) against the
+    // skeleton's own morphParams — fail fast, same stance as every other
+    // content cross-check in this file.
+    crossCheckBodyRecipe(raw);
   }
 
   // Build one AnimationLibrary per archetype subdirectory under

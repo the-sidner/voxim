@@ -332,5 +332,127 @@
       "min": 0.6,
       "max": 1.4
     }
-  ]
+  ],
+  "bodyRecipe": {
+    "voxelSize": 0.09,
+    "parts": [
+      {
+        "boneId": "torso_lower",
+        "shape": "tapered_box",
+        "length": "0.2858 * torsoHeight",
+        "radiusOrWidthTop": "0.32 * clamp(hipWidth * 0.6 + shoulderWidth * 0.4, 0.8, 1.3)",
+        "radiusOrWidthBot": "0.34 * hipWidth",
+        "material": "skin"
+      },
+      {
+        "boneId": "torso_mid",
+        "shape": "tapered_box",
+        "length": "0.3334 * torsoHeight",
+        "radiusOrWidthTop": "0.30 * clamp(shoulderWidth * 0.7 + hipWidth * 0.3, 0.8, 1.3)",
+        "radiusOrWidthBot": "0.32 * clamp(hipWidth * 0.6 + shoulderWidth * 0.4, 0.8, 1.3)",
+        "material": "skin"
+      },
+      {
+        "boneId": "torso_upper",
+        "shape": "tapered_box",
+        "length": "1.0962 * torsoHeight",
+        "radiusOrWidthTop": "0.34 * shoulderWidth",
+        "radiusOrWidthBot": "0.30 * clamp(shoulderWidth * 0.7 + hipWidth * 0.3, 0.8, 1.3)",
+        "material": "skin"
+      },
+      {
+        "boneId": "head",
+        "shape": "capsule",
+        "length": "0.55 * headSize",
+        "radiusOrWidthTop": "0.36 * headSize",
+        "material": "skin"
+      },
+      {
+        "boneId": "upper_arm_l",
+        "shape": "capsule",
+        "length": "0.6663",
+        "radiusOrWidthTop": "0.18 * clamp(shoulderWidth, 0.85, 1.25)",
+        "material": "skin"
+      },
+      {
+        "boneId": "lower_arm_l",
+        "shape": "capsule",
+        "length": "0.7186 * armLength * leftArmScale",
+        "radiusOrWidthTop": "0.16 * clamp(leftArmScale, 0.7, 1.4)",
+        "material": "skin"
+      },
+      {
+        "boneId": "hand_l",
+        "shape": "capsule",
+        "length": "0.3 * armLength * leftArmScale",
+        "radiusOrWidthTop": "0.18 * clamp(leftArmScale, 0.7, 1.3)",
+        "material": "skin"
+      },
+      {
+        "boneId": "upper_arm_r",
+        "shape": "capsule",
+        "length": "0.666",
+        "radiusOrWidthTop": "0.18 * clamp(shoulderWidth, 0.85, 1.25)",
+        "material": "skin"
+      },
+      {
+        "boneId": "lower_arm_r",
+        "shape": "capsule",
+        "length": "0.7188 * armLength * rightArmScale",
+        "radiusOrWidthTop": "0.16 * clamp(rightArmScale, 0.7, 1.4)",
+        "material": "skin"
+      },
+      {
+        "boneId": "hand_r",
+        "shape": "capsule",
+        "length": "0.3 * armLength * rightArmScale",
+        "radiusOrWidthTop": "0.18 * clamp(rightArmScale, 0.7, 1.3)",
+        "material": "skin"
+      },
+      {
+        "boneId": "upper_leg_l",
+        "shape": "tapered_box",
+        "length": "1.166",
+        "radiusOrWidthTop": "0.26 * clamp(hipWidth, 0.85, 1.2)",
+        "radiusOrWidthBot": "0.22 * clamp(leftLegScale, 0.75, 1.25)",
+        "material": "skin"
+      },
+      {
+        "boneId": "lower_leg_l",
+        "shape": "capsule",
+        "length": "1.083 * legLength * leftLegScale",
+        "radiusOrWidthTop": "0.20 * clamp(leftLegScale, 0.75, 1.25)",
+        "material": "skin"
+      },
+      {
+        "boneId": "foot_l",
+        "shape": "capsule",
+        "length": "0.45 * legLength * leftLegScale",
+        "radiusOrWidthTop": "0.22 * clamp(leftLegScale, 0.75, 1.2)",
+        "material": "skin"
+      },
+      {
+        "boneId": "upper_leg_r",
+        "shape": "tapered_box",
+        "length": "1.1648",
+        "radiusOrWidthTop": "0.26 * clamp(hipWidth, 0.85, 1.2)",
+        "radiusOrWidthBot": "0.22 * clamp(rightLegScale, 0.75, 1.25)",
+        "material": "skin"
+      },
+      {
+        "boneId": "lower_leg_r",
+        "shape": "capsule",
+        "length": "1.0832 * legLength * rightLegScale",
+        "radiusOrWidthTop": "0.20 * clamp(rightLegScale, 0.75, 1.25)",
+        "material": "skin"
+      },
+      {
+        "boneId": "foot_r",
+        "shape": "capsule",
+        "length": "0.45 * legLength * rightLegScale",
+        "radiusOrWidthTop": "0.22 * clamp(rightLegScale, 0.75, 1.2)",
+        "material": "skin"
+      }
+    ]
+  }
 }

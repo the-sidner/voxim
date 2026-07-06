@@ -2406,6 +2406,48 @@ export interface SkeletonDef {
    * without authoring separate skeleton files per variant.
    */
   morphParams?: MorphParamDef[];
+  /**
+   * T-186 Layer 2 — recipe-driven body volumes. When present, `evaluateBodyRecipe()`
+   * (body_recipe.ts) fills each part's shape from the resolved morphParams instead of
+   * authored sub-object voxel positions. Replaces authored `bone_segment`-style voxels
+   * for every bone this recipe covers — see entity_mesh.ts / hitbox_derive.ts call sites.
+   */
+  bodyRecipe?: BodyRecipeDef;
+}
+
+/**
+ * One body part's volume, attached to a bone. Each numeric field is either a
+ * constant or a formula.ts expression string evaluated against the skeleton's
+ * resolved morphParams (e.g. "torsoHeight * 0.6") — see body_recipe.ts.
+ *
+ * Entity-local axes: x = right, y = forward, z = up. Volumes are authored
+ * along local +Z (the same convention `bone_segment.json` used), centered on
+ * the bone origin, so they slot into `upgradeToSkeletonModel`'s existing
+ * per-bone Group exactly like the sub-objects they replace.
+ */
+export interface BodyPartRecipeDef {
+  /** Bone this part attaches to — must exist in the owning SkeletonDef.bones. */
+  boneId: string;
+  shape: "capsule" | "tapered_box";
+  /** Extent along local +Z (bone axis), in model units. */
+  length: number | string;
+  /** Radius (capsule) or half-width at the bone-origin end (tapered_box). */
+  radiusOrWidthTop: number | string;
+  /** tapered_box only — half-width at the far end. Ignored for capsule. */
+  radiusOrWidthBot?: number | string;
+  /** Material NAME (resolved via a resolveMaterial(name)->id callback, ProcModel-style). */
+  material: string;
+}
+
+/**
+ * T-186 Layer 2 recipe — one volume declaration per body part. A voxelizer
+ * (`evaluateBodyRecipe`) fills each part at `voxelSize` grain from the
+ * skeleton's resolved morph values, replacing authored body voxels.
+ */
+export interface BodyRecipeDef {
+  /** Voxel edge length in model units — every part fills at this grain. */
+  voxelSize: number;
+  parts: BodyPartRecipeDef[];
 }
 
 /**
