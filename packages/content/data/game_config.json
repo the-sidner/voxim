@@ -213,7 +213,15 @@
           "op": "mul",
           "value": 0.92
         }
-      ]
+      ],
+      "morphValues": {
+        "legLength": 0.75,
+        "torsoHeight": 0.88,
+        "headSize": 1.15,
+        "shoulderWidth": 1.3,
+        "hipWidth": 1.2,
+        "armLength": 0.9
+      }
     },
     "elf": {
       "modifiers": [
@@ -222,7 +230,15 @@
           "op": "mul",
           "value": 1.1
         }
-      ]
+      ],
+      "morphValues": {
+        "legLength": 1.2,
+        "torsoHeight": 1.08,
+        "headSize": 0.88,
+        "shoulderWidth": 0.85,
+        "hipWidth": 0.85,
+        "armLength": 1.15
+      }
     }
   },
   "persistence": {

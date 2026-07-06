@@ -1844,9 +1844,21 @@ export interface LoreFragment {
  * to its members. `op` mirrors the Status/Modifier primitive's fold
  * (`(base + Σadd) × Πmul`); `stat` must be a stat the server queries through
  * `effective()` (currently `moveSpeed`, `armorReduction`) for the trait to bite.
+ *
+ * `morphValues` (T-085) is the species' visual archetype: since T-179/T-180
+ * retired the per-creature skeleton files, every humanoid — species included —
+ * shares the one `biped` skeleton and differentiates purely through
+ * `SkeletonDef.morphParams`-keyed proportions (same mechanism drowner/
+ * rotten_knight already use). A dwarf is "shorter and wider" as
+ * `legLength`/`torsoHeight` down + `shoulderWidth`/`hipWidth` up on the same
+ * bones and clips a human plays — no new skeleton, no new animations. Keys
+ * must match the player model's skeleton `morphParams[].id`; boot-checked in
+ * server.ts alongside the existing default-species check. Absent/omitted →
+ * no species-driven proportion bias (human has none, the baseline body).
  */
 export interface SpeciesDef {
   modifiers: Array<{ stat: string; op: "add" | "mul"; value: number }>;
+  morphValues?: Record<string, number>;
 }
 
 /**

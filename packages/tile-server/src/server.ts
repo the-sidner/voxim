@@ -398,6 +398,29 @@ export class TileServer {
       );
     }
 
+    // T-085: every species' morphValues key must resolve against the player
+    // model's skeleton morphParams, or the id silently does nothing at spawn
+    // (sampleMorphValues would happily write an unknown key onto ModelRef,
+    // and no skeleton_solver bone would ever read it back). Same fail-fast
+    // stance as the resource/buff/recipe-step/BT checks below.
+    {
+      const playerPrefab = content.prefabs.get("player");
+      const playerSkeleton = playerPrefab?.modelId
+        ? content.getSkeletonForModel(playerPrefab.modelId)
+        : null;
+      const knownMorphIds = new Set((playerSkeleton?.morphParams ?? []).map((p) => p.id));
+      for (const [speciesId, def] of Object.entries(content.getGameConfig().species)) {
+        for (const key of Object.keys(def.morphValues ?? {})) {
+          if (!knownMorphIds.has(key)) {
+            throw new Error(
+              `game_config.species.${speciesId}.morphValues references unknown morph "${key}" ` +
+                `(player model's skeleton morphParams: [${[...knownMorphIds].join(", ")}])`,
+            );
+          }
+        }
+      }
+    }
+
     // T-238g: ResourceDef content cross-check — every threshold `effect`
     // and rateModifier `kind` referenced from data/resources/*.json must
     // resolve to a registered handler, or the runtime can't dispatch it.

@@ -296,6 +296,12 @@ export const COMPOUND_ARCHETYPE_KEYS: ReadonlySet<string> = new Set(COMPOUND_INS
  * A prefab may override by declaring its own `hitbox` component; the generic
  * direct-write in spawnPrefab runs after this and wins. This function never
  * writes a Hitbox if the prefab already declares one.
+ *
+ * `speciesId` (T-085) supplies the species' `morphValues` as a visual-
+ * archetype base — dwarf shorter+wider, elf taller+slender — on the SAME
+ * `biped` skeleton/clip set every humanoid shares (T-179/T-180 retired
+ * per-creature skeletons). Only the player installer resolves a species, so
+ * this is a no-op for NPCs/props (`speciesId` undefined).
  */
 function installVisualShell(
   world: World,
@@ -303,6 +309,7 @@ function installVisualShell(
   id: EntityId,
   prefab: Prefab,
   seed: number,
+  speciesId?: string,
 ): void {
   if (!prefab.modelId) return;
   const defaultScale = content.getGameConfig().world.defaultEntityScale;
@@ -312,7 +319,10 @@ function installVisualShell(
   // entity (same seed → same body across reload / respawn). Explicit
   // prefab.morphValues entries win per-key — they're authored overrides,
   // not variation.
-  const morphValues = sampleMorphValues(prefab, seed);
+  const speciesMorphs = speciesId
+    ? content.getGameConfig().species[speciesId]?.morphValues
+    : undefined;
+  const morphValues = sampleMorphValues(prefab, seed, speciesMorphs);
   world.write(id, ModelRef, {
     modelId: prefab.modelId,
     scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
@@ -334,26 +344,38 @@ function installVisualShell(
 }
 
 /**
- * Sample a per-entity morph value dict from prefab.morphRanges (T-190).
+ * Sample a per-entity morph value dict from prefab.morphRanges (T-190),
+ * layered on an optional species visual-archetype base (T-085).
+ *
+ * Precedence (most to least specific): prefab.morphValues (authored
+ * override) > speciesMorphs (species archetype default) > prefab.morphRanges
+ * (per-instance sampled variety). A key present in prefab.morphValues always
+ * wins — authoring a prefab-level proportion is the most specific override.
+ * Otherwise, a key the species names is fixed to the species value: a dwarf
+ * must read as consistently shorter+wider than a human, so the species
+ * archetype overrides the T-190 per-instance roll for any key it touches
+ * (dwarves still vary on the keys the species DOESN'T name). Species-silent
+ * keys fall through to morphRanges sampling as before.
  *
  * Determinism: the same seed yields the same body every time, so a
  * respawned/reloaded entity looks identical. Each morph key gets its own
  * sub-seed from `mix32(seed, hash32(key))`, so adding a new morph to a
  * prefab doesn't shift the others.
- *
- * prefab.morphValues entries win per-key — they're explicit author
- * overrides, not variation. Range-only keys get sampled; keys present in
- * both `morphValues` and `morphRanges` keep the authored value.
  */
-function sampleMorphValues(prefab: Prefab, seed: number): Record<string, number> | undefined {
+function sampleMorphValues(
+  prefab: Prefab,
+  seed: number,
+  speciesMorphs?: Record<string, number>,
+): Record<string, number> | undefined {
   const overrides = prefab.morphValues;
   const ranges = prefab.morphRanges;
-  if (!overrides && !ranges) return undefined;
+  if (!overrides && !ranges && !speciesMorphs) return undefined;
 
-  const out: Record<string, number> = { ...(overrides ?? {}) };
+  const out: Record<string, number> = { ...(speciesMorphs ?? {}), ...(overrides ?? {}) };
   if (ranges) {
     for (const key of Object.keys(ranges).sort()) {
-      if (key in out) continue; // explicit value wins
+      if (overrides && key in overrides) continue; // explicit value wins
+      if (speciesMorphs && key in speciesMorphs) continue; // species archetype wins
       const { min, max } = ranges[key];
       if (max <= min) { out[key] = min; continue; }
       const r = unitRandom(mix32(seed, hash32(key)));
@@ -467,7 +489,7 @@ export function spawnPrefab(
       // prefab later (save/load restart, tile handoff) without losing the
       // installers' additions (ModelRef/Hitbox/server-only Resources).
       w.write(id, SpawnedFrom, { prefabId: prefab.id });
-      installVisualShell(w, content, id, prefab, seed);
+      installVisualShell(w, content, id, prefab, seed, ov.speciesId);
 
       // Per-prefab animation slot map — copied onto the entity so
       // AnimationSystem picks clips per-prefab without re-walking the

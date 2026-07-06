@@ -1870,12 +1870,29 @@ travel / sleeping) and minimap/fog claim overlays to follow-up tickets so this l
 ## Species
 
 ### T-085 · Species visual variants — skeleton archetype mapping
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: <pending>
 
 Species definitions include a `skeletonArchetype` field that maps to a different skeleton
 definition. Dwarf skeleton is shorter and wider; human is the default. Visual differentiation
 without new animations — same animation set, different bone proportions.
 Done when: a dwarf character renders with dwarf skeleton proportions; animations play on both.
+
+Landed as `SpeciesDef.morphValues` (game_config.species), not a separate `skeletonArchetype` +
+skeleton file — T-179/T-180 retired per-creature skeletons before this ticket was picked up;
+every humanoid (species included) shares the one `biped` skeleton and differentiates through
+`SkeletonDef.morphParams`-keyed proportions (the same mechanism drowner/rotten_knight already
+use, T-180). Dwarf: `legLength`/`torsoHeight` down, `shoulderWidth`/`hipWidth` up (shorter+wider);
+elf: the inverse (taller+slender); human: no entry (baseline body). Wired into
+`installVisualShell`/`sampleMorphValues` in spawner.ts — species morphs are the base, a
+species-named key wins over T-190's per-instance morphRanges sampling (so a dwarf reads as
+consistently short+wide, not randomised back toward human), an authored `prefab.morphValues`
+still wins over species (most specific). Only the player installer resolves a `speciesId`, so
+this is a no-op for NPCs — matches CLAUDE.md's "NPCs carry no Species/LoreLoadout" note. Boot
+cross-check in server.ts: every `species.*.morphValues` key must resolve against the player
+model's skeleton `morphParams`, alongside the existing default-species check. Same clip set,
+same skeleton, zero new animations — proportions alone read as a different build. Unit-tested
+in character_creation.test.ts (dwarf shorter+wider / elf taller+slender / deterministic-per-seed
+/ species-silent human / unresolved speciesId is inert).
 
 ---
 
