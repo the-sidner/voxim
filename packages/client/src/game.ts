@@ -728,6 +728,15 @@ export class VoximGame {
             const screenPos = this.renderer?.getEntityScreenPos(ev.targetId);
             if (screenPos) this.overlay?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
             this.decals?.onEvent(ev);
+            // Hitstop punch (T-296+T-292): a real (unblocked) hit briefly
+            // freezes the scene. No wire field for the server's exact
+            // hitStopTicks — the client derives a flat short window from the
+            // existing DamageDealt payload (amount already rides the wire),
+            // scaling toward the longer end on a heavier hit.
+            if (!ev.blocked && ev.amount > 0) {
+              const emphasis = Math.min(1, ev.amount / 25);
+              this.renderer?.triggerHitStop(60 + emphasis * 60);
+            }
             break;
           }
           case "HitSpark":

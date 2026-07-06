@@ -16,6 +16,11 @@
     "blockArcHalfRadians": 1.5707963267948966,
     "knockbackImpulseXY": 5,
     "knockbackImpulseZ": 1.5,
+    "knockback": {
+      "referenceDamage": 15,
+      "minMult": 0.7,
+      "maxMult": 1.6
+    },
     "unarmedWeaponAction": "unarmed",
     "unarmedDamage": 8,
     "unarmedBladeLength": 0.4,

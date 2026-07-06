@@ -57,6 +57,14 @@ interface TraceScratch {
   /** Soft aim-assist (T-320): facing chosen on the active-enter tick and held
    *  for the whole active phase so the swing/orientation doesn't drift back. */
   aimFacing?: number;
+  /** Hitstop (T-296): tick until which THIS attacker is frozen (own swing's
+   *  contact freezes the attacker too, for a shared "thump"). */
+  hitStopUntilTick?: number;
+  /** Hitstop (T-296): targets this swing has frozen, each with their own
+   *  expiry tick. Deduped by entityId (scratch.hits already prevents
+   *  double-hitting the same target this swing, so this list only ever
+   *  grows by the hits that land). */
+  hitStopTargets?: { entityId: string; untilTick: number }[];
 }
 
 /** Equipped-weapon geometry + stats for the wielder, or unarmed defaults. */
@@ -231,7 +239,20 @@ export class WeaponTraceResolver implements EffectResolver {
           parryAllowed: true,
         }),
       );
-      if (hit) scratch.hits.push({ entityId: target.entityId, bodyPart: hit.partId });
+      if (hit) {
+        scratch.hits.push({ entityId: target.entityId, bodyPart: hit.partId });
+        // Hitstop (T-296): the action running THIS attacker's slot carries
+        // the freeze duration — read via ctx.state.actionId (the slot's
+        // live ActiveActionState), not the WeaponActionDef (geometry/timing
+        // only). A landed hit freezes both sides for the same window so the
+        // contact reads as one shared "thump".
+        const hitStopTicks = content.actions.get(ctx.state.actionId)?.hitStopTicks ?? 0;
+        if (hitStopTicks > 0) {
+          const untilTick = ctx.serverTick + hitStopTicks;
+          scratch.hitStopUntilTick = untilTick;
+          (scratch.hitStopTargets ??= []).push({ entityId: target.entityId, untilTick });
+        }
+      }
     }
 
     ctx.state.scratch = scratch as unknown as Record<string, unknown>;

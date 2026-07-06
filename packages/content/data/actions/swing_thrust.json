@@ -39,6 +39,7 @@
     "stamina": 10
   },
   "priority": 5,
+  "hitStopTicks": 2,
   "effects": [
     {
       "phase": "active:enter",

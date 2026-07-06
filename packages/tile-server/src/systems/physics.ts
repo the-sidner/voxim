@@ -11,6 +11,7 @@ import { ActiveActions } from "../components/action.ts";
 import { effective } from "../modifiers/modifier.ts";
 import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { buildTerrainLookup, buildOpennessLookup } from "../physics/terrain_lookup.ts";
+import { collectHitStopFreezes } from "../combat/hitstop.ts";
 
 const log = createLogger("PhysicsSystem");
 
@@ -32,10 +33,19 @@ export class PhysicsSystem implements System {
    */
   private offGroundTicks = new Map<string, number>();
 
+  /** Current server tick, latched by `prepare()` — hitstop freeze windows
+   *  are expressed as absolute tick numbers, so PhysicsSystem needs to know
+   *  "now" to test them (T-296). */
+  private serverTick = 0;
+
   constructor(
     private readonly content: ContentService,
     private readonly modifierSources: ModifierSourceRegistry,
   ) {}
+
+  prepare(serverTick: number): void {
+    this.serverTick = serverTick;
+  }
 
   run(world: World, _events: EventEmitter, dt: number): void {
     const gameCfg = this.content.getGameConfig();
@@ -55,6 +65,13 @@ export class PhysicsSystem implements System {
     const getHeight = buildTerrainLookup(world);
     const isOpen    = buildOpennessLookup(world);
 
+    // Hitstop (T-296): entities frozen this tick (attacker + target of a
+    // just-landed hit). Computed once — every entity in the set holds its
+    // current position and zeroes velocity instead of integrating, reusing
+    // the exact same "locked" commit shape as the movement-locked branch
+    // below (just an earlier short-circuit), so no new physics code path.
+    const frozen = collectHitStopFreezes(world, this.content, this.serverTick);
+
     // Pass 1 — integrate every moving entity into a local map. We defer
     // writes so the post-integration entity-vs-entity separation pass can
     // mutate next positions before they land in the changeset.
@@ -72,6 +89,19 @@ export class PhysicsSystem implements System {
     )) {
       const groundZ = getHeight(position.x, position.y);
       const onGround = position.z <= groundZ + 0.01;
+
+      if (frozen.has(entityId)) {
+        // Hitstop (T-296): hold position, zero velocity, skip integration
+        // entirely for the freeze window — the "thump" reads as the whole
+        // body stopping dead, not just losing input control.
+        steps.push({
+          entityId,
+          position: { x: position.x, y: position.y, z: position.z },
+          velocity: { x: 0, y: 0, z: 0 },
+          facing: inputState.facing,
+        });
+        continue;
+      }
 
       // Movement enum (T-229): a slot action whose current phase declares
       // `movement: "locked"` (dodge_roll dash, swing active) holds the

@@ -257,17 +257,23 @@ export class HealthHitHandler implements HitHandler {
     if (newHealth <= 0) {
       this.deaths.request({ entityId: ctx.targetId, killerId: ctx.attackerId, cause: "damage" });
     } else if (!isBlocking) {
+      // Knockback emphasis (T-292): scale the impulse by how hard this hit
+      // landed relative to a reference damage value, so a heavy swing shoves
+      // noticeably harder than a light poke instead of every hit pushing
+      // the same fixed amount.
+      const kb = combatCfg.knockback;
+      const knockbackMult = Math.max(kb.minMult, Math.min(kb.maxMult, damage / kb.referenceDamage));
       const dx = ctx.targetX - ctx.attackerX;
       const dy = ctx.targetY - ctx.attackerY;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const kx = (dx / dist) * combatCfg.knockbackImpulseXY;
-      const ky = (dy / dist) * combatCfg.knockbackImpulseXY;
+      const kx = (dx / dist) * combatCfg.knockbackImpulseXY * knockbackMult;
+      const ky = (dy / dist) * combatCfg.knockbackImpulseXY * knockbackMult;
       const vel = world.get(ctx.targetId, Velocity);
       if (vel) {
         world.set(ctx.targetId, Velocity, {
           x: vel.x + kx,
           y: vel.y + ky,
-          z: vel.z + combatCfg.knockbackImpulseZ,
+          z: vel.z + combatCfg.knockbackImpulseZ * knockbackMult,
         });
       }
     }

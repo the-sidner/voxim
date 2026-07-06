@@ -1104,6 +1104,24 @@ export interface ActionDef {
    */
   committed?: boolean;
   /**
+   * Hitstop (T-296): ticks to freeze attacker + target movement on a landed
+   * `weapon_trace` hit — a brief, readable "thump" on contact. 0/absent =
+   * no freeze (default). Consumed by `WeaponTraceResolver` (writes the
+   * freeze window into its resolver-local scratch, no new component) and
+   * `PhysicsSystem` (holds position/velocity for any entity in that set).
+   */
+  hitStopTicks?: number;
+  /**
+   * Telegraph lead clip (T-297): an optional tell played for `ticks` at the
+   * START of the action's first phase (windup), before crossfading to that
+   * phase's normal `animation` clip. Client-only projection — the server
+   * sends no extra field; the client derives the lead purely from the
+   * already-networked `ActiveActions.phase` + `ticksInPhase` plus this
+   * content id. `ticks` must be < the first phase's own `ticks` so there is
+   * room left for the real windup motion after the tell.
+   */
+  preWindup?: { clipId: string; ticks: number };
+  /**
    * Gates evaluated at initiation. The action starts only if every gate
    * passes (plus resource `costs` are affordable). Closed-vocabulary typed
    * predicates — see `ActionGate`. (T-226)
@@ -1897,6 +1915,17 @@ export interface GameConfig {
     blockArcHalfRadians: number;
     knockbackImpulseXY: number;
     knockbackImpulseZ: number;
+    /**
+     * Knockback emphasis (T-292): scales `knockbackImpulseXY`/`Z` by how hard
+     * the hit landed relative to `referenceDamage` (clamped to
+     * [minMult, maxMult]) — a heavy swing shoves harder than a light poke.
+     */
+    knockback: {
+      /** Damage value that maps to multiplier 1.0. */
+      referenceDamage: number;
+      minMult: number;
+      maxMult: number;
+    };
     /** WeaponActionDef id used when no weapon is equipped. */
     unarmedWeaponAction: string;
     /** Base damage dealt by an unarmed swing's active phase. */

@@ -1080,6 +1080,25 @@ export function validateActionDef(def: ActionDef): void {
   if (def.triggersGcd !== undefined && typeof def.triggersGcd !== "boolean") {
     throw new Error(`Action '${def.id}': triggersGcd must be a boolean`);
   }
+  if (def.hitStopTicks !== undefined
+    && (typeof def.hitStopTicks !== "number" || def.hitStopTicks < 0 || !Number.isFinite(def.hitStopTicks))) {
+    throw new Error(`Action '${def.id}': hitStopTicks must be a non-negative number`);
+  }
+  if (def.preWindup !== undefined) {
+    if (typeof def.preWindup.clipId !== "string" || def.preWindup.clipId.length === 0) {
+      throw new Error(`Action '${def.id}': preWindup.clipId must be a non-empty string`);
+    }
+    if (typeof def.preWindup.ticks !== "number" || !Number.isInteger(def.preWindup.ticks) || def.preWindup.ticks <= 0) {
+      throw new Error(`Action '${def.id}': preWindup.ticks must be a positive integer`);
+    }
+    const firstPhase = phaseNames[0];
+    const firstPhaseTicks = def.phases[firstPhase]?.ticks ?? 0;
+    if (firstPhaseTicks !== -1 && def.preWindup.ticks >= firstPhaseTicks) {
+      throw new Error(
+        `Action '${def.id}': preWindup.ticks (${def.preWindup.ticks}) must be < first phase '${firstPhase}'.ticks (${firstPhaseTicks})`,
+      );
+    }
+  }
   if (def.costs !== undefined) {
     if (typeof def.costs !== "object" || Array.isArray(def.costs)) {
       throw new Error(`Action '${def.id}': costs must be an object`);

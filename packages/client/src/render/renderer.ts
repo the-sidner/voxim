@@ -282,6 +282,12 @@ export class VoximRenderer {
   private lastKnownServerTick = -1;
   private lastServerTickMs = 0;
   private lastFrameMs = 0;
+  /** Hitstop (T-296+T-292): wall-clock ms until which the whole scene's
+   *  animation/pose advance is frozen — a brief punch-through on confirmed
+   *  contact, client-derived from the existing HitSpark/DamageDealt events
+   *  (no wire field). Server ticks/state keep flowing; only the visual
+   *  per-frame pose advance clamps to ~0 for the window. */
+  private hitStopUntilMs = 0;
   /** Same smooth-tick extrapolation as smoothTick, for WorldClock.ticksElapsed
    *  (T-311 P5a) — the sun arc advances at 60fps between the 20Hz server
    *  ticks instead of stepping. */
@@ -1022,7 +1028,12 @@ export class VoximRenderer {
     const tSkStart = performance.now();
     // Frame dt for the animation crossfade (T-291). lastFrameMs still holds the
     // PREVIOUS frame's timestamp here — it's advanced later in the post-FX block.
-    const animDtMs = this.lastFrameMs > 0 ? Math.min(now - this.lastFrameMs, 100) : 16;
+    // Hitstop (T-296+T-292): clamp toward ~0 while the freeze window is live —
+    // poses hold in place for a beat instead of advancing, reading as a punch
+    // landing. A small residual (not exactly 0) keeps eased springs/crossfades
+    // from dividing by zero elsewhere.
+    const rawDtMs = this.lastFrameMs > 0 ? Math.min(now - this.lastFrameMs, 100) : 16;
+    const animDtMs = now < this.hitStopUntilMs ? Math.min(rawDtMs, 1) : rawDtMs;
     // Drive skeleton poses for all animated entities.
     for (const [id, mesh] of this.entities.all) {
       if (mesh.boneGroups && mesh.skeletonId && this.content) {
@@ -1390,6 +1401,19 @@ export class VoximRenderer {
   /** Spawn a hit spark burst at the given world-space position. */
   spawnHitSpark(x: number, y: number, z: number): void {
     this.hitSparkRenderer.spawn(x, y, z);
+  }
+
+  /**
+   * Hitstop (T-296+T-292): freeze the whole scene's animation advance for
+   * `durationMs` — client-derived punch on a confirmed hit. The server's own
+   * per-entity freeze (movement-locked via PhysicsSystem) already holds the
+   * attacker+target in place for `hitStopTicks`; this is the visual
+   * counterpart so the WHOLE frame reads as a beat, not just the two
+   * bodies. Never shortens an already-running freeze (a second hit landing
+   * mid-freeze extends it, doesn't reset it shorter).
+   */
+  triggerHitStop(durationMs: number): void {
+    this.hitStopUntilMs = Math.max(this.hitStopUntilMs, performance.now() + durationMs);
   }
 
   /** Register weapon action definitions so the trail renderer can look up swing paths. */
