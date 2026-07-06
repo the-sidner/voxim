@@ -1143,7 +1143,7 @@ drowners has visibly distinct silhouettes despite sharing clips/skeleton — che
 animation cost, works on authored OR generated (T-302) bodies.
 
 ### T-306 · blade_grammar + armor_grammar — procedural equipment
-Effort: L   Status: done   Commit: 0fab251, 46f69a0   Depends: T-301, T-302, T-303
+Effort: L   Status: done   Commit: 0fab251, 3e571cc   Depends: T-301, T-302, T-303
 
 Two generators on the ProcModel substrate: `blade_grammar` (LIMB spine + SOLID pommel + SHELL guard;
 straight/curved/serrated; material per the density bands) emitting trace metadata the `weapon_trace`
