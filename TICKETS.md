@@ -1048,7 +1048,7 @@ fill the fringe. DONE: spawning into the world shows combat, crafting, enemy var
 scatter at a glance. Zero code.
 
 ### T-301 · Codify the voxel design language (DESIGN_LANGUAGE.md + material generatorPreferences + boot coherence check)
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: fd7542e, 14b7ce8
 
 Write `DESIGN_LANGUAGE.md` (repo root): the 4-word grammar vocabulary (SOLID / LIMB / SHELL /
 SCATTER-FLECK), the human-anchored scale hierarchy (1 unit = 1u; standing human = 1.2u, head ≈12.5%
