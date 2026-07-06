@@ -1870,7 +1870,7 @@ travel / sleeping) and minimap/fog claim overlays to follow-up tickets so this l
 ## Species
 
 ### T-085 · Species visual variants — skeleton archetype mapping
-Effort: M   Status: done   Commit: <pending>
+Effort: M   Status: done   Commit: adf348a
 
 Species definitions include a `skeletonArchetype` field that maps to a different skeleton
 definition. Dwarf skeleton is shorter and wider; human is the default. Visual differentiation
