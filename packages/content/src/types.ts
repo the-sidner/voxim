@@ -2105,6 +2105,10 @@ export interface GameConfig {
       /** Radius around a deployed workstation that captures enemy-owned ones (world units). */
       radiusWorldUnits: number;
     };
+    /** Client roof rendering (T-066): height above interior floor a roof
+     *  quad sits at — matches atlas's WALL_HEIGHT so the roof reads as
+     *  resting on top of the walls that seal the enclosure. */
+    roofHeightAboveFloor: number;
   };
   items: {
     /** Auto-pickup radius (world units) — ItemData entities within this range are collected. */
