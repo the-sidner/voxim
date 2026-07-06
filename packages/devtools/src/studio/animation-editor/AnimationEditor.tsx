@@ -25,18 +25,43 @@ import type { Viewport } from "../shell/viewport.ts";
 import { buildSkeletonView, type SkeletonView, type BoneLike } from "./skeleton_view.ts";
 import { sampleClipAtTime, type ClipLike } from "./clip_sampler.ts";
 import { EquipmentPanel, type SlotState } from "./EquipmentPanel.tsx";
+import { MorphPanel } from "./MorphPanel.tsx";
 import { attachEquipment, type AttachedEquipment } from "./equip_attach.ts";
 import { loadWeaponAction, type PrefabSummary } from "../shell/content_loader.ts";
 import type { MaterialDef } from "../voxel-editor/model_types.ts";
 
 const ANIM_DIRS = ["skeletons", "anim_library", "weapon_actions", "clip_overrides"];
 
-type RightTab = "clip" | "equipment";
+type RightTab = "clip" | "equipment" | "morph";
+
+interface MorphParamJson {
+  id: string;
+  bones: string[];
+  restAxis: "x" | "y" | "z";
+  min: number;
+  max: number;
+}
+
+interface BodyPartRecipeJson {
+  boneId: string;
+  shape: "capsule" | "tapered_box";
+  length: number | string;
+  radiusOrWidthTop: number | string;
+  radiusOrWidthBot?: number | string;
+  material: string;
+}
+
+interface BodyRecipeJson {
+  voxelSize: number;
+  parts: BodyPartRecipeJson[];
+}
 
 interface Skeleton {
   id: string;
   archetype: string;
   bones: BoneLike[];
+  morphParams?: MorphParamJson[];
+  bodyRecipe?: BodyRecipeJson;
 }
 
 interface Clip extends ClipLike {
@@ -331,6 +356,7 @@ export function AnimationEditor() {
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {rightTab === "clip"      && <ClipInspector clip={clip} skeleton={skeleton} />}
             {rightTab === "equipment" && <EquipmentPanel slots={slots} onEquip={(slot, prefab) => setSlots((s) => ({ ...s, [slot]: prefab }))} />}
+            {rightTab === "morph"     && <MorphPanel skeleton={skeleton} skeletonView={skViewRef.current} materials={materials} />}
           </div>
         </div>
       }
@@ -357,6 +383,7 @@ function RightTabs({ current, onPick }: { current: RightTab; onPick: (t: RightTa
     <div style={{ display: "flex", borderBottom: "1px solid var(--line-strong)", background: "var(--moss)" }}>
       {tab("clip",      "Clip")}
       {tab("equipment", "Equipment")}
+      {tab("morph",     "Morph")}
     </div>
   );
 }
