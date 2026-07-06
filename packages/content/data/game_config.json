@@ -61,7 +61,8 @@
         "torso_upper": 1.0,
         "torso_mid": 1.0,
         "torso_lower": 1.0
-      }
+      },
+      "rearMultiplier": 1.4
     }
   },
   "dodge": {

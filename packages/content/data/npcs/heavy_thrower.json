@@ -1,0 +1,17 @@
+{
+  "id": "heavy_thrower",
+  "displayName": "Heavy Thrower",
+  "maxHealth": 220,
+  "fleeHealthRatio": 0.0,
+  "behaviorTreeId": "heavy_thrower",
+  "aggroRange": 14,
+  "attackRange": 3.2,
+  "wanderRadius": 15,
+  "wanderTicks": 90,
+  "idleTicks": 60,
+  "attackTicks": 6000,
+  "fleeTicks": 0,
+  "seekFoodTicks": 9999,
+  "speedMultiplier": 0.55,
+  "weaponItemType": "heavy_thrower_maul"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "heavy_thrower_maul",
+  "category": "natural_weapon",
+  "components": {
+    "swingable": {
+      "chain": [
+        { "light": "heavy_overhead", "heavy": "heavy_overhead" }
+      ],
+      "heavyChargeMs": 0,
+      "damage": 30
+    }
+  }
+}

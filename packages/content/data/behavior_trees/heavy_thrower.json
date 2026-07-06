@@ -1,0 +1,38 @@
+{
+  "id": "heavy_thrower",
+  "root": {
+    "type": "selector",
+    "children": [
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_health_critical" },
+          { "type": "check_current_job_not", "jobType": "flee" },
+          { "type": "set_job_flee_from_nearest" }
+        ]
+      },
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_current_job_not", "jobType": "attackTarget" },
+          { "type": "check_plan_expired" },
+          { "type": "set_job_attack_nearest" }
+        ]
+      },
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_in_melee_range" },
+          { "type": "request_action", "slot": "primary", "action": "heavy_thrower_overhead" }
+        ]
+      },
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_queue_empty_or_expired" },
+          { "type": "set_job_default" }
+        ]
+      }
+    ]
+  }
+}

@@ -60,7 +60,7 @@ import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, 
 import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
 import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
 import { dodgeImpulseResolver } from "./actions/resolvers/movement.ts";
-import { notStaggeredGate, notExhaustedGate, healthBelowGate } from "./actions/resolvers/gates.ts";
+import { notStaggeredGate, notExhaustedGate, healthBelowGate, uninterruptibleActiveGate } from "./actions/resolvers/gates.ts";
 import { StaminaCostHandler } from "./actions/cost.ts";
 import { EquipmentSystem } from "./systems/equipment.ts";
 import { ContainerSystem } from "./systems/container.ts";
@@ -499,6 +499,9 @@ export class TileServer {
     // health_below: the low-health proc condition (T-259c) — usable by
     // trigger conditions and action preconditions alike.
     actionGates.register(healthBelowGate);
+    // uninterruptible_active (T-299): a committed swing's active phase can't
+    // be flinched out of by a light hit reaction — only stagger_heavy/death.
+    actionGates.register(uninterruptibleActiveGate);
     const actionEffects = newEffectRegistry();
     actionEffects.register(setTagResolver);
     actionEffects.register(clearTagResolver);

@@ -3,6 +3,9 @@
   "kind": "reaction",
   "slot": "reaction",
   "interruptPriority": 50,
+  "preconditions": [
+    { "gate": "uninterruptible_active" }
+  ],
   "phases": { "play": { "ticks": 8 } },
   "cancel": { "play": { "into": [] } },
   "movement": { "play": "locked" },

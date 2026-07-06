@@ -1987,6 +1987,17 @@ export interface GameConfig {
     partMultipliers: {
       attacker: { tip: number; mid: number; haft: number };
       victim:   Record<string, number>;
+      /**
+       * Global rear-hit multiplier (T-299, 1.25-1.5): damage is scaled by
+       * this when the attacker struck from behind the target's facing (the
+       * SAME front/back dot-product test the hit handler already computes
+       * for hit_front/hit_back reaction selection, reused rather than
+       * recomputed). Applies to every actor equally — a Shield-Knight's
+       * frontal block arc already gives it a flanking weakness for free
+       * (an attack outside `blockArcHalfRadians` disables `isBlocking`), so
+       * this multiplier needs no archetype-specific override.
+       */
+      rearMultiplier: number;
     };
   };
   dodge: {

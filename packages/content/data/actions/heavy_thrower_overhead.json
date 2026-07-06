@@ -1,0 +1,64 @@
+{
+  "id": "heavy_thrower_overhead",
+  "committed": true,
+  "kind": "active",
+  "slot": "primary",
+  "limbs": ["right_hand"],
+  "phases": {
+    "windup": { "ticks": 8 },
+    "active": { "ticks": 3 },
+    "winddown": { "ticks": 8 },
+    "recovery": { "ticks": 10 }
+  },
+  "cancel": {
+    "windup": { "into": [] },
+    "active": { "into": [] },
+    "winddown": { "into": [] },
+    "recovery": { "into": [] }
+  },
+  "movement": {
+    "windup": "slowed",
+    "active": "locked",
+    "winddown": "slowed",
+    "recovery": "slowed"
+  },
+  "costs": {
+    "stamina": 30
+  },
+  "priority": 5,
+  "hitStopTicks": 5,
+  "preWindup": {
+    "clipId": "great_sword_power_up",
+    "ticks": 5
+  },
+  "effects": [
+    {
+      "phase": "active:enter",
+      "kind": "weapon_trace",
+      "params": { "weaponActionId": "heavy_overhead" }
+    },
+    {
+      "phase": "active:tick",
+      "kind": "weapon_trace",
+      "params": { "weaponActionId": "heavy_overhead" }
+    }
+  ],
+  "animation": {
+    "windup": {
+      "clipId": "great_sword_power_up",
+      "loop": false
+    },
+    "active": {
+      "clipId": "standing_melee_attack_downward",
+      "loop": false
+    },
+    "winddown": {
+      "clipId": "great_sword_impact",
+      "loop": false
+    },
+    "recovery": {
+      "clipId": "great_sword_impact_2",
+      "loop": false
+    }
+  }
+}

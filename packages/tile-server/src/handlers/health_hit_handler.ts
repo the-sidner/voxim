@@ -104,6 +104,18 @@ export class HealthHitHandler implements HitHandler {
       return;
     }
 
+    // Front/back dot product (T-198/T-299): direction from the TARGET TO THE
+    // ATTACKER projected on the target's own forward axis. dot >= 0 means the
+    // attacker is in front of the target; dot < 0 means the hit came from
+    // behind. Computed once here and reused both for the rear damage
+    // multiplier below AND the hit_front/hit_back reaction pick further down
+    // (previously duplicated at the reaction-pick site).
+    const targetToAttackerX = ctx.attackerX - ctx.targetX;
+    const targetToAttackerY = ctx.attackerY - ctx.targetY;
+    const targetForwardX = Math.cos(ctx.targetSnapshotFacing);
+    const targetForwardY = Math.sin(ctx.targetSnapshotFacing);
+    const frontBackDot = targetToAttackerX * targetForwardX + targetToAttackerY * targetForwardY;
+
     // ── Damage multipliers ────────────────────────────────────────────────────
     let damageMult = 1.0;
 
@@ -136,8 +148,14 @@ export class HealthHitHandler implements HitHandler {
     const pm = combatCfg.partMultipliers;
     const attackerPartMult = pm.attacker[ctx.attackerPart] ?? 1.0;
     const victimPartMult   = pm.victim[ctx.bodyPart] ?? 1.0;
+    // Global rear multiplier (T-299): a hit landing from behind the target's
+    // facing deals more damage. Applies to every actor equally — a Shield-
+    // Knight's frontal block arc already gives it a flanking weakness for
+    // free (an attack outside blockArcHalfRadians disables isBlocking), so
+    // this needs no per-archetype override.
+    const rearMult = frontBackDot < 0 ? pm.rearMultiplier : 1.0;
     const baseDamage = ctx.weaponStats.damage ?? 0;
-    let damage = baseDamage * damageMult * blockMult * attackerPartMult * victimPartMult * (1 - armorReduction);
+    let damage = baseDamage * damageMult * blockMult * attackerPartMult * victimPartMult * rearMult * (1 - armorReduction);
 
     // ── Target-side mitigation (e.g. a shield buff child) ─────────────────────
     // A `damageTaken` mul ≤ 1 from the Status/Modifier query (T-239).
@@ -207,16 +225,10 @@ export class HealthHitHandler implements HitHandler {
     // the dispatcher's `reaction` slot next tick (interrupt priority lets a
     // stagger preempt a flinch). Blocked hits don't react.
     if (!isBlocking && damage > 0) {
-      // Direction from the TARGET TO THE ATTACKER. dot > 0 with target's
-      // forward axis means the attacker is in the half-space the target is
-      // looking at = hit came from the front.
-      const targetToAttackerX = ctx.attackerX - ctx.targetX;
-      const targetToAttackerY = ctx.attackerY - ctx.targetY;
-      const targetForwardX = Math.cos(ctx.targetSnapshotFacing);
-      const targetForwardY = Math.sin(ctx.targetSnapshotFacing);
-      const dot = targetToAttackerX * targetForwardX + targetToAttackerY * targetForwardY;
+      // Reuses frontBackDot computed above (T-299) — dot >= 0 means the
+      // attacker is in front of the target.
       world.set(ctx.targetId, PendingReaction, {
-        actionId: dot >= 0 ? "hit_front" : "hit_back",
+        actionId: frontBackDot >= 0 ? "hit_front" : "hit_back",
       });
 
       // ── Poise / stagger (T-197, poise is a Resource since T-238d) ──────────

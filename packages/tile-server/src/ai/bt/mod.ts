@@ -31,6 +31,8 @@ import { setJobCraftAtWorkbenchFactory } from "./nodes/set_job_craft_at_workbenc
 import { tryProduceFactory } from "./nodes/try_produce.ts";
 import { executeAssignedJobFactory } from "./nodes/execute_assigned_job.ts";
 import { requestActionFactory } from "./nodes/request_action.ts";
+import { checkInMeleeRangeFactory } from "./nodes/check_in_melee_range.ts";
+import { checkTargetFlankingFactory } from "./nodes/check_target_flanking.ts";
 
 export type {
   BTNode, BTNodeFactory, BTContext, BTOutput, NodeResult,
@@ -62,6 +64,8 @@ export function registerBuiltinBTNodes(registry: Registry<BTNodeFactory>): void 
   registry.register(tryProduceFactory);
   registry.register(executeAssignedJobFactory);
   registry.register(requestActionFactory);
+  registry.register(checkInMeleeRangeFactory);
+  registry.register(checkTargetFlankingFactory);
 }
 
 /**
