@@ -218,7 +218,7 @@ gait replacing idle/walk clips; look-at; foot-on-terrain IK; tune crouch depth/k
 Dual-wield deferred (2nd server sweep + AnimationState channel).
 
 ### T-309 · Body attachment slots — hotbar items rendered on the body
-Effort: M   Status: todo
+Effort: M   Status: blocked (see note)
 
 Render the player's HOTBAR items on body anchors (sword on back, axe at hip, etc.) — a LIMITED set of
 slots, the count EXTENDABLE by carry-equipment (backpack/belt). The active hotbar item is in hand; the
@@ -235,6 +235,30 @@ accessible by selecting the BACKPACK on the hotbar (no backpack on the bar ⇒ n
 hotbar is what you carry on your body; the backpack is one slot that opens the bag). Composes with T-308
 for free (anchors are bone children → slung gear sways with the body). This pulls the hotbar from a
 client-UI mapping into a real networked component + an inventory-access gate — sizeable; its own arc.
+
+**Blocked on landing even the client-local slice (lane/t309-attach audit, 2026-07-07):** the ticket's
+premise "the hotbar exists client-side" is true only for the UI *shape* — `ui_store.HotbarState` (8
+slots + activeIndex) and `Hotbar.tsx` render it — but there is NO data behind it anywhere in the repo.
+`hotbar_assign`/`hotbar_use` are still routed to the `console.debug("[UIAction unhandled]")` catch-all in
+`game.ts` (never implemented); `uiState.hotbar` is initialized once to `{ slots: Array(8).fill(null),
+activeIndex: 0 }` and NOTHING ever calls `patchUI({ hotbar: ... })` — confirmed by grepping every
+package for `hotbar`/`hotbarSlot`/`HotbarSlot`: zero writers, zero server component, zero
+inventory-slot↔hotbar-slot mapping convention, in client, codecs, protocol, or tile-server. Contrast
+with `equipment`/`inventory`, which the same boot code maps from real networked `state.equipment` /
+`state.inventory` (`game.ts` L415-416). So "render each occupied non-active hotbar item's model" has
+no occupancy to read: rendering body anchors now would mean anchors that are permanently empty (dead
+code with no live caller), which is scaffolding-for-later, not a shippable slice — the refactor
+doctrine's "no half-built parallel paths" applies here even though this is new work, not a refactor.
+Landing the visible win (even client-local, unnetworked) requires FIRST deciding + building the
+missing piece: what populates the hotbar (most likely: client-local drag-drop from inventory→hotbar,
+persisted in `ui_store`, i.e. actually implementing `hotbar_assign`/`hotbar_use` against the existing
+`InventoryState`) — a real design/scope decision (persistence across reconnect? decoupled from the
+eventual server-authoritative version this ticket also calls for? does drag-drop from inventory panel
+onto the Hotbar component need new drop-target wiring in `drag_system.ts`?) that a doctrine-following
+agent should not guess. Recommend splitting: a prerequisite ticket to implement client-local
+hotbar assignment (make `hotbar_assign`/`hotbar_use` real against `InventoryState`, wire drag-drop),
+THEN this ticket's body-anchor rendering has real occupancy to key off. No code changes landed on
+`lane/t309-attach` beyond this note — see the lane's final report for the full audit trail.
 
 ### T-322 · Swing-sweep debugger in the Studio animation editor (against the T-307 swingPath model)
 Effort: M   Status: done   Commit: a537704   (found during the T-191 closeout audit)
