@@ -11,10 +11,11 @@
  * data the engine samples, which is exactly what this editor scrubs.
  *
  * Today's surface:
- *   left  — file pick (skeletons/ + anim_library/), then a clip list
- *           filtered to the picked skeleton's archetype.
+ *   left  — file pick (skeletons/ + anim_library/ + weapon_actions/), then a
+ *           clip list filtered to the picked skeleton's archetype.
  *   centre — bone skeleton view, posed per render frame.
- *   right — clip details / equipment overlay + play / pause / loop / scrub / speed.
+ *   right — clip details / equipment overlay / morph / swing-sweep debugger
+ *           (T-322) + play / pause / loop / scrub / speed.
  */
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Layout } from "../shell/Layout.tsx";
@@ -26,13 +27,14 @@ import { buildSkeletonView, type SkeletonView, type BoneLike } from "./skeleton_
 import { sampleClipAtTime, type ClipLike } from "./clip_sampler.ts";
 import { EquipmentPanel, type SlotState } from "./EquipmentPanel.tsx";
 import { MorphPanel } from "./MorphPanel.tsx";
+import { SweepPanel } from "./SweepPanel.tsx";
 import { attachEquipment, type AttachedEquipment } from "./equip_attach.ts";
 import { loadWeaponAction, type PrefabSummary } from "../shell/content_loader.ts";
 import type { MaterialDef } from "../voxel-editor/model_types.ts";
 
 const ANIM_DIRS = ["skeletons", "anim_library", "weapon_actions", "clip_overrides"];
 
-type RightTab = "clip" | "equipment" | "morph";
+type RightTab = "clip" | "equipment" | "morph" | "sweep";
 
 interface MorphParamJson {
   id: string;
@@ -149,8 +151,11 @@ export function AnimationEditor() {
       }
       return;
     }
-    // Other dirs (weapon_actions/, clip_overrides/) — handled by the
-    // weapon-sweep / attachment-override tooling (T-191e).
+    // weapon_actions/ — SweepPanel (Sweep tab, T-322) owns its own
+    // weapon-action picker (it needs the full WeaponActionDef, not just a
+    // file path), so a click here is a no-op; the tree entry still serves
+    // as a browse aid. clip_overrides/ is the retired v1 mechanism
+    // (T-191e's stale premise) — deliberately unhandled.
   };
 
   // Build / rebuild the skeleton view on skeleton change.
@@ -244,10 +249,13 @@ export function AnimationEditor() {
   }, [skeleton, slots, materials]);
 
   // Push the sampled pose into the skeleton view whenever time/clip
-  // changes (manual clip-player mode).
+  // changes (manual clip-player mode). Skipped while the Sweep tab is
+  // active — SweepPanel drives the pose itself (solveSwingPose, not the
+  // clip sampler) and would otherwise be stomped by this effect re-firing
+  // on tab switch.
   useEffect(() => {
     const view = skViewRef.current;
-    if (!view) return;
+    if (!view || rightTab === "sweep") return;
     if (!clip) {
       view.applyPose(new Map());     // rest pose
       return;
@@ -357,6 +365,7 @@ export function AnimationEditor() {
             {rightTab === "clip"      && <ClipInspector clip={clip} skeleton={skeleton} />}
             {rightTab === "equipment" && <EquipmentPanel slots={slots} onEquip={(slot, prefab) => setSlots((s) => ({ ...s, [slot]: prefab }))} />}
             {rightTab === "morph"     && <MorphPanel skeleton={skeleton} skeletonView={skViewRef.current} materials={materials} />}
+            {rightTab === "sweep"     && <SweepPanel skeleton={skeleton} skeletonView={skViewRef.current} viewportContentGroup={viewportRef.current?.contentGroup ?? null} />}
           </div>
         </div>
       }
@@ -384,6 +393,7 @@ function RightTabs({ current, onPick }: { current: RightTab; onPick: (t: RightTa
       {tab("clip",      "Clip")}
       {tab("equipment", "Equipment")}
       {tab("morph",     "Morph")}
+      {tab("sweep",     "Sweep")}
     </div>
   );
 }
