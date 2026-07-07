@@ -237,7 +237,7 @@ for free (anchors are bone children → slung gear sways with the body). This pu
 client-UI mapping into a real networked component + an inventory-access gate — sizeable; its own arc.
 
 ### T-322 · Swing-sweep debugger in the Studio animation editor (against the T-307 swingPath model)
-Effort: M   Status: in-progress   (found during the T-191 closeout audit)
+Effort: M   Status: done   Commit: a537704   (found during the T-191 closeout audit)
 
 T-191e ("weapon sweep debugger + per-clip attachment overrides") was closed `obsolete` on
 2026-06-22 on the premise "zero swingPath in content" (blade geometry was clip-driven
@@ -262,6 +262,25 @@ done-bar is visual/debugging parity with what the server's `weapon_trace` resolv
 sweeps, not an authoring workflow.
 Done when: picking any swingPath-bearing weapon action in Studio shows its blade arc + swept
 capsule scrubbing through the active phase, matching what the live game renders and hits.
+
+**How it landed:** a new "Sweep" tab on `AnimationEditor.tsx` (not a dedicated route — the
+existing skeleton view is right there). `sweep_overlay.ts` is a thin Three.js layer over
+`sampleSwingPath`/`solveSwingPose` from `@voxim/content` — the SAME calls the server's
+weapon_trace resolver and the client renderer use, so no geometry is re-implemented. The posed
+rotations feed straight into the animation editor's existing `SkeletonView.applyPose` (shared
+with the Clip/Morph tabs, same Euler-per-bone convention `entity_mesh.ts`'s `updateSkeletonPose`
+uses); the swung blade box is read back off the posed hand bone's world transform, not
+re-derived, so it can't drift from what's actually posed. Scrub `t` to pose the full body +
+place the blade (red during the active window); toggle a swept-volume overlay (N translucent
+capsules across the active window, sample count adjustable); a teal guide line surfaces an
+authored-hilt-vs-actual-hand-position gap (arm-too-short-for-the-arc), the same tell the
+client's standalone Swing Inspector (`packages/client/src/inspector.ts`, T-307/T-308's
+authoring tool) already exposes. Read-only v1 as scoped — no save-back editing.
+`content/mod.ts` gained the missing `SwingPathDef`/`SwingKeyframe`/`GripDef` type exports;
+devtools' Layer-B `content_loader.ts` WeaponActionDef mirror gained the `swingPath` shape.
+Verified in-lane (type-check matrix + full suite 813 green + studio bundle rebuild); live-stack
+click-through in Studio is the post-merge step (devtools isn't behind the docker dev stack this
+lane could touch).
 
 ## AAA Graphics
 
