@@ -94,6 +94,30 @@ export interface WeaponBlade {
   radius?:   number;
 }
 
+/** actor-local fwd/right/up, world units — matches content SwingKeyframe's point shape. */
+export interface SwingPoint { fwd: number; right: number; up: number }
+
+export interface SwingKeyframe {
+  t: number;
+  hilt: SwingPoint;
+  blade: SwingPoint;
+}
+
+export interface SwingGrip {
+  bone: string;
+  along: number;
+  drivesBlade?: boolean;
+  poleHint?: SwingPoint;
+}
+
+/** Mirrors content's SwingPathDef — the T-307 authored blade arc. */
+export interface SwingPath {
+  length: number;
+  radius: number;
+  keyframes: SwingKeyframe[];
+  grips?: SwingGrip[];
+}
+
 export interface WeaponActionDef {
   id: string;
   windupTicks?: number;
@@ -102,6 +126,7 @@ export interface WeaponActionDef {
   clipId?: string;
   blade?: WeaponBlade;
   holdHand?: string;
+  swingPath?: SwingPath;
 }
 
 export async function loadWeaponAction(id: string): Promise<WeaponActionDef | null> {
