@@ -237,7 +237,7 @@ for free (anchors are bone children → slung gear sways with the body). This pu
 client-UI mapping into a real networked component + an inventory-access gate — sizeable; its own arc.
 
 ### T-322 · Swing-sweep debugger in the Studio animation editor (against the T-307 swingPath model)
-Effort: M   Status: todo   (found during the T-191 closeout audit)
+Effort: M   Status: in-progress   (found during the T-191 closeout audit)
 
 T-191e ("weapon sweep debugger + per-clip attachment overrides") was closed `obsolete` on
 2026-06-22 on the premise "zero swingPath in content" (blade geometry was clip-driven
