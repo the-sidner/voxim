@@ -3170,6 +3170,21 @@ hardcoded hex. `enclosure.test.ts` (new) covers the System-level wiring
 (wall-grid assembly, change-detection, dirty-flag gating); `roof_renderer.test.ts`
 (new) covers the pure grouping/geometry logic headless.
 
+**DORMANT in-world until T-093 (live-verified 2026-07-07, user decision (b)).** The
+render path is correct and unit-covered, but no roof appears in the running world today:
+`EnclosureSystem.run` recomputes ONLY when `dirty` is set, and `dirty` is set ONLY by the
+`BuildingCompleted` event — there is no initial/boot computation. The POI room stamps
+(`poi_placer.stampRoom`) DO close `OpenMask` cells at world-gen, but stamp the buffer
+directly without firing `BuildingCompleted`, so `EnclosureSystem` never detects them and
+`EnclosureChanged` never fires (live probe: 0 `"roof"` meshes at a POI-room centroid). The
+player-built path (`BlueprintHitHandler.applyToTerrain`) also never writes `OpenMask` — it
+only touches Heightmap/MaterialGrid. Both gaps belong to **T-093 Housing**, which owns the
+real player-built enclosed structure: T-093 must (1) write `OpenMask` on wall-blueprint
+completion and (2) ensure `EnclosureSystem` sees the change (the existing `BuildingCompleted`
+→ `markDirty` link then fires). Roof rendering activates for free the moment T-093 lands.
+Deliberately NOT fixing the boot-time-compute path now, because auto-roofing every
+POI cave-chamber is a look decision, not obviously desired — deferred with T-093.
+
 ### T-316 · Atlas inspector bake button 401s — control-plane secret never wired
 Effort: S   Status: done   Commit: 1a9291c
 

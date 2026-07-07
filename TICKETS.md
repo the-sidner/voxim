@@ -645,6 +645,17 @@ carries the dynasty tag. Furniture items are defined in item_templates.json with
 Done when: a player can build a fully enclosed structure, claim it as home, gain shelter
 bonuses inside, and lose the claim when the structure is sufficiently destroyed.
 
+**Prerequisite the enclosure/roof stack is waiting on (from T-066's live-verify, 2026-07-07):**
+the wall-blueprint completion path currently never writes `OpenMask` — `BlueprintHitHandler.
+applyToTerrain` only touches Heightmap/MaterialGrid, so a completed wall does not close a cell in
+the grid `EnclosureSystem` reads. T-093 must make wall-blueprint completion (1) write `OpenMask`
+(the cell becomes closed) and (2) let `EnclosureSystem` see it (the existing `BuildingCompleted` →
+`markDirty` link then triggers the recompute). Once that lands, T-066's roof rendering activates
+in-world for free (it is built + unit-tested, dormant only for lack of a live enclosure trigger —
+POI room stamps close `OpenMask` at gen but never fire `BuildingCompleted`, so they don't roof
+today either). Decide as part of T-093 whether POI cave-chambers should also roof (would need an
+initial/boot enclosure compute) or whether roofs stay exclusive to player-built houses.
+
 ---
 
 ## Content Architecture
