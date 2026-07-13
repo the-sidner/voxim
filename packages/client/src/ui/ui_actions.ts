@@ -56,6 +56,8 @@ export type UIAction =
   | { type: "debug_teleport";   worldX: number; worldY: number }
   | { type: "debug_set_stat";   stat: "health" | "stamina"; value: number }
   | { type: "debug_kill_entity"; entityId: string }
+  | { type: "debug_spawn_dummy"; attackLoop: boolean }
+  | { type: "debug_set_action_param"; actionId: string; field: string; value: number }
 
   // Building
   | { type: "place_blueprint"; structureType: string; worldX: number; worldY: number }

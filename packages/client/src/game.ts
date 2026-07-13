@@ -1548,6 +1548,19 @@ export class VoximGame {
         this._sendCommand({ cmd: CommandType.DebugKillEntity, entityId: action.entityId });
         break;
 
+      case "debug_spawn_dummy":
+        this._sendCommand({ cmd: CommandType.DebugSpawnDummy, attackLoop: action.attackLoop });
+        break;
+
+      case "debug_set_action_param":
+        this._sendCommand({
+          cmd: CommandType.DebugSetActionParam,
+          actionId: action.actionId,
+          field: action.field,
+          value: action.value,
+        });
+        break;
+
       case "equip":
         this._sendCommand({ cmd: CommandType.Equip, fromInventorySlot: action.fromSlot });
         break;
