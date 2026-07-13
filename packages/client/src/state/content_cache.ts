@@ -15,7 +15,7 @@
  * `.then()` off them with a stale-guard pattern that assumes a microtask
  * boundary.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, CliffProfileDef, ActionDef, ProcModelDef } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, CliffProfileDef, ActionDef, ProcModelDef, GaitDef } from "@voxim/content";
 
 export class ContentCache {
   /**
@@ -139,6 +139,12 @@ export class ContentCache {
 
   getSkeletonSync(skeletonId: string): SkeletonDef | undefined {
     return this.bootstrapService?.skeletons.get(skeletonId);
+  }
+
+  /** GaitDef by id (T-308) — the procedural gait's key-pose catalogue, named
+   *  by SkeletonDef.gaitId. */
+  getGaitSync(gaitId: string): GaitDef | undefined {
+    return this.bootstrapService?.gaits.get(gaitId);
   }
 
   /** ProcModelDef by id (T-306) — the generated-equipment render path resolves

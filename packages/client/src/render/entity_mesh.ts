@@ -147,6 +147,20 @@ export interface EntityMeshGroup {
    */
   velocityX: number;
   velocityY: number;
+  /**
+   * Procedural gait phase accumulator (T-308) — ground DISTANCE travelled
+   * this stride, wrapped to [0, gait.strideLength), NOT elapsed time. The
+   * renderer advances it each frame by the entity's actual ground-plane
+   * position delta (via `entityGroundXY`), so the gait phase always
+   * matches ground distance covered regardless of movement speed — the
+   * whole no-footslide property depends on this being distance-driven.
+   * `gaitGroundX/Y` are the previous frame's ground position, used to
+   * compute that delta; `null` = unseeded (first sight / model swap —
+   * seeds to current position next frame instead of faking a jump).
+   */
+  gaitDistance: number;
+  gaitGroundX: number | null;
+  gaitGroundY: number | null;
   /** Facing angle in radians (same convention as Facing component). */
   facingAngle: number;
   modelId: string | null;
@@ -249,6 +263,9 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     lastAnimUpdateMs: performance.now(),
     velocityX: state.velocity?.x ?? 0,
     velocityY: state.velocity?.y ?? 0,
+    gaitDistance: 0,
+    gaitGroundX: null,
+    gaitGroundY: null,
     facingAngle: state.facing?.angle ?? 0,
     modelId: null,
     skeletonId: null,
@@ -404,6 +421,11 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
   mesh.boneSlotTransforms.clear();
   mesh.boneSprings.clear(); // drop stale spring state so a model swap doesn't ease from a garbage pose
   mesh.dissolveUniforms = []; // drop refs to about-to-be-disposed materials' uniform bundles
+  // Gait accumulator (T-308): re-seed on next frame instead of carrying a
+  // ground-position baseline from a possibly-different skeleton/scale.
+  mesh.gaitDistance = 0;
+  mesh.gaitGroundX = null;
+  mesh.gaitGroundY = null;
 
   // 2. Bone hierarchy — traverse disposes body-part voxels inside bone groups.
   if (mesh.boneGroups) {
