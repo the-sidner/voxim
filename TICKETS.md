@@ -201,7 +201,36 @@ Migration phases (each its own ticket):
     poi_spawner tests + 103 content/engine/poi green; bake byte-identical.
   - T-219 — skeletal bones as scene-graph entities
   - T-220 — equipment attachment via scene-graph
-  - T-221 — static prop sub-objects as scene-graph children
+  - T-221 — static prop sub-objects as scene-graph children. **BLOCKED (lane/t221-sceneprops
+    audit, 2026-07-13, no code changed):** there is no unambiguous slice of real content to
+    migrate. `subObjects` (packages/content's `ModelDefinition.subObjects`, resolved by
+    `resolveSubObjects`/`hitbox_derive.ts`) is populated on exactly 5 models in the repo, and
+    every one fails a different way: (1) the ticket's own named targets —
+    `model_building_well`/`_cottage`/`_ruin_tower`/`_ruin_wall` — all have `subObjects: []`
+    (confirmed unchanged since the T-095 file split); there is nothing there to migrate without
+    first hand-authoring new multi-part building content, an art/content decision outside
+    doctrine. (2) The four populated non-empty models — `drowner`/`human_base`/`rotten_knight`/
+    `wolf` — are 100% `boneId`-driven bone-segment attachments; that's T-219's job (bone
+    entities + live transform composition, not landed), not a "static prop". (3) `tree_oak` (the
+    one non-skeletal model with real content: 1 fixed `trunk_oak` entry + 24
+    `pool`+`probability` branch entries, consumed by the dormant-but-tested `tree`/`yew_tree`
+    resource-node prefabs) needs seeded pool/probability selection that the landed
+    `Prefab.children` (T-217, `engine/src/prefab.ts`) does not have — it is a flat
+    `{prefabId, local?}[]` with no PRNG concept at all — so giving it one is a new engine
+    capability, and doing it for tree-density content (not POI-density) reopens the plan's own
+    wire-size/entity-count invariant (§3) for real: every rendered branch across every tree in a
+    tile would become a live networked child entity instead of a free client-side render trick.
+    Even the ONE fully-static, PRNG-free entry (`trunk_oak`) is not safe to move in isolation:
+    `deriveHitboxTemplate`/`applyHitboxTemplate` merge every sub-object capsule onto the
+    *parent's single* `Hitbox`, and `ResourceNodeHitHandler.onHit` requires `ctx.targetId`
+    itself to carry `ResourceNode` (authored on the `tree`/`yew_tree` prefab, i.e. the parent) —
+    moving the trunk capsule onto a child entity makes the trunk unharvestable unless hit
+    resolution learns to bubble a child hit up to an interactable ancestor, which nothing in the
+    hit-handler pipeline (`handlers/`) does today. None of this is inferable from doctrine or
+    the landed T-215–218 shape; it needs an explicit call on (a) whether pool/probability
+    belongs on the scene-graph primitive at all vs. staying a render-only trick, and (b) how
+    hit/interaction identity should resolve across a subtree. No files touched other than this
+    entry.
   - T-222 — coordinator world-scale scene graph
   - T-223 — client render-scope scene graph
   - T-224 — inspector / editor tooling against any World
