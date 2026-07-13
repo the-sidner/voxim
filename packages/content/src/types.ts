@@ -2476,6 +2476,28 @@ export interface GameConfig {
       /** Discard threshold on (vertFade × horizFade). */
       cutoff: number;
     };
+    /** Camera-occlusion fade extended to SIDE occluders (T-314) — tall
+     *  walls/buildings/cliffs the rigid over-the-shoulder camera (T-328)
+     *  ends up on the far side of. Same discard mechanism as canopyFade
+     *  (shares its uFadeCutoff), but the horizontal test is the voxel's
+     *  distance from the camera→player LINE SEGMENT (clamped to the
+     *  segment, not a radial blob) so only the sliver of geometry actually
+     *  between camera and player is affected, and the vertical test starts
+     *  just above the player's feet (not the head) so a wall fades along
+     *  its whole height while the floor the player stands on never does. */
+    wallFade: {
+      /** Height above the player's feet where fade begins — keep small and
+       *  positive so ground/floor voxels at foot level are never eaten. */
+      minHeight: number;
+      /** Height above the player's feet where fade is fully complete. */
+      maxHeight: number;
+      /** Perpendicular distance from the camera-player segment where fade
+       *  is fully active — deliberately tight (a wall's footprint), unlike
+       *  canopyFade's wide canopy-dome radius. */
+      innerRadius: number;
+      /** Perpendicular distance of the transition band outside innerRadius. */
+      outerRadius: number;
+    };
     /** Per-style ±fraction fine-grain amount for the organic/dirt/sand
      *  procedural texture generators (material_textures.ts's drawNoise). */
     textureStyle: {

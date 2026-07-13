@@ -307,6 +307,12 @@
       "outerRadius": 11.0,
       "cutoff": 0.5
     },
+    "wallFade": {
+      "minHeight": 0.3,
+      "maxHeight": 1.2,
+      "innerRadius": 1.5,
+      "outerRadius": 3.0
+    },
     "textureStyle": {
       "organicAmount": 0.25,
       "dirtAmount": 0.2,
