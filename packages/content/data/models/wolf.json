@@ -55,8 +55,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     },
     {
       "modelId": "wolf_upper_leg",
@@ -71,8 +70,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     },
     {
       "modelId": "wolf_lower_leg",
@@ -87,8 +85,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     },
     {
       "modelId": "wolf_upper_leg",
@@ -103,8 +100,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     },
     {
       "modelId": "wolf_lower_leg",
@@ -119,8 +115,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     },
     {
       "modelId": "wolf_upper_leg",
@@ -135,8 +130,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     },
     {
       "modelId": "wolf_lower_leg",
@@ -151,8 +145,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     },
     {
       "modelId": "wolf_upper_leg",
@@ -167,8 +160,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     },
     {
       "modelId": "wolf_lower_leg",
@@ -183,8 +175,7 @@
         "scaleX": 1,
         "scaleY": 1,
         "scaleZ": 1
-      },
-      "hitbox": false
+      }
     }
   ],
   "materials": []
