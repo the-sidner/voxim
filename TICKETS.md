@@ -465,9 +465,28 @@ constraint; hands excluded so blade==hit; commit 05f13c2). **input locomotion le
 (1cf601d) wired into the client (local player strafe from movement intent; remotes from velocity;
 strafe sign unverified live). **crouch + foot IK** (49f1161 pose+inspector, d450415 client): solveSkeleton
 gained an optional `rootOffset`; `applyCrouchPose` drops the pelvis + re-plants feet via `aimLimb` on the
-leg chains; client crouches on Ctrl (eased `crouchEased` + a root-group translation). NEXT: parametric
-gait replacing idle/walk clips; look-at; foot-on-terrain IK; tune crouch depth/knee-pole + strafe sign.
-Dual-wield deferred (2nd server sweep + AnimationState channel).
+leg chains; client crouches on Ctrl (eased `crouchEased` + a root-group translation). **foot-terrain IK +
+look-at + facing-relative back-pedal lean** (lane/t308-anim, commit 1625089 — also closes T-186's foot-IK
+aux item, same primitive, built once): `applyFootTerrainIK` re-plants each foot at the LOCAL terrain
+height under it (self-consistent delta-from-root via `ClientWorld.getTerrainHeight`, clamped against the
+unloaded-chunk-returns-0 artifact); `applyLookAtPose` is head/gaze stabilization — counter-rotates the
+head against accumulated spine lean at a partial (0.6) gain, NOT target-tracking (no look-target signal
+exists on the wire); `LocoState` gained `moveFwd` (facing-relative forward/back, alongside the existing
+lateral `strafe`) and `applyLocomotionPose` folds the spine back on back-pedal (forward movement adds no
+lean — clips already carry that) — closes the gap for T-328 (mouse-turn + facing-relative movement,
+landing concurrently on lane/t328-facingcam), which makes back-pedal/strafe real, distinct locomotion
+states for the first time. Both new producers gate on the pose pipeline's existing extra-solve branch
+(crouch/locomotion/swing active) rather than running unconditionally every frame — a fully idle entity's
+rest pose has no lean to correct yet; whether idle-on-a-slope also warrants the always-on cost is a live
+profiling question (see postMergeChecklist in the lane's report). 9 unit tests on a synthetic-skeleton
+fixture (`swing_pose.test.ts` — the file had none before). NOT done, and NOT attempted blind (needs a
+design decision this lane couldn't make alone, or live-stack visual verification this lane doesn't have):
+the full parametric-gait-replaces-clips rewrite (walk_forward/backward/strafe_* stay clip-authoritative —
+collapsing weapon-style idle/walk variance into pure procedural motion is a real design call, not a
+mechanical follow-on); target-tracking look-at (needs a look-target wire signal); crouch depth/knee-pole
+FEEL tuning and strafe-sign LIVE verification (the sign math is convention-consistent by code review —
+see the lane report — but "feel" tuning needs testplay iteration this lane cannot do). Dual-wield deferred
+(2nd server sweep + AnimationState channel).
 
 ### T-309 · Body attachment slots — hotbar items rendered on the body
 Effort: M   Status: blocked (see note)
@@ -1133,23 +1152,34 @@ humanoid_grammar porting note this reduces to — **T-302 landed**: the
 evaluator is unchanged (still the one body-volume evaluator) but is now
 reached through `humanoid_grammar.ts`'s `humanoidGrammarByBone`/
 `humanoidGrammar` on the ProcModel generator substrate instead of a direct
-`evaluateBodyRecipe()` call from `entity_mesh_registry.ts`. NOT done: the
-auxiliary work below (posture overlay, character-creator UI, foot IK) —
-ticket stays in-progress for that residual.
+`evaluateBodyRecipe()` call from `entity_mesh_registry.ts`. **Foot IK — done**
+(lane/t308-anim, commit 1625089, landed as part of T-308's "foot-on-terrain
+IK": T-308's and this ticket's foot-IK items were the same work, per the
+T-308 coordination note — `applyFootTerrainIK` in `swing_pose.ts` re-plants
+feet at the local terrain height via `aimLimb`, so limbs scaled far from
+authored proportions (or standing on a slope) still read as planted; see
+T-308's entry for the mechanism). NOT done: posture overlay, character-creator
+UI — ticket stays in-progress for that residual.
 
 Auxiliary work:
   - Posture-overlay layer: small additive AnimationLayer composed from
     slider values (backlean, slump, alert) — pure rotation offsets on
-    a few torso/neck bones, runs alongside whatever Mixamo clip plays
-    on the override layer. Mixamo motion stays intact; the base pose
-    nudges by the slider amount.
+    a few torso/neck bones. STALE PREMISE as originally worded: "runs
+    alongside whatever Mixamo clip plays on the override layer" describes
+    the pre-Action-primitive CSM (retired T-228) — there is no more
+    "override layer" concept in the current `AnimationLayer`/action-driven
+    pipeline (see T-308's `ActionAnimation`/fused pose pipeline). The
+    underlying idea (a few additive rotation-offset sliders on torso/neck,
+    composed on top of whatever pose is already playing) still fits the
+    current base-pose-catalogue architecture as one more producer — but
+    where the slider VALUES come from (a per-character stat? a stance
+    toggle? NPC archetype flavor?) is a design call this note doesn't
+    answer, left open rather than guessed.
   - Character-creator UI: live sliders mutate ModelRef.morphValues
     in-editor, baked to per-character permanent values on commit. Use
     only in the creator screen — for live characters morphs are
-    immutable identity.
-  - Foot IK pass when limbs scale far from authored proportions, so
-    feet stay planted on terrain at extreme heights. ik_solver.ts
-    exists; just needs wiring into the FK pipeline.
+    immutable identity. Its own scoped UI/UX arc (creator screen flow,
+    persistence, entry point) — not attempted here.
 
 Property of this design: hit detection self-consistent at any morph.
 blade.baseLocal/tipLocal are hand-bone-local; longer arms genuinely
