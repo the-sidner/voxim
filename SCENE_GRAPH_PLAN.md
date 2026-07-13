@@ -530,12 +530,66 @@ This unlocks future tiers: instanced dungeons are subtrees of the coordinator wo
 
 ### T-223 — Client render-scope scene graph
 
-**Goal:** Client's rendering hierarchy (camera + chunks + props) becomes a scene-graph subtree, replacing today's `Map<chunkKey, mesh>` and `entityMeshes` map.
+> **Re-specified after recon.** The original text of this section said render
+> systems would "iterate the client's `World` scene-graph, materializing Three.js
+> objects from entity transforms." Both halves of that sentence were false, and an
+> implementer taking them literally would build something that cannot work:
+>
+> - **There is no client `World`.** `ClientWorld` is a purpose-built flat
+>   `Map<entityId, EntityState>` with no component registry and no parent→children
+>   index. It is not an engine `World` and shares no code with one. (Open
+>   architectural call #3 below never got resolved; this ticket resolves it.)
+> - **Bone entities carry no transform, ever, by design.** `spawner.ts`: *"Bone
+>   TRANSFORMS are never written here — no Position, no Transform."* `BoneData` is
+>   `{boneId}`; `ParentData` is `{entityId}`. There is no server-side value to
+>   materialize a Three.js transform *from*. The pose is client-derived, per frame,
+>   by the content pipeline (`swing_pose.ts` → `updateSkeletonPose`).
+>
+> The governing principle, which the rest of this section is an application of:
+>
+> **Entities supply STRUCTURE. Content and the pose pipeline supply TRANSFORM.**
+
+**Goal:** the client resolves *what is attached to what* from the replicated scene
+graph instead of from hand-maintained lookup tables, and gains the per-part entity
+addressability that dynamic-part features (T-339 dismemberment / destructible
+props) need. Rendering *geometry* and *pose* stay exactly where they are.
 
 **What lands:**
-- Render systems iterate the client's `World` scene-graph, materializing Three.js objects from entity transforms.
-- Chunk culling becomes "skip this subtree if its bounding box is outside the camera frustum."
-- LOD switching becomes "swap this subtree for a lower-poly variant."
+- `ClientWorld` gains a **parent→children reverse index**, maintained on spawn /
+  `Parent`-delta / destroy, plus `childrenOf(id)` and `descendants(id)`. This is
+  the client's half of the scene graph — an extension of `ClientWorld`, not a fork
+  of engine `World` (see call #3, now decided).
+- Each skeletal `EntityMeshGroup` gains a **boneId ↔ bone-entityId** map, built
+  from the entity's replicated bone children. Bone entities thereby acquire an
+  *identity* the renderer can address — they do **not** acquire meshes.
+- **Attachment is resolved through the graph.** An equipped item renders because
+  its entity *is a child of a bone entity*; its model comes from its own
+  `itemData.prefabId`, and the bone it hangs on comes from its parent's `boneId`.
+  This **deletes** `ARMOR_SLOTS` / `SLOT_REST_BONE` / the table-driven slot
+  resolution in `syncEquipment` — the slot→bone mapping then exists exactly once,
+  server-side, in the graph itself, closing the `ARMOR_SLOTS` ↔
+  `EQUIP_SLOT_PRIMARY_BONE` drift hazard T-220 flagged and left open.
+
+**What explicitly does NOT change** (each of these is a trap that has already cost
+someone once):
+- **The pose pipeline.** `swing_pose.ts` / `ik_solver.ts` / `skeleton_solver.ts` /
+  `skeleton_evaluator.ts` are pure math over `Map<boneId, BoneRotation>` with zero
+  THREE and zero entity awareness. T-219 touched **zero bytes** of them; T-223 must
+  too. `boneGroups` stays the pose write target — boneId is the *correct* key for a
+  pose, because the pose is content-authored per boneId. Routing pose through
+  entity transforms is not a stretch goal, it is impossible (bones have no wire
+  transform) and would break the four closed-form no-foot-slide proofs.
+- **T-281's mesh merging.** Geometry is already collapsed to ~one merged mesh per
+  material per sub-object. Giving each bone entity its own mesh record would
+  fragment draw calls back toward the pre-T-281 state — re-opening a solved
+  problem. Bone entities own identity, not geometry.
+- **`InstancePool` (scatter + settled props), terrain chunk meshes, water, roofs,
+  decals.** Out of scope. Chunk culling / LOD-by-subtree were speculative extras in
+  the original text with no requirement behind them; they are dropped, not deferred.
+
+**Done looks like:** an equipped weapon's mesh hangs off the hand because the graph
+says so; grep finds no second slot→bone table; the pose-pipeline files show an
+empty `git diff`; draw calls per humanoid are unchanged (measured, not asserted).
 
 ### T-224 — Inspector / editor tooling against any World
 
@@ -573,9 +627,20 @@ Atlas's `generateTile` could either:
 
 Today's coordinator is small (city placement, world-graph, faction tick). T-222 puts a full ECS World inside it. Worth doing only if cross-tile state propagation, faction tick, or future features (instanced dungeons) need it. If coordinator stays small, T-222 may be deferred indefinitely.
 
-**3. Client `ClientWorld` retirement.**
+**3. Client `ClientWorld` retirement. — DECIDED (T-223): keep it, extend it.**
 
-The client today has a separate `ClientWorld` because some access patterns differ (interpolation buffers, prediction state). Lifting the client onto engine `World` directly is the cleanest end state, but may require keeping client-specific extensions (prediction component, interpolation history). Could land as an extension to `World` rather than parallel code.
+The client has a separate `ClientWorld` because its access patterns genuinely
+differ: interpolation buffers, prediction state, and a decode path keyed by wire
+id. Lifting it onto engine `World` was floated as "the cleanest end state" — it
+isn't. Engine `World` exists to run *systems* over *authoritative* state; the
+client runs neither. Adopting it would drag in the changeset/op-log machinery the
+client has no use for, to obtain one thing the client actually needs: a
+parent→children index.
+
+So: `ClientWorld` gains that index (`childrenOf` / `descendants`) and stays the
+client's store. This is an extension, not a parallel path — there is still exactly
+one client entity store. Revisit only if a second consumer ever needs real system
+scheduling client-side (prediction rollback would be the plausible one).
 
 **4. Modding API surface.**
 
