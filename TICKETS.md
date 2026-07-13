@@ -223,6 +223,32 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 
 ## Client / Controls, Feel & Render Polish
 
+### T-328 · Mouse turns the CHARACTER, the camera rides along (supersedes T-320's facing/camera model)
+Effort: M   Status: todo   (user, 2026-07-07)
+
+Invert T-320's rotation ownership. Today: mouse-X drives the CAMERA yaw directly, and facing is
+derived from the movement direction. The user wants: **mouse-X rotates the PLAYER'S FACING, and the
+camera follows that facing.** Consequences, all intended:
+
+- **Facing is mouse-driven, not movement-derived.** `facing += dx × sensitivity` (wrapped), accumulated
+  from the same pointer-locked raw deltas T-324/T-324b already deliver. DELETE the movement-direction
+  facing derivation T-320 introduced (replace, don't flag).
+- **Camera yaw is DERIVED from facing** — the camera sits behind the character's heading. Rigid coupling
+  by default (the user asked for the camera to rotate *with* the facing, and T-324 just proved that any
+  damping reads as sluggish); if a slight lag is wanted later it becomes a content knob, not a default.
+  The pitch pan (mouse-Y, clamped band) is unchanged and stays camera-only.
+- **Movement becomes facing-relative, which is the real win:** W = forward along facing, S = back-pedal,
+  A/D = STRAFE while still facing the target. Today you cannot circle an enemy while looking at it —
+  that is the bug this fixes, and it is what makes the combat model (aim-assist, blocks, dodges) work.
+  The locomotion animation must read the movement vector RELATIVE to facing (strafe/backpedal poses
+  become genuinely meaningful — coordinate with T-308's strafe/turn lean).
+- Server-side soft aim-assist (T-320) is unchanged and composes: your facing is now literally where you
+  point, so the swing already starts aimed; aim-assist only snaps it onto the best in-cone target.
+- No wire change: `facing` already rides the InputDatagram. Camera stays pure client presentation.
+
+Done when: moving the mouse turns the character (and the camera behind it), A/D strafes around a target
+while still facing it, S back-pedals, and swinging goes where the character points — verified live.
+
 ### T-324 · Camera feels sluggish and snaps ~90° at a certain rotation
 Effort: M   Status: done   Commit: 36112c8   (user, live play 2026-07-07 — T-320 regression)
 
