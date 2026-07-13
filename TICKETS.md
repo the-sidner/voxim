@@ -19,7 +19,7 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 ## Combat
 
 ### T-323 · Hits don't connect — the hitbox is the skeleton, not the body
-Effort: M   Status: in-progress   (user, live play 2026-07-07)
+Effort: M   Status: done   Commit: dd71a68   (user, live play 2026-07-07)
 
 Swings visibly pass through enemies without registering. The mechanism is mostly right — capsules
 DO follow the live animation pose (`HitboxSystem` → `evaluateAnimationLayers` → `solveSkeleton` →
@@ -42,6 +42,21 @@ generosity, which is probably right for feel). Verify with a LIVE probe, not jus
 new T-322 swing-sweep debugger + a scene probe comparing the swept blade capsule against the target's
 live `BodyPartVolume` capsules in world space, and find where they actually miss.
 Done when: swinging at the visible body of a wolf AND a humanoid connects reliably, verified live.
+
+**Closing notes (lane/t323-hitbox):** re-verified both diagnoses against the actual code before
+fixing — #2 held exactly as described; #1 did not, in a way worth recording so nobody re-derives it:
+`data/models/wolf.json` HAS 11 subObjects (not zero), so `deriveHitboxTemplate` never reaches
+`deriveSkeletalCapsules`/`BONE_RADIUS` for wolf at all. The real bug was narrower and worse: 9 of
+those 11 subObjects (tail + all 4 leg segments) were authored `"hitbox": false` — they render but had
+**zero** hittable volume; only body/head had a capsule. Fixed by dropping the opt-outs so every
+visible sub-object gets a capsule from its own voxel AABB — the same mechanism body/head already used
+(one shared source, no new table). Deliberately did NOT add a `bodyRecipe` to the wolf skeleton:
+wolf's bones carry no `restRot` (unlike biped's Mixamo-derived bind pose), so `bodyPartCapsule()`'s
+assumed "local +Y = bone axis" direction is false for wolf — a recipe-driven capsule would point the
+wrong way (e.g. straight up) without also reworking the bind pose, which risks the live render/anim
+look and needs verification this lane couldn't do (no live stack). Fix #2 (tapered_box circumscribe)
+landed as literally described. Live verification (swing at a wolf + a humanoid, confirm hits land) is
+deferred to post-merge per the lane's scope — see postMergeChecklist in the closing commit report.
 
 ## Stealth
 
