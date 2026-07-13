@@ -455,6 +455,32 @@ matrix. See `swing_pose.ts` (the shared producer) and the Swing Inspector (the a
 ### T-308 · Procedural pose catalogue (locomotion poses + IK + secondary motion)
 Effort: L   Status: in-progress
 
+**GAIT DESIGN SETTLED (user, 2026-07-07): option (b) — LAYERED, and the locomotion itself is built
+the Overgrowth way: a few authored KEY POSES, interpolated, on layers — not baked clips.**
+(David Rosen, GDC 2014 — see the memory note; the repo's `swing_pose.ts` producers are already this
+shape.) Concretely:
+
+1. **Key poses, not clips.** Author a SMALL pose catalogue per gait direction (a stride is ~3-4 poses:
+   contact / low-pass / push-off). Content, in the existing pose/producer idiom — NOT new clip files.
+2. **Phase driven by DISTANCE, not time.** The gait phase advances with ground distance travelled, so
+   foot speed matches ground speed and the feet never slide (the talk's central point). Speed changes
+   the stride length/frequency, not a clip's playback rate.
+3. **Directional blending off the movement-vs-facing vector** — which T-328 just made real: forward /
+   back-pedal / lateral strafe are now genuinely distinct inputs. Blend the directional pose sets by
+   that vector instead of assuming movement == facing.
+4. **Layering (the (b) decision):** the procedural gait owns the LOWER body + pelvis/root; the authored
+   weapon-style clips (`$idle`/`$walk_forward` tokens → `great_sword_idle`, `sword_and_shield_idle`, …)
+   stay as the UPPER-body layer, so each weapon keeps its authored character. Compose through the
+   EXISTING masked layer stack (`AnimationState.layers` + bone masks + `evaluateAnimationLayers`) — do
+   not invent a second composition path.
+5. **Feeds the landed pieces:** foot placement from the gait drives the already-landed
+   `applyFootTerrainIK`; secondary motion (the landed snappy exponential ease) rides on top; the
+   landed `applyLocomotionPose` lean composes.
+
+Done when: walking/running/strafing/back-pedalling is generated from interpolated key poses with no
+foot sliding at any speed, each weapon style still reads distinctly in the upper body, and the whole
+thing composes with crouch + swing + foot-IK without a combinatorial clip matrix.
+
 The fused pipeline: base-pose catalogue (idle/walk/run/strafe/crouch/turn as parametric poses or
 blends) → action overlay (swing/block/dodge) → IK layer (weapon arm, foot planting, look-at) →
 secondary motion (snappy organic ease). LANDED: `bendSpine` primitive + `applyLocomotionPose`
