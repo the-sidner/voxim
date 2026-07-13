@@ -15,7 +15,8 @@
  *           clip list filtered to the picked skeleton's archetype.
  *   centre — bone skeleton view, posed per render frame.
  *   right — clip details / equipment overlay / morph / swing-sweep debugger
- *           (T-322) + play / pause / loop / scrub / speed.
+ *           (T-322) / phase-timeline debugger (T-327) + play / pause / loop
+ *           / scrub / speed.
  */
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Layout } from "../shell/Layout.tsx";
@@ -28,13 +29,14 @@ import { sampleClipAtTime, type ClipLike } from "./clip_sampler.ts";
 import { EquipmentPanel, type SlotState } from "./EquipmentPanel.tsx";
 import { MorphPanel } from "./MorphPanel.tsx";
 import { SweepPanel } from "./SweepPanel.tsx";
+import { PhasesPanel } from "./PhasesPanel.tsx";
 import { attachEquipment, type AttachedEquipment } from "./equip_attach.ts";
 import { loadWeaponAction, type PrefabSummary } from "../shell/content_loader.ts";
 import type { MaterialDef } from "../voxel-editor/model_types.ts";
 
 const ANIM_DIRS = ["skeletons", "anim_library", "weapon_actions", "clip_overrides"];
 
-type RightTab = "clip" | "equipment" | "morph" | "sweep";
+type RightTab = "clip" | "equipment" | "morph" | "sweep" | "phases";
 
 interface MorphParamJson {
   id: string;
@@ -249,13 +251,13 @@ export function AnimationEditor() {
   }, [skeleton, slots, materials]);
 
   // Push the sampled pose into the skeleton view whenever time/clip
-  // changes (manual clip-player mode). Skipped while the Sweep tab is
-  // active — SweepPanel drives the pose itself (solveSwingPose, not the
-  // clip sampler) and would otherwise be stomped by this effect re-firing
-  // on tab switch.
+  // changes (manual clip-player mode). Skipped while the Sweep or Phases
+  // tab is active — both drive the pose themselves (solveSwingPose via
+  // poseSwingAt, not the clip sampler) and would otherwise be stomped by
+  // this effect re-firing on tab switch.
   useEffect(() => {
     const view = skViewRef.current;
-    if (!view || rightTab === "sweep") return;
+    if (!view || rightTab === "sweep" || rightTab === "phases") return;
     if (!clip) {
       view.applyPose(new Map());     // rest pose
       return;
@@ -366,6 +368,7 @@ export function AnimationEditor() {
             {rightTab === "equipment" && <EquipmentPanel slots={slots} onEquip={(slot, prefab) => setSlots((s) => ({ ...s, [slot]: prefab }))} />}
             {rightTab === "morph"     && <MorphPanel skeleton={skeleton} skeletonView={skViewRef.current} materials={materials} />}
             {rightTab === "sweep"     && <SweepPanel skeleton={skeleton} skeletonView={skViewRef.current} viewportContentGroup={viewportRef.current?.contentGroup ?? null} />}
+            {rightTab === "phases"    && <PhasesPanel skeleton={skeleton} skeletonView={skViewRef.current} viewportContentGroup={viewportRef.current?.contentGroup ?? null} />}
           </div>
         </div>
       }
@@ -394,6 +397,7 @@ function RightTabs({ current, onPick }: { current: RightTab; onPick: (t: RightTa
       {tab("equipment", "Equipment")}
       {tab("morph",     "Morph")}
       {tab("sweep",     "Sweep")}
+      {tab("phases",    "Phases")}
     </div>
   );
 }
