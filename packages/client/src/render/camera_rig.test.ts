@@ -111,6 +111,39 @@ Deno.test("invertY flips the pitch response sign", () => {
     -(inv.getPitch() - CFG.pitchRestDeg * Math.PI / 180), 1e-12);
 });
 
+Deno.test("T-324: dense 360°+ sweep of applyLookDelta yaw is continuous (no snap)", () => {
+  // Regression pin for the user-reported "~90° snap at a certain rotation"
+  // (live play 2026-07-07). Empirically driven both offline and against the
+  // live served bundle via cameraProbe — zero discontinuities found anywhere
+  // across five full turns in either direction, disproving all three prime
+  // suspects (atan2/shortest-arc wrap, a yaw-normalisation edge at ±π, the
+  // pitch clamp flipping the look-at basis). This test pins that finding so
+  // a future change to wrapPi/applyLookDelta can't silently reintroduce it.
+  for (const dxPerEvent of [1, 5, -5, 37, -200]) {
+    const r = rig();
+    const stepRad = dxPerEvent * CFG.mouseSensitivity;
+    const pixelsForOneTurn = (2 * Math.PI) / CFG.mouseSensitivity;
+    const steps = Math.ceil((5 * pixelsForOneTurn) / Math.abs(dxPerEvent));
+    let prev = r.getYaw();
+    for (let i = 0; i < steps; i++) {
+      r.applyLookDelta(dxPerEvent, 0);
+      const y = r.getYaw();
+      // Wrapped step delta — the physically meaningful angular change, since
+      // ±π is one identified point on the circle, not a jump.
+      let d = y - prev;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      assertAlmostEquals(
+        d,
+        stepRad,
+        1e-9,
+        `discontinuity at yaw=${y.toFixed(6)} (${(y * 180 / Math.PI).toFixed(2)}°), step ${i}, dx=${dxPerEvent}`,
+      );
+      prev = y;
+    }
+  }
+});
+
 Deno.test("pitching down raises and pulls the camera in over the target", () => {
   const r = rig();
   r.update(TARGET, 0);
