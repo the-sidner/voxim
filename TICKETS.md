@@ -296,7 +296,38 @@ Done when: every voxel-baked class reads its warp amplitude from content, the fa
 per material/class, and a wall, a prop and a character in one screenshot share the same surface idiom.
 
 ### T-327 · Combat-feel pipeline — windup / active / winddown / dodge / block / hitstop tuning loop
-Effort: L   Status: needs-design   (user, live play 2026-07-07 — "dafür müssen wir uns eine Pipeline überlegen")
+Effort: L   Status: todo   (design settled 2026-07-07: **A + B** below — live tuning is the core, the
+Studio timeline is the precision complement. Feel is only findable by feeling; the panel is for seeing
+exactly what you just felt.)
+
+**A · Live tuning against a running fight (the core).**
+- A **training dummy**: `DebugSpawnDummy` — an NPC that takes hits, shows its state, never dies
+  (auto-heals after N ticks) and optionally attacks on a fixed loop so blocks/dodges/i-frames can be
+  practised against a predictable telegraph.
+- A dev **tuning panel** (client, dev-only) exposing the live knobs of the action you're actually
+  swinging: phase ticks (windup / active / winddown / recovery), `hitStopTicks`, the dodge i-frame
+  window, the block window, knockback scale, and the aim-assist cone/range. Editing a knob takes
+  effect on the NEXT action — no restart, no reload.
+- Mechanism: ActionDefs live server-side and drive the dispatcher, so the panel sends a
+  `DebugSetActionParam { actionId, field, value }` command; the server patches its in-memory
+  ContentService ActionDef. Follow the existing debug-command surface exactly (`debug_commands.ts` +
+  CommandType + the client `_handleUIAction` case — the same pattern `DebugKillEntity`/`DebugSetTime`
+  use). Nothing about this touches production content until you press save.
+- **Save back to content**: a button that writes the tuned values into `data/actions/*.json` (reuse
+  the devtools `serve_devtools.ts` POST/`WRITABLE_PREFIXES` path, or an admin endpoint) so a good feel
+  becomes content, not a lost session.
+
+**B · Studio "Phases" timeline panel (the precision complement).**
+A tab beside T-322's Sweep tab in the Studio animation editor: pick an ActionDef, see its phase
+timeline in TICKS as bars — windup / active / winddown / recovery edges, the hitbox-live window, the
+i-frame and block windows, the hitstop freeze — scrubbable, with the same action's blade sweep (T-322)
+visible alongside. T-322 shows the swing's GEOMETRY; this shows its TIME. Together they are the
+authoring pair.
+
+Done when: you can spawn a dummy, swing at it, change a phase tick / i-frame / hitstop live, feel the
+difference on the very next swing, and save the values you liked into content — and the Studio
+timeline shows you exactly which windows you just moved.
+Unblocks: T-297/T-298/T-299's numbers are placeholders until this exists.
 
 The phase timings (windup / active / winddown / the new `recovery`), dodge i-frames, block windows,
 hitstop and knockback all need real iteration — and there is no loop for iterating them. Today a
