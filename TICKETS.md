@@ -194,7 +194,20 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 ## Client / Controls, Feel & Render Polish
 
 ### T-324 · Camera feels sluggish and snaps ~90° at a certain rotation
-Effort: M   Status: todo   (user, live play 2026-07-07 — T-320 regression)
+Effort: M   Status: done   Commit: 36112c8   (user, live play 2026-07-07 — T-320 regression)
+
+Root-caused empirically, not by feel: a dense 5-turn `cameraProbe.yaw()` sweep (both offline and
+against the live served bundle, both directions, several per-event pixel magnitudes) found ZERO
+discontinuities — disproving all three prime suspects below (`camera_rig.ts`'s yaw is a private
+field with exactly one mutation site, `applyLookDelta`, which already sums every pointer-lock
+event directly with no dt-scaling or damping). The real, fixable defect for both symptoms was
+that `requestPointerLock()` never asked for raw input — Chromium applies its OS-level pointer-
+acceleration/ballistics curve to `movementX/Y` by default, which compresses slow deliberate turns
+(sluggish) and can emit an anomalous single-event jump when the curve recalibrates (the snap).
+Fixed by requesting `{ unadjustedMovement: true }` with a `NotSupportedError` fallback to a plain
+lock. Yaw continuity is now pinned as a regression test (`camera_rig.test.ts`); the OS-curve fix
+itself isn't headless-testable (pointer lock can't be driven headless at all — real hardware feel
+is a manual check).
 
 Two distinct defects in the new free-look camera (T-320):
 - **Sluggish** — rotation lags the hand even after the sensitivity bump (0.0022 → 0.007). Suspect a
@@ -210,7 +223,7 @@ Done when: a full 360° sweep is continuous (no jump), rotation tracks the hand 
 and both are verified with the `cameraProbe` hook (yaw sampled across a slow sweep) — not by feel alone.
 
 ### T-325 · Input rework — UI clicks also drive the camera
-Effort: M   Status: todo   (user, live play 2026-07-07 — T-320 gap)
+Effort: M   Status: in-progress   (user, live play 2026-07-07 — T-320 gap)
 
 Clicking a UI element both actuates the UI *and* rotates/steers the camera: pointer-lock and the DOM
 UI are fighting over the same mouse. T-320 released the lock on panel-open, but the guard is
