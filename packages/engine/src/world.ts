@@ -2,7 +2,7 @@ import type { EntityId } from "./math.ts";
 import type { ComponentDef } from "./component.ts";
 import { newEntityId } from "./math.ts";
 import { Parent, composeTransform, IDENTITY_TRANSFORM } from "./scene.ts";
-import type { Transform } from "./scene.ts";
+import type { Transform, ParentData } from "./scene.ts";
 
 // ---- internal storage ----
 
@@ -312,10 +312,27 @@ export class World {
           const version = (prev?.version ?? 0) + 1;
           entity.set(tokenId, { version, data: slot.data });
           appliedSets.push({ entityId, token: slot.token, data: slot.data, version });
+          // A deferred Parent set (world.reparent, T-219/T-220) reaches the
+          // wire correctly via the ops walk above — but the reverse child
+          // index above (childIndex) is maintained separately from
+          // component storage, so it needs the same commit-time update
+          // setParent's immediate write already gets. Without this, a
+          // system-issued reparent (equip/unequip/drop on an
+          // already-spawned item) would silently desync getChildren/
+          // descendants from the committed Parent value.
+          if (tokenId === Parent.id) {
+            const oldParent = (prev?.data as ParentData | undefined)?.entityId ?? null;
+            const newParent = (slot.data as ParentData).entityId;
+            this.updateChildIndex(entityId, oldParent, newParent);
+          }
         } else if (prev !== undefined) {
           entity.delete(tokenId);
           this.componentIndex.get(tokenId)?.delete(entityId);
           appliedRemovals.push({ entityId, token: slot.token });
+          if (tokenId === Parent.id) {
+            const oldParent = (prev.data as ParentData).entityId;
+            this.updateChildIndex(entityId, oldParent, null);
+          }
         }
         // absent before and after (e.g. a lone remove of a component the
         // entity never had) — pure no-op, matching the old semantics.
@@ -354,23 +371,55 @@ export class World {
   // ---- scene graph (T-215) ----
 
   /**
+   * Add/remove `child` from `oldParent`'s/`newParent`'s reverse child sets.
+   * Shared by `setParent` (immediate) and `applyChangeset`'s commit loop
+   * (deferred, via `reparent`/`set(_, Parent, _)`) — the ONE place the
+   * child index is mutated, so both write paths stay in sync with it.
+   */
+  private updateChildIndex(child: EntityId, oldParent: EntityId | null, newParent: EntityId | null): void {
+    if (oldParent === newParent) return;
+    if (oldParent) this.childIndex.get(oldParent)?.delete(child);
+    if (newParent) {
+      let set = this.childIndex.get(newParent);
+      if (!set) { set = new Set(); this.childIndex.set(newParent, set); }
+      set.add(child);
+    }
+  }
+
+  /**
    * Set (or clear, with `parent = null`) an entity's scene-graph parent.
    * Writes the networked `Parent` component immediately (spawn/init path,
    * like `write`) and maintains the reverse child index. Idempotent;
    * reparenting moves the child between parents' child sets. No cycle
    * check yet — callers build trees top-down (consumers land later).
+   *
+   * IMMEDIATE — like `write()`, this bypasses the deferred changeset, so a
+   * call from inside a live system's `run()` on an entity a session already
+   * knows about never reaches the wire (the delta builder reads only
+   * `AppliedChangeset.sets`, sourced from `pendingOps`). Safe only for
+   * spawn-time / same-synchronous-call construction of a brand-new subtree
+   * (the entity's first spawn message ships whatever is committed by the
+   * time AoI runs, regardless of write() vs set()). Systems reparenting an
+   * EXISTING entity (equip/unequip/drop) must use `reparent()` instead.
    */
   setParent(child: EntityId, parent: EntityId | null): void {
     if (!this.store.has(child)) throw new Error(`World.setParent: unknown entity ${child}`);
     const prev = this.getParent(child);
     if (prev === parent) return;
-    if (prev) this.childIndex.get(prev)?.delete(child);
+    this.updateChildIndex(child, prev, parent);
     this.write(child, Parent, { entityId: parent });
-    if (parent) {
-      let set = this.childIndex.get(parent);
-      if (!set) { set = new Set(); this.childIndex.set(parent, set); }
-      set.add(child);
-    }
+  }
+
+  /**
+   * Deferred (system-safe) reparent — queues a `Parent` set to the
+   * changeset, applied atomically at `applyChangeset()` alongside every
+   * other system write this tick, and so (unlike `setParent`) correctly
+   * reaches the wire delta for an entity already known to a session. Use
+   * this, not `setParent`, for any reparent issued from inside a system's
+   * `run()` against a pre-existing entity (equip/unequip/drop).
+   */
+  reparent(child: EntityId, parent: EntityId | null): void {
+    this.set(child, Parent, { entityId: parent });
   }
 
   /** Direct parent, or null if root / no `Parent` component. O(1). */

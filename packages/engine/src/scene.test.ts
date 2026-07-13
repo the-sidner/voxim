@@ -182,3 +182,63 @@ Deno.test("Parent codec round-trips a parent id and root", () => {
   assertEquals(Parent.codec.decode(Parent.codec.encode({ entityId: id })), { entityId: id });
   assertEquals(Parent.codec.decode(Parent.codec.encode({ entityId: null })), { entityId: null });
 });
+
+// ---- reparent (T-219/T-220 prerequisite) --------------------------------
+//
+// `setParent` writes immediately (`world.write`), bypassing the deferred
+// changeset entirely — `applyChangeset()`'s delta build sources
+// `AppliedChangeset.sets` exclusively from `pendingOps`, which `write()`
+// never touches. A system calling `setParent` on an entity a session
+// already knows about (e.g. re-equipping an already-spawned item) would
+// therefore update local state but never ship a wire delta. `reparent()`
+// is the deferred, system-safe twin — these tests are the direct
+// regression coverage for that gap.
+
+Deno.test("reparent is deferred: childIndex/getParent unchanged until applyChangeset", () => {
+  const w = new World();
+  const root = spawn(w, "root");
+  const other = spawn(w, "other");
+  const child = spawn(w, "child");
+  w.setParent(child, root); // immediate — establishes the starting parent
+
+  w.reparent(child, other);
+  // Not yet applied — both getParent and the child index reflect the OLD parent.
+  assertEquals(w.getParent(child), "root");
+  assertEquals(w.getChildren("root"), ["child"]);
+  assertEquals(w.getChildren("other"), []);
+
+  w.applyChangeset();
+
+  assertEquals(w.getParent(child), "other");
+  assertEquals(w.getChildren("root"), []);
+  assertEquals(w.getChildren("other"), ["child"]);
+});
+
+Deno.test("reparent's committed Parent set appears in AppliedChangeset.sets (the wire-visibility regression)", () => {
+  const w = new World();
+  const root = spawn(w, "root");
+  const other = spawn(w, "other");
+  const child = spawn(w, "child");
+  w.setParent(child, root);
+
+  w.reparent(child, other);
+  const applied = w.applyChangeset();
+
+  const parentSets = applied.sets.filter((s) => s.token === Parent && s.entityId === child);
+  assertEquals(parentSets.length, 1);
+  assertEquals(parentSets[0].data, { entityId: "other" });
+});
+
+Deno.test("reparent(child, null) clears the child index the same way setParent does", () => {
+  const w = new World();
+  const root = spawn(w, "root");
+  const child = spawn(w, "child");
+  w.setParent(child, root);
+
+  w.reparent(child, null);
+  assertEquals(w.getChildren("root"), ["child"], "still deferred — not applied yet");
+
+  w.applyChangeset();
+  assertEquals(w.getParent(child), null);
+  assertEquals(w.getChildren("root"), []);
+});
