@@ -62,6 +62,21 @@ deferred to post-merge per the lane's scope — see postMergeChecklist in the cl
 
 ## Lore & Skills
 
+### T-328 · Externalise Lore UI — write a learned fragment to a blank tome
+Effort: S   Status: todo
+
+Found while building T-072 (heir-ritual UI): `CommandType.Internalise` (read a
+tome, T-020) now has a client entry point (InventoryPanel's "Read" action),
+but `CommandType.Externalise` (write a learned Lore fragment to a blank tome,
+T-019) still has none — the server handler has been sitting dead since it
+shipped. This is the OTHER half of how tomes get into the family library in
+the first place (a living player banks fragments for the next heir to read),
+distinct from the heir-ritual flow T-072 covers.
+Done when: a player with a learned fragment and a blank_tome in their burden
+can pick a fragment (LoreLoadout has no UI surface for `learnedFragmentIds`
+today either — that selector is part of this ticket) and write it, producing
+a filled tome they can carry to the library.
+
 ## Crafting & Economy
 
 ### T-036 · Blueprint as saveable/storable Lore item
@@ -786,12 +801,44 @@ pretend the look is done at T-311/T-312:
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
-Effort: M   Status: todo   (core respawn-as-heir done in T-270; remaining: ritual UI + library/treasury)
+Effort: M   Status: done   Commit: 1551de9
 
 On death, spawn heir at family workbench. Show respawn UI: walk to family library, select tomes
 to read (internalise Lore), walk to family treasury, equip stored gear. Guide the player through
 the ritual without hard-coding it.
 Done when: death triggers the heir flow; heir spawns at workbench and can complete the ritual.
+
+Done (client ritual layer; server substrate was already done — T-077/T-078 chests, T-079 heir
+spawn, T-270 respawn-as-heir). Missing signal found and fixed first: `Heritage` (dynastyId/
+generation) has been networked since T-079/T-270 but was never added to the client's
+`CODEC_BY_WIREID` decode table, so the client had no way to know its own dynastyId or notice a
+generation bump — added the one missing entry (protocol, commit 91fe492) rather than inventing a
+new server flag.
+
+**Guidance is entirely derived, not scripted.** `game.ts` arms a session-local `ritualActive` flag
+the moment it sees the local player's own `Heritage.generation` climb DURING THIS SESSION — the
+first heritage snapshot after connect/join is a baseline, never a trigger, so loading in as an
+already-established heir does not fire it; only a real death → heir respawn does. While armed,
+`_recomputeRitualGuide` rescans every entity the client currently knows about for a `Container`
+(T-077/T-078) matching the player's own dynastyId, and reports a step for the nearest tome/
+equipment chest ONLY while it still holds something — no chest built yet, or already emptied out,
+means no step, and the banner disappears on its own once both are gone or the player dismisses it.
+Rendered by the new non-modal `HeirRitual.tsx` HUD banner. There is deliberately no "do it for me"
+button — reading/equipping still goes through the ordinary container + inventory UI, per "guide
+the player without hard-coding it."
+
+**Tome reading** ("select tomes to read"): `CommandType.Internalise` (T-020) had server logic but
+no client entry point anywhere. Added a `read_tome` UIAction wired through InventoryPanel's
+context menu (gated on the item being the content-defined tome prefab), mirroring how "Equip"
+already works — withdraw a tome out of the library into the burden (existing withdraw_container
+flow), then Read it there. No new server command surface, no parallel inventory system.
+
+**Gear equipping** needed no new work — withdraw_container (T-077/T-078) + the existing generic
+Equip action already compose into the full flow.
+
+**Follow-on gap found, not fixed here** (out of scope — a different, living-player workflow, not
+the heir ritual): `CommandType.Externalise` (write a learned fragment to a blank tome, T-019) still
+has zero client UI, tracked as T-328.
 
 ## Heritage & Dynasty
 
