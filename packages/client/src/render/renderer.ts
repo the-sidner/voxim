@@ -664,6 +664,12 @@ export class VoximRenderer {
       const mossResp = matDef && mb && mossTarget
         ? resolveMossResponse(matDef.color, mossTarget.color, mb.tintShift)
         : undefined;
+      // T-326: render.relief.dispMag is THE one warp-amplitude knob every
+      // voxel-baked class reads (props/scatter/characters read it the same
+      // way — see entity_mesh.ts/scatter_renderer.ts/entity_mesh_registry.ts).
+      // Terrain alone additionally pins TERRAIN_DISP_MAG as its non-content
+      // floor (T-283/T-315 no-crack guarantee: every atom of one material
+      // MUST resolve the identical mag so shared cliff-edge corners weld).
       const dispMag = matDef?.render?.relief?.dispMag ?? TERRAIN_DISP_MAG;
       const baked = bakeVoxels(atoms, matId, dispMag, matDef?.render?.tintJitter, mossResp);
       const geo = geometryFromBaked(baked);

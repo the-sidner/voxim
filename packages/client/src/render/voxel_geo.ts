@@ -45,6 +45,10 @@ export function geometryFromBaked(baked: BakedMesh): THREE.BufferGeometry {
  * model definition.  Vertex displacement is seeded from local (model-space)
  * position — identical for every instance placed in the world.
  *
+ * `dispMag` (T-326): the material's authored `render.relief.dispMag`, threaded
+ * straight through to `bakeSubModel` — see that function's doc for the
+ * one-knob-per-material contract. Omitted ⇒ engine default (byte-identical).
+ *
  * Synchronous fallback path: the bake math runs inline on the calling thread.
  * The worker path (`bake_pool.ts`) calls `bakeSubModel` off-thread and hands
  * the arrays straight to `geometryFromBaked`.
@@ -53,6 +57,7 @@ export function buildSubModelGeo(
   nodes: ModelDefinition["nodes"],
   materialId: number,
   scale: { x: number; y: number; z: number },
+  dispMag?: number,
 ): THREE.BufferGeometry {
-  return geometryFromBaked(bakeSubModel(nodes, materialId, scale));
+  return geometryFromBaked(bakeSubModel(nodes, materialId, scale, dispMag));
 }

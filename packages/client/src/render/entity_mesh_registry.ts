@@ -362,7 +362,10 @@ export class EntityMeshRegistry {
       for (const matId of matIds) {
         const archId = `prop:${def.id}|${matId}|${scale.x.toFixed(3)}|${scale.y.toFixed(3)}|${scale.z.toFixed(3)}`;
         if (!this.instancePool.hasArchetype(archId)) {
-          const geometry = buildSubModelGeo(def.nodes, matId, scale);
+          // T-326: static props (ruins, resource nodes, built structures) read
+          // the same render.relief.dispMag knob terrain/scatter/characters do —
+          // the one warp-amplitude home, one shared bake application point.
+          const geometry = buildSubModelGeo(def.nodes, matId, scale, mats.get(matId)?.render?.relief?.dispMag);
           const material = this._buildPropMaterial(matId, mats);
           this.instancePool.registerArchetype(archId, {
             geometry, material, castShadow: true, receiveShadow: true,

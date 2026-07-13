@@ -64,13 +64,22 @@ export interface MaterialRenderDef {
   relief?: {
     resolution?: number;
     detail?: number;
-    /** Per-corner displacement magnitude override (world units), replacing
-     *  the client's shared TERRAIN_DISP_MAG default for this material's
-     *  terrain atoms. Materials sharing a cliff-edge corner with a
-     *  DIFFERENT resolved dispMag will show a visible seam — the no-crack
-     *  guarantee only holds within one material's own atoms, which always
-     *  share the same resolved value. Absent ⇒ the shared default (current
-     *  behaviour for every material today). */
+    /** Per-corner displacement magnitude override, world units (T-311 P4,
+     *  generalised T-326). THE one "how warped is this" amplitude knob every
+     *  voxel-baked class reads through the shared `bakeVoxels`/`bakeSubModel`
+     *  `mag` parameter — terrain (`renderer.ts`, replacing the shared
+     *  TERRAIN_DISP_MAG default), scatter (`scatter_renderer.ts`), static
+     *  props/built structures (`entity_mesh_registry.ts`→`buildSubModelGeo`),
+     *  and characters/equipment/dynamic props (`entity_mesh.ts`) all resolve
+     *  this SAME field for their material — one authoritative home, one
+     *  application point, no second warp path. Materials sharing a
+     *  cliff-edge corner with a DIFFERENT resolved dispMag will show a
+     *  visible seam — the no-crack guarantee only holds within one
+     *  material's own atoms, which always share the same resolved value.
+     *  Absent ⇒ each call site's own engine default (terrain: the shared
+     *  TERRAIN_DISP_MAG constant; every other class: bakeDisplacedVoxel's
+     *  10%-of-voxel-size per-voxel default) — current behaviour for every
+     *  material that hasn't authored one. */
     dispMag?: number;
     warp?: number;
     surfaceWarp?: number;

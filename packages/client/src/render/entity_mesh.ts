@@ -520,7 +520,11 @@ function buildMeshesFromAtoms(
   const meshes: THREE.Mesh[] = [];
   for (const matId of matIds) {
     const matDef = materials.get(matId);
-    const baked = bakeVoxels(withFray, matId, undefined, matDef?.render?.tintJitter);
+    // T-326: read the material's warp amplitude (render.relief.dispMag) — the
+    // same knob terrain/scatter/props read — so characters, equipment, and
+    // dynamic props share one content-authored warp axis. Absent ⇒ bakeVoxels'
+    // own per-voxel default (byte-identical to before this read existed).
+    const baked = bakeVoxels(withFray, matId, matDef?.render?.relief?.dispMag, matDef?.render?.tintJitter);
     if (baked.indices.length === 0) continue;
     const material = buildVoxelMaterial(matDef, matId, onTop);
     if (fray01 > 0 && dissolve && dissolveUniformsOut) {

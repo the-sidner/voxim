@@ -201,6 +201,48 @@ Deno.test("bakeSubModel with no matching material yields empty arrays", () => {
   assertEquals(baked.indices.length, 0);
 });
 
+// ---- T-326: render.relief.dispMag is THE one warp-amplitude knob every
+// voxel-baked class reads (terrain/scatter/props/characters). bakeSubModel's
+// dispMag parameter is the static-prop (walls, ruins, built structures) wire.
+
+Deno.test("bakeSubModel: omitted dispMag stays byte-identical to the pre-T-326 signature", () => {
+  const nodes = [
+    { x: 0, y: 0, z: 0, materialId: 1 },
+    { x: 1, y: 2, z: 3, materialId: 1 },
+  ];
+  const scale = { x: 0.6, y: 0.4, z: 0.9 };
+  const withoutArg = bakeSubModel(nodes, 1, scale);
+  const withUndefined = bakeSubModel(nodes, 1, scale, undefined);
+  assertEquals(withoutArg.positions, withUndefined.positions);
+});
+
+Deno.test("bakeSubModel: dispMag threads through identically to calling bakeVoxels directly", () => {
+  const nodes = [
+    { x: 0, y: 0, z: 0, materialId: 1 },
+    { x: 1, y: 0, z: 0, materialId: 1 },
+  ];
+  const scale = { x: 1, y: 1, z: 1 };
+  const dispMag = 0.037; // an arbitrary authored render.relief.dispMag
+  const viaSub = bakeSubModel(nodes, 1, scale, dispMag);
+  const atoms: VoxelAtom[] = nodes.map((n) => ({
+    cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
+    sx: scale.x, sy: scale.y, sz: scale.z, materialId: n.materialId,
+  }));
+  const viaAtoms = bakeVoxels(atoms, 1, dispMag);
+  assertEquals(viaSub.positions, viaAtoms.positions);
+});
+
+Deno.test("bakeSubModel: an authored dispMag changes the baked geometry vs the engine default", () => {
+  const nodes = [{ x: 0, y: 0, z: 0, materialId: 1 }];
+  const scale = { x: 1, y: 1, z: 1 };
+  const default_ = bakeSubModel(nodes, 1, scale);
+  const authored = bakeSubModel(nodes, 1, scale, 0.037);
+  assert(
+    default_.positions.some((v, i) => v !== authored.positions[i]),
+    "an authored dispMag must actually change the displaced corners, proving the knob is live",
+  );
+});
+
 Deno.test("computeVertexNormals matches THREE for the merged geometry", () => {
   // Build a 2-voxel indexed mesh, recompute normals both ways, compare.
   const scale = { x: 0.3, y: 0.3, z: 0.3 };

@@ -401,16 +401,23 @@ export function bakeVoxels(
  * into model space and whose size is the entity scale (uniform). Kept so the
  * existing merged-prop path (`voxel_geo.buildSubModelGeo`) is one call away from
  * the unified pipeline; byte-identical to the pre-T-281 bakeSubModel.
+ *
+ * `dispMag` (T-326): the material's authored `render.relief.dispMag` — THE one
+ * warp-amplitude knob shared by every voxel-baked class (terrain already read
+ * it; this is the static-prop path's wire, closing the "walls/built structures
+ * read no content warp at all" gap). Omitted ⇒ `bakeVoxels`'s own per-voxel
+ * default (byte-identical to before this parameter existed).
  */
 export function bakeSubModel(
   nodes: ReadonlyArray<{ x: number; y: number; z: number; materialId: number }>,
   materialId: number,
   scale: { x: number; y: number; z: number },
+  dispMag?: number,
 ): BakedMesh {
   const atoms: VoxelAtom[] = nodes.map((n) => ({
     cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
     sx: scale.x, sy: scale.y, sz: scale.z,
     materialId: n.materialId,
   }));
-  return bakeVoxels(atoms, materialId);
+  return bakeVoxels(atoms, materialId, dispMag);
 }

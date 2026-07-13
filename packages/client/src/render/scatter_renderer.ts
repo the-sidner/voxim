@@ -142,7 +142,11 @@ export class ScatterRenderer {
           const archId = `${HANDLE_PREFIX}${def.id}:t${tier}:${i}|${m}`;
           if (!this.instancePool.hasArchetype(archId)) {
             const matDef = this.content.getMaterialById(m);
-            const geometry = geometryFromBaked(bakeVoxels(atoms, m, undefined, matDef?.render?.tintJitter));
+            // T-326: scatter reads the same render.relief.dispMag warp knob as
+            // terrain/props/characters — one authoritative home, one bake site.
+            const geometry = geometryFromBaked(
+              bakeVoxels(atoms, m, matDef?.render?.relief?.dispMag, matDef?.render?.tintJitter),
+            );
             const material = buildVoxelMaterial(matDef, m);
             canopyFade.register(material, { wind: true });
             this.instancePool.registerArchetype(archId, {
