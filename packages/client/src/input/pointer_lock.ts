@@ -13,10 +13,15 @@
  *     sluggish — and can emit an anomalous single-event jump when that curve
  *     recalibrates — reads as a snap; `unadjustedMovement` bypasses the curve
  *     and reads raw HID deltas instead);
- *   - feeds each locked mousemove delta to `onLook` (→ cameraRig.applyLookDelta)
- *     ONLY while still in `gameplay`, one call per DOM event (never batched/
- *     overwritten), so the accumulated yaw/pitch tracks the physical mouse
- *     1:1 with no per-frame loss — and gating on `inputMode` rather than only
+ *   - feeds each locked pointermove's RAW SUB-FRAME SAMPLES to `onLook`
+ *     (→ cameraRig.applyLookDelta) ONLY while still in `gameplay`. The browser
+ *     coalesces the mouse's native 125–1000 Hz sample stream into one pointermove
+ *     per animation frame, so reading only the merged event's `movementX/Y`
+ *     samples the hand at FRAME RATE; `getCoalescedEvents()` returns the
+ *     individual sub-frame samples, and summing their deltas reconstructs the
+ *     true hand path independently of the frame rate (T-324b). Yaw/pitch are
+ *     mutated immediately per event — never batched, never dt-integrated — and
+ *     gating on `inputMode` rather than only
  *     the DOM `_locked` mirror closes the T-325 race where a panel opens but
  *     `exitPointerLock()` (async) hasn't completed yet: the JS-side gate
  *     drops deltas the instant the mode flips, without waiting on the browser;
@@ -41,7 +46,7 @@ export class PointerLockController {
   private _locked = false;
   private readonly disposeEffect: () => void;
   private readonly _onDown: (e: MouseEvent) => void;
-  private readonly _onMove: (e: MouseEvent) => void;
+  private readonly _onMove: (e: PointerEvent) => void;
   private readonly _onChange: () => void;
   private readonly _onError: () => void;
 
@@ -64,7 +69,27 @@ export class PointerLockController {
     this._onMove = (e) => {
       if (!this._locked) return;
       if (!cameraOwnsMouse.value) return;
-      this.onLook(e.movementX, e.movementY);
+      // RAW SUB-FRAME SAMPLES (T-324b): the browser COALESCES the mouse's
+      // native sample stream (125–1000 Hz) into ONE pointermove per animation
+      // frame. Reading only `e.movementX/Y` therefore samples the hand at the
+      // frame rate — the motion is there, but its shape is frame-quantised, and
+      // on a slow frame the whole burst arrives as one lump (which is what a
+      // flick reads as). `getCoalescedEvents()` hands back the individual
+      // sub-frame samples the browser merged; summing THEIR deltas reconstructs
+      // the true hand path independently of the frame rate. Fall back to the
+      // merged event where the API is absent (older/odd engines).
+      const samples = e.getCoalescedEvents?.() ?? [];
+      if (samples.length === 0) {
+        this.onLook(e.movementX, e.movementY);
+        return;
+      }
+      let dx = 0;
+      let dy = 0;
+      for (const s of samples) {
+        dx += s.movementX;
+        dy += s.movementY;
+      }
+      this.onLook(dx, dy);
     };
 
     this._onChange = () => {
@@ -75,7 +100,7 @@ export class PointerLockController {
     };
 
     document.addEventListener("mousedown", this._onDown);
-    document.addEventListener("mousemove", this._onMove);
+    document.addEventListener("pointermove", this._onMove);
     document.addEventListener("pointerlockchange", this._onChange);
     document.addEventListener("pointerlockerror", this._onError);
 
@@ -110,7 +135,7 @@ export class PointerLockController {
   dispose(): void {
     this.disposeEffect();
     document.removeEventListener("mousedown", this._onDown);
-    document.removeEventListener("mousemove", this._onMove);
+    document.removeEventListener("pointermove", this._onMove);
     document.removeEventListener("pointerlockchange", this._onChange);
     document.removeEventListener("pointerlockerror", this._onError);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
