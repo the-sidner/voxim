@@ -161,7 +161,15 @@ export function bodyPartCapsule(
   scope: FormulaScope,
 ): BodyPartCapsule {
   const dims = resolveBodyPartDims(part, scope);
-  const radius = Math.max(dims.radiusTop, dims.radiusBot);
+  const halfWidth = Math.max(dims.radiusTop, dims.radiusBot);
+  // T-323: `tapered_box` voxelizes a SQUARE cross-section of half-width
+  // `halfWidth` (see voxelizePart's `Math.abs(cx)/cy) - half > rAtZ` box
+  // test) — its corners sit at halfWidth*sqrt(2) from the bone axis, outside
+  // an inscribed capsule of radius halfWidth. Circumscribe instead of
+  // inscribe so the capsule covers the drawn box's corners (generous, not
+  // exact — right call for combat feel per T-323). `capsule` shapes are
+  // already round, so they need no adjustment.
+  const radius = part.shape === "tapered_box" ? halfWidth * Math.SQRT2 : halfWidth;
   return { fromX: 0, fromY: 0, fromZ: 0, toX: 0, toY: 0, toZ: dims.length, radius };
 }
 

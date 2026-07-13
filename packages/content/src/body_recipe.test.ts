@@ -147,6 +147,30 @@ Deno.test("bodyPartCapsule: resolves to bone-local endpoint + radius matching th
   assertEquals(Math.abs(capsule.radius - 0.18) < 1e-9, true);
 });
 
+Deno.test("bodyPartCapsule: capsule shape is NOT circumscribed (already round)", () => {
+  const part: BodyPartRecipeDef = {
+    boneId: "torso", shape: "capsule", length: 1, radiusOrWidthTop: 0.3, material: "skin",
+  };
+  const capsule = bodyPartCapsule(part, {});
+  assertEquals(capsule.radius, 0.3);
+});
+
+Deno.test("bodyPartCapsule: tapered_box is circumscribed — capsule radius covers the box's corner (T-323)", () => {
+  const part: BodyPartRecipeDef = {
+    boneId: "torso", shape: "tapered_box", length: 1, radiusOrWidthTop: 0.4, radiusOrWidthBot: 0.2, material: "skin",
+  };
+  const capsule = bodyPartCapsule(part, {});
+  // Radius must equal the wider half-width * sqrt(2) — the exact corner
+  // distance of the box's widest cross-section (voxelizePart's square test).
+  const expected = 0.4 * Math.SQRT2;
+  assertEquals(Math.abs(capsule.radius - expected) < 1e-9, true);
+
+  // The box's widest corner (top end, half-width 0.4 on both axes) must sit
+  // ON or INSIDE the capsule — i.e. within `radius` of the bone axis.
+  const cornerDistance = Math.hypot(0.4, 0.4);
+  assertEquals(cornerDistance <= capsule.radius + 1e-9, true);
+});
+
 Deno.test("crossCheckBodyRecipe: no bodyRecipe is a no-op", () => {
   crossCheckBodyRecipe(makeSkeleton());
 });

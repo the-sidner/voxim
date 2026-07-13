@@ -19,7 +19,7 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 ## Combat
 
 ### T-323 · Hits don't connect — the hitbox is the skeleton, not the body
-Effort: M   Status: todo   (user, live play 2026-07-07)
+Effort: M   Status: in-progress   (user, live play 2026-07-07)
 
 Swings visibly pass through enemies without registering. The mechanism is mostly right — capsules
 DO follow the live animation pose (`HitboxSystem` → `evaluateAnimationLayers` → `solveSkeleton` →
