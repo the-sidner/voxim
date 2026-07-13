@@ -223,7 +223,22 @@ Done when: a full 360° sweep is continuous (no jump), rotation tracks the hand 
 and both are verified with the `cameraProbe` hook (yaw sampled across a slow sweep) — not by feel alone.
 
 ### T-325 · Input rework — UI clicks also drive the camera
-Effort: M   Status: in-progress   (user, live play 2026-07-07 — T-320 gap)
+Effort: M   Status: done   Commit: 0c6d8cb   (user, live play 2026-07-07 — T-320 gap)
+
+Landed the real routing pass: `input_mode.ts` is one computed `InputMode` ("gameplay" | "ui" |
+"build") derived from `modeState` + `uiState.openPanels` + `uiState.radialMenu`, with zero writers
+(a pure derivation can't desync from the state it answers about). `PointerLockController` and
+`IntentTranslator` both read it instead of re-deriving their own partial answer. Found and closed
+two concrete gaps: (1) the build radial menu is a plain `uiState.radialMenu` patch, never added to
+`openPanels`, so the old `worldOwnsCursor()` check didn't know about it; (2) `exitPointerLock()` is
+async, so a panel opening between mouse events used to leave a window where in-flight deltas still
+reached the camera before the browser caught up — fixed by gating `_onMove` on the mode signal
+itself, not just the DOM `_locked` mirror. Held-button bookkeeping (`rmbDown`, `holdState.lmb`)
+still clears unconditionally on release so a panel opening mid-hold can't leak a stuck block bit or
+a phantom charge bar. Verified live with real pointer-lock via Playwright's CDP mouse (trusted
+input, unlike page.evaluate()-constructed events): opening Inventory/Stats releases the lock with
+zero yaw change, aggressive click+drag+move while a panel is open produces yaw delta 0, closing +
+re-clicking restores control (yaw moves again) — see T-324/T-325 arc notes for the numbers.
 
 Clicking a UI element both actuates the UI *and* rotates/steers the camera: pointer-lock and the DOM
 UI are fighting over the same mouse. T-320 released the lock on panel-open, but the guard is
