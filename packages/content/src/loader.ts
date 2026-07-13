@@ -148,6 +148,10 @@ async function loadContentStoreInternal(
   }
 
   for (const raw of skeletonsRaw as SkeletonDef[]) {
+    // T-219 prerequisite: the bone-entity spawn walk resolves each bone's
+    // parent ENTITY via a boneId->EntityId map built in array order — fail
+    // fast on an out-of-order skeleton instead of a silently wrong chain.
+    validateSkeletonBoneOrder(raw);
     store.registerSkeleton(raw);
     // T-186 Layer 2: a skeleton's bodyRecipe part must name a real bone and
     // every formula field must resolve (at both morph extremes) against the
@@ -1082,6 +1086,31 @@ export function validateResourceDef(def: ResourceDef): void {
  *  phase-ascending track — `backward`/`strafe`, if authored, get the same
  *  check (see swing_pose.ts's `applyGaitPose` for how an absent track is
  *  derived from `forward` instead). */
+/**
+ * T-219 prerequisite: `SkeletonDef.bones` must be parent-before-child
+ * ordered — a bone's `parent` id must already have appeared earlier in the
+ * array (or be `null`, the root). The client's `entity_mesh.ts`
+ * (`upgradeToSkeletonModel`) already silently assumes this when building
+ * `boneGroups` (an out-of-order bone falls back to the model root group,
+ * no error); the tile-server's bone-entity spawn walk (spawner.ts,
+ * `installSkeletonBones`) inherits the SAME assumption — resolving a
+ * bone's parent ENTITY by looking up an already-created entry in a
+ * boneId->EntityId map built in array order. Fail fast at load instead of
+ * producing a silently-wrong (or crashing) parent chain at spawn time.
+ */
+export function validateSkeletonBoneOrder(def: SkeletonDef): void {
+  const seen = new Set<string>();
+  for (const bone of def.bones) {
+    if (bone.parent !== null && !seen.has(bone.parent)) {
+      throw new Error(
+        `Skeleton '${def.id}': bone '${bone.id}' declares parent '${bone.parent}' ` +
+        `before it is defined — SkeletonDef.bones must be parent-before-child ordered`,
+      );
+    }
+    seen.add(bone.id);
+  }
+}
+
 export function validateGaitDef(def: GaitDef): void {
   if (typeof def.id !== "string" || def.id.length === 0) {
     throw new Error(`GaitDef: missing or empty id`);
