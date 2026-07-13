@@ -195,7 +195,7 @@ the generic dispatch layer (`combat/sweep.test.ts`), the concrete tree-trunk-as-
 (`resource_node_hit_handler.test.ts`), and aim-assist (`aim_assist.test.ts`).
 
 ### T-334 · Seeded pool/probability selection on `Prefab.children`
-Effort: M   Status: in-progress   (scene-graph prerequisite; user decision 2026-07-07)
+Effort: M   Status: done   Commit: 69a91be   (scene-graph prerequisite; user decision 2026-07-07)
 
 Prerequisite for T-221. `Prefab.children` (T-217) is a flat `{prefabId, local?}[]` with NO PRNG concept,
 but real multi-part content is seeded-random: `tree_oak` has 1 static trunk + 24 branch entries selected by
@@ -208,6 +208,29 @@ must stay correct — or hitboxes silently drift from what's drawn (the exact bu
 unhittable in T-323). One seeded selection, consumed identically wherever geometry is derived.
 Done when: a seeded multi-part prefab spawns a deterministic subtree from its seed, identical on server and
 client, with hitbox-vs-visual agreement preserved.
+
+**Closing notes (lane/t334-seededkids):** built the ONE shared primitive doctrine literally asked for —
+`resolveSeededPick` (`@voxim/engine`, `rand.ts`) is now the single place the probability-then-pool draw
+happens. `ChildPrefabRef`/`ChildSpawn` grow `pool?: string[]`/`probability?: number` alongside an
+now-optional `prefabId`, mirroring `SubObjectRef` exactly (pool wins if both set). The engine's
+`spawnPrefab` children walk resolves each entry through `resolveSeededPick` off one `mulberry32` stream
+seeded via a new optional `ctx.resolveSeed(overrides, id)` hook; tile-server wires it to the SAME
+expression `installVisualShell` already uses for `ModelRef.seed` (`ov.seed ?? hash32(id)`), so one seed
+governs an entity's own sub-object variance AND which of its children spawn. The load-bearing half:
+`resolveSubObjects` (store.ts) and `hitbox_derive.ts`'s hand-copied "reproduce resolveSubObjects' PRNG
+order" loop both now CALL `resolveSeededPick` directly instead of duplicating the draw — the duplication
+itself was the risk, and it's gone, not just re-verified. New test in `hitbox_derive.test.ts` pins the
+invariant mechanically: across 50 seeds on a pool+probability model shaped like tree_oak (fixed trunk +
+pool branches + one `hitbox: false` opt-out to prove the PRNG stays lockstep across it),
+`deriveHitboxTemplate`'s ids equal `resolveSubObjects`' rendered ids minus the opt-outs, in order, always.
+Loader validation extended (`validatePrefabFields`/`validatePrefabChildRefs`, both exported to match the
+existing `validate*Def` convention and directly unit-tested): a child needs a `prefabId` or a non-empty
+`pool`, `probability` ∈ [0,1], and every id a child COULD spawn (fixed or pooled) is cross-checked against
+the concrete/non-abstract prefab set at load. Nothing in production sets `pool`/`probability` on
+`Prefab.children` yet — pure capability add, `tree_oak` migration stays T-221's job. Full suite green (885
+tests, was 580 at ENVIRONMENT.md's writing — branch has grown); atlas snapshot suite byte-identical
+(untouched). No live-stack verification possible/needed from this lane (no production consumer exists to
+exercise on the live tile).
 
 ### T-215..T-224 · Scene graph as a central engine system
 Effort: XL (multi-ticket arc)   Status: in-progress
@@ -226,10 +249,12 @@ Position/ModelRef/optional Hitbox, NO behaviour components — no system iterate
 changeset loop is unaffected by their count, and AoI ships only their initial spawn (they never change →
 never ship deltas). The extra join cost is ~0.3–0.5 MB against a 6 MB content blob + 5 MB terrain stream.
 
-Two capabilities this decision REQUIRES first (both now ticketed): **T-333** hit-bubbling to the nearest
-ancestor carrying the component (else a tree split into a subtree becomes unharvestable) — **DONE**, see
-T-333's entry above — and **T-334** seeded pool/probability on `Prefab.children` (else seeded multi-part
-content cannot be expressed).
+Two capabilities this decision REQUIRED first — **both now DONE**: **T-333** hit-bubbling to the nearest
+ancestor carrying the component (else a tree split into a subtree becomes unharvestable), and **T-334**
+seeded pool/probability on `Prefab.children` — `resolveSeededPick` (`@voxim/engine`) is the ONE shared
+primitive, wired through the engine spawn walk + tile-server's `ctx.resolveSeed`, with
+`resolveSubObjects`/`hitbox_derive.ts` converged onto it too (so the geometry the client draws and the
+hitbox the server derives cannot drift — the T-323 bug class, closed structurally).
 Order: T-333 + T-334 → T-219 (bones — where the real content is) → T-221 (static props) → T-223 → T-224.
 T-222 (coordinator) is deferred: its subject (cities) does not exist yet (T-059 is open).
 
