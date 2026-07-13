@@ -1464,8 +1464,10 @@ export class TileServer {
         if (this.world.isAlive(playerId)) {
           // T-252: take the carried item entities along — players respawn
           // fresh (save doctrine), so leaving them would leak forever.
+          // T-219: destroySubtree also takes the bone-entity subtree (and
+          // any scene-graph-parented equipment on it) along.
           destroyCarriedItemEntities(this.world, playerId);
-          this.world.destroy(playerId);
+          this.world.destroySubtree(playerId);
         }
       }
     }
@@ -1663,7 +1665,18 @@ export class TileServer {
         // recordDeath branch — the entity is destroyed because we moved
         // them, not because they died.
         this.handedOff.add(payload.entityId);
-        if (this.world.isAlive(payload.entityId)) this.world.destroy(payload.entityId);
+        if (this.world.isAlive(payload.entityId)) {
+          // The destination tile already re-created the carried item
+          // entities from `body` (serializePlayer's payload, sent above) —
+          // the source tile's own copies (equipped AND plain inventory
+          // unique items) are now redundant and must not linger here.
+          // Found in passing while wiring destroySubtree (T-219): this call
+          // was missing relative to the other two disconnect/death paths,
+          // which both already take carried items along (T-252) — a
+          // pre-existing leak this closes as an incidental fix.
+          destroyCarriedItemEntities(this.world, payload.entityId);
+          this.world.destroySubtree(payload.entityId);
+        }
         session?.close();
         this.sessions.delete(payload.entityId);
         console.log(
@@ -2068,8 +2081,9 @@ export class TileServer {
     }
     if (this.world.isAlive(playerId)) {
       // T-252: take the carried item entities along (players respawn fresh).
+      // T-219: destroySubtree also takes the bone-entity subtree along.
       destroyCarriedItemEntities(this.world, playerId);
-      this.world.destroy(playerId);
+      this.world.destroySubtree(playerId);
       if (this.accountClient) {
         await this.accountClient.updateLocation(playerId, this.tileId).catch((err: unknown) => {
           console.error("[TileServer] updateLocation failed:", err);

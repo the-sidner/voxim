@@ -120,7 +120,15 @@ export class DeathSystem implements System, DeathRequestPort {
       log.debug("death: entity=%s killer=%s cause=%s linger=%s", p.entityId, p.killerId ?? "none", p.cause, linger);
 
       if (linger) this.lingering.add(p.entityId);
-      else world.destroy(p.entityId);
+      // T-219: destroySubtree, not destroy -- every skeletal death now has
+      // a real bone-entity subtree (and any still-attached scene-graph
+      // children, e.g. buffs) that would otherwise leak forever. Degrades
+      // to exactly destroy() for an entity with no children (unchanged
+      // behaviour for non-skeletal deaths). destroyCarriedItemEntities (the
+      // equip_cleanup DeathHook, already run above) is the ONLY thing that
+      // cleans up plain never-parented unique inventory items -- kept as
+      // is, harmless overlap with the subtree walk for equipped items.
+      else world.destroySubtree(p.entityId);
     }
   }
 }

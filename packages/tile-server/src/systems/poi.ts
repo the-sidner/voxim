@@ -164,7 +164,12 @@ export class PoiSystem implements System {
       playerId.slice(-6), entityId, interactable.verb, interactable.poiInstanceId,
     );
     if (interactable.consumable) {
-      world.destroy(entityId);
+      // destroySubtree, not destroy — zero-risk forward-compatible
+      // generalization (T-219): today's interactionPrefab spawns
+      // (poi/activities/action.ts) declare no children, so this is exactly
+      // destroy() for every currently-reachable case, but a future
+      // interactionPrefab that DOES declare children won't silently leak.
+      world.destroySubtree(entityId);
     }
   }
 
