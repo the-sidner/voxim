@@ -76,15 +76,12 @@ export function Hotbar({ onAction }: { onAction: (a: UIAction) => void }) {
   if (!hb) return null;
   const items = hotbarItems.value;
 
+  // Row of the shared bottom `.action-frame` dock (ui_manager.tsx, T-314),
+  // stacked above the SkillBar (which owns the 1–4 keys) within it. This is
+  // a mouse-driven consumable quick-bar — no keyboard slot labels, since
+  // those number keys activate skills, not hotbar items.
   return (
-    <div class="hotbar interactive" style={{
-      // Stacked above the SkillBar (which owns the 1–4 keys). This is a
-      // mouse-driven consumable quick-bar — no keyboard slot labels, since
-      // those number keys activate skills, not hotbar items.
-      position: "fixed", bottom: "92px", left: "50%",
-      transform: "translateX(-50%)",
-      zIndex: "var(--z-hud)",
-    }}>
+    <div class="hotbar interactive">
       {items.map((item, i) => (
         <HotbarSlotCell key={i} item={item} index={i} active={i === hb.activeIndex} onAction={onAction} />
       ))}

@@ -85,14 +85,20 @@ export function UIManager({ onAction }: UIManagerProps) {
       {/* Loading screen — shown until first terrain state message is processed */}
       {loading && <LoadingScreen />}
 
-      {/* Always-visible HUD layer */}
-      <StatusBars />
-      <CastBar />
-      <SkillBar />
-      <Hotbar onAction={onAction} />
+      {/* Always-visible HUD layer. The bottom action dock (cast bar, vitals,
+          hotbar, skill bar) is ONE composed frame — see `.action-frame` in
+          theme.css — rather than four independently-floating strips, so it
+          reads as a deliberate ARPG frame (T-314). DOM order is visual
+          stacking order top→bottom, since the frame anchors via `bottom`
+          and lays its children out in a plain flex column. */}
+      <div class="action-frame hud-chrome">
+        <CastBar />
+        <StatusBars />
+        <Hotbar onAction={onAction} />
+        <SkillBar />
+      </div>
       <PanelBar />
       <Minimap />
-      <HudStats />
       <ZoneCaption />
       <HeirRitual onAction={onAction} />
       <ToastQueue />
@@ -111,8 +117,13 @@ export function UIManager({ onAction }: UIManagerProps) {
       {/* Modals — render above panels */}
       {panels.has("death")      && <DeathScreen      onAction={onAction} />}
 
-      {/* Debug tools — float independently, don't block game input */}
+      {/* Debug tools — float independently, don't block game input. FPS/
+          tris/entities telemetry (HudStats) used to be always-on in the
+          primary HUD, reading as a debug overlay rather than an ARPG
+          frame (T-314); it now shares the same "`" toggle as the rest of
+          the debug tooling. */}
       {panels.has("debug")      && <DebugPanel       onAction={onAction} />}
+      {panels.has("debug")      && <HudStats />}
       {panels.has("network")    && <NetworkPanel />}
 
       {/* Portals — always on top */}

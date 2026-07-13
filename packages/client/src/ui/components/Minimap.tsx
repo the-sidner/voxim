@@ -31,6 +31,7 @@ const COL_BORDER  = "rgb(63, 62, 42)";    // line-bright
 
 export function Minimap() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const coordRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -133,6 +134,13 @@ export function Minimap() {
         ctx.arc(cx, cy, 1.6, 0, Math.PI * 2);
         ctx.fillStyle = COL_PLAYER;
         ctx.fill();
+
+        // Live world-position readout (was a static "0,0" placeholder).
+        // Updated imperatively alongside the canvas draw, same throttle —
+        // avoids a signal/re-render just for text that changes every frame.
+        if (coordRef.current) {
+          coordRef.current.textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`;
+        }
       }
     };
 
@@ -183,7 +191,7 @@ export function Minimap() {
         padding: "0 var(--s-1)",
       }}>
         <span>N</span>
-        <span class="num">0,0</span>
+        <span class="num" ref={coordRef}>—, —</span>
       </div>
     </div>
   );

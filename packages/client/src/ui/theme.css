@@ -754,6 +754,25 @@
 #ui .toast--error   { border-left-color: var(--rot); }
 #ui .toast--info    { border-left-color: var(--aether-dim); }
 
+/* ── ACTION FRAME — bottom HUD dock (T-314) ───────────────────
+   Wraps CastBar/StatusBars/Hotbar/SkillBar into ONE bottom-anchored
+   panel (`.hud-chrome` supplies the pressed-metal background) instead of
+   four independently-positioned floating strips, so the bottom of the
+   screen reads as a deliberate ARPG frame. Anchored via `bottom` only (no
+   `top`/fixed height) so it grows upward when the CastBar appears. */
+
+#ui .action-frame {
+  position: fixed;
+  bottom: var(--s-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-hud);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+}
+
 /* ── HOTBAR ─────────────────────────────────────────────────── */
 
 #ui .hotbar {
