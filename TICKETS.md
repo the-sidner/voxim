@@ -904,27 +904,56 @@ LLM-assisted seeding (SPEC L22) is the intended accelerant. Without this arc, T-
 engine rendering a sparse world — the capability gap is closed but the look is not yet authored.
 
 ### T-313 · Deferred render-capability extensions — the engine bits T-311 does not add
-Effort: L   Status: planned
+Effort: L   Status: done   Commit: e7c13dd
 
 T-311 closes the *data-model* gap, but a few genuine render capabilities the references imply are out of
 its scope. Ranked by **visible-jump-per-effort** (see `VISUAL_DATAMODEL_PLAN.md §boundary` for the table):
-1. **Arcing sun + raking shadows** (HIGH jump / MED effort) — long dawn/dusk shadows are the golden-hour
-   mood of the references; needs the server sun-direction T-311 P5 already adds + recomputing the
-   shadow-cam basis as `SUN_DIR` moves each frame. **Fold into / extend P5.** Best ratio.
-2. **In-world water verification** (LOW effort) — the stylized water shader (T-310 E) type-checks but was
-   never seen in play (no reachable water cell). Once T-311 P3 `WaterGrid` puts water in the world, confirm
-   + tune. Near-free.
-3. **Shadow cascades / full-frame god-rays** (HIGH jump / HIGH effort) — the ±60u shadow frustum makes
-   god-rays + crisp shadows near-field only; the ARPG camera sees well past it. A 2–3 split cascade is the
-   general render upgrade — after the cheap wins.
-4. **Water planar-reflection probe** (MED-localized jump / HIGH + fragile effort) — the canal-city mirror;
-   a second scene pass ordered against outline + bloom. P5 ships a cheap screen-space streak; this is the
-   quality follow-on, only where water/wet is on-screen.
+1. **Arcing sun + raking shadows** (HIGH jump / MED effort) — **DONE, landed with T-311 P5a** (not a
+   separate item after all — folded into P5 as planned): `sun_arc.ts` + per-frame shadow-cam basis
+   recompute from the live `sunArc()` direction; `SUN_DIR` is deleted everywhere.
+2. **In-world water verification** (LOW effort) — **DONE, landed during the P5 live-verify**: a water
+   blowout was found and fixed (commit `243ce9c`); `WaterStyleDef` + `WaterGrid.surfaceLevel` water is
+   confirmed live in-world (P5b).
+3. **Shadow cascades / full-frame god-rays** (HIGH jump / HIGH effort) — **DONE (this commit, `e7c13dd`)**.
+   A second, wider (±200u), coarser (1024) `farCascade` DirectionalLight (intensity 0 — shadow-only,
+   rides Three's own castShadow-correct shadow-map machinery for free) extends raking shadows past the
+   near sun's ±60u frustum; `shadow_cascade_pass.ts` reads its shadow map directly and composites the
+   darkening itself in a bespoke fullscreen-quad pass (NOT a material-shader patch — three's own CSM addon
+   globally rewrites `ShaderChunk.lights_fragment_begin`, which would collide with this pipeline's existing
+   onBeforeCompile chains; rejected as a workable-but-wrong-license-for-this-codebase approach). Slotted
+   before BloomPass/GodRayPass so canopy-gap light shafts shape correctly past the near cascade's reach too
+   — the god-ray "widen once the cascade exists" follow-up is folded in for free (no march-distance change
+   needed; `god_ray_pass.ts`'s header updated). 2 cascades total (near unchanged + 1 new far), not 3 — kept
+   to the cheaper, lower-risk end of "2–3 split" given the per-fragment shadow-sample cost every additional
+   cascade light adds to Pass 1 (documented in `environment_lighting.ts`/`shadow_cascade_pass.ts`). Full
+   suite green, `deno check` clean; live perf delta (HUD GL timing) and visual verification are a
+   postMergeChecklist item — this landed on a lane with no access to the live stack.
+4. **Water planar-reflection probe** (MED-localized jump / HIGH + fragile effort) — **explicitly deferred,
+   spun into T-330** (not built): the canal-city mirror needs a second scene pass ordered against outline +
+   bloom, is fragile (RTT ordering against a hand-rolled pipeline with no EffectComposer), and only pays
+   off where water/wet is on-screen. P5b already ships a cheap screen-space sky-streak reflection as the
+   pragmatic v1; T-330 tracks the real planar probe as a named follow-on rather than reopening this ticket.
 
 **NOT pursued (idiom / doctrine):** depth-of-field / painterly softening (fights the crisp Sobel ink — an
 anti-goal for the kept comic idiom); normal/roughness PBR maps (against the `flatShading` atomic-voxel
 doctrine). **Already landed (T-310 follow-ups, not deferred):** foliage wind sway (`canopy_fade` wind
 uniforms), richer material weathering textures, hit-impact flash, camera-occlusion fade.
+
+### T-330 · Water planar-reflection probe — the canal-city mirror
+Effort: M   Status: todo
+
+Split off T-313 item 4 (deliberately deferred, not built there — see that ticket's closing note). P5b
+(`water_renderer.ts`) already ships a cheap screen-space sky-tinted `reflect()` streak keyed off the
+existing `wet_specular` `aWetness` input — good enough for ambient wet-surface sheen, but not a true mirror.
+This ticket is the quality follow-on: a real planar-reflection render — a second scene pass from a
+mirrored camera into its own render target, ordered correctly against the outline (Sobel/EdgePass) and
+bloom passes in the existing hand-rolled (no-EffectComposer) pipeline, sampled by the water shader instead
+of (or blended with) the sky-streak term. Fragile by nature (a second full scene traversal, camera-plane
+mirroring, and RTT-ordering against a pipeline that already has 3+ interleaved passes — see
+`shadow_cascade_pass.ts`'s header for how T-313 reasoned about a similar RTT-ordering problem) and only
+pays off where water is actually on-screen, so it's explicitly NOT a blocker for anything else. Done when:
+a water surface visibly mirrors nearby geometry (not just sky), the pass is skipped/cheap when no water is
+on-screen, and the near-field god-ray/bloom/EdgePass ordering established by T-313 is undisturbed.
 
 ### T-314 · ARPG presentation & composition — the non-render gaps that still gate "looks finished"
 Effort: L   Status: planned
