@@ -18,6 +18,13 @@
  * else (the wire carries WorldClock data; the client derives the direction).
  * `AtmosphereDef.sunArc` supplies the path params; day/night COLOUR stays on
  * `Palette.phases` (unchanged) — this phase only replaces the direction axis.
+ *
+ * T-313: also owns `farCascade`, a second DirectionalLight riding the same
+ * live sun direction — a wider (±200u), coarser (1024) shadow-only cascade
+ * (intensity 0, never lights anything) that extends raking shadows past the
+ * near sun's tight ±60u frustum. `shadow_cascade_pass.ts` reads its shadow
+ * map directly and does the compositing itself; see that file's header for
+ * why (keeps the near cascade's material-shading path untouched).
  */
 import * as THREE from "three";
 import type { Palette, AtmosphereDef } from "@voxim/content";
@@ -104,6 +111,34 @@ const COOL_RIM_TINT = new THREE.Color(0x8aa6d8);
  */
 const FOG_DENSITY_K = 2.1;
 
+/**
+ * T-313 far shadow cascade — see the class doc + shadow_cascade_pass.ts for
+ * the full design. World-unit / texel constants for the second, wider,
+ * coarser DirectionalLight that extends raking shadows past the near sun's
+ * ±60u frustum.
+ */
+// Half-width of the far cascade's ortho frustum (world units) — covers the
+// palette's fogFar band (105-170) with margin; fog hides most of what's
+// beyond it anyway, so there's little payoff reaching further.
+const FAR_CASCADE_HALF_EXTENT = 200;
+// Coarser than the near cascade's 2048 — expected/correct for a cascade's
+// far split (texel density ~0.39 world units/texel vs the near cascade's
+// ~0.06); this is what "cascade" means, not a bug.
+const FAR_CASCADE_MAP_SIZE = 1024;
+// Same standoff as the near sun (world units from the camera target, along
+// the live sun direction) — matches NEAR_SHADOW_STANDOFF for symmetry.
+const FAR_CASCADE_STANDOFF = 100;
+// Generous depth range: the near cascade's far=400 works for its ±60
+// footprint, but this cascade's footprint is 4× wider, and at low sun
+// altitude (raking dawn/dusk) the light-space depth needed to contain a
+// wide XZ area grows with it — 900 keeps margin at grazing angles.
+const FAR_CASCADE_FAR_PLANE = 900;
+
+// Near sun's standoff (world units from the camera target) — named so
+// snapShadowFollow's two call sites read the same either way; the near
+// cascade's frustum/map/bias stay exactly as they were (unchanged).
+const NEAR_SHADOW_STANDOFF = 100;
+
 export class EnvironmentLighting {
   /** Directional sun — its target tracks the camera center each frame. */
   private readonly sun: THREE.DirectionalLight;
@@ -129,6 +164,10 @@ export class EnvironmentLighting {
   private readonly hemi: THREE.HemisphereLight;
   /** Cool, non-shadowing rim/back fill opposite the sun (silhouette separation). */
   private readonly rim: THREE.DirectionalLight;
+  /** T-313: the far shadow cascade — intensity 0 (shadow test only, never
+   *  lights anything directly); follows the same live sun direction as
+   *  `sun`, snapped independently (its own, coarser texel grid). */
+  private readonly farCascade: THREE.DirectionalLight;
 
   /** Phase table — empty until applyPalette() populates it from the palette. */
   private phaseLights: Record<string, DayPhaseLight> = {};
@@ -170,6 +209,29 @@ export class EnvironmentLighting {
     // Seed the shadow-camera basis from the same initial direction; update()
     // recomputes it every frame from here on (see _shadowCamRight's doc).
     this.recomputeShadowCamBasis();
+
+    // ---- T-313 far shadow cascade ----
+    // Intensity 0: it never lights anything (see the class doc +
+    // shadow_cascade_pass.ts) — it exists purely so Three's own shadow-map
+    // machinery renders its depth map for us each frame, respecting every
+    // mesh's existing castShadow/receiveShadow flags for free.
+    this.farCascade = new THREE.DirectionalLight(0xffffff, 0);
+    this.farCascade.position.copy(this._sunDir).multiplyScalar(FAR_CASCADE_STANDOFF);
+    this.farCascade.castShadow = true;
+    this.farCascade.shadow.mapSize.set(FAR_CASCADE_MAP_SIZE, FAR_CASCADE_MAP_SIZE);
+    this.farCascade.shadow.camera.near   = 0.5;
+    this.farCascade.shadow.camera.far    = FAR_CASCADE_FAR_PLANE;
+    this.farCascade.shadow.camera.left   = -FAR_CASCADE_HALF_EXTENT;
+    this.farCascade.shadow.camera.right  =  FAR_CASCADE_HALF_EXTENT;
+    this.farCascade.shadow.camera.top    =  FAR_CASCADE_HALF_EXTENT;
+    this.farCascade.shadow.camera.bottom = -FAR_CASCADE_HALF_EXTENT;
+    // Bias only — shadow_cascade_pass.ts does its own hard-edged (non-PCF)
+    // compare with its own uFarBias uniform; Three's bias/normalBias here
+    // only matter if something else ever samples this light's shadow
+    // through the normal material path (it doesn't today).
+    this.farCascade.shadow.bias = -0.0015;
+    this.scene.add(this.farCascade);
+    this.scene.add(this.farCascade.target);
 
     // Ambient fill — brightened so shadowed cliff walls are readable, not black
     // voids. Colors are neutral placeholders, overwritten by applyPalette() from
@@ -263,6 +325,30 @@ export class EnvironmentLighting {
     return target.copy(this.lightCur.sky);
   }
 
+  /** T-313: the far cascade's shadow map — a packed-depth RGBA texture
+   *  (Three's standard `packDepthToRGBA`, same as the near sun's), null
+   *  until the light's first shadow-map render (Three creates shadow maps
+   *  lazily on first use). `shadow_cascade_pass.ts` unpacks + samples it
+   *  directly, bypassing the material shader entirely. */
+  getFarShadowMap(): THREE.Texture | null {
+    return this.farCascade.shadow.map?.texture ?? null;
+  }
+
+  /** T-313: the far cascade's light-space transform (bias-included, maps
+   *  world → shadow-map UV + depth in [0,1]) — Three already maintains this
+   *  every frame via its own shadow system; reused as-is. */
+  getFarShadowMatrix(target: THREE.Matrix4): THREE.Matrix4 {
+    return target.copy(this.farCascade.shadow.matrix);
+  }
+
+  /** T-313: the NEAR sun's own light-space transform — the composite pass
+   *  uses this to detect "already correctly shadowed by Three's built-in
+   *  near shadow" so the far cascade only darkens beyond that boundary (no
+   *  double-shadowing, no seam at ±60u). */
+  getNearShadowMatrix(target: THREE.Matrix4): THREE.Matrix4 {
+    return target.copy(this.sun.shadow.matrix);
+  }
+
   /**
    * Recompute the shadow-camera basis vectors from the CURRENT `_sunDir`.
    * Three.js lookAt: camLocalZ = normalize(eye - target) = sunDir.
@@ -277,10 +363,14 @@ export class EnvironmentLighting {
     this._shadowCamUp.crossVectors(this._sunDir, this._shadowCamRight).normalize();
   }
 
-  /** Toggle sun shadow casting (debug). Returns the new state. */
+  /** Toggle sun shadow casting (debug) — flips both the near sun and the
+   *  T-313 far cascade together so the diagnostic stays coherent. Returns
+   *  the new state. */
   toggleShadows(): boolean {
-    this.sun.castShadow = !this.sun.castShadow;
-    return this.sun.castShadow;
+    const enabled = !this.sun.castShadow;
+    this.sun.castShadow = enabled;
+    this.farCascade.castShadow = enabled;
+    return enabled;
   }
 
   /**
@@ -334,44 +424,57 @@ export class EnvironmentLighting {
     this.rim.position.copy(cameraTarget).addScaledVector(RIM_DIR, 100);
     this.rim.target.position.copy(cameraTarget);
 
-    // Keep sun shadow frustum centered on the player area.
-    // Both position and target must move together — only the direction between
-    // them (_sunDir) defines where shadows fall, not the absolute world position.
-    this.sun.target.position.copy(cameraTarget);
-    this.sun.position.copy(cameraTarget).addScaledVector(this._sunDir, 100);
-
-    // Snap shadow frustum to its own texel grid (in shadow-camera UV space) to
-    // eliminate shadow swimming.  Snapping in world X/Z leaves residual drift
-    // along the axes not aligned with the shadow camera — visible on tall objects
-    // like trees.  Projecting onto the shadow camera's right/up vectors and
-    // rounding there keeps the shadow projection pixel-stable in all directions.
-    {
-      const sc = this.sun.shadow.camera;
-      const texelX = (sc.right - sc.left) / this.sun.shadow.mapSize.x;
-      const texelY = (sc.top   - sc.bottom) / this.sun.shadow.mapSize.y;
-
-      const t   = this.sun.target.position;
-      const dotX = t.dot(this._shadowCamRight);
-      const dotY = t.dot(this._shadowCamUp);
-
-      const snapX = Math.round(dotX / texelX) * texelX - dotX;
-      const snapY = Math.round(dotY / texelY) * texelY - dotY;
-
-      const cx = this._shadowCamRight.x * snapX + this._shadowCamUp.x * snapY;
-      const cy = this._shadowCamRight.y * snapX + this._shadowCamUp.y * snapY;
-      const cz = this._shadowCamRight.z * snapX + this._shadowCamUp.z * snapY;
-
-      this.sun.target.position.x += cx;
-      this.sun.target.position.y += cy;
-      this.sun.target.position.z += cz;
-      this.sun.position.x += cx;
-      this.sun.position.y += cy;
-      this.sun.position.z += cz;
-    }
+    // Keep both shadow-casting lights' frustums centered on the player area,
+    // each snapped to its own texel grid (in ITS shadow camera's UV space)
+    // to eliminate shadow swimming — see snapShadowFollow's doc. The near
+    // sun's math is byte-identical to before this method existed (T-313
+    // only added the second call, for the far cascade).
+    this.snapShadowFollow(this.sun, cameraTarget, NEAR_SHADOW_STANDOFF);
+    this.snapShadowFollow(this.farCascade, cameraTarget, FAR_CASCADE_STANDOFF);
 
     // Keep the sun sphere fixed in the sky relative to the camera
     this.sunMesh.position
       .copy(cameraPos)
       .addScaledVector(this._sunDir, 350);
+  }
+
+  /**
+   * Position + texel-snap one shadow-casting light's camera so it follows
+   * `target` at `standoff` world units along the live `_sunDir`. Snapping in
+   * world X/Z leaves residual drift along the axes not aligned with the
+   * shadow camera — visible on tall objects like trees. Projecting onto the
+   * shadow camera's right/up vectors (shared by every cascade — they all
+   * ride the same sun direction) and rounding there keeps the shadow
+   * projection pixel-stable in all directions. Shared by the near sun and
+   * the T-313 far cascade — same math, different frustum/map size/standoff.
+   */
+  private snapShadowFollow(light: THREE.DirectionalLight, target: THREE.Vector3, standoff: number): void {
+    // Both position and target must move together — only the direction
+    // between them (_sunDir) defines where shadows fall, not the absolute
+    // world position.
+    light.target.position.copy(target);
+    light.position.copy(target).addScaledVector(this._sunDir, standoff);
+
+    const sc = light.shadow.camera;
+    const texelX = (sc.right - sc.left) / light.shadow.mapSize.x;
+    const texelY = (sc.top   - sc.bottom) / light.shadow.mapSize.y;
+
+    const t = light.target.position;
+    const dotX = t.dot(this._shadowCamRight);
+    const dotY = t.dot(this._shadowCamUp);
+
+    const snapX = Math.round(dotX / texelX) * texelX - dotX;
+    const snapY = Math.round(dotY / texelY) * texelY - dotY;
+
+    const cx = this._shadowCamRight.x * snapX + this._shadowCamUp.x * snapY;
+    const cy = this._shadowCamRight.y * snapX + this._shadowCamUp.y * snapY;
+    const cz = this._shadowCamRight.z * snapX + this._shadowCamUp.z * snapY;
+
+    light.target.position.x += cx;
+    light.target.position.y += cy;
+    light.target.position.z += cz;
+    light.position.x += cx;
+    light.position.y += cy;
+    light.position.z += cz;
   }
 }

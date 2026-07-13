@@ -3,7 +3,9 @@
  * Voxim renderer — Three.js scene management.
  *
  * Visual grammar:
- *   - Post-process pipeline: scene → pixelTarget → depth-blit → heightTarget → EdgePass (Sobel + AO + sRGB) → canvas.
+ *   - Post-process pipeline: scene → pixelTarget → shadow-cascade darken
+ *     (T-313, far-field raking shadows) → bloom + god-rays → depth-blit →
+ *     heightTarget → EdgePass (Sobel + AO + sRGB) → canvas.
  *   - Flat shading: all geometry uses MeshPhongMaterial with flatShading:true.
  *   - Strong directional sun with hard shadows; dim hemisphere ambient.
  *
@@ -103,6 +105,7 @@ import { LightManager } from "./light_manager.ts";
 import { EdgePass, PRE_BOOTSTRAP_GRADE } from "./edge_pass.ts";
 import { BloomPass } from "./bloom_pass.ts";
 import { GodRayPass } from "./god_ray_pass.ts";
+import { ShadowCascadePass } from "./shadow_cascade_pass.ts";
 import { CameraRig } from "./camera_rig.ts";
 import type { FogOfWar } from "../state/fog_of_war.ts";
 import { FOG_GRID_SIZE, FOG_CELL_SIZE } from "@voxim/protocol";
@@ -303,6 +306,11 @@ export class VoximRenderer {
 
   /** Full-res render target — 3D scene is drawn here before post-processing. */
   private readonly pixelTarget: THREE.WebGLRenderTarget;
+  /** `pixelTarget`'s depth attachment — kept as its own field (Three types
+   *  `WebGLRenderTarget.depthTexture` as nullable) since T-313's cascade
+   *  darken pass reads it directly in render(), same object as
+   *  `pixelTarget.depthTexture`, just non-null at the type level. */
+  private readonly depthTex: THREE.DepthTexture;
   /** Height target — world-Y encoded as grayscale, fed into EdgePass for height shading. */
   private readonly heightTarget: THREE.WebGLRenderTarget;
   /** Fullscreen scene + material for the depth → world-Y blit pass. */
@@ -314,10 +322,16 @@ export class VoximRenderer {
   private readonly bloom: BloomPass;
   /** Volumetric light shafts — radial scatter from the sun, into the EdgePass. */
   private readonly godRay: GodRayPass;
+  /** T-313: far shadow-cascade darken — extends raking shadows past the near
+   *  sun's ±60u frustum; runs between Pass 1 and bloom so bloom/god-ray both
+   *  see the far-shadowed HDR colour too. */
+  private readonly shadowCascade: ShadowCascadePass;
   private readonly _sunWorld = new THREE.Vector3();
   private readonly _sunUV = new THREE.Vector2();
   private readonly _sunDirScratch = new THREE.Vector3();
   private readonly _skyColorScratch = new THREE.Color();
+  private readonly _nearShadowMatrixScratch = new THREE.Matrix4();
+  private readonly _farShadowMatrixScratch = new THREE.Matrix4();
   /** 3rd-person camera vertical sample range above/below player Y for height
    *  shading — content-driven via GradeDef.heightShadeBelow/Above (T-315 D2);
    *  these hold the pre-bootstrap fallback until a grade arrives. */
@@ -433,6 +447,7 @@ export class VoximRenderer {
       stencilBuffer: false,
     });
     this.pixelTarget.depthTexture = depthTex;
+    this.depthTex = depthTex;
 
     // ---- height target + depth-blit pass ----
     this.heightTarget = new THREE.WebGLRenderTarget(pw, ph, {
@@ -472,6 +487,12 @@ export class VoximRenderer {
       depthWrite: false,
     });
 
+    // ---- T-313 far shadow-cascade darken (before EdgePass — see that
+    // pass's header for why: bloom/god-ray must also see the far-shadowed
+    // colour, so this sits between Pass 1 and bloom, not folded into
+    // EdgePass at the end) ----
+    this.shadowCascade = new ShadowCascadePass(pw, ph);
+
     // ---- edge pass + fullscreen blit scene ----
     // EdgePass also applies fog-of-war modulation (T-157): it samples the
     // depth texture to reconstruct world XZ, looks up the fog cell, and
@@ -481,7 +502,10 @@ export class VoximRenderer {
     const fogPlaceholder = new THREE.DataTexture(new Uint8Array([255]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
     fogPlaceholder.needsUpdate = true;
     this.edgePass = new EdgePass(
-      this.pixelTarget.texture,
+      // T-313: EdgePass's "scene colour" input is the shadow-cascade pass's
+      // OUTPUT, not the raw Pass-1 pixelTarget — pixelTarget.depthTexture
+      // (below) is still read directly, unaffected (only colour is darkened).
+      this.shadowCascade.texture,
       this.heightTarget.texture,
       this.hoverMaskTarget.texture,
       depthTex,
@@ -1444,9 +1468,27 @@ export class VoximRenderer {
       this.renderer.setRenderTarget(this.pixelTarget);
       this.renderer.render(this.scene, this.camera);
 
+      // T-313: extend raking shadows past the near sun's ±60u frustum via a
+      // second, wider, coarser cascade — darkens the HDR colour BEFORE
+      // bloom/god-ray read it, so canopy-gap light shafts shape correctly
+      // out there too (not just inside the near cascade's reach).
+      {
+        const farMap = this.envLighting.getFarShadowMap();
+        this.shadowCascade.render(
+          this.renderer,
+          this.pixelTarget.texture,
+          this.depthTex,
+          this.camera.projectionMatrixInverse,
+          this.camera.matrixWorld,
+          this.envLighting.getNearShadowMatrix(this._nearShadowMatrixScratch),
+          farMap,
+          farMap ? this.envLighting.getFarShadowMatrix(this._farShadowMatrixScratch) : null,
+        );
+      }
+
       // Bloom: bright-pass + blur the HDR scene colour (torch/ember/sun glow).
       // The EdgePass adds the result back before its ACES tonemap.
-      this.bloom.render(this.renderer, this.pixelTarget.texture);
+      this.bloom.render(this.renderer, this.shadowCascade.texture);
       this.edgePass.setBloomTexture(this.bloom.texture);
 
       // God rays: project the sun to screen UV and radial-scatter the bloom
@@ -1561,6 +1603,7 @@ export class VoximRenderer {
     this.pixelTarget.setSize(npw, nph);
     this.heightTarget.setSize(npw, nph);
     this.hoverMaskTarget.setSize(npw, nph);
+    this.shadowCascade.setSize(npw, nph);
     this.edgePass.setSize(npw, nph);
     this.bloom.setSize(npw, nph);
     this.godRay.setSize(npw, nph);
@@ -1576,6 +1619,7 @@ export class VoximRenderer {
     this.edgePass.dispose();
     this.bloom.dispose();
     this.godRay.dispose();
+    this.shadowCascade.dispose();
     this.pixelTarget.dispose();
     this.heightTarget.dispose();
     this.hoverMaskTarget.dispose();

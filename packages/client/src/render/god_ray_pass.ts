@@ -8,16 +8,24 @@
  * the sun, and torches smear into directional shafts. Half-res; the EdgePass adds
  * the result into the HDR scene before tone-mapping so the shafts roll off.
  *
- * NEAR-FIELD ONLY (T-311 P5a, AtmosphereDef.godRay): this is a screen-space
- * march over the bloom bright-target, not a shadow-map volumetric sample —
- * it has no notion of world-space range, only a UV-space march distance
- * (`uDensity`). In practice that march stays inside the sun shadow camera's
- * ±60u frustum at the current camera framing (the shadow map is the only
- * thing that gives canopy-gap shafts their shape, via the bloom bright-pass
- * never lighting up under solid canopy). Widening/cascading the shadow
- * frustum for a true long-range shaft is explicitly out of scope this phase
- * — `AtmosphereDef.godRay.nearFieldRange` documents this ceiling; don't
- * raise it without re-verifying against the frustum via testplay.
+ * SCREEN-SPACE, NOT WORLD-SPACE (T-311 P5a, AtmosphereDef.godRay): this is a
+ * screen-space march over the bloom bright-target, not a shadow-map
+ * volumetric sample — it has no notion of world-space range, only a
+ * UV-space march distance (`uDensity`). Its SHAPE (which pixels are bright
+ * enough to carve a shaft) comes entirely from the bloom bright-pass, which
+ * in turn comes from whichever shadow data has already darkened the HDR
+ * scene by the time bloom reads it.
+ *
+ * Originally (T-311 P5a) that was ONLY the sun's own ±60u near shadow
+ * frustum — canopy-gap shafts had shape inside it, and a uniform smear
+ * beyond it (no shadow data existed out there at all). T-313's
+ * `shadow_cascade_pass.ts` now darkens the HDR colour (a wider, coarser far
+ * cascade) BEFORE bloom runs, so the march's effective reach widened to that
+ * cascade's ±200u footprint for free — no change needed here.
+ * `AtmosphereDef.godRay.nearFieldRange` (`uDensity`) is still the same
+ * screen-space march-distance knob; it can be tuned further now that the
+ * underlying shape data reaches further, but do that live (testplay) —
+ * this file doesn't hardcode a "verify against the frustum" ceiling anymore.
  */
 import * as THREE from "three";
 
