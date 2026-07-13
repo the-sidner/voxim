@@ -453,7 +453,7 @@ orthogonal behaviours (crouch + strafe + swing) compose instead of needing a com
 matrix. See `swing_pose.ts` (the shared producer) and the Swing Inspector (the authoring tool).
 
 ### T-308 · Procedural pose catalogue (locomotion poses + IK + secondary motion)
-Effort: L   Status: in-progress
+Effort: L   Status: done   Commit: 6a5c072
 
 **GAIT DESIGN SETTLED (user, 2026-07-07): option (b) — LAYERED, and the locomotion itself is built
 the Overgrowth way: a few authored KEY POSES, interpolated, on layers — not baked clips.**
@@ -513,6 +513,38 @@ mechanical follow-on); target-tracking look-at (needs a look-target wire signal)
 FEEL tuning and strafe-sign LIVE verification (the sign math is convention-consistent by code review —
 see the lane report — but "feel" tuning needs testplay iteration this lane cannot do). Dual-wield deferred
 (2nd server sweep + AnimationState channel).
+
+**PARAMETRIC GAIT LANDED (lane/t308-gait, commits ab3e36f content + 6a5c072 client) — closes the
+"full parametric-gait-replaces-clips rewrite" item above, for the LOWER body.** `GaitDef`
+(`data/gaits/*.json`, `SkeletonDef.gaitId`) authors a SMALL single `forward` key-pose track (contact /
+push-off / low-pass, one foot's own phase-0..1 offset from its rest position) — `backward`/`strafe`
+are DERIVED from it (mirror fwd for backward, swap fwd onto the lateral axis for strafe), the same
+"author one source, derive the rest" doctrine `deriveTip()` uses; a gait may still author an explicit
+override track later if the derived approximation doesn't read right live. `applyGaitPose` (new
+swing_pose.ts sibling producer) is phase-driven by GROUND DISTANCE, not time — the client's
+`EntityMeshGroup.gaitDistance` accumulator advances by the entity's ACTUAL ground-plane position
+delta every frame (not intended speed), so a wall-blocked entity's feet correctly stop cycling
+instead of sliding. **The no-footslide property is proven exactly (1e-6), not just hoped for** — 6
+new tests in `swing_pose.test.ts` show a planted foot holds its WORLD position across the whole
+stance interval for forward, backward, left-strafe and right-strafe, at arbitrary phase granularity
+(the function is pure/memoryless in `phase`, so this generalizes to any real-time speed profile that
+produces those phase values). Composes through the EXISTING masked layer stack per the settled
+design: `applyGaitPose` only ever touches the leg IK chains, so the weapon-style clip's upper body
+(arms/spine/head) rides through completely untouched (also tested); it supersedes
+`applyCrouchPose`'s own foot-replant while moving, sharing the same pelvis-drop `rootOffset` so
+crouch + walk compose without either producer running first (also tested — no combinatorial clip
+matrix, no wall-clock time in the composition). Falls back to the locomotion clip's own leg track for
+skeletons with no `gaitId` (the wolf archetype). **Explicitly NOT covered by this landing** — the
+literal "Done when" bar (interpolated key poses, no slide at any speed, upper body distinct, composes
+with crouch+swing+footIK) is met, but: diagonal movement blends the three direction tracks linearly
+(the same informal idiom `applyLocomotionPose` already uses for simultaneous strafe+turn) — proven
+exact only at the three cardinal blends, not at every angle; pelvis/root vertical bob + lateral sway
+were scoped OUT (the vertical case needs the same render-time root-translation plumbing crouch uses,
+generalized beyond local-player-only — a small follow-up, not a design question); the Studio gait/pose
+authoring panel named as "if useful" was not built (unit tests substituted); and — like every other
+client-visible piece in this ticket's history — live testplay FEEL verification (does the walk actually
+read well, does the derived strafe/backward approximation look right) needs the live stack this lane
+didn't have. See the lane's closing report for the exact live-verification procedure.
 
 ### T-309 · Body attachment slots — hotbar items rendered on the body
 Effort: M   Status: blocked (see note)
