@@ -53,6 +53,20 @@ boulders, terrain features) is checked against its own scale band instead. **Org
 (vertexDisp, per-voxel warp) is orthogonal to this table** — it may vary freely per material
 (§4) without moving the silhouette outside its band.
 
+**The warp-amplitude home (T-326).** "Organic everywhere" needs exactly one place a material
+authors *how much* it warps, read by *every* voxel-baked class the same way — otherwise "organic
+everywhere" quietly becomes "organic wherever a call site happened to remember to ask." That home
+is `MaterialDef.render.relief.dispMag` (world units, `packages/content/src/types.ts`) — **not**
+`generatorPreferences` (that block is generator-facing hints — density/thickness/layerable/
+emission, §5 below — not a displacement amplitude). Terrain (`renderer.ts`), scatter
+(`scatter_renderer.ts`), static props/built structures (`entity_mesh_registry.ts` →
+`buildSubModelGeo`/`bakeSubModel`), and characters/equipment/dynamic props (`entity_mesh.ts` →
+`buildMeshesFromAtoms`) all resolve this same field for their material through the one shared
+`bakeVoxels` `mag` parameter — one authoritative home, one application point. A material that
+hasn't authored `dispMag` still warps (each call site's engine default applies, same as before
+T-326) — the field's job is making the amount *authorable and consistent*, not making warp exist
+in the first place. Do not add a second warp-amplitude field anywhere else in the schema.
+
 ---
 
 ## 3 · Signal-hue reservation
@@ -136,7 +150,9 @@ interface MaterialGeneratorPreferences {
 ```
 
 See `packages/content/src/types.ts` `MaterialDef.generatorPreferences` for the authoritative
-shape and field-level docs.
+shape and field-level docs. **Note:** this block does NOT carry the organic-warp amplitude — that
+knob is `MaterialDef.render.relief.dispMag` (§2 above), read directly by the bake pipeline itself,
+not by a generator's own hint-consulting code.
 
 ---
 
