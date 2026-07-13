@@ -111,6 +111,13 @@ export class ShadowCascadePass {
   private readonly scene: THREE.Scene;
   private readonly quad: THREE.Mesh;
   private readonly cam: THREE.OrthographicCamera;
+  /** 1×1 placeholder so tFarShadowMap always has a bound texture — render()
+   *  is called every frame from the very first one, before the far
+   *  cascade's shadow map exists yet (Three creates it lazily on first
+   *  use), and a null-valued sampler uniform at draw time is a real WebGL
+   *  problem even inside an unreached shader branch (same reasoning as
+   *  EdgePass's own tBloom/tGodRay blackTex placeholder). */
+  private readonly placeholderShadowMap: THREE.DataTexture;
 
   constructor(width: number, height: number) {
     // Full-res, colour-only (no depth attachment — callers keep reading the
@@ -123,11 +130,13 @@ export class ShadowCascadePass {
       depthBuffer: false,
       stencilBuffer: false,
     });
+    this.placeholderShadowMap = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+    this.placeholderShadowMap.needsUpdate = true;
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         tColor: { value: null },
         tDepth: { value: null },
-        tFarShadowMap: { value: null },
+        tFarShadowMap: { value: this.placeholderShadowMap },
         uProjInv: { value: new THREE.Matrix4() },
         uViewInv: { value: new THREE.Matrix4() },
         uNearShadowMatrix: { value: new THREE.Matrix4() },
@@ -185,6 +194,10 @@ export class ShadowCascadePass {
       (u.uFarShadowMatrix.value as THREE.Matrix4).copy(farShadowMatrix);
       u.uFarEnabled.value = 1.0;
     } else {
+      // Before the far cascade's first shadow-map render: keep a valid
+      // texture bound (see placeholderShadowMap's doc) even though
+      // uFarEnabled=0 means the shader branches away from sampling it.
+      u.tFarShadowMap.value = this.placeholderShadowMap;
       u.uFarEnabled.value = 0.0;
     }
 
@@ -204,5 +217,6 @@ export class ShadowCascadePass {
     this.target.dispose();
     this.mat.dispose();
     this.quad.geometry.dispose();
+    this.placeholderShadowMap.dispose();
   }
 }
