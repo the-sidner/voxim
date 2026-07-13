@@ -391,6 +391,11 @@ export class VoximGame {
     setLocalPlayerId(this.playerId!);
     this.renderer.setClientWorld(this.world);
     this.renderer.setContentCache(this.content);
+    // T-331: rebuild any chunk the renderer deferred because it baked before
+    // content was ready. A no-op here (the renderer was just constructed, so
+    // nothing could have baked yet) — matters on the tile-transition path
+    // below, where the renderer survives the reconnect.
+    this.renderer.onContentHydrated();
     // Renderer-facing weapon actions + item prefabs sourced from the
     // bootstrap-delivered ContentService (T-177 phase 3).  Items are
     // filtered to those that look like inventory items (have an
@@ -992,6 +997,12 @@ export class VoximGame {
         this.fog.applyLosConfig(this.contentService.getGameConfig().fogOfWar);
         console.log(`[Game] content service re-hydrated for new tile`);
       }
+      // T-331: the renderer survives the reconnect, so if any chunk of the
+      // new tile arrived and baked before content re-hydrated (the same
+      // ordering hazard the initial join closes structurally, but here the
+      // renderer is never null so the deferral gate is what saves it),
+      // rebuild it now.
+      this.renderer?.onContentHydrated();
       console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);
     } catch (err) {
       console.error("[Game] tile transition failed:", err);
@@ -1893,6 +1904,18 @@ export class VoximGame {
    */
   private _finishLoading(): void {
     if (this.loadingComplete) return;
+    // T-331: the terrain-chunk counter can cross TOTAL_CHUNKS while this
+    // message is still being processed DURING the bootstrap blob's async
+    // decode (a real await — gunzip — that lets the state-stream's read loop,
+    // wired before connect() even resolves, race ahead of Step 4's renderer
+    // construction). Bailing WITHOUT latching loadingComplete lets this retry
+    // — either the next incoming message re-checks the same threshold, or
+    // Step 4's own post-hydration check (line ~453) calls again once the
+    // renderer exists. Latching here with a null renderer would silently
+    // orphan every chunk currently in this.world (every updateTerrain call
+    // below no-ops via `renderer?.`) with no further retry, ever — proven
+    // live by forcing the race: the whole world rendered as empty ground.
+    if (!this.renderer) return;
     this.loadingComplete = true;  // renderer calls active from this point
 
     console.log(`[Game] all terrain received — flushing world to renderer`);

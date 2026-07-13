@@ -218,6 +218,11 @@ export class VoximRenderer {
 
   /** Per-chunk terrain: one voxel Mesh per material present in the chunk (T-283). */
   private readonly terrainMeshes  = new Map<string, THREE.Mesh[]>();
+  /** Chunk keys whose bake was deferred because content wasn't hydrated yet
+   *  (T-331) — `onContentHydrated()` rebuilds every one of these once the
+   *  bootstrap ContentService is wired, so no chunk ever bakes with an
+   *  unresolvable material and silently falls back to a flat/white voxel. */
+  private readonly pendingChunkRebuilds = new Set<string>();
   /** Gate marker pillars (T-145), keyed by entityId. World-space group containing pillar mesh. */
   private gateMarkers!: GateMarkerRenderer; // set in constructor (needs camera + renderer)
   /** Single chunk-grid owner (T-315 E2) — heightmap/materialGrid/surfaceStateGrid/
@@ -609,6 +614,24 @@ export class VoximRenderer {
 
   // ---- terrain ----
 
+  /**
+   * Rebuild every chunk whose bake was deferred by the content-hydration gate
+   * in `_rebuildChunk` (T-331). Call once the bootstrap ContentService is
+   * wired — on the initial join right after `setContentCache`, and again
+   * after a tile transition's content re-hydrates, since the renderer (and
+   * any chunks queued against it) survives the reconnect. No-op when nothing
+   * is pending, so it's safe to call unconditionally.
+   */
+  onContentHydrated(): void {
+    if (this.pendingChunkRebuilds.size === 0) return;
+    const pending = [...this.pendingChunkRebuilds];
+    this.pendingChunkRebuilds.clear();
+    for (const key of pending) {
+      const [cx, cy] = key.split(",").map(Number);
+      this._rebuildChunk(cx, cy);
+    }
+  }
+
   updateTerrain(chunk: ClientChunk): void {
     const cx = chunk.chunkX, cy = chunk.chunkY;
 
@@ -628,6 +651,18 @@ export class VoximRenderer {
     const hm = chunk?.heightmap;
     const mat = chunk?.materialGrid;
     if (!hm || !mat) return;
+
+    // T-331: never bake a chunk before the bootstrap ContentService is wired —
+    // every material lookup below would silently miss and buildVoxelMaterial
+    // would fall back to a flat, textureless voxel colour (reads as a white/
+    // grey patch with hard edges under this scene's exposure). Defer instead;
+    // onContentHydrated() rebuilds every deferred chunk once content lands.
+    // Leaves any existing mesh for this chunk in place rather than tearing it
+    // down for a rebuild we can't yet complete.
+    if (!this.content?.isHydrated()) {
+      this.pendingChunkRebuilds.add(key);
+      return;
+    }
 
     // Tear down the chunk's previous mesh set as a unit — a rebuild can add or
     // drop a material, so the whole multi-material set is replaced.
@@ -692,10 +727,21 @@ export class VoximRenderer {
       cliffInput);
     const meshes: THREE.Mesh[] = [];
     for (const [matId, atoms] of byMat) {
-      const matDef = this.content?.getMaterialSync(matId);
-      const mb = matDef?.render?.mossBlend;
+      // Content is guaranteed hydrated here (the gate above deferred otherwise) —
+      // an unresolved materialId at this point is a genuine content/data bug
+      // (a terrain cell referencing a materialId no MaterialDef registers), not
+      // a timing race. Throw rather than silently painting the chunk white/grey
+      // (T-331) — this exact silent-fallback shape has bitten three times now.
+      const matDef = this.content!.getMaterialSync(matId);
+      if (!matDef) {
+        throw new Error(
+          `[renderer] terrain chunk (${cx},${cy}) has a cell with materialId=${matId}, ` +
+          `which no MaterialDef resolves (content is hydrated — this is a real content gap, not a load race)`,
+        );
+      }
+      const mb = matDef.render?.mossBlend;
       const mossTarget = mb ? this.content?.getMaterialByName(mb.material) : undefined;
-      const mossResp = matDef && mb && mossTarget
+      const mossResp = mb && mossTarget
         ? resolveMossResponse(matDef.color, mossTarget.color, mb.tintShift)
         : undefined;
       // T-326: render.relief.dispMag is THE one warp-amplitude knob every
@@ -704,21 +750,21 @@ export class VoximRenderer {
       // Terrain alone additionally pins TERRAIN_DISP_MAG as its non-content
       // floor (T-283/T-315 no-crack guarantee: every atom of one material
       // MUST resolve the identical mag so shared cliff-edge corners weld).
-      const dispMag = matDef?.render?.relief?.dispMag ?? TERRAIN_DISP_MAG;
-      const baked = bakeVoxels(atoms, matId, dispMag, matDef?.render?.tintJitter, mossResp);
+      const dispMag = matDef.render?.relief?.dispMag ?? TERRAIN_DISP_MAG;
+      const baked = bakeVoxels(atoms, matId, dispMag, matDef.render?.tintJitter, mossResp);
       const geo = geometryFromBaked(baked);
       const m = buildVoxelMaterial(matDef, matId);
       canopyFade.register(m);
       // Wetness response (G4): dispatch the wet_specular treatment AFTER
       // canopyFade (treatments chain onBeforeCompile), only where the bake
       // actually emitted the aWetness attribute.
-      const wet = matDef?.render?.wetness;
+      const wet = matDef.render?.wetness;
       if (wet && baked.wetness) {
         applySurfaceTreatment("wet_specular", m, { gloss: wet.gloss, darken: wet.darken });
       }
       // Cheap wetness-weighted sky reflection (T-311 P5b): same aWetness
       // input, a separate consumer (render.reflect, reserved since G4).
-      const reflect = matDef?.render?.reflect;
+      const reflect = matDef.render?.reflect;
       if (reflect && baked.wetness) {
         applySurfaceTreatment("wet_reflect", m, { strength: reflect.strength, tint: reflect.tint });
       }
@@ -794,6 +840,11 @@ export class VoximRenderer {
       const [cx, cy] = key.split(",").map(Number);
       this.removeTerrain(cx, cy);
     }
+    // Stale coordinates from the source tile (T-331) — the destination tile's
+    // state messages repopulate this.world from scratch, so any deferred
+    // rebuild queued against the old world would either no-op (chunk not
+    // loaded yet) or redo work a real spawn already triggered.
+    this.pendingChunkRebuilds.clear();
     this.attachedFog?.reset();
   }
 

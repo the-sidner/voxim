@@ -30,6 +30,14 @@ export class ContentCache {
     this.cliffProfileIndex = null; // a fresh blob may carry a different profile roster
   }
 
+  /** True once a bootstrap ContentService is wired — the gate every bake path
+   *  (terrain, T-331) must check before resolving content ids. False in the
+   *  brief window before Game.start wires it, or between clearing and
+   *  re-wiring across a tile transition. */
+  isHydrated(): boolean {
+    return this.bootstrapService !== null;
+  }
+
   /** Returns the model definition. */
   getModel(modelId: string): Promise<ModelDefinition | null> {
     return Promise.resolve(this.bootstrapService?.models.get(modelId) ?? null);
