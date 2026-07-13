@@ -11,18 +11,21 @@
  */
 import { assert, assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId, Registry } from "@voxim/engine";
-import { StaticContentStore } from "@voxim/content";
+import { StaticContentStore, JsonSource } from "@voxim/content";
 import type { NpcTemplate, DissolveProfileDef } from "@voxim/content";
 import { Health } from "../components/game.ts";
 import { NpcTag } from "../components/npcs.ts";
 import { Resource } from "../components/resource.ts";
+import { Bone } from "../components/bone.ts";
 import { DeathSystem } from "../systems/death.ts";
 import type { DeathHook } from "../systems/death.ts";
 import { createShedDissolveHook } from "./shed_dissolve.ts";
+import { spawnPrefab, destroyCarriedItemEntities } from "../spawner.ts";
 import { ResourceSystem } from "../systems/resource.ts";
 import { newModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { newResourceEffectRegistry } from "../resources/effect.ts";
 import { newResourceModifierRegistry } from "../resources/modifier.ts";
+import { equipmentStatModifier } from "../resources/modifiers/equipment_stat.ts";
 import { destroySelfEffect } from "../resources/effects/destroy_self.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 
@@ -205,4 +208,63 @@ Deno.test("dissolve_timer: cross@0 -> destroy_self removes the lingering corpse 
   assert(world.isAlive(id), "still lingering one tick before the terminal cross");
   tick(); // 1 -> 0: crosses below 0, destroy_self fires
   assertEquals(world.isAlive(id), false, "corpse removed exactly once the timer finishes");
+});
+
+// ---- T-219 regression: destroy_self must not orphan a dissolving skeletal
+// corpse's bone-entity subtree ------------------------------------------------
+//
+// A real skeletal NPC (drowner, biped_skeletal, 17 bones + dissolveProfileId
+// "drowner_rot") whose death lingers via shed_dissolve: DeathSystem skips its
+// own destroySubtree for the linger vote, and dissolve_timer's terminal
+// cross@0 -> destroy_self is the ONLY remaining teardown. Before this fix,
+// destroy_self called a bare world.destroy() on just the corpse root, so
+// every one of its 17 bone entities (parented onto it since spawn) survived
+// forever, orphaned — the exact leak class this arc's own destroy ->
+// destroySubtree conversions (death.ts, server.ts, poi.ts) were meant to
+// close everywhere, minus this one path.
+Deno.test("T-219: destroy_self removes a dissolved skeletal corpse's ENTIRE bone-entity subtree, not just the root", async () => {
+  const content = await JsonSource.load();
+
+  const world = new World();
+  const drowner = spawnPrefab(world, content, "drowner", { x: 0, y: 0, z: 0 });
+  const boneEntities = world.descendants(drowner).filter((d) => world.has(d, Bone));
+  assert(boneEntities.length > 0, "drowner (biped_skeletal) spawned a real bone-entity subtree");
+  for (const b of boneEntities) assert(world.isAlive(b));
+
+  const hooks = new Registry<DeathHook>();
+  hooks.register({
+    id: "equip_cleanup",
+    onDeath: (ctx) => destroyCarriedItemEntities(ctx.world, ctx.entityId),
+  });
+  hooks.register(createShedDissolveHook(content));
+  const resourceEffects = newResourceEffectRegistry();
+  resourceEffects.register(destroySelfEffect);
+  const resourceModifiers = newResourceModifierRegistry();
+  resourceModifiers.register(equipmentStatModifier);
+  const death = new DeathSystem(hooks);
+  const resources = new ResourceSystem(
+    content, resourceEffects, resourceModifiers, death, newModifierSourceRegistry(),
+  );
+
+  world.write(drowner, Health, { current: 0, max: content.npcTemplates.get("drowner")!.maxHealth });
+
+  function tick(): void {
+    resources.run(world, new EventBus(), DT);
+    death.run(world, new EventBus(), DT);
+    world.applyChangeset();
+  }
+
+  tick(); // death sweep fires, shed_dissolve seeds dissolve_timer, votes linger
+  assert(world.isAlive(drowner), "corpse lingers past DeathSystem");
+  const durationTicks = world.get(drowner, Resource)!.values.dissolve_timer.max;
+  assert(durationTicks > 0);
+  for (const b of boneEntities) assert(world.isAlive(b), "bones survive while the corpse is still dissolving");
+
+  // Run past the dissolve timer's terminal cross@0.
+  for (let i = 0; i < durationTicks + 2; i++) tick();
+
+  assert(!world.isAlive(drowner), "corpse fully dissolved");
+  for (const b of boneEntities) {
+    assert(!world.isAlive(b), `bone entity ${b} leaked past its corpse's dissolve — destroy_self must destroySubtree`);
+  }
 });
