@@ -7,6 +7,7 @@
 import type { BinaryComponentDelta, BinaryEntitySpawn, WorldSnapshot } from "@voxim/protocol";
 import { ComponentType, COMPONENT_TYPE_TO_NAME, CODEC_BY_WIREID } from "@voxim/protocol";
 import { CHUNK_SIZE } from "@voxim/world";
+import type { ParentData } from "@voxim/engine";
 // Only the terrain-grid codecs are referenced directly (their decode has chunk-
 // binding side effects); every other component decodes through CODEC_BY_WIREID.
 import { heightmapCodec, openMaskCodec, kindGridCodec, materialGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec, cliffGridCodec } from "@voxim/codecs";
@@ -25,6 +26,7 @@ import type {
   JobBoardData,
   ContainerData,
   HeritageData,
+  BoneData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
@@ -80,6 +82,17 @@ export interface EntityState {
   worldClock?: WorldClockState;
   gateLink?: GateLinkData;
   name?: NameData;
+  /**
+   * Scene-graph parent (T-219/T-220) — the engine's own Parent component,
+   * replicated so bone entities and scene-graph-parented equipment resolve
+   * correctly on the client's ClientWorld. No renderer consumes this yet
+   * (entity_mesh.ts's boneGroups Map still drives skeleton rendering
+   * directly from content SkeletonDef data — that migration is T-223); this
+   * just closes the decode-side gap so the data isn't silently dropped.
+   */
+  parent?: ParentData;
+  /** One entity per skeleton bone (T-219) — boneId only, see BoneData. */
+  bone?: BoneData;
   /** Raw bytes for components the client doesn't decode eagerly, keyed by component name. */
   raw: Map<string, Uint8Array>;
   /** Per-component version counters (component type ID → version). Stale deltas are discarded. */

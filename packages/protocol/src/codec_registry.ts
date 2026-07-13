@@ -13,6 +13,7 @@
  * just runs the binding around the same decode.
  */
 import { ComponentType } from "./component_types.ts";
+import { Parent } from "@voxim/engine";
 import {
   positionCodec, velocityCodec, facingCodec, healthCodec,
   resourceCodec, actionCooldownsCodec, activeActionsCodec,
@@ -23,7 +24,7 @@ import {
   durabilityCodec, craftingQueueCodec, itemDataCodec,
   workstationBufferCodec, workstationTagCodec, traderInventoryCodec, jobBoardCodec,
   statsCodec, provenanceCodec, worldClockCodec, gateLinkCodec, nameCodec,
-  containerCodec, poiInteractableCodec, heritageCodec,
+  containerCodec, poiInteractableCodec, heritageCodec, boneCodec,
 } from "@voxim/codecs";
 
 /** The only capability the decode loop needs — narrower than Serialiser, so each
@@ -76,4 +77,14 @@ export const CODEC_BY_WIREID: ReadonlyMap<number, WireDecoder> = new Map<number,
   // Heritage was networked (wireId 16) since T-079/T-270 but never reached
   // this table, so it silently decoded nowhere on the client.
   [ComponentType.heritage, heritageCodec],
+  // T-215/T-219: Parent (engine-owned scene-graph link, wireId 49) was
+  // registered in tile-server's NETWORKED_DEFS since T-215 but never reached
+  // this table either — same silent-drop shape as heritage above. T-219 is
+  // the first ticket that populates it at real scale (bone entities +
+  // scene-graph-parented equipment), so this closes the gap before that
+  // traffic starts.
+  [ComponentType.parent, Parent.codec],
+  // T-219: Bone — one entity per skeleton bone, boneId only (restPose/
+  // parentBoneId are content data; transforms are never wired at all).
+  [ComponentType.bone, boneCodec],
 ]);

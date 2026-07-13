@@ -6,6 +6,8 @@
  * To retire a component, leave its slot reserved but remove it from the enum.
  */
 
+import { SCENE_PARENT_WIRE_ID } from "@voxim/engine";
+
 export const ComponentType = {
   heightmap:          0,
   materialGrid:       1,
@@ -70,9 +72,14 @@ export const ComponentType = {
   poiInteractable:    57,  // T-212 v2: `action`/`puzzle` POI world-prop marker — client's hover/click
                            //   detects it the same way it detects workstationBuffer/container/traderInventory
   cliffGrid:          58,  // T-311 P6: per-cell profileId/erosion/tier/edge for the terraced-cliff voxeliser
+  bone:               59,  // T-219: one entity per skeleton bone; boneId only — restPose/parentBoneId
+                           //   are content data (SkeletonDef.bones), motion is derived client-side, never wired
   // 49 (parent) — defined in @voxim/engine/src/scene.ts; engine owns the
-  //    scene-graph primitive (co-equal with World), so its wire id lives
-  //    there. Reserved here so the numbering map stays visible. Never reuse.
+  //    scene-graph primitive (co-equal with World), so the numeric constant
+  //    lives there (SCENE_PARENT_WIRE_ID). Mirrored into this enum so the
+  //    client decode registry (codec_registry.ts) and COMPONENT_TYPE_TO_NAME
+  //    can resolve it like any other component. Never reuse.
+  parent: SCENE_PARENT_WIRE_ID,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

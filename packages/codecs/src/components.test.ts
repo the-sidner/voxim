@@ -6,7 +6,7 @@
  * "extended" one.
  */
 import { assertEquals } from "jsr:@std/assert";
-import { animationStateCodec } from "./components.ts";
+import { animationStateCodec, boneCodec } from "./components.ts";
 import type { AnimationStateData } from "@voxim/content";
 
 function roundTrip(v: AnimationStateData): AnimationStateData {
@@ -60,4 +60,9 @@ Deno.test("animationStateCodec: round-trips dissolutionPhase fully dissolved (1)
     dissolutionPhase: 1,
   };
   assertEquals(roundTrip(v), v);
+});
+
+Deno.test("boneCodec: round-trips boneId (T-219 — deliberately just boneId, no restPose/parentBoneId)", () => {
+  assertEquals(boneCodec.decode(boneCodec.encode({ boneId: "hand_r" })), { boneId: "hand_r" });
+  assertEquals(boneCodec.decode(boneCodec.encode({ boneId: "root" })), { boneId: "root" });
 });

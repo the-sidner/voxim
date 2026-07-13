@@ -1791,6 +1791,32 @@ export const nameCodec: Serialiser<NameData> = {
 // cancel-into rules on the action vocabulary now, no networked chain-step
 // component. Wire id 46 retired, never reuse.)
 
+// ---- Bone -------------------------------------------------------------------
+// One entity per skeleton bone (T-219). Deliberately minimal: `boneId` is the
+// only field. `parentBoneId` and `restPose` are NOT wired — they're already
+// content data (SkeletonDef.bones, keyed by boneId), and the parent-bone
+// ENTITY relationship is the engine's own `Parent` component (wireId 49),
+// replicated once at spawn alongside this. Bone TRANSFORMS are never
+// replicated at all: motion is derived client-side from AnimationState
+// (already on the wire) the same way the pre-T-219 boneGroups pipeline
+// already computed it — structure ships once, movement is never re-sent.
+
+export interface BoneData {
+  boneId: string;
+}
+
+export const boneCodec: Serialiser<BoneData> = {
+  encode(v: BoneData): Uint8Array {
+    const w = new WireWriter();
+    w.writeStr(v.boneId);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): BoneData {
+    const r = new WireReader(bytes);
+    return { boneId: r.readStr() };
+  },
+};
+
 // ---- ActorSlots ------------------------------------------------------------
 // The declared slot set for an actor (T-226). Set once at spawn from the
 // actor template's `actorSlots`; never mutated at runtime. Networked so the

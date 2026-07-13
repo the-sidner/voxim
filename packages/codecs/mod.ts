@@ -28,6 +28,7 @@ export type {
   ActiveActionState,
   ActiveActionsData,
   PoiInteractableData,
+  BoneData,
 } from "./src/components.ts";
 export {
   positionCodec, velocityCodec, facingCodec, heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec,
@@ -55,6 +56,7 @@ export {
   actorSlotsCodec,
   activeActionsCodec,
   poiInteractableCodec,
+  boneCodec,
   WIRE_LIMITS,
 } from "./src/components.ts";
 
