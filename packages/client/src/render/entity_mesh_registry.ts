@@ -122,6 +122,44 @@ const ARMOR_SLOTS: Record<string, Array<{ renderSlotId: string; boneId: string }
   ],
 };
 
+/**
+ * Body anchors for slung (non-active) hotbar items (T-309). Bone-parented,
+ * like armor, but built at the item's own ABSOLUTE scale (prefab.modelScale)
+ * the way held weapons are — generalizing syncHandSlot's absolute-scale
+ * build onto a bone anchor instead of an entity-root one — since a sheathed
+ * sword shouldn't inherit the body's scale the way a form-fitting armor
+ * plate does.
+ *
+ * `pos`/`rot` are model-space offsets from the bone origin (x=right,
+ * y=forward, z=up; rot is Euler radians in the same axes) — AESTHETIC
+ * defaults picked by code review, not measured against a live character.
+ * Tunable; see T-309 lane report for the exact live-verification procedure.
+ *
+ * A LIMITED set for now (3 anchors) — the ticket's full vision extends this
+ * count via carry-equipment (backpack/belt), gating which hotbar slots even
+ * have a body anchor to sling from. Not built here (deferred, see TICKETS.md).
+ */
+const HOTBAR_BODY_ANCHORS: Record<string, {
+  boneId: string;
+  pos: readonly [number, number, number];
+  rot: readonly [number, number, number];
+}> = {
+  // Slung high across the back, blade roughly vertical along the spine.
+  sheath_back: { boneId: "torso_upper", pos: [0, -0.15, 0.15], rot: [-0.3, 0, 0] },
+  // Belted at the left hip, angled slightly head-down (axe/tool silhouette).
+  hip_l: { boneId: "torso_lower", pos: [0.4, 0.05, -0.05], rot: [1.4, 0, 0] },
+  // Belted at the right hip, mirrored.
+  hip_r: { boneId: "torso_lower", pos: [-0.4, 0.05, -0.05], rot: [1.4, 0, 0] },
+};
+
+/**
+ * Hotbar slot index → body anchor id. Only the first 3 slots have an anchor
+ * today (see HOTBAR_BODY_ANCHORS doc); slots 3-7 hold items but render
+ * nothing on the body until a carry-equipment slot extends the anchor set.
+ */
+const HOTBAR_SLOT_ANCHOR: ReadonlyArray<keyof typeof HOTBAR_BODY_ANCHORS | null> =
+  ["sheath_back", "hip_l", "hip_r", null, null, null, null, null];
+
 export class EntityMeshRegistry {
   private readonly meshes        = new Map<string, EntityMeshGroup>();
   private readonly propPositions = new Map<string, THREE.Vector3>();
@@ -130,6 +168,16 @@ export class EntityMeshRegistry {
   private content: ContentCache | null = null;
   private localPlayerId: string | null = null;
   private hover: HoverOutlineSink | null = null;
+
+  /**
+   * Local player's hotbar occupancy (T-309) — one prefabId per hotbar slot
+   * (null = empty), cached here because it isn't part of EntityState (the
+   * hotbar is a client-local UI concept, not a networked component; see
+   * TICKETS.md T-309). Re-applied to the local player's mesh on every
+   * setHotbar() call and after skeleton (re)builds.
+   */
+  private hotbarPrefabIds: (string | null)[] = [];
+  private hotbarActiveIndex = -1;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -144,6 +192,20 @@ export class EntityMeshRegistry {
   setContent(c: ContentCache): void { this.content = c; }
   setLocalPlayer(id: string | null): void { this.localPlayerId = id; }
   setHover(s: HoverOutlineSink | null): void { this.hover = s; }
+
+  /**
+   * Set the local player's hotbar occupancy for body-anchor rendering
+   * (T-309). `prefabIds` is one entry per hotbar slot (null = empty);
+   * `activeIndex` is the slot considered "in hand" and is skipped when
+   * placing body anchors — purely cosmetic, does not equip anything (the
+   * real Equipment system is the only thing that changes main_hand).
+   */
+  setHotbar(prefabIds: (string | null)[], activeIndex: number): void {
+    this.hotbarPrefabIds = prefabIds;
+    this.hotbarActiveIndex = activeIndex;
+    const mesh = this.localPlayerId ? this.meshes.get(this.localPlayerId) : undefined;
+    if (mesh) this.syncHotbar(mesh);
+  }
 
   // ---- render-loop accessors ----
   /** Live entity meshes — the renderer iterates this for pose + interpolation. */
@@ -288,6 +350,9 @@ export class EntityMeshRegistry {
 
           // Sync all equipment slots now that boneGroups exist.
           this.syncEquipment(capture, state);
+          // Re-apply any cached hotbar occupancy (T-309) — setHotbar() may
+          // have been called before this async skeleton build finished.
+          if (entityId === this.localPlayerId) this.syncHotbar(capture);
         } else {
           // Static prop — hand off to instanced pool, discard the placeholder Group.
           // InstancePool bakes the entity's position into an instance matrix
@@ -480,6 +545,58 @@ export class EntityMeshRegistry {
       for (const { renderSlotId, boneId } of renderSlots) {
         this.syncArmorSlot(mesh, renderSlotId, boneId, modelId, slot?.entityId ?? null, prefab ?? null, entityScale);
       }
+    }
+  }
+
+  /**
+   * Sync the local player's slung hotbar items (T-309) — bone-parented body
+   * anchors (HOTBAR_BODY_ANCHORS), one per mapped hotbar slot, holding each
+   * occupied NON-active slot's item at its own absolute weapon scale (same
+   * build as syncHandSlot, just anchored to a bone instead of the entity
+   * root). The active slot is skipped — its item is presumed already in
+   * hand via the separate, real Equipment system; this method never equips
+   * anything, it only renders. Reads this.hotbarPrefabIds/hotbarActiveIndex,
+   * cached by setHotbar() since the hotbar isn't part of EntityState.
+   */
+  private syncHotbar(mesh: EntityMeshGroup): void {
+    if (!mesh.boneGroups || !this.content) return;
+    const s = mesh.modelScale || 1;
+    const entityScale = { x: s, y: s, z: s };
+
+    for (let i = 0; i < HOTBAR_SLOT_ANCHOR.length; i++) {
+      const renderSlotId = `hotbar_${i}`;
+      const anchorId = HOTBAR_SLOT_ANCHOR[i];
+      const anchorDef = anchorId ? HOTBAR_BODY_ANCHORS[anchorId] : null;
+      const occupied = anchorDef && i !== this.hotbarActiveIndex
+        ? (this.hotbarPrefabIds[i] ?? null)
+        : null;
+      const prefab  = occupied ? this.itemPrefabs.get(occupied) : null;
+      const modelId = prefab?.modelId ?? null;
+
+      const existing = mesh.attachments.get(renderSlotId);
+      if (modelId === (existing?.modelId ?? null)) continue;   // unchanged
+
+      detachModelFromSlot(mesh, renderSlotId);
+      if (!modelId || !anchorDef) continue;
+
+      const boneGroup = mesh.boneGroups.get(anchorDef.boneId);
+      if (!boneGroup) continue;   // bone not present on this skeleton
+
+      const pendingSlot = ensureBoneAttachment(
+        mesh, renderSlotId, boneGroup,
+        anchorDef.pos[0], anchorDef.pos[1], anchorDef.pos[2],
+        entityScale, 1, anchorDef.rot,
+      );
+      pendingSlot.modelId = modelId;   // reserve
+
+      // Absolute item scale, same convention syncHandSlot uses for held
+      // weapons — a slung sword doesn't inherit the body's scale the way a
+      // form-fitting armor plate does.
+      const itemScale = prefab?.modelScale ?? 1.0;
+      const voxelScale = { x: itemScale, y: itemScale, z: itemScale };
+      this.loadSlotModel(mesh, renderSlotId, modelId, (def, mats) => {
+        attachModelToSlot(mesh, renderSlotId, def, mats, voxelScale);
+      });
     }
   }
 

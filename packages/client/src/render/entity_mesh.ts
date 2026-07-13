@@ -1029,6 +1029,13 @@ export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): Attachm
  *                   (converted to Three.js space via the entity scale).
  * @param entityScale  Entity scale (from ModelRef).
  * @param subScale   Uniform sub-object scale multiplier (e.g. 0.5 for arms/legs).
+ * @param rot        Optional model-space Euler rotation (rotX, rotY, rotZ,
+ *                   radians) applied to the anchor at creation — used by
+ *                   authored offset anchors (T-309 hotbar body anchors) that
+ *                   aren't aligned to a body-part sub-object and so need a
+ *                   tilt of their own. Same axis remap as the position swap
+ *                   below (model z=up → Three y). Absent for armor slots,
+ *                   which inherit the bone's own orientation unchanged.
  */
 export function ensureBoneAttachment(
   mesh: EntityMeshGroup,
@@ -1037,6 +1044,7 @@ export function ensureBoneAttachment(
   posX: number, posY: number, posZ: number,
   entityScale: { x: number; y: number; z: number },
   subScale: number,
+  rot?: readonly [number, number, number],
 ): AttachmentSlot {
   let slot = mesh.attachments.get(slotId);
   if (!slot) {
@@ -1048,6 +1056,7 @@ export function ensureBoneAttachment(
       posZ * entityScale.z,
       posY * entityScale.y,
     );
+    if (rot) anchor.quaternion.setFromEuler(new THREE.Euler(rot[0], rot[2], rot[1], "XYZ"));
     // Store subScale on the anchor's userData so syncEquipment can read it
     // when building the armor model voxels at the correct scale.
     anchor.userData.armorSubScale = subScale;

@@ -517,6 +517,11 @@ export class VoximRenderer {
     this.entities.setLocalPlayer(id);
   }
 
+  /** Register the local player's hotbar occupancy for body-anchor rendering (T-309). */
+  setHotbar(prefabIds: (string | null)[], activeIndex: number): void {
+    this.entities.setHotbar(prefabIds, activeIndex);
+  }
+
   /**
    * Hand the renderer the Game-owned FogOfWar (T-157).  The EdgePass shader
    * will start sampling its texture from the next frame; before this call
