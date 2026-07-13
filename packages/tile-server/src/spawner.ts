@@ -536,6 +536,12 @@ export function spawnPrefab(
         z: p.z + local.z,
       });
     },
+    // Seed the children pool/probability draw (T-334) with the SAME value
+    // installVisualShell just used for this entity's own ModelRef/sub-object
+    // variance — one seed governs both, so they can never disagree about
+    // "how procedurally varied is this entity". Identical fallback to
+    // preInstall's `seed` above (ov.seed ?? hash32(id)).
+    resolveSeed: (ov, id) => ov.seed ?? hash32(id),
   };
 
   return engineSpawnPrefab(world, ctx, prefabId, overrides);
