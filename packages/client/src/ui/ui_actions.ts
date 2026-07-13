@@ -21,8 +21,9 @@ export type UIAction =
   // (T-072 heir ritual; T-020 server substrate).
   | { type: "read_tome";   fromSlot: number }
 
-  // Hotbar
+  // Hotbar (T-309 prerequisite — client-local; see ui_store.ts HotbarState)
   | { type: "hotbar_assign"; inventorySlot: number; hotbarSlot: number }
+  | { type: "hotbar_clear";  hotbarSlot: number }
   | { type: "hotbar_use";    hotbarSlot: number }
 
   // Workstation buffer (load / take). Targets the player's nearest

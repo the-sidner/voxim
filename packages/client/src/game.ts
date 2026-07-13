@@ -40,7 +40,7 @@ import { InteractionSystem } from "./interaction/interaction_system.ts";
 import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler, makePoiInteractableHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
-import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
+import { uiState, patchUI, openPanel, closePanel, pushToast, hotbarItems } from "./ui/ui_store.ts";
 import { setClientWorld, setLocalPlayerId } from "./ui/client_world_ref.ts";
 import { currentZoneName, currentZoneRole, currentZoneTraversal } from "./ui/zone_ref.ts";
 import { setContentService } from "./ui/content_ref.ts";
@@ -436,7 +436,10 @@ export class VoximGame {
         if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
         if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, this.contentService) });
         if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
-        if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory, this.world) });
+        if (state.inventory) {
+          patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
+          this._syncHotbarAttachments();   // an assigned slot's item may have arrived/changed (T-309)
+        }
         if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
       }
     }
@@ -702,7 +705,10 @@ export class VoximGame {
               }
             }
           }
-          if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
+          if (state.inventory) {
+            patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
+            this._syncHotbarAttachments();   // an assigned slot's item may have changed/emptied (T-309)
+          }
           if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
           if (state.heritage) {
             const gen = state.heritage.generation;
@@ -1795,16 +1801,59 @@ export class VoximGame {
         this._sendCommand({ cmd: CommandType.TradeSell, inventorySlot: action.slot });
         break;
 
+      // Hotbar (T-309 prerequisite) — client-local only, no server command:
+      // assignment/selection just patch uiState.hotbar, then push the new
+      // occupancy to the renderer so slung body anchors stay in sync.
+      case "hotbar_assign": {
+        const hb = uiState.value.hotbar;
+        if (!hb) break;
+        const assignments = [...hb.assignments];
+        assignments[action.hotbarSlot] = action.inventorySlot;
+        patchUI({ hotbar: { ...hb, assignments } });
+        this._syncHotbarAttachments();
+        break;
+      }
+
+      case "hotbar_clear": {
+        const hb = uiState.value.hotbar;
+        if (!hb) break;
+        const assignments = [...hb.assignments];
+        assignments[action.hotbarSlot] = null;
+        patchUI({ hotbar: { ...hb, assignments } });
+        this._syncHotbarAttachments();
+        break;
+      }
+
+      case "hotbar_use": {
+        // Selects the "active" (in-hand) slot only — does not equip
+        // anything. The Hotbar UI only fires this for occupied slots.
+        const hb = uiState.value.hotbar;
+        if (!hb) break;
+        patchUI({ hotbar: { ...hb, activeIndex: action.hotbarSlot } });
+        this._syncHotbarAttachments();
+        break;
+      }
+
       // Not yet implemented — log for discoverability during development.
       case "split_stack":
-      case "hotbar_assign":
-      case "hotbar_use":
       case "dialogue_choice":
       case "dialogue_close":
       case "rebind_key":
         console.debug("[UIAction unhandled]", action);
         break;
     }
+  }
+
+  /**
+   * Push the local player's current hotbar occupancy to the renderer so
+   * non-active slung items render on body anchors (T-309). Reads the SAME
+   * derivation Hotbar.tsx uses (hotbarItems) so the HUD icons and the 3D
+   * anchors never disagree.
+   */
+  private _syncHotbarAttachments(): void {
+    const hb = uiState.value.hotbar;
+    if (!hb || !this.renderer) return;
+    this.renderer.setHotbar(hotbarItems.value.map((it) => it?.itemType ?? null), hb.activeIndex);
   }
 
   /** Toggle the debug panel visibility. */

@@ -48,8 +48,29 @@ export interface InventoryState {
 }
 
 export interface HotbarState {
-  /** 8 quick-access slots mirroring specific inventory indices. */
-  slots: (ItemStack | null)[];
+  /**
+   * 8 quick-access slots. Each entry is the INVENTORY slot index currently
+   * assigned to that hotbar slot, or null when unassigned (T-309
+   * prerequisite — `hotbar_assign`/`hotbar_use`). The displayed ItemStack is
+   * derived live from InventoryState via this mapping (see `hotbarItems`
+   * below), not stored redundantly — so quantity changes / consumption on
+   * the assigned inventory slot show up automatically.
+   *
+   * Client-local for now: not networked, not persisted across reconnect
+   * (session-scoped). The ticket's full vision networks the hotbar
+   * server-authoritatively so other players see slung gear, and gates
+   * inventory access behind a backpack slot — that is a separate, bigger
+   * arc (see TICKETS.md T-309), not built here.
+   *
+   * Known simplification: because this maps by inventory SLOT INDEX (per
+   * the ticket), an unrelated inventory reorder that lands a different item
+   * on the assigned index will silently show that new item in the hotbar.
+   * Acceptable for a client-local v1.
+   */
+  assignments: (number | null)[];
+  /** Which hotbar slot is "active" (conceptually in-hand). Purely a client-
+   *  local selection (`hotbar_use`) — does not equip anything; the real
+   *  Equipment system is unrelated and unaffected. */
   activeIndex: number;
 }
 
@@ -375,7 +396,7 @@ const _initial: UIState = {
   hunger:      null,
   equipment:   null,
   inventory:   null,
-  hotbar:      { slots: Array(8).fill(null) as (null)[], activeIndex: 0 },
+  hotbar:      { assignments: Array(8).fill(null) as (null)[], activeIndex: 0 },
   stats:       null,
   skillLoadout: null,
   skillCooldowns: null,
@@ -466,3 +487,21 @@ export const isModalOpen = computed(() => uiState.value.modalStack.length > 0);
 
 /** True when the inventory panel is visible. */
 export const inventoryOpen = computed(() => uiState.value.openPanels.has("inventory"));
+
+/**
+ * Derive each hotbar slot's displayed ItemStack from its assigned inventory
+ * index (T-309) — null when unassigned, the assigned inventory slot is
+ * empty, or the index is out of range. Single source of truth: the
+ * assignment mapping + live InventoryState, never a stored duplicate.
+ */
+export function hotbarSlotItems(
+  hotbar: HotbarState | null,
+  inventory: InventoryState | null,
+): (ItemStack | null)[] {
+  if (!hotbar) return Array(8).fill(null);
+  return hotbar.assignments.map((idx) => (idx != null ? inventory?.slots[idx] ?? null : null));
+}
+
+/** The hotbar's displayed items — used by both Hotbar.tsx (HUD icons) and
+ *  game.ts (body-anchor render sync) so the two never disagree. */
+export const hotbarItems = computed(() => hotbarSlotItems(uiState.value.hotbar, uiState.value.inventory));
