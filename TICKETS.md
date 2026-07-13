@@ -956,19 +956,54 @@ a water surface visibly mirrors nearby geometry (not just sky), the pass is skip
 on-screen, and the near-field god-ray/bloom/EdgePass ordering established by T-313 is undisturbed.
 
 ### T-314 · ARPG presentation & composition — the non-render gaps that still gate "looks finished"
-Effort: L   Status: planned
+Effort: L   Status: done   Commit: d84455e, 421d1d3   (lane/t314-arpg, 2026-07-13 — 2/3 items landed,
+third genuinely blocked, see below)
 
 The references read as "finished" partly for reasons orthogonal to the voxel/render data model. This
 ticket tracks the gap; the work lands in its home domains, cross-referenced so the visual arc doesn't
 pretend the look is done at T-311/T-312:
-- **HUD/UI polish** — the ARPG frame (health/mana orbs, skill bar, minimap, quest log) the mockups show;
-  reuses the existing Preact UI. (Home: `## UI / Interaction`.)
-- **Camera-occlusion extension** — `canopy_fade` already fades overhead geometry; extend the same uniforms
-  to fade tall side-walls/buildings between camera and player once settlements exist (T-311 P7). A cheap
-  extension of an existing mechanism, not greenfield. (Home: `## Client / Controls, Feel & Render Polish`.)
-- **Composed-scene worldbuilding** — the references are *composed* (path-to-plateau, the camp, the ruin
-  set-piece); making the procedural world *read* as composed needs authored POI set-pieces + good placement
-  on the POI system. (Home: `## World Generation`.)
+
+- **HUD/UI polish — DONE (commit 421d1d3).** Reused the existing Preact UI, no new UI system. Real
+  gaps found and fixed rather than a cosmetic pass: (1) CastBar/StatusBars/Hotbar/SkillBar were four
+  independently `position:fixed` strips with hand-tuned pixel offsets — composed into ONE
+  `.action-frame hud-chrome` bottom dock (`ui_manager.tsx`) using the SAME `.hud-chrome` pressed-metal
+  recipe already shared by Minimap/ZoneCaption/HeirRitual, laid out by DOM order in a flex column
+  (anchored via `bottom` only, so the CastBar — visible only while casting — grows the frame upward
+  without shifting the rows under it) instead of four sets of magic offset math; each component
+  dropped its own positioning, the frame owns layout now. (2) The minimap's coordinate readout was a
+  hardcoded `"0,0"` stub — wired to the real live player world position (`fog.lastPlayer`, same
+  imperative rAF draw loop the heading cone already uses). (3) `HudStats` (FPS/tris/draws/network
+  telemetry) was permanently visible in the primary HUD — exactly the "debug readouts" this ticket
+  says to move away from — gated behind the existing `` ` `` debug-panel toggle alongside DebugPanel/
+  NetworkPanel, so the default HUD no longer shows engine internals. **Quest/objective readout — not
+  built, and not faked.** Grepped the repo: there is no quest/objective content model or player-facing
+  progress-tracking system anywhere in the game (`JobBoard`/`AssignedJobBoard` is NPC production-queue
+  work, not player quests). The one real thing that already plays this role — `HeirRitual` (T-072),
+  a banner deriving live steps from actual dynasty/container state — already composes into the frame's
+  right column under the minimap via the shared `hud-chrome` class; left as-is. Inventing a persistent
+  quest log with no backing data would be exactly the "scaffolding with no live caller" the T-309 hotbar
+  audit warned against — needs a real quest system (design decision, out of scope here) before a
+  readout for it means anything.
+- **Camera-occlusion extension — DONE (commit d84455e).** `canopy_fade.ts` already faded geometry
+  ABOVE the player's head inside a wide radial blob around the camera↔player midpoint (tree canopy);
+  extended the SAME uniforms/shader pipeline with a second "wall" band, combined per-voxel via `max()`
+  before the existing single discard test — no new registration call sites, every material already
+  calling `canopyFade.register()` (terrain, scatter, props) picks it up for free. The wall band's
+  horizontal test is the voxel's distance from the camera→player LINE SEGMENT (projected + clamped to
+  the segment, not a point-radius blob), and its vertical gate starts just above the player's FEET
+  (not the head) so a wall/cliff fades along its whole height while the floor the player stands on is
+  never eaten. New content-driven `game_config.render.wallFade` (minHeight/maxHeight/innerRadius/
+  outerRadius) mirrors `canopyFade`'s existing knobs (T-315 D3 precedent) — no hardcoded shader
+  constants, no `BOOTSTRAP_VERSION` bump needed (GameConfig passes through the bootstrap blob as JSON
+  already). Matters immediately per the ticket's premise: T-328 made the camera sit rigidly behind the
+  character's heading, so side occluders block the view constantly, not just near hypothetical
+  settlements — did NOT wait on T-311 P7 the way the original text speculated, since ordinary terrain
+  cliffs/walls already exercise it.
+- **Composed-scene worldbuilding — NOT built, genuinely blocked, not faked.** Still depends on T-311 P7
+  settlements (authored POI set-pieces + placement), which per the T-312 ticket body is not built
+  ("Settlement module library... beyond T-311 P7's 'one strategy + a handful of modules'" — gated on
+  the P7 tool). No code landed for this item; tracked where it already lives (T-311 P7 / T-312's
+  Settlement module library), not duplicated into a new ticket number.
 
 ## Player UX
 
