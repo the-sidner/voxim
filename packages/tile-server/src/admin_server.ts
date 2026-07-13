@@ -26,6 +26,14 @@ export interface AdminServerDeps {
   getCertHashHex: () => string;
   /** Returns the current WebTransport port. Called per-request. */
   getWtPort: () => number;
+  /**
+   * Gates `/debug/save-action` (T-327) — the combat-feel tuning panel's
+   * save-back button writes a live-patched ActionDef to
+   * `packages/content/data/actions/{id}.json` through this endpoint. Same
+   * flag `DebugCommandSystem` gates on, so a prod deploy can't be told to
+   * rewrite its own content files.
+   */
+  devMode: boolean;
 }
 
 /** Control-plane endpoints requiring the shared service secret (T-258). */
@@ -135,6 +143,30 @@ async function handleAdminRequest(
       return Response.json({ ok: true });
     } catch {
       return new Response("bad request", { status: 400 });
+    }
+  }
+
+  // Save-back for the combat-feel tuning panel (T-327): writes the CURRENT
+  // in-memory ActionDef (including any live DebugSetActionParam patches this
+  // session made) to its content file, so a good feel found via live tuning
+  // survives a restart instead of evaporating. Dev-only — same devMode flag
+  // DebugCommandSystem gates the patch commands themselves on.
+  if (req.method === "POST" && url.pathname === "/debug/save-action") {
+    if (!deps.devMode) return new Response("dev mode disabled", { status: 403 });
+    try {
+      const body = await req.json() as { actionId?: string };
+      const actionId = body.actionId;
+      if (typeof actionId !== "string" || !/^[a-z0-9_]+$/.test(actionId)) {
+        return new Response("bad request: actionId must be a non-empty snake_case id", { status: 400 });
+      }
+      const def = deps.content.actions.get(actionId);
+      if (!def) return new Response(`unknown action "${actionId}"`, { status: 404 });
+      const target = new URL(`../../content/data/actions/${actionId}.json`, import.meta.url).pathname;
+      await Deno.writeTextFile(target, JSON.stringify(def, null, 2) + "\n");
+      console.log(`[TileServer] debug: saved live-tuned action "${actionId}" -> ${target}`);
+      return Response.json({ ok: true, path: target });
+    } catch (err) {
+      return new Response(`save failed: ${(err as Error).message}`, { status: 400 });
     }
   }
 

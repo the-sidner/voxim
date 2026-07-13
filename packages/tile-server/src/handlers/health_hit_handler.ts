@@ -14,6 +14,7 @@ import {
 import { Blocking, IFrame } from "../components/tags.ts";
 import { PendingReaction, ActiveActions } from "../components/action.ts";
 import { Velocity } from "../components/game.ts";
+import { TrainingDummy } from "../components/training_dummy.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 import { effective } from "../modifiers/modifier.ts";
 import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
@@ -171,9 +172,17 @@ export class HealthHitHandler implements HitHandler {
     // newHealth (vs committed state) still drives this hit's own death
     // request / reaction decisions; a kill only visible in the composed
     // total is caught by DeathSystem's health≤0 sweep next tick.
-    const newHealth = Math.max(0, health.current - damage);
+    //
+    // T-327: a TrainingDummy is floored at 1, never 0 — DeathSystem's
+    // composed-lethal sweep queries committed `Health.current <= 0`, so the
+    // "never dies" guarantee has to be enforced HERE, at the write, not by
+    // skipping the death request below (the sweep would still catch it next
+    // tick). TrainingDummySystem separately heals it back to full once
+    // healDelayTicks pass with no further hit.
+    const floor = world.has(ctx.targetId, TrainingDummy) ? 1 : 0;
+    const newHealth = Math.max(floor, health.current - damage);
     const dmg = damage;
-    world.mutate(ctx.targetId, Health, (h) => ({ ...h, current: Math.max(0, h.current - dmg) }));
+    world.mutate(ctx.targetId, Health, (h) => ({ ...h, current: Math.max(floor, h.current - dmg) }));
 
     // ── Severe-hit injury roll (T-008) ────────────────────────────────────────
     // A single hit over the threshold can inflict a persistent injury whose

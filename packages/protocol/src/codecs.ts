@@ -258,6 +258,24 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       return u8;
     }
 
+    case CommandType.DebugSpawnDummy:
+      return new Uint8Array([cmd.attackLoop ? 1 : 0]);
+
+    case CommandType.DebugSetActionParam: {
+      const idBytes = new TextEncoder().encode(cmd.actionId);
+      const fieldBytes = new TextEncoder().encode(cmd.field);
+      const buf = new ArrayBuffer(1 + idBytes.byteLength + 1 + fieldBytes.byteLength + 4);
+      const u8 = new Uint8Array(buf);
+      const dv = new DataView(buf);
+      let off = 0;
+      u8[off] = idBytes.byteLength; off += 1;
+      u8.set(idBytes, off); off += idBytes.byteLength;
+      u8[off] = fieldBytes.byteLength; off += 1;
+      u8.set(fieldBytes, off); off += fieldBytes.byteLength;
+      dv.setFloat32(off, cmd.value, true);
+      return u8;
+    }
+
     case CommandType.Respawn:
       return new Uint8Array(0);
   }
@@ -405,6 +423,19 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const strLen = bytes[0];
       const entityId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
       return { cmd: CommandType.DebugKillEntity, entityId };
+    }
+
+    case CommandType.DebugSpawnDummy:
+      return { cmd: CommandType.DebugSpawnDummy, attackLoop: bytes[0] === 1 };
+
+    case CommandType.DebugSetActionParam: {
+      let off = 0;
+      const idLen = bytes[off]; off += 1;
+      const actionId = new TextDecoder().decode(bytes.slice(off, off + idLen)); off += idLen;
+      const fieldLen = bytes[off]; off += 1;
+      const field = new TextDecoder().decode(bytes.slice(off, off + fieldLen)); off += fieldLen;
+      const value = new DataView(bytes.buffer, bytes.byteOffset + off, 4).getFloat32(0, true);
+      return { cmd: CommandType.DebugSetActionParam, actionId, field, value };
     }
 
     case CommandType.Respawn:

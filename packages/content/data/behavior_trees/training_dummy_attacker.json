@@ -1,0 +1,22 @@
+{
+  "id": "training_dummy_attacker",
+  "root": {
+    "type": "selector",
+    "children": [
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_tick_interval", "intervalTicks": 40 },
+          { "type": "request_action", "slot": "primary", "action": "swing_medium" }
+        ]
+      },
+      {
+        "type": "sequence",
+        "children": [
+          { "type": "check_queue_empty_or_expired" },
+          { "type": "set_job_default" }
+        ]
+      }
+    ]
+  }
+}

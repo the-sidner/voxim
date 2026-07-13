@@ -174,7 +174,22 @@ export const enum CommandType {
                           //   proper deferred world.mutate write, so DeathSystem + death hooks
                           //   (e.g. shed_dissolve) run exactly as they would from real combat.
                           //   Lets the I3b dissolve-cost measurement kill an arbitrary NPC.
-  // 30-255 reserved for future commands
+  DebugSpawnDummy   = 30, // payload: u8 attackLoop (0/1) — combat-feel tuning pipeline (T-327):
+                          //   spawns a "training_dummy" (attackLoop=0) or "training_dummy_attacker"
+                          //   (attackLoop=1) NPC a few units in front of the player, facing them.
+                          //   The dummy never dies (Health floored at 1 in health_hit_handler.ts)
+                          //   and auto-heals a few seconds after the last hit (TrainingDummySystem).
+  DebugSetActionParam = 31, // payload: u8 strLen + UTF-8 actionId + u8 strLen + UTF-8 field + f32 value —
+                          //   combat-feel tuning pipeline (T-327): patches a numeric leaf of the
+                          //   in-memory ContentService live, effective on the NEXT read (next action
+                          //   start / next hit) — no restart. `field` is a dotted path into the
+                          //   ActionDef named by `actionId` (e.g. "phases.windup.ticks",
+                          //   "hitStopTicks", "cooldownTicks"); `actionId` = "$config" instead
+                          //   redirects `field` into GameConfig (e.g. "combat.knockbackImpulseXY",
+                          //   "combat.aimAssist.rangeUnits") for the handful of feel knobs that live
+                          //   there rather than on any one ActionDef. Only ever overwrites a field
+                          //   that is ALREADY a number — cannot add fields or change shape.
+  // 32-255 reserved for future commands
 }
 
 /**
@@ -223,6 +238,8 @@ export type CommandPayload =
   | { cmd: CommandType.DebugSetStat;   stat: string; value: number }
   | { cmd: CommandType.DebugGiveTrinket; stairId: string }
   | { cmd: CommandType.DebugKillEntity; entityId: string }
+  | { cmd: CommandType.DebugSpawnDummy; attackLoop: boolean }
+  | { cmd: CommandType.DebugSetActionParam; actionId: string; field: string; value: number }
   | { cmd: CommandType.Respawn };
 
 export interface CommandDatagram {

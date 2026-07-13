@@ -1,0 +1,11 @@
+{
+  "id": "training_dummy_attacker",
+  "displayName": "Training Dummy (attacking)",
+  "maxHealth": 200,
+  "fleeHealthRatio": 0.0,
+  "behaviorTreeId": "training_dummy_attacker",
+  "wanderRadius": 0,
+  "wanderTicks": 9999,
+  "idleTicks": 9999,
+  "weaponItemType": "iron_sword"
+}

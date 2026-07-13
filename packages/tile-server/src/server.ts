@@ -120,6 +120,7 @@ import { AnimationSystem } from "./systems/animation.ts";
 import { HitboxSystem } from "./systems/hitbox.ts";
 import { ChunkLifecycleSystem } from "./systems/chunk_lifecycle.ts";
 import { DebugCommandSystem } from "./systems/debug_commands.ts";
+import { TrainingDummySystem } from "./systems/training_dummy_system.ts";
 import { WorldClock } from "./components/world.ts";
 import { SaveManager } from "./save_manager.ts";
 import { serializePlayer } from "./handoff.ts";
@@ -1004,6 +1005,10 @@ export class TileServer {
       // this tick's committed positions; dependsOn PhysicsSystem pins that.
       new ChunkLifecycleSystem(content),
       new DebugCommandSystem(content, config.devMode ?? false),
+      // Auto-heal for T-327's practice target — the actual "never dies"
+      // guarantee is the Health floor in health_hit_handler.ts; this just
+      // recovers it after healDelayTicks so no respawn is needed mid-session.
+      new TrainingDummySystem(),
       deathSystem,
     ];
     this.systems = sortSystemsByDependencies(declared);
@@ -1189,6 +1194,10 @@ export class TileServer {
         serviceSecret: config.serviceSecret ?? "",
         getCertHashHex: () => this.certHashHex,
         getWtPort: () => this.wtPort,
+        // Gates /debug/save-action (T-327) — same devMode flag DebugCommandSystem
+        // uses, so the save-back endpoint is dev-only symmetrically with the
+        // live-tuning commands that feed it.
+        devMode: config.devMode ?? false,
       });
     }
 
