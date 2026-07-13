@@ -141,19 +141,31 @@ export class VoximGame {
   };
 
   /**
-   * Camera scene-probe hook (T-320), reached via `_voxim_game.cameraProbe`.
-   * Pointer-lock free-look CANNOT be driven headless — the browser only
-   * delivers movementX/Y while a real cursor is locked, which Playwright's
-   * synthetic mouse can't produce. This injects look deltas straight into the
-   * rig (the same seam pointer lock feeds) and reads yaw/pitch back, so the
-   * harness can confirm the world rotates and pitch clamps. Mirrors the sibling
+   * Camera + facing scene-probe hook (T-320, rewired for T-328), reached via
+   * `_voxim_game.cameraProbe`. Pointer-lock free-look CANNOT be driven
+   * headless — the browser only delivers movementX/Y while a real cursor is
+   * locked, which Playwright's synthetic mouse can't produce. This injects
+   * look deltas straight into the same two seams pointer lock feeds (dx →
+   * IntentTranslator.applyLookDelta, which now owns facing; dy →
+   * cameraRig.applyLookDelta, pitch-only) so the harness can confirm facing
+   * rotates continuously and the camera tracks it. `rotate()` also re-syncs
+   * cameraRig's yaw from the fresh facing immediately (mirroring what the
+   * next render() frame would do) so `yaw()`/`facing()` read the post-rotate
+   * state synchronously instead of waiting a frame. Mirrors the sibling
    * testInput/buildProbe/interactProbe injection pattern.
    */
   readonly cameraProbe = {
-    rotate: (dxPixels: number, dyPixels: number): void =>
-      this.renderer?.cameraRig.applyLookDelta(dxPixels, dyPixels),
+    rotate: (dxPixels: number, dyPixels: number): void => {
+      this.input?.applyLookDelta(dxPixels);
+      this.renderer?.cameraRig.applyLookDelta(dyPixels);
+      if (this.input) this.renderer?.cameraRig.setYaw(this.input.facing);
+    },
     yaw: (): number => this.renderer?.cameraRig.getYaw() ?? 0,
     pitch: (): number => this.renderer?.cameraRig.getPitch() ?? 0,
+    /** The player's facing (T-328) — should equal `yaw()` exactly at all
+     *  times (rigid coupling); reading both is the headless check that the
+     *  derivation never drifts. */
+    facing: (): number => this.input?.facing ?? 0,
   };
 
   /**
@@ -436,10 +448,12 @@ export class VoximGame {
     // Input system — Capture (DOM listeners) → Translator (state + intents)
     // → Router (handlers). Replaces the old InputController callback surface.
     this.intentRouter = new IntentRouter();
-    this.input = new IntentTranslator(
-      this.intentRouter,
-      () => this.renderer!.cameraRig.getYaw(),
-    );
+    this.input = new IntentTranslator(this.intentRouter);
+    // Mouse-sensitivity knob (T-328) — the same game_config.camera value
+    // CameraRig.configure() installs for pitch, so facing and pitch turn at
+    // the identical rate. Pre-bootstrap default holds if content is absent.
+    const camCfg = this.content.getGameConfig()?.camera;
+    if (camCfg) this.input.configure(camCfg);
     this.inputCapture = new InputCapture(canvas, this.input.handle, (e) => {
       // Take full control of the game keybindings: swallow the browser's own
       // default for our keys (Space/arrows scroll the page, Tab steals focus,
@@ -459,12 +473,18 @@ export class VoximGame {
     canvas.tabIndex = 0;
     canvas.focus();
 
-    // Free-look pointer lock (T-320): a canvas click engages lock and mouse
-    // deltas drive the camera yaw/pitch directly; opening a panel or entering
-    // build mode auto-releases so the cursor returns for UI / voxel placement.
+    // Free-look pointer lock (T-320): a canvas click engages lock; opening a
+    // panel or entering build mode auto-releases so the cursor returns for
+    // UI / voxel placement. Mouse deltas now split (T-328): dx drives the
+    // player's FACING (IntentTranslator.applyLookDelta), dy drives the
+    // camera's pitch only (cameraRig.applyLookDelta) — the camera's yaw
+    // derives from facing every frame (renderer.render() → cameraRig.setYaw).
     this.pointerLock = new PointerLockController(
       canvas,
-      (dx, dy) => this.renderer?.cameraRig.applyLookDelta(dx, dy),
+      (dx, dy) => {
+        this.input?.applyLookDelta(dx);
+        this.renderer?.cameraRig.applyLookDelta(dy);
+      },
     );
 
     // Interaction system — nearest-interactable proximity selection + Use key
@@ -1117,10 +1137,10 @@ export class VoximGame {
       // `currentlyVisible` arc is computed here; `seenEver` is server-driven
       // and arrives via BinaryStateMessage's fogSnapshot / fogReveals.
       if (px !== undefined && py !== undefined) {
-        // Local movement-heading facing (T-320) so the vision cone tracks the
-        // character's heading immediately, not a server round-trip late; fall
-        // back to networked. The cone follows where the body faces (where it
-        // moves), which is the natural third-person free-look vision.
+        // Local mouse-driven facing (T-328, was movement-derived under T-320)
+        // so the vision cone tracks the character's heading immediately, not
+        // a server round-trip late; fall back to networked. The cone follows
+        // wherever the mouse has turned the character to face.
         const facing = this.input?.facing ?? this.world.get(this.playerId)?.facing?.angle ?? 0;
         this.fog.updateLocalLOS(px, py, facing, (x, y) => this.world.isOpen(x, y));
       }

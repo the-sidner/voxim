@@ -2436,13 +2436,16 @@ export interface GameConfig {
       sandAmount: number;
     };
   };
-  /** Free-look pointer-lock camera (T-320): rig geometry + look feel. Yaw and
-   *  pitch are driven DIRECTLY by mouse deltas under pointer lock (a pad right
-   *  stick would use the same seam) — no follow controller, no deadzone/spring.
-   *  Geometry knobs make the framing (top-down tactical vs. lower
-   *  over-the-shoulder) pure content tuning. Pitch is clamped to a narrow band
-   *  around the shipped rest gaze so the horizon never floods in (keeps the
-   *  T-310 F telephoto property). Client-side presentation only. */
+  /** Free-look pointer-lock camera (T-320; rotation ownership inverted by
+   *  T-328): rig geometry + look feel. Mouse-X drives the player's FACING
+   *  directly (a pad right-stick would use the same seam) and camera yaw is
+   *  rigidly DERIVED from it; mouse-Y still drives camera pitch directly —
+   *  no follow controller, no deadzone/spring on either axis. Geometry knobs
+   *  make the framing (top-down tactical vs. lower over-the-shoulder) pure
+   *  content tuning. Pitch is clamped to a narrow band around the shipped
+   *  rest gaze so the horizon never floods in (keeps the T-310 F telephoto
+   *  property). Client-side presentation only (`mouseSensitivity` also
+   *  drives the client-only facing accumulator — no wire change). */
   camera: {
     /** Metres behind the player along the yaw direction (at rest pitch). */
     backDistance: number;

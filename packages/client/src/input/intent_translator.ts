@@ -22,10 +22,16 @@
  *   build  + ESC      → build-cancel
  *   any    + KeyE-down → interact (nearest interactable)
  *
- * Facing (T-320): the body faces its camera-relative MOVEMENT direction while
- * moving and HOLDS the last facing when idle — it is no longer cursor-derived
- * (no cursor exists under free-look pointer lock). This carries on the wire and
- * drives the local body prediction; idle never snaps to a default heading.
+ * Facing (T-328): mouse-X directly rotates the player's FACING under pointer
+ * lock — `applyLookDelta` accumulates `facing += dx * sensitivity` (wrapped),
+ * fed the same raw deltas PointerLockController delivers. This carries on the
+ * wire and drives the local body prediction. Movement is transformed by the
+ * FACING basis (not the camera's), so A/D strafe and S back-pedals while the
+ * character keeps facing wherever the mouse pointed it — the camera derives
+ * its yaw from this same facing (see camera_rig.ts `setYaw`), rigidly, so the
+ * two never disagree. Supersedes T-320's `facingFromMove` (facing = movement
+ * direction), which made it impossible to strafe around a target while
+ * looking at it.
  *
  * UI events: when the click target is an interactive UI element, world
  * intents are suppressed — the UI's own onClick handlers run. Independently
@@ -52,8 +58,16 @@ import { holdState, hoverState, modeState } from "./context.ts";
 import type { IntentRouter } from "./intent_router.ts";
 import type { RawEvent } from "./input_capture.ts";
 import { targetIsInteractiveUI } from "./input_capture.ts";
-import { facingFromMove } from "./facing.ts";
+import { facingFromLook } from "./facing.ts";
 import { inputMode } from "./input_mode.ts";
+
+/** The `mouseSensitivity` slice of game_config `camera.*` (T-328) — the same
+ *  knob CameraRig's pitch axis consumes, so turning the mouse rotates facing
+ *  and pitch at the identical rate. A narrow shape (not the full CameraConfig)
+ *  so this module doesn't need to import render/camera_rig.ts's type. */
+export interface FacingConfig {
+  mouseSensitivity: number;
+}
 
 const GAME_KEYS = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD",
@@ -67,11 +81,17 @@ const GAME_KEYS = new Set([
 
 export class IntentTranslator {
   private readonly keys = new Set<string>();
-  /** Player facing — the camera-relative movement heading, updated in
-   *  buildDatagram while moving and HELD when idle (T-320). Exposed via
-   *  `get facing()` so the renderer predicts the local body's rotation without
-   *  the server round-trip. */
+  /** Player facing — accumulated directly from mouse-X look deltas
+   *  (`applyLookDelta`, T-328), wrapped into (-π, π]. Exposed via
+   *  `get facing()` so the renderer predicts the local body's rotation
+   *  without the server round-trip, and so the camera can derive its yaw
+   *  from the identical value (rigid coupling — see camera_rig.ts). */
   private _facing = 0;
+  /** Radians of facing rotation per look-delta pixel — game_config
+   *  `camera.mouseSensitivity` (T-328). Pre-bootstrap default mirrors
+   *  CameraRig's own pre-configure default so the two axes match before
+   *  `configure()` overwrites both from content. */
+  private sensitivity = 0.0022;
   /** Accumulated one-shot bits cleared each buildDatagram(). */
   private pendingActions = 0;
   /** Charge that becomes part of the next datagram (cleared after build). */
@@ -94,11 +114,26 @@ export class IntentTranslator {
 
   constructor(
     private readonly router: IntentRouter,
-    /** Live camera yaw — the (rotating) basis for camera-relative movement.
-     *  Free-look (T-320) makes this dynamic; held-W curves with the camera as
-     *  the player rotates it, which is intended third-person locomotion. */
-    private readonly getCameraYaw: () => number,
   ) {}
+
+  /** Install the mouse-sensitivity knob from game_config `camera.*` (T-328).
+   *  Idempotent, mirrors CameraRig.configure() — both read the identical
+   *  `camera.mouseSensitivity` value so facing and pitch turn at the same
+   *  rate. */
+  configure(cfg: FacingConfig): void {
+    this.sensitivity = cfg.mouseSensitivity;
+  }
+
+  /**
+   * Accumulate a raw mouse-X look delta (pixels) into facing (T-328) — the
+   * clean input seam for pointer-lock `movementX` (and, later, a pad
+   * right-stick). Wrapped into (-π, π]; see facing.ts for the pure rule.
+   * The camera has no equivalent yaw accumulator anymore — it derives its
+   * yaw from this facing every frame (camera_rig.ts `setYaw`).
+   */
+  applyLookDelta(dxPixels: number): void {
+    this._facing = facingFromLook(this._facing, dxPixels, this.sensitivity);
+  }
 
   /** Wire this as the InputCapture sink. */
   readonly handle = (e: RawEvent): void => {
@@ -184,10 +219,11 @@ export class IntentTranslator {
     // T-325: the UI owns the mouse in "ui" mode — don't even track canvas
     // coords (they'd be stale/irrelevant once mode returns to gameplay/build).
     if (inputMode.value === "ui") return;
-    // Facing is no longer cursor-derived (T-320) — it follows the movement
-    // heading in buildDatagram. We still capture the canvas coords because
-    // build mode's cursor-plane voxel placement (`_resolveVoxelHit`) reads
-    // them via mouseX/mouseY while pointer lock is released for build.
+    // Facing is not cursor-derived (mouse-X drives it via applyLookDelta
+    // under pointer lock, T-328) — this canvas-coord move handler is unused
+    // for facing. We still capture the coords because build mode's
+    // cursor-plane voxel placement (`_resolveVoxelHit`) reads them via
+    // mouseX/mouseY while pointer lock is released for build.
     this.mouseCanvasX = e.canvasX;
     this.mouseCanvasY = e.canvasY;
   }
@@ -267,19 +303,19 @@ export class IntentTranslator {
 
   /** Called once per frame by the game loop. */
   buildDatagram(seq: number, tick: number): MovementDatagram {
-    // Movement is CAMERA-relative: W = "into the screen" (away from the camera
-    // along its CURRENT yaw), D = screen-right. Under free-look (T-320) the yaw
-    // rotates as the player rotates the camera, so held-W smoothly curves with
-    // it — third-person locomotion, re-sampled every input frame so the basis
-    // never snaps. The body faces this movement heading (`facing` below).
-    const yaw = this.getCameraYaw();
-    const fwdX =  Math.cos(yaw);
-    const fwdY =  Math.sin(yaw);
-    // Screen-right is camera-forward × world-up; for this steeply-angled rig
+    // Movement is FACING-relative (T-328): W = forward along facing, S =
+    // back-pedal, A/D = strafe perpendicular to facing WHILE STILL FACING
+    // the same heading — the character can finally circle a target while
+    // looking at it. Facing itself is mouse-driven (`applyLookDelta`, fed by
+    // pointer lock) and re-sampled every input frame; it does NOT come from
+    // this movement vector anymore (that was T-320's rule — deleted).
+    const fwdX =  Math.cos(this._facing);
+    const fwdY =  Math.sin(this._facing);
+    // Strafe-right is facing-forward × world-up; for this steeply-angled rig
     // that resolves to the math-CCW perpendicular (-sin, cos), so pressing D
-    // strafes to the player-perceived right of the screen.
-    const rgtX = -Math.sin(yaw);
-    const rgtY =  Math.cos(yaw);
+    // strafes to the character's right.
+    const rgtX = -Math.sin(this._facing);
+    const rgtY =  Math.cos(this._facing);
 
     let movX = 0, movY = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    { movX += fwdX; movY += fwdY; }
@@ -289,10 +325,6 @@ export class IntentTranslator {
 
     const len = Math.sqrt(movX * movX + movY * movY);
     if (len > 0) { movX /= len; movY /= len; }
-
-    // Facing follows the movement heading while moving; holds last when idle
-    // (T-320) — never snaps to a default on key-release.
-    this._facing = facingFromMove(this._facing, movX, movY);
 
     let held = 0;
     if (this.keys.has("ControlLeft") || this.keys.has("ControlRight")) held |= ACTION_CROUCH;
@@ -323,8 +355,8 @@ export class IntentTranslator {
   get mouseX(): number { return this.mouseCanvasX; }
   get mouseY(): number { return this.mouseCanvasY; }
 
-  /** Movement-heading facing (radians), held when idle (T-320). The local,
-   *  un-round-tripped value the renderer applies to the local mesh for
-   *  predicted body rotation. */
+  /** Mouse-driven facing (radians, T-328). The local, un-round-tripped value
+   *  the renderer applies to the local mesh for predicted body rotation AND
+   *  feeds into the camera rig's yaw each frame (`cameraRig.setYaw`). */
   get facing(): number { return this._facing; }
 }

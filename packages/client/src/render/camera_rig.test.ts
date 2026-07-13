@@ -1,10 +1,12 @@
 /**
- * CameraRig is the T-320 free-look controller. The correctness weight is the
- * pure yaw/pitch math (accumulate, wrap, clamp, invert) plus the byte-stable
- * rest framing — the pointer-lock FEEL is un-headless and stays a manual pass.
- * These tests pin the math against injected look deltas and the shipped
- * game_config geometry, with the rest gaze asserted equal to the T-317
- * atan2(heightAbove − lookAtBias, backDistance) framing to 1e-9.
+ * CameraRig is the T-320 third-person controller; T-328 inverted rotation
+ * ownership so yaw is DERIVED from facing (`setYaw`, rigid coupling) instead
+ * of accumulated from mouse-X directly. The correctness weight is the pure
+ * pitch math (accumulate, clamp, invert) + the yaw derivation (setYaw tracks
+ * exactly, no damping) + the byte-stable rest framing — the pointer-lock FEEL
+ * is un-headless and stays a manual pass. Yaw's own accumulate/wrap math now
+ * lives in facing.ts (facingFromLook) and is pinned there, including the
+ * T-324 dense-sweep continuity regression.
  */
 import { assert, assertAlmostEquals } from "jsr:@std/assert";
 import * as THREE from "three";
@@ -57,29 +59,24 @@ Deno.test("rest pitch reproduces the T-317 framing byte-stable", () => {
   assertAlmostEquals(r.camera.position.z, TARGET.z - sinY * CFG.backDistance, 1e-9);
 });
 
-Deno.test("applyLookDelta accumulates yaw by dx*sensitivity", () => {
+Deno.test("T-328: setYaw makes getYaw() track the input exactly (rigid coupling, no damping)", () => {
   const r = rig();
-  const y0 = r.getYaw();
-  r.applyLookDelta(100, 0);
-  assertAlmostEquals(r.getYaw(), y0 + 100 * CFG.mouseSensitivity, 1e-12);
-  r.applyLookDelta(50, 0);
-  assertAlmostEquals(r.getYaw(), y0 + 150 * CFG.mouseSensitivity, 1e-12);
+  r.setYaw(1.23);
+  assertAlmostEquals(r.getYaw(), 1.23, 1e-12);
+  r.setYaw(-2.9);
+  assertAlmostEquals(r.getYaw(), -2.9, 1e-12);
+  // Camera yaw tracks facing EXACTLY on the very next read — no lag, no
+  // partial step toward the target (T-324: any damping here reads sluggish).
+  r.setYaw(Math.PI);
+  assertAlmostEquals(r.getYaw(), Math.PI, 1e-12);
 });
 
-Deno.test("yaw wraps into (-π, π]", () => {
+Deno.test("setYaw rotates the camera around the target by the yaw delta", () => {
   const r = rig();
-  // Drive yaw well past π so wrapping is exercised.
-  const pixelsForOneTurn = (2 * Math.PI) / CFG.mouseSensitivity;
-  r.applyLookDelta(pixelsForOneTurn * 1.25, 0);
-  assert(r.getYaw() > -Math.PI && r.getYaw() <= Math.PI, `yaw ${r.getYaw()} not wrapped`);
-});
-
-Deno.test("applyLookDelta rotates the camera around the target by the yaw delta", () => {
-  const r = rig();
+  r.setYaw(0);
   r.update(TARGET, 0);
   const p0 = r.camera.position.clone();
-  const quarterTurnPx = (Math.PI / 2) / CFG.mouseSensitivity;
-  r.applyLookDelta(quarterTurnPx, 0);
+  r.setYaw(Math.PI / 2);
   r.update(TARGET, 0);
   const p1 = r.camera.position.clone();
   // Horizontal distance to target is preserved; azimuth advanced by ~90°.
@@ -94,61 +91,28 @@ Deno.test("applyLookDelta rotates the camera around the target by the yaw delta"
 Deno.test("pitch clamps at the configured band", () => {
   const r = rig();
   // Huge downward drag → clamps at pitchMax (steeper, larger below-horizontal).
-  r.applyLookDelta(0, 1e6);
+  r.applyLookDelta(1e6);
   assertAlmostEquals(r.getPitch(), CFG.pitchMaxDeg * Math.PI / 180, 1e-12);
   // Huge upward drag → clamps at pitchMin (flatter).
-  r.applyLookDelta(0, -1e6);
+  r.applyLookDelta(-1e6);
   assertAlmostEquals(r.getPitch(), CFG.pitchMinDeg * Math.PI / 180, 1e-12);
 });
 
 Deno.test("invertY flips the pitch response sign", () => {
   const plain = rig();
   const inv = rig({ invertY: true });
-  plain.applyLookDelta(0, 30);
-  inv.applyLookDelta(0, 30);
+  plain.applyLookDelta(30);
+  inv.applyLookDelta(30);
   // Same-magnitude opposite-direction delta from the shared rest pitch.
   assertAlmostEquals(plain.getPitch() - CFG.pitchRestDeg * Math.PI / 180,
     -(inv.getPitch() - CFG.pitchRestDeg * Math.PI / 180), 1e-12);
-});
-
-Deno.test("T-324: dense 360°+ sweep of applyLookDelta yaw is continuous (no snap)", () => {
-  // Regression pin for the user-reported "~90° snap at a certain rotation"
-  // (live play 2026-07-07). Empirically driven both offline and against the
-  // live served bundle via cameraProbe — zero discontinuities found anywhere
-  // across five full turns in either direction, disproving all three prime
-  // suspects (atan2/shortest-arc wrap, a yaw-normalisation edge at ±π, the
-  // pitch clamp flipping the look-at basis). This test pins that finding so
-  // a future change to wrapPi/applyLookDelta can't silently reintroduce it.
-  for (const dxPerEvent of [1, 5, -5, 37, -200]) {
-    const r = rig();
-    const stepRad = dxPerEvent * CFG.mouseSensitivity;
-    const pixelsForOneTurn = (2 * Math.PI) / CFG.mouseSensitivity;
-    const steps = Math.ceil((5 * pixelsForOneTurn) / Math.abs(dxPerEvent));
-    let prev = r.getYaw();
-    for (let i = 0; i < steps; i++) {
-      r.applyLookDelta(dxPerEvent, 0);
-      const y = r.getYaw();
-      // Wrapped step delta — the physically meaningful angular change, since
-      // ±π is one identified point on the circle, not a jump.
-      let d = y - prev;
-      while (d > Math.PI) d -= 2 * Math.PI;
-      while (d < -Math.PI) d += 2 * Math.PI;
-      assertAlmostEquals(
-        d,
-        stepRad,
-        1e-9,
-        `discontinuity at yaw=${y.toFixed(6)} (${(y * 180 / Math.PI).toFixed(2)}°), step ${i}, dx=${dxPerEvent}`,
-      );
-      prev = y;
-    }
-  }
 });
 
 Deno.test("pitching down raises and pulls the camera in over the target", () => {
   const r = rig();
   r.update(TARGET, 0);
   const rest = r.camera.position.clone();
-  r.applyLookDelta(0, 500); // pitch toward pitchMax
+  r.applyLookDelta(500); // pitch toward pitchMax
   r.update(TARGET, 0);
   const steep = r.camera.position.clone();
   const horizRest = Math.hypot(rest.x - TARGET.x, rest.z - TARGET.z);

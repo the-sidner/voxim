@@ -1189,10 +1189,10 @@ export class VoximRenderer {
 
     // Override the local player's transform with client-side prediction so the
     // body tracks input without a server round-trip. Position comes from the
-    // predictor; facing/rotation comes from the locally-tracked movement
-    // heading (T-320) — updateEntityMesh only ever sets rotation from the
-    // networked facing, which lags by RTT and made swings sweep from a stale
-    // orientation.
+    // predictor; facing/rotation comes from the locally-tracked mouse-driven
+    // facing (T-328, was movement-derived under T-320) — updateEntityMesh
+    // only ever sets rotation from the networked facing, which lags by RTT
+    // and made swings sweep from a stale orientation.
     if (this.localPlayerId) {
       const localMesh = this.entities.all.get(this.localPlayerId);
       if (localMesh) {
@@ -1266,10 +1266,14 @@ export class VoximRenderer {
     const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
     this.lastFrameMs = now;
 
-    // Free-look camera (T-320): yaw/pitch are driven directly by pointer-lock
-    // mouse deltas via cameraRig.applyLookDelta (wired in game.ts), not derived
-    // from facing. update() just re-places the camera from the current
-    // (yaw, pitch) each frame around the player target.
+    // Camera yaw is DERIVED from the player's facing (T-328): mouse-X now
+    // rotates FACING (IntentTranslator owns the accumulator, fed the same
+    // raw pointer-lock deltas via game.ts), and the camera sits rigidly
+    // behind the character's heading — no independent camera-yaw
+    // accumulator anymore. Pitch stays camera-only (cameraRig.applyLookDelta,
+    // mouse-Y). update() re-places the camera from the current (yaw, pitch)
+    // each frame around the player target.
+    if (localFacing != null) this.cameraRig.setYaw(localFacing);
     this.cameraRig.update(this.cameraTarget, dt);
 
     // Day/night lerp + shadow-frustum follow/snap + sky-locked sun disc — all
