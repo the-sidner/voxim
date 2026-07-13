@@ -15,10 +15,15 @@
  * solver space. The outbound conversion happens once, at the bottom of
  * applyHitboxTemplate.
  *
- * PRNG ordering contract: the hitbox !== false check happens AFTER the
- * probability draw and pool-selection draw so the seed sequence stays in sync
- * with resolveSubObjects and the hitbox covers the same sub-objects that the
- * client renders.
+ * PRNG ordering contract (T-334): the hitbox !== false opt-out check happens
+ * AFTER the probability draw and pool-selection draw, both of which run
+ * through the SAME shared `resolveSeededPick` (@voxim/engine) that
+ * `resolveSubObjects` calls — one function, one draw order, so the seed
+ * sequence can't drift out of sync and the hitbox always covers the same
+ * sub-objects the client renders. (Previously this file hand-reproduced
+ * resolveSubObjects' draw order; that duplication is exactly the class of
+ * bug that made wolf legs unhittable in T-323 — it is gone now, not just
+ * fixed.)
  *
  * Entity-local coordinate system: right=X, fwd=Y, up=Z.
  * Solver space: x=right, y=up, z=-fwd.
@@ -28,7 +33,7 @@ import type { BodyPartVolume, Hitbox, SkeletonDef, SubObjectRef } from "./types.
 import type { BoneTransform } from "./skeleton_solver.ts";
 import { quatFromEulerXYZ, applyQuat } from "./ik_solver.ts";
 import type { Quat } from "./ik_solver.ts";
-import { mulberry32 as makePrng } from "@voxim/engine";
+import { mulberry32 as makePrng, resolveSeededPick } from "@voxim/engine";
 import { bodyPartCapsule } from "./body_recipe.ts";
 
 /** Minimum capsule radius in voxel units. Parts below this threshold are skipped. */
@@ -187,17 +192,8 @@ export function deriveHitboxTemplate(
   const parts: HitboxPartTemplate[] = [];
 
   for (const sub of model.subObjects) {
-    // ── Reproduce resolveSubObjects PRNG consumption ─────────────────────────
-    const prob = sub.probability ?? 1.0;
-    const probRoll = prob < 1.0 ? rand() : 0;
-    if (prob < 1.0 && probRoll >= prob) continue;
-
-    let subModelId: string | undefined;
-    if (sub.pool && sub.pool.length > 0) {
-      subModelId = sub.pool[Math.floor(rand() * sub.pool.length)];
-    } else {
-      subModelId = sub.modelId;
-    }
+    // ── Same shared draw as resolveSubObjects (T-334) — see file docstring ──
+    const subModelId = resolveSeededPick(sub, sub.modelId, rand);
     if (!subModelId) continue;
 
     // ── Opt-out check — AFTER PRNG consumption ───────────────────────────────

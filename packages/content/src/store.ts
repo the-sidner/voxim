@@ -73,7 +73,7 @@ import type { RecipeGraph } from "./recipe_graph.ts";
 import { buildRecipeGraph } from "./recipe_graph.ts";
 import type { ContentRegistryReadonly } from "./registry.ts";
 import { ContentRegistry } from "./registry.ts";
-import { mulberry32 } from "@voxim/engine";
+import { mulberry32, resolveSeededPick } from "@voxim/engine";
 
 /** Default max durability for an equippable/usable item whose prefab doesn't
  *  declare an explicit `durability` (T-086). */
@@ -830,19 +830,19 @@ export const makePrng = mulberry32;
  * produces the same result, so all clients converge on the same visual.
  *
  * Sub-objects with neither modelId nor pool are skipped.
+ *
+ * The per-entry draw goes through `resolveSeededPick` (T-334) — the ONE
+ * shared pool/probability primitive also used by the engine's `spawnPrefab`
+ * children walk and (still separately, since it drives a different output
+ * shape) by `hitbox_derive.ts`. Same function, same draw order, so a
+ * hitbox derived from this model's subObjects can never draw a different
+ * variant than the one actually rendered here.
  */
 export function resolveSubObjects(subObjects: SubObjectRef[], seed: number): ResolvedSubObject[] {
   const rand = makePrng(seed);
   const result: ResolvedSubObject[] = [];
   for (const sub of subObjects) {
-    const prob = sub.probability ?? 1.0;
-    if (prob < 1.0 && rand() >= prob) continue;
-    let modelId: string | undefined;
-    if (sub.pool && sub.pool.length > 0) {
-      modelId = sub.pool[Math.floor(rand() * sub.pool.length)];
-    } else {
-      modelId = sub.modelId;
-    }
+    const modelId = resolveSeededPick(sub, sub.modelId, rand);
     if (!modelId) continue;
     result.push({ modelId, transform: sub.transform, boneId: sub.boneId, materialSlot: sub.materialSlot });
   }

@@ -559,7 +559,7 @@ export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
  * Abstract prefabs (`_`-prefixed) are skipped — they exist only as inheritance
  * roots and may legitimately carry partial/unfinished fields.
  */
-function validatePrefabFields(p: Prefab): void {
+export function validatePrefabFields(p: Prefab): void {
   if (p.id.startsWith("_")) return;
 
   if (p.category !== undefined) {
@@ -598,18 +598,42 @@ function validatePrefabFields(p: Prefab): void {
       throw new Error(`Prefab '${p.id}': children must be an array`);
     }
     for (const c of p.children) {
-      if (typeof c?.prefabId !== "string" || c.prefabId.length === 0) {
-        throw new Error(`Prefab '${p.id}': every child needs a non-empty prefabId`);
+      // T-334: a child is EITHER a fixed `prefabId` OR a `pool` of variant
+      // ids (pool wins if both are set — same precedence as SubObjectRef's
+      // modelId/pool) — mirrors resolveSubObjects' vocabulary exactly.
+      const hasPrefabId = c?.prefabId !== undefined;
+      const hasPool = c?.pool !== undefined;
+      const label = hasPrefabId ? `'${c.prefabId}'` : hasPool ? "(pool)" : "(unlabelled)";
+      if (hasPrefabId && (typeof c.prefabId !== "string" || c.prefabId.length === 0)) {
+        throw new Error(`Prefab '${p.id}': child prefabId must be a non-empty string when present`);
+      }
+      if (hasPool) {
+        if (!Array.isArray(c.pool) || c.pool.length === 0) {
+          throw new Error(`Prefab '${p.id}': child ${label} pool must be a non-empty array`);
+        }
+        for (const entry of c.pool) {
+          if (typeof entry !== "string" || entry.length === 0) {
+            throw new Error(`Prefab '${p.id}': child ${label} pool entries must be non-empty strings`);
+          }
+        }
+      }
+      if (!hasPrefabId && !hasPool) {
+        throw new Error(`Prefab '${p.id}': every child needs a prefabId or a pool`);
+      }
+      if (c.probability !== undefined) {
+        if (typeof c.probability !== "number" || !Number.isFinite(c.probability) || c.probability < 0 || c.probability > 1) {
+          throw new Error(`Prefab '${p.id}': child ${label} probability must be a number in [0, 1]`);
+        }
       }
       if (c.local !== undefined) {
         if (typeof c.local !== "object" || Array.isArray(c.local)) {
-          throw new Error(`Prefab '${p.id}': child '${c.prefabId}' local must be an object`);
+          throw new Error(`Prefab '${p.id}': child ${label} local must be an object`);
         }
         for (const axis of ["x", "y", "z", "scale"] as const) {
           const v = c.local[axis];
           if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v))) {
             throw new Error(
-              `Prefab '${p.id}': child '${c.prefabId}' local.${axis} must be a finite number`,
+              `Prefab '${p.id}': child ${label} local.${axis} must be a finite number`,
             );
           }
         }
@@ -619,24 +643,33 @@ function validatePrefabFields(p: Prefab): void {
 }
 
 /**
- * After every prefab is registered, resolve `children[].prefabId` against
- * the full set (T-217). A child must reference a concrete prefab — unknown
- * or abstract (`_`-prefixed) targets fail loud here rather than at spawn.
+ * After every prefab is registered, resolve every id a `children` entry
+ * names — the fixed `prefabId` form AND every entry of a `pool` (T-334,
+ * even though `pool` wins at spawn time when both are set) — against the
+ * full prefab set (T-217). Every referenced id must be a concrete prefab;
+ * unknown or abstract (`_`-prefixed) targets fail loud here rather than at
+ * spawn (or, worse, only on whichever seed happens to draw the bad pool
+ * entry).
  */
-function validatePrefabChildRefs(store: ContentService): void {
+export function validatePrefabChildRefs(store: ContentService): void {
   for (const p of store.prefabs.values()) {
     if (!p.children) continue;
     for (const c of p.children) {
-      const target = store.prefabs.get(c.prefabId);
-      if (!target) {
-        throw new Error(
-          `Prefab '${p.id}': child references unknown prefab '${c.prefabId}'`,
-        );
-      }
-      if (target.id.startsWith("_")) {
-        throw new Error(
-          `Prefab '${p.id}': child '${c.prefabId}' is abstract and cannot be spawned`,
-        );
+      const candidateIds = new Set<string>();
+      if (c.prefabId !== undefined) candidateIds.add(c.prefabId);
+      for (const entry of c.pool ?? []) candidateIds.add(entry);
+      for (const candidateId of candidateIds) {
+        const target = store.prefabs.get(candidateId);
+        if (!target) {
+          throw new Error(
+            `Prefab '${p.id}': child references unknown prefab '${candidateId}'`,
+          );
+        }
+        if (target.id.startsWith("_")) {
+          throw new Error(
+            `Prefab '${p.id}': child '${candidateId}' is abstract and cannot be spawned`,
+          );
+        }
       }
     }
   }

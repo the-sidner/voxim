@@ -1939,25 +1939,46 @@ export interface Prefab {
    */
   components: Record<string, unknown>;
   /**
-   * Child prefabs spawned as scene-graph descendants of this entity (T-217).
-   * Spawning this prefab spawns the root, then recursively spawns each child
-   * and wires `world.setParent(child, root)`; each child's `local` transform
-   * is its offset relative to the parent. Recurses arbitrarily deep — a
-   * child may itself declare `children`. Absent = a flat single entity.
-   * Loader rejects refs to unknown or abstract (`_`-prefixed) prefab ids.
+   * Child prefabs spawned as scene-graph descendants of this entity (T-217;
+   * seeded pool/probability selection T-334). Spawning this prefab spawns
+   * the root, then recursively spawns each RESOLVED child (see
+   * `ChildPrefabRef`) and wires `world.setParent(child, root)`; each child's
+   * `local` transform is its offset relative to the parent. Recurses
+   * arbitrarily deep — a child may itself declare `children`. Absent = a
+   * flat single entity. Loader rejects refs to unknown or abstract
+   * (`_`-prefixed) prefab ids — both the fixed `prefabId` form and every
+   * `pool` entry.
    */
   children?: ChildPrefabRef[];
 }
 
 /**
- * A child entry in `Prefab.children` (T-217). `prefabId` must resolve to a
- * concrete (non-abstract) prefab. `local` is the child's transform relative
- * to the parent entity; omitted fields default to identity (0 / scale 1).
- * Structurally `Partial<Transform>` so the engine consumes it without a
- * dependency on this package.
+ * A child entry in `Prefab.children` (T-217; seeded pool/probability
+ * T-334). `local` is the child's transform relative to the parent entity;
+ * omitted fields default to identity (0 / scale 1). Structurally
+ * `Partial<Transform>` plus the engine's `SeededPoolEntry` so the engine
+ * consumes it without a dependency on this package.
+ *
+ * `prefabId` and `pool`/`probability` mirror `SubObjectRef.modelId`/`.pool`/
+ * `.probability` exactly — the same seeded-random vocabulary that already
+ * resolves a model's sub-objects (`resolveSubObjects`) now resolves which
+ * child prefabs get spawned:
+ *   - `prefabId` — fixed single prefab, always spawned (unless `probability`
+ *     excludes it). Mutually exclusive with `pool`; `pool` wins if both are set.
+ *   - `pool` — variant pool; one entry is drawn at spawn time.
+ *   - `probability` — 0–1 odds this entry is spawned at all. Omitted/1.0 =
+ *     always spawned.
+ * Resolution happens once per prefab spawn, off one seeded PRNG stream
+ * shared across the whole `children` list, via `resolveSeededPick`
+ * (`@voxim/engine`) — the engine's `spawnPrefab` subtree walk is the sole
+ * consumer of the raw (unresolved) form.
  */
 export interface ChildPrefabRef {
-  prefabId: string;
+  prefabId?: string;
+  /** Variant pool of prefab ids — one is picked at random when present. */
+  pool?: string[];
+  /** 0–1 probability this entry is spawned at all. Omit for always-spawned. */
+  probability?: number;
   local?: { x?: number; y?: number; z?: number; scale?: number };
 }
 

@@ -1,8 +1,9 @@
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals, assertNotEquals } from "jsr:@std/assert";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
 import { evaluateBodyRecipe } from "./body_recipe.ts";
+import { resolveSubObjects } from "./store.ts";
 import type { HitboxContentAdapter } from "./hitbox_derive.ts";
-import type { Hitbox, SkeletonDef } from "./types.ts";
+import type { Hitbox, SkeletonDef, SubObjectRef } from "./types.ts";
 
 /**
  * T-186 Layer 2 — the single-source-of-truth seam: once a skeleton carries a
@@ -125,4 +126,77 @@ Deno.test("deriveHitboxTemplate: no bodyRecipe on the skeleton preserves pre-T-1
   const withMorphs = deriveHitboxTemplate("m", 0, adapter, 1.0, { anything: 5 });
   const without = deriveHitboxTemplate("m", 0, adapter, 1.0);
   assertEquals(withMorphs, without);
+});
+
+/**
+ * T-334 — the load-bearing invariant: deriveHitboxTemplate's pool/probability
+ * draws (now `resolveSeededPick`, @voxim/engine) must stay in lockstep with
+ * resolveSubObjects' (also `resolveSeededPick`) for the SAME (subObjects,
+ * seed) pair, so a hitbox never drifts from what the client actually draws.
+ * Mirrors tree_oak's real shape: one fixed entry + pool/probability entries,
+ * one of which opts out of hitbox derivation (`hitbox: false`) — a purely
+ * visual sub-object that must still render but must NOT get a capsule.
+ */
+const LEAF_IDS = new Set(["leaf_a", "leaf_b"]);
+
+function makeSeededPoolModel(): { subObjects: SubObjectRef[] } {
+  const transform = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 };
+  return {
+    subObjects: [
+      { modelId: "trunk", transform },
+      { pool: ["branch_a", "branch_b", "branch_c"], probability: 0.6, transform },
+      { pool: ["branch_a", "branch_b", "branch_c"], probability: 0.6, transform },
+      { pool: ["branch_a", "branch_b", "branch_c"], probability: 0.6, transform },
+      // Purely visual — opts out of hitbox derivation. Its presence AFTER
+      // other pool/probability draws pins that the opt-out doesn't skip
+      // the PRNG consumption (would desync every draw after it).
+      { pool: ["leaf_a", "leaf_b"], probability: 0.9, transform, hitbox: false },
+    ],
+  };
+}
+
+function makeSeededPoolAdapter(model: { subObjects: SubObjectRef[] }): HitboxContentAdapter {
+  const flatAabb: Hitbox = { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.3, maxZ: 0.3 };
+  return {
+    getModel: (id) => id === "root" ? { subObjects: model.subObjects, nodes: [] } : null,
+    getModelAabb: () => flatAabb,
+  };
+}
+
+Deno.test("T-334: deriveHitboxTemplate's ids exactly match resolveSubObjects' rendered ids, minus hitbox:false opt-outs, across many seeds", () => {
+  const model = makeSeededPoolModel();
+  const adapter = makeSeededPoolAdapter(model);
+
+  const renderedSeenAcrossSeeds = new Set<string>();
+  for (let seed = 0; seed < 50; seed++) {
+    const rendered = resolveSubObjects(model.subObjects, seed).map((r) => r.modelId);
+    const template = deriveHitboxTemplate("root", seed, adapter, 1.0);
+    const hitboxIds = template.map((p) => p.id);
+
+    // The hitbox walk must derive a capsule for every rendered sub-object
+    // EXCEPT the ones explicitly opted out — same ids, same order.
+    const expectedHitboxIds = rendered.filter((id) => !LEAF_IDS.has(id));
+    assertEquals(hitboxIds, expectedHitboxIds, `seed ${seed}: hitbox ids diverged from rendered ids`);
+
+    for (const id of rendered) renderedSeenAcrossSeeds.add(id);
+  }
+
+  // Sanity: the pool draws actually exercised more than just the fixed
+  // trunk entry across 50 seeds — otherwise this test would trivially pass
+  // even with a broken pool implementation.
+  assertEquals(renderedSeenAcrossSeeds.has("trunk"), true);
+  assertNotEquals(renderedSeenAcrossSeeds.size, 1);
+});
+
+Deno.test("T-334: same seed reproduces byte-identical resolveSubObjects output and hitbox template, twice", () => {
+  const model = makeSeededPoolModel();
+  const adapter = makeSeededPoolAdapter(model);
+
+  const renderedA = resolveSubObjects(model.subObjects, 1234);
+  const renderedB = resolveSubObjects(model.subObjects, 1234);
+  assertEquals(renderedA, renderedB);
+
+  const templateA = deriveHitboxTemplate("root", 1234, adapter, 1.0);
+  const templateB = deriveHitboxTemplate("root", 1234, adapter, 1.0);
+  assertEquals(templateA, templateB);
 });
