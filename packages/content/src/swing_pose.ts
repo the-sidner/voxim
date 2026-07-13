@@ -194,6 +194,15 @@ function bendSpine(
 export interface LocoState {
   /** Lateral movement relative to facing, -1 (left) … +1 (right). */
   strafe?: number;
+  /**
+   * Forward/back movement relative to facing, -1 (fully backward) … +1
+   * (fully forward). Only a distinct signal from `strafe` once facing
+   * decouples from movement direction (T-328's mouse-turn + facing-relative
+   * movement) — before that, a moving actor always faces its own movement
+   * so this stays ≈+1 and the back-lean below never fires. Absent/0 reads
+   * as "not moving forward or back" (pure strafe, or stationary).
+   */
+  moveFwd?: number;
   /** Turn rate, -1 … +1. */
   turn?: number;
 }
@@ -201,6 +210,13 @@ export interface LocoState {
 export interface LocoPoseParams {
   /** Sideways lean (roll) per unit strafe, radians. */
   strafeLean?: number;
+  /** Backward lean (pitch, opposite sign of the swing's forward-reach lean)
+   *  per unit backward `moveFwd`, radians — the tell for back-pedalling
+   *  while facing a target (T-328). Forward movement adds no lean here (a
+   *  purposeful asymmetry: authored walk/run clips already carry forward
+   *  lean; this producer only needed to add the state clips can't, going
+   *  backward). */
+  backLean?: number;
   /** Lean into a turn (roll) per unit turn, radians. */
   turnLean?: number;
   /** Twist into a turn (yaw) per unit turn, radians. */
@@ -208,13 +224,14 @@ export interface LocoPoseParams {
   morphParams?: Record<string, number>;
 }
 
-const LOCO_DEFAULTS = { strafeLean: 0.35, turnLean: 0.22, turnTwist: 0.30 };
+const LOCO_DEFAULTS = { strafeLean: 0.35, backLean: 0.28, turnLean: 0.22, turnTwist: 0.30 };
 
 /**
  * First entry in the base-pose catalogue: a procedural locomotion lean. The
- * body banks into a strafe and leans+twists into a turn — derived from movement
- * state, no clip. Returns a new pose; feed it as the `basePose` to
- * `solveSwingPose` and the swing composes on top.
+ * body banks into a strafe, folds back when back-pedalling, and leans+twists
+ * into a turn — derived from movement state relative to facing, no clip.
+ * Returns a new pose; feed it as the `basePose` to `solveSwingPose` and the
+ * swing composes on top.
  */
 export function applyLocomotionPose(
   skeleton: SkeletonDef,
@@ -225,12 +242,14 @@ export function applyLocomotionPose(
   params: LocoPoseParams = {},
 ): Map<string, BoneRotation> {
   const out = new Map<string, BoneRotation>(basePose);
-  const strafe = loco.strafe ?? 0, turn = loco.turn ?? 0;
-  if (strafe === 0 && turn === 0) return out;
+  const strafe = loco.strafe ?? 0, turn = loco.turn ?? 0, moveFwd = loco.moveFwd ?? 0;
+  const back = Math.max(0, -moveFwd); // 0 (idle/strafe/forward) … 1 (fully backward)
+  if (strafe === 0 && turn === 0 && back === 0) return out;
   const lp = { ...LOCO_DEFAULTS, ...params };
   const roll = lp.strafeLean * strafe + lp.turnLean * turn; // sideways bank
   const yaw = lp.turnTwist * turn;                          // twist into the turn
-  bendSpine(skeleton, boneIndex, out, scale, quatFromEulerXYZ(0, yaw, roll), params.morphParams);
+  const lean = -lp.backLean * back;                         // fold back, opposite of the swing's forward fold
+  bendSpine(skeleton, boneIndex, out, scale, quatFromEulerXYZ(lean, yaw, roll), params.morphParams);
   return out;
 }
 
@@ -278,6 +297,122 @@ export function applyCrouchPose(
     if (!upper || !lower || !target) continue;
     aimLimb(Pd, boneIndex, upper, lower, foot, target, pole, null, null, out);
   }
+  return out;
+}
+
+export interface FootTerrainParams {
+  /** Knee pole hint, actor-local {fwd,right,up} — knees bend forward. */
+  kneePole?: { fwd: number; right: number; up: number };
+  /** Foot bones to plant. Default ["foot_l","foot_r"]. */
+  feetBones?: [string, string];
+  /**
+   * Clamp on the per-foot vertical adjustment (unscaled world units, scaled
+   * by `scale` before use). Guards against `ClientWorld.getTerrainHeight`'s
+   * documented unloaded-chunk-returns-0 artifact turning into a wild leg
+   * stretch at the tile edge — a bounded, known limitation, not a bug this
+   * producer can fix (see client_world.ts).
+   */
+  maxOffset?: number;
+  morphParams?: Record<string, number>;
+}
+
+const FOOT_TERRAIN_DEFAULTS = {
+  kneePole: { fwd: 1, right: 0, up: -0.2 },
+  feetBones: ["foot_l", "foot_r"] as [string, string],
+  maxOffset: 0.5,
+};
+
+/**
+ * Plant each foot at the LOCAL terrain height under it instead of the flat-
+ * ground assumption baked into the rest pose, so feet read as touching a
+ * slope/step instead of floating or clipping. The root is already glued to
+ * the terrain height under the entity's own centre (physics/interpolation
+ * keep it there), so each foot only needs the DELTA between the ground
+ * sampled under IT and the ground sampled under the root — both samples go
+ * through the same `heightAt`, so this is self-consistent (degrades to a
+ * no-op on flat ground) rather than chasing the entity's actual, possibly
+ * airborne, world Z. Reuses `aimLimb`, the same primitive `applyCrouchPose`
+ * re-plants feet with — this IS T-186's "foot IK pass … so feet stay
+ * planted on terrain" aux item, built once and shared with T-308.
+ *
+ * `root`/`facing` are WORLD ground-plane coordinates (x,y) + radians, the
+ * wire's convention — forward = (cos(facing), sin(facing)), right =
+ * forward rotated -90° — matching `combat.ts`'s movement-intent vector and
+ * this file's own strafe/moveFwd projection in the client's `locoState()`.
+ * Callers pass the entity's networked/predicted world position, NEVER
+ * Three.js `group.position`/`rotation.y` (different axes, different frame).
+ */
+export function applyFootTerrainIK(
+  skeleton: SkeletonDef,
+  boneIndex: ReadonlyMap<string, BoneDef>,
+  basePose: ReadonlyMap<string, BoneRotation>,
+  scale: number,
+  root: { x: number; y: number },
+  facing: number,
+  heightAt: (worldX: number, worldY: number) => number,
+  params: FootTerrainParams = {},
+): Map<string, BoneRotation> {
+  const out = new Map<string, BoneRotation>(basePose);
+  const fp = { ...FOOT_TERRAIN_DEFAULTS, ...params };
+  const morph = params.morphParams;
+  const P0 = solveSkeleton(skeleton, boneIndex, out, scale, morph);
+  const pole = toSolver(fp.kneePole);
+  const cosF = Math.cos(facing), sinF = Math.sin(facing);
+  const rootGround = heightAt(root.x, root.y);
+  const clamp = fp.maxOffset * scale;
+  for (const foot of fp.feetBones) {
+    const lower = boneIndex.get(foot)?.parent;
+    const upper = lower ? boneIndex.get(lower)?.parent : undefined;
+    const rest = P0.get(foot)?.pos;
+    if (!upper || !lower || !rest) continue;
+    const fwd = -rest.z, right = rest.x; // solver space (x=right,y=up,z=-fwd) → actor-local fwd/right
+    const worldX = root.x + fwd * cosF + right * sinF;
+    const worldY = root.y + fwd * sinF - right * cosF;
+    let dy = heightAt(worldX, worldY) - rootGround;
+    dy = Math.max(-clamp, Math.min(clamp, dy));
+    if (Math.abs(dy) < 1e-4) continue;
+    const target = { x: rest.x, y: rest.y + dy, z: rest.z };
+    aimLimb(P0, boneIndex, upper, lower, foot, target, pole, null, null, out);
+  }
+  return out;
+}
+
+/**
+ * Head/gaze stabilization — the base-pose catalogue's "look-at": the head
+ * counter-rotates against whatever lean the spine has accumulated (strafe
+ * bank, back-pedal fold, turn twist, crouch) so the character keeps reading
+ * as looking where it's facing instead of its head lolling with the body.
+ * `gain` blends the head's world orientation from "fully follows the body"
+ * (0) to "fully level/forward, cancelling all upstream lean" (1); a partial
+ * gain (default) keeps some organic follow-through instead of a rigid neck.
+ *
+ * This is NOT target-tracking (aiming at a specific nearby entity/POI) —
+ * that needs a look-target signal the wire doesn't carry yet. What's here
+ * is the data-free baseline every target-tracking look-at would sit on top
+ * of: the head stays aimed at the character's OWN facing regardless of how
+ * the torso is currently leaning.
+ */
+export function applyLookAtPose(
+  skeleton: SkeletonDef,
+  boneIndex: ReadonlyMap<string, BoneDef>,
+  basePose: ReadonlyMap<string, BoneRotation>,
+  scale: number,
+  gain: number,
+  params: { headBone?: string; morphParams?: Record<string, number> } = {},
+): Map<string, BoneRotation> {
+  const out = new Map<string, BoneRotation>(basePose);
+  const g = Math.max(0, Math.min(1, gain));
+  if (g <= 0) return out;
+  const head = params.headBone ?? "head";
+  const morph = params.morphParams;
+  const parent = boneIndex.get(head)?.parent;
+  if (!parent) return out;
+  const P = solveSkeleton(skeleton, boneIndex, out, scale, morph);
+  const REST = solveSkeleton(skeleton, boneIndex, new Map(), scale, morph);
+  const cur = P.get(head), rest = REST.get(head), curParent = P.get(parent);
+  if (!cur || !rest || !curParent) return out;
+  const target = slerpQuat(cur.rot, rest.rot, g);
+  out.set(head, eulerFromQuat(quatMultiply(invertQuat(curParent.rot), target)));
   return out;
 }
 

@@ -35,7 +35,7 @@ import { computeTelegraphLayer } from "./telegraph.ts";
 import { computeIframeFlash, applyIframeFlash } from "./iframe_flash.ts";
 import { InstancePool } from "./instance_pool.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
-import { solveSwingPose, applyLocomotionPose, applyCrouchPose, timeOfDay01 } from "@voxim/content";
+import { solveSwingPose, applyLocomotionPose, applyCrouchPose, applyFootTerrainIK, applyLookAtPose, timeOfDay01 } from "@voxim/content";
 import type { BoneRotation, LocoState } from "@voxim/content";
 import { CHUNK_SIZE } from "@voxim/world";
 
@@ -43,6 +43,11 @@ import { CHUNK_SIZE } from "@voxim/world";
 const CROUCH_DROP = 0.9;
 // Crouch ease rate — snappy (~150ms settle) but not a one-frame jolt.
 const CROUCH_OMEGA = 18;
+
+// Head/gaze stabilization blend (applyLookAtPose) — 0 fully follows the
+// spine's lean, 1 fully cancels it. Partial so the head still reads some
+// organic follow-through instead of a rigid neck.
+const LOOK_AT_GAIN = 0.6;
 
 // Supersample factor = clamp(devicePixelRatio, MIN, MAX). The whole post chain
 // renders at this × the CSS resolution and downsamples on the final blit, so the
@@ -1016,9 +1021,36 @@ export class VoximRenderer {
     }
     const mag = Math.hypot(mx, my);
     if (mag < 0.05) return null;
-    // lateral fraction of the move direction relative to facing (right = facing − 90°)
+    // lateral / forward fractions of the move direction relative to facing
+    // (forward = (cos(facing),sin(facing)), right = forward rotated -90° —
+    // same convention as tile-server's velScope/locomotion_intent.ts) — with
+    // T-328 facing decouples from movement direction, so back-pedal/strafe
+    // become real, distinct locomotion states instead of always reading ≈+1.
     const strafe = (mx * Math.sin(facing) - my * Math.cos(facing)) / mag;
-    return { strafe: Math.max(-1, Math.min(1, strafe)), turn: 0 };
+    const moveFwd = (mx * Math.cos(facing) + my * Math.sin(facing)) / mag;
+    return {
+      strafe: Math.max(-1, Math.min(1, strafe)),
+      moveFwd: Math.max(-1, Math.min(1, moveFwd)),
+      turn: 0,
+    };
+  }
+
+  /**
+   * World ground-plane position (x,y) + facing (radians) for an entity —
+   * the wire's coordinate convention, NOT Three.js `group.position`/
+   * `rotation.y`. Local player prefers the client-predicted position/facing
+   * (matches `locoState`'s snappy-no-RTT-lag intent); remotes read off the
+   * mesh (one render frame stale vs this frame's interpolation pass below —
+   * same tolerance the pose pipeline already accepts elsewhere).
+   */
+  private entityGroundXY(
+    id: string, mesh: EntityMeshGroup,
+    localPredictedPos: { x: number; y: number; z: number } | null, localFacing: number | null,
+  ): { x: number; y: number; facing: number } {
+    if (id === this.localPlayerId && localPredictedPos) {
+      return { x: localPredictedPos.x, y: localPredictedPos.y, facing: localFacing ?? mesh.facingAngle };
+    }
+    return { x: mesh.group.position.x, y: mesh.group.position.z, facing: mesh.facingAngle };
   }
 
   render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null, localFacing?: number | null, localMovement?: { x: number; y: number } | null, localCrouch?: number): void {
@@ -1077,10 +1109,11 @@ export class VoximRenderer {
         const layers = blendAnimationLayers(mesh.layerFades, rawLayers, animDtMs);
         const animForPose = anim ? { ...anim, layers } : (telegraph ? { layers, weaponActionId: "", ticksIntoAction: 0, dissolutionPhase: 0 } : null);
 
-        // Fused pose pipeline: locomotion lean (base) → swing overlay → IK, all
-        // composed on one skeleton. The swing producer takes a basePose, so the
-        // locomotion lean feeds it and the two stack. Lower body keeps the
-        // locomotion clip; the swing clip is stripped so legs walk while arms swing.
+        // Fused pose pipeline: crouch → locomotion lean → swing overlay →
+        // foot-terrain IK → head stabilization, all composed on one skeleton,
+        // each producer taking the previous stage's pose as its basePose so
+        // they stack (T-308). Lower body keeps the locomotion clip; the swing
+        // clip is stripped so legs walk while arms swing.
         const swingWA = anim?.weaponActionId
           ? this.weaponActionsMap.get(anim.weaponActionId)
           : undefined;
@@ -1110,6 +1143,22 @@ export class VoximRenderer {
             const t = Math.max(0, Math.min(ticks / total, 1));
             rot = solveSwingPose(skeleton, boneIndex, rot, mesh.modelScale, swingWA.swingPath, t, { morphParams: mesh.modelMorphs });
           }
+          // Foot-terrain IK (T-308/T-186): re-plant feet at the local ground
+          // height once something else already put this entity through the
+          // extra pose pass (walking/crouching/swinging) — a fully idle
+          // entity's rest pose has no lean to correct against a slope yet,
+          // see swing_pose.ts's applyFootTerrainIK doc for the scoping note.
+          if (this.world) {
+            const { x, y, facing } = this.entityGroundXY(id, mesh, localPredictedPos ?? null, localFacing ?? null);
+            const world = this.world;
+            rot = applyFootTerrainIK(
+              skeleton, boneIndex, rot, mesh.modelScale, { x, y }, facing,
+              (wx, wy) => world.getTerrainHeight(wx, wy), { morphParams: mesh.modelMorphs },
+            );
+          }
+          // Head/gaze stabilization — last, so it corrects the FINAL composed
+          // lean (crouch + locomotion + swing) rather than an intermediate one.
+          rot = applyLookAtPose(skeleton, boneIndex, rot, mesh.modelScale, LOOK_AT_GAIN, { morphParams: mesh.modelMorphs });
           // rewrap the mixed map (THREE.Euler for untouched bones, {x,y,z} for overridden) to THREE.Euler
           pose = new Map<string, THREE.Euler>();
           for (const [bone, r] of rot) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
