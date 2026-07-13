@@ -28,7 +28,12 @@
  * drives the local body prediction; idle never snaps to a default heading.
  *
  * UI events: when the click target is an interactive UI element, world
- * intents are suppressed — the UI's own onClick handlers run.
+ * intents are suppressed — the UI's own onClick handlers run. Independently
+ * (T-325), every mouse handler bails out entirely whenever `inputMode` (the
+ * single mouse-ownership owner, `input_mode.ts`) is `ui` — that covers clicks
+ * and moves that land on the CANVAS around/behind a panel, which a target
+ * check alone can't catch since the event target there genuinely is the
+ * canvas, not a UI node.
  */
 import type { MovementDatagram } from "@voxim/protocol";
 import {
@@ -48,6 +53,7 @@ import type { IntentRouter } from "./intent_router.ts";
 import type { RawEvent } from "./input_capture.ts";
 import { targetIsInteractiveUI } from "./input_capture.ts";
 import { facingFromMove } from "./facing.ts";
+import { inputMode } from "./input_mode.ts";
 
 const GAME_KEYS = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD",
@@ -175,6 +181,9 @@ export class IntentTranslator {
   // ---- mouse handling ----------------------------------------------------
 
   private onMouseMove(e: Extract<RawEvent, { kind: "mouse-move" }>): void {
+    // T-325: the UI owns the mouse in "ui" mode — don't even track canvas
+    // coords (they'd be stale/irrelevant once mode returns to gameplay/build).
+    if (inputMode.value === "ui") return;
     // Facing is no longer cursor-derived (T-320) — it follows the movement
     // heading in buildDatagram. We still capture the canvas coords because
     // build mode's cursor-plane voxel placement (`_resolveVoxelHit`) reads
@@ -184,6 +193,7 @@ export class IntentTranslator {
   }
 
   private onMouseDown(e: Extract<RawEvent, { kind: "mouse-down" }>): void {
+    if (inputMode.value === "ui") return;
     if (targetIsInteractiveUI(e.target)) return;
     const mode = modeState.value;
 
@@ -211,18 +221,24 @@ export class IntentTranslator {
 
   private onMouseUp(e: Extract<RawEvent, { kind: "mouse-up" }>): void {
     const mode = modeState.value;
+    // T-325: a panel can open MID-hold (e.g. 'I' pressed while RMB is still
+    // physically down) — the held-button bookkeeping below always clears on
+    // release so nothing leaks (a stuck ACTION_BLOCK bit, a phantom charge
+    // bar), but the resulting world/build DISPATCH only fires while the
+    // world still owns the mouse.
+    const gameOwnsMouse = inputMode.value !== "ui";
 
     if (e.button === 0) {
       if (mode.kind === "build") {
         // Build mode: every LMB-up commits a placement/anchor.
-        if (!targetIsInteractiveUI(e.target)) {
+        if (gameOwnsMouse && !targetIsInteractiveUI(e.target)) {
           this.router.dispatch({ kind: "build-action", canvasX: e.canvasX, canvasY: e.canvasY });
         }
       } else {
         // Normal mode: emit world-main-action with charged duration.
         const held = holdState.value.lmb;
         holdState.value = { lmb: null };
-        if (held && !targetIsInteractiveUI(e.target)) {
+        if (gameOwnsMouse && held && !targetIsInteractiveUI(e.target)) {
           const chargeMs = Math.max(0, Math.round(e.t - held.downAtMs));
           this.pendingChargeMs = chargeMs;
           this.pendingActions |= ACTION_USE_SKILL;
@@ -233,15 +249,17 @@ export class IntentTranslator {
 
     if (e.button === 2) {
       this.rmbDown = false;
-      if (mode.kind === "build") {
-        // Build mode: pop the last anchor (or exit if no anchor staged).
-        this.router.dispatch({ kind: "build-undo" });
-      } else if (!this.buildMode) {
-        // No-hammer normal mode: end the held block.
-        this.router.dispatch({ kind: "block-end" });
+      if (gameOwnsMouse) {
+        if (mode.kind === "build") {
+          // Build mode: pop the last anchor (or exit if no anchor staged).
+          this.router.dispatch({ kind: "build-undo" });
+        } else if (!this.buildMode) {
+          // No-hammer normal mode: end the held block.
+          this.router.dispatch({ kind: "block-end" });
+        }
+        // Hammer + normal mode: RMB-up is the radial commit, owned by
+        // RadialMenu's own listener.
       }
-      // Hammer + normal mode: RMB-up is the radial commit, owned by
-      // RadialMenu's own listener.
     }
   }
 

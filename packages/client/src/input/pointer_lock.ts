@@ -5,20 +5,25 @@
  * The free-look camera reads raw mouse deltas (`movementX/movementY`), which
  * the browser only delivers while the pointer is locked. This controller:
  *
- *   - locks on a canvas mousedown when the world should own the cursor
- *     (no UI panel open, not in build mode), requesting RAW (unadjusted)
- *     movement — see `engageLock()` (T-324: Chromium applies an OS-level
- *     pointer-acceleration curve to `movementX/Y` under a plain pointer
- *     lock, which both compresses slow deliberate turns — reads as
- *     sluggish — and can emit an anomalous single-event jump when that
- *     curve recalibrates — reads as a snap; `unadjustedMovement` bypasses
- *     the curve and reads raw HID deltas instead);
- *   - feeds each locked mousemove delta to `onLook` (→ cameraRig.applyLookDelta),
- *     one call per DOM event (never batched/overwritten), so the accumulated
- *     yaw/pitch tracks the physical mouse 1:1 with no per-frame loss;
- *   - releases (`exitPointerLock`) the moment a UI panel opens or build mode is
- *     entered, so the cursor returns for menus / voxel placement — REQUIRED,
- *     not optional (an unreleased lock makes every panel unusable);
+ *   - locks on a canvas mousedown when `inputMode` (T-325, the single mouse-
+ *     ownership owner — see `input_mode.ts`) is `gameplay`, requesting RAW
+ *     (unadjusted) movement — see `engageLock()` (T-324: Chromium applies an
+ *     OS-level pointer-acceleration curve to `movementX/Y` under a plain
+ *     pointer lock, which both compresses slow deliberate turns — reads as
+ *     sluggish — and can emit an anomalous single-event jump when that curve
+ *     recalibrates — reads as a snap; `unadjustedMovement` bypasses the curve
+ *     and reads raw HID deltas instead);
+ *   - feeds each locked mousemove delta to `onLook` (→ cameraRig.applyLookDelta)
+ *     ONLY while still in `gameplay`, one call per DOM event (never batched/
+ *     overwritten), so the accumulated yaw/pitch tracks the physical mouse
+ *     1:1 with no per-frame loss — and gating on `inputMode` rather than only
+ *     the DOM `_locked` mirror closes the T-325 race where a panel opens but
+ *     `exitPointerLock()` (async) hasn't completed yet: the JS-side gate
+ *     drops deltas the instant the mode flips, without waiting on the browser;
+ *   - releases (`exitPointerLock`) the moment `inputMode` leaves `gameplay`
+ *     (a panel or the build radial opens, or build mode is entered), so the
+ *     cursor returns for menus / voxel placement — REQUIRED, not optional
+ *     (an unreleased lock makes every panel unusable);
  *   - never auto-re-locks: re-engaging is always an explicit canvas click, so a
  *     panel-close can't fight the browser into a lock/unlock loop.
  *
@@ -30,8 +35,7 @@
  * (auto-exits lock) — no explicit unbind needed.
  */
 import { effect } from "@preact/signals";
-import { modeState } from "./context.ts";
-import { uiState } from "../ui/ui_store.ts";
+import { cameraOwnsMouse } from "./input_mode.ts";
 
 export class PointerLockController {
   private _locked = false;
@@ -46,17 +50,20 @@ export class PointerLockController {
     /** Apply an accumulated look delta (pixels) — cameraRig.applyLookDelta. */
     private readonly onLook: (dxPixels: number, dyPixels: number) => void,
   ) {
-    // Engage on a bare canvas mousedown when the world owns the cursor.
+    // Engage on a bare canvas mousedown when inputMode is gameplay.
     this._onDown = (e) => {
       if (e.target !== this.canvas) return;
       if (this._locked) return;
-      if (!this.worldOwnsCursor()) return;
+      if (!cameraOwnsMouse.value) return;
       this.engageLock();
     };
 
-    // Only feed deltas while genuinely locked to THIS canvas.
+    // Only feed deltas while genuinely locked to THIS canvas AND still in
+    // gameplay (T-325: the mode check, not just `_locked`, is what closes the
+    // async exitPointerLock() race — see the class doc comment).
     this._onMove = (e) => {
       if (!this._locked) return;
+      if (!cameraOwnsMouse.value) return;
       this.onLook(e.movementX, e.movementY);
     };
 
@@ -72,19 +79,15 @@ export class PointerLockController {
     document.addEventListener("pointerlockchange", this._onChange);
     document.addEventListener("pointerlockerror", this._onError);
 
-    // Auto-release whenever the world no longer owns the cursor (a panel opened
-    // or build mode was entered). Re-locking is always an explicit click.
+    // Auto-release whenever inputMode leaves gameplay (a panel or the build
+    // radial opened, or build mode was entered). Re-locking is always an
+    // explicit click.
     this.disposeEffect = effect(() => {
-      const world = this.worldOwnsCursor();
-      if (!world && document.pointerLockElement === this.canvas) {
+      const gameplay = cameraOwnsMouse.value;
+      if (!gameplay && document.pointerLockElement === this.canvas) {
         document.exitPointerLock();
       }
     });
-  }
-
-  /** True when the world (not a menu / build mode) should hold the cursor. */
-  private worldOwnsCursor(): boolean {
-    return uiState.value.openPanels.size === 0 && modeState.value.kind !== "build";
   }
 
   /**
