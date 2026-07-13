@@ -296,7 +296,8 @@ Done when: every voxel-baked class reads its warp amplitude from content, the fa
 per material/class, and a wall, a prop and a character in one screenshot share the same surface idiom.
 
 ### T-327 · Combat-feel pipeline — windup / active / winddown / dodge / block / hitstop tuning loop
-Effort: L   Status: todo   (design settled 2026-07-07: **A + B** below — live tuning is the core, the
+Effort: L   Status: done   Commits: server da90070 · client 5dc4558 · devtools 81d73fd
+(design settled 2026-07-07: **A + B** below — live tuning is the core, the
 Studio timeline is the precision complement. Feel is only findable by feeling; the panel is for seeing
 exactly what you just felt.)
 
@@ -328,6 +329,25 @@ Done when: you can spawn a dummy, swing at it, change a phase tick / i-frame / h
 difference on the very next swing, and save the values you liked into content — and the Studio
 timeline shows you exactly which windows you just moved.
 Unblocks: T-297/T-298/T-299's numbers are placeholders until this exists.
+
+**LANDED (lane/t327-feelpipe, in-lane verified — live-stack pass still needed, see below):**
+A: `DebugSpawnDummy` (`training_dummy`/`training_dummy_attacker` NPCs+prefabs+BTs; the attacker
+swings every 40 ticks via the new generic `check_tick_interval` BT node). "Never dies" is a Health
+floor at 1 in `health_hit_handler.ts` for any `TrainingDummy`-tagged entity (has to be at the
+damage-write site — DeathSystem's composed-lethal sweep independently kills on committed
+`Health.current <= 0`); `TrainingDummySystem` heals it back to full `healDelayTicks` after the last
+hit. `DebugSetActionParam { actionId, field, value }` patches a numeric leaf of the live
+ContentService in place (`actionId="$config"` reaches GameConfig for knockback/aim-assist/parry-window
+— those aren't per-ActionDef) — dispatcher re-fetches `content.actions.get()` every tick so it's live
+next-action, no restart. Client `DebugPanel` gained "Training dummy" + "Action tuning" sections.
+Save-back is `POST /debug/save-action` on the admin HTTP server (same origin as the client, devMode-
+gated) rather than the devtools static server, so it doesn't depend on a second process being up.
+B: Studio "Phases" tab beside Sweep — phase bars in ticks + i-frame/block/hitbox-live windows derived
+generically from the def's `effects` (`phase_windows.ts`, no hardcoded phase names) + the blade sweep
+alongside via Sweep's own overlay primitives, manual weapon-action picker when nothing's pinned.
+Verification done: type-check matrix, `deno test -A packages/` (839 passed), `deno task bundle` +
+`deno task build-studio`. NOT done (no live stack in this lane): actually spawning a dummy, editing a
+knob mid-fight, and confirming the Studio timeline against a live swing — see postMergeChecklist.
 
 The phase timings (windup / active / winddown / the new `recovery`), dodge i-frames, block windows,
 hitstop and knockback all need real iteration — and there is no loop for iterating them. Today a
