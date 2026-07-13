@@ -185,10 +185,22 @@ async function handleAdminRequest(
   }
 
   // Serve all other client assets (index.html, dist/game.js, src/ui/theme.css, etc.)
-  return serveDir(req, {
+  //
+  // `Cache-Control: no-cache` is REQUIRED, not a nicety (T-332): without it the
+  // browser applies HEURISTIC freshness (roughly a fraction of the file's age)
+  // and will happily serve a stale asset without revalidating. That silently
+  // desynchronises the bundle from its stylesheet — a rebuild ships new markup
+  // (new class names) while the browser keeps the OLD theme.css, so the new
+  // elements have no styles and collapse into document flow, stacking at the
+  // top of the page. `no-cache` does NOT mean "don't cache": it means "always
+  // revalidate", and the ETag serveDir already emits makes that a cheap 304.
+  const res = await serveDir(req, {
     fsRoot: new URL("../../client", import.meta.url).pathname,
     quiet: true,
   });
+  const headers = new Headers(res.headers);
+  headers.set("cache-control", "no-cache");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
 /**
