@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, MaterialGeneratorPreferences, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData, ArmorData } from "./types.ts";
+  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData, ArmorData, GaitDef, GaitKeyframe } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { crossCheckBodyRecipe } from "./body_recipe.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
@@ -53,7 +53,7 @@ async function loadContentStoreInternal(
   const [
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
-    weaponActionsRaw, actionsRaw, behaviorTreesRaw,
+    weaponActionsRaw, gaitsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
     procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, dissolveProfilesRaw, cliffProfilesRaw, animLibraryArchetypes,
   ] = await Promise.all([
@@ -65,6 +65,7 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "prefabs"),
     readJsonDir(dataDir, "npcs"),
     readJsonDir(dataDir, "weapon_actions"),
+    readJsonDirOptional(dataDir, "gaits"),
     readJsonDirOptional(dataDir, "actions"),
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
@@ -192,6 +193,22 @@ async function loadContentStoreInternal(
 
   for (const raw of weaponActionsRaw as WeaponActionDef[]) {
     store.registerWeaponAction(raw);
+  }
+
+  // Gaits (T-308) — the procedural walk-cycle catalogue. Validate each def's
+  // own shape, then cross-check every skeleton's `gaitId` (skeletons are
+  // already fully registered above) against the loaded set — fail fast,
+  // same stance as every other content cross-check in this file.
+  for (const raw of gaitsRaw as GaitDef[]) {
+    validateGaitDef(raw);
+    store.registerGait(raw);
+  }
+  for (const skeleton of store.skeletons.values()) {
+    if (skeleton.gaitId && !store.gaits.get(skeleton.gaitId)) {
+      throw new Error(
+        `Skeleton '${skeleton.id}': gaitId '${skeleton.gaitId}' references an unknown gait`,
+      );
+    }
   }
 
   // Actions (T-225) — validate each def's internal shape, then a final
@@ -1026,6 +1043,41 @@ export function validateResourceDef(def: ResourceDef): void {
       }
     }
   }
+}
+
+/** Validate one GaitDef's own shape (T-308). `forward` must be a non-empty,
+ *  phase-ascending track — `backward`/`strafe`, if authored, get the same
+ *  check (see swing_pose.ts's `applyGaitPose` for how an absent track is
+ *  derived from `forward` instead). */
+export function validateGaitDef(def: GaitDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`GaitDef: missing or empty id`);
+  }
+  if (typeof def.strideLength !== "number" || !(def.strideLength > 0)) {
+    throw new Error(`Gait '${def.id}': strideLength must be a positive number`);
+  }
+  const checkTrack = (name: string, track: GaitKeyframe[] | undefined) => {
+    if (track === undefined) return;
+    if (!Array.isArray(track) || track.length === 0) {
+      throw new Error(`Gait '${def.id}': ${name} must be a non-empty array`);
+    }
+    let prevPhase = -Infinity;
+    for (const kf of track) {
+      if (typeof kf.phase !== "number" || kf.phase < 0 || kf.phase > 1) {
+        throw new Error(`Gait '${def.id}': ${name} keyframe phase must be in [0,1], got ${kf.phase}`);
+      }
+      if (kf.phase < prevPhase) {
+        throw new Error(`Gait '${def.id}': ${name} keyframes must be phase-ascending`);
+      }
+      prevPhase = kf.phase;
+      if (typeof kf.fwd !== "number" || typeof kf.right !== "number" || typeof kf.up !== "number") {
+        throw new Error(`Gait '${def.id}': ${name} keyframe at phase ${kf.phase} needs numeric fwd/right/up`);
+      }
+    }
+  };
+  checkTrack("forward", def.forward);
+  checkTrack("backward", def.backward);
+  checkTrack("strafe", def.strafe);
 }
 
 export function validateActionDef(def: ActionDef): void {

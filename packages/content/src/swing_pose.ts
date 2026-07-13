@@ -17,7 +17,7 @@
  *
  * All vectors are SOLVER space (x=right, y=up, z=-fwd), matching skeleton_solver.
  */
-import type { SkeletonDef, BoneDef, SwingPathDef, SwingKeyframe, GripDef } from "./types.ts";
+import type { SkeletonDef, BoneDef, SwingPathDef, SwingKeyframe, GripDef, GaitDef, GaitKeyframe } from "./types.ts";
 import type { BoneRotation, Quat } from "./ik_solver.ts";
 import {
   applyQuat, quatMultiply, invertQuat, eulerFromQuat, quatFromUnitVectors,
@@ -295,6 +295,142 @@ export function applyCrouchPose(
     const upper = lower ? boneIndex.get(lower)?.parent : undefined;
     const target = P0.get(foot)?.pos;
     if (!upper || !lower || !target) continue;
+    aimLimb(Pd, boneIndex, upper, lower, foot, target, pole, null, null, out);
+  }
+  return out;
+}
+
+// ---- procedural gait (T-308) -------------------------------------------
+
+export interface GaitPoseParams {
+  /** Foot bones to place. Default from the GaitDef, else ["foot_l","foot_r"]. */
+  feetBones?: [string, string];
+  /** Knee pole hint, actor-local {fwd,right,up}. Default from the GaitDef. */
+  kneePole?: { fwd: number; right: number; up: number };
+  /**
+   * Same shape as `applyCrouchPose`'s implicit drop: when the entity is ALSO
+   * crouching, pass the pelvis-drop translation here so the gait's leg IK
+   * reaches from the CURRENT (dropped) hip toward the SAME ground-anchored
+   * foot targets it would use standing — crouch + walk compose without
+   * either producer needing to run first (see swing_pose.test.ts).
+   */
+  rootOffset?: { x: number; y: number; z: number };
+  morphParams?: Record<string, number>;
+}
+
+/** Sample a GaitKeyframe track at normalised phase p∈[0,1) (wraps). Linear
+ *  interpolation between authored keyframes, matching `sampleSwingPath`. */
+function sampleGaitTrack(track: GaitKeyframe[], phase: number): { fwd: number; right: number; up: number } {
+  if (track.length === 1) return { fwd: track[0].fwd, right: track[0].right, up: track[0].up };
+  const p = ((phase % 1) + 1) % 1;
+  let a = track[0], b = track[track.length - 1];
+  for (let i = 0; i < track.length - 1; i++) {
+    if (p >= track[i].phase && p <= track[i + 1].phase) { a = track[i]; b = track[i + 1]; break; }
+  }
+  const span = b.phase - a.phase;
+  const f = span > 1e-6 ? (p - a.phase) / span : 0;
+  const lp = (x: number, y: number) => x + (y - x) * f;
+  return { fwd: lp(a.fwd, b.fwd), right: lp(a.right, b.right), up: lp(a.up, b.up) };
+}
+
+/**
+ * Derive the backward-walk track from `forward` (single-source-of-truth, the
+ * same doctrine `deriveTip()` uses for blade tips): a foot planted while
+ * walking BACKWARD sweeps from behind to in front instead of front to back,
+ * so only the fore/aft (`fwd`) component flips sign; lift (`up`) and stance
+ * width (`right`) are unchanged.
+ */
+function mirrorGaitBackward(forward: GaitKeyframe[]): GaitKeyframe[] {
+  return forward.map((k) => ({ phase: k.phase, fwd: -k.fwd, right: k.right, up: k.up }));
+}
+
+/**
+ * Derive a rightward-strafe track from `forward`: the fore/aft sweep becomes
+ * a lateral sweep (the foot steps sideways through the same contact →
+ * push-off → lift shape instead of front-to-back). `applyGaitPose` flips the
+ * sign for a leftward strafe.
+ */
+function mirrorGaitStrafe(forward: GaitKeyframe[]): GaitKeyframe[] {
+  return forward.map((k) => ({ phase: k.phase, fwd: 0, right: k.fwd, up: k.up }));
+}
+
+/**
+ * Procedural walk cycle — the base-pose catalogue's gait entry (T-308,
+ * Overgrowth-style: a SMALL authored key-pose set, interpolated, not a
+ * baked clip). Replaces the locomotion clip's LEG placement; the clip's
+ * upper-body pose (arms/spine/head, still evaluated into `basePose` by the
+ * caller) is untouched — this only writes the leg IK chains + feet, so each
+ * weapon's authored upper-body character survives.
+ *
+ * `phase` MUST be driven by ground distance travelled (`(distanceTravelled
+ * / gait.strideLength) % 1`), not elapsed time — that is what keeps foot
+ * speed matched to ground speed at any movement speed instead of sliding.
+ * The caller (the renderer) owns that accumulator; this function is pure.
+ *
+ * Direction blending: `loco.moveFwd`/`loco.strafe` weight the forward /
+ * (derived) backward / (derived) strafe tracks. This is an exact
+ * no-footslide guarantee ONLY along the three cardinal blends (pure
+ * forward, pure backward, pure strafe) — see swing_pose.test.ts. A diagonal
+ * movement blends the three tracks linearly, the same informal-blend idiom
+ * `applyLocomotionPose` already uses for simultaneous strafe+turn; it reads
+ * fine but isn't a proven zero-slide guarantee at every angle.
+ */
+export function applyGaitPose(
+  skeleton: SkeletonDef,
+  boneIndex: ReadonlyMap<string, BoneDef>,
+  basePose: ReadonlyMap<string, BoneRotation>,
+  scale: number,
+  gait: GaitDef,
+  phase: number,
+  loco: LocoState,
+  params: GaitPoseParams = {},
+): Map<string, BoneRotation> {
+  const out = new Map<string, BoneRotation>(basePose);
+  const strafe = loco.strafe ?? 0, moveFwd = loco.moveFwd ?? 0;
+  const mag = Math.min(1, Math.hypot(strafe, moveFwd));
+  if (mag < 1e-3) return out;
+
+  const feetBones = params.feetBones ?? gait.feetBones ?? ["foot_l", "foot_r"];
+  const kneePole = params.kneePole ?? gait.kneePole ?? { fwd: 1, right: 0, up: -0.2 };
+  const morph = params.morphParams;
+
+  const wFwd = Math.max(0, moveFwd), wBack = Math.max(0, -moveFwd), wStrafe = Math.abs(strafe);
+  const total = wFwd + wBack + wStrafe || 1;
+  const fFwd = wFwd / total, fBack = wBack / total, fStrafe = wStrafe / total;
+  const strafeSign = strafe < 0 ? -1 : 1;
+
+  const backward = gait.backward ?? mirrorGaitBackward(gait.forward);
+  const strafeTrack = gait.strafe ?? mirrorGaitStrafe(gait.forward);
+
+  const blended = (p: number): { fwd: number; right: number; up: number } => {
+    const f = sampleGaitTrack(gait.forward, p);
+    const b = sampleGaitTrack(backward, p);
+    const s = sampleGaitTrack(strafeTrack, p);
+    return {
+      fwd:   mag * (fFwd * f.fwd + fBack * b.fwd + fStrafe * s.fwd),
+      right: mag * (fFwd * f.right + fBack * b.right + fStrafe * strafeSign * s.right),
+      up:    mag * (fFwd * f.up + fBack * b.up + fStrafe * s.up),
+    };
+  };
+
+  // P0: ground-anchored reference (no rootOffset) — where each foot's rest
+  // position sits when standing. Pd: the CURRENT hip position (dropped if
+  // rootOffset/crouching), which is what aimLimb reaches its IK chain from.
+  // Targets are computed from P0 so a crouching walker's feet stay planted
+  // at the same ground spot a standing walker's would, exactly mirroring
+  // applyCrouchPose's own P0/Pd split.
+  const P0 = solveSkeleton(skeleton, boneIndex, out, scale, morph);
+  const Pd = params.rootOffset ? solveSkeleton(skeleton, boneIndex, out, scale, morph, undefined, params.rootOffset) : P0;
+  const pole = toSolver(kneePole);
+  const [footA, footB] = feetBones;
+  const samples: Array<[string, number]> = [[footA, phase], [footB, (phase + 0.5) % 1]];
+  for (const [foot, p] of samples) {
+    const lower = boneIndex.get(foot)?.parent;
+    const upper = lower ? boneIndex.get(lower)?.parent : undefined;
+    const rest = P0.get(foot)?.pos;
+    if (!upper || !lower || !rest) continue;
+    const delta = mul(toSolver(blended(p)), scale);
+    const target = add(rest, delta);
     aimLimb(Pd, boneIndex, upper, lower, foot, target, pole, null, null, out);
   }
   return out;

@@ -1,0 +1,12 @@
+{
+  "id": "biped_walk",
+  "strideLength": 1.6,
+  "feetBones": ["foot_l", "foot_r"],
+  "kneePole": { "fwd": 1, "right": 0, "up": -0.2 },
+  "forward": [
+    { "phase": 0.0, "fwd": 0.48, "right": 0, "up": 0.0 },
+    { "phase": 0.6, "fwd": -0.48, "right": 0, "up": 0.02 },
+    { "phase": 0.8, "fwd": 0.0, "right": 0, "up": 0.18 },
+    { "phase": 1.0, "fwd": 0.48, "right": 0, "up": 0.0 }
+  ]
+}

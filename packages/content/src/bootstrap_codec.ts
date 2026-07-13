@@ -30,10 +30,11 @@ import type {
   ActionDef, GameConfig, TileLayout, Prefab,
   ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
   AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette,
+  GaitDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 21;
+export const BOOTSTRAP_VERSION = 22;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -50,6 +51,7 @@ interface ContentBootstrapJson {
   zones:               ZoneDef[];
   loreFragments:       LoreFragment[];
   weaponActions:       WeaponActionDef[];
+  gaits:               GaitDef[];
   actions:             ActionDef[];
   resources:           ResourceDef[];
   triggers:            TriggerDef[];
@@ -129,6 +131,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     zones:               [...service.zones.values()],
     loreFragments:       [...service.loreFragments.values()],
     weaponActions:       [...service.weaponActions.values()],
+    gaits:               [...service.gaits.values()],
     actions:             [...service.actions.values()],
     resources:           [...service.resources.values()],
     triggers:            [...service.triggers.values()],
@@ -217,6 +220,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const z of body.zones)                store.registerZone(z);
   for (const l of body.loreFragments)        store.registerLoreFragment(l);
   for (const w of body.weaponActions)        store.registerWeaponAction(w);
+  for (const g of body.gaits)                store.registerGait(g);
   for (const a of body.actions)              store.registerAction(a);
   // version is strictly enforced above, so a decoded blob always carries
   // every array the current envelope declares — no per-field guards

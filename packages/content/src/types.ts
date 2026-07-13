@@ -960,6 +960,54 @@ export interface GripDef {
 }
 
 /**
+ * One sample of a gait direction's foot-trajectory (T-308) — a single foot's
+ * target OFFSET from its own rest position, actor-local {fwd,right,up}
+ * (same convention as SwingKeyframe), at a normalised point in that foot's
+ * OWN full stride cycle. `phase` ascends 0→1; phase 0 and phase 1 should
+ * describe the same pose so the track loops cleanly. The other foot samples
+ * the same track at `phase + 0.5` (contralateral gait) — no separate
+ * per-foot authoring needed.
+ */
+export interface GaitKeyframe {
+  /** Normalised position in this foot's stride cycle. 0 = contact. Ascending. */
+  phase: number;
+  fwd: number;
+  right: number;
+  up: number;
+}
+
+/**
+ * Procedural walk-cycle catalogue (T-308) — Overgrowth-style: a SMALL set of
+ * authored key poses (contact / low-pass / push-off, ~3-4 keyframes),
+ * interpolated, rather than a baked clip. `forward` is the single
+ * authoritative track; `backward` and `strafe` are DERIVED from it by
+ * default (mirror the fore/aft sweep for backward; swap fore/aft onto the
+ * lateral axis for a rightward strafe, sign-flipped for leftward) — the same
+ * "author one source, derive the rest" doctrine `deriveTip()` uses for
+ * blade tips. A gait may override either with an explicit authored track.
+ *
+ * The gait's phase is driven by GROUND DISTANCE TRAVELLED, not time:
+ * `phase = (distanceTravelled / strideLength) % 1`. This is what keeps foot
+ * speed matched to ground speed at any movement speed — see
+ * `applyGaitPose()` in swing_pose.ts.
+ */
+export interface GaitDef {
+  id: string;
+  /** World units of ground travel per full 2-step cycle (phase 0..1). */
+  strideLength: number;
+  /** Foot bones to place. Default ["foot_l","foot_r"]. */
+  feetBones?: [string, string];
+  /** Knee pole hint, actor-local {fwd,right,up}. */
+  kneePole?: { fwd: number; right: number; up: number };
+  /** One foot's forward-walk trajectory over its own phase 0..1. */
+  forward: GaitKeyframe[];
+  /** Overrides the derived backward track (see class doc). */
+  backward?: GaitKeyframe[];
+  /** Overrides the derived rightward-strafe track (see class doc). */
+  strafe?: GaitKeyframe[];
+}
+
+/**
  * Physics definition for one weapon archetype (melee or ranged).
  * Drives the three-phase swing (windup → active → winddown), the swing
  * animation clip, and the blade-capsule geometry attached to the holding
@@ -2614,6 +2662,16 @@ export interface SkeletonDef {
    * for every bone this recipe covers — see entity_mesh.ts / hitbox_derive.ts call sites.
    */
   bodyRecipe?: BodyRecipeDef;
+  /**
+   * Procedural gait catalogue id (T-308) — names a GaitDef in
+   * `data/gaits/`. The client's pose pipeline uses it to generate the
+   * LOWER body + feet from interpolated key poses (phase driven by ground
+   * distance, not time) instead of the locomotion clip's leg track; absent
+   * = no procedural gait, the locomotion clip drives the legs as before
+   * (e.g. the wolf archetype, which has no biped leg-bone naming).
+   * Cross-checked against `content.gaits` at load (loader.ts).
+   */
+  gaitId?: string;
 }
 
 /**

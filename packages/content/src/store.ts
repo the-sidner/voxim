@@ -63,6 +63,7 @@ import type {
   PuzzleDef,
   ProcModelDef,
   ScatterDef,
+  GaitDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
@@ -100,6 +101,12 @@ export interface ContentService {
   readonly pois:            ContentRegistryReadonly<PoiDef>;
   readonly loreFragments:   ContentRegistryReadonly<LoreFragment>;
   readonly weaponActions:   ContentRegistryReadonly<WeaponActionDef>;
+  /**
+   * Procedural gait catalogues (T-308), keyed by id. Loaded from
+   * `data/gaits/*.json`, referenced by `SkeletonDef.gaitId`. Client-only
+   * consumer (`applyGaitPose` in swing_pose.ts); the server never reads it.
+   */
+  readonly gaits:           ContentRegistryReadonly<GaitDef>;
   /**
    * Action definitions (T-225) — the universal behavior primitive. Loaded
    * from `data/actions/*.json`. Consumed by the ActionDispatcher (T-226+)
@@ -330,6 +337,10 @@ export class StaticContentStore implements ContentService {
     kind: "weaponAction",
     idOf: (w) => w.id,
   });
+  public readonly gaits = new ContentRegistry<GaitDef>({
+    kind: "gait",
+    idOf: (g) => g.id,
+  });
   public readonly actions = new ContentRegistry<ActionDef>({
     kind: "action",
     idOf: (a) => a.id,
@@ -481,6 +492,10 @@ export class StaticContentStore implements ContentService {
 
   registerWeaponAction(def: WeaponActionDef): void {
     this.weaponActions.register(def);
+  }
+
+  registerGait(def: GaitDef): void {
+    this.gaits.register(def);
   }
 
   registerAction(def: ActionDef): void {
