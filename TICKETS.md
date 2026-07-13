@@ -18,6 +18,52 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 
 ## Combat
 
+### T-337 · Spell/throw targeting — hold to pre-cast and aim, release to fire
+Effort: M   Status: todo   (user, 2026-07-14)
+
+One aiming mechanic, shared by spells AND throws:
+- **Facing** (mouse-X, T-328) aims the DIRECTION.
+- **Pitch** (mouse-Y — today it only pans the camera within its clamped band) aims the DISTANCE/arc: up =
+  farther, down = nearer. This gives the pitch axis a real gameplay job for the first time; decide whether
+  the camera still pans while aiming or whether the axis is fully "captured" during a cast (a live call —
+  try both).
+- **Hold the action key** to enter pre-cast: the action winds up and HOLDS at full charge while you aim.
+- **Release** fires.
+- **Block cancels** the cast (block is the universal out).
+Build on the action primitive (this is a windup that holds — the `ticks: -1` perpetual-phase idiom already
+exists in the dispatcher), the projectile resolver (`actions/resolvers/projectile.ts`), and T-327's tuning
+pipeline for the feel. A hold-to-aim indicator (arc/landing marker) is part of the deliverable — you cannot
+aim what you cannot see.
+Done when: holding the key charges and aims (direction from facing, distance from pitch), release fires
+along the aimed arc, block cancels cleanly, and the same mechanic drives a thrown item.
+
+### T-338 · Ranged weapons — build out the bow/crossbow path
+Effort: M   Status: todo   (user, 2026-07-14)
+
+`bow_shot`/`crossbow_shot` weapon_actions and a projectile resolver already exist, but the ranged path is
+thin (no swingPath, no draw/aim loop, no ammo economy worth the name). Build it out on the T-337 aiming
+mechanic (draw = hold, release = loose), with real projectile flight/drop, ammo from the inventory, and
+hit resolution through the same sweep + hit-bubbling path melee uses (T-333). Compose with T-306's
+procedural equipment (a generated bow) rather than one authored model.
+Done when: a bow is drawn, aimed and loosed with the T-337 mechanic; arrows fly with drop, consume ammo,
+and hit through the normal hit path.
+
+### T-339 · Death: ragdoll — the physical complement to voxel dissolution
+Effort: L   Status: needs-design   (user, 2026-07-14)
+
+Death today = the T-311 P5c dissolve (fray/coreness sidecar, in-shader drift, `shed_dissolve` DeathHook,
+`dissolve_timer`) — a corrupted creature frays and sheds voxels. The user wants the OTHER death: a body
+that FALLS — ragdoll, or breaking into parts.
+The design question is which, and whether they coexist (a corrupted haunt dissolves; a bandit's body
+crumples). The Overgrowth north star says ACTIVE ragdoll (physics-driven, muscles fighting to stay
+upright, blending back to animation) — and T-219 just made every bone a real scene-graph entity with a
+transform, which is exactly the substrate a ragdoll needs. Decide: (a) active ragdoll on the bone
+entities, (b) break into rigid parts (each bone entity becomes a physics body), (c) both, chosen per
+creature by content (a `DeathStyleDef`, sibling of `DissolveProfileDef`).
+Blocked on: nothing technical after T-219 — this is a design call plus a physics-integration decision
+(we have no rigid-body physics today; that is the real cost).
+
+
 ### T-323 · Hits don't connect — the hitbox is the skeleton, not the body
 Effort: M   Status: done   Commit: dd71a68   (user, live play 2026-07-07)
 
@@ -352,6 +398,29 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 ## Animation & Render Verification
 
 ## Client / Controls, Feel & Render Polish
+
+### T-335 · Ctrl+W closes the browser tab — crouch is bound to Ctrl
+Effort: S   Status: todo   (user, 2026-07-14)
+
+`ControlLeft`/`ControlRight` are bound to crouch (`intent_translator.ts`), so crouch-walking forward
+(Ctrl+W) is literally the browser's "close tab" chord. The code even acknowledges it in a comment
+("Browsers will see Ctrl+W etc.") without solving it. A browser CANNOT preventDefault Ctrl+W — it is
+reserved — so the ONLY fix is to stop binding Ctrl at all.
+Rebind crouch (C, or Shift, or a toggle — decide by feel; note Shift is the usual sprint key, so C or a
+toggle is likelier right). While in there, audit every other binding against browser-reserved chords
+(Ctrl+T/N/W/Tab, Alt+F4, F-keys) and add a keybinding map in content so this never recurs by accident.
+Done when: no in-game binding can be turned into a browser chord by an ordinary movement combination.
+
+### T-336 · Faster movement
+Effort: S   Status: todo   (user, 2026-07-14)
+
+Movement reads as too slow. Knobs live in `game_config.movement` (`maxGroundSpeed: 9`, `groundAccel: 65`,
+`airControlMult`, `dragRetainPerSec`, `jumpImpulse`). Tune for a faster, more responsive feel — and check
+it against the T-308 gait, whose stride length/frequency are DISTANCE-driven: a speed change automatically
+changes stride, so verify the legs still read right at the new pace (that is the point of the distance-
+driven design, but confirm it live rather than assume). Compose with T-327's live-tuning loop if useful.
+Done when: movement feels fast, the gait still reads correctly at the new speed, no foot sliding.
+
 
 ### T-331 · Some terrain chunks bake with WHITE vertex colours (material lookup lost at bake time)
 Effort: M   Status: done   Commit: ed11d0d   (found during the T-313 live-verify, 2026-07-07)
@@ -851,6 +920,19 @@ click-through in Studio is the post-merge step (devtools isn't behind the docker
 lane could touch).
 
 ## AAA Graphics
+
+### T-340 · Spell & ambience particles — experiment, then integrate into the renderer
+Effort: M   Status: todo   (user, 2026-07-14)
+
+We have dust motes, hit sparks, weapon trails, an impact flash and the dissolve drift — all bespoke,
+each its own little system. Spells and ambience need MORE, and the answer is not a sixth bespoke pass:
+experiment freely first (what reads right in this voxel idiom — voxel shards? sprite billboards? in-shader
+drift like the dissolve?), THEN integrate the winner as ONE content-driven particle primitive in the
+renderer, and retire the bespoke systems that it subsumes. Doctrine: a designer adds a new effect as one
+content def + one registry entry, never a new render pass.
+Done when: spell and ambience particles exist, they are content-authored, and the pre-existing bespoke
+effects that the primitive subsumes are GONE (replace, don't accrete).
+
 
 The 2026-06-26 visual-elevation arc: the mechanics + voxel art language exist; what's missing is
 DETAIL + AAA light/atmosphere. User direction: the comic / pixel-art look is DELIBERATE and KEPT —
@@ -1563,6 +1645,32 @@ visibly reshape the character (height, leg length, arm length,
 shoulder width, hip width, head size); a saved character spawns into
 the world at exactly those proportions; Mixamo animations play on
 every body type without artifact; hits land at the new reach.
+
+## Core Mechanics Depth
+
+### T-341 · Build out the existing core mechanics (crafting · building · survival · NPCs/social)
+Effort: XL (arc)   Status: needs-design   (user, 2026-07-14)
+
+The core loops all EXIST but are thin — each is a skeleton that proves the mechanism without yet being a
+game: crafting (recipes + workstations + the crafting-queue Resource), building (blueprints + the hammer
+loop; note the OpenMask gap T-093 owns), survival (hunger/thirst/stamina as Resources; day/night; light),
+NPCs & social (BT-driven archetypes, traders, job boards, the dynasty/heritage substrate).
+This is the "make it a game" arc. It needs SORTING before building: for each of the four, decide what the
+loop actually IS end-to-end, what is missing versus what is merely thin, and what the smallest version is
+that makes it worth playing. Then it splits into real tickets.
+Do NOT start building until that pass is done — otherwise it becomes four half-deepened systems.
+
+### T-342 · Atlas rethink — a better mix of procedural generation and persistent world
+Effort: XL (arc)   Status: needs-design   (user, 2026-07-14)
+
+"Gute Ideen im Kern vorhanden, müssen sortiert und zu Ende gedacht werden." The atlas today bakes a whole
+world from a seed (deterministic, regenerable, disposable) while the tile-server persists what players do
+to it (terrain edits, POI state, saves). Those two truths pull against each other: what happens to a
+player's house when the world is re-baked? What is authored, what is generated, what is remembered?
+The arc: sort the existing ideas, decide the persistence model end-to-end (what survives a re-bake and
+why; how procedural content and player history compose; whether the world is regenerable-from-seed at all
+once it is lived in), and only then rework. This is the deepest architectural question left in the project
+and it wants a design pass, not a lane.
 
 ## Ops & Deployment
 
