@@ -224,7 +224,18 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 ## Client / Controls, Feel & Render Polish
 
 ### T-328 · Mouse turns the CHARACTER, the camera rides along (supersedes T-320's facing/camera model)
-Effort: M   Status: todo   (user, 2026-07-07)
+Effort: M   Status: done   Commit: fb4f8b9   (user, 2026-07-07)
+
+Landed: facing is mouse-driven (`IntentTranslator.applyLookDelta` ->
+`facingFromLook`, wrapped), camera yaw is a rigid derived read
+(`CameraRig.setYaw`, no accumulator, no damping), and movement is
+transformed by the FACING basis so A/D strafe and S back-pedals while
+still facing the target. Pitch stays camera-only, unchanged. No wire
+change. Unit-tested (facing wrap/continuity, yaw-tracks-facing exactly,
+A-press-is-a-strafe-not-a-turn) + a `cameraProbe.facing()` headless hook
+alongside the existing yaw()/pitch(). The raw pointer-lock FEEL (mouse
+turning the character, circling a target) is the user's manual live-play
+check — un-headless, same as T-320/T-324's pointer-lock work.
 
 Invert T-320's rotation ownership. Today: mouse-X drives the CAMERA yaw directly, and facing is
 derived from the movement direction. The user wants: **mouse-X rotates the PLAYER'S FACING, and the
