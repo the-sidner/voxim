@@ -44,6 +44,7 @@ import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
+import { Bone } from "./components/bone.ts";
 import { Stats, Durability } from "./components/instance.ts";
 import type {
   ContentService,
@@ -51,6 +52,8 @@ import type {
   PrefabResourceNodeData,
   PrefabNpcData,
   PrefabPlayerData,
+  SkeletonDef,
+  EquipSlot,
 } from "@voxim/content";
 import { applyHitboxTemplate } from "@voxim/content";
 import { DEF_BY_NAME } from "./component_registry.ts";
@@ -168,6 +171,12 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
     eq[slot as keyof EquipmentData] = spawnEquipEntity(world, content, prefabId as string);
   }
   world.write(id, Equipment, eq);
+  // T-219/T-220: attach starter equipment onto its resolved bone (or the
+  // player root, if bone-less). Safe here — preInstall (which spawns the
+  // skeleton's bone subtree, if any) already ran before this compound
+  // installer, and every item entity spawnEquipEntity just created above
+  // has never been visible to any session yet.
+  reattachAllEquipment(world, id);
 
   writeDefaults(
     world, id,
@@ -239,6 +248,9 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
     eq[slot as keyof EquipmentData] = spawnEquipEntity(world, content, prefabId);
   }
   world.write(id, Equipment, eq);
+  // T-219/T-220: attach starter equipment onto its resolved bone (or the
+  // NPC root — e.g. a wolf, which has no hand_r). See installPlayer's note.
+  reattachAllEquipment(world, id);
 
   // No LoreLoadout for NPCs (T-260b): it existed for strike slots, which
   // are weapon/archetype triggers now (T-259b); NPCs don't learn lore.
@@ -342,12 +354,123 @@ function installVisualShell(
   const skeleton = content.getSkeletonForModel(prefab.modelId);
   if (skeleton) {
     world.write(id, Hitbox, { derive: true, parts: [] });
+    installSkeletonBones(world, id, skeleton);
     return;
   }
 
   const template = content.getHitboxTemplate(prefab.modelId, seed, entityScale);
   const parts = applyHitboxTemplate(template, new Map());
   world.write(id, Hitbox, { derive: false, parts });
+}
+
+// ---- skeletal bone entities (T-219) ----
+
+/**
+ * Spawn one entity per `skeleton.bones` entry, scene-graph parented to
+ * mirror the skeleton's own hierarchy exactly: a bone whose `parent` is
+ * `null` (the skeleton root) parents to `characterId`; every other bone
+ * parents to its own parent bone's freshly-spawned entity.
+ *
+ * IMMEDIATE writes (`world.create`/`world.write`/`world.setParent`) — this
+ * runs inside `installVisualShell`, itself inside `preInstall`, i.e. the
+ * synchronous construction of a brand-new entity subtree before it has
+ * ever been visible to any session. Same safety argument as
+ * `engine/prefab.ts`'s child-prefab recursion and `buff.ts`'s
+ * `spawnBuffChild`: whatever is committed by the time AoI next runs ships
+ * as one atomic spawn message regardless of write() vs set() timing.
+ *
+ * Relies on `skeleton.bones` being parent-before-child ordered — validated
+ * at content load (`loader.ts`'s `validateSkeletonBoneOrder`), the SAME
+ * authoring convention the client's `entity_mesh.ts` already assumes.
+ *
+ * Bone TRANSFORMS are never written here — no Position, no Transform.
+ * Structure only; motion is derived client-side from AnimationState. See
+ * `components/bone.ts` for the full doctrine note.
+ */
+function installSkeletonBones(world: World, characterId: EntityId, skeleton: SkeletonDef): void {
+  const boneEntityByBoneId = new Map<string, EntityId>();
+  for (const bone of skeleton.bones) {
+    const boneEntityId = newEntityId();
+    world.create(boneEntityId);
+    world.write(boneEntityId, Bone, { boneId: bone.id });
+    const parentEntityId = bone.parent ? boneEntityByBoneId.get(bone.parent) : undefined;
+    world.setParent(boneEntityId, parentEntityId ?? characterId);
+    boneEntityByBoneId.set(bone.id, boneEntityId);
+  }
+}
+
+/**
+ * Find `holderId`'s bone entity carrying `Bone.boneId === boneId`, or null
+ * if `holderId` has no skeleton (a bare test fixture, a non-skeletal
+ * prefab) or the named bone doesn't exist on its skeleton (e.g. a wolf has
+ * no `hand_r`). O(bone count) — called only at equip/unequip frequency
+ * (player input, not per-tick) and once per starter-equipment slot at
+ * spawn, so a linear scan over ~11-17 descendants is negligible.
+ */
+export function findBoneEntity(world: World, holderId: EntityId, boneId: string): EntityId | null {
+  for (const d of world.descendants(holderId)) {
+    if (world.get(d, Bone)?.boneId === boneId) return d;
+  }
+  return null;
+}
+
+/**
+ * Single-bone equip slots only — the client's existing attachment table
+ * (`entity_mesh_registry.ts`'s `SLOT_REST_BONE`/`ARMOR_SLOTS`) mirrored
+ * here for the subset T-220's `setParent`-to-bone model actually fits.
+ * `legs`/`feet` are deliberately absent: they map to MULTIPLE bones each
+ * (upper+lower leg × L/R, both feet) on the client's own table — a single
+ * item entity has no one bone to parent to for those slots, so they keep
+ * parenting to the holder root via `resolveAttachParent`'s fallback below,
+ * same as an item on a skeleton-less holder.
+ *
+ * A small, human-reviewable, low-churn duplication of client data (flagged
+ * for unification whenever T-223 gives the client a reason to consume the
+ * wire-replicated Bone/Parent data itself instead of its own hardcoded
+ * table) — not the kind of silent, derived-data drift risk CLAUDE.md warns
+ * about elsewhere.
+ */
+const EQUIP_SLOT_PRIMARY_BONE: Partial<Record<EquipSlot, string>> = {
+  weapon: "hand_r",
+  offHand: "hand_l",
+  head: "head",
+  chest: "torso_upper",
+  back: "torso_upper",
+};
+
+/**
+ * Resolve the scene-graph parent an item equipped into `slot` on `holderId`
+ * should attach to: the matching bone entity if one exists, else the
+ * holder root itself (no skeleton at all, or a slot with no single-bone
+ * attach point — see `EQUIP_SLOT_PRIMARY_BONE`). Always returns a valid
+ * parent — never null — so callers can pass the result straight to
+ * `world.setParent`/`world.reparent`.
+ */
+export function resolveAttachParent(world: World, holderId: EntityId, slot: EquipSlot): EntityId {
+  const boneId = EQUIP_SLOT_PRIMARY_BONE[slot];
+  if (!boneId) return holderId;
+  return findBoneEntity(world, holderId, boneId) ?? holderId;
+}
+
+/**
+ * Reparent every currently-equipped item on `holderId` onto its resolved
+ * attach point (bone or holder root). IMMEDIATE (`world.setParent`) —
+ * spawn-time/handoff-restore use only, where every referenced item entity
+ * was itself just created in this same synchronous call (starter
+ * equipment, tile-handoff item restoration) and so has never been visible
+ * to any session yet. Runtime equip/unequip/drop (EquipmentSystem, a live
+ * system touching already-known entities) must use `world.reparent`
+ * instead — see that system for why.
+ */
+export function reattachAllEquipment(world: World, holderId: EntityId): void {
+  const eq = world.get(holderId, Equipment);
+  if (!eq) return;
+  const slots: EquipSlot[] = ["weapon", "offHand", "head", "chest", "legs", "feet", "back"];
+  for (const slot of slots) {
+    const equipped = eq[slot];
+    if (!equipped || !world.isAlive(equipped.entityId as EntityId)) continue;
+    world.setParent(equipped.entityId as EntityId, resolveAttachParent(world, holderId, slot));
+  }
 }
 
 /**

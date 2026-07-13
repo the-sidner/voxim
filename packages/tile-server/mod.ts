@@ -48,6 +48,10 @@ export type { SessionInfo } from "./src/account_client.ts";
 export { Equipment } from "./src/components/equipment.ts";
 export type { EquipmentData } from "./src/components/equipment.ts";
 
+// Bone component (T-219) — one entity per skeleton bone.
+export { Bone } from "./src/components/bone.ts";
+export type { BoneData } from "./src/components/bone.ts";
+
 // Building component
 export { Blueprint } from "./src/components/building.ts";
 export type { BlueprintData, BlueprintMaterial } from "./src/components/building.ts";

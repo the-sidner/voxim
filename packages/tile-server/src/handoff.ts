@@ -39,7 +39,7 @@ import { Durability, Inscribed, QualityStamped, Stats, Provenance, History, Owne
 import { FogState } from "./components/fog_state.ts";
 import { SpawnedFrom } from "./components/spawned_from.ts";
 import { DEF_BY_NAME } from "./component_registry.ts";
-import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
+import { spawnPrefab, destroyCarriedItemEntities, reattachAllEquipment } from "./spawner.ts";
 
 /** Player components overlaid onto the re-spawned shell (fog handled separately). */
 // deno-lint-ignore no-explicit-any
@@ -179,6 +179,17 @@ export function restorePlayer(world: World, content: ContentService, payload: Ha
 
   // 4. Overlay the saved player state on the fresh shell.
   overlay(world, id, payload.player);
+
+  // 4b. T-219/T-220: the overlay just replaced Equipment with the REAL
+  //     restored gear (pointing at the item entities restored in step 1,
+  //     which carry no Parent at all yet — step 2's spawnPrefab only
+  //     scene-graph-attached the throwaway starter equipment step 3 threw
+  //     away). Re-run the same attach helper against the now-correct
+  //     Equipment so a handed-off player's weapon/armor keep following
+  //     their bones on the destination tile. Immediate — every referenced
+  //     entity was created fresh in this same synchronous call (step 1),
+  //     never yet visible to any session.
+  reattachAllEquipment(world, id);
 
   // 5. Fog bitmap — its codec is a no-op, so it rides as raw bytes.
   if (payload.fogSeenEver) {

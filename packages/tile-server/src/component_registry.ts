@@ -70,6 +70,7 @@ import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
 import { DarknessModifier, LightEmitter } from "./components/light.ts";
 import { Hitbox } from "./components/hitbox.ts";
+import { Bone } from "./components/bone.ts";
 import { GateLink } from "./components/gate.ts";
 import { Hearth } from "./components/hearth.ts";
 import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
@@ -190,13 +191,17 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Container,
   // Scene graph (T-215): the Parent hierarchy link. Networked so subtrees
   // (POIs, bones, equipment, buffs) replicate for free. Engine owns the
-  // def + codec; wire id 49 is reserved in @voxim/protocol. Inert until
-  // a consumer calls the World hierarchy APIs.
+  // def + codec; wire id 49 is reserved in @voxim/protocol. First real
+  // consumer is T-219 (bone entities + scene-graph-parented equipment).
   Parent,
   // PoiInteractable (T-212 v2) — action/puzzle POI world-prop marker.
   // Networked so the client's hover/click interaction system can detect
   // it in entityState, same as workstationBuffer/container/traderInventory.
   PoiInteractable,
+  // Bone (T-219) — one entity per skeleton bone, boneId only. Structure
+  // (this + Parent) replicates once at spawn; motion is derived
+  // client-side from AnimationState, never wired.
+  Bone,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
