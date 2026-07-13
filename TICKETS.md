@@ -223,6 +223,37 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 
 ## Client / Controls, Feel & Render Polish
 
+### T-331 · Some terrain chunks bake with WHITE vertex colours (material lookup lost at bake time)
+Effort: M   Status: todo   (found during the T-313 live-verify, 2026-07-07)
+
+A rectangular patch of terrain renders pure WHITE with hard voxel edges (reproduced at ~(300,306)-(302,316)
+in standard-seed7; the player's shadow falls across it, so it is lit geometry, not a light bug).
+
+Evidence already gathered — do NOT re-derive, verify then fix:
+- Independent of T-313's new shadow cascade: the patch is identical with the cascade pass disabled (A/B'd),
+  and the cascade itself demonstrably works (far field correctly darkens).
+- Independent of time of day: identical at hour 7 and hour 12, so it is not the dawn sky × `wet_reflect`
+  blowout (that class of bug was fixed for water in 243ce9c).
+- The CONTENT is correct: probing the ContentService at those cells returns path/dirt/grass with correct
+  colours (e.g. dirt = 0x3D2A20).
+- The RENDER is not: a scene probe of the terrain meshes shows `vertexColors: true` on all of them, but
+  `material.color` is `#ffffff` on some and `#7c6440` on others. With vertex colours ON, `material.color`
+  MULTIPLIES them — so a white base means "show the vertex colours as-is", and the patch being white means
+  the VERTEX COLOURS THEMSELVES are white: the voxel bake failed to resolve the material colour for that
+  chunk and fell back to white.
+- Prime suspect: a RACE — the chunk was baked before the material lookup was ready (the same bug class as the
+  T-311-era "all terrain rendered fallback grey", where `ContentCache.getMaterialSync` didn't hold ground
+  materials). Since T-315 E1 the ContentCache is a thin read-through over the bootstrap ContentService, so
+  check the ORDER: can a chunk-ready hook fire (and bake) before the bootstrap blob has hydrated?
+- Second, independent smell: the inconsistent `material.color` across terrain meshes (`#ffffff` vs `#7c6440`)
+  is itself suspicious with `vertexColors: true` — a non-white base double-tints. Decide which is correct and
+  make it uniform.
+
+Done when: no chunk ever bakes with fallback colours (make the failure LOUD — a missing material at bake time
+should throw or warn, never silently paint white), the white patch is gone, and terrain material.color is
+consistent across meshes.
+
+
 ### T-328 · Mouse turns the CHARACTER, the camera rides along (supersedes T-320's facing/camera model)
 Effort: M   Status: done   Commit: fb4f8b9   (user, 2026-07-07)
 
