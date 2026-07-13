@@ -11,8 +11,10 @@
  * can't see. The engine stays component-agnostic; the service binds the
  * specifics.
  *
- * This is where the prefab-children subtree recursion lands next (T-217),
- * alongside the scene-graph primitive.
+ * The prefab-children subtree recursion (T-217) lives here too, alongside
+ * the scene-graph primitive: each child entry resolves through the shared
+ * seeded pool/probability selection (T-334, rand.ts's `resolveSeededPick`)
+ * before being spawned and parented.
  */
 
 import type { World } from "./world.ts";
@@ -21,15 +23,26 @@ import { newEntityId } from "./math.ts";
 import type { ComponentDef } from "./component.ts";
 import type { Transform } from "./scene.ts";
 import { IDENTITY_TRANSFORM } from "./scene.ts";
+import { mulberry32, resolveSeededPick } from "./rand.ts";
+import type { SeededPoolEntry } from "./rand.ts";
 
 /**
- * A child entry the subtree walk reads (T-217). Structurally the content
- * package's `ChildPrefabRef`; the engine stays dependency-free by typing it
- * here. `local` omitted-field defaults are filled to identity before
- * `placeChild` is called.
+ * A child entry the subtree walk reads (T-217; seeded pool/probability
+ * added T-334). Structurally the content package's `ChildPrefabRef`; the
+ * engine stays dependency-free by typing it here. `local` omitted-field
+ * defaults are filled to identity before `placeChild` is called.
+ *
+ * `prefabId` and `pool`/`probability` mirror `SubObjectRef.modelId`/`.pool`/
+ * `.probability` — a fixed single prefab, OR a variant pool one entry is
+ * drawn from at spawn time (pool wins if both are set), optionally gated by
+ * an inclusion probability. Resolved through the ONE shared
+ * `resolveSeededPick` (rand.ts) — the same draw order `resolveSubObjects`/
+ * `hitbox_derive.ts` use for model sub-objects, so a designer can express
+ * the same seeded-random multi-part content (e.g. a tree's branch pool)
+ * as either a model's sub-objects or a prefab's children.
  */
-export interface ChildSpawn {
-  prefabId: string;
+export interface ChildSpawn extends SeededPoolEntry {
+  prefabId?: string;
   local?: Partial<Transform>;
 }
 
@@ -71,6 +84,17 @@ export interface PrefabSpawnContext<O> {
    * keep their preInstall-default placement.
    */
   placeChild?(world: World, childId: EntityId, parentId: EntityId, local: Transform): void;
+  /**
+   * Seed the PRNG stream that resolves this entity's `children` pool/
+   * probability entries (T-334). Called once, only when `prefab.children`
+   * is present, after `id` is assigned. Absent ⇒ seed 0 (deterministic,
+   * no per-entity variance). Services that already derive a per-entity
+   * seed for procedural model variation (e.g. tile-server's `ModelRef.seed`)
+   * should return that SAME value here — one seed governs both a spawned
+   * entity's own sub-object variance and which of its declared children get
+   * spawned, so nothing can drift out of sync.
+   */
+  resolveSeed?(overrides: O, id: EntityId): number;
 }
 
 /**
@@ -109,14 +133,22 @@ export function spawnPrefab<O extends { id?: EntityId }>(
     world.write(id, def, { ...def.default(), ...(data as Record<string, unknown>) });
   }
 
-  // Scene-graph subtree (T-217). Each child is spawned through the same
-  // walk (recurses arbitrarily deep), parented to this entity, then placed
-  // at its declared local transform. `getPrefab` here surfaces an unknown
-  // child id with the same error as a top-level spawn; the content loader
-  // also rejects unknown/abstract child refs at load.
+  // Scene-graph subtree (T-217; seeded pool/probability T-334). Each
+  // declared child entry is resolved to a concrete prefab id via the ONE
+  // shared `resolveSeededPick` — an entry with `probability < 1.0` may be
+  // skipped entirely, and a `pool` entry picks one variant — off a single
+  // PRNG stream seeded once for this entity (`ctx.resolveSeed`). Every
+  // resolved child is then spawned through the same walk (recurses
+  // arbitrarily deep), parented to this entity, and placed at its declared
+  // local transform. `getPrefab` here surfaces an unknown child id with the
+  // same error as a top-level spawn; the content loader also rejects
+  // unknown/abstract child refs (including pool entries) at load.
   if (prefab.children) {
+    const rand = mulberry32(ctx.resolveSeed?.(overrides, id) ?? 0);
     for (const child of prefab.children) {
-      const childId = spawnPrefab(world, ctx, child.prefabId, {} as O);
+      const resolvedId = resolveSeededPick(child, child.prefabId, rand);
+      if (!resolvedId) continue;
+      const childId = spawnPrefab(world, ctx, resolvedId, {} as O);
       world.setParent(childId, id);
       ctx.placeChild?.(world, childId, id, { ...IDENTITY_TRANSFORM, ...child.local });
     }

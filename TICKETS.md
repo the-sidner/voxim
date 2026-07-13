@@ -195,7 +195,7 @@ the generic dispatch layer (`combat/sweep.test.ts`), the concrete tree-trunk-as-
 (`resource_node_hit_handler.test.ts`), and aim-assist (`aim_assist.test.ts`).
 
 ### T-334 · Seeded pool/probability selection on `Prefab.children`
-Effort: M   Status: todo   (scene-graph prerequisite; user decision 2026-07-07)
+Effort: M   Status: in-progress   (scene-graph prerequisite; user decision 2026-07-07)
 
 Prerequisite for T-221. `Prefab.children` (T-217) is a flat `{prefabId, local?}[]` with NO PRNG concept,
 but real multi-part content is seeded-random: `tree_oak` has 1 static trunk + 24 branch entries selected by

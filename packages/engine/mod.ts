@@ -24,4 +24,5 @@ export { Registry } from "./src/registry.ts";
 export type { PhysicsBody, PhysicsInput, PhysicsConfig } from "./src/physics.ts";
 export { DEFAULT_PHYSICS, applyImpulse, stepPhysics } from "./src/physics.ts";
 
-export { mulberry32, mix32 } from "./src/rand.ts";
+export { mulberry32, mix32, resolveSeededPick } from "./src/rand.ts";
+export type { SeededPoolEntry } from "./src/rand.ts";
