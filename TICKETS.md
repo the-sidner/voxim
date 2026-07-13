@@ -167,7 +167,7 @@ entire bug class is invisible to it. A UI change that touches CSS can break in a
 harness fully green.
 
 ### T-333 · Hit resolution bubbles to the nearest ancestor carrying the component
-Effort: M   Status: todo   (scene-graph prerequisite; user decision 2026-07-07)
+Effort: M   Status: done   Commit: ddaab6b   (scene-graph prerequisite; user decision 2026-07-07)
 
 Prerequisite for the scene-graph migration (T-219/T-221). Once an entity's geometry is split across a
 parent + child subtree, a hit lands on a CHILD entity — but the behaviour lives on an ancestor. Today
@@ -181,6 +181,18 @@ dispatch capability, not per-handler logic — the handlers stay unchanged. Keep
 available (a handler may want to know WHICH part was hit — e.g. a headshot).
 Done when: a hit on a child entity dispatches to the ancestor's handler, the struck-part identity survives,
 and a tree/creature split into a subtree behaves exactly as it does today.
+
+Landed as designed. `World.findAncestorWithComponent` (engine, cycle-safe, mirrors
+`worldTransform`'s walk) + `HitHandler.requiredComponent` (declarative, optional) +
+`combat/sweep.ts`'s `dispatchSweepHit` resolving `ctx.targetId` per handler before calling `onHit`.
+All 4 registered handlers (`ResourceNodeHitHandler`/`HealthHitHandler`/`BlueprintHitHandler`/
+`WorkstationHitHandler`) declare their component; `onHit` bodies untouched. `ctx.bodyPart` (already
+handler-neutral) carries the struck-part identity through the bubble. T-320 aim-assist's
+Health+Hitbox candidate check extended to accept a Hitbox on any scene-graph descendant, so a
+Health-on-root/Hitbox-on-bone creature is still pickable. Nothing is parented in production yet, so
+every path is behaviour-preserving today — unit-tested at the engine primitive (`scene.test.ts`),
+the generic dispatch layer (`combat/sweep.test.ts`), the concrete tree-trunk-as-child scenario
+(`resource_node_hit_handler.test.ts`), and aim-assist (`aim_assist.test.ts`).
 
 ### T-334 · Seeded pool/probability selection on `Prefab.children`
 Effort: M   Status: todo   (scene-graph prerequisite; user decision 2026-07-07)
@@ -215,8 +227,9 @@ changeset loop is unaffected by their count, and AoI ships only their initial sp
 never ship deltas). The extra join cost is ~0.3–0.5 MB against a 6 MB content blob + 5 MB terrain stream.
 
 Two capabilities this decision REQUIRES first (both now ticketed): **T-333** hit-bubbling to the nearest
-ancestor carrying the component (else a tree split into a subtree becomes unharvestable), and **T-334**
-seeded pool/probability on `Prefab.children` (else seeded multi-part content cannot be expressed).
+ancestor carrying the component (else a tree split into a subtree becomes unharvestable) — **DONE**, see
+T-333's entry above — and **T-334** seeded pool/probability on `Prefab.children` (else seeded multi-part
+content cannot be expressed).
 Order: T-333 + T-334 → T-219 (bones — where the real content is) → T-221 (static props) → T-223 → T-224.
 T-222 (coordinator) is deferred: its subject (cities) does not exist yet (T-059 is open).
 
