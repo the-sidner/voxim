@@ -10,11 +10,21 @@ import { assertEquals } from "jsr:@std/assert";
 import { World } from "./world.ts";
 import { Parent, composeTransform, IDENTITY_TRANSFORM } from "./scene.ts";
 import type { Transform } from "./scene.ts";
+import { defineComponent } from "./component.ts";
 
 function spawn(w: World, id: string): string {
   w.create(id);
   return id;
 }
+
+/** Server-only presence marker — stands in for a real behaviour component
+ *  (Health, ResourceNode, …) in the T-333 ancestor-walk tests below. */
+const Marker = defineComponent({
+  name: "marker" as const,
+  networked: false,
+  codec: { encode: () => new Uint8Array(), decode: () => ({}) },
+  default: (): Record<string, never> => ({}),
+});
 
 Deno.test("Parent defaults to root; setParent / getParent round-trips", () => {
   const w = new World();
@@ -110,6 +120,61 @@ Deno.test("composeTransform: parent ∘ local", () => {
   const p: Transform = { x: 5, y: 5, z: 0, scale: 2 };
   const l: Transform = { x: 2, y: 0, z: 1, scale: 4 };
   assertEquals(composeTransform(p, l), { x: 9, y: 5, z: 2, scale: 8 });
+});
+
+Deno.test("findAncestorWithComponent: T-333 hit-bubbling walk", async (t) => {
+  await t.step("parentless entity carrying the component resolves to itself (behaviour-preserving)", () => {
+    const w = new World();
+    const a = spawn(w, "a");
+    w.write(a, Marker, {});
+    assertEquals(w.findAncestorWithComponent(a, Marker), a);
+  });
+
+  await t.step("parentless entity lacking the component resolves to null", () => {
+    const w = new World();
+    const a = spawn(w, "a");
+    assertEquals(w.findAncestorWithComponent(a, Marker), null);
+  });
+
+  await t.step("a struck child bubbles to the nearest ancestor carrying the component", () => {
+    const w = new World();
+    const root = spawn(w, "root");
+    const child = spawn(w, "child");
+    w.setParent(child, root);
+    w.write(root, Marker, {});
+    // child itself does not carry Marker — must walk up to root.
+    assertEquals(w.findAncestorWithComponent(child, Marker), root);
+  });
+
+  await t.step("walks past an intermediate ancestor that lacks the component", () => {
+    const w = new World();
+    const grandparent = spawn(w, "grandparent");
+    const parent = spawn(w, "parent");
+    const child = spawn(w, "child");
+    w.setParent(parent, grandparent);
+    w.setParent(child, parent);
+    w.write(grandparent, Marker, {});
+    // parent has no Marker — nearest ancestor carrying it is the grandparent.
+    assertEquals(w.findAncestorWithComponent(child, Marker), grandparent);
+  });
+
+  await t.step("a struck child with no ancestor carrying the component resolves to null", () => {
+    const w = new World();
+    const root = spawn(w, "root");
+    const child = spawn(w, "child");
+    w.setParent(child, root);
+    // Neither child nor root carries Marker.
+    assertEquals(w.findAncestorWithComponent(child, Marker), null);
+  });
+
+  await t.step("cycle-safe: terminates instead of looping forever", () => {
+    const w = new World();
+    const x = spawn(w, "x");
+    const y = spawn(w, "y");
+    w.setParent(x, y);
+    w.setParent(y, x); // cycle
+    assertEquals(w.findAncestorWithComponent(x, Marker), null);
+  });
 });
 
 Deno.test("Parent codec round-trips a parent id and root", () => {

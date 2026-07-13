@@ -442,6 +442,31 @@ export class World {
     return localOf(entityId) ?? IDENTITY_TRANSFORM;
   }
 
+  /**
+   * Nearest entity carrying `token`, starting at `entityId` itself and
+   * walking up the `Parent` chain (T-333). This is how hit resolution
+   * bubbles from a struck child (e.g. a bone, a prop sub-object) to the
+   * ancestor that actually carries the behaviour component a handler
+   * needs — generic over any component, so a new hit-handler never needs
+   * its own walk.
+   *
+   * Cycle-safe (same `seen` guard as `worldTransform`) and bounded by
+   * chain length. Returns `null` if neither `entityId` nor any ancestor
+   * carries `token` — including the parentless case, where this degrades
+   * to exactly `this.has(entityId, token)`, i.e. today's behaviour before
+   * anything is parented.
+   */
+  findAncestorWithComponent(entityId: EntityId, token: ComponentDef<unknown>): EntityId | null {
+    let cur: EntityId | null = entityId;
+    const seen = new Set<EntityId>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      if (this.has(cur, token)) return cur;
+      cur = this.getParent(cur);
+    }
+    return null;
+  }
+
   // ---- private helpers ----
 
   private indexAdd(entityId: EntityId, tokenId: symbol): void {
