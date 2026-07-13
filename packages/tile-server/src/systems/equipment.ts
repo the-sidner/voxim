@@ -1,6 +1,6 @@
 import type { World, EntityId } from "@voxim/engine";
 import { newEntityId } from "@voxim/engine";
-import { spawnGroundStack } from "../spawner.ts";
+import { spawnGroundStack, resolveAttachParent } from "../spawner.ts";
 import { CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { ContentService, EquipSlot } from "@voxim/content";
@@ -127,6 +127,15 @@ export class EquipmentSystem implements System {
 
     world.set(entityId, Equipment, { ...equipment, [equipSlot]: { entityId: itemEntityId, prefabId } });
     world.set(entityId, Inventory, { ...inv, slots: newSlots });
+    // T-220: scene-graph attach (setParent to the resolved bone, or the
+    // holder root as a fallback). Deferred (world.reparent, not
+    // world.setParent) -- itemEntityId may already be known to this
+    // player's own session (a pre-existing unique inventory item is
+    // already in their AoI, aoi.ts's own-item carve-out), and setParent's
+    // immediate write never reaches the wire delta builder for an entity
+    // a session already knows. Works identically whether itemEntityId is
+    // the brand-new stack-spawn case or the pre-existing unique-slot case.
+    world.reparent(itemEntityId, resolveAttachParent(world, entityId, equipSlot));
 
     const quality = world.get(itemEntityId, QualityStamped)?.quality ?? 1;
     const stats = this.content.deriveItemStats(prefabId, [], quality);
@@ -177,12 +186,14 @@ export class EquipmentSystem implements System {
           z: pos.z,
         });
       }
+      world.reparent(itemEntityId, null); // T-220: leaves the scene graph — it's a world object now
       world.set(entityId, Equipment, newEquipment);
       this._updateLightEmitter(world, entityId, newEquipment);
       log.info("unequipped: entity=%s item=%s slot=%s (dropped — inventory full)", entityId, prefabId, slot);
       return;
     }
 
+    world.reparent(itemEntityId, null); // T-220: back to inventory — no longer scene-graph attached
     world.set(entityId, Equipment, newEquipment);
     world.set(entityId, Inventory, { ...inv, slots: [...inv.slots, uniqueSlot] });
     this._updateLightEmitter(world, entityId, newEquipment);
@@ -271,7 +282,14 @@ export class EquipmentSystem implements System {
       spawnGroundStack(world, this.content, slot.prefabId, slot.quantity, { x: dropX, y: dropY, z: dropZ });
       log.info("drop_item: entity=%s item=%s qty=%d", entityId, slot.prefabId, slot.quantity);
     } else {
-      // Unique entity — give it a position to place it in the world
+      // Unique entity — give it a position to place it in the world.
+      // T-220: setParent(null) + Position write. A defensive no-op on every
+      // currently-reachable path (an item must be unequipped — which
+      // already reparents to null — before it can be dropped from
+      // inventory; DropItem only ever reads inv.slots, never equipment
+      // slots directly) but matches the plan's literal spec and guards a
+      // future direct-drop-from-equipped-slot command.
+      world.reparent(slot.entityId as EntityId, null);
       world.set(slot.entityId as EntityId, Position, { x: dropX, y: dropY, z: dropZ });
       log.info("drop_item: entity=%s unique=%s", entityId, slot.entityId);
     }
