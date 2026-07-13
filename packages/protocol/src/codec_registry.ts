@@ -23,7 +23,7 @@ import {
   durabilityCodec, craftingQueueCodec, itemDataCodec,
   workstationBufferCodec, workstationTagCodec, traderInventoryCodec, jobBoardCodec,
   statsCodec, provenanceCodec, worldClockCodec, gateLinkCodec, nameCodec,
-  containerCodec, poiInteractableCodec,
+  containerCodec, poiInteractableCodec, heritageCodec,
 } from "@voxim/codecs";
 
 /** The only capability the decode loop needs — narrower than Serialiser, so each
@@ -70,4 +70,10 @@ export const CODEC_BY_WIREID: ReadonlyMap<number, WireDecoder> = new Map<number,
   [ComponentType.container, containerCodec],
   [ComponentType.name, nameCodec],
   [ComponentType.poiInteractable, poiInteractableCodec],
+  // T-072: the client needs its own dynastyId/generation to know it just
+  // respawned as an heir (a real Heritage.generation bump this session) and
+  // to tell its own family's chests apart from a neighbouring dynasty's —
+  // Heritage was networked (wireId 16) since T-079/T-270 but never reached
+  // this table, so it silently decoded nowhere on the client.
+  [ComponentType.heritage, heritageCodec],
 ]);
