@@ -547,7 +547,7 @@ read well, does the derived strafe/backward approximation look right) needs the 
 didn't have. See the lane's closing report for the exact live-verification procedure.
 
 ### T-309 · Body attachment slots — hotbar items rendered on the body
-Effort: M   Status: blocked (see note)
+Effort: M   Status: in-progress (unblocked — see lane/t309-hotbar report)
 
 Render the player's HOTBAR items on body anchors (sword on back, axe at hip, etc.) — a LIMITED set of
 slots, the count EXTENDABLE by carry-equipment (backpack/belt). The active hotbar item is in hand; the
