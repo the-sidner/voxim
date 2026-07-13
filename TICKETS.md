@@ -224,34 +224,59 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 ## Client / Controls, Feel & Render Polish
 
 ### T-331 · Some terrain chunks bake with WHITE vertex colours (material lookup lost at bake time)
-Effort: M   Status: todo   (found during the T-313 live-verify, 2026-07-07)
+Effort: M   Status: done   Commit: ed11d0d   (found during the T-313 live-verify, 2026-07-07)
 
-A rectangular patch of terrain renders pure WHITE with hard voxel edges (reproduced at ~(300,306)-(302,316)
-in standard-seed7; the player's shadow falls across it, so it is lit geometry, not a light bug).
+Root-caused and fixed. `renderer.ts`'s `_rebuildChunk` called
+`this.content?.getMaterialSync(matId)` with NO gate on whether the bootstrap
+ContentService had hydrated yet — a miss (`undefined`) fell through to
+`buildVoxelMaterial`'s `FALLBACK_COLOR` (flat, textureless, no vertex-colour
+mottle break-up), which under this scene's exposure/tonemap reads as a pale/
+white patch with hard voxel edges — reproduced live by directly forcing this
+exact fallback for one material (`path`, id 14) via a monkeypatched
+`getMaterialSync`, producing a pixel-identical match to the reported bug.
 
-Evidence already gathered — do NOT re-derive, verify then fix:
-- Independent of T-313's new shadow cascade: the patch is identical with the cascade pass disabled (A/B'd),
-  and the cascade itself demonstrably works (far field correctly darkens).
-- Independent of time of day: identical at hour 7 and hour 12, so it is not the dawn sky × `wet_reflect`
-  blowout (that class of bug was fixed for water in 243ce9c).
-- The CONTENT is correct: probing the ContentService at those cells returns path/dirt/grass with correct
-  colours (e.g. dirt = 0x3D2A20).
-- The RENDER is not: a scene probe of the terrain meshes shows `vertexColors: true` on all of them, but
-  `material.color` is `#ffffff` on some and `#7c6440` on others. With vertex colours ON, `material.color`
-  MULTIPLIES them — so a white base means "show the vertex colours as-is", and the patch being white means
-  the VERTEX COLOURS THEMSELVES are white: the voxel bake failed to resolve the material colour for that
-  chunk and fell back to white.
-- Prime suspect: a RACE — the chunk was baked before the material lookup was ready (the same bug class as the
-  T-311-era "all terrain rendered fallback grey", where `ContentCache.getMaterialSync` didn't hold ground
-  materials). Since T-315 E1 the ContentCache is a thin read-through over the bootstrap ContentService, so
-  check the ORDER: can a chunk-ready hook fire (and bake) before the bootstrap blob has hydrated?
-- Second, independent smell: the inconsistent `material.color` across terrain meshes (`#ffffff` vs `#7c6440`)
-  is itself suspicious with `vertexColors: true` — a non-white base double-tints. Decide which is correct and
-  make it uniform.
+The RACE is real, proven live by forcing it (a 2.5s artificial delay before
+`BootstrapSource.load`'s gunzip decode, which IS a genuine async yield —
+`TileConnection.connect()` wires its state-stream read loop with a
+fire-and-forget `.catch()` before it even returns, so terrain messages can
+race ahead of Step 4's `await BootstrapSource.load(blob)`): with the delay,
+all 256 chunks land and `_finishLoading()`'s threshold check fires WHILE
+`this.renderer` is still null, permanently latching `loadingComplete = true`
+and silently orphaning every chunk (`renderer?.updateTerrain` no-ops via
+optional chaining, and the idempotent `if (this.loadingComplete) return`
+guard means no retry ever happens) — the whole world rendered as empty
+ground, not a patch. This is the SAME hazard family as the ticket's "chunk-
+ready before bootstrap hydrated" suspicion, one level earlier (the renderer
+object itself, not just its content cache). The second smell (`material.color`
+`#ffffff` vs `#7c6440` across meshes) is NOT a bug: `#ffffff` is the
+by-design base for any material with a `render.textureStyle` (dirt/grass/
+etc. — the texture already bakes the real colour into its pixels via
+`hexToRgb(color)`, so `color:0xffffff` is the multiplicative identity), while
+flat materials like `path` (no textureStyle) correctly show their real
+colour directly. Once the illegitimate third value (fallback grey reading as
+near-white) is eliminated, only these two well-explained values remain — no
+further "uniform" change was made (that would have regressed the procedural
+texture system).
 
-Done when: no chunk ever bakes with fallback colours (make the failure LOUD — a missing material at bake time
-should throw or warn, never silently paint white), the white patch is gone, and terrain material.color is
-consistent across meshes.
+Fix: (1) `ContentCache.isHydrated()`. (2) `_rebuildChunk` gates on it —
+defers (queues the chunk key) instead of baking with an unresolvable
+material; `VoximRenderer.onContentHydrated()` rebuilds every deferred chunk,
+called from `game.ts` right after both `setBootstrapService` call sites
+(initial join + tile transition, where the renderer survives the reconnect).
+(3) once content IS confirmed hydrated, an unresolvable materialId now
+THROWS with chunk coords + materialId (a genuine content gap, not a race) —
+never silently paints white. (4) `_finishLoading()` no longer latches
+`loadingComplete` with a null renderer — bails and lets the next message (or
+Step 4's own post-hydration check) retry, closing the "whole world missing"
+variant proven above. `clearWorld()` (tile transition) clears the pending
+queue too — stale coordinates from the source tile's world.
+
+Verified live: full 262,144-cell world scan post-fix found zero unresolvable
+materialIds; scene-wide scan found zero fallback-coloured terrain meshes;
+re-running the forced 2.5s-delay race post-fix renders correctly (previously
+rendered as an empty world); the monkeypatched-miss reproduction now throws
+instead of silently falling back. `deno check` + full suite (865 tests, incl.
+3 new `ContentCache.isHydrated()` tests) green.
 
 
 ### T-328 · Mouse turns the CHARACTER, the camera rides along (supersedes T-320's facing/camera model)
