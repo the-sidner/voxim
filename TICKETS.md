@@ -154,8 +154,71 @@ Select city locations from world map (flat terrain, near water, resource diversi
 `CityState` (T-044) for each. Seed each with a founding NPC and a starting workbench.
 Done when: world generation produces N cities at valid locations with initial state files.
 
+### T-332 · Client assets served without Cache-Control — stale CSS desyncs from the bundle
+Effort: S   Status: done   Commit: e90c642
+
+`serveDir` emitted an ETag but no `Cache-Control`, so browsers applied HEURISTIC freshness and served a
+stale asset without revalidating. A rebuild shipped new markup (new class names) while the browser kept the
+OLD `theme.css` — the new elements got no styles, collapsed into document flow, and stacked at the top of
+the page (hit live during the T-314 HUD rework). Fixed with `Cache-Control: no-cache` ("always revalidate",
+not "never cache" — the existing ETag makes it a cheap 304).
+**Verification gap this exposes:** the headless testplay harness ALWAYS starts with a cold cache, so this
+entire bug class is invisible to it. A UI change that touches CSS can break in a real browser with the
+harness fully green.
+
+### T-333 · Hit resolution bubbles to the nearest ancestor carrying the component
+Effort: M   Status: todo   (scene-graph prerequisite; user decision 2026-07-07)
+
+Prerequisite for the scene-graph migration (T-219/T-221). Once an entity's geometry is split across a
+parent + child subtree, a hit lands on a CHILD entity — but the behaviour lives on an ancestor. Today
+`ResourceNodeHitHandler` requires `ctx.targetId` itself to carry `ResourceNode`, so a tree whose trunk
+became a child entity would be silently UNHARVESTABLE (the T-221 audit found exactly this). Same shape for
+T-219: a hit on a bone entity must resolve to the creature carrying `Health`.
+
+Build it once, generically: hit resolution walks UP the `Parent` chain from the struck entity to the
+nearest ancestor carrying the component the handler needs, and dispatches there. This is an engine/hit-
+dispatch capability, not per-handler logic — the handlers stay unchanged. Keep the struck child's identity
+available (a handler may want to know WHICH part was hit — e.g. a headshot).
+Done when: a hit on a child entity dispatches to the ancestor's handler, the struck-part identity survives,
+and a tree/creature split into a subtree behaves exactly as it does today.
+
+### T-334 · Seeded pool/probability selection on `Prefab.children`
+Effort: M   Status: todo   (scene-graph prerequisite; user decision 2026-07-07)
+
+Prerequisite for T-221. `Prefab.children` (T-217) is a flat `{prefabId, local?}[]` with NO PRNG concept,
+but real multi-part content is seeded-random: `tree_oak` has 1 static trunk + 24 branch entries selected by
+`pool` + `probability` (the `resolveSubObjects` idiom). Extend the children schema with the same seeded
+pool/probability vocabulary and consume it in the engine's subtree spawn walk (`engine/src/prefab.ts`).
+
+**Load-bearing:** `hitbox_derive.ts` today REPRODUCES `resolveSubObjects`' exact PRNG consumption order so
+hitboxes match the visible geometry. Whatever seeded selection the children walk uses, that reproduction
+must stay correct — or hitboxes silently drift from what's drawn (the exact bug class that made wolf legs
+unhittable in T-323). One seeded selection, consumed identically wherever geometry is derived.
+Done when: a seeded multi-part prefab spawns a deterministic subtree from its seed, identical on server and
+client, with hitbox-vs-visual agreement preserved.
+
 ### T-215..T-224 · Scene graph as a central engine system
-Effort: XL (multi-ticket arc)   Status: planned
+Effort: XL (multi-ticket arc)   Status: in-progress
+
+**BOUNDARY DECISION (user, 2026-07-07) — what is an entity:** **everything visible is an entity**, with one
+honest exception that is not a compromise: **procedural scatter stays scatter**. The decorative forest
+(thousands of trees per chunk) is NOT entities today and never becomes them — it is client-side procedural
+placement from server fields, rendered as one `InstancedMesh` node (exactly as SCENE_GRAPH_PLAN.md's client
+tree already shows: `ForestInstances (InstancedMesh)`). What DOES become entities: every authored,
+identity-bearing thing and its parts — bones, equipment, attachments, POI scene parts, and the parts of
+harvestable/interactable props.
+
+Measured cost of that call (live tile, 2026-07-07): ~276 entities today → ~5k with prop sub-objects
+promoted. Affordable because the plan's own static-vs-dynamic split makes it so: static entities carry
+Position/ModelRef/optional Hitbox, NO behaviour components — no system iterates them per tick, the 20 Hz
+changeset loop is unaffected by their count, and AoI ships only their initial spawn (they never change →
+never ship deltas). The extra join cost is ~0.3–0.5 MB against a 6 MB content blob + 5 MB terrain stream.
+
+Two capabilities this decision REQUIRES first (both now ticketed): **T-333** hit-bubbling to the nearest
+ancestor carrying the component (else a tree split into a subtree becomes unharvestable), and **T-334**
+seeded pool/probability on `Prefab.children` (else seeded multi-part content cannot be expressed).
+Order: T-333 + T-334 → T-219 (bones — where the real content is) → T-221 (static props) → T-223 → T-224.
+T-222 (coordinator) is deferred: its subject (cities) does not exist yet (T-059 is open).
 
 See [`SCENE_GRAPH_PLAN.md`](SCENE_GRAPH_PLAN.md) at the repo root for the
 full design + migration plan. Summary:
