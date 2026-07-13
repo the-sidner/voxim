@@ -281,7 +281,7 @@ camera-relative movement + cursor-aim (Diablo/PoE); color → deutlich bunter.
 ## Symphony — Feel, Content & Voxel Language
 
 ### T-326 · Warped voxels everywhere — one organic-disturbance axis, applied consistently
-Effort: M   Status: todo   (user, live play 2026-07-07)
+Effort: M   Status: done   Commit: eb4883b, 97c4912   (user, live play 2026-07-07)
 
 The randomized/warped voxel surface we now have (terrain relief, `vertexDisp`, the stacked-stone
 language) should be used **consistently across every voxel class we can apply it to** — walls, props,
@@ -294,6 +294,27 @@ world. Audit where warp is currently applied vs. skipped (terrain: yes; scatter/
 partly; walls/built structures: no) and close the gaps.
 Done when: every voxel-baked class reads its warp amplitude from content, the factor is authorable
 per material/class, and a wall, a prop and a character in one screenshot share the same surface idiom.
+
+**How it landed:** picked `MaterialDef.render.relief.dispMag` as the ONE authoritative home
+(already terrain's field; `generatorPreferences` is generator hints — density/thickness/layerable/
+emission — not an amplitude, documented as such in `DESIGN_LANGUAGE.md` §2/§5 so it can't grow into
+a second warp path). Wired the same field through every other `bakeVoxels` call site that was
+previously stuck on the internal hardcoded per-voxel default: `bakeSubModel`/`buildSubModelGeo`
+gained a `dispMag` parameter (previously had NO way to receive one at all — this was the concrete
+"walls/built structures: no" gap, since ruin walls/resource nodes/ground items/built structures all
+render as static instanced props through this path), `entity_mesh.ts`'s `buildMeshesFromAtoms`
+(characters, equipment, dynamic props — every skeleton/armor/held-item mesh funnels through this
+one function) and `scatter_renderer.ts` now resolve `matDef.render.relief.dispMag` instead of
+passing `undefined`. Terrain's own path (`renderer.ts`) already read it; unchanged apart from a
+doc comment. Absent `dispMag` ⇒ each call site's pre-existing default, byte-identical for every
+material that hasn't authored one (none do yet — this ticket lands the mechanism + schema
+documentation, not new art-direction numbers, since no live-stack verification was available in
+this lane; see the lane's closing report for the exact live-stack proof procedure). Decals and the
+build-ghost placement preview are deliberately out of scope (decals are non-structural/ephemeral
+per `DESIGN_LANGUAGE.md` §3; the ghost has no resolvable `MaterialDef` — `GHOST_MAT_ID` is a
+sentinel, not a content material). Verified in-lane only (type-check green + `deno test -A
+packages/`, 826 green, incl. 3 new `bakeSubModel` dispMag tests) — no live-stack testplay per lane
+rules.
 
 ### T-327 · Combat-feel pipeline — windup / active / winddown / dodge / block / hitstop tuning loop
 Effort: L   Status: done   Commits: server da90070 · client 5dc4558 · devtools 81d73fd
