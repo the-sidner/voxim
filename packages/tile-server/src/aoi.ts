@@ -198,6 +198,29 @@ export function computeSessionUpdate(
     }
   }
 
+  // Scene-graph subtrees (T-219/T-220): every entity already in AoI pulls
+  // its FULL descendant set in too — a skeletal creature's bone entities,
+  // and any item scene-graph-parented onto one of ITS bones (equipped gear
+  // on any nearby creature, not just the viewer's own). Bones/equipped
+  // items carry no Position, so without this they'd never enter AoI at
+  // all — the existing rules above only special-case the viewer's OWN
+  // carried items. `world.descendants()` walks the WHOLE subtree in one
+  // call (bones-of-bones, items-on-bones), not just direct children, so
+  // one pass over a snapshot of the current set is enough — no need to
+  // recurse into newly-added descendants themselves.
+  //
+  // Ordering hazard (named per the T-315 E2 precedent — a child entity
+  // must not be usable before its parent arrives): `descendants()` is a
+  // DFS that only pushes a node's children onto its walk stack AFTER that
+  // node itself has been popped, so its output — and therefore this Set's
+  // insertion order — always places a parent before its children. The
+  // spawns loop below (§2) iterates `inAoI` in that same insertion order,
+  // so a bone and its equipped item always ship no later than the tick
+  // their root does, in topological order within that tick's message.
+  for (const id of [...inAoI]) {
+    for (const d of world.descendants(id)) inAoI.add(d);
+  }
+
   // ── 2. Spawns: entities newly visible this tick ──────────────────────────────
   const spawns: BinaryEntitySpawn[] = [];
   const newlySpawned = new Set<EntityId>();
