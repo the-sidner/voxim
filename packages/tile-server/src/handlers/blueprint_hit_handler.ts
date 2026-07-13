@@ -21,6 +21,9 @@ const log = createLogger("BlueprintHitHandler");
  * When ticksRemaining reaches 0: applies terrain change and destroys the blueprint entity.
  */
 export class BlueprintHitHandler implements HitHandler {
+  // T-333: dispatch bubbles to the nearest ancestor carrying Blueprint.
+  readonly requiredComponent = Blueprint;
+
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
     const blueprint = world.get(ctx.targetId, Blueprint);
     if (!blueprint) {

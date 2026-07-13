@@ -1,4 +1,4 @@
-import type { World, EntityId } from "@voxim/engine";
+import type { ComponentDef, World, EntityId } from "@voxim/engine";
 import type { EventEmitter } from "./system.ts";
 import type { DerivedItemStats } from "@voxim/content";
 
@@ -10,6 +10,15 @@ import type { DerivedItemStats } from "@voxim/content";
  */
 export interface HitContext {
   attackerId: EntityId;
+  /**
+   * The entity this handler should act on. For a handler declaring
+   * `requiredComponent` (T-333), this is already resolved to the nearest
+   * ancestor of the struck entity carrying that component — never the raw
+   * struck entity unless they're the same (the parentless case, or the
+   * struck entity itself carries it). `bodyPart` still names which part of
+   * the struck geometry was actually hit, so that identity survives the
+   * bubble-up.
+   */
   targetId: EntityId;
   /** Derived stats of the equipped weapon (or unarmed defaults). */
   weaponStats: DerivedItemStats;
@@ -55,5 +64,18 @@ export interface HitContext {
  * no such overlap exists). The array is fixed at startup and never modified at runtime.
  */
 export interface HitHandler {
+  /**
+   * The component this handler dispatches on (T-333). Declaring it lets
+   * the shared sweep dispatch (`combat/sweep.ts`) resolve `ctx.targetId`
+   * to the nearest ancestor of the struck entity carrying it —
+   * `World.findAncestorWithComponent` — BEFORE calling `onHit`, so a hit
+   * that lands on a child entity (a bone, a prop sub-object) still reaches
+   * the ancestor that owns the behaviour. Purely declarative: `onHit`'s own
+   * `world.get(ctx.targetId, X)` check is unchanged and still the source of
+   * truth — this field only tells the generic walk where to look. A
+   * handler that omits it (none do today) dispatches to the struck entity
+   * as before.
+   */
+  readonly requiredComponent?: ComponentDef<unknown>;
   onHit(world: World, events: EventEmitter, ctx: HitContext): void;
 }

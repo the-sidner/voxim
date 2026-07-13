@@ -38,6 +38,10 @@ const log = createLogger("HealthHitHandler");
  * consuming the HitLanded fact (T-259), never handler code.
  */
 export class HealthHitHandler implements HitHandler {
+  // T-333: dispatch bubbles to the nearest ancestor carrying Health — a hit
+  // on a bone entity resolves to the creature that takes the damage.
+  readonly requiredComponent = Health;
+
   constructor(
     private readonly content: ContentService,
     private readonly deaths: DeathRequestPort,

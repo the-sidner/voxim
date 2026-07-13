@@ -13,6 +13,17 @@
  *
  * The geometry test itself stays in `hit_resolver.ts` (pure); this layer
  * adds the events + handler dispatch on top.
+ *
+ * Hit-bubbling (T-333): `buildContext` always reports the struck entity
+ * (whatever carried the hitbox that intersected) as `targetId`. Per
+ * handler, if it declares `requiredComponent`, this layer re-resolves
+ * `targetId` to the nearest ancestor of the struck entity carrying that
+ * component via `World.findAncestorWithComponent` before calling `onHit` —
+ * generic over every handler, so a tree whose trunk becomes a child entity
+ * (ResourceNode on the parent) or a creature whose hitbox lives on a bone
+ * (Health on the root) both resolve correctly with zero handler changes.
+ * Parentless entities are unaffected: the walk degrades to the struck
+ * entity itself, identical to today.
  */
 
 import type { World } from "@voxim/engine";
@@ -54,6 +65,15 @@ export function dispatchSweepHit(
     x: ctx.hitX, y: ctx.hitY, z: ctx.hitZ,
     attackerPart: ctx.attackerPart, victimPart: ctx.bodyPart,
   });
-  for (const h of handlers) h.onHit(world, events, ctx);
+  const struckEntityId = ctx.targetId;
+  for (const h of handlers) {
+    if (!h.requiredComponent) {
+      h.onHit(world, events, ctx);
+      continue;
+    }
+    const resolved = world.findAncestorWithComponent(struckEntityId, h.requiredComponent);
+    const targetId = resolved ?? struckEntityId;
+    h.onHit(world, events, targetId === ctx.targetId ? ctx : { ...ctx, targetId });
+  }
   return hit;
 }

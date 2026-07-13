@@ -8,12 +8,15 @@
  * framing — it only picks a facing angle for the active phase.
  *
  * Hostility (no team/faction model yet): a valid target has Health, is alive,
- * is not the attacker, carries a Hitbox (the "is a combat target" signal the
- * sweep already requires), and its NpcTag PRESENCE differs from the attacker's
- * — the exact axis findNearestNonNpc / findDetectedThreat already target. This
- * is symmetric (a player snaps to NPCs, an NPC snaps to players) with zero
- * isNpc behavioural branch, and it can never snap to a friendly. When factions
- * land, replace the NpcTag-differs predicate with a real team check.
+ * is not the attacker, carries a Hitbox — itself or, since T-333, on any
+ * scene-graph descendant (the "is a combat target" signal the sweep already
+ * requires; a bone-entity creature's Health lives on the root but its
+ * Hitboxes live on the bones) — and its NpcTag PRESENCE differs from the
+ * attacker's — the exact axis findNearestNonNpc / findDetectedThreat already
+ * target. This is symmetric (a player snaps to NPCs, an NPC snaps to
+ * players) with zero isNpc behavioural branch, and it can never snap to a
+ * friendly. When factions land, replace the NpcTag-differs predicate with a
+ * real team check.
  *
  * Positions come from the caller's already-rewound candidate list (the same
  * snapshot the sweep sweeps) so the chosen target's angle matches the swept
@@ -79,9 +82,13 @@ export function pickAimAssistTarget(
     // it still carries Hitbox/NpcTag, so without this check the sweep could
     // snap a swing onto a corpse.
     if (health === null || health.current <= 0) continue;
-    // Same "is a combat target" signal the sweep uses.
-    const hitbox = world.get(c.entityId, Hitbox);
-    if (!hitbox || hitbox.parts.length === 0) continue;
+    // Same "is a combat target" signal the sweep uses — but the sweep can
+    // land on a CHILD entity's Hitbox while Health lives on the ancestor
+    // (T-333: a bone-entity creature). A candidate qualifies if it (or any
+    // scene-graph descendant) carries a real Hitbox, so the aim-assist
+    // facing still snaps to the creature root even when the root itself
+    // carries no Hitbox of its own.
+    if (!hasHitboxCoverage(world, c.entityId)) continue;
     // Hostility: NpcTag presence must differ from the attacker's (symmetric,
     // no isNpc branch, never friendly). Replace with a team check post-factions.
     if ((world.get(c.entityId, NpcTag) !== null) === attackerIsNpc) continue;
@@ -103,4 +110,20 @@ export function pickAimAssistTarget(
   }
 
   return best;
+}
+
+/**
+ * True if `entityId` itself carries a non-empty Hitbox, or any of its
+ * scene-graph descendants does (T-333). `world.descendants` is O(subtree)
+ * and cycle-safe by construction (purged reverse index) — bounded by the
+ * same tree sizes the rest of the scene-graph arc already accepts.
+ */
+function hasHitboxCoverage(world: World, entityId: EntityId): boolean {
+  const own = world.get(entityId, Hitbox);
+  if (own && own.parts.length > 0) return true;
+  for (const child of world.descendants(entityId)) {
+    const h = world.get(child, Hitbox);
+    if (h && h.parts.length > 0) return true;
+  }
+  return false;
 }

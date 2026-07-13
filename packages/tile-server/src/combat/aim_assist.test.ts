@@ -135,6 +135,55 @@ Deno.test("aim-assist: a dead enemy still in the candidate list is ignored", () 
   assertEquals(picked, null);
 });
 
+Deno.test("aim-assist: T-333 — a creature with Health on the root and Hitbox on a bone CHILD is still a valid target", () => {
+  const w = new World();
+  const me = spawnPlayer(w);
+
+  // The creature's root carries Health but no Hitbox of its own — the
+  // Hitbox lives on a scene-graph child (a bone, T-219's shape).
+  const root = newEntityId();
+  w.create(root);
+  w.write(root, Position, { x: 2, y: 0, z: 0 });
+  w.write(root, Health, { current: 100, max: 100 });
+  w.write(root, NpcTag, { npcType: "wolf", name: "Wolf" });
+
+  const bone = newEntityId();
+  w.create(bone);
+  w.write(bone, Hitbox, {
+    derive: false,
+    parts: [{ id: "torso", fromFwd: 0, fromRight: 0, fromUp: 0, toFwd: 0, toRight: 0, toUp: 1, radius: 0.5 }],
+  });
+  w.setParent(bone, root);
+
+  const picked = pickAimAssistTarget(w, me, 0, 0, 0, candidatesOf(w), CFG);
+  assert(picked !== null, "the root should qualify via its descendant's Hitbox");
+  assertEquals(picked!.entityId, root);
+});
+
+Deno.test("aim-assist: T-333 — a bone CHILD with a Hitbox but no Health never becomes the target itself", () => {
+  const w = new World();
+  const me = spawnPlayer(w);
+
+  const root = newEntityId();
+  w.create(root);
+  w.write(root, Position, { x: 2, y: 0, z: 0 });
+  w.write(root, Health, { current: 100, max: 100 });
+  w.write(root, NpcTag, { npcType: "wolf", name: "Wolf" });
+
+  const bone = newEntityId();
+  w.create(bone);
+  w.write(bone, Position, { x: 2, y: 0, z: 0 }); // also has a Position, so it's a candidate itself
+  w.write(bone, Hitbox, {
+    derive: false,
+    parts: [{ id: "torso", fromFwd: 0, fromRight: 0, fromUp: 0, toFwd: 0, toRight: 0, toUp: 1, radius: 0.5 }],
+  });
+  w.setParent(bone, root);
+
+  const picked = pickAimAssistTarget(w, me, 0, 0, 0, candidatesOf(w), CFG);
+  assert(picked !== null);
+  assertEquals(picked!.entityId, root, "the bone itself (no Health) must never be picked");
+});
+
 Deno.test("aim-assist: a lingering dissolve corpse (alive, Health.current=0) is ignored", () => {
   // T-311 P5c: a death hook can vote { linger: true }, which keeps the corpse
   // world.isAlive (not destroyed) for its dissolve_timer's duration, at
