@@ -427,7 +427,45 @@ byte-identical.
 
 **Acceptance:** an end-to-end bake → boot → render shows the sanctum POI with its altar and braziers visible at the host region's centroid. Inspector can navigate the subtree.
 
-### T-219 — Skeletal entities use scene-graph for bone hierarchy
+### T-219 — Skeletal entities use scene-graph for bone hierarchy — **LANDED (server-side structure)**
+
+> Landed as one merged arc with T-220 (lane/t219-bones) — invasive enough,
+> per this section's own note below, that splitting them would have meant
+> re-deriving the same equip-slot-to-bone resolution twice. `spawner.ts`'s
+> `installSkeletonBones` spawns one real ECS entity per `SkeletonDef.bones`
+> entry at skeletal-installer time (17 for biped, 11 for wolf),
+> `world.setParent`-chained to mirror the skeleton hierarchy exactly. `Bone`
+> (wireId 59) carries ONLY `boneId` — deliberately NOT `parentBoneId`/
+> `restPose` as originally scoped below: both are already content data
+> (`SkeletonDef.bones`), and the parent-bone ENTITY relationship is the
+> engine's own `Parent`, so wiring them too would be pure duplication.
+> **Bone transforms are never replicated** — the plan's own central
+> warning, held to exactly: motion stays derived client-side from
+> `AnimationState` (already on the wire), the same derivation
+> `entity_mesh.ts`'s `boneGroups` pipeline already computed pre-T-219.
+> Surfaced and fixed one required engine prerequisite: `world.setParent`
+> writes immediately, invisible to the wire delta builder for an
+> already-AoI-known entity — `world.reparent()` (deferred) is the
+> system-safe twin T-220's live equip/unequip needs; `applyChangeset()`'s
+> commit loop now maintains the child index on a committed Parent set too.
+> `aoi.ts` gained a generic scene-graph subtree-expansion pass so bone/
+> equipped-item entities (no Position) actually reach any client.
+> **Diverges from this section's original file-touched table**:
+> `skeleton_evaluator.ts` and `entity_mesh.ts`'s `boneGroups` retirement did
+> NOT happen — the client has no general entity-materialization pipeline to
+> replace `boneGroups` with yet (that's T-223's stated job); building a
+> one-off entity-driven pipeline just for bones ahead of T-223 would be
+> throwaway work T-223 immediately replaces. Same precedent T-218 already
+> set for POI props ("live transform composition is still T-223"), applied
+> here identically. Client visual output is therefore trivially identical
+> to pre-T-219 (nothing changed rendering-side) — the acceptance bar below
+> holds, just not via the mechanism originally imagined.
+> `packages/tile-server/src/components/equipment.ts` was NOT touched —
+> the scene-graph attach logic lives in `spawner.ts`
+> (`resolveAttachParent`/`reattachAllEquipment`) and
+> `systems/equipment.ts`, not the component definition file itself.
+> See TICKETS.md's T-219/T-220 arc entries for the full closing notes
+> (engine prerequisite, AoI mechanism, test coverage, scope decisions).
 
 **Goal:** The skeletal bone hierarchy (today in `entity_mesh.ts`'s `boneGroups` Map) becomes scene-graph parented entities, one entity per bone. Equipment attachments become children of bone entities.
 
@@ -452,7 +490,18 @@ byte-identical.
 
 **Acceptance:** characters animate correctly, equipped items follow bones, snapshot determinism intact, client visual output identical to pre-T-219.
 
-### T-220 — Equipment + attachment via scene-graph
+### T-220 — Equipment + attachment via scene-graph — **LANDED (merged into T-219, see above)**
+
+> `world.reparent` (not `setParent` — see T-219's note) to
+> `resolveAttachParent`'s resolved bone entity on equip; `world.reparent(_,
+> null)` on unequip/drop. `EQUIP_SLOT_PRIMARY_BONE` covers the five
+> SINGLE-bone slots (weapon/offHand/head/chest/back); `legs`/`feet` fall
+> back to the holder root — the client's own attachment table maps those to
+> 2–4 bones each, so a single item entity has no one bone to parent to.
+> CraftingSystem / on-hit drop handlers: audited, nothing to touch (no
+> disarm-on-hit mechanic exists in the codebase). Every character-destroy
+> site converted to `world.destroySubtree` so bones/equipment never leak
+> past a death/disconnect.
 
 **Goal:** Fold the existing equipment attachment system into the scene-graph. Equipping = `setParent` to bone; unequipping = `setParent(null)`; dropping = `setParent(null) + Position write`.
 

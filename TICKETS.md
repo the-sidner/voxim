@@ -346,8 +346,104 @@ Migration phases (each its own ticket):
     hook refined to also pass parentId — service bakes child *world*
     Position off the parent (static subtrees; live compose is T-223). 2
     poi_spawner tests + 103 content/engine/poi green; bake byte-identical.
-  - T-219 — skeletal bones as scene-graph entities
-  - T-220 — equipment attachment via scene-graph
+  - T-219 — DONE (lane/t219-bones, merged with T-220 as one arc per the
+    plan's own note — T-219 was invasive enough that splitting them would
+    have meant re-deriving the same equip-slot-to-bone resolution twice).
+    `spawner.ts`'s `installSkeletonBones` spawns one real ECS entity per
+    `SkeletonDef.bones` entry at skeletal-installer time (17 for biped, 11
+    for wolf), scene-graph parented to mirror the skeleton's own hierarchy
+    exactly (immediate `world.setParent`, safe — runs inside `preInstall`,
+    before the entity is ever visible to any session, same argument as
+    `buff.ts`'s `spawnBuffChild`). `Bone` component (wireId 59) carries
+    ONLY `boneId` — restPose/parentBoneId stay content data
+    (`SkeletonDef.bones`), the parent-bone ENTITY link is the engine's own
+    `Parent`. **Bone transforms are never replicated** — motion stays
+    derived client-side from `AnimationState` (already on the wire), the
+    same derivation `entity_mesh.ts`'s pre-existing `boneGroups` pipeline
+    already computed; this is the load-bearing decision the plan called
+    out (17 bones × ~20 humanoids × 20 Hz of wire traffic for something the
+    client already computes would have been the wrong path).
+    A required engine prerequisite surfaced during implementation and
+    fixed first: `world.setParent` writes `Parent` immediately
+    (`world.write`), invisible to the wire delta builder
+    (`AppliedChangeset.sets` sources exclusively from `pendingOps`) for an
+    entity a session already knows about — the one existing live caller
+    (`buff.ts`) was safe only by always targeting a brand-new entity.
+    `world.reparent()` (deferred, routed through `world.set`) is the
+    system-safe twin; `applyChangeset()`'s commit loop now maintains the
+    child index on a committed `Parent` set/removal (previously only
+    `setParent`'s immediate path did — a deferred reparent would have
+    silently desynced `getChildren`/`descendants` from the wire-visible
+    Parent value). Also closed in passing: `Parent`'s wire id 49 was
+    registered in `NETWORKED_DEFS` since T-215 but never reached
+    protocol's `ComponentType` enum or `CODEC_BY_WIREID` — every Parent
+    byte the server has ever sent was silently dropped on decode
+    (`COMPONENT_TYPE_TO_NAME.get(49)` → undefined). `aoi.ts` gained a
+    generic scene-graph subtree-expansion pass (`world.descendants()` on
+    every already-in-AoI entity) — bones/equipped-items carry no Position,
+    so without it they'd be structurally correct server-side but never
+    sent to any client; `descendants()`'s own parent-before-child DFS
+    ordering resolves the "child must not arrive before its parent" hazard
+    structurally, no separate sort pass needed.
+  - T-220 — DONE (same lane/commits as T-219). Equipping = `world.reparent`
+    (not `setParent` — EquipmentSystem is a live system touching
+    already-AoI-known entities, exactly the gap the engine fix above
+    closes) to `resolveAttachParent`'s resolved bone entity; unequipping /
+    dropping = `world.reparent(..., null)` (+ the existing Position write
+    for drop). `resolveAttachParent`/`EQUIP_SLOT_PRIMARY_BONE` cover the
+    five SINGLE-bone equip slots (weapon→hand_r, offHand→hand_l, head→head,
+    chest→torso_upper, back→torso_upper — mirrors the client's existing
+    `entity_mesh_registry.ts` attachment table; a small, documented,
+    human-reviewable duplication flagged for unification when T-223 gives
+    the client a reason to consume the wire-replicated Bone/Parent data
+    itself). `legs`/`feet` are deliberately EXCLUDED — the client's own
+    table maps those to 2–4 bones each, so a single item entity has no one
+    bone to parent to; they keep falling back to the holder root, same as
+    a skeleton-less holder. Every character-destroy site
+    (`death.ts`, `server.ts`×3, `poi.ts`) converted `world.destroy` →
+    `world.destroySubtree` so bones/equipment never leak past their
+    holder's death/disconnect (degrades to exactly `destroy()` for a
+    childless entity — behaviour-preserving everywhere else). Found and
+    fixed in passing: the tile-handoff success path never called
+    `destroyCarriedItemEntities` at all (unlike the other two
+    disconnect/death paths) — a pre-existing carried-item leak on every
+    tile crossing, closed at the same call site as its `destroySubtree`
+    conversion.
+    **Scope boundary, recorded so it isn't re-litigated:** client
+    rendering (`entity_mesh.ts`'s `boneGroups` Three.js Map,
+    `skeleton_evaluator.ts`) is UNCHANGED this lane. Bone entities are
+    real and replicated server→client (`client_world.ts` gained typed
+    `parent`/`bone` `EntityState` fields so the decode isn't silently
+    dropped), but nothing client-side consumes them for rendering yet —
+    the client still builds its Three.js pose hierarchy directly from
+    content `SkeletonDef.bones`, exactly as before T-219. This trivially
+    satisfies "client visual output identical to pre-T-219" and is the
+    SAME precedent T-218 already set for POI props ("live transform
+    composition is still T-223"); building a one-off entity-driven
+    Three.js pipeline just for bones ahead of T-223 (which gives the
+    client a real materialize-from-World-scene-graph pipeline) would be
+    throwaway work. The `Equipment` component is RETAINED as the
+    slot-name authority (still read by AoI's own-item visibility, the
+    Status/Modifier `equipment` ModifierSource, the Trigger `equipment`
+    TriggerSource, CraftingSystem, every UI paperdoll read) — `Parent` is
+    an ADDITIVE scene-graph fact layered on top for topology/lifecycle
+    correctness, not a replacement; ripping `Equipment` out would cascade
+    into the Status/Modifier and Trigger primitives, well outside either
+    ticket's stated files-touched scope.
+    In-lane verification: 8 new/extended test files (`scene.test.ts`
+    reparent cases, `components.test.ts` boneCodec round-trip,
+    `codec_registry.test.ts`, `skeleton_loader.test.ts`,
+    `spawner_bone.test.ts`, `aoi_scene_graph.test.ts`, `equipment.test.ts`,
+    `equip_cleanup.test.ts`) — full suite 914 green (894 baseline + 20),
+    atlas snapshot suite byte-identical (no atlas file touched; atlas
+    never spawns creature/skeletal prefabs into a World). The no-foot-slide
+    proof (`swing_pose.test.ts`) and every producer in the pose pipeline
+    (gait, foot-terrain IK, look-at, crouch, locomotion lean, swing IK)
+    stayed untouched and green throughout — none of them read `boneGroups`
+    through anything this lane changed. Live-stack visual verification
+    (characters animate, sword follows hand) deferred to post-merge per
+    lane rules — see the lane implementer's final report for the exact
+    procedure.
   - T-221 — static prop sub-objects as scene-graph children. **BLOCKED (lane/t221-sceneprops
     audit, 2026-07-13, no code changed):** there is no unambiguous slice of real content to
     migrate. `subObjects` (packages/content's `ModelDefinition.subObjects`, resolved by
@@ -357,8 +453,11 @@ Migration phases (each its own ticket):
     (confirmed unchanged since the T-095 file split); there is nothing there to migrate without
     first hand-authoring new multi-part building content, an art/content decision outside
     doctrine. (2) The four populated non-empty models — `drowner`/`human_base`/`rotten_knight`/
-    `wolf` — are 100% `boneId`-driven bone-segment attachments; that's T-219's job (bone
-    entities + live transform composition, not landed), not a "static prop". (3) `tree_oak` (the
+    `wolf` — are 100% `boneId`-driven bone-segment attachments; that's T-219's job. [Update,
+    lane/t219-bones: the bone-ENTITIES half of T-219 has since landed — one real ECS entity per
+    skeleton bone, server-replicated — but live transform composition off them is still not
+    landed (deferred to T-223, same as this note originally said); client rendering for these
+    four models is unaffected either way.] Not a "static prop" regardless. (3) `tree_oak` (the
     one non-skeletal model with real content: 1 fixed `trunk_oak` entry + 24
     `pool`+`probability` branch entries, consumed by the dormant-but-tested `tree`/`yew_tree`
     resource-node prefabs) needs seeded pool/probability selection that the landed
