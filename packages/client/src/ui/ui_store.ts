@@ -177,6 +177,31 @@ export interface ContainerPanelState {
   slots:     (ContainerSlotView | null)[];
 }
 
+// ── Heir ritual guidance (T-072) ──────────────────────────────────────────────
+//
+// game.ts arms this the moment it observes the local player's own
+// `Heritage.generation` climb during THIS session — a real death → heir
+// respawn, not just joining as an existing heir — then keeps rescanning known
+// entities for the player's own dynasty's library/treasury chests. A step
+// only exists while its matching chest genuinely still holds something:
+// nothing here is scripted, it just reads world state and disappears once
+// the chests are empty or the player dismisses the banner.
+
+export interface HeirRitualStep {
+  kind:        "tome" | "equipment";
+  /** The nearest matching chest belonging to the player's own dynasty. */
+  containerId: string;
+  /** How many items are still waiting in that chest. */
+  pending:     number;
+  /** Straight-line world distance from the player, or null if unknown (chest
+   *  or player position not yet resolved). */
+  distance:    number | null;
+}
+
+export interface HeirRitualState {
+  steps: HeirRitualStep[];
+}
+
 // ── Dialogue ───────────────────────────────────────────────────────────────────
 
 export interface DialogueChoice {
@@ -282,6 +307,8 @@ export interface UIState {
   trader:       TraderState | null;
   jobBoard:     JobBoardState | null;
   dialogue:     DialogueState | null;
+  /** Non-modal HUD guidance for the respawn/heir ritual (T-072); null when inactive. */
+  heirRitual:   HeirRitualState | null;
 
   // Panel visibility
   openPanels:  Set<PanelId>;
@@ -358,6 +385,7 @@ const _initial: UIState = {
   trader:      null,
   jobBoard:    null,
   dialogue:    null,
+  heirRitual:  null,
   openPanels:  new Set(),
   modalStack:  [],
   drag:        null,

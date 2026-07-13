@@ -24,6 +24,7 @@ import type {
   TraderInventoryData,
   JobBoardData,
   ContainerData,
+  HeritageData,
 } from "@voxim/codecs";
 
 export interface PositionState  { x: number; y: number; z: number }
@@ -70,6 +71,10 @@ export interface EntityState {
   jobBoard?: JobBoardData;
   /** Family chest slots — drives the deposit/withdraw panel when the player interacts (T-077/T-078). */
   container?: ContainerData;
+  /** dynastyId/generation/traits — the local player's own copy tells the client
+   *  it just respawned as an heir (a generation bump) and which family chests
+   *  are its own, T-072. */
+  heritage?: HeritageData;
   stats?: StatsData;
   provenance?: ProvenanceData;
   worldClock?: WorldClockState;

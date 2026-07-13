@@ -42,6 +42,7 @@ import { NetworkPanel }    from "./components/NetworkPanel.tsx";
 import { Minimap }         from "./components/Minimap.tsx";
 import { HudStats }        from "./components/HudStats.tsx";
 import { ZoneCaption }     from "./components/ZoneCaption.tsx";
+import { HeirRitual }      from "./components/HeirRitual.tsx";
 
 export interface UIManagerProps {
   /**
@@ -93,6 +94,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       <Minimap />
       <HudStats />
       <ZoneCaption />
+      <HeirRitual onAction={onAction} />
       <ToastQueue />
 
       {/* Toggleable panels */}

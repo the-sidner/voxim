@@ -17,6 +17,9 @@ export type UIAction =
   | { type: "use_item";    fromSlot: number }
   | { type: "deploy_item"; fromSlot: number }
   | { type: "split_stack"; fromSlot: number; quantity: number }
+  // Read a tome sitting in an inventory slot — internalises its Lore fragment
+  // (T-072 heir ritual; T-020 server substrate).
+  | { type: "read_tome";   fromSlot: number }
 
   // Hotbar
   | { type: "hotbar_assign"; inventorySlot: number; hotbarSlot: number }
@@ -43,6 +46,8 @@ export type UIAction =
 
   // Respawn
   | { type: "respawn" }
+  // Dismiss the heir-ritual guidance banner for the remainder of this life (T-072).
+  | { type: "dismiss_ritual" }
 
   // Settings
   | { type: "rebind_key"; action: string; key: string }

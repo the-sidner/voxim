@@ -53,7 +53,7 @@ import { loadLoginName } from "./ui/login.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { EquipmentData, InventoryData, LoreLoadoutData, ResourceData, ActiveActionsData } from "@voxim/codecs";
-import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
+import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState, HeirRitualStep } from "./ui/ui_store.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { BootstrapSource } from "@voxim/content";
@@ -280,6 +280,17 @@ export class VoximGame {
   private tileToken: string | null = null;
   /** True while a tile transition is in flight; suppresses onClose→stop(). */
   private transitioning = false;
+
+  // ── Heir ritual guidance (T-072) ──────────────────────────────────────────
+  /** Last `Heritage.generation` observed for the local player. Null until the
+   *  first heritage snapshot arrives — that first sighting is the baseline,
+   *  never a trigger, so joining as an existing heir doesn't fire the ritual. */
+  private lastHeritageGeneration: number | null = null;
+  /** True once a genuine generation bump has been observed THIS session (a
+   *  real death → heir respawn happened while connected). */
+  private ritualActive = false;
+  /** Player closed the guidance banner; stays true until the next generation bump. */
+  private ritualDismissed = false;
 
   async start(config: GameConfig): Promise<void> {
     // Step 1: wire message handlers BEFORE connecting — eliminates the race where
@@ -673,6 +684,17 @@ export class VoximGame {
           }
           if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
           if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
+          if (state.heritage) {
+            const gen = state.heritage.generation;
+            // A real bump this session (not the first sighting) means a death
+            // just advanced the dynasty and this spawn is the heir (T-079/T-270).
+            if (this.lastHeritageGeneration !== null && gen > this.lastHeritageGeneration) {
+              this.ritualActive = true;
+              this.ritualDismissed = false;
+            }
+            this.lastHeritageGeneration = gen;
+            this._recomputeRitualGuide();
+          }
         }
         // Mirror buffer/tag updates on the open workstation entity into uiState
         // so the panel reflects loads/takes/recipe progress without polling.
@@ -683,6 +705,13 @@ export class VoximGame {
         // withdraw) so the panel reflects the move without polling.
         if (uiState.value.container?.entityId === entityId) {
           this._mirrorContainerToUi(entityId);
+        }
+        // Heir ritual (T-072): any container touching this dynasty's chests
+        // (deposit/withdraw, or one newly entering AoI) can change the
+        // guidance banner's pending counts — rescan regardless of which
+        // panel (if any) is open.
+        if (this.ritualActive && !this.ritualDismissed && state.container) {
+          this._recomputeRitualGuide();
         }
         // Trade panel: refresh when the open trader's stock OR the player's
         // inventory (coins/goods) changes, so prices and the sell list stay live.
@@ -715,6 +744,11 @@ export class VoximGame {
       const jbId = uiState.value.jobBoard?.entityId;
       if (jbId && msg.destroys.includes(jbId)) {
         closePanel("job_board");
+      }
+      // A tracked ritual chest leaving AoI/destroyed isn't itself a `delta`,
+      // so the container-scan trigger above wouldn't see it — rescan directly.
+      if (this.ritualActive && !this.ritualDismissed && msg.destroys.length > 0) {
+        this._recomputeRitualGuide();
       }
 
       if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
@@ -1352,6 +1386,60 @@ export class VoximGame {
   }
 
   /**
+   * Heir ritual guidance (T-072). Rescans every entity currently known to
+   * the client for a `container` belonging to the player's own dynasty
+   * (matched via the player's own `Heritage.dynastyId`) and still holding
+   * something. Deliberately NOT scripted to a fixed sequence: it just
+   * reports what's really out there — the library step only exists while a
+   * matching library chest has occupied slots, same for the treasury, and
+   * the banner disappears on its own once both are empty (or the player
+   * dismisses it). Reading/equipping still goes through the ordinary
+   * container + inventory UI; there is no "do it for me" button here.
+   */
+  private _recomputeRitualGuide(): void {
+    if (!this.ritualActive || this.ritualDismissed || !this.playerId) {
+      if (uiState.value.heirRitual) patchUI({ heirRitual: null });
+      return;
+    }
+    const me = this.world.get(this.playerId);
+    const dynastyId = me?.heritage?.dynastyId;
+    if (!dynastyId) {
+      if (uiState.value.heirRitual) patchUI({ heirRitual: null });
+      return;
+    }
+
+    type Best = { entityId: string; pending: number; dist: number };
+    let bestTome: Best | null = null;
+    let bestGear: Best | null = null;
+
+    for (const [entityId, state] of this.world.entries()) {
+      const c = state.container;
+      if (!c || c.dynastyId !== dynastyId || c.slots.length === 0) continue;
+      const dist = (me?.position && state.position)
+        ? Math.hypot(state.position.x - me.position.x, state.position.y - me.position.y)
+        : Infinity;
+      const candidate: Best = { entityId, pending: c.slots.length, dist };
+      if (c.kind === "tome" && (!bestTome || dist < bestTome.dist)) bestTome = candidate;
+      if (c.kind === "equipment" && (!bestGear || dist < bestGear.dist)) bestGear = candidate;
+    }
+
+    const steps: HeirRitualStep[] = [];
+    if (bestTome) {
+      steps.push({
+        kind: "tome", containerId: bestTome.entityId, pending: bestTome.pending,
+        distance: Number.isFinite(bestTome.dist) ? bestTome.dist : null,
+      });
+    }
+    if (bestGear) {
+      steps.push({
+        kind: "equipment", containerId: bestGear.entityId, pending: bestGear.pending,
+        distance: Number.isFinite(bestGear.dist) ? bestGear.dist : null,
+      });
+    }
+    patchUI({ heirRitual: steps.length > 0 ? { steps } : null });
+  }
+
+  /**
    * Register the world-side intent handlers. UI panels and the radial menu
    * keep their Preact onClick paths and dispatch via _handleUIAction (which
    * the router will eventually subsume entirely once T-131 lands its build
@@ -1514,6 +1602,11 @@ export class VoximGame {
         closePanel("death");
         break;
 
+      case "dismiss_ritual":
+        this.ritualDismissed = true;
+        patchUI({ heirRitual: null });
+        break;
+
       case "debug_toggle": {
         const on = this.toggleDebug(action.layer);
         setDebugLayer(action.layer, on);
@@ -1583,6 +1676,12 @@ export class VoximGame {
 
       case "use_item":
         this._sendCommand({ cmd: CommandType.UseItem, fromSlot: action.fromSlot });
+        break;
+
+      case "read_tome":
+        // Internalise the Lore fragment carried by the tome in this inventory
+        // slot (T-020 server substrate; first client wiring, T-072).
+        this._sendCommand({ cmd: CommandType.Internalise, inventorySlot: action.fromSlot });
         break;
 
       case "load_workstation":
