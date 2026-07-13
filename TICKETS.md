@@ -18,6 +18,31 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 
 ## Combat
 
+### T-323 · Hits don't connect — the hitbox is the skeleton, not the body
+Effort: M   Status: todo   (user, live play 2026-07-07)
+
+Swings visibly pass through enemies without registering. The mechanism is mostly right — capsules
+DO follow the live animation pose (`HitboxSystem` → `evaluateAnimationLayers` → `solveSkeleton` →
+`applyHitboxTemplate`), and biped capsule radii DO come from the body recipe — but two concrete
+gaps make the hittable volume much thinner than the drawn body:
+
+1. **Non-biped skeletons have no `bodyRecipe`.** `data/skeletons/wolf.json` (11 bones) carries none,
+   so `deriveSkeletalCapsules` falls through to the `BONE_RADIUS` table — which is keyed by BIPED
+   bone ids (`torso_upper`, `upper_arm_l`, …). A wolf's bones don't match a single key, so every one
+   of them gets `DEFAULT_BONE_RADIUS = 0.20` → a stick-figure hitbox inside a fat visible wolf.
+   Wolves are the most-fought enemy; this alone explains most missed hits.
+2. **`tapered_box` parts get a cylinder capsule.** The recipe's box parts render a BOX of half-width
+   `radiusOrWidthTop/Bot`, but `bodyPartCapsule` returns a capsule of radius `max(top,bot)` — the
+   box's corners stand ~√2 outside the capsule, so edge/corner hits on the visible silhouette miss.
+
+Fix direction: give every skeleton a real body volume the hitbox can read (a `bodyRecipe` for wolf +
+any future archetype, or a per-skeleton radius table — a *shared* source, not a second one), and make
+the capsule cover the drawn box (inscribe vs circumscribe is a decision: circumscribing the box costs
+generosity, which is probably right for feel). Verify with a LIVE probe, not just unit tests: use the
+new T-322 swing-sweep debugger + a scene probe comparing the swept blade capsule against the target's
+live `BodyPartVolume` capsules in world space, and find where they actually miss.
+Done when: swinging at the visible body of a wolf AND a humanoid connects reliably, verified live.
+
 ## Stealth
 
 ## Lore & Skills
@@ -168,6 +193,35 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 
 ## Client / Controls, Feel & Render Polish
 
+### T-324 · Camera feels sluggish and snaps ~90° at a certain rotation
+Effort: M   Status: todo   (user, live play 2026-07-07 — T-320 regression)
+
+Two distinct defects in the new free-look camera (T-320):
+- **Sluggish** — rotation lags the hand even after the sensitivity bump (0.0022 → 0.007). Suspect a
+  residual smoothing/damped step surviving from T-317's chase controller, or the yaw only being
+  applied once per render frame while pointer-lock `movementX` events accumulate faster (deltas being
+  dropped/overwritten rather than summed), or a dt-scaling that shouldn't be there for a *direct*
+  (non-damped) rotation.
+- **~90° snap at a certain rotation** — smells like a wrap/quadrant bug: an `atan2`/shortest-arc wrap,
+  a yaw normalisation crossing ±π, or the pitch clamp interacting with the look-at basis and flipping
+  the up-vector. Reproduce by rotating slowly through a full circle and logging `cameraProbe.yaw()`
+  continuously — the snap will show as a discontinuity at a specific angle.
+Done when: a full 360° sweep is continuous (no jump), rotation tracks the hand 1:1 with no damping,
+and both are verified with the `cameraProbe` hook (yaw sampled across a slow sweep) — not by feel alone.
+
+### T-325 · Input rework — UI clicks also drive the camera
+Effort: M   Status: todo   (user, live play 2026-07-07 — T-320 gap)
+
+Clicking a UI element both actuates the UI *and* rotates/steers the camera: pointer-lock and the DOM
+UI are fighting over the same mouse. T-320 released the lock on panel-open, but the guard is
+incomplete — clicks land on the canvas (or the lock re-engages) while the UI is up. This needs a real
+input-routing pass, not another patch: ONE owner decides, per frame, whether the mouse belongs to
+gameplay (pointer-locked camera) or to the UI, and the other side sees nothing. Consider an explicit
+input-mode state (gameplay / ui / build) driven off the UI modal stack, with pointer-lock engaged only
+in `gameplay`, and canvas mouse handlers bailing out in any other mode.
+Done when: with any panel open, no mouse movement or click reaches the camera; closing it restores
+camera control; build mode keeps its cursor; and the transitions are verified per panel.
+
 Born from the 2026-06-24 client-overhaul analysis (7-reader sweep over the post-rebuild
 client). Root finding: **facing is never predicted client-side** — the local body's
 `rotation.y` is written only from networked `state.facing` (`entity_mesh.ts:624`); the
@@ -182,6 +236,37 @@ palette IS the runtime authority via `applyPalette`). Chosen directions: control
 camera-relative movement + cursor-aim (Diablo/PoE); color → deutlich bunter.
 
 ## Symphony — Feel, Content & Voxel Language
+
+### T-326 · Warped voxels everywhere — one organic-disturbance axis, applied consistently
+Effort: M   Status: todo   (user, live play 2026-07-07)
+
+The randomized/warped voxel surface we now have (terrain relief, `vertexDisp`, the stacked-stone
+language) should be used **consistently across every voxel class we can apply it to** — walls, props,
+structures, equipment, characters — **always with an explicit "how warped is this" factor**, not
+ad-hoc per subsystem. T-301 already decided the principle ("organic everywhere, but silhouette
+proportions stay anchored"); this ticket makes it real and uniform: one disturbance/warp axis, one
+knob per material/class (`generatorPreferences` and/or `render.relief` are the existing homes), one
+shared application point in the bake so a wall, a sword and a shoulder all read as the same physical
+world. Audit where warp is currently applied vs. skipped (terrain: yes; scatter/props/characters:
+partly; walls/built structures: no) and close the gaps.
+Done when: every voxel-baked class reads its warp amplitude from content, the factor is authorable
+per material/class, and a wall, a prop and a character in one screenshot share the same surface idiom.
+
+### T-327 · Combat-feel pipeline — windup / active / winddown / dodge / block / hitstop tuning loop
+Effort: L   Status: needs-design   (user, live play 2026-07-07 — "dafür müssen wir uns eine Pipeline überlegen")
+
+The phase timings (windup / active / winddown / the new `recovery`), dodge i-frames, block windows,
+hitstop and knockback all need real iteration — and there is no loop for iterating them. Today a
+tuning change means: edit JSON → restart tile → reload client → fight something → guess. That is too
+slow to find feel.
+
+What's needed is an authoring/tuning PIPELINE, in the spirit of the Swing Inspector / the new T-322
+sweep debugger, but for TIMING and RESPONSE rather than geometry. Design open — to decide together:
+what the loop looks like (live-tunable knobs against a running fight? a Studio panel that scrubs an
+action's phase timeline against a dummy target? recorded playback with a frame-by-frame scrubber?),
+what it must expose (phase edges, i-frame/block windows, hitstop freeze, the attacker/target state at
+every tick), and how tuned values get back into content without a restart.
+Blocks: T-297/T-298/T-299's numbers are placeholders until this exists — we can't tune what we can't see.
 
 The 2026-06-24 vision arc: the mechanics exist but don't FEEL good yet — they must become a
 SYMPHONY, made accessible through FEEL not TELL. Verified reality: the engine + all four primitives
