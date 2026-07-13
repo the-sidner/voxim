@@ -547,7 +547,36 @@ read well, does the derived strafe/backward approximation look right) needs the 
 didn't have. See the lane's closing report for the exact live-verification procedure.
 
 ### T-309 · Body attachment slots — hotbar items rendered on the body
-Effort: M   Status: in-progress (unblocked — see lane/t309-hotbar report)
+Effort: M   Status: done   Commit: 1b86532 (+ 461a960 prerequisite)   (2026-07-13)
+
+**LANDED (lane/t309-hotbar):** both halves. (1) Prerequisite — `hotbar_assign`/`hotbar_use` are
+real: `HotbarState.assignments` maps hotbar slot → inventory slot index; the displayed item is
+derived live from `InventoryState` (new `hotbarItems` computed, `ui_store.ts`); drag-drop from
+`InventoryPanel` assigns (new drop-zone in `Hotbar.tsx`, mirrors `EquipmentPanel`'s pattern);
+clicking an occupied slot sets `activeIndex` (`hotbar_use`); a new `hotbar_clear` action
+unassigns via right-click (assign-only with no way back would be a dead-end). Client-local only,
+session-scoped (not persisted across reconnect, not networked) — see below for what that defers.
+(2) Body-anchor rendering — `EntityMeshRegistry.syncHotbar()` renders each occupied NON-active
+hotbar item at a new bone-parented body anchor (`sheath_back` → `torso_upper`, `hip_l`/`hip_r` →
+`torso_lower` — a LIMITED set of 3, per the ticket; slots 3-7 hold items but have no anchor yet).
+Generalizes the held-weapon absolute-scale build (`prefab.modelScale`, not the body's
+`entityScale`) onto a bone anchor instead of an entity-root one, per the ticket's step (1).
+`ensureBoneAttachment` gained an optional authored rotation for anchors not aligned to a
+body-part sub-object. The active slot is always skipped (rendered nowhere by this path — it's
+presumed already in hand via the separate, real Equipment system; this path never equips
+anything). Anchor pos/rot are aesthetic defaults picked by code review against the skeleton's
+bone-local offsets, NOT verified live (this lane had no live-stack access) — flagged tunable in
+the code; **live-verify + retune before calling the placement final** (exact procedure in the
+lane's postMergeChecklist).
+
+**Deferred, NOT built (scope note from the launching prompt, and too big for this ticket):** the
+full vision this ticket originally described — the hotbar becomes a real NETWORKED component so
+other players see slung gear, and the full inventory panel gets gated behind selecting a BACKPACK
+slot on the hotbar — is its own arc. Split out as **T-329** so it doesn't get lost. Gating the
+*visible slot count* by equipped carry-gear (step 3 of the original plan) waits on that same
+arc (there is no carry-equipment/backpack system yet to gate on).
+
+**Original ticket text + the 2026-07-07 blocking audit, kept for history:**
 
 Render the player's HOTBAR items on body anchors (sword on back, axe at hip, etc.) — a LIMITED set of
 slots, the count EXTENDABLE by carry-equipment (backpack/belt). The active hotbar item is in hand; the
@@ -1016,6 +1045,41 @@ travel / sleeping) and minimap/fog claim overlays to follow-up tickets so this l
 ## World / Environment
 
 ## UI / Interaction
+
+### T-329 · Networked hotbar + backpack-gated inventory access
+Effort: L   Status: todo
+
+Split out of T-309 (done, lane/t309-hotbar, 2026-07-13) — the full vision that ticket originally
+described but which its launching prompt explicitly scoped out as "its own arc, do NOT build it
+here". T-309 landed a CLIENT-LOCAL hotbar (`HotbarState.assignments`, session-scoped, not
+networked) and body-anchor rendering of non-active slung items, visible only to the local player
+on their own screen. This ticket makes it real for everyone else and adds the access gate:
+
+1. **Networked hotbar component.** A new server-authoritative component (wireId, codec in
+   `@voxim/codecs`) replacing/superseding client-local `HotbarState.assignments` — the server
+   is the source of truth for what's assigned to which hotbar slot and which slot is active, so
+   every AoI-visible player's client can render the SAME slung-gear body anchors T-309 built
+   (those anchors are already generic — they just need real data for remote entities, not only
+   the local player). Decide the wire representation: unique items are entity-refs already
+   (inventory slot → item entity), so the hotbar assignment is naturally `hotbarSlot →
+   inventorySlot` (matching T-309's client-local mapping) or `hotbarSlot → itemEntityId`
+   directly — pick one and make `EntityMeshRegistry.syncHotbar` read it for ALL entities with
+   the component, not just the local player via the cached setHotbar() path.
+2. **Backpack-gated inventory access.** No backpack item assigned to a hotbar slot ⇒ the
+   inventory panel doesn't open (or opens empty/locked) — "the hotbar is what you carry on your
+   body; the backpack is one slot that opens the bag." Needs: a backpack item concept (new
+   Equippable-adjacent component or a `carryContainer` flag on a prefab?), the actual inventory
+   capacity/access gate (currently `InventoryPanel` always opens if `uiState.inventory` is
+   non-null), and a design decision on what happens to already-stored items when the backpack
+   is unassigned (locked-but-visible vs fully hidden vs auto-drop — needs a design call, not a
+   default to guess).
+3. **Visible slot count by carry-gear.** T-309's step (3) — gate how many of the 8 hotbar slots
+   are usable by what's equipped (a belt might grant 2 extra slots beyond the backpack's base
+   set) — depends on (2)'s backpack/carry-equipment concept existing first.
+
+Done when: hotbar assignment is server-authoritative and every player sees every other player's
+slung gear (not just their own), and opening the burden panel is gated on having a backpack
+slotted into the hotbar.
 
 ## Housing
 
