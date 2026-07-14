@@ -139,6 +139,10 @@ export class ParticleSystem {
   private defsById = new Map<string, ParticleEmitterDef>();
   private archetypeReady = new Set<string>();
   private content: ContentCache | null = null;
+  /** Pre-hydration placeholder only — overwritten by setPhysics() from
+   *  GameConfig.physics.gravity the moment content loads. Never authored
+   *  tuning (that's content); this is just "don't divide-by-garbage before
+   *  setPhysics() runs". */
   private gravity = 20;
 
   private bursts: Burst[] = [];
