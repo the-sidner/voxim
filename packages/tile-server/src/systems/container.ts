@@ -6,11 +6,32 @@
  * `storeInContainer` / `withdrawFromContainer` are transactional helpers that
  * `ContainerSystem` (below) drives from the deposit/withdraw commands — chests
  * do nothing between deposits, so they're command-driven one-shot ops. The
- * mutations use `world.set` (deferred), so the Container/Inventory changes land
+ * mutations use `world.mutate` (T-344), so the Container/Inventory changes land
  * in the tick's changeset and ship to the client as deltas — an immediate
  * `world.write` would mutate the store but never produce a delta for an
- * already-known chest. Read-then-set with no read-after-write, so a single op is
- * clean; two ops to one chest in a tick last-write-win like the equipment path.
+ * already-known chest.
+ *
+ * T-344: a family chest is genuinely touched by MULTIPLE different dynasty
+ * members' sessions in the same tick — get-then-set here was the same
+ * lost-update shape as everywhere else (two same-tick deposits into a
+ * near-full chest could both read "room for one more" and both write,
+ * silently clobbering one). Each op is now COUPLED-DECLINE across the two
+ * components it moves an item between: the DESTINATION component's mutate
+ * runs first (its own recheck against commit-time state — capacity for a
+ * store, capacity for a withdraw), and the SOURCE component's removal is
+ * dependent on that claim succeeding, re-locating the item by identity
+ * rather than trusting a raw index (an earlier same-tick op on the SAME
+ * chest may have spliced a slot out from under it). Putting the destination
+ * first means the FAILURE mode this ticket's own bar treats as unacceptable
+ * ("a consumed material with no output") is closed on both sides — the item
+ * is only ever removed from its source once it has already landed at the
+ * destination. The residual this can't close without a cross-component
+ * transaction primitive: if the exact SAME captured item is independently
+ * moved by a SECOND same-tick command (e.g. deposited AND traded away in
+ * one tick — needs two contradictory commands from one client), the
+ * destination's claim can commit before the source-side identity re-check
+ * discovers the item is gone, producing a narrow duplicate ref. Documented,
+ * not papered over — see the two functions below.
  *
  * Invariant in both directions: the op MOVES an entity ref — it never copies or
  * destroys the item entity, so the tome's `Inscribed` / the weapon's
@@ -30,6 +51,8 @@ import { Container } from "../components/container.ts";
 import { Inventory, ItemData } from "../components/items.ts";
 import { Position } from "../components/game.ts";
 import { Heritage } from "../components/heritage.ts";
+import { findByIdentity } from "../inventory_ops.ts";
+import type { SlotIdentity } from "../inventory_ops.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("ContainerSystem");
@@ -79,17 +102,24 @@ export function storeInContainer(
   if (!item) return { ok: false, reason: "not-an-item-entity" };
   if (!kindAccepts(content, container.kind, item.prefabId)) return { ok: false, reason: "wrong-kind" };
 
-  // Entity-ref MOVE: drop the inventory ref, push the chest ref.
-  world.set(actorId, Inventory, {
-    ...inv,
-    slots: inv.slots.filter((s) => !(s.kind === "unique" && s.entityId === itemEntityId)),
+  // T-344: COUPLED-DECLINE — Container (the destination) claims a slot
+  // first, its own recheck against commit-time state; Inventory's removal
+  // (the source) is dependent on that claim and re-locates the item by
+  // identity rather than trusting a snapshot index. See the file header.
+  const identity: SlotIdentity = { kind: "unique", entityId: itemEntityId };
+  let claimed = false;
+  world.mutate(containerId, Container, (cur) => {
+    if (cur.slots.length >= cur.capacity) return cur;
+    claimed = true;
+    return { ...cur, slots: [...cur.slots, { entityId: itemEntityId }] };
   });
-  const slotIndex = container.slots.length;
-  world.set(containerId, Container, {
-    ...container,
-    slots: [...container.slots, { entityId: itemEntityId }],
+  world.mutate(actorId, Inventory, (cur) => {
+    if (!claimed) return cur;
+    const idx = findByIdentity(cur.slots, identity);
+    if (idx === -1) return cur;
+    return { ...cur, slots: cur.slots.filter((_, i) => i !== idx) };
   });
-  return { ok: true, slotIndex };
+  return { ok: true, slotIndex: container.slots.length };
 }
 
 /**
@@ -116,9 +146,16 @@ export function withdrawFromContainer(
 
   const itemEntityId = container.slots[slotIndex].entityId;
   if (!world.isAlive(itemEntityId)) {
-    // A dangling slot (the banked entity died) — purge it rather than hand the
-    // holder a dead ref. (Save skips dead refs but keeps the slot string.)
-    world.set(containerId, Container, { ...container, slots: container.slots.filter((_, i) => i !== slotIndex) });
+    // A dangling slot (the banked entity died) — purge it rather than hand
+    // the holder a dead ref. (Save skips dead refs but keeps the slot
+    // string.) Single-component TARGETED-DECLINE: re-locate by identity
+    // rather than trusting slotIndex, since an earlier same-tick op on this
+    // SAME chest could have spliced a different slot out from under it.
+    world.mutate(containerId, Container, (cur) => {
+      const idx = cur.slots.findIndex((s) => s.entityId === itemEntityId);
+      if (idx === -1) return cur; // already purged/withdrawn by an earlier same-tick op
+      return { ...cur, slots: cur.slots.filter((_, i) => i !== idx) };
+    });
     return { ok: false, reason: "slot-item-dead" };
   }
 
@@ -126,14 +163,22 @@ export function withdrawFromContainer(
   if (!inv) return { ok: false, reason: "holder-has-no-inventory" };
   if (inv.slots.length >= inv.capacity) return { ok: false, reason: "inventory-full" };
 
-  // Entity-ref MOVE: pull the chest ref, push the inventory unique ref.
-  world.set(containerId, Container, {
-    ...container,
-    slots: container.slots.filter((_, i) => i !== slotIndex),
+  // T-344: COUPLED-DECLINE — Inventory (the destination) claims capacity
+  // first; Container's removal (the source) is dependent on that claim and
+  // re-locates the item by identity. Destination-first closes the "removed
+  // from the chest but the holder never received it" loss case; see the
+  // file header for the residual this still leaves open.
+  let claimed = false;
+  world.mutate(intoHolderId, Inventory, (cur) => {
+    if (cur.slots.length >= cur.capacity) return cur;
+    claimed = true;
+    return { ...cur, slots: [...cur.slots, { kind: "unique" as const, entityId: itemEntityId }] };
   });
-  world.set(intoHolderId, Inventory, {
-    ...inv,
-    slots: [...inv.slots, { kind: "unique" as const, entityId: itemEntityId }],
+  world.mutate(containerId, Container, (cur) => {
+    if (!claimed) return cur;
+    const idx = cur.slots.findIndex((s) => s.entityId === itemEntityId);
+    if (idx === -1) return cur;
+    return { ...cur, slots: cur.slots.filter((_, i) => i !== idx) };
   });
   return { ok: true, slotIndex };
 }
