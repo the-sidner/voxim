@@ -1278,7 +1278,7 @@ lane could touch).
 ## AAA Graphics
 
 ### T-340 · Spell & ambience particles — experiment, then integrate into the renderer
-Effort: M   Status: todo   (user, 2026-07-14)
+Effort: M   Status: done   Commit: 7dcc64f   (user, 2026-07-14)
 
 We have dust motes, hit sparks, weapon trails, an impact flash and the dissolve drift — all bespoke,
 each its own little system. Spells and ambience need MORE, and the answer is not a sixth bespoke pass:
@@ -1288,6 +1288,54 @@ renderer, and retire the bespoke systems that it subsumes. Doctrine: a designer 
 content def + one registry entry, never a new render pass.
 Done when: spell and ambience particles exist, they are content-authored, and the pre-existing bespoke
 effects that the primitive subsumes are GONE (replace, don't accrete).
+
+**How it landed:** Phase 1 ran offline (an uncommitted Playwright + local-static-server harness
+against `three.module.js` directly — no docker, no live game) rendering the SAME seeded burst
+geometry three ways: unit-cube voxel shards (flatShaded, no outline), the same shards with an
+`EdgesGeometry` outline approximating the Sobel pass, and sprite billboards copy-pasted from
+`hit_spark_renderer.ts`'s own `makeSparkSprite()`. Screenshotted and looked at: the shards read as
+small angular debris consistent with every other voxel in the world; the sprites read as generic
+soft round glowing dots with no connection to the hard-edged idiom — confirming decal_renderer.ts's
+own precedent-setting call ("the comic idiom — no alpha quads") holds at particle scale/speed too.
+A third candidate, in-shader drift (what the dissolve does), was eliminated analytically before any
+screenshot: it perturbs a model's OWN pre-baked per-voxel vertex attributes (aFray/driftDir, baked
+once at model-build time) — there is no host mesh to perturb for a burst spawned at an arbitrary
+world point unrelated to any model. Voxel shards won.
+
+The primitive: one content shape, `ParticleEmitterDef` (`data/particles/*.json`), mirrors
+`DecalDef`'s exact plumbing (types→store→loader→bootstrap_codec→mod.ts) and its material idiom —
+`material` is a MaterialDef NAME, not a raw palette token, reusing `bakeVoxels`/`buildVoxelMaterial`'s
+palette-snapped colour + flatShading + emissive→HDR-bloom glow for free. Fade is a size curve
+(shrink-to-nothing), never alpha — decal_renderer's voxel-honest decay doctrine. One draw path:
+`particle_system.ts` gives every def exactly one InstancedMesh archetype via the shared
+`InstancePool` (T-315's one-archetype-per-kind lesson, not regressed) — a burst never costs a draw
+call per particle. Dispatch is registry-based, never a kind-switch: `particle_sources.ts` (mirrors
+`decal_sources.ts`) maps a wire GameEvent to a spawn point for event-sourced bursts; a ranged
+`WeaponActionDef.muzzleParticleId` fires on the action's active-phase rising edge (an edge-triggered
+per-entity latch, not a registry — there's no wire event for "phase changed", only continuously-
+replicated AnimationState); `AtmosphereDef.ambienceParticleId` selects a continuous drifting
+population riding the renderer's existing per-frame atmosphere re-selection.
+
+Subsumed and DELETED in the same commit: `dust_motes.ts` → `ember_ambience` (a `ParticleEmitterDef`
+with an `ambience` block, 320 particles/44-unit box, same numbers as the old hardcoded constants).
+`hit_spark_renderer.ts` → `hit_spark` + `hit_flash` (two defs sharing one `hit_impact` source, which
+already covers melee AND ranged hits via the shared `dispatchSweepHit` tail — zero server change
+needed for "wire it to a projectile IMPACT"). `spell_muzzle` wired onto `test_bolt.json` (the T-337
+test staff) — the ticket's spell trigger.
+
+Kept and justified (an unjustified survivor means the primitive isn't general enough):
+`weapon_trail.ts` is a continuous swept-volume ribbon (one growing/decaying slice buffer → one
+triangle strip per attacker), not a population of independent lifetime-driven particles — forcing
+it onto the burst primitive would need per-frame re-triangulation the primitive doesn't do. The
+T-311 dissolve in-shader drift stays separate for the mechanical reason above (no host mesh for a
+free-floating burst).
+
+Verified in-lane: type-check matrix + full suite 1004/1004 green (1002 baseline + 2 new
+`particle_sources.test.ts` cases) + a clean `deno task bundle`. Live testplay screenshot (fire
+`test_staff`'s bolt, confirm the muzzle flash + impact burst + ambience embers all read well against
+the real Sobel/fog/bloom pipeline, and the HUD draw-call delta per burst is small and FIXED, not
+proportional to particle count) is the post-merge step — the lane rules exclude docker/testplay from
+in-lane verification.
 
 
 The 2026-06-26 visual-elevation arc: the mechanics + voxel art language exist; what's missing is

@@ -6,6 +6,7 @@
   "winddownTicks": 10,
   "clipId": "standing_aim_recoil",
   "staminaCost": 4,
+  "muzzleParticleId": "spell_muzzle",
   "projectile": {
     "speed": 18,
     "gravityScale": 0.18,

@@ -23,5 +23,6 @@
     "decay": 0.97,
     "strength": 0.3,
     "color": "#ffedbd"
-  }
+  },
+  "ambienceParticleId": "ember_ambience"
 }

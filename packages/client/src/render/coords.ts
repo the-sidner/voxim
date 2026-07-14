@@ -19,7 +19,7 @@
  * but with no scale param — is NOT owned here. It stays inlined at its own sites,
  * each individually commented: entity_mesh.ts (updateEntityMesh's instant-set +
  * posBuffer interpolation push), renderer.ts (local-player predicted position),
- * gate_marker.ts, hit_spark_renderer.ts, and scatter_renderer.ts. Folding those
+ * gate_marker.ts, particle_system.ts, and scatter_renderer.ts. Folding those
  * into a shared unscaled `worldToThree()` helper is a safe, optional follow-up —
  * not done here because every site above is already correctly self-documented.
  *

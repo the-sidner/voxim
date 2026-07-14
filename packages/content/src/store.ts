@@ -46,6 +46,7 @@ import type {
   AtmosphereDef,
   WaterStyleDef,
   DecalDef,
+  ParticleEmitterDef,
   DissolveProfileDef,
   CliffProfileDef,
   ZoneDef,
@@ -168,6 +169,14 @@ export interface ContentService {
    * from wire GameEvents and decays them — never saved, never networked.
    */
   readonly decals: ContentRegistryReadonly<DecalDef>;
+
+  /**
+   * Particle emitters keyed by id (T-340). Loaded from `data/particles/*.json`;
+   * dispatched through the client's particle-source registry (event-sourced
+   * bursts) or referenced directly by id (WeaponActionDef.muzzleParticleId,
+   * AtmosphereDef.ambienceParticleId).
+   */
+  readonly particles: ContentRegistryReadonly<ParticleEmitterDef>;
 
   /**
    * Corrupted-creature dissolve/fray profiles keyed by id (T-311 P5c).
@@ -373,6 +382,10 @@ export class StaticContentStore implements ContentService {
     kind: "decal",
     idOf: (d) => d.id,
   });
+  public readonly particles = new ContentRegistry<ParticleEmitterDef>({
+    kind: "particle",
+    idOf: (p) => p.id,
+  });
   public readonly dissolveProfiles = new ContentRegistry<DissolveProfileDef>({
     kind: "dissolveProfile",
     idOf: (d) => d.id,
@@ -531,6 +544,10 @@ export class StaticContentStore implements ContentService {
 
   registerDecal(def: DecalDef): void {
     this.decals.register(def);
+  }
+
+  registerParticle(def: ParticleEmitterDef): void {
+    this.particles.register(def);
   }
 
   registerDissolveProfile(def: DissolveProfileDef): void {

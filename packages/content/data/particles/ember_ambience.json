@@ -1,0 +1,11 @@
+{
+  "id": "ember_ambience",
+  "material": "dust_mote",
+  "count": [1, 1],
+  "speed": [0.1, 0.35],
+  "spreadDeg": 35,
+  "lifetime": [1, 1],
+  "gravityScale": 0,
+  "size": { "start": 0.22, "end": 0.22 },
+  "ambience": { "count": 320, "boxHalfExtent": 44, "boxHeight": 44 }
+}
