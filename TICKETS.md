@@ -55,7 +55,7 @@ Done when: holding the key charges and aims (direction from facing, distance fro
 along the aimed arc, block cancels cleanly, and the same mechanic drives a thrown item.
 
 ### T-338 · Ranged weapons — build out the bow/crossbow path
-Effort: M   Status: todo   (user, 2026-07-14)
+Effort: M   Status: done   (user, 2026-07-14)   Commit: 73b66a9
 
 `bow_shot`/`crossbow_shot` weapon_actions and a projectile resolver already exist, but the ranged path is
 thin (no swingPath, no draw/aim loop, no ammo economy worth the name). Build it out on the T-337 aiming
@@ -64,6 +64,21 @@ hit resolution through the same sweep + hit-bubbling path melee uses (T-333). Co
 procedural equipment (a generated bow) rather than one authored model.
 Done when: a bow is drawn, aimed and loosed with the T-337 mechanic; arrows fly with drop, consume ammo,
 and hit through the normal hit path.
+
+Landed on `lane/t337-t338-aim-ranged`: DRIFT CONFIRMED WORSE than "thin" — `wooden_bow`/
+`wooden_crossbow` had NO `swingActionId`, so equipping a bow silently fell back to the melee
+blade-sweep ActionDef against a weapon with no blade (traced nothing, dealt nothing) while
+`ranged_shot.json` sat unreferenced by any prefab. `bow_draw`/`bow_loose` +
+`crossbow_draw`/`crossbow_loose` (mirroring T-337's throw_draw/throw_release shape) replace it;
+`ranged_shot.json` deleted outright. `arrow`/`crossbow_bolt` Stackable ammo added, gated through
+T-337's generic `has_item`/`consume_item`. New boot cross-check: every `swingable.swingActionId`
+must resolve to a loaded ActionDef. Found and fixed a second real regression while landing this:
+`attackTargetJob` held `ACTION_USE_SKILL` unconditionally, which is harmless for melee but would
+have frozen every archer mid-draw forever once wooden_bow's swingActionId went live — fixed with a
+weapon-agnostic release-pulse duty cycle. Procedural bow generation (T-306 composition) explicitly
+DEFERRED to T-340 — see that ticket for why (bow doesn't map onto blade_grammar's shape; sized
+comparably to blade_grammar/armor_grammar themselves). In-lane verification only (type-check + full
+suite, 995 passed); live testplay/docker verification deferred to post-merge per lane rules.
 
 ### T-339 · Death: ragdoll — the physical complement to voxel dissolution
 Effort: L   Status: needs-design   (user, 2026-07-14)
@@ -120,6 +135,24 @@ wrong way (e.g. straight up) without also reworking the bind pose, which risks t
 look and needs verification this lane couldn't do (no live stack). Fix #2 (tapered_box circumscribe)
 landed as literally described. Live verification (swing at a wolf + a humanoid, confirm hits land) is
 deferred to post-merge per the lane's scope — see postMergeChecklist in the closing commit report.
+
+### T-340 · Procedural bow/crossbow generation (T-306 composition)
+Effort: M   Status: todo   (deferred from T-338, 2026-07-14)
+
+T-338 (bow/crossbow hold-to-aim path) shipped `wooden_bow`/`wooden_crossbow` on their existing
+AUTHORED models (`model_bow_basic`/`model_crossbow_basic`) rather than composing with T-306's
+procedural equipment generation, as originally asked. Deliberately deferred, not dropped: a bow is
+two curved limbs + a string, which doesn't map onto `blade_grammar.ts`'s single-spine
+limb+pommel+guard composition — the closer structural analog is `armor_grammar.ts` ("purely
+visual"; a bow has no hit-sweep capsule of its own — the arrow's collision radius is a separate,
+already-existing `ProjectileActionConfig.radius`). Sizing this properly (a `bow_grammar.ts` pure
+evaluator in `@voxim/content` + a client `procmodel/generators/bow_grammar.ts` + a `ProcModelDef`
++ a boot-cross-checked field on `SwingableData` naming it, following the exact
+`bladeGrammar`/`deriveBladeGeometry` pattern) is comparable in scope to blade_grammar/armor_grammar
+themselves (each has its own dedicated multi-case test file) — realistically its own ticket, not a
+tail end of T-338.
+Done when: `wooden_bow`/`wooden_crossbow` (or their replacements) render a generated bow instead of
+the static model, seed-unique per equipped instance, with zero change to the T-338 mechanic.
 
 ## Stealth
 
