@@ -273,6 +273,11 @@ export interface AtmosphereDef {
     /** sRGB hex shaft tint (EdgePass uGodRayColor). */
     color: string;
   };
+  /** ParticleEmitterDef (must author an `ambience` block) driving this
+   *  atmosphere's ambient drift population — e.g. embers/motes (T-340).
+   *  Boot-cross-checked; absent = no ambience particles for this
+   *  atmosphere. */
+  ambienceParticleId?: string;
 }
 
 /**
@@ -1082,6 +1087,9 @@ export interface WeaponActionDef {
   actionType?: "melee" | "ranged";
   /** Projectile spawn parameters. Required for ranged, absent for melee. */
   projectile?: ProjectileActionConfig;
+  /** ParticleEmitterDef fired client-side at the muzzle on this ranged
+   *  action's active-phase rising edge (T-340). Ignored for melee. */
+  muzzleParticleId?: string;
   /**
    * Root-motion forward impulse applied while the named phase is active
    * (T-199). The character is pushed forward along its facing direction at
@@ -1615,6 +1623,68 @@ export interface DissolveProfileDef {
   /** Easing applied to the raw linear timer fraction before it becomes
    *  dissolutionPhase. Default "linear" when absent. */
   phaseCurve?: "linear" | "smoothstep";
+}
+
+// ---- particles ----
+
+/**
+ * ParticleEmitterDef (T-340) — the ONE content-driven particle primitive,
+ * covering both one-shot combat bursts (spell muzzle flash, hit sparks) and
+ * continuous ambience (drifting embers). Phase-1 experiment picked voxel
+ * SHARDS over sprite billboards (see the T-340 closing notes) — a burst is a
+ * handful of shrinking unit cubes in `material`'s look (palette-snapped
+ * colour + flatShading via the same `bakeVoxels`/`buildVoxelMaterial` path
+ * DecalDef splats already use), instanced through the shared InstancePool
+ * (one archetype per def — never a draw call per particle). Fade is a size
+ * curve (shrink-to-nothing), not alpha — the same voxel-honest decay
+ * decal_renderer.ts already established ("slabs vanish whole, no fading
+ * opacity against the Sobel ink").
+ */
+export interface ParticleEmitterDef {
+  id: string;
+  /** Particle-source id → client particle-source registry (closed event
+   *  catalog, mirrors DecalDef.source); boot-cross-checked. Absent for
+   *  emitters triggered by a fixed mechanism instead of a wire GameEvent
+   *  (muzzle flash: WeaponActionDef.muzzleParticleId; ambience:
+   *  AtmosphereDef.ambienceParticleId). */
+  source?: string;
+  /** Splat material NAME — palette-snapped colour + flatShaded look via
+   *  buildVoxelMaterial, same idiom as DecalDef.material (not a raw palette
+   *  token: this reuses the material's emissive→HDR-bloom glow for free). */
+  material: string;
+  /** Burst particle count [min,max]. Ignored when `ambience` is set (the
+   *  ambience population size is `ambience.count` instead). */
+  count: [number, number];
+  /** Launch speed, world units/second, [min,max]. Also seeds an ambience
+   *  particle's drift velocity when `ambience` is set. */
+  speed: [number, number];
+  /** Cone half-angle (degrees) around the caller-supplied base direction
+   *  (event-sourced bursts default to "up"; the muzzle-flash trigger
+   *  supplies the caster's facing). Also shapes ambience drift spread. */
+  spreadDeg: number;
+  /** Lifetime seconds [min,max], rolled per particle. Ignored when
+   *  `ambience` is set (ambience particles persist via box-wrap, not decay). */
+  lifetime: [number, number];
+  /** Multiplies GameConfig.physics.gravity (mirrors
+   *  ProjectileActionConfig.gravityScale's naming). 0 = no gravity (e.g. an
+   *  ember that only rises). */
+  gravityScale: number;
+  /** Shard edge length, world units, lerped start→end over the particle's
+   *  lifetime fraction. `end` is typically 0 — shrink-to-nothing IS the
+   *  fade. */
+  size: { start: number; end: number };
+  /**
+   * Present ⇒ this def drives a continuous ambience population instead of a
+   * one-shot burst: `count` particles drift inside a box (±boxHalfExtent
+   * horizontal, [0,boxHeight] vertical) centred on the camera target,
+   * wrapping at the edges — DustMotes' replacement. Selected per-tile via
+   * `AtmosphereDef.ambienceParticleId`.
+   */
+  ambience?: {
+    count: number;
+    boxHalfExtent: number;
+    boxHeight: number;
+  };
 }
 
 // ---- biomes ----

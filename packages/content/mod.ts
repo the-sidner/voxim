@@ -20,6 +20,7 @@ export type {
   AtmosphereDef,
   WaterStyleDef,
   DecalDef,
+  ParticleEmitterDef,
   DissolveProfileDef,
   CliffProfileDef,
   CliffErosionState,

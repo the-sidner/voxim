@@ -29,12 +29,12 @@ import type {
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, GameConfig, TileLayout, Prefab,
   ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette,
+  AtmosphereDef, WaterStyleDef, DecalDef, ParticleEmitterDef, DissolveProfileDef, CliffProfileDef, Palette,
   GaitDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 22;
+export const BOOTSTRAP_VERSION = 23;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -62,6 +62,7 @@ interface ContentBootstrapJson {
   atmospheres:         AtmosphereDef[];
   waterStyles:         WaterStyleDef[];
   decals:              DecalDef[];
+  particles:           ParticleEmitterDef[];
   dissolveProfiles:    DissolveProfileDef[];
   cliffProfiles:       CliffProfileDef[];
   gameConfig:          GameConfig;
@@ -142,6 +143,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     atmospheres:         [...service.atmospheres.values()],
     waterStyles:         [...service.waterStyles.values()],
     decals:              [...service.decals.values()],
+    particles:           [...service.particles.values()],
     dissolveProfiles:    [...service.dissolveProfiles.values()],
     cliffProfiles:       [...service.cliffProfiles.values()],
     gameConfig:          service.getGameConfig(),
@@ -234,6 +236,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const a of body.atmospheres ?? [])    store.registerAtmosphere(a);
   for (const w of body.waterStyles ?? [])    store.registerWaterStyle(w);
   for (const d of body.decals ?? [])         store.registerDecal(d);
+  for (const p of body.particles ?? [])      store.registerParticle(p);
   for (const d of body.dissolveProfiles ?? []) store.registerDissolveProfile(d);
   for (const c of body.cliffProfiles ?? [])  store.registerCliffProfile(c);
   store.setGameConfig(body.gameConfig);

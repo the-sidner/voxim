@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, MaterialGeneratorPreferences, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData, ArmorData, EquippableData, GaitDef, GaitKeyframe } from "./types.ts";
+  AtmosphereDef, WaterStyleDef, DecalDef, ParticleEmitterDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData, ArmorData, EquippableData, GaitDef, GaitKeyframe } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { crossCheckBodyRecipe } from "./body_recipe.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
@@ -55,7 +55,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, gaitsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
-    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, dissolveProfilesRaw, cliffProfilesRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, particlesRaw, dissolveProfilesRaw, cliffProfilesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -81,6 +81,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "atmospheres"),
     readJsonDirOptional(dataDir, "water_styles"),
     readJsonDirOptional(dataDir, "decals"),
+    readJsonDirOptional(dataDir, "particles"),
     readJsonDirOptional(dataDir, "dissolve_profiles"),
     readJsonDirOptional(dataDir, "cliff_profiles"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
@@ -304,12 +305,34 @@ async function loadContentStoreInternal(
     validateDecalDef(raw);
     store.registerDecal(raw);
   }
+  for (const raw of particlesRaw as ParticleEmitterDef[]) {
+    validateParticleEmitterDef(raw);
+    store.registerParticle(raw);
+  }
   for (const raw of dissolveProfilesRaw as DissolveProfileDef[]) {
     validateDissolveProfileDef(raw);
     store.registerDissolveProfile(raw);
   }
   for (const raw of cliffProfilesRaw as CliffProfileDef[]) {
     store.registerCliffProfile(raw);
+  }
+  // T-340: a ranged WeaponActionDef's muzzleParticleId and an AtmosphereDef's
+  // ambienceParticleId must both resolve against the particles registry
+  // (content→content id refs, same split as scatter→procModel below — no
+  // client registry involved on either side of these two checks).
+  for (const wa of store.weaponActions.values()) {
+    if (wa.muzzleParticleId && !store.particles.get(wa.muzzleParticleId)) {
+      throw new Error(
+        `[content] weapon action "${wa.id}" references unknown particle emitter "${wa.muzzleParticleId}"`,
+      );
+    }
+  }
+  for (const atmo of store.atmospheres.values()) {
+    if (atmo.ambienceParticleId && !store.particles.get(atmo.ambienceParticleId)) {
+      throw new Error(
+        `[content] atmosphere "${atmo.id}" references unknown particle emitter "${atmo.ambienceParticleId}"`,
+      );
+    }
   }
   for (const s of store.scatter.values()) {
     if (!store.procModels.get(s.procModel)) {
@@ -1029,6 +1052,51 @@ export function validateDecalDef(def: DecalDef): void {
   if (typeof def.ttlSeconds !== "number" || def.ttlSeconds <= 0
     || typeof def.fadeSeconds !== "number" || def.fadeSeconds < 0) {
     throw new Error(`Decal '${def.id}': 'ttlSeconds' must be > 0 and 'fadeSeconds' ≥ 0`);
+  }
+}
+
+/** Shape-validate one ParticleEmitterDef (T-340). `source` (when present) is
+ *  cross-checked on the client against the particle-source registry; `material`
+ *  against the material registry (same split as validateDecalDef). */
+export function validateParticleEmitterDef(def: ParticleEmitterDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`ParticleEmitterDef: missing or empty id`);
+  }
+  if (def.source !== undefined && (typeof def.source !== "string" || def.source.length === 0)) {
+    throw new Error(`Particle '${def.id}': 'source' must be a non-empty particle-source id when present`);
+  }
+  if (typeof def.material !== "string" || def.material.length === 0) {
+    throw new Error(`Particle '${def.id}': 'material' must be a material name`);
+  }
+  if (!Array.isArray(def.count) || def.count.length !== 2 || def.count[0] < 0 || def.count[1] < def.count[0]) {
+    throw new Error(`Particle '${def.id}': 'count' must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (!Array.isArray(def.speed) || def.speed.length !== 2 || def.speed[0] < 0 || def.speed[1] < def.speed[0]) {
+    throw new Error(`Particle '${def.id}': 'speed' must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (typeof def.spreadDeg !== "number" || def.spreadDeg < 0 || def.spreadDeg > 180) {
+    throw new Error(`Particle '${def.id}': 'spreadDeg' must be in [0,180]`);
+  }
+  if (!Array.isArray(def.lifetime) || def.lifetime.length !== 2 || def.lifetime[0] <= 0 || def.lifetime[1] < def.lifetime[0]) {
+    throw new Error(`Particle '${def.id}': 'lifetime' must be a positive [min,max] pair`);
+  }
+  if (typeof def.gravityScale !== "number" || !Number.isFinite(def.gravityScale)) {
+    throw new Error(`Particle '${def.id}': 'gravityScale' must be a finite number`);
+  }
+  if (!def.size || typeof def.size.start !== "number" || def.size.start <= 0
+    || typeof def.size.end !== "number" || def.size.end < 0) {
+    throw new Error(`Particle '${def.id}': 'size.start' must be > 0 and 'size.end' ≥ 0`);
+  }
+  if (def.ambience) {
+    if (typeof def.ambience.count !== "number" || def.ambience.count <= 0) {
+      throw new Error(`Particle '${def.id}': 'ambience.count' must be > 0`);
+    }
+    if (typeof def.ambience.boxHalfExtent !== "number" || def.ambience.boxHalfExtent <= 0) {
+      throw new Error(`Particle '${def.id}': 'ambience.boxHalfExtent' must be > 0`);
+    }
+    if (typeof def.ambience.boxHeight !== "number" || def.ambience.boxHeight <= 0) {
+      throw new Error(`Particle '${def.id}': 'ambience.boxHeight' must be > 0`);
+    }
   }
 }
 
