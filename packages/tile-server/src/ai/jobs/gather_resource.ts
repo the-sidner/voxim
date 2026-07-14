@@ -25,7 +25,6 @@ import type {
   JobTickInput,
 } from "../job_handler.ts";
 import type { Job, NpcPlanData } from "../../components/npcs.ts";
-import type { InventorySlot } from "@voxim/codecs";
 import { Position, Velocity } from "../../components/game.ts";
 import { Inventory, ItemData } from "../../components/items.ts";
 import { ResourceNode } from "../../components/resource_node.ts";
@@ -216,18 +215,33 @@ function collectDrop(world: World, npcId: EntityId, dropId: EntityId): boolean {
   const inv = world.get(npcId, Inventory);
   if (!item || !inv) return false;
 
-  const slots: InventorySlot[] = inv.slots.slice();
-  const merged = slots.findIndex((s) => s.kind === "stack" && s.prefabId === item.prefabId);
-  if (merged !== -1) {
-    const existing = slots[merged] as { kind: "stack"; prefabId: string; quantity: number };
-    slots[merged] = { kind: "stack", prefabId: item.prefabId, quantity: existing.quantity + item.quantity };
-  } else {
-    if (slots.length >= inv.capacity) return false;
-    slots.push({ kind: "stack", prefabId: item.prefabId, quantity: item.quantity });
-  }
+  // Synchronous capacity pre-check (matches the pre-T-344 behavior for the
+  // ordinary non-racy case): a merge never needs room, a fresh slot does.
+  const willMerge = inv.slots.some((s) => s.kind === "stack" && s.prefabId === item.prefabId);
+  if (!willMerge && inv.slots.length >= inv.capacity) return false;
 
-  world.set(npcId, Inventory, { ...inv, slots });
+  // T-344 residual: world.destroy stays eager/unconditional, ahead of the
+  // mutate's own fresh recheck below — same documented class as
+  // CraftingSystem's PickUp (systems/crafting.ts). This NPC's own
+  // single job-tick call can't collide with itself, but the mutate makes
+  // this compose correctly with any OTHER same-tick writer of this NPC's
+  // Inventory (StaleSlotCleanupSystem, also fixed in this ticket, is the
+  // realistic one) instead of clobbering it.
   world.destroy(dropId);
+  world.mutate(npcId, Inventory, (cur) => {
+    const merged = cur.slots.findIndex((s) => s.kind === "stack" && s.prefabId === item.prefabId);
+    if (merged !== -1) {
+      const existing = cur.slots[merged] as { kind: "stack"; prefabId: string; quantity: number };
+      return {
+        ...cur,
+        slots: cur.slots.map((s, i) => (i === merged
+          ? { kind: "stack" as const, prefabId: item.prefabId, quantity: existing.quantity + item.quantity }
+          : s)),
+      };
+    }
+    if (cur.slots.length >= cur.capacity) return cur;
+    return { ...cur, slots: [...cur.slots, { kind: "stack" as const, prefabId: item.prefabId, quantity: item.quantity }] };
+  });
   return true;
 }
 

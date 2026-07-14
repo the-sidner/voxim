@@ -66,6 +66,34 @@ Deno.test("gatherResource: collects a settled drop into inventory when no live n
   assert(!w.isAlive(drop), "drop entity destroyed after pickup");
 });
 
+Deno.test("T-344: collectDrop composes with a concurrent same-tick Inventory writer (e.g. StaleSlotCleanup) instead of clobbering it", () => {
+  const w = new World();
+  const npc = newEntityId();
+  w.create(npc);
+  w.write(npc, Position, { x: 0, y: 0, z: 0 });
+  w.write(npc, Inventory, { slots: [], capacity: 20 });
+
+  const drop = newEntityId();
+  w.create(drop);
+  w.write(drop, Position, { x: 1, y: 0, z: 0 });
+  w.write(drop, ItemData, { prefabId: "oak_wood", quantity: 3 });
+
+  const action = gatherResourceJob.tick(input(ctxFor(w, npc, 0, 0), gatherJob()));
+  // Simulate a concurrent same-tick writer of this NPC's Inventory (e.g.
+  // StaleSlotCleanupSystem scrubbing a dead unique ref alongside), pushed
+  // alongside collectDrop's own mutate.
+  w.mutate(npc, Inventory, (cur) => ({
+    ...cur,
+    slots: [...cur.slots, { kind: "stack" as const, prefabId: "berries", quantity: 1 }],
+  }));
+  w.applyChangeset();
+
+  assertEquals(action.actions, 0);
+  const slots = w.get(npc, Inventory)!.slots;
+  assert(slots.some((s) => s.kind === "stack" && s.prefabId === "oak_wood" && s.quantity === 3), "the collected drop landed");
+  assert(slots.some((s) => s.kind === "stack" && s.prefabId === "berries"), "the concurrent writer's append also landed — not clobbered");
+});
+
 Deno.test("gatherResource: ignores a still-in-flight (Velocity) drop", () => {
   const w = new World();
   const npc = newEntityId();
