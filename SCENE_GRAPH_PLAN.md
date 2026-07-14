@@ -528,7 +528,40 @@ This may merge with T-219 depending on how invasive T-219 is. Listed separately 
 
 This unlocks future tiers: instanced dungeons are subtrees of the coordinator world; lobbies are parent-less mini-worlds; vehicles are movable subtrees.
 
-### T-223 — Client render-scope scene graph
+### T-223 — Client render-scope scene graph — **LANDED**
+
+> Landed as specified by this section's own recon rewrite (6cecdd5) — the
+> "entities supply structure, content supplies transform" governing
+> principle held throughout, no re-litigation needed. `ClientWorld` gained
+> the parent→children reverse index (`childrenOf`/`descendants`, mirroring
+> engine `World.descendants()`'s exact DFS shape) as an EXTENSION, not a
+> fork — closing open call #3 below exactly as decided. Each skeletal
+> `EntityMeshGroup` gained a `boneEntityByBoneId`/`boneIdByEntity` identity
+> map, built once per skeleton from a full-subtree walk of the character's
+> replicated bone children; bone entities acquired identity, never geometry
+> — `boneGroups` (the pose write target) is byte-for-byte untouched.
+> `syncEquipment` now resolves every equipped item's attach bone through a
+> new pure `resolveItemAttachment(world, mesh, characterId, itemEntityId)`
+> — a 3-way result (`bone` / `holderRoot` / `unresolved`) that cleanly
+> separates "the graph names a bone", "T-220's deliberate holder-root
+> parenting for legs/feet (no single bone fits a 1:1 `Parent` edge)", and
+> "transient, not resolved yet — self-heals next tick" — deleting
+> `ARMOR_SLOTS`/`SLOT_REST_BONE` outright, the stated primary deliverable.
+> **One design call this section left implicit, resolved during
+> implementation:** legs/feet's old static 4-anchor table cannot be
+> replaced by "enumerate every bone the item's `armorGrammar` authors" —
+> `plate_armor_iron` is one procModel SHARED across three different items
+> (chest/head/legs), so its full plate set spans bones beyond any single
+> piece's coverage. Resolved as content data, not a code table:
+> `ArmorData.coversBones` (new optional field, boot-validated) names the
+> subset THIS item covers; `syncArmorEquipSlot` fans out over exactly that
+> set. Draw calls unchanged by construction (fan-out only creates anchors
+> for bones the item actually covers — fewer than the old table's
+> always-4-slots-2-empty shape). Pose pipeline (`swing_pose.ts`/
+> `ik_solver.ts`/`skeleton_solver.ts`/`skeleton_evaluator.ts`) untouched —
+> confirmed via empty `git diff`, the tripwire this section named
+> explicitly. See TICKETS.md's T-223 entry for full closing notes (commits,
+> test counts, live-verification procedure).
 
 > **Re-specified after recon.** The original text of this section said render
 > systems would "iterate the client's `World` scene-graph, materializing Three.js
