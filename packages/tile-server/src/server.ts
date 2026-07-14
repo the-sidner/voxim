@@ -133,6 +133,21 @@ import type { TickContext } from "./system.ts";
 
 // Action bits that represent *held* keys (block, crouch) — merged
 // latest-wins across a tick rather than OR-accumulated like one-shots.
+//
+// ACTION_USE_SKILL deliberately does NOT join this mask, even though T-337's
+// hold-to-aim mechanic also reads it as a held signal (IntentTranslator.
+// isAiming, gated on aimWeaponActive) while charging. Reasoning: melee's
+// existing tap-on-release semantics NEED the OR-across-batch treatment (a
+// brief click within one server tick must never be missed just because a
+// later datagram in the same batch — e.g. a subsequent mouse-move — doesn't
+// carry the bit); moving ACTION_USE_SKILL to latest-only would risk
+// silently dropping that click. The cost of leaving it out: during a
+// hold-to-aim release, the OR-across-batch merge can show the bit "still
+// held" for one extra server tick if an earlier datagram in that tick's
+// batch was sent before the release — a ~50ms release-detection fuzz, not a
+// correctness bug (PrimaryIntentResolver still resolves to releaseActionId
+// the very next tick once the batch is clean). Accepted trade: a harmless
+// timing fuzz on release beats a real risk of dropping a melee tap.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 
 export interface TileServerConfig {

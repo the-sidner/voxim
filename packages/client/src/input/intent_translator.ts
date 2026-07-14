@@ -71,6 +71,20 @@ export interface FacingConfig {
    *  Optional so a caller that only wants to set sensitivity keeps the
    *  defaults. */
   bindings?: Record<string, string[]>;
+  /**
+   * Hold-to-aim pitch band (T-337) — `game_config.combat.aim`, the SAME
+   * degrees the server clamps `InputState.pitch` into
+   * (`ProjectileSpawnResolver`). The client accumulates `aimPitch` directly
+   * in this range (0 = level, positive = upward elevation) — there is no
+   * separate client-side curve to keep in sync with the server's, by
+   * construction. Optional so a caller that only wants facing/bindings
+   * keeps the pre-bootstrap default (0..45deg).
+   */
+  aim?: { pitchMinDeg: number; pitchMaxDeg: number };
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
 }
 
 /**
@@ -143,6 +157,11 @@ export class IntentTranslator {
 
   /** True while RMB is physically held — drives the held block bit when not in build mode. */
   private rmbDown = false;
+  /** True while LMB is physically held AND `aimWeaponActive` — the mouse-driven
+   *  half of the hold-to-aim trigger (T-337), mirroring `rmbDown`'s shape.
+   *  Kept separate from the normal LMB charge-timer (`holdState`) — a
+   *  hold-to-aim weapon suppresses that path entirely (see onMouseDown). */
+  private mouseSkillHeld = false;
 
   /**
    * Set by game.ts whenever the player's equipped weapon changes.
@@ -153,19 +172,48 @@ export class IntentTranslator {
    */
   buildMode = false;
 
+  /**
+   * Set by game.ts whenever the player's equipped weapon changes (T-337).
+   * True when the weapon's resolved swingActionId names a hold-to-aim
+   * ActionDef (kind:"ambient" + releaseActionId — its first phase need not
+   * itself be perpetual, since a finite windup can lead into one). While
+   * true, LMB/`useSkill` is read as a HELD signal every frame (`isAiming`)
+   * instead of the normal one-shot tap-on-release, and mouse-Y is captured
+   * into `aimPitch` instead of the camera's own pitch (see game.ts's
+   * pointer-lock handler).
+   */
+  aimWeaponActive = false;
+
+  /** Aim elevation while charging a hold-to-aim cast (T-337), radians,
+   *  0 = level. Accumulated from mouse-Y ONLY while `isAiming` — a
+   *  dedicated axis, decoupled from CameraRig's own (narrow, framing-only)
+   *  pitch band. Clamped to `combat.aim.pitchMinDeg/pitchMaxDeg` — the SAME
+   *  band the server clamps `InputState.pitch` into, so there is no
+   *  separate curve to keep in sync. */
+  private _aimPitch = 0;
+  private aimPitchMinRad = 0;
+  private aimPitchMaxRad = Math.PI / 4; // pre-bootstrap default: 45deg
+
   constructor(
     private readonly router: IntentRouter,
   ) {}
 
-  /** Install the mouse-sensitivity knob from game_config `camera.*` (T-328).
-   *  Idempotent, mirrors CameraRig.configure() — both read the identical
-   *  `camera.mouseSensitivity` value so facing and pitch turn at the same
-   *  rate. */
+  /** Install the mouse-sensitivity knob from game_config `camera.*` (T-328),
+   *  plus the T-337 aim-pitch band. Idempotent, mirrors CameraRig.configure()
+   *  — both read the identical `camera.mouseSensitivity` value so facing and
+   *  pitch turn at the same rate (the aim-pitch accumulator reuses this same
+   *  rate too — a deliberate simplification: same look-feel, different axis
+   *  and range, not a second sensitivity knob to tune). */
   configure(cfg: FacingConfig): void {
     this.sensitivity = cfg.mouseSensitivity;
     if (cfg.bindings) {
       this.bindings = cfg.bindings as Record<InputAction, string[]>;
       this.actionByCode = invertBindings(cfg.bindings);
+    }
+    if (cfg.aim) {
+      this.aimPitchMinRad = cfg.aim.pitchMinDeg * Math.PI / 180;
+      this.aimPitchMaxRad = cfg.aim.pitchMaxDeg * Math.PI / 180;
+      this._aimPitch = clamp(this._aimPitch, this.aimPitchMinRad, this.aimPitchMaxRad);
     }
   }
 
@@ -178,6 +226,32 @@ export class IntentTranslator {
    */
   applyLookDelta(dxPixels: number): void {
     this._facing = facingFromLook(this._facing, dxPixels, this.sensitivity);
+  }
+
+  /**
+   * Accumulate a raw mouse-Y look delta (pixels) into `aimPitch` (T-337) —
+   * the CAPTURED aim axis, fed instead of CameraRig's own pitch while
+   * `isAiming` (see game.ts's pointer-lock handler, which branches on that
+   * exact condition). Mouse UP (negative DOM movementY) increases pitch =
+   * "up = farther", per the ticket; this is a SEPARATE, independently-signed
+   * accumulator from CameraRig.applyLookDelta's own convention (there, +dy
+   * steepens the gaze down) — the two are decoupled by design (T-337's
+   * documented camera-capture decision), not required to agree.
+   */
+  applyAimPitchDelta(dyPixels: number): void {
+    this._aimPitch = clamp(this._aimPitch - dyPixels * this.sensitivity, this.aimPitchMinRad, this.aimPitchMaxRad);
+  }
+
+  /** Aim elevation (radians, 0 = level) while a hold-to-aim cast charges. */
+  get aimPitch(): number { return this._aimPitch; }
+
+  /** True while a hold-to-aim weapon is equipped AND its trigger (LMB or the
+   *  `useSkill` binding) is physically held — the client-side mirror of the
+   *  server's "holding" branch in PrimaryIntentResolver. Drives which axis
+   *  mouse-Y feeds (see game.ts) and whether ACTION_USE_SKILL rides as a
+   *  HELD bit in buildDatagram(). */
+  get isAiming(): boolean {
+    return this.aimWeaponActive && (this.isHeld("useSkill") || this.mouseSkillHeld);
   }
 
   /** Wire this as the InputCapture sink. */
@@ -284,9 +358,15 @@ export class IntentTranslator {
     const mode = modeState.value;
 
     if (e.button === 0) {
-      // LMB charge timer only outside build mode — in build mode the click
-      // is an immediate place/anchor with no charge meaning.
-      if (mode.kind === "normal") {
+      if (mode.kind === "normal" && this.aimWeaponActive) {
+        // T-337: a hold-to-aim weapon reads LMB as a HELD trigger
+        // (buildDatagram), not the charge-timer tap. No holdState — the
+        // cast bar (CastBar, driven by the networked action runtime) is
+        // the feedback here, not the client-local ChargeBar.
+        this.mouseSkillHeld = true;
+      } else if (mode.kind === "normal") {
+        // LMB charge timer only outside build mode — in build mode the click
+        // is an immediate place/anchor with no charge meaning.
         holdState.value = { lmb: { downAtMs: e.t, canvasX: e.canvasX, canvasY: e.canvasY } };
       }
     }
@@ -315,11 +395,25 @@ export class IntentTranslator {
     const gameOwnsMouse = inputMode.value !== "ui";
 
     if (e.button === 0) {
+      // T-337: unconditional clear, same "always clears on release so
+      // nothing leaks" discipline as rmbDown below — a weapon swap mid-hold
+      // (aimWeaponActive flips false before LMB-up) must not strand this
+      // true forever.
+      const wasAimingLmb = this.mouseSkillHeld;
+      this.mouseSkillHeld = false;
+
       if (mode.kind === "build") {
         // Build mode: every LMB-up commits a placement/anchor.
         if (gameOwnsMouse && !targetIsInteractiveUI(e.target)) {
           this.router.dispatch({ kind: "build-action", canvasX: e.canvasX, canvasY: e.canvasY });
         }
+      } else if (this.aimWeaponActive || wasAimingLmb) {
+        // Release is server-driven (PrimaryIntentResolver reacts to the bit
+        // dropping in buildDatagram) — no chargeMs, no world-main-action
+        // dispatch. Clear holdState too in case a weapon swap crossed the
+        // aim/normal boundary mid-hold (rare, but must not strand ChargeBar
+        // showing a phantom charge).
+        holdState.value = { lmb: null };
       } else {
         // Normal mode: emit world-main-action with charged duration.
         const held = holdState.value.lmb;
@@ -382,6 +476,12 @@ export class IntentTranslator {
     // No-hammer normal mode: RMB held re-emits ACTION_BLOCK every frame so
     // the server-side block stays active.
     if (!this.buildMode && this.rmbDown) held |= ACTION_BLOCK;
+    // T-337: a hold-to-aim weapon reads ACTION_USE_SKILL as a HELD bit every
+    // frame while its trigger (LMB or the `useSkill` binding) stays down —
+    // gated on `aimWeaponActive` so every OTHER weapon's one-shot
+    // tap-on-release semantics (below, `pendingActions`) are byte-for-byte
+    // unchanged.
+    if (this.isAiming) held |= ACTION_USE_SKILL;
 
     const actions = this.pendingActions | held;
     this.pendingActions = 0;
@@ -393,9 +493,7 @@ export class IntentTranslator {
       tick,
       timestamp: Date.now(),
       facing: this._facing,
-      // T-337: real aim-pitch capture lands in a later commit (the
-      // hold-to-aim input work); 0 = level is a safe placeholder until then.
-      pitch: 0,
+      pitch: this._aimPitch,
       movementX: movX,
       movementY: movY,
       actions,
