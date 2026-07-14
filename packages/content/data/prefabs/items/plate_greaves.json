@@ -1,5 +1,5 @@
 {
-  "_comment": "T-306: procedural leg greaves — armor.armorGrammar -> plate_armor_iron, rendered at the upper_leg_l/r bones (ARMOR_SLOTS: legs -> 4 leg bones; plate_armor_iron authors upper_leg_l/r plates). Seed-unique per wearer.",
+  "_comment": "T-306/T-223: procedural leg greaves — armor.armorGrammar -> plate_armor_iron (a procModel SHARED with plate_chest/plate_helm, which also author torso_upper/head plates), rendered at the upper_leg_l/r bones. coversBones names the subset THIS piece renders — legs equips to the holder root (no single bone), so the client fans out over exactly these bones instead of every bone the shared grammar happens to author. Seed-unique per wearer.",
   "id": "plate_greaves",
   "modelId": "generated_armor",
   "components": {
@@ -7,7 +7,8 @@
     "armor": {
       "reduction": 0.12,
       "staminaPenalty": 0.08,
-      "armorGrammar": "plate_armor_iron"
+      "armorGrammar": "plate_armor_iron",
+      "coversBones": ["upper_leg_l", "upper_leg_r"]
     },
     "weight": { "baseWeight": 2.0 }
   }

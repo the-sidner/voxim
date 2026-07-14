@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, MaterialGeneratorPreferences, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData, ArmorData, GaitDef, GaitKeyframe } from "./types.ts";
+  AtmosphereDef, WaterStyleDef, DecalDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData, ArmorData, EquippableData, GaitDef, GaitKeyframe } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { crossCheckBodyRecipe } from "./body_recipe.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
@@ -187,6 +187,7 @@ async function loadContentStoreInternal(
 
   for (const effective of resolvePrefabInheritance(prefabsRaw as Prefab[])) {
     validatePrefabFields(effective);
+    validateArmorCoversBones(effective);
     store.registerPrefab(effective);
   }
   validatePrefabChildRefs(store);
@@ -643,6 +644,34 @@ export function validatePrefabFields(p: Prefab): void {
         }
       }
     }
+  }
+}
+
+/**
+ * T-223 — `armor.coversBones` is only meaningful alongside a procedural
+ * `armorGrammar` (it names which of that generator's bones THIS piece should
+ * fan out onto), and is REQUIRED for any item equipped into a multi-bone
+ * slot (`legs`/`feet`) — those slots have no single bone a scene-graph
+ * `Parent` edge can express (T-220's `EQUIP_SLOT_PRIMARY_BONE` deliberately
+ * excludes them), so without `coversBones` the client has nothing to render
+ * the piece on. Fails loud at load rather than silently rendering nothing
+ * for a future legs/feet item that forgets to declare it.
+ */
+export function validateArmorCoversBones(p: Prefab): void {
+  if (p.id.startsWith("_")) return;
+  const armor = p.components["armor"] as ArmorData | undefined;
+  if (!armor) return;
+  if (armor.coversBones && !armor.armorGrammar) {
+    throw new Error(
+      `[content] prefab "${p.id}": armor.coversBones is set without armor.armorGrammar — coversBones only applies to procedural (grammar-driven) armor`,
+    );
+  }
+  const equippable = p.components["equippable"] as EquippableData | undefined;
+  const multiBoneSlot = equippable?.slots?.some((s) => s === "legs" || s === "feet") ?? false;
+  if (multiBoneSlot && !armor.coversBones) {
+    throw new Error(
+      `[content] prefab "${p.id}": equips into a multi-bone slot (legs/feet) but armor.coversBones is unset — the client has no single bone to graph-attach to and no bone list to fan out onto`,
+    );
   }
 }
 
