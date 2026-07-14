@@ -10,7 +10,7 @@
  * pose + interpolation loop, reaching the meshes through `all` / `get(id)`. The
  * one accepted cross-call is `updateAttachmentPositions`, invoked from the
  * render loop because the per-mesh attachment math is entity-domain
- * (boneGroups + weaponActions + SLOT_REST_BONE).
+ * (boneGroups + weaponActions + each slot's resolved `restBoneId`).
  *
  * The three async stale guards in `updateEntity` (and the per-slot re-checks in
  * the sync* helpers) are preserved verbatim — they defend against the entity
@@ -93,34 +93,39 @@ const _bladeUp     = new THREE.Vector3(0, 1, 0);  // world-up used as orientatio
 const _attachQuat  = new THREE.Quaternion();
 
 /**
- * Entity-root slots that follow a rest bone each frame (position + rotation).
- * "main_hand" is handled separately (swing-path during attacks).
- * Armor slots are bone-parented (see ARMOR_SLOTS) and need no entry here.
+ * T-223 — resolve which bone (if any) an equipped item's entity should
+ * render against, by walking the REPLICATED SCENE GRAPH instead of a
+ * hand-maintained slotId→boneId table. The item's own `Parent` names its
+ * attach point; `boneIdByEntity` (built once per skeleton from the
+ * character's bone-entity children, see `updateEntity`) turns that entity
+ * id into a content boneId when the parent IS a bone.
+ *
+ * Three-way result, not `string | null` — a transient "haven't resolved
+ * yet" must never be confused with "this item structurally has no single
+ * bone" (T-220 deliberately parents legs/feet items to the HOLDER ROOT,
+ * not a bone, because a `Parent` edge is 1:1 and those slots cover multiple
+ * bones): `holderRoot` is the unambiguous, content-independent signal for
+ * that case (parentId === characterId), never inferred from an absent bone
+ * mapping.
  */
-const SLOT_REST_BONE: Record<string, string> = {
-  main_hand: "hand_r",
-  off_hand:  "hand_l",
-};
+export type ItemAttachResolution =
+  | { kind: "bone"; boneId: string }
+  | { kind: "holderRoot" }
+  | { kind: "unresolved" };
 
-/**
- * Armor slots: maps equipment slot name → one or more render slots, each
- * attached to a specific bone.  Leg and foot items attach to both sides.
- */
-const ARMOR_SLOTS: Record<string, Array<{ renderSlotId: string; boneId: string }>> = {
-  head:  [{ renderSlotId: "head",          boneId: "head" }],
-  chest: [{ renderSlotId: "chest",         boneId: "torso_upper" }],
-  back:  [{ renderSlotId: "back",          boneId: "torso_upper" }],
-  legs:  [
-    { renderSlotId: "legs_upper_l", boneId: "upper_leg_l" },
-    { renderSlotId: "legs_upper_r", boneId: "upper_leg_r" },
-    { renderSlotId: "legs_lower_l", boneId: "lower_leg_l" },
-    { renderSlotId: "legs_lower_r", boneId: "lower_leg_r" },
-  ],
-  feet:  [
-    { renderSlotId: "feet_l",       boneId: "foot_l" },
-    { renderSlotId: "feet_r",       boneId: "foot_r" },
-  ],
-};
+export function resolveItemAttachment(
+  world: ClientWorld,
+  mesh: Pick<EntityMeshGroup, "boneIdByEntity">,
+  characterId: string,
+  itemEntityId: string,
+): ItemAttachResolution {
+  const parentId = world.get(itemEntityId)?.parent?.entityId ?? null;
+  if (parentId === null) return { kind: "unresolved" };
+  const boneId = mesh.boneIdByEntity.get(parentId);
+  if (boneId) return { kind: "bone", boneId };
+  if (parentId === characterId) return { kind: "holderRoot" };
+  return { kind: "unresolved" };
+}
 
 /**
  * Body anchors for slung (non-active) hotbar items (T-309). Bone-parented,
@@ -371,7 +376,7 @@ export class EntityMeshRegistry {
           }
 
           // Sync all equipment slots now that boneGroups exist.
-          this.syncEquipment(capture, state);
+          this.syncEquipment(capture, entityId, state);
           // Re-apply any cached hotbar occupancy (T-309) — setHotbar() may
           // have been called before this async skeleton build finished.
           if (entityId === this.localPlayerId) this.syncHotbar(capture);
@@ -412,7 +417,7 @@ export class EntityMeshRegistry {
     // React to equipment changes on already-upgraded skeleton entities.
     // syncEquipment exits early per-slot when the model ID hasn't changed.
     if (mesh.boneGroups && state.equipment !== undefined) {
-      this.syncEquipment(mesh, state);
+      this.syncEquipment(mesh, entityId, state);
     }
 
     // Sync point light (torch, lantern, etc.).
@@ -542,8 +547,18 @@ export class EntityMeshRegistry {
    * Called after skeleton upgrade and on every equipment delta.
    * Each slot exits early when its model ID hasn't changed.
    */
-  private syncEquipment(mesh: EntityMeshGroup, state: EntityState): void {
-    if (!mesh.boneGroups || !this.content) return;
+  /**
+   * T-223 — every equipped item's attach bone is resolved from the
+   * REPLICATED SCENE GRAPH (`resolveItemAttachment`), not a hand-maintained
+   * slotId/equipSlot→boneId table: an item renders where it does because
+   * its ENTITY is a child of a bone entity (or, for legs/feet, the holder
+   * root itself — see `syncArmorEquipSlot`). `entityId` is the holder
+   * (character) entity, needed to tell "holder root" apart from "not
+   * resolved yet".
+   */
+  private syncEquipment(mesh: EntityMeshGroup, entityId: string, state: EntityState): void {
+    if (!mesh.boneGroups || !this.content || !this.clientWorld) return;
+    const world = this.clientWorld;
 
     const eq = state.equipment;
     const entityScale = state.modelRef
@@ -551,23 +566,87 @@ export class EntityMeshRegistry {
       : { x: 0.35, y: 0.35, z: 0.35 };
 
     // ── Weapon (main_hand): entity-root anchor, repositioned per-frame ──────
-    this.syncHandSlot(mesh, "main_hand", eq?.weapon ?? null, entityScale);
+    const weaponRes = eq?.weapon ? resolveItemAttachment(world, mesh, entityId, eq.weapon.entityId) : null;
+    this.syncHandSlot(mesh, "main_hand", eq?.weapon ?? null, entityScale, weaponRes?.kind === "bone" ? weaponRes.boneId : null);
 
-    // ── Off-hand: entity-root anchor, follows hand_l bone per-frame ──────────
-    this.syncHandSlot(mesh, "off_hand", eq?.offHand ?? null, entityScale);
+    // ── Off-hand: entity-root anchor, follows its resolved bone per-frame ───
+    const offRes = eq?.offHand ? resolveItemAttachment(world, mesh, entityId, eq.offHand.entityId) : null;
+    this.syncHandSlot(mesh, "off_hand", eq?.offHand ?? null, entityScale, offRes?.kind === "bone" ? offRes.boneId : null);
 
-    // ── Armor: bone-parented anchors at the sub-object transform ─────────────
-    // T-306: the item's ENTITY id is the seed source for armor_grammar plates,
-    // so the whole slot ({entityId, prefabId}) is threaded through, not just
-    // the prefabId.
-    for (const [equipSlot, renderSlots] of Object.entries(ARMOR_SLOTS)) {
+    // ── Armor: bone-parented anchors, resolved per slot (single bone, or a
+    //    content-driven multi-bone fan-out for legs/feet) ────────────────────
+    for (const equipSlot of ["head", "chest", "back", "legs", "feet"] as const) {
       const slot = (eq as Record<string, { entityId: string; prefabId: string } | null> | undefined)?.[equipSlot] ?? null;
-      const prefab   = slot ? this.itemPrefabs.get(slot.prefabId) : null;
-      const modelId  = prefab?.modelId ?? null;
-      for (const { renderSlotId, boneId } of renderSlots) {
-        this.syncArmorSlot(mesh, renderSlotId, boneId, modelId, slot?.entityId ?? null, prefab ?? null, entityScale);
-      }
+      this.syncArmorEquipSlot(mesh, entityId, equipSlot, slot, entityScale);
     }
+  }
+
+  /**
+   * Sync one armor equip slot. Single-bone slots (head/chest/back) resolve
+   * straight from the graph and use the equip slot NAME as the render-slot
+   * key (matching the pre-T-223 shape, so two different equip slots that
+   * happen to share a bone — chest + back both attach to torso_upper — keep
+   * independent anchors). Legs/feet resolve to the HOLDER ROOT (T-220: no
+   * single bone) and fan out over the item's own `armor.coversBones`
+   * (content data, T-223) — NOT a static equip-slot→bone-list table, and
+   * NOT every bone the item's `armorGrammar` happens to author (a grammar
+   * like `plate_armor_iron` is shared across three different items covering
+   * different bones each). Render-slot keys for the fan-out case are
+   * `${equipSlot}:${boneId}`, reaped against `coversBones` each call so an
+   * item swap that authors a different bone subset can't leave a stale
+   * anchor behind.
+   */
+  private syncArmorEquipSlot(
+    mesh: EntityMeshGroup,
+    characterId: string,
+    equipSlot: "head" | "chest" | "back" | "legs" | "feet",
+    slot: { entityId: string; prefabId: string } | null,
+    entityScale: { x: number; y: number; z: number },
+  ): void {
+    const isOwnKey = (key: string) => key === equipSlot || key.startsWith(`${equipSlot}:`);
+    const reapExcept = (active: Set<string>) => {
+      for (const key of [...mesh.attachments.keys()]) {
+        if (isOwnKey(key) && !active.has(key)) detachModelFromSlot(mesh, key);
+      }
+    };
+
+    if (!slot) { reapExcept(new Set()); return; }
+
+    const prefab  = this.itemPrefabs.get(slot.prefabId) ?? null;
+    const modelId = prefab?.modelId ?? null;
+    const res = resolveItemAttachment(this.clientWorld!, mesh, characterId, slot.entityId);
+
+    // Transient — the item's Parent hasn't arrived/resolved yet. Self-heals:
+    // updateEntity re-runs syncEquipment every tick the equipment field is
+    // present, so this is never a permanently stuck state. Leave whatever
+    // was already rendered (if anything) alone rather than tearing it down.
+    if (res.kind === "unresolved") return;
+
+    if (res.kind === "bone") {
+      this.syncArmorSlot(mesh, equipSlot, res.boneId, modelId, slot.entityId, prefab, entityScale);
+      reapExcept(new Set([equipSlot]));
+      return;
+    }
+
+    // holderRoot — a multi-bone slot (legs/feet, T-220). Fan out over the
+    // bones THIS item declares, not every bone its (possibly-shared)
+    // armorGrammar authors.
+    const armorData = prefab?.components?.["armor"] as { armorGrammar?: string; coversBones?: string[] } | undefined;
+    const coversBones = armorData?.coversBones ?? [];
+    if (!armorData?.armorGrammar || coversBones.length === 0) {
+      // Unreachable by real content today (the loader's validateArmorCoversBones
+      // requires coversBones for any legs/feet armor prefab) — defensive only.
+      console.warn(`[entity_mesh_registry] "${slot.prefabId}" equips into "${equipSlot}" (a multi-bone slot) with no armor.coversBones — nothing to render`);
+      reapExcept(new Set());
+      return;
+    }
+    const active = new Set<string>();
+    for (const boneId of coversBones) {
+      const renderSlotId = `${equipSlot}:${boneId}`;
+      active.add(renderSlotId);
+      this.syncArmorSlot(mesh, renderSlotId, boneId, modelId, slot.entityId, prefab, entityScale);
+    }
+    reapExcept(active);
   }
 
   /**
@@ -625,12 +704,21 @@ export class EntityMeshRegistry {
   /**
    * Sync a single entity-root attachment slot (weapon or off-hand).
    * The anchor is positioned per-frame by updateAttachmentPositions.
+   *
+   * `holdBoneId` is the bone `resolveItemAttachment` (T-223) resolved from
+   * the scene graph for this item, or null while that's still transient
+   * (the item's `Parent` hasn't decoded yet). It is the PRIMARY source for
+   * `restBoneId`; the `?? primaryAction?.holdHand ?? "hand_r"/"hand_l"`
+   * chain below is only the narrow bootstrap default for that transient
+   * window (self-heals next tick once the graph resolves), never a
+   * reinstated slotId→bone table.
    */
   private syncHandSlot(
     mesh: EntityMeshGroup,
-    slotId: string,
+    slotId: "main_hand" | "off_hand",
     slot: { entityId: string; prefabId: string } | null,
     _entityScale: { x: number; y: number; z: number },
+    holdBoneId: string | null,
   ): void {
     const prefabId = slot?.prefabId ?? null;
     const prefab  = (prefabId ? this.itemPrefabs.get(prefabId) : null) ?? null;
@@ -645,7 +733,13 @@ export class EntityMeshRegistry {
     const existing = mesh.attachments.get(slotId);
     const unchanged = modelId === (existing?.modelId ?? null) &&
       (!bladeGrammarId || itemId === (existing?.builtItemId ?? null));
-    if (unchanged) return;
+    if (unchanged) {
+      // The model didn't change, but the graph-resolved bone may have
+      // (e.g. it just resolved out of "unresolved") — keep restBoneId current
+      // even on the early-exit path.
+      if (existing && holdBoneId) existing.restBoneId = holdBoneId;
+      return;
+    }
 
     detachModelFromSlot(mesh, slotId);
     if (slotId === "main_hand") mesh.bladeDimensions = null;
@@ -655,6 +749,7 @@ export class EntityMeshRegistry {
 
     const pendingSlot = ensureAttachment(mesh, slotId);
     pendingSlot.modelId = modelId;   // reserve to prevent races
+    if (holdBoneId) pendingSlot.restBoneId = holdBoneId;
 
     // Held weapons size themselves in absolute world units via the prefab's
     // own `modelScale` — independent of the holder's body scale. Using the
@@ -673,7 +768,7 @@ export class EntityMeshRegistry {
     // weapon_trace resolver uses (see combat.ts) so the visible blade and the
     // swept hitbox share one geometry.
     if (bladeGrammarId && itemId) {
-      this.bakeGeneratedBlade(mesh, slotId, modelId, itemId, bladeGrammarId, prefab, weaponScale);
+      this.bakeGeneratedBlade(mesh, slotId, modelId, itemId, bladeGrammarId, prefab, weaponScale, holdBoneId);
       return;
     }
 
@@ -719,16 +814,19 @@ export class EntityMeshRegistry {
       const primaryAction = primaryActionId
         ? this.weaponActions.get(primaryActionId)
         : undefined;
-      const slotHoldBone = SLOT_REST_BONE[slotId]
+      const slotHoldBone = holdBoneId
         ?? primaryAction?.holdHand
-        ?? "hand_r";
+        ?? (slotId === "off_hand" ? "hand_l" : "hand_r");
       const newSlot = mesh.attachments.get(slotId);
-      if (newSlot && primaryAction?.blade) {
-        newSlot.bladeAttach = {
-          base: [primaryAction.blade.baseLocal[0], primaryAction.blade.baseLocal[1], primaryAction.blade.baseLocal[2]],
-          tip:  [primaryAction.blade.tipLocal[0],  primaryAction.blade.tipLocal[1],  primaryAction.blade.tipLocal[2]],
-          holdBone: slotHoldBone,
-        };
+      if (newSlot) {
+        newSlot.restBoneId = slotHoldBone;
+        if (primaryAction?.blade) {
+          newSlot.bladeAttach = {
+            base: [primaryAction.blade.baseLocal[0], primaryAction.blade.baseLocal[1], primaryAction.blade.baseLocal[2]],
+            tip:  [primaryAction.blade.tipLocal[0],  primaryAction.blade.tipLocal[1],  primaryAction.blade.tipLocal[2]],
+            holdBone: slotHoldBone,
+          };
+        }
       }
     });
   }
@@ -745,12 +843,13 @@ export class EntityMeshRegistry {
    */
   private bakeGeneratedBlade(
     mesh: EntityMeshGroup,
-    slotId: string,
+    slotId: "main_hand" | "off_hand",
     modelId: string,
     itemId: string,
     bladeGrammarId: string,
     prefab: Prefab | null,
     weaponScale: number,
+    holdBoneId: string | null,
   ): void {
     if (!this.content) return;
     const procModel = this.content.getProcModelSync(bladeGrammarId);
@@ -801,10 +900,13 @@ export class EntityMeshRegistry {
     const primaryAction = swingable?.chain?.[0]?.light
       ? this.weaponActions.get(swingable.chain[0].light)
       : undefined;
-    const slotHoldBone = SLOT_REST_BONE[slotId] ?? primaryAction?.holdHand ?? "hand_r";
+    const slotHoldBone = holdBoneId
+      ?? primaryAction?.holdHand
+      ?? (slotId === "off_hand" ? "hand_l" : "hand_r");
     const newSlot = mesh.attachments.get(slotId);
     if (newSlot) {
       newSlot.builtItemId = itemId;
+      newSlot.restBoneId = slotHoldBone;
       if (primaryAction?.blade) {
         newSlot.bladeAttach = {
           base: [primaryAction.blade.baseLocal[0], primaryAction.blade.baseLocal[1], primaryAction.blade.baseLocal[2]],
@@ -974,8 +1076,9 @@ export class EntityMeshRegistry {
    * detection).  At all other times it follows the hand_r bone so the weapon
    * sits naturally in the hand during locomotion.
    *
-   * Future slots ("off_hand", "back", "belt", …) simply follow their
-   * designated rest bone; add entries to SLOT_REST_BONE to enable them.
+   * Future entity-root slots simply follow their `restBoneId` (T-223,
+   * resolved from the scene graph in `syncHandSlot`/`bakeGeneratedBlade`) —
+   * no per-slotId table to extend.
    */
   updateAttachmentPositions(
     mesh: EntityMeshGroup,
@@ -1030,8 +1133,9 @@ export class EntityMeshRegistry {
         // Generic rest-bone follow — copies both position AND rotation so
         // held items (a shield in the off-hand, a torch in some other
         // slot) animate naturally with the limb. Used for any slot
-        // without bladeAttach.
-        const restBoneId = SLOT_REST_BONE[slotId];
+        // without bladeAttach. restBoneId is resolved from the scene graph
+        // (T-223), not a per-slotId table.
+        const restBoneId = slot.restBoneId;
         if (restBoneId) {
           const bone = mesh.boneGroups?.get(restBoneId);
           if (bone) {

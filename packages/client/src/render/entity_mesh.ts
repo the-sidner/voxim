@@ -58,7 +58,9 @@ export interface PosRecord {
  * slots, which inherit the bone's transform automatically through the scene
  * hierarchy — no per-frame positioning needed).
  *
- * slotId examples: "main_hand", "off_hand", "head", "chest", "legs_upper_l"
+ * slotId examples: "main_hand", "off_hand", "head", "chest" (single-bone
+ * equip slots, keyed by equip-slot name) or "legs:upper_leg_l" (T-223 —
+ * a multi-bone equip slot's per-bone fan-out, keyed `${equipSlot}:${boneId}`).
  */
 export interface AttachmentSlot {
   anchor: THREE.Group;

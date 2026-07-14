@@ -415,20 +415,21 @@ export function findBoneEntity(world: World, holderId: EntityId, boneId: string)
 }
 
 /**
- * Single-bone equip slots only — the client's existing attachment table
- * (`entity_mesh_registry.ts`'s `SLOT_REST_BONE`/`ARMOR_SLOTS`) mirrored
- * here for the subset T-220's `setParent`-to-bone model actually fits.
- * `legs`/`feet` are deliberately absent: they map to MULTIPLE bones each
- * (upper+lower leg × L/R, both feet) on the client's own table — a single
- * item entity has no one bone to parent to for those slots, so they keep
- * parenting to the holder root via `resolveAttachParent`'s fallback below,
- * same as an item on a skeleton-less holder.
+ * Single-bone equip slots only. `legs`/`feet` are deliberately absent: a
+ * `Parent` edge is 1:1 and those slots cover MULTIPLE bones (upper leg ×
+ * L/R, etc.) — a single item entity has no one bone to parent to, so they
+ * keep parenting to the holder root via `resolveAttachParent`'s fallback
+ * below, same as an item on a skeleton-less holder.
  *
- * A small, human-reviewable, low-churn duplication of client data (flagged
- * for unification whenever T-223 gives the client a reason to consume the
- * wire-replicated Bone/Parent data itself instead of its own hardcoded
- * table) — not the kind of silent, derived-data drift risk CLAUDE.md warns
- * about elsewhere.
+ * T-223 (client render-scope scene graph, DONE): the client's own former
+ * mirror of this table (`entity_mesh_registry.ts`'s `SLOT_REST_BONE`/
+ * `ARMOR_SLOTS`) is GONE — it now resolves every equipped item's attach
+ * bone by walking the replicated scene graph (`resolveItemAttachment`),
+ * reading this table's OUTPUT (the `Parent` this function resolves items
+ * onto) instead of duplicating its input. This is now the ONLY slot→bone
+ * table in the codebase, server-side only. legs/feet's client-side
+ * multi-bone fan-out is content data (`ArmorData.coversBones`), not a
+ * second table.
  */
 const EQUIP_SLOT_PRIMARY_BONE: Partial<Record<EquipSlot, string>> = {
   weapon: "hand_r",
