@@ -225,6 +225,7 @@ Deno.test("T-337: ACTION_BLOCK during a hold cancels the cast — hold's :exit f
   world.applyChangeset();
   assertEquals(world.get(id, ActiveActions)?.states["primary"]?.actionId, "block");
   assert(world.has(id, Blocking), "block's hold:enter fired (cast's hold:exit fired first, cleanly)");
+  assert(!world.has(id, Staggered), "the cast's own hold:exit cleared its probe tag — nothing orphaned by the cancel");
 });
 
 Deno.test("T-337: a melee weapon (kind:active swingActionId) is unaffected — no hold/release branch taken", () => {
