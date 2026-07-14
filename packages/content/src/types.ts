@@ -1285,6 +1285,24 @@ export interface ActionDef {
    * predicates — see `ActionGate`. (T-226)
    */
   preconditions?: ActionGate[];
+  /**
+   * Hold-to-aim pairing (T-337): names the action id `PrimaryIntentResolver`
+   * requests when the triggering input (ACTION_USE_SKILL) drops while this
+   * action's CURRENT phase is perpetual (`ticks: -1`). Only meaningful on a
+   * `kind: "ambient"` def that reaches a perpetual phase — the dispatcher's
+   * existing "hold" idiom (see `block`) — since `ticks: -1` is otherwise
+   * illegal (`validateActionDef` requires `kind === "ambient"` for it).
+   * Absent → releasing just lets intent re-resolve normally (nothing special
+   * happens on release; this is what every non-hold action does today).
+   *
+   * The windup phase(s) leading up to the perpetual phase are ordinary
+   * finite phases — "the action winds up and HOLDS at full charge" is one
+   * ActionDef with a finite phase followed by a `ticks: -1` phase, not two
+   * actions. Releasing during the finite windup is NOT gated by this field —
+   * it's an ordinary cancel-into (`cancel.<phase>.into`), same as any
+   * mid-swing interrupt.
+   */
+  releaseActionId?: string;
   effects: ActionEffect[];
   animation?: Record<string, ActionAnimation>;
 }

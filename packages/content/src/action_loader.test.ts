@@ -84,6 +84,54 @@ Deno.test("validateActionDef accepts perpetual phase on ambient", () => {
   validateActionDef(def);
 });
 
+Deno.test("validateActionDef accepts releaseActionId on an ambient def with a perpetual phase (T-337)", () => {
+  const def: ActionDef = {
+    id: "_bow_draw",
+    kind: "ambient",
+    slot: "primary",
+    phases: { windup: { ticks: 20 }, hold: { ticks: -1 } },
+    cancel: { windup: { into: ["any"] }, hold: { into: ["any"] } },
+    movement: { windup: "slowed", hold: "slowed" },
+    releaseActionId: "_bow_loose",
+    effects: [],
+  };
+  validateActionDef(def);
+});
+
+Deno.test("validateActionDef rejects releaseActionId on a non-ambient (active) def", () => {
+  const def = baseValidAction();
+  def.releaseActionId = "_whatever";
+  assertThrows(() => validateActionDef(def), Error, 'releaseActionId is only valid on kind "ambient"');
+});
+
+Deno.test("validateActionDef rejects releaseActionId when no phase is perpetual", () => {
+  const def: ActionDef = {
+    id: "_idle",
+    kind: "ambient",
+    slot: "locomotion",
+    phases: { loop: { ticks: 10 } },
+    cancel: { loop: { into: ["any"] } },
+    movement: { loop: "free" },
+    releaseActionId: "_whatever",
+    effects: [],
+  };
+  assertThrows(() => validateActionDef(def), Error, "requires at least one phase with ticks: -1");
+});
+
+Deno.test("validateActionDef rejects empty-string releaseActionId", () => {
+  const def: ActionDef = {
+    id: "_bow_draw",
+    kind: "ambient",
+    slot: "primary",
+    phases: { hold: { ticks: -1 } },
+    cancel: { hold: { into: ["any"] } },
+    movement: { hold: "slowed" },
+    releaseActionId: "",
+    effects: [],
+  };
+  assertThrows(() => validateActionDef(def), Error, "releaseActionId must be a non-empty string");
+});
+
 Deno.test("validateActionDef rejects missing slot", () => {
   const def = baseValidAction();
   // deno-lint-ignore no-explicit-any
@@ -206,6 +254,35 @@ Deno.test("validateActionCrossRefs accepts the 'any' token without resolution", 
   def.id = "interact_long";
   def.cancel.windup.into = ["any"];
   validateActionCrossRefs([def]);
+});
+
+Deno.test("validateActionCrossRefs rejects unknown releaseActionId (T-337)", () => {
+  const draw: ActionDef = {
+    id: "_bow_draw",
+    kind: "ambient",
+    slot: "primary",
+    phases: { hold: { ticks: -1 } },
+    cancel: { hold: { into: ["any"] } },
+    movement: { hold: "slowed" },
+    releaseActionId: "_does_not_exist",
+    effects: [],
+  };
+  assertThrows(() => validateActionCrossRefs([draw]), Error, "releaseActionId '_does_not_exist' resolves to no loaded action");
+});
+
+Deno.test("validateActionCrossRefs accepts a releaseActionId that resolves to a loaded action", () => {
+  const draw: ActionDef = {
+    id: "_bow_draw",
+    kind: "ambient",
+    slot: "primary",
+    phases: { hold: { ticks: -1 } },
+    cancel: { hold: { into: ["any"] } },
+    movement: { hold: "slowed" },
+    releaseActionId: "_bow_loose",
+    effects: [],
+  };
+  const loose: ActionDef = { ...baseValidAction(), id: "_bow_loose" };
+  validateActionCrossRefs([draw, loose]);
 });
 
 Deno.test("sword_overhead fixture round-trips through bootstrap encode/decode", async () => {
