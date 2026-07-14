@@ -55,7 +55,7 @@ import { createLogger } from "../../logger.ts";
 
 const log = createLogger("item_use");
 
-function slotPrefabId(slot: InventorySlot, world: World): string | null {
+export function slotPrefabId(slot: InventorySlot, world: World): string | null {
   if (slot.kind === "stack") return slot.prefabId;
   return world.get(slot.entityId as EntityId, ItemData)?.prefabId ?? null;
 }
@@ -81,7 +81,7 @@ function findUsableSlot(world: World, content: ContentService, entityId: EntityI
   return inv.slots.findIndex((s) => slotEffects(world, content, s).length > 0);
 }
 
-function consumeOne(world: World, slots: InventorySlot[], idx: number): InventorySlot[] {
+export function consumeOne(world: World, slots: InventorySlot[], idx: number): InventorySlot[] {
   const slot = slots[idx];
   if (slot.kind === "stack") {
     if (slot.quantity <= 1) return slots.filter((_, i) => i !== idx);

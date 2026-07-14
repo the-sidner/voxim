@@ -68,6 +68,7 @@ import { PlacementSystem } from "./systems/placement.ts";
 import { EnclosureSystem } from "./systems/enclosure.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./actions/resolvers/item_use.ts";
+import { hasItemGate, consumeItemResolver } from "./actions/resolvers/inventory_item.ts";
 import { spawnNpcTableResolver } from "./actions/resolvers/spawn_npc_table.ts";
 import { UnlockStairResolver } from "./actions/resolvers/unlock_stair.ts";
 import { bossArenaUnlockHook } from "./deathhooks/boss_arena_unlock.ts";
@@ -132,6 +133,21 @@ import type { TickContext } from "./system.ts";
 
 // Action bits that represent *held* keys (block, crouch) — merged
 // latest-wins across a tick rather than OR-accumulated like one-shots.
+//
+// ACTION_USE_SKILL deliberately does NOT join this mask, even though T-337's
+// hold-to-aim mechanic also reads it as a held signal (IntentTranslator.
+// isAiming, gated on aimWeaponActive) while charging. Reasoning: melee's
+// existing tap-on-release semantics NEED the OR-across-batch treatment (a
+// brief click within one server tick must never be missed just because a
+// later datagram in the same batch — e.g. a subsequent mouse-move — doesn't
+// carry the bit); moving ACTION_USE_SKILL to latest-only would risk
+// silently dropping that click. The cost of leaving it out: during a
+// hold-to-aim release, the OR-across-batch merge can show the bit "still
+// held" for one extra server tick if an earlier datagram in that tick's
+// batch was sent before the release — a ~50ms release-detection fuzz, not a
+// correctness bug (PrimaryIntentResolver still resolves to releaseActionId
+// the very next tick once the batch is clean). Accepted trade: a harmless
+// timing fuzz on release beats a real risk of dropping a melee tap.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 
 export interface TileServerConfig {
@@ -526,6 +542,11 @@ export class TileServer {
     // uninterruptible_active (T-299): a committed swing's active phase can't
     // be flinched out of by a light hit reaction — only stagger_heavy/death.
     actionGates.register(uninterruptibleActiveGate);
+    // has_item (T-337): generic named-inventory-item precondition — the ammo
+    // economy for hold-to-aim draw actions (bow_draw checks "arrow", a
+    // thrown rock's draw checks "throwing_rock"). Vacuously true for
+    // entities with no Inventory (NPCs) — see inventory_item.ts's doc.
+    actionGates.register(hasItemGate);
     const actionEffects = newEffectRegistry();
     actionEffects.register(setTagResolver);
     actionEffects.register(clearTagResolver);
@@ -535,6 +556,10 @@ export class TileServer {
     actionEffects.register(adjustResourceResolver);
     actionEffects.register(spendItemResolver);
     actionEffects.register(new ApplyItemEffectsResolver(actionEffects));
+    // consume_item (T-337): has_item's effect-side pair — decrements the
+    // named item on the release action's active:enter, alongside
+    // projectile_spawn.
+    actionEffects.register(consumeItemResolver);
     // spawn_npc_table (T-212 v2) — bossfight's phase-adds trigger effect.
     actionEffects.register(spawnNpcTableResolver);
     // unlock_stair (T-213b) — a trinket's use_item effect. Reads
@@ -864,6 +889,16 @@ export class TileServer {
         | { prefabId?: string } | undefined;
       if (deployable?.prefabId && !content.prefabs.get(deployable.prefabId)) {
         throw new Error(`Prefab "${prefab.id}" deployable.prefabId "${deployable.prefabId}" resolves to no prefab.`);
+      }
+      // T-337/T-338: every weapon's explicit swingActionId must resolve to a
+      // loaded ActionDef — a typo here previously degraded to a runtime
+      // warning (PrimaryIntentResolver's "intent requested unknown action")
+      // instead of a fail-fast boot error, same bar as every other content
+      // cross-check on this page.
+      const swingable = (prefab.components as Record<string, unknown> | undefined)?.swingable as
+        | { swingActionId?: string } | undefined;
+      if (swingable?.swingActionId && !content.actions.get(swingable.swingActionId)) {
+        throw new Error(`Prefab "${prefab.id}" swingable.swingActionId "${swingable.swingActionId}" resolves to no ActionDef.`);
       }
     }
 
@@ -1309,6 +1344,7 @@ export class TileServer {
 
         this.world.write(playerId, InputState, {
           facing: latest.facing,
+          pitch: latest.pitch,
           movementX: latest.movementX,
           movementY: latest.movementY,
           actions: mergedActions,

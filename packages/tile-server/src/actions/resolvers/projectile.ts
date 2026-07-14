@@ -25,13 +25,13 @@
  */
 
 import type { Vec3 } from "@voxim/content";
+import { ballisticStep } from "@voxim/engine";
 import { Position, Velocity, Facing, InputState } from "../../components/game.ts";
 import { Hitbox } from "../../components/hitbox.ts";
 import { ProjectileData } from "../../components/projectile.ts";
 import type { HitHandler, HitContext } from "../../hit_handler.ts";
 import { dispatchSweepHit } from "../../combat/sweep.ts";
 import { buildTerrainLookup } from "../../physics/terrain_lookup.ts";
-import { ballisticStep } from "../../physics/ballistic.ts";
 import type { EffectResolver, ResolveContext } from "../effect.ts";
 import { createLogger } from "../../logger.ts";
 

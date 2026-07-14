@@ -1391,6 +1391,19 @@ export function validateActionDef(def: ActionDef): void {
     validateActionGates(def.id, "preconditions", def.preconditions);
   }
 
+  if (def.releaseActionId !== undefined) {
+    if (typeof def.releaseActionId !== "string" || def.releaseActionId.length === 0) {
+      throw new Error(`Action '${def.id}': releaseActionId must be a non-empty string when present`);
+    }
+    if (def.kind !== "ambient") {
+      throw new Error(`Action '${def.id}': releaseActionId is only valid on kind "ambient" (needs a perpetual hold phase)`);
+    }
+    const hasPerpetualPhase = Object.values(def.phases).some((p) => p.ticks === -1);
+    if (!hasPerpetualPhase) {
+      throw new Error(`Action '${def.id}': releaseActionId requires at least one phase with ticks: -1 (the hold)`);
+    }
+  }
+
   if (def.kind === "reaction" && typeof def.interruptPriority !== "number") {
     throw new Error(`Action '${def.id}': reactions must declare interruptPriority (number)`);
   }
@@ -1430,6 +1443,13 @@ export function validateActionCrossRefs(defs: ActionDef[]): void {
           );
         }
       }
+    }
+    // T-337: releaseActionId names a real action, same fail-fast style as
+    // cancel targets above.
+    if (def.releaseActionId && !ids.has(def.releaseActionId)) {
+      throw new Error(
+        `Action '${def.id}': releaseActionId '${def.releaseActionId}' resolves to no loaded action`,
+      );
     }
   }
 }

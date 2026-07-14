@@ -1,0 +1,11 @@
+{
+  "id": "crossbow_bolt",
+  "modelId": "model_bolt",
+  "modelScale": 0.4,
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.08
+    }
+  }
+}

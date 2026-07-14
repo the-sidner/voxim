@@ -5,8 +5,8 @@
  * and the client import from the same source.  A format change is a compile
  * error on both ends simultaneously.
  *
- * MovementDatagram — fixed 35-byte little-endian binary (type byte included):
- *   u8  type=1 | u32 seq | u32 tick | f64 timestamp | f32 facing | f32 movX | f32 movY | u32 actions | u16 chargeMs
+ * MovementDatagram — fixed 39-byte little-endian binary (type byte included):
+ *   u8  type=1 | u32 seq | u32 tick | f64 timestamp | f32 facing | f32 movX | f32 movY | u32 actions | u16 chargeMs | f32 pitch
  *
  * CommandDatagram — variable-length TLV binary:
  *   u8  type=2 | u32 seq | u8 cmdType | u16 payloadLen | [payloadLen bytes]
@@ -26,7 +26,7 @@ export const DATAGRAM_TYPE_COMMAND  = 2;
 // ---- MovementDatagram codec ----
 
 /** Wire size in bytes, including the leading type byte. */
-const MOVEMENT_SIZE = 35;
+const MOVEMENT_SIZE = 39;
 
 export const movementDatagramCodec: Serialiser<MovementDatagram> = {
   encode(data: MovementDatagram): Uint8Array {
@@ -41,6 +41,7 @@ export const movementDatagramCodec: Serialiser<MovementDatagram> = {
     v.setFloat32(25, data.movementY,       true);
     v.setUint32(29, data.actions   >>> 0, true);
     v.setUint16(33, Math.min(0xFFFF, Math.max(0, data.chargeMs | 0)), true);
+    v.setFloat32(35, data.pitch,           true);
     return new Uint8Array(buf);
   },
 
@@ -59,6 +60,7 @@ export const movementDatagramCodec: Serialiser<MovementDatagram> = {
       movementY: v.getFloat32(25, true),
       actions:   v.getUint32(29, true),
       chargeMs:  v.getUint16(33, true),
+      pitch:     v.getFloat32(35, true),
     };
   },
 };

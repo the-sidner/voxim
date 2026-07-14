@@ -36,6 +36,16 @@ export interface MovementDatagram {
   facing: number; // f32
 
   /**
+   * Aim pitch (T-337): elevation angle above the horizontal plane, radians,
+   * 0 = level. Drives ranged/thrown-weapon DISTANCE (up = farther, down =
+   * nearer) — a distinct, independently-captured axis from the camera's own
+   * gaze pitch (camera_rig.ts), which stays a narrow framing knob. Only
+   * meaningful while a hold-to-aim action is charging (see
+   * `ActionDef.releaseActionId`); otherwise unread.
+   */
+  pitch: number; // f32
+
+  /**
    * Normalised movement direction on the horizontal plane.
    * (0,0) = stationary. Independent of facing.
    */
@@ -65,13 +75,15 @@ export interface MovementDatagram {
 
   /**
    * Duration the use-skill button was held before release, in milliseconds,
-   * clipped to u16 (~65 s). Zero for taps. Server reads this when ACTION_USE_SKILL
-   * is set on this tick and picks the matching weapon action variant from the
-   * equipped weapon's `swingable.actions[]` (first whose [chargeMin, chargeMax]
-   * window contains chargeMs wins).
+   * clipped to u16 (~65 s). Zero for taps. `PrimaryIntentResolver` reads this
+   * when ACTION_USE_SKILL is set on this tick and compares it against the
+   * equipped weapon's `swingable.heavyChargeMs` threshold — at or above it
+   * plays the chain entry's `.heavy` variant, below plays `.light`.
    *
-   * For ranged weapons the action handler also reads chargeMs directly to scale
-   * projectile speed / damage — same field, two consumers.
+   * Ranged/thrown weapons (T-337/T-338) do NOT use chargeMs — they use the
+   * hold-to-aim mechanic instead (`ActionDef.releaseActionId` + the `pitch`
+   * field above), which is server-measured continuously rather than
+   * client-measured-then-reported-once-at-release.
    */
   chargeMs: number; // u16
 }

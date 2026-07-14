@@ -49,7 +49,7 @@ Deno.test("T-255: with stamina a swing starts; without (the old NPC state) it ne
     world.write(id, ActiveActions, { states: {} });
     // ACTION_USE_SKILL → unarmed swing_light (costs 10 stamina).
     world.write(id, InputState, {
-      seq: 1, timestamp: 0, facing: 0, movementX: 0, movementY: 0,
+      seq: 1, timestamp: 0, facing: 0, pitch: 0, movementX: 0, movementY: 0,
       actions: ACTION_USE_SKILL, chargeMs: 0, rttMs: 0,
     });
     if (withStamina) {

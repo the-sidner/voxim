@@ -13,7 +13,8 @@
           "heavy": "bow_shot"
         }
       ],
-      "heavyChargeMs": 350
+      "heavyChargeMs": 350,
+      "swingActionId": "bow_draw"
     },
     "weight": {
       "baseWeight": 1

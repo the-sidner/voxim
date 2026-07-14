@@ -1,0 +1,24 @@
+{
+  "id": "sling",
+  "modelId": "model_stave",
+  "modelScale": 0.5,
+  "components": {
+    "equippable": {
+      "slots": ["weapon", "offHand"]
+    },
+    "swingable": {
+      "chain": [
+        {
+          "light": "throw_rock_shot",
+          "heavy": "throw_rock_shot"
+        }
+      ],
+      "heavyChargeMs": 0,
+      "swingActionId": "throw_draw",
+      "damage": 6
+    },
+    "weight": {
+      "baseWeight": 0.5
+    }
+  }
+}

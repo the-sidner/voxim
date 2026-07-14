@@ -24,7 +24,7 @@
  */
 
 import type { World, EntityId } from "@voxim/engine";
-import { newEntityId } from "@voxim/engine";
+import { newEntityId, launchVelocity } from "@voxim/engine";
 import {
   localToWorld,
   evaluateAnimationLayers, solveSkeleton, applyQuat, sampleSwingPath,
@@ -337,14 +337,22 @@ export class ProjectileSpawnResolver implements EffectResolver {
     const muzzle = action.projectile.spawnOffset ?? combatCfg.projectileDefaults.spawnOffset;
     const spawn = localToWorld(muzzle.fwd, muzzle.right, muzzle.up, { x: pos.x, y: pos.y, z: pos.z }, facing);
 
+    // T-337: pitch drives the launch elevation for every ranged/thrown
+    // weapon alike, gravity or not — ONE formula (launchVelocity, shared
+    // with the client's aim indicator so the drawn arc and the fired shot
+    // can never diverge). Clamped to the content-tuned aim band; a magic
+    // bolt with gravityScale:0 still points along the aimed elevation in a
+    // straight line, only its FLIGHT arc ignores gravity.
+    const aimCfg = combatCfg.aim;
+    const pitchMin = aimCfg.pitchMinDeg * Math.PI / 180;
+    const pitchMax = aimCfg.pitchMaxDeg * Math.PI / 180;
+    const pitch = Math.min(pitchMax, Math.max(pitchMin, input.pitch));
+    const vel = launchVelocity(facing, pitch, speed);
+
     const projId = newEntityId();
     world.create(projId);
     world.write(projId, Position, { x: spawn.x, y: spawn.y, z: spawn.z });
-    world.write(projId, Velocity, {
-      x: Math.cos(facing) * speed,
-      y: Math.sin(facing) * speed,
-      z: gravityScale > 0 ? speed * combatCfg.projectileDefaults.arcFactor : 0,
-    });
+    world.write(projId, Velocity, vel);
     // T-241: lifetime is a Resource (cross@0 → destroy_self), not a
     // bespoke Lifetime countdown. Per-entity max seeded here.
     world.write(projId, Resource, {

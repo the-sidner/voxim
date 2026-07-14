@@ -11,6 +11,7 @@
  *    (T-320's `facingFromMove` is gone — facing is mouse-only now).
  */
 import { assertAlmostEquals, assertEquals } from "jsr:@std/assert";
+import { hasAction, ACTION_USE_SKILL } from "@voxim/protocol";
 import { IntentRouter } from "./intent_router.ts";
 import { IntentTranslator } from "./intent_translator.ts";
 
@@ -86,4 +87,65 @@ Deno.test("idle (no keys) sends zero movement without touching facing", () => {
   assertEquals(d.movementX, 0);
   assertEquals(d.movementY, 0);
   assertAlmostEquals(t.facing, facing, 1e-12);
+});
+
+// ---- T-337: hold-to-aim input ---------------------------------------------
+
+Deno.test("T-337: aimWeaponActive=false — useSkill is a one-shot tap, not a held bit", () => {
+  const t = freshTranslator();
+  t.pressKey("KeyZ"); // "useSkill" binding
+  const d1 = t.buildDatagram(1, 1);
+  assertEquals(hasAction(d1.actions, ACTION_USE_SKILL), true, "the press itself is a one-shot tap");
+  const d2 = t.buildDatagram(2, 2);
+  assertEquals(hasAction(d2.actions, ACTION_USE_SKILL), false, "still held, but not re-armed — no aim weapon equipped");
+});
+
+Deno.test("T-337: aimWeaponActive=true — useSkill rides as a HELD bit every frame while the key stays down", () => {
+  const t = freshTranslator();
+  t.aimWeaponActive = true;
+  t.pressKey("KeyZ");
+  for (let i = 0; i < 5; i++) {
+    const d = t.buildDatagram(i, i);
+    assertEquals(hasAction(d.actions, ACTION_USE_SKILL), true, `still held at frame ${i}`);
+  }
+  t.releaseKey("KeyZ");
+  const d = t.buildDatagram(10, 10);
+  assertEquals(hasAction(d.actions, ACTION_USE_SKILL), false, "released");
+});
+
+Deno.test("T-337: isAiming reflects aimWeaponActive AND the held trigger", () => {
+  const t = freshTranslator();
+  assertEquals(t.isAiming, false, "no aim weapon equipped");
+  t.aimWeaponActive = true;
+  assertEquals(t.isAiming, false, "equipped but not held");
+  t.pressKey("KeyZ");
+  assertEquals(t.isAiming, true);
+  t.releaseKey("KeyZ");
+  assertEquals(t.isAiming, false);
+});
+
+Deno.test("T-337: applyAimPitchDelta accumulates and clamps to the configured band; mouse-up increases pitch", () => {
+  const t = freshTranslator();
+  t.configure({ mouseSensitivity: 1, aim: { pitchMinDeg: 0, pitchMaxDeg: 45 } });
+  assertAlmostEquals(t.aimPitch, 0, 1e-12);
+
+  // Mouse UP (negative DOM movementY) = "up = farther" = pitch increases.
+  t.applyAimPitchDelta(-0.1);
+  assertAlmostEquals(t.aimPitch, 0.1, 1e-9);
+
+  // Clamps at the upper band (45deg in radians).
+  t.applyAimPitchDelta(-1000);
+  assertAlmostEquals(t.aimPitch, 45 * Math.PI / 180, 1e-9);
+
+  // Mouse DOWN decreases pitch, clamped at the lower band (0).
+  t.applyAimPitchDelta(1000);
+  assertAlmostEquals(t.aimPitch, 0, 1e-9);
+});
+
+Deno.test("T-337: buildDatagram carries the accumulated aimPitch", () => {
+  const t = freshTranslator();
+  t.configure({ mouseSensitivity: 1, aim: { pitchMinDeg: 0, pitchMaxDeg: 45 } });
+  t.applyAimPitchDelta(-0.2);
+  const d = t.buildDatagram(1, 1);
+  assertAlmostEquals(d.pitch, 0.2, 1e-9);
 });

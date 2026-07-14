@@ -35,6 +35,7 @@ function sanitize(d: MovementDatagram): MovementDatagram {
   return {
     ...d,
     facing: finite(d.facing),
+    pitch: finite(d.pitch),
     movementX: finite(d.movementX),
     movementY: finite(d.movementY),
     chargeMs: finite(d.chargeMs),

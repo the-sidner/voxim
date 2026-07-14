@@ -1285,6 +1285,24 @@ export interface ActionDef {
    * predicates — see `ActionGate`. (T-226)
    */
   preconditions?: ActionGate[];
+  /**
+   * Hold-to-aim pairing (T-337): names the action id `PrimaryIntentResolver`
+   * requests when the triggering input (ACTION_USE_SKILL) drops while this
+   * action's CURRENT phase is perpetual (`ticks: -1`). Only meaningful on a
+   * `kind: "ambient"` def that reaches a perpetual phase — the dispatcher's
+   * existing "hold" idiom (see `block`) — since `ticks: -1` is otherwise
+   * illegal (`validateActionDef` requires `kind === "ambient"` for it).
+   * Absent → releasing just lets intent re-resolve normally (nothing special
+   * happens on release; this is what every non-hold action does today).
+   *
+   * The windup phase(s) leading up to the perpetual phase are ordinary
+   * finite phases — "the action winds up and HOLDS at full charge" is one
+   * ActionDef with a finite phase followed by a `ticks: -1` phase, not two
+   * actions. Releasing during the finite windup is NOT gated by this field —
+   * it's an ordinary cancel-into (`cancel.<phase>.into`), same as any
+   * mid-swing interrupt.
+   */
+  releaseActionId?: string;
   effects: ActionEffect[];
   animation?: Record<string, ActionAnimation>;
 }
@@ -2180,8 +2198,26 @@ export interface GameConfig {
      */
     projectileDefaults: {
       spawnOffset: { fwd: number; right: number; up: number };
-      /** For projectiles with gravity, multiplies speed to seed an upward arc. */
-      arcFactor: number;
+    };
+    /**
+     * Hold-to-aim pitch → elevation mapping (T-337). `InputState.pitch`
+     * (radians, accumulated client-side while a hold-to-aim cast is
+     * charging) is clamped to [pitchMinDeg, pitchMaxDeg] (degrees) and fed
+     * DIRECTLY as the elevation angle into `launchVelocity(facing, pitch,
+     * speed)` — up = farther, down = nearer, monotonic for a fixed launch
+     * speed as long as pitchMaxDeg stays <= 45deg (beyond 45deg more
+     * elevation REDUCES range for a fixed speed, which would invert the
+     * "up = farther" mapping the ticket requires — do not raise
+     * pitchMaxDeg past 45 without re-deriving the monotonic bound).
+     * Replaces the old flat `arcFactor` (a fixed seed-upward-velocity
+     * fraction with no player control) outright — every ranged/thrown
+     * weapon's launch direction is now pitch-driven, gravity or not (a
+     * gravityScale:0 magic bolt still points along the aimed elevation in
+     * a straight line; only its FLIGHT arc ignores gravity).
+     */
+    aim: {
+      pitchMinDeg: number;
+      pitchMaxDeg: number;
     };
     /**
      * Poise — the staggering resource (T-197). Damage reduces poise; when
@@ -2483,6 +2519,17 @@ export interface GameConfig {
      * `LoudNoise` event (T-040) — a sprint is loud enough to be heard, a
      * crouch-walk is not. */
     loudNoiseThreshold: number;
+    /**
+     * T-338: ticks an NPC holds a hold-to-aim weapon's perpetual charge
+     * phase (bow_draw's "hold", etc.) before `attackTargetJob` emits one
+     * release pulse (actions: 0 for a tick) so the shot actually fires.
+     * Weapon-agnostic — the job reads the RUNNING action's own shape
+     * (releaseActionId + a perpetual current phase), never branches on
+     * "is this a bow". Must exceed the longest hold-to-aim weapon's own
+     * windup (crossbow_draw's 30 ticks is the longest today) or the release
+     * pulse would land before the draw ever reaches its perpetual phase.
+     */
+    rangedHoldTicks: number;
   };
   /** Client render look-tuning that doesn't fit MaterialRenderDef/GradeDef
    *  (T-315 D3) — foliage wind + camera-occlusion fade-cylinder geometry, and

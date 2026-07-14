@@ -5,6 +5,16 @@
  *
  * All movement (jump, knockback, skill dash) uses the impulse mechanism:
  * apply a velocity delta to PhysicsBody at a point in time; the loop handles the rest.
+ *
+ * Also home to the ballistic (gravity-only) substrate — `BallisticBody` /
+ * `ballisticStep` / `launchVelocity` — moved here from tile-server-only
+ * `physics/ballistic.ts` (T-337) so the client's aim indicator can integrate
+ * the IDENTICAL arc the server fires the projectile with. Distinct policy
+ * from `stepPhysics` (no input handling, no ground-contact drag, no air
+ * control — suitable for any actor whose only forces during flight are
+ * gravity + initial impulse: projectiles, ejected ground items, thrown
+ * weapons), sharing this one module because both are "the shared physics
+ * math client and server must agree on byte-for-byte."
  */
 import type { Vec2, Vec3 } from "./math.ts";
 
@@ -207,4 +217,59 @@ export function stepPhysics(
   }
 
   return { position: pos, velocity, onGround };
+}
+
+// ---- ballistic (gravity-only) substrate (T-337, moved from tile-server) ----
+
+export interface BallisticBody {
+  pos: Vec3;
+  vel: Vec3;
+}
+
+/**
+ * Advance a ballistic body by `dt` seconds under gravity. Pure function:
+ * never touches the world; caller decides what to do with the result
+ * (commit, destroy, settle, scan for collisions).
+ *
+ * @param gravityScale  Multiplier on the world gravity constant (1.0 for
+ *                      ordinary objects; arrows/throwing weapons may want
+ *                      < 1.0 for a flatter arc).
+ */
+export function ballisticStep(
+  body: BallisticBody,
+  gravity: number,
+  gravityScale: number,
+  dt: number,
+): BallisticBody {
+  const newVel: Vec3 = {
+    x: body.vel.x,
+    y: body.vel.y,
+    z: body.vel.z - gravity * gravityScale * dt,
+  };
+  const newPos: Vec3 = {
+    x: body.pos.x + body.vel.x * dt,
+    y: body.pos.y + body.vel.y * dt,
+    z: body.pos.z + body.vel.z * dt,
+  };
+  return { pos: newPos, vel: newVel };
+}
+
+/**
+ * Initial launch velocity for a ballistic body aimed by (facing, pitch) at
+ * a fixed `speed` (T-337). `facing` is the world-space yaw (radians, 0 = +x
+ * axis, matching `InputState.facing` / `MovementDatagram.facing`); `pitch`
+ * is the elevation angle above the horizontal plane (radians, 0 = level,
+ * positive = upward) — NOT the camera's gaze-below-horizontal pitch, which
+ * is a different, unrelated angle convention (see `combat.aim` doc in
+ * GameConfig). The one formula both the server's projectile spawn
+ * (`ProjectileSpawnResolver`) and the client's aim-indicator preview
+ * (`aim_indicator.ts`) call, so the two can never drift apart.
+ */
+export function launchVelocity(facing: number, pitch: number, speed: number): Vec3 {
+  const horiz = speed * Math.cos(pitch);
+  return {
+    x: horiz * Math.cos(facing),
+    y: horiz * Math.sin(facing),
+    z: speed * Math.sin(pitch),
+  };
 }

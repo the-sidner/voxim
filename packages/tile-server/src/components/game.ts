@@ -72,6 +72,12 @@ export const InputState = defineComponent({
   codec: inputStateCodec,
   default: (): InputStateData => ({
     facing: 0,
+    // T-337: 0 = level aim. The honest default for both a fresh player
+    // (before any MovementDatagram lands) and every NPC forever — NpcAiSystem
+    // spreads the previously-read InputState on every write (never sets
+    // `pitch` itself), so NPCs never aim ranged today and this default is
+    // never overwritten for them.
+    pitch: 0,
     movementX: 0,
     movementY: 0,
     actions: 0,
