@@ -2519,6 +2519,17 @@ export interface GameConfig {
      * `LoudNoise` event (T-040) — a sprint is loud enough to be heard, a
      * crouch-walk is not. */
     loudNoiseThreshold: number;
+    /**
+     * T-338: ticks an NPC holds a hold-to-aim weapon's perpetual charge
+     * phase (bow_draw's "hold", etc.) before `attackTargetJob` emits one
+     * release pulse (actions: 0 for a tick) so the shot actually fires.
+     * Weapon-agnostic — the job reads the RUNNING action's own shape
+     * (releaseActionId + a perpetual current phase), never branches on
+     * "is this a bow". Must exceed the longest hold-to-aim weapon's own
+     * windup (crossbow_draw's 30 ticks is the longest today) or the release
+     * pulse would land before the draw ever reaches its perpetual phase.
+     */
+    rangedHoldTicks: number;
   };
   /** Client render look-tuning that doesn't fit MaterialRenderDef/GradeDef
    *  (T-315 D3) — foliage wind + camera-occlusion fade-cylinder geometry, and
