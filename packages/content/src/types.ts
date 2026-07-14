@@ -2198,8 +2198,26 @@ export interface GameConfig {
      */
     projectileDefaults: {
       spawnOffset: { fwd: number; right: number; up: number };
-      /** For projectiles with gravity, multiplies speed to seed an upward arc. */
-      arcFactor: number;
+    };
+    /**
+     * Hold-to-aim pitch → elevation mapping (T-337). `InputState.pitch`
+     * (radians, accumulated client-side while a hold-to-aim cast is
+     * charging) is clamped to [pitchMinDeg, pitchMaxDeg] (degrees) and fed
+     * DIRECTLY as the elevation angle into `launchVelocity(facing, pitch,
+     * speed)` — up = farther, down = nearer, monotonic for a fixed launch
+     * speed as long as pitchMaxDeg stays <= 45deg (beyond 45deg more
+     * elevation REDUCES range for a fixed speed, which would invert the
+     * "up = farther" mapping the ticket requires — do not raise
+     * pitchMaxDeg past 45 without re-deriving the monotonic bound).
+     * Replaces the old flat `arcFactor` (a fixed seed-upward-velocity
+     * fraction with no player control) outright — every ranged/thrown
+     * weapon's launch direction is now pitch-driven, gravity or not (a
+     * gravityScale:0 magic bolt still points along the aimed elevation in
+     * a straight line; only its FLIGHT arc ignores gravity).
+     */
+    aim: {
+      pitchMinDeg: number;
+      pitchMaxDeg: number;
     };
     /**
      * Poise — the staggering resource (T-197). Damage reduces poise; when
