@@ -170,13 +170,14 @@ export class DebugCommandSystem implements System {
       log.warn("debug_give_trinket: stair '%s' is a 'found' stair (no trinketId)", stairId);
       return;
     }
-    const inv = world.get(playerId, Inventory);
-    if (!inv) return;
-    if (inv.slots.length >= inv.capacity) {
-      log.debug("debug_give_trinket: player=%s inventory full", playerId);
-      return;
-    }
+    if (!world.get(playerId, Inventory)) return;
 
+    // T-344: the item entity is created unconditionally, BEFORE the capacity
+    // check below — same accepted residual as _giveItem's sibling: if the
+    // mutate declines (inventory filled by a same-tick race), this entity is
+    // orphaned (never referenced by any inventory). Dev-only cheat, no
+    // player resource lost — an acceptable, narrow leak, not a "consumed
+    // material with no output" case.
     const itemId = newEntityId();
     world.create(itemId);
     world.write(itemId, ItemData, { prefabId: "trinket", quantity: 1 });
@@ -184,10 +185,18 @@ export class DebugCommandSystem implements System {
       effects: [{ id: "unlock_stair", params: { trinketId: stair.trinketId } }],
     });
     // mutate, not set — same lost-update reason as _giveItem above (T-249).
-    world.mutate(playerId, Inventory, (cur) => ({
-      ...cur,
-      slots: [...cur.slots, { kind: "unique", entityId: itemId } as InventorySlot],
-    }));
+    // The capacity check MUST live inside the closure too: checked against
+    // the stale `inv` read (as this used to do, right next to the already-
+    // fixed append below) is the exact trap the T-344 ticket calls out —
+    // fixing only the write while the validation still reads pre-tick state
+    // keeps the bug, just wearing a hat.
+    world.mutate(playerId, Inventory, (cur) => {
+      if (cur.slots.length >= cur.capacity) {
+        log.debug("debug_give_trinket: player=%s inventory full", playerId);
+        return cur;
+      }
+      return { ...cur, slots: [...cur.slots, { kind: "unique", entityId: itemId } as InventorySlot] };
+    });
     log.info("debug_give_trinket: player=%s stair=%s trinketId=%s item=%s", playerId, stairId, stair.trinketId, itemId);
   }
 
