@@ -40,14 +40,25 @@ export const PostureIntentResolver: IntentResolver = {
 /**
  * Primary slot (T-227) — the upper body. Replaces the CSM right_hand FSM:
  *
- *   - ACTION_BLOCK held              → `block` (held; sets the Blocking tag)
+ *   - ACTION_BLOCK held              → `block` (held; sets the Blocking tag).
+ *     Checked FIRST, unconditionally — block is the universal out, including
+ *     out of a hold-to-aim cast (T-337).
+ *   - holding a hold-to-aim cast (T-337: the primary slot is sitting in a
+ *     `releaseActionId`-bearing action's perpetual phase) → re-request the
+ *     SAME action while ACTION_USE_SKILL stays held (dispatcher no-ops on
+ *     "already running it" — no restart, no duplicate cost deduction); the
+ *     tick it lifts, request `releaseActionId` instead.
  *   - ACTION_CONSUME held, or a one-shot `PendingItemUse` (the `UseItem`
  *     command's stimulus) + slot free → `use_item` (the `slot_has_usable`
  *     precondition rejects it when there's nothing usable, so the slot just
  *     stays idle rather than playing a useless animation). The component is
  *     consumed one-shot here, same as `PendingReaction` below.
  *   - ACTION_USE_SKILL + slot free   → the equipped weapon's swing action
- *     (`swingable.swingActionId`, default `swing_light`; unarmed → light)
+ *     (`swingable.swingActionId`, default `swing_light`; unarmed → light).
+ *     If that action is a hold-to-aim def (kind:"ambient" + releaseActionId),
+ *     press just starts it — no combo/heavy-charge machinery; the "holding"
+ *     branch above takes over once the dispatcher's own phase advance
+ *     carries it into the perpetual phase.
  *   - an active action in flight     → null (don't disturb — the dispatcher
  *     runs its phases; use_item/swing both run to completion this way)
  *   - otherwise                      → `primary_idle` (no animation layer;
@@ -63,12 +74,24 @@ export class PrimaryIntentResolver implements IntentResolver {
     if (!slots.includes("primary")) return out;
 
     const a = world.get(entityId, InputState)?.actions ?? 0;
-    const cur = world.get(entityId, ActiveActions)?.states["primary"]?.actionId;
-    const swinging = !!cur && this.content.actions.get(cur)?.kind === "active";
+    const curState = world.get(entityId, ActiveActions)?.states["primary"];
+    const cur = curState?.actionId;
+    const curDef = cur ? this.content.actions.get(cur) : undefined;
+    const swinging = !!cur && curDef?.kind === "active";
+    // T-337: the primary slot is charging a hold-to-aim cast when its
+    // running action names a releaseActionId AND its CURRENT phase is
+    // perpetual (the earlier, finite windup phase(s) leading up to the hold
+    // are NOT "holding" yet — they run out normally via the tap branch below,
+    // which keeps re-requesting the same id every tick until the dispatcher's
+    // own phase advance reaches the hold).
+    const curPhase = curDef && curState ? curDef.phases[curState.phase] : undefined;
+    const holding = !!curDef?.releaseActionId && curPhase?.ticks === -1;
 
     let want: string | null;
     if (hasAction(a, ACTION_BLOCK)) {
       want = "block";
+    } else if (holding) {
+      want = hasAction(a, ACTION_USE_SKILL) ? cur! : curDef!.releaseActionId!;
     } else if ((hasAction(a, ACTION_CONSUME) || world.has(entityId, PendingItemUse)) && !swinging) {
       if (world.has(entityId, PendingItemUse)) world.remove(entityId, PendingItemUse); // one-shot
       want = "use_item";
@@ -77,21 +100,31 @@ export class PrimaryIntentResolver implements IntentResolver {
       const swingable = weaponPrefab
         ? this.content.prefabs.get(weaponPrefab)?.components["swingable"] as SwingableData | undefined
         : undefined;
-      const chainLen = swingable?.chain.length ?? 0;
-      // Heavy = the press was charged past the weapon's threshold. Recorded on
-      // SwingChain so animation + the weapon_trace resolver play/trace the same
-      // variant for this swing's whole duration.
-      const chargeMs = world.get(entityId, InputState)?.chargeMs ?? 0;
-      const heavy = chainLen > 0 && !!swingable && chargeMs >= swingable.heavyChargeMs;
-      if (chainLen > 0) {
-        // Advance the combo: a fresh or lapsed chain starts at 0, a continued
-        // one steps to the next entry so consecutive swings alternate.
-        const prev = world.get(entityId, SwingChain);
-        const reset = !prev || prev.idleTicks > COMBO_WINDOW_TICKS;
-        const index = reset ? 0 : (prev.index + 1) % chainLen;
-        world.write(entityId, SwingChain, { index, heavy, idleTicks: 0 });
+      const swingActionId = swingable?.swingActionId ?? "swing_light";
+      const startDef = this.content.actions.get(swingActionId);
+      if (startDef?.releaseActionId) {
+        // Hold-to-aim weapon (T-337): press just starts the draw. No
+        // combo/heavy-charge selection — that machinery is melee-specific
+        // (chargeMs at RELEASE picks light/heavy); a hold-to-aim weapon's
+        // "charge" is the perpetual phase itself, released explicitly.
+        want = swingActionId;
+      } else {
+        const chainLen = swingable?.chain.length ?? 0;
+        // Heavy = the press was charged past the weapon's threshold. Recorded on
+        // SwingChain so animation + the weapon_trace resolver play/trace the same
+        // variant for this swing's whole duration.
+        const chargeMs = world.get(entityId, InputState)?.chargeMs ?? 0;
+        const heavy = chainLen > 0 && !!swingable && chargeMs >= swingable.heavyChargeMs;
+        if (chainLen > 0) {
+          // Advance the combo: a fresh or lapsed chain starts at 0, a continued
+          // one steps to the next entry so consecutive swings alternate.
+          const prev = world.get(entityId, SwingChain);
+          const reset = !prev || prev.idleTicks > COMBO_WINDOW_TICKS;
+          const index = reset ? 0 : (prev.index + 1) % chainLen;
+          world.write(entityId, SwingChain, { index, heavy, idleTicks: 0 });
+        }
+        want = heavy ? "swing_heavy" : swingActionId;
       }
-      want = heavy ? "swing_heavy" : (swingable?.swingActionId ?? "swing_light");
     } else if (swinging) {
       want = null;
     } else {
