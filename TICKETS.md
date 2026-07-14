@@ -80,8 +80,8 @@ DEFERRED to T-340 — see that ticket for why (bow doesn't map onto blade_gramma
 comparably to blade_grammar/armor_grammar themselves). In-lane verification only (type-check + full
 suite, 995 passed); live testplay/docker verification deferred to post-merge per lane rules.
 
-### T-339 · Death: ragdoll — the physical complement to voxel dissolution
-Effort: L   Status: needs-design   (user, 2026-07-14)
+### T-339 · Death: the body comes apart — DeathStyleDef, with crumble as the first style
+Effort: L   Status: in-progress   (user, 2026-07-14; design decided 2026-07-14)
 
 Death today = the T-311 P5c dissolve (fray/coreness sidecar, in-shader drift, `shed_dissolve` DeathHook,
 `dissolve_timer`) — a corrupted creature frays and sheds voxels. The user wants the OTHER death: a body
@@ -94,6 +94,28 @@ entities, (b) break into rigid parts (each bone entity becomes a physics body), 
 creature by content (a `DeathStyleDef`, sibling of `DissolveProfileDef`).
 Blocked on: nothing technical after T-219 — this is a design call plus a physics-integration decision
 (we have no rigid-body physics today; that is the real cost).
+
+**DECIDED (2026-07-14): option (c), staged honestly — `DeathStyleDef` is the primitive, CRUMBLE is
+the style that ships now, active ragdoll is a later style in the same registry.**
+
+Why not active ragdoll first: it needs a rigid-body solver with joint constraints. We have none, and
+adding one is a large dependency + per-tick-cost decision that should be taken on its own merits, not
+smuggled in under a death animation. The ticket already names this as the real cost; nothing since has
+made it cheaper.
+
+Why crumble is now nearly free — three things landed that did not exist when this was filed:
+  - T-223 gave the client a boneId ↔ bone-entity identity map. The bones are ADDRESSABLE for the
+    first time; before, they were anonymous THREE.Groups inside one mesh record.
+  - T-337 moved `ballisticStep` into `@voxim/engine`, shared by client and server. A falling body part
+    is a ballistic body — the integration already exists, and it is the SAME one the projectiles use.
+  - T-340 gives the impact dust for free: a landing part emits a content-defined burst.
+So a crumble needs zero new physics: each bone's mesh detaches into an independent piece, integrates
+with the shared ballistic step against the terrain-height lookup the client already has, settles, and
+fades on the corpse's existing linger timer.
+
+The dissolve is NOT left beside this as a second path — it becomes a STYLE in the same registry
+(`DeathStyleDef` naming its `DissolveProfileDef`). One dispatch, two styles, chosen per creature by
+content: a corrupted haunt frays, a bandit's body comes apart.
 
 
 ### T-323 · Hits don't connect — the hitbox is the skeleton, not the body
