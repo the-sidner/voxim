@@ -783,7 +783,6 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 const VALID_ACTION_KINDS = new Set(["active", "reaction", "ambient"]);
-const VALID_ACTION_MOVEMENT = new Set(["free", "slowed", "locked"]);
 const VALID_ACTION_EFFECT_EDGES = new Set(["enter", "exit", "tick"]);
 const ACTION_PHASE_REF_RE = /^([^:]+):(enter|exit|tick)$/;
 
@@ -1283,14 +1282,25 @@ export function validateActionDef(def: ActionDef): void {
   if (!def.movement || typeof def.movement !== "object" || Array.isArray(def.movement)) {
     throw new Error(`Action '${def.id}': movement must be an object`);
   }
+  // T-345: a phase's movement is "free", "locked", or a SPEED MULTIPLIER in
+  // (0,1]. The old "slowed" string is retired — it named a mode nothing
+  // implemented (physics read it as "free"), so every def that declared it was
+  // lying about its own behaviour and drawing a bow felt exactly like walking.
+  // Rejecting it BY NAME matters: without this branch it would just fail the
+  // number test with an unhelpful message, and the reason would be lost.
   for (const name of phaseNames) {
     const v = def.movement[name];
     if (v === undefined) {
-      throw new Error(`Action '${def.id}' phase '${name}': movement value required (free|slowed|locked)`);
+      throw new Error(`Action '${def.id}' phase '${name}': movement value required (free|locked|number in (0,1])`);
     }
-    if (!VALID_ACTION_MOVEMENT.has(v)) {
-      throw new Error(`Action '${def.id}' movement.${name}: must be free|slowed|locked, got '${v}'`);
-    }
+    if (v === "free" || v === "locked") continue;
+    if (typeof v === "number" && v > 0 && v <= 1) continue;
+    const hint = (v as unknown) === "slowed"
+      ? ` — "slowed" is retired (T-345): name the multiplier itself, e.g. 0.4, so the penalty depends on the action`
+      : "";
+    throw new Error(
+      `Action '${def.id}' movement.${name}: must be "free", "locked", or a number in (0,1] — got ${JSON.stringify(v)}${hint}`,
+    );
   }
   for (const name of Object.keys(def.movement)) {
     if (!phaseNames.includes(name)) {

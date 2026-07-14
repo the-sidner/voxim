@@ -2,27 +2,54 @@
   "id": "bow_draw",
   "kind": "ambient",
   "slot": "primary",
-  "limbs": ["right_hand"],
+  "limbs": [
+    "right_hand"
+  ],
   "phases": {
-    "windup": { "ticks": 20 },
-    "hold": { "ticks": -1 }
+    "windup": {
+      "ticks": 20
+    },
+    "hold": {
+      "ticks": -1
+    }
   },
   "cancel": {
-    "windup": { "into": ["any"] },
-    "hold": { "into": ["any"] }
+    "windup": {
+      "into": [
+        "any"
+      ]
+    },
+    "hold": {
+      "into": [
+        "any"
+      ]
+    }
   },
   "movement": {
-    "windup": "slowed",
-    "hold": "slowed"
+    "windup": 0.35,
+    "hold": 0.3
   },
-  "costs": { "stamina": 6 },
+  "costs": {
+    "stamina": 6
+  },
   "releaseActionId": "bow_loose",
   "preconditions": [
-    { "gate": "has_item", "params": { "prefabId": "arrow" } }
+    {
+      "gate": "has_item",
+      "params": {
+        "prefabId": "arrow"
+      }
+    }
   ],
   "effects": [],
   "animation": {
-    "windup": { "clipId": "standing_draw_arrow", "loop": false },
-    "hold": { "clipId": "standing_aim_overdraw", "loop": true }
+    "windup": {
+      "clipId": "standing_draw_arrow",
+      "loop": false
+    },
+    "hold": {
+      "clipId": "standing_aim_overdraw",
+      "loop": true
+    }
   }
 }

@@ -2,27 +2,54 @@
   "id": "throw_draw",
   "kind": "ambient",
   "slot": "primary",
-  "limbs": ["right_hand"],
+  "limbs": [
+    "right_hand"
+  ],
   "phases": {
-    "windup": { "ticks": 6 },
-    "hold": { "ticks": -1 }
+    "windup": {
+      "ticks": 6
+    },
+    "hold": {
+      "ticks": -1
+    }
   },
   "cancel": {
-    "windup": { "into": ["any"] },
-    "hold": { "into": ["any"] }
+    "windup": {
+      "into": [
+        "any"
+      ]
+    },
+    "hold": {
+      "into": [
+        "any"
+      ]
+    }
   },
   "movement": {
-    "windup": "slowed",
-    "hold": "slowed"
+    "windup": 0.55,
+    "hold": 0.5
   },
-  "costs": { "stamina": 4 },
+  "costs": {
+    "stamina": 4
+  },
   "releaseActionId": "throw_release",
   "preconditions": [
-    { "gate": "has_item", "params": { "prefabId": "throwing_rock" } }
+    {
+      "gate": "has_item",
+      "params": {
+        "prefabId": "throwing_rock"
+      }
+    }
   ],
   "effects": [],
   "animation": {
-    "windup": { "clipId": "standing_draw_arrow", "loop": false },
-    "hold": { "clipId": "standing_aim_overdraw", "loop": true }
+    "windup": {
+      "clipId": "standing_draw_arrow",
+      "loop": false
+    },
+    "hold": {
+      "clipId": "standing_aim_overdraw",
+      "loop": true
+    }
   }
 }

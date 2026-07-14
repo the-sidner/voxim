@@ -2,13 +2,44 @@
   "id": "block",
   "kind": "ambient",
   "slot": "primary",
-  "limbs": ["both_hands"],
-  "phases": { "hold": { "ticks": -1 } },
-  "cancel": { "hold": { "into": ["any"] } },
-  "movement": { "hold": "slowed" },
-  "effects": [
-    { "phase": "hold:enter", "kind": "set_tag", "params": { "tag": "blocking" } },
-    { "phase": "hold:exit", "kind": "clear_tag", "params": { "tag": "blocking" } }
+  "limbs": [
+    "both_hands"
   ],
-  "animation": { "hold": { "clipId": "$weapon.block_clip", "loop": true } }
+  "phases": {
+    "hold": {
+      "ticks": -1
+    }
+  },
+  "cancel": {
+    "hold": {
+      "into": [
+        "any"
+      ]
+    }
+  },
+  "movement": {
+    "hold": 0.55
+  },
+  "effects": [
+    {
+      "phase": "hold:enter",
+      "kind": "set_tag",
+      "params": {
+        "tag": "blocking"
+      }
+    },
+    {
+      "phase": "hold:exit",
+      "kind": "clear_tag",
+      "params": {
+        "tag": "blocking"
+      }
+    }
+  ],
+  "animation": {
+    "hold": {
+      "clipId": "$weapon.block_clip",
+      "loop": true
+    }
+  }
 }

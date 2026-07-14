@@ -37,10 +37,10 @@
     }
   },
   "movement": {
-    "windup": "slowed",
+    "windup": 0.42,
     "active": "locked",
-    "winddown": "slowed",
-    "recovery": "slowed"
+    "winddown": 0.42,
+    "recovery": 0.55
   },
   "costs": {
     "stamina": 18

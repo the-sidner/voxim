@@ -127,6 +127,10 @@ export class PhysicsSystem implements System {
         1.0,
       );
       if (crouching) speedMultiplier *= crouchSpeedMultiplier;
+      // What you are DOING slows you (T-345) — drawing a bow, blocking, mid-swing.
+      // Multiplicative with the modifier stack and crouch, so encumbrance and a
+      // channelled cast compound rather than one masking the other.
+      speedMultiplier *= actionSpeedMultiplier(world, this.content, entityId);
 
       let movement: { x: number; y: number };
       let physicsConfig = baseConfig;
@@ -248,9 +252,7 @@ const COYOTE_TICKS = 3;
 /**
  * True if any occupied action slot's current phase declares
  * `movement: "locked"` — the generic "stuck executing this action" signal
- * (dodge_roll dash, swing active). `"slowed"` is currently treated as
- * `"free"` (no consumer yet — a speed-scale pass is deferred retune, per
- * the structure-over-parity pivot); only `"locked"` changes physics today.
+ * (dodge_roll dash, swing active).
  */
 function isMovementLocked(
   world: World,
@@ -265,5 +267,34 @@ function isMovementLocked(
     }
   }
   return false;
+}
+
+/**
+ * Speed multiplier imposed by whatever the actor is currently doing (T-345).
+ *
+ * Every occupied slot's CURRENT phase may name a number in (0,1]; the strictest
+ * one wins (a channelled cast should not be rescued by a permissive second slot).
+ * 1 = unrestricted.
+ *
+ * This is the consumer `movement: 0.5` never had. That string named a mode
+ * nobody implemented — it was read as `"free"` — so every ActionDef declaring it
+ * was lying about its own behaviour, and drawing a bow felt exactly like walking.
+ * The value is now the number itself, per phase, so the penalty DEPENDS on what
+ * is being done: reloading a crossbow roots you to a shuffle (0.25), a shield
+ * block barely touches you (0.55), a light swing hardly at all (0.70).
+ */
+function actionSpeedMultiplier(
+  world: World,
+  content: ContentService,
+  entityId: string,
+): number {
+  const aa = world.get(entityId, ActiveActions);
+  if (!aa) return 1;
+  let mult = 1;
+  for (const st of Object.values(aa.states)) {
+    const m = content.actions.get(st.actionId)?.movement?.[st.phase];
+    if (typeof m === "number" && m < mult) mult = m;
+  }
+  return mult;
 }
 

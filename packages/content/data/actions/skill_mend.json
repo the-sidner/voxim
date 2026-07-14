@@ -3,25 +3,68 @@
   "committed": true,
   "kind": "active",
   "slot": "primary",
-  "phases": { "windup": { "ticks": 8 }, "active": { "ticks": 1 }, "winddown": { "ticks": 6 } },
-  "cancel": {
-    "windup":   { "into": ["any"] },
-    "active":   { "into": [] },
-    "winddown": { "into": [] }
+  "phases": {
+    "windup": {
+      "ticks": 8
+    },
+    "active": {
+      "ticks": 1
+    },
+    "winddown": {
+      "ticks": 6
+    }
   },
-  "movement": { "windup": "slowed", "active": "locked", "winddown": "slowed" },
-  "costs": { "stamina": 23 },
+  "cancel": {
+    "windup": {
+      "into": [
+        "any"
+      ]
+    },
+    "active": {
+      "into": []
+    },
+    "winddown": {
+      "into": []
+    }
+  },
+  "movement": {
+    "windup": 0.5,
+    "active": "locked",
+    "winddown": 0.55
+  },
+  "costs": {
+    "stamina": 23
+  },
   "cooldownTicks": 80,
   "triggersGcd": true,
   "priority": 5,
-  "preconditions": [ { "gate": "not_staggered" } ],
+  "preconditions": [
+    {
+      "gate": "not_staggered"
+    }
+  ],
   "effects": [
-    { "phase": "active:enter", "kind": "health",
-      "params": { "magnitude": 40, "targeting": "self" } }
+    {
+      "phase": "active:enter",
+      "kind": "health",
+      "params": {
+        "magnitude": 40,
+        "targeting": "self"
+      }
+    }
   ],
   "animation": {
-    "windup":   { "clipId": "standing_1h_cast_spell_01", "loop": true },
-    "active":   { "clipId": "standing_1h_cast_spell_01", "loop": false },
-    "winddown": { "clipId": "standing_1h_cast_spell_01", "loop": false }
+    "windup": {
+      "clipId": "standing_1h_cast_spell_01",
+      "loop": true
+    },
+    "active": {
+      "clipId": "standing_1h_cast_spell_01",
+      "loop": false
+    },
+    "winddown": {
+      "clipId": "standing_1h_cast_spell_01",
+      "loop": false
+    }
   }
 }

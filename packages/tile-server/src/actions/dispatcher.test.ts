@@ -46,7 +46,7 @@ const swing: ActionDef = {
   id: "swing", kind: "active", slot: "primary",
   phases: { windup: { ticks: 2 }, active: { ticks: 2 }, winddown: { ticks: 2 } },
   cancel: { windup: { into: ["dodge_*", "block"] }, active: { into: [] }, winddown: { into: ["any"] } },
-  movement: { windup: "slowed", active: "locked", winddown: "slowed" },
+  movement: { windup: 0.5, active: "locked", winddown: 0.5 },
   effects: [
     { phase: "windup:enter", kind: "rec" },
     { phase: "active:enter", kind: "rec" },
@@ -193,7 +193,7 @@ Deno.test("committed flag: cancel allowed only in the first-tick micro-cancel gr
     id: "committed_swing", kind: "active", slot: "primary", committed: true,
     phases: { windup: { ticks: 3 }, active: { ticks: 2 }, winddown: { ticks: 2 } },
     cancel: { windup: { into: ["dodge_*"] }, active: { into: [] }, winddown: { into: [] } },
-    movement: { windup: "slowed", active: "locked", winddown: "slowed" }, effects: [],
+    movement: { windup: 0.5, active: "locked", winddown: 0.5 }, effects: [],
   };
   const dodge: ActionDef = {
     id: "dodge_roll", kind: "active", slot: "primary",
@@ -223,7 +223,7 @@ Deno.test("committed flag: reactions still interrupt past the grace (T-295)", ()
     id: "committed_swing", kind: "active", slot: "primary", committed: true,
     phases: { windup: { ticks: 3 }, active: { ticks: 2 }, winddown: { ticks: 2 } },
     cancel: { windup: { into: ["any"] }, active: { into: [] }, winddown: { into: [] } },
-    movement: { windup: "slowed", active: "locked", winddown: "slowed" }, effects: [],
+    movement: { windup: 0.5, active: "locked", winddown: 0.5 }, effects: [],
   };
   const flinch: ActionDef = {
     id: "flinch", kind: "reaction", slot: "primary", interruptPriority: 10,

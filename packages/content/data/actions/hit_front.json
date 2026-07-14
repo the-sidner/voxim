@@ -4,11 +4,28 @@
   "slot": "reaction",
   "interruptPriority": 10,
   "preconditions": [
-    { "gate": "uninterruptible_active" }
+    {
+      "gate": "uninterruptible_active"
+    }
   ],
-  "phases": { "play": { "ticks": 10 } },
-  "cancel": { "play": { "into": [] } },
-  "movement": { "play": "slowed" },
+  "phases": {
+    "play": {
+      "ticks": 10
+    }
+  },
+  "cancel": {
+    "play": {
+      "into": []
+    }
+  },
+  "movement": {
+    "play": 0.35
+  },
   "effects": [],
-  "animation": { "play": { "clipId": "$hit_front", "mask": "upper_body" } }
+  "animation": {
+    "play": {
+      "clipId": "$hit_front",
+      "mask": "upper_body"
+    }
+  }
 }

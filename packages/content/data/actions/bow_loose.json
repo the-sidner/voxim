@@ -2,29 +2,59 @@
   "id": "bow_loose",
   "kind": "active",
   "slot": "primary",
-  "limbs": ["right_hand"],
+  "limbs": [
+    "right_hand"
+  ],
   "phases": {
-    "active": { "ticks": 1 },
-    "winddown": { "ticks": 12 }
+    "active": {
+      "ticks": 1
+    },
+    "winddown": {
+      "ticks": 12
+    }
   },
   "cancel": {
-    "active": { "into": [] },
-    "winddown": { "into": [] }
+    "active": {
+      "into": []
+    },
+    "winddown": {
+      "into": []
+    }
   },
   "movement": {
     "active": "locked",
-    "winddown": "slowed"
+    "winddown": 0.4
   },
   "priority": 5,
   "preconditions": [
-    { "gate": "has_item", "params": { "prefabId": "arrow" } }
+    {
+      "gate": "has_item",
+      "params": {
+        "prefabId": "arrow"
+      }
+    }
   ],
   "effects": [
-    { "phase": "active:enter", "kind": "projectile_spawn" },
-    { "phase": "active:enter", "kind": "consume_item", "params": { "prefabId": "arrow" } }
+    {
+      "phase": "active:enter",
+      "kind": "projectile_spawn"
+    },
+    {
+      "phase": "active:enter",
+      "kind": "consume_item",
+      "params": {
+        "prefabId": "arrow"
+      }
+    }
   ],
   "animation": {
-    "active": { "clipId": "standing_aim_recoil", "loop": false },
-    "winddown": { "clipId": "standing_aim_recoil", "loop": false }
+    "active": {
+      "clipId": "standing_aim_recoil",
+      "loop": false
+    },
+    "winddown": {
+      "clipId": "standing_aim_recoil",
+      "loop": false
+    }
   }
 }

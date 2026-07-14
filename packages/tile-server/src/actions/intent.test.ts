@@ -46,7 +46,7 @@ function fixtureContent(): ContentService {
     slot: "primary",
     phases: { hold: { ticks: -1 } },
     cancel: { hold: { into: ["any"] } },
-    movement: { hold: "slowed" },
+    movement: { hold: 0.5 },
     effects: [
       { phase: "hold:enter", kind: "set_tag", params: { tag: "blocking" } },
       { phase: "hold:exit", kind: "clear_tag", params: { tag: "blocking" } },
@@ -67,7 +67,7 @@ function fixtureContent(): ContentService {
     slot: "primary",
     phases: { windup: { ticks: DRAW_WINDUP_TICKS }, hold: { ticks: -1 } },
     cancel: { windup: { into: ["any"] }, hold: { into: ["any"] } },
-    movement: { windup: "slowed", hold: "slowed" },
+    movement: { windup: 0.5, hold: 0.5 },
     releaseActionId: "_test_release",
     // "staggered" is just a convenient closed-vocabulary tag to probe
     // hold:enter/:exit firing in this synthetic fixture — no semantic
@@ -84,7 +84,7 @@ function fixtureContent(): ContentService {
     slot: "primary",
     phases: { active: { ticks: 1 }, winddown: { ticks: 2 } },
     cancel: { active: { into: [] }, winddown: { into: [] } },
-    movement: { active: "locked", winddown: "slowed" },
+    movement: { active: "locked", winddown: 0.5 },
     effects: [],
   });
   actions.register({
@@ -93,7 +93,7 @@ function fixtureContent(): ContentService {
     slot: "primary",
     phases: { windup: { ticks: 2 }, active: { ticks: 2 }, winddown: { ticks: 2 } },
     cancel: { windup: { into: ["any"] }, active: { into: [] }, winddown: { into: [] } },
-    movement: { windup: "slowed", active: "locked", winddown: "slowed" },
+    movement: { windup: 0.5, active: "locked", winddown: 0.5 },
     effects: [],
   });
 

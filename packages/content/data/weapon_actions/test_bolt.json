@@ -7,11 +7,11 @@
   "clipId": "standing_aim_recoil",
   "staminaCost": 4,
   "projectile": {
-    "speed": 16,
-    "gravityScale": 0.0,
-    "radius": 0.3,
-    "maxHits": 0,
-    "lifetimeTicks": 150,
+    "speed": 18,
+    "gravityScale": 0.18,
+    "radius": 0.35,
+    "maxHits": 1,
+    "lifetimeTicks": 120,
     "modelId": "model_bolt"
   }
 }

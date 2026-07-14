@@ -3,21 +3,35 @@
   "committed": true,
   "kind": "active",
   "slot": "primary",
-  "limbs": ["right_hand"],
+  "limbs": [
+    "right_hand"
+  ],
   "phases": {
-    "windup": { "ticks": 5 },
-    "active": { "ticks": 3 },
-    "winddown": { "ticks": 8 }
+    "windup": {
+      "ticks": 5
+    },
+    "active": {
+      "ticks": 3
+    },
+    "winddown": {
+      "ticks": 8
+    }
   },
   "cancel": {
-    "windup": { "into": [] },
-    "active": { "into": [] },
-    "winddown": { "into": [] }
+    "windup": {
+      "into": []
+    },
+    "active": {
+      "into": []
+    },
+    "winddown": {
+      "into": []
+    }
   },
   "movement": {
-    "windup": "slowed",
+    "windup": 0.42,
     "active": "locked",
-    "winddown": "slowed"
+    "winddown": 0.42
   },
   "costs": {
     "stamina": 20
@@ -32,12 +46,16 @@
     {
       "phase": "active:enter",
       "kind": "weapon_trace",
-      "params": { "weaponActionId": "heavy_overhead" }
+      "params": {
+        "weaponActionId": "heavy_overhead"
+      }
     },
     {
       "phase": "active:tick",
       "kind": "weapon_trace",
-      "params": { "weaponActionId": "heavy_overhead" }
+      "params": {
+        "weaponActionId": "heavy_overhead"
+      }
     }
   ],
   "animation": {

@@ -619,6 +619,32 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 
 ## Client / Controls, Feel & Render Polish
 
+### T-345 · `movement: "slowed"` was a lie — the mode nothing implemented
+Effort: M   Status: done   Commit: (see below)   (user, live play, 2026-07-14)
+
+The user asked for a movement debuff while casting. It turned out the field already existed and
+was **dead**: `ActionMovement` was `"free" | "slowed" | "locked"`, 17 ActionDefs declared
+`"slowed"`, and `isMovementLocked` said so in its own doc comment — *"`slowed` is currently treated
+as `free` (no consumer yet)"*. So every one of those defs was lying about its own behaviour, and
+drawing a bow felt exactly like walking.
+
+Fixed by making the mode the NUMBER itself: `ActionMovement = "free" | "locked" | number`, where the
+number is a speed multiplier in (0,1] applied per PHASE. That is what makes the penalty depend on
+what you are doing — which was the actual request, and which a single global "slow" constant could
+not have delivered:
+
+  crossbow_draw.hold 0.25 · bow_draw.hold 0.30 · spell_draw.hold 0.40 · throw_draw.hold 0.50
+  block.hold 0.55 · swing_heavy.windup 0.42 · swing_light.windup 0.70 · hit_front 0.35
+
+`PhysicsSystem.actionSpeedMultiplier` takes the strictest value across occupied slots (a permissive
+second slot must not rescue a committed first one) and multiplies it INTO the modifier stack, so
+encumbrance and a channelled cast compound instead of one masking the other.
+
+The `"slowed"` string is retired, not deprecated: all 17 content files migrated in the same commit,
+the type no longer admits it, and the boot validator rejects it BY NAME with the reason — because
+falling through to a generic "not a number" message would lose exactly the explanation someone will
+need. 3 new tests pin the consumption site, the per-action difference, and the strictest-slot rule.
+
 ### T-343 · Spatial grid was rebuilt BEFORE the systems, but AoI reads it AFTER
 Effort: S   Status: done   Commit: (see below)   (found live, 2026-07-14)
 

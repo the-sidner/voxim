@@ -1115,10 +1115,27 @@ export interface WeaponActionDef {
  * Movement permission during a phase. The runtime physics layer (T-232)
  * consults the current action's per-phase value to throttle locomotion:
  *   "free"   — full intent passes through
- *   "slowed" — multiplied by a global slow factor
+ *   0.5 — multiplied by a global slow factor
  *   "locked" — zero
  */
-export type ActionMovement = "free" | "slowed" | "locked";
+/**
+ * What a phase does to the actor's movement.
+ *
+ *   "free"    — no restriction (the default when a phase names nothing).
+ *   "locked"  — physics ignores movement input entirely (a dodge dash holds its
+ *               committed velocity; a swing's active frames plant you).
+ *   number    — a SPEED MULTIPLIER in (0, 1]: you may still move, at this
+ *               fraction of your normal speed, for as long as the phase lasts.
+ *
+ * The number replaces the old `0.5` string, which named a mode nobody
+ * implemented — `isMovementLocked` treated it as `"free"`, so every ActionDef
+ * that declared it was lying about its own behaviour. Making it a number is what
+ * lets the penalty DEPEND on what is being done: a shield block barely slows you,
+ * a crossbow reload roots you to a shuffle, and a heavy overhead is somewhere
+ * between. One knob, per phase, per action — no parallel "slowFactor" field to
+ * keep in sync.
+ */
+export type ActionMovement = "free" | "locked" | number;
 
 /**
  * One phase of an Action. Iteration order follows declared key order in
