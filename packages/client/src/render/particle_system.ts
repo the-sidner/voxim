@@ -107,9 +107,11 @@ function worldToThree(p: Vec3): THREE.Vector3 {
  * (`acos(1 - u·(1-cos(spreadDeg)))`) generalises HitSparkRenderer's old
  * hardcoded `acos(1-rand*1.6)` hemisphere bias (that constant was exactly
  * spreadDeg≈127°) into a content-authored angle for ANY base direction, not
- * just world-up.
+ * just world-up. Exported so crumble_controller.ts (T-339) reuses the SAME
+ * outward-cone sampler for a body piece's launch velocity — one sampler,
+ * not a second hand-rolled one.
  */
-function coneSample(baseDir: Vec3, spreadDeg: number, speed: number): Vec3 {
+export function coneSample(baseDir: Vec3, spreadDeg: number, speed: number): Vec3 {
   const up = Math.abs(baseDir.z) < 0.99 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
   // tangent = normalize(up × baseDir); bitangent = baseDir × tangent (both unit, orthogonal to baseDir).
   let tx = up.y * baseDir.z - up.z * baseDir.y;
@@ -238,6 +240,19 @@ export class ParticleSystem {
     const handle = `${BURST_HANDLE_PREFIX}${def.id}:${this.seq++}`;
     const chunkKey = `${Math.floor(origin.x / CHUNK_SIZE)},${Math.floor(origin.y / CHUNK_SIZE)}`;
     this.bursts.push({ handle, archetypeId, chunkKey, def, particles });
+  }
+
+  /**
+   * Public trigger for a fixed-mechanism burst (T-339 — a crumbling body
+   * part's ground-impact dust) — joins muzzle-flash/ambience as the third
+   * non-event-sourced trigger path `ParticleEmitterDef.source`'s doc
+   * comment already names. No-op if `defId` names no loaded emitter (the
+   * boot cross-check guarantees a content-authored id resolves; a caller
+   * passing a bad id degrades to "no burst", never a throw).
+   */
+  spawnBurstAt(defId: string, origin: Vec3, baseDir?: Vec3): void {
+    const def = this.defsById.get(defId);
+    if (def) this.spawnBurst(def, origin, baseDir);
   }
 
   /**

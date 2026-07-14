@@ -268,6 +268,16 @@ export interface EntityMeshGroup {
    * `.value` at draw time, no shader recompile needed per frame.
    */
   dissolveUniforms: DissolveUniforms[];
+  /**
+   * T-339 — true once a crumble death has detached this entity's bone
+   * groups out of `mesh.group`'s hierarchy into a CrumbleController-owned
+   * per-corpse container. Gates the renderer's per-entity pose-eval block
+   * (`!mesh.crumbling`) so the pose pipeline stops driving bones that no
+   * longer live under this mesh — set once, at death, never fed back into
+   * pose evaluation. `swing_pose.ts`/`ik_solver.ts`/`skeleton_solver.ts`/
+   * `skeleton_evaluator.ts` never read this field.
+   */
+  crumbling: boolean;
 }
 
 // ---- create ----
@@ -309,6 +319,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     rollLiftY: 0,
     layerFades: new Map(),
     dissolveUniforms: [],
+    crumbling: false,
   };
   updateEntityMesh(mesh, state);
   syncNameLabel(mesh, state);
@@ -460,6 +471,12 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
   mesh.gaitDistance = 0;
   mesh.gaitGroundX = null;
   mesh.gaitGroundY = null;
+  // T-339: defensive reset — unreachable in practice (a crumbling mesh is
+  // never model-swapped; CrumbleController.dispose(entityId) is the real
+  // teardown for a crumble-detached bone subtree, called separately from
+  // EntityMeshRegistry.removeEntity), but matches this function's existing
+  // reset-everything-on-clear style.
+  mesh.crumbling = false;
 
   // 2. Bone hierarchy — traverse disposes body-part voxels inside bone groups.
   if (mesh.boneGroups) {
