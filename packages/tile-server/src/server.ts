@@ -73,6 +73,7 @@ import { spawnNpcTableResolver } from "./actions/resolvers/spawn_npc_table.ts";
 import { UnlockStairResolver } from "./actions/resolvers/unlock_stair.ts";
 import { bossArenaUnlockHook } from "./deathhooks/boss_arena_unlock.ts";
 import { createShedDissolveHook } from "./deathhooks/shed_dissolve.ts";
+import { createShedCrumbleHook } from "./deathhooks/shed_crumble.ts";
 import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
 import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
 import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
@@ -481,11 +482,19 @@ export class TileServer {
     // for why the trigger path is structurally unable to see the boss
     // alive by the time it would fire.
     deathHooks.register(bossArenaUnlockHook);
-    // shed_dissolve (T-311 P5c) — corrupted-creature death-dissolve. Same
-    // DeathHook-not-Trigger reasoning as boss_arena_unlock; additionally
-    // votes {linger: true} for profiled entities so DeathSystem defers
-    // world.destroy to the dissolve_timer Resource's terminal threshold.
+    // shed_dissolve (T-311 P5c, refactored onto DeathStyleDef at T-339) —
+    // corrupted-creature death-dissolve. Same DeathHook-not-Trigger
+    // reasoning as boss_arena_unlock; additionally votes {linger: true} for
+    // dissolve-styled entities so DeathSystem defers world.destroy to the
+    // timer Resource's terminal threshold.
     deathHooks.register(createShedDissolveHook(content));
+    // shed_crumble (T-339) — a body breaks apart into its bone parts and
+    // falls (client-driven; the server just lingers the corpse for the
+    // timer's duration). Same shape as shed_dissolve — each hook resolves
+    // the SAME NpcTemplate.deathStyleId -> DeathStyleDef chain and no-ops
+    // unless its OWN style matches, so exactly one of the two ever seeds a
+    // timer for a given death.
+    deathHooks.register(createShedCrumbleHook(content));
     const deathSystem = new DeathSystem(deathHooks);
 
     // Job handler registry — NpcAiSystem dispatches each NPC's current Job
@@ -730,14 +739,17 @@ export class TileServer {
         }
       }
     }
-    // T-311 P5c: every NpcTemplate.dissolveProfileId must resolve — the
-    // shed_dissolve DeathHook and the client bake path both assume it does.
+    // T-339: every NpcTemplate.deathStyleId must resolve — the
+    // shed_dissolve/shed_crumble DeathHooks and the client death-style
+    // registry both assume it does. (A DeathStyleDef's OWN internal refs —
+    // resourceKey/dissolveProfileId/crumble.impactParticleId — are pure
+    // content→content and are already cross-checked in loader.ts.)
     for (const tmpl of content.npcTemplates.values()) {
-      if (tmpl.dissolveProfileId && !content.dissolveProfiles.get(tmpl.dissolveProfileId)) {
+      if (tmpl.deathStyleId && !content.deathStyles.get(tmpl.deathStyleId)) {
         throw new Error(
-          `NpcTemplate "${tmpl.id}" references dissolveProfileId "${tmpl.dissolveProfileId}" ` +
-          `but no such DissolveProfileDef is loaded. ` +
-          `Loaded: [${[...content.dissolveProfiles.ids()].join(", ")}]`,
+          `NpcTemplate "${tmpl.id}" references deathStyleId "${tmpl.deathStyleId}" ` +
+          `but no such DeathStyleDef is loaded. ` +
+          `Loaded: [${[...content.deathStyles.ids()].join(", ")}]`,
         );
       }
     }

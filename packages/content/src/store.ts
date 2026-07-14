@@ -48,6 +48,7 @@ import type {
   DecalDef,
   ParticleEmitterDef,
   DissolveProfileDef,
+  DeathStyleDef,
   CliffProfileDef,
   ZoneDef,
   PoiDef,
@@ -180,12 +181,19 @@ export interface ContentService {
 
   /**
    * Corrupted-creature dissolve/fray profiles keyed by id (T-311 P5c).
-   * Loaded from `data/dissolve_profiles/*.json`; referenced by
-   * `NpcTemplate.dissolveProfileId`. Drives the shed_dissolve DeathHook's
-   * `dissolve_timer` seeding and the client's fray/coreness bake + in-shader
-   * drift. See VISUAL_DATAMODEL_PLAN.md §I3b.
+   * Loaded from `data/dissolve_profiles/*.json`; referenced by a
+   * dissolve-style `DeathStyleDef.dissolveProfileId` (T-339). Drives the
+   * shed_dissolve DeathHook's timer seeding and the client's fray/coreness
+   * bake + in-shader drift. See VISUAL_DATAMODEL_PLAN.md §I3b.
    */
   readonly dissolveProfiles: ContentRegistryReadonly<DissolveProfileDef>;
+
+  /**
+   * Death styles keyed by id (T-339) — "what happens to a body on death",
+   * dispatched by `style` through a registry on server + client. Loaded
+   * from `data/death_styles/*.json`; referenced by `NpcTemplate.deathStyleId`.
+   */
+  readonly deathStyles: ContentRegistryReadonly<DeathStyleDef>;
 
   /**
    * Cliff profiles keyed by id (T-311 Phase 6). Loaded from
@@ -390,6 +398,10 @@ export class StaticContentStore implements ContentService {
     kind: "dissolveProfile",
     idOf: (d) => d.id,
   });
+  public readonly deathStyles = new ContentRegistry<DeathStyleDef>({
+    kind: "deathStyle",
+    idOf: (d) => d.id,
+  });
   public readonly cliffProfiles = new ContentRegistry<CliffProfileDef>({
     kind: "cliffProfile",
     idOf: (c) => c.id,
@@ -552,6 +564,10 @@ export class StaticContentStore implements ContentService {
 
   registerDissolveProfile(def: DissolveProfileDef): void {
     this.dissolveProfiles.register(def);
+  }
+
+  registerDeathStyle(def: DeathStyleDef): void {
+    this.deathStyles.register(def);
   }
 
   registerCliffProfile(def: CliffProfileDef): void {

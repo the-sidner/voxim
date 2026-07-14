@@ -29,12 +29,12 @@ import type {
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, GameConfig, TileLayout, Prefab,
   ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, ParticleEmitterDef, DissolveProfileDef, CliffProfileDef, Palette,
+  AtmosphereDef, WaterStyleDef, DecalDef, ParticleEmitterDef, DissolveProfileDef, DeathStyleDef, CliffProfileDef, Palette,
   GaitDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 23;
+export const BOOTSTRAP_VERSION = 24;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -64,6 +64,7 @@ interface ContentBootstrapJson {
   decals:              DecalDef[];
   particles:           ParticleEmitterDef[];
   dissolveProfiles:    DissolveProfileDef[];
+  deathStyles:         DeathStyleDef[];
   cliffProfiles:       CliffProfileDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
@@ -145,6 +146,7 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     decals:              [...service.decals.values()],
     particles:           [...service.particles.values()],
     dissolveProfiles:    [...service.dissolveProfiles.values()],
+    deathStyles:         [...service.deathStyles.values()],
     cliffProfiles:       [...service.cliffProfiles.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
@@ -238,6 +240,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const d of body.decals ?? [])         store.registerDecal(d);
   for (const p of body.particles ?? [])      store.registerParticle(p);
   for (const d of body.dissolveProfiles ?? []) store.registerDissolveProfile(d);
+  for (const d of body.deathStyles ?? [])    store.registerDeathStyle(d);
   for (const c of body.cliffProfiles ?? [])  store.registerCliffProfile(c);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);

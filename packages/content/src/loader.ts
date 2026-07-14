@@ -22,7 +22,7 @@
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
 import type { MaterialDef, MaterialProperties, MaterialGeneratorPreferences, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
-  AtmosphereDef, WaterStyleDef, DecalDef, ParticleEmitterDef, DissolveProfileDef, CliffProfileDef, Palette, SwingableData, ArmorData, EquippableData, GaitDef, GaitKeyframe } from "./types.ts";
+  AtmosphereDef, WaterStyleDef, DecalDef, ParticleEmitterDef, DissolveProfileDef, DeathStyleDef, CliffProfileDef, Palette, SwingableData, ArmorData, EquippableData, GaitDef, GaitKeyframe } from "./types.ts";
 import { crossCheckFieldExpr } from "./field_expr.ts";
 import { crossCheckBodyRecipe } from "./body_recipe.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
@@ -55,7 +55,7 @@ async function loadContentStoreInternal(
     loreRaw, prefabsRaw, npcTemplatesRaw,
     weaponActionsRaw, gaitsRaw, actionsRaw, behaviorTreesRaw,
     biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
-    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, particlesRaw, dissolveProfilesRaw, cliffProfilesRaw, animLibraryArchetypes,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, particlesRaw, dissolveProfilesRaw, deathStylesRaw, cliffProfilesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -83,6 +83,7 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "decals"),
     readJsonDirOptional(dataDir, "particles"),
     readJsonDirOptional(dataDir, "dissolve_profiles"),
+    readJsonDirOptional(dataDir, "death_styles"),
     readJsonDirOptional(dataDir, "cliff_profiles"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
@@ -313,6 +314,10 @@ async function loadContentStoreInternal(
     validateDissolveProfileDef(raw);
     store.registerDissolveProfile(raw);
   }
+  for (const raw of deathStylesRaw as DeathStyleDef[]) {
+    validateDeathStyleDef(raw);
+    store.registerDeathStyle(raw);
+  }
   for (const raw of cliffProfilesRaw as CliffProfileDef[]) {
     store.registerCliffProfile(raw);
   }
@@ -332,6 +337,24 @@ async function loadContentStoreInternal(
       throw new Error(
         `[content] atmosphere "${atmo.id}" references unknown particle emitter "${atmo.ambienceParticleId}"`,
       );
+    }
+  }
+  // T-339: a DeathStyleDef's own internal refs — resourceKey, a dissolve
+  // style's dissolveProfileId, a crumble style's impactParticleId — must
+  // all resolve (content→content id refs, same split as muzzleParticleId/
+  // ambienceParticleId above). Whether an NpcTemplate.deathStyleId resolves
+  // to one of these defs, and whether `style` names a registered server
+  // DeathHook, are checked in server.ts instead — same split as the
+  // trigger/dissolveProfileId NpcTemplate checks already living there.
+  for (const ds of store.deathStyles.values()) {
+    if (!store.resources.get(ds.resourceKey)) {
+      throw new Error(`[content] death style "${ds.id}" references unknown resource "${ds.resourceKey}"`);
+    }
+    if (ds.style === "dissolve" && ds.dissolveProfileId && !store.dissolveProfiles.get(ds.dissolveProfileId)) {
+      throw new Error(`[content] death style "${ds.id}" references unknown dissolve profile "${ds.dissolveProfileId}"`);
+    }
+    if (ds.style === "crumble" && ds.crumble && !store.particles.get(ds.crumble.impactParticleId)) {
+      throw new Error(`[content] death style "${ds.id}" references unknown particle emitter "${ds.crumble.impactParticleId}"`);
     }
   }
   for (const s of store.scatter.values()) {
@@ -1124,6 +1147,53 @@ export function validateDissolveProfileDef(def: DissolveProfileDef): void {
   }
   if (def.phaseCurve !== undefined && def.phaseCurve !== "linear" && def.phaseCurve !== "smoothstep") {
     throw new Error(`DissolveProfileDef '${def.id}': 'phaseCurve' must be 'linear' | 'smoothstep'`);
+  }
+}
+
+/** Shape-validate one DeathStyleDef (T-339). Cross-registry refs
+ *  (resourceKey/dissolveProfileId/crumble.impactParticleId) are checked
+ *  after every def has loaded — see the loop right after this function's
+ *  call site. */
+export function validateDeathStyleDef(def: DeathStyleDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`DeathStyleDef: missing or empty id`);
+  }
+  if (def.style !== "dissolve" && def.style !== "crumble") {
+    throw new Error(`DeathStyleDef '${def.id}': 'style' must be 'dissolve' | 'crumble'`);
+  }
+  if (typeof def.resourceKey !== "string" || def.resourceKey.length === 0) {
+    throw new Error(`DeathStyleDef '${def.id}': 'resourceKey' must be a non-empty resource id`);
+  }
+  if (def.style === "dissolve") {
+    if (typeof def.dissolveProfileId !== "string" || def.dissolveProfileId.length === 0) {
+      throw new Error(`DeathStyleDef '${def.id}': style "dissolve" requires 'dissolveProfileId'`);
+    }
+    return;
+  }
+  const c = def.crumble;
+  if (!c) {
+    throw new Error(`DeathStyleDef '${def.id}': style "crumble" requires a 'crumble' block`);
+  }
+  if (!Array.isArray(c.impulseSpeed) || c.impulseSpeed.length !== 2 || c.impulseSpeed[0] < 0 || c.impulseSpeed[1] < c.impulseSpeed[0]) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.impulseSpeed must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (typeof c.spreadDeg !== "number" || c.spreadDeg < 0 || c.spreadDeg > 180) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.spreadDeg must be in [0,180]`);
+  }
+  if (typeof c.gravityScale !== "number" || c.gravityScale < 0) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.gravityScale must be ≥ 0`);
+  }
+  if (!Array.isArray(c.spinSpeed) || c.spinSpeed.length !== 2 || c.spinSpeed[0] < 0 || c.spinSpeed[1] < c.spinSpeed[0]) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.spinSpeed must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (typeof c.durationTicks !== "number" || c.durationTicks <= 0) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.durationTicks must be > 0`);
+  }
+  if (typeof c.fadeTicks !== "number" || c.fadeTicks < 0 || c.fadeTicks > c.durationTicks) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.fadeTicks must be in [0, durationTicks]`);
+  }
+  if (typeof c.impactParticleId !== "string" || c.impactParticleId.length === 0) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.impactParticleId must be a non-empty particle id`);
   }
 }
 

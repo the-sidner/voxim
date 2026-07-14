@@ -13,5 +13,5 @@
   "seekFoodTicks": 200,
   "speedMultiplier": 1.3,
   "weaponItemType": "drowner_claws",
-  "dissolveProfileId": "drowner_rot"
+  "deathStyleId": "dissolve"
 }

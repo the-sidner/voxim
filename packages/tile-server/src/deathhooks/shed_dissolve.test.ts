@@ -12,7 +12,7 @@
 import { assert, assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId, Registry } from "@voxim/engine";
 import { StaticContentStore, JsonSource } from "@voxim/content";
-import type { NpcTemplate, DissolveProfileDef } from "@voxim/content";
+import type { NpcTemplate, DissolveProfileDef, DeathStyleDef } from "@voxim/content";
 import { Health } from "../components/game.ts";
 import { NpcTag } from "../components/npcs.ts";
 import { Resource } from "../components/resource.ts";
@@ -42,13 +42,20 @@ const rotProfile: DissolveProfileDef = {
   phaseCurve: "linear",
 };
 
+const rotStyle: DeathStyleDef = {
+  id: "test_dissolve_style",
+  style: "dissolve",
+  resourceKey: "dissolve_timer",
+  dissolveProfileId: "test_rot",
+};
+
 const rotTemplate: NpcTemplate = {
   id: "test_drowner",
   displayName: "Test Drowner",
   maxHealth: 55,
   fleeHealthRatio: 0,
   behaviorTreeId: "hostile",
-  dissolveProfileId: "test_rot",
+  deathStyleId: "test_dissolve_style",
 };
 
 const plainTemplate: NpcTemplate = {
@@ -62,6 +69,7 @@ const plainTemplate: NpcTemplate = {
 function newContent(): StaticContentStore {
   const c = new StaticContentStore();
   c.registerDissolveProfile(rotProfile);
+  c.registerDeathStyle(rotStyle);
   c.registerNpcTemplate(rotTemplate);
   c.registerNpcTemplate(plainTemplate);
   return c;

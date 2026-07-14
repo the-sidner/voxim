@@ -18,5 +18,6 @@
     "chest": "plate_chest",
     "head": "plate_helm",
     "legs": "plate_greaves"
-  }
+  },
+  "deathStyleId": "crumble"
 }

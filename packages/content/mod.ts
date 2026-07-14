@@ -22,6 +22,8 @@ export type {
   DecalDef,
   ParticleEmitterDef,
   DissolveProfileDef,
+  DeathStyleDef,
+  CrumbleStyleParams,
   CliffProfileDef,
   CliffErosionState,
   MaterialProperties,
