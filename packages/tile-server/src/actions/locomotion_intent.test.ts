@@ -31,7 +31,7 @@ function rig(opts: {
   world.write(id, Facing, { angle: opts.facing ?? 0 });
   const actions = (opts.jump ? ACTION_JUMP : 0) | (opts.dodge ? ACTION_DODGE : 0);
   world.write(id, InputState, {
-    facing: 0, movementX: 0, movementY: 0, actions, chargeMs: 0, seq: 0, timestamp: 0, rttMs: 0,
+    facing: 0, pitch: 0, movementX: 0, movementY: 0, actions, chargeMs: 0, seq: 0, timestamp: 0, rttMs: 0,
   });
   if (opts.airborne) world.write(id, Airborne, {});
   const states: Record<string, unknown> = {};

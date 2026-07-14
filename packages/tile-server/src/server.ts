@@ -1309,6 +1309,7 @@ export class TileServer {
 
         this.world.write(playerId, InputState, {
           facing: latest.facing,
+          pitch: latest.pitch,
           movementX: latest.movementX,
           movementY: latest.movementY,
           actions: mergedActions,

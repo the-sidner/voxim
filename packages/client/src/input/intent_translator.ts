@@ -393,6 +393,9 @@ export class IntentTranslator {
       tick,
       timestamp: Date.now(),
       facing: this._facing,
+      // T-337: real aim-pitch capture lands in a later commit (the
+      // hold-to-aim input work); 0 = level is a safe placeholder until then.
+      pitch: 0,
       movementX: movX,
       movementY: movY,
       actions,

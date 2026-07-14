@@ -49,7 +49,7 @@ function postureRig() {
   world.create(id);
   world.write(id, ActorSlots, { slots: ["posture"] });
   world.write(id, ActiveActions, { states: {} });
-  world.write(id, InputState, { seq: 0, timestamp: 0, facing: 0, movementX: 0, movementY: 0, actions: 0, chargeMs: 0, rttMs: 0 });
+  world.write(id, InputState, { seq: 0, timestamp: 0, facing: 0, pitch: 0, movementX: 0, movementY: 0, actions: 0, chargeMs: 0, rttMs: 0 });
   return { world, d, id };
 }
 
@@ -64,14 +64,14 @@ Deno.test("crouch input installs the Crouched tag; release clears it", () => {
 
   // Hold crouch → dispatcher cancels upright (cancel "any"), starts
   // `crouched`, whose hold:enter set_tag installs Crouched.
-  world.write(id, InputState, { seq: 1, timestamp: 0, facing: 0, movementX: 0, movementY: 0, actions: ACTION_CROUCH, chargeMs: 0, rttMs: 0 });
+  world.write(id, InputState, { seq: 1, timestamp: 0, facing: 0, pitch: 0, movementX: 0, movementY: 0, actions: ACTION_CROUCH, chargeMs: 0, rttMs: 0 });
   d.run(world, new EventBus(), 1 / 20);
   world.applyChangeset();
   assertEquals(world.get(id, ActiveActions)?.states["posture"]?.actionId, "crouched");
   assert(world.has(id, Crouched), "Crouched tag set while crouch held");
 
   // Release → back to `upright`, crouched hold:exit clears the tag.
-  world.write(id, InputState, { seq: 2, timestamp: 0, facing: 0, movementX: 0, movementY: 0, actions: 0, chargeMs: 0, rttMs: 0 });
+  world.write(id, InputState, { seq: 2, timestamp: 0, facing: 0, pitch: 0, movementX: 0, movementY: 0, actions: 0, chargeMs: 0, rttMs: 0 });
   d.run(world, new EventBus(), 1 / 20);
   world.applyChangeset();
   assertEquals(world.get(id, ActiveActions)?.states["posture"]?.actionId, "upright");

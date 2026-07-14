@@ -16,8 +16,8 @@ const HELD = 1 << 1; // pretend BLOCK is the only held bit for these tests
 
 function dg(seq: number, over: Partial<MovementDatagram> = {}): MovementDatagram {
   return {
-    seq, timestamp: 0, facing: 0, movementX: 0, movementY: 0,
-    actions: 0, chargeMs: 0, interactSlot: 0,
+    seq, timestamp: 0, facing: 0, pitch: 0, movementX: 0, movementY: 0,
+    actions: 0, chargeMs: 0,
     ...over,
   } as MovementDatagram;
 }
@@ -33,6 +33,12 @@ Deno.test("T-253: non-finite movement/facing is zeroed, finite fields survive", 
   assertEquals(m.latest.facing, 0);
   assertEquals(m.latest.chargeMs, 0);
   assertEquals(m.latest.seq, 5);
+});
+
+Deno.test("T-253: non-finite pitch is zeroed the same way as facing/chargeMs", () => {
+  const m = sanitizeAndMergeInputs([dg(5, { pitch: NaN })], 0, HELD);
+  assert(m);
+  assertEquals(m.latest.pitch, 0);
 });
 
 Deno.test("T-253: stale and replayed seqs are discarded; latest is chosen by seq, not arrival", () => {

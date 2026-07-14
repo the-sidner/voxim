@@ -82,7 +82,7 @@ Deno.test("T-038: deploying a job_board stamps the placer's dynasty as Workbench
   const placer = newEntityId();
   world.create(placer);
   world.write(placer, Position, { x: 0, y: 0, z: 0 });
-  world.write(placer, InputState, { facing: 0, movementX: 0, movementY: 0, actions: 0, chargeMs: 0, seq: 0, timestamp: 0, rttMs: 0 });
+  world.write(placer, InputState, { facing: 0, pitch: 0, movementX: 0, movementY: 0, actions: 0, chargeMs: 0, seq: 0, timestamp: 0, rttMs: 0 });
   world.write(placer, Heritage, { dynastyId: "dynasty-alpha", generation: 0, traits: [] });
   world.write(placer, Inventory, { slots: [{ kind: "stack", prefabId: "job_board_kit", quantity: 1 }], capacity: 20 });
 
@@ -104,7 +104,7 @@ Deno.test("T-038: deploying a non-board deployable leaves no WorkbenchOwner", ()
   const placer = newEntityId();
   world.create(placer);
   world.write(placer, Position, { x: 0, y: 0, z: 0 });
-  world.write(placer, InputState, { facing: 0, movementX: 0, movementY: 0, actions: 0, chargeMs: 0, seq: 0, timestamp: 0, rttMs: 0 });
+  world.write(placer, InputState, { facing: 0, pitch: 0, movementX: 0, movementY: 0, actions: 0, chargeMs: 0, seq: 0, timestamp: 0, rttMs: 0 });
   world.write(placer, Heritage, { dynastyId: "dynasty-alpha", generation: 0, traits: [] });
   world.write(placer, Inventory, { slots: [{ kind: "stack", prefabId: "workbench_kit", quantity: 1 }], capacity: 20 });
 

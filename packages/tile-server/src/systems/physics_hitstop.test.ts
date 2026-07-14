@@ -24,7 +24,7 @@ function spawnMover(world: World, x: number): string {
   world.write(id, Facing, { angle: 0 });
   // Moving forward (+x) so a non-frozen tick would visibly advance position.
   world.write(id, InputState, {
-    seq: 0, timestamp: 0, facing: 0, movementX: 1, movementY: 0, actions: 0,
+    seq: 0, timestamp: 0, facing: 0, pitch: 0, movementX: 1, movementY: 0, actions: 0,
     rttMs: 0, chargeMs: 0,
   });
   return id;

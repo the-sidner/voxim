@@ -368,19 +368,26 @@ export const inventorySlotCodec: Serialiser<InventorySlot> = {
 // ---- InputState -------------------------------------------------------------
 // Player/NPC intent for the current tick. Written immediately at tick start
 // from the drained input ring buffer (player sessions) or from NpcAi. Read by
-// every downstream system. Networked so the client can render other players'
-// facing / movement intent between state messages.
+// every downstream system. Server-only (networked: false on the component def
+// in tile-server/components/game.ts) — every writer uses world.write(), so it
+// never produces a wire delta; wire id 5 stays reserved but unused.
 
 export interface InputStateData {
   facing: number;
+  /**
+   * Aim pitch (T-337): elevation angle above horizontal, radians, 0 = level.
+   * Mirrors MovementDatagram.pitch; NPCs never set this (no ranged aim today)
+   * so it stays at the component default (0).
+   */
+  pitch: number;
   movementX: number;
   movementY: number;
   actions: number;
   /**
    * Duration the use-skill button was held before release, in milliseconds.
-   * Written when ACTION_USE_SKILL is set on this tick; otherwise 0. ActionSystem
-   * reads it to pick the matching weapon action variant from the equipped
-   * weapon's `swingable.actions[]`.
+   * Written when ACTION_USE_SKILL is set on this tick; otherwise 0.
+   * PrimaryIntentResolver reads it to pick the matching weapon action variant
+   * from the equipped weapon's `swingable.heavyChargeMs` threshold.
    */
   chargeMs: number;
   seq: number;
@@ -390,6 +397,7 @@ export interface InputStateData {
 
 export const inputStateCodec: Serialiser<InputStateData> = buildCodec<InputStateData>({
   facing: { type: "f32" },
+  pitch: { type: "f32" },
   movementX: { type: "f32" },
   movementY: { type: "f32" },
   actions: { type: "i32" },
