@@ -13,5 +13,6 @@
   "fleeTicks": 0,
   "seekFoodTicks": 9999,
   "speedMultiplier": 0.55,
-  "weaponItemType": "heavy_thrower_maul"
+  "weaponItemType": "heavy_thrower_maul",
+  "deathStyleId": "crumble"
 }

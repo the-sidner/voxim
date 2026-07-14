@@ -1586,8 +1586,8 @@ export interface DecalDef {
 
 /**
  * DissolveProfileDef (T-311 P5c, grammar G6 + I3b) — how a corrupted
- * creature frays and sheds voxels as it dissolves on death. Referenced by
- * `NpcTemplate.dissolveProfileId`, boot-cross-checked.
+ * creature frays and sheds voxels as it dissolves on death. Referenced by a
+ * dissolve-style `DeathStyleDef.dissolveProfileId` (T-339), boot-cross-checked.
  *
  * Rendering is fully in-shader: static per-voxel attributes (which voxels
  * are "loose", their drift seed) are baked once at model build from each
@@ -1625,6 +1625,72 @@ export interface DissolveProfileDef {
   phaseCurve?: "linear" | "smoothstep";
 }
 
+/**
+ * DeathStyleDef (T-339) — "what happens to a body on death", dispatched by
+ * `style` through a registry on both server (DeathHooks) and client (a
+ * `registerDeathStyle` registry mirroring decal_sources.ts/particle_sources.ts)
+ * — never a hardcoded switch. Two styles exist: `dissolve` (the T-311 P5c
+ * fray/shed, now driven THROUGH this def instead of a bare
+ * `NpcTemplate.dissolveProfileId`) and `crumble` (the body breaks apart into
+ * its bone parts and falls, T-339). Active ragdoll is a later style in this
+ * same registry — not built here (no rigid-body solver exists yet).
+ *
+ * Referenced by `NpcTemplate.deathStyleId`, boot-cross-checked.
+ */
+export interface DeathStyleDef {
+  id: string;
+  style: "dissolve" | "crumble";
+  /**
+   * Resource id (`data/resources/{id}.json`) this style's DeathHook seeds on
+   * death (`{value: durationTicks, max: durationTicks}`) to linger the
+   * corpse for the effect's duration — the SAME id the client's death-style
+   * dispatch scans for on the dying entity's already-networked `Resource`
+   * component to decide which style (if any) is active and for how long
+   * (`rv.max`, wire-authoritative). Naming the key here — rather than each
+   * side separately hardcoding a `"${style}_timer"` convention — means
+   * server and client can never drift on what string to look for. Must
+   * resolve in `ContentService.resources` (boot-cross-checked).
+   */
+  resourceKey: string;
+  /** style==="dissolve" only: which DissolveProfileDef drives the fray/shed
+   *  shader (bake-time fray attributes + the networked `dissolutionPhase`
+   *  scalar). Must resolve in `ContentService.dissolveProfiles`
+   *  (boot-cross-checked). */
+  dissolveProfileId?: string;
+  /** style==="crumble" only: physical break-apart tuning. */
+  crumble?: CrumbleStyleParams;
+}
+
+/** Crumble-style tuning (T-339) — content, never hardcoded TS tuning. Each
+ *  bone piece launches outward from the corpse's centroid, falls under the
+ *  shared `ballisticStep` (the SAME integrator projectiles/particles use —
+ *  never a second one), settles on the terrain, and fades over the
+ *  linger window's final `fadeTicks`. */
+export interface CrumbleStyleParams {
+  /** Outward launch speed [min,max] world units/second per bone piece. */
+  impulseSpeed: [number, number];
+  /** Cone half-angle (degrees) blended with each piece's outward-from-
+   *  centroid direction — same idiom as `ParticleEmitterDef.spreadDeg`. */
+  spreadDeg: number;
+  /** Multiplies `GameConfig.physics.gravity` — mirrors
+   *  `ParticleEmitterDef.gravityScale`'s naming. */
+  gravityScale: number;
+  /** Tumble angular speed [min,max] rad/s, rolled per piece around a random
+   *  axis; frozen once the piece settles on the ground. */
+  spinSpeed: [number, number];
+  /** Ticks the corpse lingers before teardown — seeds this def's
+   *  `resourceKey` Resource's max (and starting value). */
+  durationTicks: number;
+  /** Trailing ticks (of `durationTicks`) over which every piece shrinks to
+   *  nothing — a voxel-honest size-curve fade (never alpha), matching
+   *  `ParticleEmitterDef.size` / decal_renderer.ts's established fade idiom. */
+  fadeTicks: number;
+  /** `ParticleEmitterDef` id fired once per piece the instant it first
+   *  touches terrain height. Must resolve in `ContentService.particles`
+   *  (boot-cross-checked). */
+  impactParticleId: string;
+}
+
 // ---- particles ----
 
 /**
@@ -1646,7 +1712,8 @@ export interface ParticleEmitterDef {
    *  catalog, mirrors DecalDef.source); boot-cross-checked. Absent for
    *  emitters triggered by a fixed mechanism instead of a wire GameEvent
    *  (muzzle flash: WeaponActionDef.muzzleParticleId; ambience:
-   *  AtmosphereDef.ambienceParticleId). */
+   *  AtmosphereDef.ambienceParticleId; crumble impact:
+   *  CrumbleStyleParams.impactParticleId). */
   source?: string;
   /** Splat material NAME — palette-snapped colour + flatShaded look via
    *  buildVoxelMaterial, same idiom as DecalDef.material (not a raw palette
@@ -1865,15 +1932,15 @@ export interface NpcTemplate {
    */
   triggers?: string[];
   /**
-   * Corrupted-creature dissolve/fray profile (T-311 P5c, grammar G6) —
-   * `data/dissolve_profiles/{id}.json`. Absent = this archetype never frays
-   * or dissolves on death (a corpse just vanishes, the pre-existing
-   * behaviour). Must resolve in `ContentService.dissolveProfiles`
-   * (boot-cross-checked). Read by the `shed_dissolve` DeathHook to seed the
-   * `dissolve_timer` Resource, and by the client bake path to derive
-   * fray/coreness per voxel.
+   * Death style (T-339) — `data/death_styles/{id}.json`. Absent = this
+   * archetype's corpse just vanishes on death (the pre-existing default
+   * behaviour). Must resolve in `ContentService.deathStyles`
+   * (boot-cross-checked). Read by the `shed_dissolve`/`shed_crumble`
+   * DeathHooks to decide which corpse-lifetime Resource to seed; a
+   * dissolve-styled entity's client bake path also derives fray/coreness
+   * per voxel from the named `DissolveProfileDef`.
    */
-  dissolveProfileId?: string;
+  deathStyleId?: string;
 }
 
 // ---- resource nodes ----

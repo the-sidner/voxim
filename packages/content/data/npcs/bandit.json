@@ -9,5 +9,6 @@
   "wanderTicks": 50,
   "attackTicks": 30,
   "fleeTicks": 80,
-  "weaponItemType": "wooden_sword"
+  "weaponItemType": "wooden_sword",
+  "deathStyleId": "crumble"
 }

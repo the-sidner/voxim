@@ -15,7 +15,8 @@
  * `.then()` off them with a stale-guard pattern that assumes a microtask
  * boundary.
  */
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, CliffProfileDef, ActionDef, ProcModelDef, GaitDef } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationClip, BoneMask, HitboxPartTemplate, BoneDef, ContentService, Palette, GradeDef, LightDef, AtmosphereDef, WaterStyleDef, GameConfig, DissolveProfileDef, DeathStyleDef, CliffProfileDef, ActionDef, ProcModelDef, GaitDef } from "@voxim/content";
+import type { ResourceValue } from "@voxim/codecs";
 
 export class ContentCache {
   /**
@@ -143,6 +144,31 @@ export class ContentCache {
     const profiles = this.bootstrapService?.dissolveProfiles;
     if (!profiles || profiles.size !== 1) return null;
     return profiles.values().next().value ?? null;
+  }
+
+  /**
+   * The death style active on a JUST-died entity (T-339), or null if none.
+   * Scans every loaded `DeathStyleDef` for the one whose `resourceKey` is
+   * present on the entity's own (already-networked) `Resource` component —
+   * whichever server DeathHook actually fired seeded exactly one such key,
+   * so this is a wire-correct per-entity STYLE dispatch (dissolve / crumble
+   * / none) with zero new wire cost. `durationTicks` comes from the
+   * matched key's `.max` (wire-authoritative), not from content, so client
+   * timing always matches what the server actually seeded THIS entity.
+   *
+   * Which CrumbleStyleParams/DissolveProfileDef apply is resolved from
+   * whichever def matched — a v1 limitation if content ever authors more
+   * than one DeathStyleDef per style (not exercised today: exactly one
+   * "dissolve" and one "crumble" def exist), same shape as the pre-existing
+   * `getSoleDissolveProfileSync` limitation above.
+   */
+  getActiveDeathStyle(resourceValues: Record<string, ResourceValue> | undefined): { def: DeathStyleDef; durationTicks: number } | null {
+    if (!resourceValues) return null;
+    for (const def of this.bootstrapService?.deathStyles.values() ?? []) {
+      const rv = resourceValues[def.resourceKey];
+      if (rv) return { def, durationTicks: rv.max };
+    }
+    return null;
   }
 
   getSkeletonSync(skeletonId: string): SkeletonDef | undefined {

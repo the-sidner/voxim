@@ -36,6 +36,7 @@ import { RoofRenderer } from "./render/roof_renderer.ts";
 import { DecalRenderer } from "./render/decal_renderer.ts";
 import { crossCheckDecals } from "./render/decal_sources.ts";
 import { crossCheckParticles } from "./render/particle_sources.ts";
+import { crossCheckDeathStyles } from "./render/death_style_registry.ts";
 import { AimIndicatorRenderer } from "./render/aim_indicator.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
@@ -383,6 +384,9 @@ export class VoximGame {
       // T-340: every ParticleEmitterDef.source resolves to a registered
       // particle source, and every def.material resolves to a known material.
       crossCheckParticles(this.contentService);
+      // T-339: every DeathStyleDef.style resolves to a registered client
+      // death-style handler.
+      crossCheckDeathStyles(this.contentService);
       // T-311 P6: every CliffProfileDef.id resolves to a registered cliffVoxeliser.
       crossCheckCliffVoxelisers(this.contentService);
       // T-315 D5: LOS gameplay tuning moved from protocol/fog.ts to
@@ -885,6 +889,7 @@ export class VoximGame {
           case "EntityDied":
             console.log(`[Event] EntityDied entity=${ev.entityId.slice(-6)}${ev.killerId ? ` killer=${ev.killerId.slice(-6)}` : ""}`);
             this.decals?.onEvent(ev);
+            this.renderer?.onEntityDied(ev.entityId);
             if (ev.entityId === this.playerId) {
               openPanel("death", true);
               pushToast("You died", "danger");

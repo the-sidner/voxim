@@ -36,6 +36,8 @@ import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "
 import { computeTelegraphLayer } from "./telegraph.ts";
 import { computeIframeFlash, applyIframeFlash } from "./iframe_flash.ts";
 import { InstancePool } from "./instance_pool.ts";
+import { CrumbleController } from "./crumble_controller.ts";
+import { registerDeathStyle, getDeathStyleHandler } from "./death_style_registry.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
 import { solveSwingPose, applyLocomotionPose, applyCrouchPose, applyFootTerrainIK, applyLookAtPose, applyGaitPose, timeOfDay01 } from "@voxim/content";
 import type { BoneRotation, LocoState } from "@voxim/content";
@@ -268,6 +270,15 @@ export class VoximRenderer {
   private readonly _skeletonOverlay: SkeletonOverlay;
   private readonly _chunkOverlay:    ChunkOverlay;
   private readonly particles: ParticleSystem;
+  /** "crumble" death-style handler (T-339) — registered under that style id
+   *  in the constructor; `onEntityDied`/`render()` drive it. */
+  private readonly crumbleController: CrumbleController;
+  /** Physics gravity constant (T-340/T-339) — pre-hydration placeholder
+   *  only, overwritten by setParticlePhysics() the moment content loads.
+   *  Never authored tuning (that's content); mirrors ParticleSystem's own
+   *  `gravity` field so crumble's ballistic integration shares the exact
+   *  same constant the particle system uses, without a second lookup path. */
+  private gravity = 20;
   private readonly lightManager = new LightManager();
 
   private cameraTarget = new THREE.Vector3(256, 4, 256);
@@ -399,6 +410,15 @@ export class VoximRenderer {
     this.debugOverlayManager.register("hitbox",    new HitboxDebugOverlay());
 
     this.particles = new ParticleSystem(this.instancePool);
+    // T-339: the real, stateful "crumble" handler — overwrites the
+    // placeholder death_style_registry.ts's registerBuiltinDeathStyles()
+    // registered before this renderer existed (see that file's header for
+    // why the ordering is safe).
+    this.crumbleController = new CrumbleController();
+    registerDeathStyle(
+      "crumble",
+      (entityId, mesh, def, durationTicks, ctx) => this.crumbleController.onDeath(entityId, mesh, def, durationTicks, ctx),
+    );
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     // Supersample: render the whole pipeline at up to 2× the CSS resolution and
@@ -824,6 +844,11 @@ export class VoximRenderer {
 
   removeEntity(entityId: string): void {
     this.entities.removeEntity(entityId);
+    // T-339: the ONE choke point that covers both a crumble corpse's
+    // natural end-of-timer destroy AND an early AoI-exit/tile-transition —
+    // clearMeshContent's own dispose-traverse can't reach a crumble-
+    // detached bone subtree (it lives in the controller's own container).
+    this.crumbleController.dispose(entityId);
   }
 
   /**
@@ -1156,7 +1181,12 @@ export class VoximRenderer {
     const animDtMs = now < this.hitStopUntilMs ? Math.min(rawDtMs, 1) : rawDtMs;
     // Drive skeleton poses for all animated entities.
     for (const [id, mesh] of this.entities.all) {
-      if (mesh.boneGroups && mesh.skeletonId && this.content) {
+      // T-339: a crumbling entity's bone groups have been detached out of
+      // this hierarchy into CrumbleController's own container — skip pose
+      // evaluation for it entirely (there is nothing left under mesh.group
+      // to pose). Never true for a living entity, so this is a no-op guard
+      // on the hot path for everyone else.
+      if (mesh.boneGroups && mesh.skeletonId && this.content && !mesh.crumbling) {
         const anim = mesh.animationState;
         // Death-dissolve (T-311 P5c): push the server-derived phase into
         // this entity's dissolve-drift uniforms every frame — no-op array
@@ -1509,6 +1539,17 @@ export class VoximRenderer {
     // physics integrate right after (replaces hitSparkRenderer/dustMotes).
     this.particles.updateMuzzleFlashes(this.entities.all, this.weaponActionsMap, now);
     this.particles.update(dt, this.cameraTarget);
+    // T-339: crumbling corpses fall/settle/fade — same dt this frame's
+    // particles just integrated with, same terrain-height lookup the aim
+    // indicator/foot-terrain IK already use.
+    if (this.world) {
+      const world = this.world;
+      this.crumbleController.update(
+        dt, this.gravity,
+        (x, y) => world.getTerrainHeight(x, y),
+        (defId, origin) => this.particles.spawnBurstAt(defId, origin),
+      );
+    }
     canopyFade.setWindTime(now);
     this.edgePass.setTime(now * 0.001);
     this.lightManager.tick(now, this.camera.position);
@@ -1623,6 +1664,35 @@ export class VoximRenderer {
     this.particles.onEvent(ev);
   }
 
+  /**
+   * Death-style dispatch (T-339) — consumes the EntityDied fact. Resolves
+   * WHICH style (if any) is active by scanning the dying entity's own,
+   * already-networked Resource component (ContentCache.getActiveDeathStyle
+   * — see its doc comment for the wire-correctness argument), then
+   * dispatches through the client death-style registry. A no-op for a
+   * player death or any entity whose corpse just vanishes (no DeathStyleDef
+   * matched) — dissolve's own handler is ALSO a no-op (its visual is
+   * already driven every frame off AnimationState.dissolutionPhase), so
+   * only a crumble death actually does anything here today.
+   */
+  onEntityDied(entityId: string): void {
+    if (!this.content || !this.world) return;
+    const mesh = this.entities.getEntityMesh(entityId);
+    const state = this.world.get(entityId);
+    if (!mesh || !state) return;
+    const active = this.content.getActiveDeathStyle(state.resource?.values);
+    if (!active) return;
+    const handler = getDeathStyleHandler(active.def.style);
+    if (!handler) return;
+    const world = this.world;
+    handler(entityId, mesh, active.def, active.durationTicks, {
+      scene: this.scene,
+      getTerrainHeight: (x, y) => world.getTerrainHeight(x, y),
+      spawnParticleBurst: (defId, origin) => this.particles.spawnBurstAt(defId, origin),
+      gravity: this.gravity,
+    });
+  }
+
   /** Register particle emitter definitions (T-340), from the bootstrap-
    *  delivered ContentService. */
   setParticleDefs(defs: ParticleEmitterDef[]): void {
@@ -1630,9 +1700,11 @@ export class VoximRenderer {
   }
 
   /** Wire the particle system's gravity constant to GameConfig.physics.gravity
-   *  (T-340) — never a hardcoded TS constant. */
+   *  (T-340) — never a hardcoded TS constant. Also stashes it for
+   *  CrumbleController (T-339), which shares the same constant. */
   setParticlePhysics(gravity: number): void {
     this.particles.setPhysics(gravity);
+    this.gravity = gravity;
   }
 
   /**
@@ -1682,6 +1754,7 @@ export class VoximRenderer {
   dispose(): void {
     this.debugOverlayManager.dispose();
     this.particles.dispose();
+    this.crumbleController.disposeAll();
     this.lightManager.dispose();
     this.weaponTrail.dispose();
     this.instancePool.dispose();

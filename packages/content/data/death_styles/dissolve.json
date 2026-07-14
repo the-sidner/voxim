@@ -1,0 +1,6 @@
+{
+  "id": "dissolve",
+  "style": "dissolve",
+  "resourceKey": "dissolve_timer",
+  "dissolveProfileId": "drowner_rot"
+}
