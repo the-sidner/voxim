@@ -13,7 +13,8 @@
           "heavy": "crossbow_shot"
         }
       ],
-      "heavyChargeMs": 350
+      "heavyChargeMs": 350,
+      "swingActionId": "crossbow_draw"
     },
     "weight": {
       "baseWeight": 3

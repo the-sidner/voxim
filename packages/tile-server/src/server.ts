@@ -890,6 +890,16 @@ export class TileServer {
       if (deployable?.prefabId && !content.prefabs.get(deployable.prefabId)) {
         throw new Error(`Prefab "${prefab.id}" deployable.prefabId "${deployable.prefabId}" resolves to no prefab.`);
       }
+      // T-337/T-338: every weapon's explicit swingActionId must resolve to a
+      // loaded ActionDef — a typo here previously degraded to a runtime
+      // warning (PrimaryIntentResolver's "intent requested unknown action")
+      // instead of a fail-fast boot error, same bar as every other content
+      // cross-check on this page.
+      const swingable = (prefab.components as Record<string, unknown> | undefined)?.swingable as
+        | { swingActionId?: string } | undefined;
+      if (swingable?.swingActionId && !content.actions.get(swingable.swingActionId)) {
+        throw new Error(`Prefab "${prefab.id}" swingable.swingActionId "${swingable.swingActionId}" resolves to no ActionDef.`);
+      }
     }
 
     // T-243: action-effect content cross-check — every `effects[].kind` on

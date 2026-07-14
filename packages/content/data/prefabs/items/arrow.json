@@ -1,0 +1,11 @@
+{
+  "id": "arrow",
+  "modelId": "model_arrow",
+  "modelScale": 0.4,
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.05
+    }
+  }
+}
