@@ -67,17 +67,52 @@ import { inputMode } from "./input_mode.ts";
  *  so this module doesn't need to import render/camera_rig.ts's type. */
 export interface FacingConfig {
   mouseSensitivity: number;
+  /** `game_config.input.bindings` — action id → KeyboardEvent codes (T-335).
+   *  Optional so a caller that only wants to set sensitivity keeps the
+   *  defaults. */
+  bindings?: Record<string, string[]>;
 }
 
-const GAME_KEYS = new Set([
-  "KeyW", "KeyA", "KeyS", "KeyD",
-  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-  "Space", "ShiftLeft", "ShiftRight",
-  "ControlLeft", "ControlRight",
-  "KeyZ", "KeyE", "KeyC", "KeyF",
-  "Digit1", "Digit2", "Digit3", "Digit4",
-  "Escape",
-]);
+/**
+ * Every action a key can be bound to. The translator switches on THESE, never on
+ * a raw `KeyboardEvent.code` — the code→action mapping is content
+ * (`game_config.input.bindings`, T-335), so a rebind is a JSON edit and the
+ * boot validator can refuse a binding a browser would steal (crouch used to sit
+ * on Ctrl, which made crouch-walking forward — Ctrl+W — close the tab).
+ */
+export type InputAction =
+  | "moveForward" | "moveBack" | "moveLeft" | "moveRight"
+  | "jump" | "dodge" | "crouch" | "block" | "interact" | "consume"
+  | "useSkill" | "skill1" | "skill2" | "skill3" | "skill4";
+
+/** Pre-bootstrap fallback — mirrors `game_config.input.bindings` exactly, so the
+ *  keyboard works on the join screen before the content blob lands. Ctrl appears
+ *  nowhere, by construction. */
+const DEFAULT_BINDINGS: Record<InputAction, string[]> = {
+  moveForward: ["KeyW", "ArrowUp"],
+  moveBack:    ["KeyS", "ArrowDown"],
+  moveLeft:    ["KeyA", "ArrowLeft"],
+  moveRight:   ["KeyD", "ArrowRight"],
+  jump:        ["Space"],
+  dodge:       ["ShiftLeft", "ShiftRight"],
+  crouch:      ["KeyC"],
+  block:       ["KeyF"],
+  interact:    ["KeyE"],
+  consume:     ["KeyQ"],
+  useSkill:    ["KeyZ"],
+  skill1:      ["Digit1"],
+  skill2:      ["Digit2"],
+  skill3:      ["Digit3"],
+  skill4:      ["Digit4"],
+};
+
+function invertBindings(b: Record<string, string[]>): Map<string, InputAction> {
+  const byCode = new Map<string, InputAction>();
+  for (const [action, codes] of Object.entries(b)) {
+    for (const code of codes) byCode.set(code, action as InputAction);
+  }
+  return byCode;
+}
 
 export class IntentTranslator {
   private readonly keys = new Set<string>();
@@ -92,6 +127,12 @@ export class IntentTranslator {
    *  CameraRig's own pre-configure default so the two axes match before
    *  `configure()` overwrites both from content. */
   private sensitivity = 0.0022;
+  /** Live keyboard bindings — `game_config.input.bindings` once the content blob
+   *  lands, DEFAULT_BINDINGS until then (T-335). */
+  private bindings: Record<InputAction, string[]> = DEFAULT_BINDINGS;
+  /** Reverse of `bindings`, rebuilt on configure(). The switch in
+   *  `applyKeyEffect` dispatches through this — never on a literal key code. */
+  private actionByCode = invertBindings(DEFAULT_BINDINGS);
   /** Accumulated one-shot bits cleared each buildDatagram(). */
   private pendingActions = 0;
   /** Charge that becomes part of the next datagram (cleared after build). */
@@ -122,6 +163,10 @@ export class IntentTranslator {
    *  rate. */
   configure(cfg: FacingConfig): void {
     this.sensitivity = cfg.mouseSensitivity;
+    if (cfg.bindings) {
+      this.bindings = cfg.bindings as Record<InputAction, string[]>;
+      this.actionByCode = invertBindings(cfg.bindings);
+    }
   }
 
   /**
@@ -149,29 +194,21 @@ export class IntentTranslator {
   // ---- key handling ------------------------------------------------------
 
   private onKeyDown(e: Extract<RawEvent, { kind: "key-down" }>): void {
-    // GAME_KEYS preventDefault'd in DOM via the dedicated capture step would
-    // need access to the original event. Browsers will see Ctrl+W etc. — for
-    // now we just gate the in-game effect, not the browser default. Revisit
-    // if any browser shortcut becomes annoying.
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
     this.applyKeyEffect(e.code);
 
     // Keyboard-only UI dispatches — these need the live hover/mode state and so
     // are not part of the shared (test-reachable) movement/action path.
-    switch (e.code) {
-      case "KeyE":
-        // Hover-driven interact. Translator emits the intent; the router
-        // dispatches to whatever handler matches the current hover target.
-        this.router.dispatch({ kind: "interact", hover: hoverState.value });
-        break;
-      case "Escape":
-        // ESC exits build mode; in normal mode it falls through to the
-        // global modal-stack popper handled by ui_manager.
-        if (modeState.value.kind === "build") {
-          this.router.dispatch({ kind: "build-cancel" });
-        }
-        break;
+    if (this.actionByCode.get(e.code) === "interact") {
+      // Hover-driven interact. Translator emits the intent; the router
+      // dispatches to whatever handler matches the current hover target.
+      this.router.dispatch({ kind: "interact", hover: hoverState.value });
+    }
+    // ESC is not a rebindable game action — it is the universal UI out. In build
+    // mode it cancels; otherwise it falls through to ui_manager's modal popper.
+    if (e.code === "Escape" && modeState.value.kind === "build") {
+      this.router.dispatch({ kind: "build-cancel" });
     }
   }
 
@@ -179,25 +216,35 @@ export class IntentTranslator {
    * Apply a key-down's gameplay effect: track it in the held set + raise any
    * one-shot action bit. Shared by the real keyboard (onKeyDown) and the
    * test-input hook (`pressKey`) so both drive the exact same InputState path.
+   *
+   * Switches on the bound ACTION, never on a raw key code (T-335) — the mapping
+   * is content, so an unbound key is simply inert here.
    */
   private applyKeyEffect(code: string): void {
-    // Edge-trigger Shift only on transition from up→down so a held Shift
-    // doesn't auto-redodge every frame.
+    // Edge-trigger dodge only on the up→down transition so a held key doesn't
+    // auto-redodge every frame.
     const wasDown = this.keys.has(code);
     this.keys.add(code);
-    switch (code) {
-      case "Space":      this.pendingActions |= ACTION_JUMP;      break;
-      case "KeyZ":       this.pendingActions |= ACTION_USE_SKILL; break;
-      case "KeyC":       this.pendingActions |= ACTION_CONSUME;   break;
-      case "Digit1":     this.pendingActions |= ACTION_SKILL_1;   break;
-      case "Digit2":     this.pendingActions |= ACTION_SKILL_2;   break;
-      case "Digit3":     this.pendingActions |= ACTION_SKILL_3;   break;
-      case "Digit4":     this.pendingActions |= ACTION_SKILL_4;   break;
-      case "ShiftLeft":
-      case "ShiftRight":
+    switch (this.actionByCode.get(code)) {
+      case "jump":     this.pendingActions |= ACTION_JUMP;      break;
+      case "useSkill": this.pendingActions |= ACTION_USE_SKILL; break;
+      case "consume":  this.pendingActions |= ACTION_CONSUME;   break;
+      case "skill1":   this.pendingActions |= ACTION_SKILL_1;   break;
+      case "skill2":   this.pendingActions |= ACTION_SKILL_2;   break;
+      case "skill3":   this.pendingActions |= ACTION_SKILL_3;   break;
+      case "skill4":   this.pendingActions |= ACTION_SKILL_4;   break;
+      case "dodge":
         if (!wasDown) this.pendingActions |= ACTION_DODGE;
         break;
     }
+  }
+
+  /** True while any key bound to `action` is physically held. */
+  private isHeld(action: InputAction): boolean {
+    for (const code of this.bindings[action]) {
+      if (this.keys.has(code)) return true;
+    }
+    return false;
   }
 
   /**
@@ -205,13 +252,16 @@ export class IntentTranslator {
    * + action-bit path the real keyboard feeds, so harness presses exercise
    * `buildDatagram` and the wire — not a faked DOM event whose focus target the
    * browser canvas can't reliably receive. Mirrors how `_voxim_game` exposes
-   * world/playerId for reads. Skips the E/Escape UI dispatches by design.
+   * world/playerId for reads. Skips the interact/Escape UI dispatches by design.
    */
   pressKey(code: string): void { this.applyKeyEffect(code); }
   releaseKey(code: string): void { this.keys.delete(code); }
 
-  // Reference for callers that still need the GAME_KEYS gate (future).
-  static readonly GAME_KEYS = GAME_KEYS;
+  /** Codes the canvas should swallow rather than let the page act on. Derived
+   *  from the live bindings (plus Escape, which is never a game action). */
+  gameKeys(): Set<string> {
+    return new Set([...this.actionByCode.keys(), "Escape"]);
+  }
 
   // ---- mouse handling ----------------------------------------------------
 
@@ -318,17 +368,17 @@ export class IntentTranslator {
     const rgtY =  Math.cos(this._facing);
 
     let movX = 0, movY = 0;
-    if (this.keys.has("KeyW") || this.keys.has("ArrowUp"))    { movX += fwdX; movY += fwdY; }
-    if (this.keys.has("KeyS") || this.keys.has("ArrowDown"))  { movX -= fwdX; movY -= fwdY; }
-    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft"))  { movX -= rgtX; movY -= rgtY; }
-    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) { movX += rgtX; movY += rgtY; }
+    if (this.isHeld("moveForward")) { movX += fwdX; movY += fwdY; }
+    if (this.isHeld("moveBack"))    { movX -= fwdX; movY -= fwdY; }
+    if (this.isHeld("moveLeft"))    { movX -= rgtX; movY -= rgtY; }
+    if (this.isHeld("moveRight"))   { movX += rgtX; movY += rgtY; }
 
     const len = Math.sqrt(movX * movX + movY * movY);
     if (len > 0) { movX /= len; movY /= len; }
 
     let held = 0;
-    if (this.keys.has("ControlLeft") || this.keys.has("ControlRight")) held |= ACTION_CROUCH;
-    if (this.keys.has("KeyF")) held |= ACTION_BLOCK;
+    if (this.isHeld("crouch")) held |= ACTION_CROUCH;
+    if (this.isHeld("block"))  held |= ACTION_BLOCK;
     // No-hammer normal mode: RMB held re-emits ACTION_BLOCK every frame so
     // the server-side block stays active.
     if (!this.buildMode && this.rmbDown) held |= ACTION_BLOCK;

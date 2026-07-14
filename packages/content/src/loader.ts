@@ -352,6 +352,7 @@ async function loadContentStoreInternal(
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
+  validateInputBindings(gameConfig);
   store.setGameConfig(gameConfig);
 
   try {
@@ -657,6 +658,53 @@ export function validatePrefabFields(p: Prefab): void {
  * the piece on. Fails loud at load rather than silently rendering nothing
  * for a future legs/feet item that forgets to declare it.
  */
+/**
+ * Keyboard bindings that a browser would steal from us (T-335).
+ *
+ * A modifier key can never be a game binding. This is not a style rule: a page
+ * cannot `preventDefault` the browser's own reserved chords, so binding crouch
+ * to Ctrl silently made crouch-walking forward (Ctrl+W) into "close the tab".
+ * Any modifier binding turns every ordinary movement key into a browser chord —
+ * the failure is combinatorial, not local to one key. `Tab` (focus steal) and
+ * the F-keys (devtools/fullscreen/refresh) go for the same reason.
+ *
+ * Enforced at boot so the bug cannot return by an innocent-looking JSON edit.
+ * That structural guarantee — not the rebind itself — is what T-335 delivers.
+ */
+const RESERVED_KEY_CODES = new Set([
+  "ControlLeft", "ControlRight",
+  "AltLeft", "AltRight",
+  "MetaLeft", "MetaRight",
+  "Tab",
+  ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`),
+]);
+
+export function validateInputBindings(cfg: GameConfig): void {
+  const bindings = cfg.input?.bindings;
+  if (!bindings) throw new Error(`game_config.json: missing "input.bindings" (T-335)`);
+
+  const seen = new Map<string, string>();
+  for (const [action, codes] of Object.entries(bindings)) {
+    if (!Array.isArray(codes) || codes.length === 0) {
+      throw new Error(`game_config.json: input.bindings["${action}"] must be a non-empty array of KeyboardEvent codes`);
+    }
+    for (const code of codes) {
+      if (RESERVED_KEY_CODES.has(code)) {
+        throw new Error(
+          `game_config.json: input.bindings["${action}"] binds "${code}", a browser-reserved key. ` +
+          `A modifier binding makes every movement key a browser chord (crouch on Ctrl turned Ctrl+W into "close tab"), ` +
+          `and a page cannot preventDefault a reserved chord. Pick a plain key.`,
+        );
+      }
+      const other = seen.get(code);
+      if (other) {
+        throw new Error(`game_config.json: "${code}" is bound to both "${other}" and "${action}"`);
+      }
+      seen.set(code, action);
+    }
+  }
+}
+
 export function validateArmorCoversBones(p: Prefab): void {
   if (p.id.startsWith("_")) return;
   const armor = p.components["armor"] as ArmorData | undefined;

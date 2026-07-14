@@ -2552,6 +2552,23 @@ export interface GameConfig {
    *  rest gaze so the horizon never floods in (keeps the T-310 F telephoto
    *  property). Client-side presentation only (`mouseSensitivity` also
    *  drives the client-only facing accumulator — no wire change). */
+  /**
+   * Keyboard bindings (T-335). Action id → the `KeyboardEvent.code`s that
+   * trigger it (several allowed, e.g. WASD + arrows). Content, not code, so a
+   * rebind is a JSON edit.
+   *
+   * **A binding may never be a MODIFIER key** (`Control*`/`Alt*`/`Meta*`) — not
+   * as a matter of taste but of physics: a browser cannot `preventDefault` its
+   * own reserved chords, so the moment crouch sat on Ctrl, crouch-walking
+   * forward (Ctrl+W) *closed the tab*. Binding a modifier turns every ordinary
+   * movement key into a browser chord. `Tab` and the F-keys are out for the same
+   * reason. `validateInputBindings` (loader.ts) enforces this at boot, so the
+   * bug cannot come back by accident — which is the actual deliverable of T-335,
+   * not the rebind itself.
+   */
+  input: {
+    bindings: Record<string, string[]>;
+  };
   camera: {
     /** Metres behind the player along the yaw direction (at rest pitch). */
     backDistance: number;

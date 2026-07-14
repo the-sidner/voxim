@@ -459,10 +459,14 @@ export class VoximGame {
     this.input = new IntentTranslator(this.intentRouter);
     // Mouse-sensitivity knob (T-328) — the same game_config.camera value
     // CameraRig.configure() installs for pitch, so facing and pitch turn at
-    // the identical rate. Pre-bootstrap default holds if content is absent.
-    const camCfg = this.content.getGameConfig()?.camera;
-    if (camCfg) this.input.configure(camCfg);
-    this.inputCapture = new InputCapture(canvas, this.input.handle, (e) => {
+    // the identical rate — plus the keyboard bindings (T-335), which are content
+    // now. Pre-bootstrap defaults hold if content is absent.
+    const gameCfg = this.content.getGameConfig();
+    if (gameCfg?.camera) {
+      this.input.configure({ ...gameCfg.camera, bindings: gameCfg.input?.bindings });
+    }
+    const translator = this.input;
+    this.inputCapture = new InputCapture(canvas, translator.handle, (e) => {
       // Take full control of the game keybindings: swallow the browser's own
       // default for our keys (Space/arrows scroll the page, Tab steals focus,
       // '/' opens quick-find, Digit/letter keys can trigger find-as-you-type).
@@ -472,7 +476,7 @@ export class VoximGame {
       if (e.ctrlKey || e.metaKey || e.altKey) return false;
       const t = e.target;
       if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return false;
-      return IntentTranslator.GAME_KEYS.has(e.code);
+      return translator.gameKeys().has(e.code);
     });
     // Make the canvas focusable + focused so a headless driver's real
     // page.keyboard events have a stable, non-input activeElement to bubble

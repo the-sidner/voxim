@@ -555,27 +555,52 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 ## Client / Controls, Feel & Render Polish
 
 ### T-335 · Ctrl+W closes the browser tab — crouch is bound to Ctrl
-Effort: S   Status: todo   (user, 2026-07-14)
+Effort: S   Status: done   Commit: (see below)   (user, 2026-07-14)
 
-`ControlLeft`/`ControlRight` are bound to crouch (`intent_translator.ts`), so crouch-walking forward
-(Ctrl+W) is literally the browser's "close tab" chord. The code even acknowledges it in a comment
-("Browsers will see Ctrl+W etc.") without solving it. A browser CANNOT preventDefault Ctrl+W — it is
-reserved — so the ONLY fix is to stop binding Ctrl at all.
-Rebind crouch (C, or Shift, or a toggle — decide by feel; note Shift is the usual sprint key, so C or a
-toggle is likelier right). While in there, audit every other binding against browser-reserved chords
-(Ctrl+T/N/W/Tab, Alt+F4, F-keys) and add a keybinding map in content so this never recurs by accident.
-Done when: no in-game binding can be turned into a browser chord by an ordinary movement combination.
+Fixed at the level of the CLASS, not the instance. The instance: crouch sat on Ctrl, so
+crouch-walking forward (Ctrl+W) was the browser's "close tab" chord — and a page CANNOT
+preventDefault a reserved chord, so no client-side handling could ever have saved it. The class:
+**any modifier binding turns every ordinary movement key into a browser chord.** The failure is
+combinatorial, not local to one key.
+
+What landed:
+- Keyboard bindings are now CONTENT (`game_config.input.bindings`: action id → KeyboardEvent
+  codes). `IntentTranslator` switches on the bound ACTION, never on a literal key code, so a
+  rebind is a JSON edit. `DEFAULT_BINDINGS` mirrors the shipped content for the pre-bootstrap
+  join screen.
+- `validateInputBindings` (loader.ts) REFUSES at boot any binding to `Control*`/`Alt*`/`Meta*`,
+  `Tab`, or an F-key, and any code bound to two actions. **That guard — not the rebind — is the
+  deliverable**: the bug cannot come back through an innocent-looking JSON edit.
+- Crouch → `KeyC`; consume moved off C → `KeyQ` (the only collision the rebind created).
+- 6 new tests (`input_bindings.test.ts`), incl. one asserting the SHIPPED config binds no
+  reserved key.
 
 ### T-336 · Faster movement
-Effort: S   Status: todo   (user, 2026-07-14)
+Effort: S   Status: done   Commit: (see below)   (user, 2026-07-14)
 
-Movement reads as too slow. Knobs live in `game_config.movement` (`maxGroundSpeed: 9`, `groundAccel: 65`,
-`airControlMult`, `dragRetainPerSec`, `jumpImpulse`). Tune for a faster, more responsive feel — and check
-it against the T-308 gait, whose stride length/frequency are DISTANCE-driven: a speed change automatically
-changes stride, so verify the legs still read right at the new pace (that is the point of the distance-
-driven design, but confirm it live rather than assume). Compose with T-327's live-tuning loop if useful.
-Done when: movement feels fast, the gait still reads correctly at the new speed, no foot sliding.
+**It was never a speed-knob problem.** Tuning `maxGroundSpeed` first, then measuring live, exposed
+the real cause: a freshly-spawned player carried **59.55 weight against a 50 carry cap** — 119%
+overloaded, pinned at the encumbrance floor (`minSpeedMultiplier: 0.4`) from the first second.
+Effective speed was `9 × 0.4 = 3.6`. The arithmetic checked out against the live measurement to two
+decimals (12.5 × 0.457 = 5.71 measured), which is what turned the guess into a diagnosis.
 
+The load: the starting inventory handed every new player **five workstation kits** — including an
+anvil (15) and a furnace (14), 43 of the 59 units. A portable forge in your backpack. That is a dev
+fixture, not a game start, and a `give_item` debug command already exists to hand them out on demand.
+
+Fix (root cause, not the symptom):
+- Starting loadout trimmed to an adventurer's kit (3 tools, berries, campfire kit, coins) →
+  **16.55 / 50 = ratio 0.33**, comfortably under the 0.5 penalty threshold. Encumbrance stays
+  CALIBRATED — it still bites when you actually haul loot, which raising `maxCarryWeight` (the easy
+  fix) would have quietly killed as a mechanic.
+- `physics.maxGroundSpeed` 9 → 11, `groundAccel` 65 → 95.
+- Net: effective speed **3.6 → ~11**, a 3× change. Live-measured 9.82 m/s in a free direction
+  (the shortfall is accel ramp + 20 Hz position quantization, not a penalty).
+
+Gait verified live at the new pace: stride sweep 0.19–0.23 with fine sampling — the T-308
+distance-driven stride scales with speed exactly as designed, no re-authoring needed. (The ANIM
+harness's coarse 160 ms sampling ALIASES at the higher stride frequency and reads a false 0.014;
+sample at ≤40 ms or you will "discover" a regression that isn't there.)
 
 ### T-331 · Some terrain chunks bake with WHITE vertex colours (material lookup lost at bake time)
 Effort: M   Status: done   Commit: ed11d0d   (found during the T-313 live-verify, 2026-07-07)

@@ -93,8 +93,8 @@
   },
   "physics": {
     "gravity": 20,
-    "maxGroundSpeed": 9,
-    "groundAccel": 65,
+    "maxGroundSpeed": 11,
+    "groundAccel": 95,
     "airControlMult": 0.3,
     "dragRetainPerSec": 0.05,
     "jumpImpulse": 6,
@@ -317,6 +317,60 @@
       "organicAmount": 0.25,
       "dirtAmount": 0.2,
       "sandAmount": 0.12
+    }
+  },
+  "input": {
+    "bindings": {
+      "moveForward": [
+        "KeyW",
+        "ArrowUp"
+      ],
+      "moveBack": [
+        "KeyS",
+        "ArrowDown"
+      ],
+      "moveLeft": [
+        "KeyA",
+        "ArrowLeft"
+      ],
+      "moveRight": [
+        "KeyD",
+        "ArrowRight"
+      ],
+      "jump": [
+        "Space"
+      ],
+      "dodge": [
+        "ShiftLeft",
+        "ShiftRight"
+      ],
+      "crouch": [
+        "KeyC"
+      ],
+      "block": [
+        "KeyF"
+      ],
+      "interact": [
+        "KeyE"
+      ],
+      "consume": [
+        "KeyQ"
+      ],
+      "useSkill": [
+        "KeyZ"
+      ],
+      "skill1": [
+        "Digit1"
+      ],
+      "skill2": [
+        "Digit2"
+      ],
+      "skill3": [
+        "Digit3"
+      ],
+      "skill4": [
+        "Digit4"
+      ]
     }
   },
   "camera": {
