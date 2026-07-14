@@ -136,8 +136,8 @@ look and needs verification this lane couldn't do (no live stack). Fix #2 (taper
 landed as literally described. Live verification (swing at a wolf + a humanoid, confirm hits land) is
 deferred to post-merge per the lane's scope — see postMergeChecklist in the closing commit report.
 
-### T-340 · Procedural bow/crossbow generation (T-306 composition)
-Effort: M   Status: todo   (deferred from T-338, 2026-07-14)
+### T-346 · Procedural bow/crossbow generation (T-306 composition)
+Effort: M   Status: todo   (deferred from T-338, 2026-07-14; renumbered from a T-340 collision — T-340 was already the particles ticket, and numbers are never reused)
 
 T-338 (bow/crossbow hold-to-aim path) shipped `wooden_bow`/`wooden_crossbow` on their existing
 AUTHORED models (`model_bow_basic`/`model_crossbow_basic`) rather than composing with T-306's
