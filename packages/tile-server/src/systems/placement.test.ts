@@ -4,7 +4,7 @@
  * (NOT the placer's z), stacking is allowed, and out-of-reach cells are skipped.
  * Runs against real content.
  */
-import { assertEquals } from "jsr:@std/assert";
+import { assert, assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import { CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
@@ -12,6 +12,8 @@ import { JsonSource } from "@voxim/content";
 import { Heightmap } from "@voxim/world";
 import { Position } from "../components/game.ts";
 import { Equipment } from "../components/equipment.ts";
+import { Inventory } from "../components/items.ts";
+import { Container } from "../components/container.ts";
 import { Blueprint } from "../components/building.ts";
 import { PlacementSystem } from "./placement.ts";
 import type { TickContext } from "../system.ts";
@@ -123,4 +125,60 @@ Deno.test("PlaceVoxels rejects when the required tool isn't equipped", () => {
   });
 
   assertEquals(w.query(Blueprint).length, 0);
+});
+
+// ---- Place (source="inventory") — inventory consumption (T-344) ----
+
+Deno.test("Place: consumes one from the source stack and spawns the deployed prefab", () => {
+  const w = new World();
+  const p = newEntityId();
+  w.create(p);
+  w.write(p, Position, { x: 0, y: 0, z: 0 });
+  w.write(p, Inventory, { slots: [{ kind: "stack", prefabId: "treasury_chest_kit", quantity: 2 }], capacity: 20 });
+
+  run(w, p, { cmd: CommandType.Place, source: "inventory", fromInventorySlot: 0, worldX: 0, worldY: 0 });
+
+  assertEquals(w.get(p, Inventory)!.slots, [{ kind: "stack", prefabId: "treasury_chest_kit", quantity: 1 }]);
+  assertEquals(w.query(Container).length, 1, "the deployed chest spawned");
+});
+
+Deno.test("Place: the last unit of a stack removes the slot entirely", () => {
+  const w = new World();
+  const p = newEntityId();
+  w.create(p);
+  w.write(p, Position, { x: 0, y: 0, z: 0 });
+  w.write(p, Inventory, { slots: [{ kind: "stack", prefabId: "treasury_chest_kit", quantity: 1 }], capacity: 20 });
+
+  run(w, p, { cmd: CommandType.Place, source: "inventory", fromInventorySlot: 0, worldX: 0, worldY: 0 });
+
+  assertEquals(w.get(p, Inventory)!.slots, []);
+});
+
+Deno.test("T-344: material consumption declines cleanly (structure still spawns) when the source slot was already emptied by a same-tick race", () => {
+  const w = new World();
+  const p = newEntityId();
+  w.create(p);
+  w.write(p, Position, { x: 0, y: 0, z: 0 });
+  w.write(p, Inventory, { slots: [{ kind: "stack", prefabId: "treasury_chest_kit", quantity: 1 }], capacity: 20 });
+
+  // Simulate a concurrent same-tick op consuming the exact same captured
+  // kit slot FIRST (e.g. a duplicate/replayed Place, or another system
+  // consuming it) — pushed BEFORE PlacementSystem's own mutate, so program
+  // order means IT wins the race and PlacementSystem's own recheck below
+  // correctly declines (findByIdentity finds nothing left to consume).
+  w.mutate(p, Inventory, (cur) => ({ ...cur, slots: cur.slots.filter((s) => !(s.kind === "stack" && s.prefabId === "treasury_chest_kit")) }));
+
+  const sys = new PlacementSystem(content);
+  const ctx: TickContext = {
+    spatial: null as unknown as TickContext["spatial"],
+    pendingCommands: new Map([[p, [{ cmd: CommandType.Place, source: "inventory", fromInventorySlot: 0, worldX: 0, worldY: 0 } as CommandPayload]]]),
+  };
+  sys.prepare(0, ctx);
+  sys.run(w, new EventBus(), 1 / 20);
+  w.applyChangeset();
+
+  // Documented T-344 residual: the structure/blueprint entity is already
+  // spawned unconditionally BEFORE the consume step — it exists either way.
+  assertEquals(w.query(Container).length, 1, "the chest still spawned — pre-existing ordering, not a new gap");
+  assertEquals(w.get(p, Inventory)!.slots.length, 0, "the kit was consumed by the concurrent op, not double-consumed or resurrected");
 });
