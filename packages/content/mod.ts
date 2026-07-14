@@ -99,6 +99,7 @@ export type {
   PoiActivityExploration,
   BehaviorTreeSpec,
   WeaponActionDef,
+  ProjectileActionConfig,
   WeaponBladeDef,
   SwingPathDef,
   SwingKeyframe,

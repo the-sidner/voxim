@@ -35,6 +35,7 @@ import { WaterRenderer } from "./render/water_renderer.ts";
 import { RoofRenderer } from "./render/roof_renderer.ts";
 import { DecalRenderer } from "./render/decal_renderer.ts";
 import { crossCheckDecals } from "./render/decal_sources.ts";
+import { AimIndicatorRenderer } from "./render/aim_indicator.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
 import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler, makePoiInteractableHandler } from "./interaction/interactable_handlers.ts";
@@ -257,6 +258,8 @@ export class VoximGame {
   private waterRenderer: WaterRenderer | null = null;
   private roofRenderer: RoofRenderer | null = null;
   private decals: DecalRenderer | null = null;
+  /** Hold-to-aim arc + landing marker (T-337) — "you cannot aim what you cannot see". */
+  private aimIndicator: AimIndicatorRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
   private _lastMissingToastKey: string | null = null;
 
@@ -579,6 +582,9 @@ export class VoximGame {
     if (this.contentService) {
       this.decals = new DecalRenderer(this.renderer.instancePool, this.contentService, this.world);
     }
+
+    // Hold-to-aim arc + landing marker (T-337) — updated per frame below.
+    this.aimIndicator = new AimIndicatorRenderer(this.renderer.scene);
 
     // Water surface (T-159, rebuilt T-311 P5b) — translucent overlay over
     // WaterGrid.surfaceLevel cells, styled by the WaterStyleDef selected via
@@ -1203,6 +1209,19 @@ export class VoximGame {
       // canopy fade / fog LOS above.
       if (px !== undefined && py !== undefined) {
         this.roofRenderer?.updateVisibility(px, py);
+      }
+      // Hold-to-aim arc + landing marker (T-337) — same predicted-position
+      // source, local facing, and the captured aim-pitch axis.
+      if (px !== undefined && py !== undefined && pz !== undefined && this.contentService) {
+        const facing = this.input?.facing ?? this.world.get(this.playerId)?.facing?.angle ?? 0;
+        const pitch = this.input?.aimPitch ?? 0;
+        const weaponPrefabId = this.world.get(this.playerId)?.equipment?.weapon?.prefabId;
+        this.aimIndicator?.update(
+          !!this.input?.isAiming,
+          { origin: { x: px, y: py, z: pz }, facing, pitch, weaponPrefabId },
+          this.contentService,
+          (x, y) => this.world.getTerrainHeight(x, y),
+        );
       }
     }
 
@@ -2018,6 +2037,8 @@ export class VoximGame {
     this.roofRenderer = null;
     this.decals?.reset();
     this.decals = null;
+    this.aimIndicator?.dispose();
+    this.aimIndicator = null;
     this.inputCapture?.dispose();
     this.inputCapture = null;
     this.pointerLock?.dispose();
