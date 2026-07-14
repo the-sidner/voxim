@@ -664,7 +664,7 @@ with Position) and allocation-free, so the second pass is cheap next to shipping
 projectile.
 
 ### T-344 · `Inventory` is a multi-writer component still using get-then-set
-Effort: M   Status: in-progress   (found live, 2026-07-14)
+Effort: M   Status: done   Commit: 491d765   (found live, 2026-07-14)
 
 `world.mutate` (T-249) exists precisely because a component with several writers cannot be updated
 with a `get` → `set` pair: two writers in the same tick both read the same pre-tick value and both
@@ -682,6 +682,39 @@ Done when: every `world.set(..., Inventory, ...)` is a `world.mutate`, with the 
 validation (capacity, "do I still have the item") moved INSIDE the closure — checking against a
 stale read is the same bug wearing a hat. Audit `Equipment` and `Container` for the same shape
 while in there.
+
+**Landed** (13 files, every `world.set(..., Inventory, ...)` converted — grep confirms zero
+remain; `_giveTrinket`'s stale capacity check, the exact trap the ticket called out, was fixed
+too). Two closure shapes throughout: TARGETED-DECLINE (re-locate a captured slot identity via the
+new `inventory_ops.ts`, decline if gone) and AGGREGATE-RECHECK (recompute the gating property
+against `cur`). Several sites move an item between TWO components in one command — those got
+COUPLED-DECLINE (destination claims first, source's removal is dependent) so the paired write
+didn't stay a plain `set` wearing the same trap: `Equipment`+`Inventory` (equip/unequip),
+`Container`+`Inventory` (store/withdraw), `WorkstationBuffer`+`Inventory` (Load/TakeWorkstation,
+craft_at_workbench's NPC transfer), `TraderInventory.stock`+`Inventory` (buy — also fixed an
+adjacent oversell bug), `LoreLoadout`+`Inventory` (internalise). `BlueprintHitHandler`'s materials
+claim got a 3-closure claim/commit/revert (2-closure fails in both directions for the co-op
+same-tick-first-hit race this ticket's own text names) — the only site that warranted it.
+`Equipment` and `Container` were audited per the ticket's ask: both were genuinely multi-writer
+(Equipment: equipment.ts + stale_slot_cleanup.ts; Container: its own store/withdraw ops) and are
+now fully `mutate`-based, zero `world.set` remaining for either.
+
+Residuals stated per site, not papered over — two recurring classes: (1) an irreversible
+side-effect (spawn/destroy/reparent) ahead of a closure that can still decline — accepted where
+narrow and nothing owned is lost (orphaned entity), flagged where a same-tick race could strand or
+double-touch state; (2) COUPLED-DECLINE only fully closes the LOSS direction (destination gates
+first) — a narrow duplication residual remains if the exact same captured item is independently
+touched by a SECOND same-tick command, needing two contradictory commands from one client, not the
+ordinary "two different writers" case this ticket targets. `BlueprintHitHandler` is the one site
+closed against both directions. Full suite 1002 baseline → 1065 (63 new regression tests, 0
+failed).
+
+Found but explicitly OUT of this ticket's scope: `WorkstationBuffer` has 7 more get-then-set sites
+not paired with an Inventory move (`crafting.ts` SelectRecipe, `crafting/steps/time_step.ts`,
+`repair_step.ts`, `treat_step.ts`, `crafting/util.ts`'s `resolveRecipe`,
+`resources/effects/resolve_recipe.ts` ×2) — same shape, same fix, but a standalone-buffer
+concern with its own multi-station-hit race, not this ticket's Inventory-audit mandate. Worth a
+follow-up ticket if it bites live.
 
 ### T-335 · Ctrl+W closes the browser tab — crouch is bound to Ctrl
 Effort: S   Status: done   Commit: (see below)   (user, 2026-07-14)
