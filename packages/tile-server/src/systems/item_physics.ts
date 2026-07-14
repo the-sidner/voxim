@@ -14,12 +14,12 @@
  * just encodes the "settle" policy on terrain contact instead of "destroy".
  */
 import type { World, EntityId } from "@voxim/engine";
+import { ballisticStep } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import type { System, EventEmitter } from "../system.ts";
 import { Position, Velocity } from "../components/game.ts";
 import { ItemData } from "../components/items.ts";
 import { buildTerrainLookup } from "../physics/terrain_lookup.ts";
-import { ballisticStep } from "../physics/ballistic.ts";
 import { findFreeDropCell } from "../spawner.ts";
 import { createLogger } from "../logger.ts";
 
