@@ -167,6 +167,13 @@ export class ParticleSystem {
   setDefs(defs: ParticleEmitterDef[]): void {
     this.defsById.clear();
     for (const d of defs) this.defsById.set(d.id, d);
+    // The ambience id arrives from the ATMOSPHERE, which resolves off the content
+    // cache — and that lands BEFORE the particle defs do. So the first
+    // setAmbience() call can arrive with `defsById` still empty: it found no def,
+    // built nothing, but had already latched the id, and every later call
+    // early-returned on "same id". The ambient drift was then dead for the entire
+    // session, silently. Rebuild here, now that the defs actually exist.
+    if (this.ambienceDefId) this.rebuildAmbience();
   }
 
   setPhysics(gravity: number): void {
@@ -284,9 +291,17 @@ export class ParticleSystem {
    */
   setAmbience(defId: string | null): void {
     if (defId === this.ambienceDefId) return;
+    this.ambienceDefId = defId;
+    this.rebuildAmbience();
+  }
+
+  /** (Re)build the ambient drift population from `ambienceDefId`. Split out of
+   *  setAmbience so `setDefs` can re-run it once the defs finally arrive — see
+   *  the ordering note there. */
+  private rebuildAmbience(): void {
+    const defId = this.ambienceDefId;
     this.instancePool.removeByPrefix(AMBIENCE_HANDLE_PREFIX);
     this.ambienceParticles = [];
-    this.ambienceDefId = defId;
     this.ambienceDef = defId ? this.defsById.get(defId) ?? null : null;
     const def = this.ambienceDef;
     if (!def?.ambience) return;

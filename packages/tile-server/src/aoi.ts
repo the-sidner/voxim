@@ -26,6 +26,7 @@ import type {
 } from "@voxim/protocol";
 import type { ClientSession } from "./session.ts";
 import type { SpatialGrid } from "./spatial_grid.ts";
+import { WorldClock } from "./components/world.ts";
 import { Position } from "./components/game.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
@@ -156,6 +157,17 @@ export function computeSessionUpdate(
 
   // The player's own entity is always visible
   inAoI.add(playerId);
+
+  // The WorldClock is a POSITIONLESS SINGLETON (T-347). It has no Position, no
+  // Heightmap and no GateLink, so not one of the rules around it would ever admit
+  // it — and the client therefore never received it at all. Everything
+  // time-of-day is keyed off this one entity: the sun arc, the atmosphere
+  // selection (and with it mist, god rays and the T-340 ambient drift), and the
+  // day/night cycle itself. Without it the renderer's `if (clock)` never fires and
+  // the whole T-311 atmosphere layer silently falls back to constructor defaults —
+  // which looks like "the lighting is a bit off", not like a replication hole, and
+  // is why it survived this long.
+  for (const { entityId } of world.query(WorldClock)) inAoI.add(entityId);
 
   // Gates are always visible — there's at most one per edge (≤4 per tile),
   // and they're navigational landmarks. Streaming them only on proximity

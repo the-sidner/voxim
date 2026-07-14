@@ -619,6 +619,33 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 
 ## Client / Controls, Feel & Render Polish
 
+### T-347 · The WorldClock was never replicated — day/night and the whole atmosphere layer were dead client-side
+Effort: S   Status: done   Commit: (see below)   (found live chasing T-340's ambience, 2026-07-14)
+
+`WorldClock` is a networked component on a POSITIONLESS SINGLETON entity — no Position, no Heightmap,
+no GateLink. AoI admits entities by spatial proximity, by being a chunk, by being a gate, by being a
+carried item, or by being someone's scene-graph descendant. **The clock is none of those**, and AoI
+never mentioned it. So it was never sent to any client, ever.
+
+Everything time-of-day hangs off that one entity in `renderer.render()`:
+
+    const clock = this.world?.getWorldClock();
+    let t01 = 0.5;
+    if (clock) { …sun arc, atmosphere selection, mist, god rays, ambience… }
+
+With no clock the branch never fired: `t01` froze at 0.5, no `AtmosphereDef` was ever applied, and
+`EnvLighting` ran on its constructor defaults forever. The entire T-311 atmosphere arc — sun arc,
+mist, god rays, biome-selected atmosphere — was inert on the client, and `debug_set_time` did nothing
+visible. It survived because the fallback still *looks* like weather: it reads as "the lighting is a
+bit flat", not as a replication hole.
+
+Found only because T-340's ambient drift is selected off `AtmosphereDef.ambienceParticleId` and
+stubbornly produced zero particles while every other part of the chain checked out.
+
+Fix: one line in `aoi.ts` — `for (const { entityId } of world.query(WorldClock)) inAoI.add(entityId);`
+Verified live: clock received, `biomeTag: "hills"`, atmosphere "default" applied, 320 ambience
+particles alive, draw calls unchanged.
+
 ### T-345 · `movement: "slowed"` was a lie — the mode nothing implemented
 Effort: M   Status: done   Commit: (see below)   (user, live play, 2026-07-14)
 

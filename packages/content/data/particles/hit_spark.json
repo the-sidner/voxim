@@ -2,10 +2,22 @@
   "id": "hit_spark",
   "source": "hit_impact",
   "material": "torch_mat",
-  "count": [8, 10],
-  "speed": [1.5, 4.0],
+  "count": [
+    8,
+    10
+  ],
+  "speed": [
+    1.5,
+    4.0
+  ],
   "spreadDeg": 127,
-  "lifetime": [0.18, 0.32],
+  "lifetime": [
+    0.18,
+    0.32
+  ],
   "gravityScale": 0.6,
-  "size": { "start": 0.05, "end": 0 }
+  "size": {
+    "start": 0.15,
+    "end": 0
+  }
 }
