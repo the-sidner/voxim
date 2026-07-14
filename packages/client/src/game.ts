@@ -62,7 +62,7 @@ import { crossCheckDesignLanguage } from "./render/procmodel/design_language_che
 import { crossCheckTextureStyles } from "./render/material_textures.ts";
 import { crossCheckFlickerCurves } from "./render/flicker_curves.ts";
 import { crossCheckCliffVoxelisers } from "./render/cliff_voxeliser.ts";
-import type { ContentService, Prefab, ToolData } from "@voxim/content";
+import type { ContentService, Prefab, ToolData, SwingableData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
 export interface GameConfig {
@@ -463,7 +463,9 @@ export class VoximGame {
     // now. Pre-bootstrap defaults hold if content is absent.
     const gameCfg = this.content.getGameConfig();
     if (gameCfg?.camera) {
-      this.input.configure({ ...gameCfg.camera, bindings: gameCfg.input?.bindings });
+      // T-337: combat.aim (pitchMinDeg/pitchMaxDeg) rides the same configure()
+      // call — the SAME band the server clamps InputState.pitch into.
+      this.input.configure({ ...gameCfg.camera, bindings: gameCfg.input?.bindings, aim: gameCfg.combat?.aim });
     }
     const translator = this.input;
     this.inputCapture = new InputCapture(canvas, translator.handle, (e) => {
@@ -491,11 +493,39 @@ export class VoximGame {
     // player's FACING (IntentTranslator.applyLookDelta), dy drives the
     // camera's pitch only (cameraRig.applyLookDelta) — the camera's yaw
     // derives from facing every frame (renderer.render() → cameraRig.setYaw).
+    //
+    // T-337 CAPTURE decision: while `isAiming` (a hold-to-aim weapon's
+    // trigger is held), dy is redirected to IntentTranslator.aimPitch
+    // instead of the camera — the camera FREEZES at whatever pitch it had
+    // when the hold began; mouse-Y instead drives aim distance. Facing (dx)
+    // is NEVER captured — direction always updates.
+    //
+    // Justification (the ticket calls this a live "try both, pick one"
+    // decision): CameraRig's pitch band is a deliberately narrow 17deg
+    // (45-62deg, T-310) framing knob that keeps the horizon out of frame —
+    // it was never meant as a gameplay control surface. Reusing it directly
+    // as the distance axis would (a) give the whole aim range only 17deg of
+    // mouse travel — imprecise — and (b) re-frame the ENTIRE screen every
+    // time the player adjusts range, which fights the arc/landing-marker
+    // readability T-337 explicitly requires ("you cannot aim what you
+    // cannot see" — a marker whose screen position keeps jumping because
+    // the CAMERA is rotating, not just because the aim point moved, reads
+    // as broken) and risks reopening the exact horizon-flood/fog problem
+    // T-310 closed if a player parks at the top of the band for many
+    // consecutive shots. Capturing keeps the frame stable during every
+    // hold, gives the aim axis its own independent band
+    // (`combat.aim.pitchMinDeg/pitchMaxDeg`, tuned for gameplay range
+    // rather than camera framing), and needs zero change to camera_rig.ts's
+    // own pitchMinDeg/pitchMaxDeg.
     this.pointerLock = new PointerLockController(
       canvas,
       (dx, dy) => {
         this.input?.applyLookDelta(dx);
-        this.renderer?.cameraRig.applyLookDelta(dy);
+        if (this.input?.isAiming) {
+          this.input.applyAimPitchDelta(dy);
+        } else {
+          this.renderer?.cameraRig.applyLookDelta(dy);
+        }
       },
     );
 
@@ -712,6 +742,10 @@ export class VoximGame {
                   this.intentRouter?.dispatch({ kind: "build-cancel" });
                 }
               }
+              // T-337: hold-to-aim weapon detection — drives IntentTranslator's
+              // held-vs-tap ACTION_USE_SKILL branch and the pointer-lock
+              // pitch-capture branch below.
+              this.input.aimWeaponActive = isHoldToAimWeapon(state.equipment.weapon?.prefabId, this.contentService);
             }
           }
           if (state.inventory) {
@@ -2074,14 +2108,24 @@ function deriveCastState(
   const slot = actions.states["primary"];
   if (!slot) return null;
   const def = content?.actions.get(slot.actionId);
-  if (!def || def.kind !== "active" || slot.phase !== "windup") return null;
-  const total = def.phases?.windup?.ticks ?? 0;
-  if (total <= 1) return null;
+  if (!def || (def.kind !== "active" && def.kind !== "ambient")) return null;
+  const phase = def.phases?.[slot.phase];
+  if (!phase) return null;
   const label = slot.actionId
     .replace(/^skill_/, "")
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+  // T-337: a perpetual phase (hold-to-aim's `ticks: -1`) reads as a FULL
+  // bar — "charged, ready to release" — regardless of how long the actor
+  // has been holding. Checked generically via the CURRENT phase's own
+  // ticks, not hardcoded to "windup" or a phase index, so it applies to any
+  // hold action whichever phase name it uses.
+  if (phase.ticks === -1) return { label, frac: 1 };
+  // Skills: progressive fill during their windup only (unchanged).
+  if (def.kind !== "active" || slot.phase !== "windup") return null;
+  const total = phase.ticks;
+  if (total <= 1) return null;
   return { label, frac: Math.min(1, slot.ticksInPhase / total) };
 }
 
@@ -2090,6 +2134,22 @@ function getToolType(prefabId: string | undefined, content: ContentService | nul
   const prefab = content.prefabs.get(prefabId);
   const tool = prefab?.components.tool as ToolData | undefined;
   return tool?.toolType;
+}
+
+/**
+ * T-337: true when the equipped weapon's swingActionId resolves to a
+ * hold-to-aim ActionDef (kind:"ambient" + releaseActionId set). Mirrors the
+ * SAME resolution PrimaryIntentResolver performs server-side (swingable
+ * .swingActionId, default "swing_light") — client and server must agree on
+ * which weapons are hold-to-aim, or the input path (this flag) and the
+ * dispatcher's own branch would disagree about what a press means.
+ */
+function isHoldToAimWeapon(prefabId: string | undefined, content: ContentService | null): boolean {
+  if (!prefabId || !content) return false;
+  const swingable = content.prefabs.get(prefabId)?.components["swingable"] as SwingableData | undefined;
+  const swingActionId = swingable?.swingActionId ?? "swing_light";
+  const def = content.actions.get(swingActionId);
+  return !!def?.releaseActionId;
 }
 
 /**
