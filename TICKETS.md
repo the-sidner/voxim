@@ -664,7 +664,7 @@ with Position) and allocation-free, so the second pass is cheap next to shipping
 projectile.
 
 ### T-344 · `Inventory` is a multi-writer component still using get-then-set
-Effort: M   Status: todo   (found live, 2026-07-14)
+Effort: M   Status: in-progress   (found live, 2026-07-14)
 
 `world.mutate` (T-249) exists precisely because a component with several writers cannot be updated
 with a `get` → `set` pair: two writers in the same tick both read the same pre-tick value and both
