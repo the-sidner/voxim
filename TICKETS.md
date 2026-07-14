@@ -478,7 +478,39 @@ Migration phases (each its own ticket):
     hit/interaction identity should resolve across a subtree. No files touched other than this
     entry.
   - T-222 — coordinator world-scale scene graph
-  - T-223 — client render-scope scene graph
+  - T-223 — DONE (lane/t223-client-scene-graph, commits f591ed7/dffac04/f6766ec/83a9513).
+    Re-specified after recon (6cecdd5: "entities supply structure, content supplies
+    transform" — the original text's "materialize Three.js objects from entity
+    transforms" was unbuildable, since bone entities carry no transform, ever).
+    `ClientWorld` gains a parent→children reverse index (`childrenOf`/`descendants`,
+    mirroring engine `World`'s exact DFS shape) — an EXTENSION of ClientWorld per the
+    plan's open call #3, not a fork of engine `World`. Each skeletal `EntityMeshGroup`
+    gains a `boneEntityByBoneId`/`boneIdByEntity` identity map, built once per skeleton
+    from `ClientWorld.descendants(entityId)` — bone entities acquire IDENTITY, never
+    geometry; `boneGroups` (the THREE.Group-per-boneId pose target) is completely
+    untouched, still built from content `SkeletonDef` data. `syncEquipment` now resolves
+    every equipped item's attach bone via a new pure `resolveItemAttachment(world, mesh,
+    characterId, itemEntityId)` — a 3-way result (bone / holderRoot / unresolved)
+    distinguishing the five single-bone slots (graph-derived) from legs/feet (T-220's
+    deliberate holder-root parenting — no single bone fits) from a transient
+    not-yet-resolved window — which DELETES `ARMOR_SLOTS`/`SLOT_REST_BONE` outright, the
+    ticket's primary deliverable, closing the drift hazard against spawner.ts's
+    `EQUIP_SLOT_PRIMARY_BONE` (now the sole surviving slot→bone table, server-side only,
+    doc comment updated to say so). Legs/feet's old static 4-anchor table (2 of which
+    were always empty in practice) is replaced by a content-driven fan-out over the
+    equipped item's own `armor.coversBones` (new optional `ArmorData` field, boot-
+    validated in loader.ts) — NOT every bone the item's `armorGrammar` happens to author,
+    since `plate_armor_iron` is one procModel SHARED across plate_chest/plate_helm/
+    plate_greaves (torso_upper+head+upper_leg_l+upper_leg_r combined) and naively
+    enumerating it would plate the wrong body parts on a legs-only item. Draw calls are
+    unchanged by construction (fan-out only creates anchors for bones the item actually
+    covers). Pose pipeline (`swing_pose.ts`/`ik_solver.ts`/`skeleton_solver.ts`/
+    `skeleton_evaluator.ts`) untouched — `git diff 6cecdd5` on all four is empty, the
+    tripwire the plan named explicitly. 25 new tests across three first-ever test files
+    (`client_world.test.ts`, `entity_mesh_registry.test.ts`, `armor_covers_bones.test.ts`);
+    full suite 940 green (915 baseline + 25). Live-stack verification (weapon-in-hand,
+    swing correctness, draw-call parity, legs-armor fan-out) deferred to post-merge per
+    lane rules — exact procedure in the lane's final report.
   - T-224 — inspector / editor tooling against any World
 
 The T-214 IR + reducer + rasterizer split work is the substrate this

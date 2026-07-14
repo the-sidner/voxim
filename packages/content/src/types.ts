@@ -739,6 +739,21 @@ export interface ArmorData {
    * the piece renders its authored `modelId` model (unchanged path).
    */
   armorGrammar?: string;
+  /**
+   * T-223 — bones this piece's `armorGrammar` should fan out onto when the
+   * client can't derive a single attach bone from the scene graph (legs/feet:
+   * T-220 excludes them from `EQUIP_SLOT_PRIMARY_BONE` because a scene-graph
+   * `Parent` edge is 1:1 and those slots cover multiple bones, e.g. both
+   * upper legs). A shared `armorGrammar` procModel may author plates for MORE
+   * bones than any one piece should render (e.g. `plate_armor_iron` covers
+   * torso_upper/head/upper_leg_l/upper_leg_r for three different items) — this
+   * is the per-item subset, content data rather than a client code table.
+   * Boot-cross-checked: required whenever `equippable.slots` includes `legs`
+   * or `feet`; only meaningful alongside `armorGrammar`. Ignored for
+   * single-bone slots (head/chest/back/weapon/offHand), which resolve their
+   * one bone straight from the graph.
+   */
+  coversBones?: string[];
 }
 export interface MaterialSourceData { materialName: string; }
 export interface ComposedData { slots: ItemSlotDef[]; }

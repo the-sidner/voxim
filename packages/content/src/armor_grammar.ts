@@ -42,8 +42,13 @@ export interface ArmorPlateSpec {
 export interface ArmorGrammarParams {
   /** Voxel grain (world units) each plate is built from. */
   voxelSize: number;
-  /** Per-bone plate spec, keyed by the SAME boneId ARMOR_SLOTS/the armor
-   *  prefab's render slots use (e.g. "torso_upper", "head", "upper_leg_l"). */
+  /** Per-bone plate spec, keyed by content boneId (e.g. "torso_upper",
+   *  "head", "upper_leg_l") — the same ids `SkeletonDef.bones` and an armor
+   *  prefab's `armor.coversBones` (T-223) use. A generator MAY author more
+   *  bones here than any one item covers (e.g. one shared iron-plate
+   *  generator authoring torso_upper/head/upper_leg_l/upper_leg_r for three
+   *  different items); `coversBones` on the ITEM is what narrows which of
+   *  these plates that piece actually renders. */
   plates: Record<string, ArmorPlateSpec>;
 }
 

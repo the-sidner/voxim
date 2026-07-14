@@ -7,6 +7,7 @@
 import type { BinaryComponentDelta, BinaryEntitySpawn, WorldSnapshot } from "@voxim/protocol";
 import { ComponentType, COMPONENT_TYPE_TO_NAME, CODEC_BY_WIREID } from "@voxim/protocol";
 import { CHUNK_SIZE } from "@voxim/world";
+import { Parent } from "@voxim/engine";
 import type { ParentData } from "@voxim/engine";
 // Only the terrain-grid codecs are referenced directly (their decode has chunk-
 // binding side effects); every other component decodes through CODEC_BY_WIREID.
@@ -83,12 +84,13 @@ export interface EntityState {
   gateLink?: GateLinkData;
   name?: NameData;
   /**
-   * Scene-graph parent (T-219/T-220) — the engine's own Parent component,
-   * replicated so bone entities and scene-graph-parented equipment resolve
-   * correctly on the client's ClientWorld. No renderer consumes this yet
-   * (entity_mesh.ts's boneGroups Map still drives skeleton rendering
-   * directly from content SkeletonDef data — that migration is T-223); this
-   * just closes the decode-side gap so the data isn't silently dropped.
+   * Scene-graph parent (T-219/T-220) — the engine's own Parent component.
+   * `ClientWorld`'s childrenIndex (T-223) is derived from this field, kept
+   * in sync on every spawn/delta/removal/destroy — see `childrenOf`/
+   * `descendants`. `entity_mesh_registry.ts` resolves equipment attachment
+   * bones through that index (T-223); `entity_mesh.ts`'s `boneGroups` pose
+   * hierarchy is unaffected — it still comes from content `SkeletonDef`
+   * data, never from entity transforms (bones carry none).
    */
   parent?: ParentData;
   /** One entity per skeleton bone (T-219) — boneId only, see BoneData. */
@@ -157,6 +159,20 @@ export class ClientWorld {
   private readonly readyCoords = new Set<string>();
 
   /**
+   * Scene-graph reverse index (T-223): parent entityId → its direct
+   * children. Mirrors engine `World`'s `childIndex` (packages/engine/src/
+   * world.ts) — the client's own half of the same scene graph, kept in
+   * sync from the replicated `Parent` component instead of local writes.
+   * Maintained by `applyComponentData`'s explicit `parent` case,
+   * `applyRemoval`, and `applyDestroy`; read via `childrenOf`/`descendants`.
+   * Indexed defensively: a child's declared parent need not itself be a
+   * known entity (it may have left AoI, or arrive out of order) — the
+   * bucket is keyed by parentId regardless of whether that id has ever
+   * been spawned.
+   */
+  private readonly childrenIndex = new Map<string, Set<string>>();
+
+  /**
    * Subscribe to chunk-ready notifications. Fires once per chunk, at the
    * first spawn/delta BATCH boundary where both `heightmap` and
    * `materialGrid` are present — never mid-decode, so every grid that rode
@@ -195,6 +211,25 @@ export class ClientWorld {
     for (const fn of this.readyListeners) fn(coord, chunk);
   }
 
+  /** Add `childId` to `parentId`'s child bucket, creating it if needed. */
+  private addToChildIndex(parentId: string, childId: string): void {
+    let set = this.childrenIndex.get(parentId);
+    if (!set) {
+      set = new Set();
+      this.childrenIndex.set(parentId, set);
+    }
+    set.add(childId);
+  }
+
+  /** Remove `childId` from `parentId`'s child bucket, pruning the bucket
+   *  once empty (unbounded-session hygiene — items/corpses churn a lot). */
+  private removeFromChildIndex(parentId: string, childId: string): void {
+    const set = this.childrenIndex.get(parentId);
+    if (!set) return;
+    set.delete(childId);
+    if (set.size === 0) this.childrenIndex.delete(parentId);
+  }
+
   private applyComponentData(
     entity: EntityState,
     entityId: string,
@@ -212,9 +247,22 @@ export class ClientWorld {
     // Terrain-grid components have decode SIDE EFFECTS (binding chunk data into
     // the single `chunks` map, with a back-reference dance because openMask/
     // kindGrid/etc. arrive without chunk coords) beyond setting entity.X — so
-    // they stay explicit. Everything else is registry-dispatched (T-284): one
-    // codec lookup by wire id, assigned to the same-named EntityState field.
+    // they stay explicit. `parent` joins this list (T-223): its decode also
+    // maintains `childrenIndex`, moving `entityId` out of its OLD parent's
+    // bucket (if any) and into its new one. Everything else is
+    // registry-dispatched (T-284): one codec lookup by wire id, assigned to
+    // the same-named EntityState field.
     switch (typeId) {
+      case ComponentType.parent: {
+        const p = Parent.codec.decode(data);
+        const oldParentId = entity.parent?.entityId ?? null;
+        entity.parent = p;
+        if (oldParentId !== p.entityId) {
+          if (oldParentId) this.removeFromChildIndex(oldParentId, entityId);
+          if (p.entityId) this.addToChildIndex(p.entityId, entityId);
+        }
+        return;
+      }
       case ComponentType.heightmap: {
         const hm = heightmapCodec.decode(data);
         entity.heightmap = hm;
@@ -352,6 +400,16 @@ export class ClientWorld {
     const entity = this.entities.get(entityId);
     if (!entity) return;
     entity.versions.delete(componentType);
+    // Defensive (T-223): no current server path wire-removes Parent (a
+    // reparent-to-root ships as a value change to {entityId: null}, not a
+    // removal) — but treat one as reverting to root, same effect, so the
+    // child index can't desync if that ever changes.
+    if (componentType === ComponentType.parent) {
+      const oldParentId = entity.parent?.entityId ?? null;
+      if (oldParentId) this.removeFromChildIndex(oldParentId, entityId);
+      delete entity.parent;
+      return;
+    }
     const name = COMPONENT_TYPE_TO_NAME.get(componentType);
     if (!name) return;
     // Decoded fields on EntityState are keyed by the component name
@@ -362,6 +420,14 @@ export class ClientWorld {
   }
 
   applyDestroy(entityId: string): void {
+    // Unordered relative to a child's own destroy (aoi.ts §3) — both
+    // directions (this entity leaving its parent's bucket, this entity's
+    // own bucket being dropped) are independent operations, safe in either
+    // order.
+    const entity = this.entities.get(entityId);
+    const parentId = entity?.parent?.entityId ?? null;
+    if (parentId) this.removeFromChildIndex(parentId, entityId);
+    this.childrenIndex.delete(entityId);
     this.entities.delete(entityId);
   }
 
@@ -375,6 +441,36 @@ export class ClientWorld {
 
   entries(): IterableIterator<[string, EntityState]> {
     return this.entities.entries();
+  }
+
+  /**
+   * Direct scene-graph children of `id` (a snapshot array), [] if none —
+   * including when `id` was never itself spawned (T-223's defensive-
+   * indexing case: a child can arrive before, or without, its parent).
+   * O(1) via `childrenIndex`.
+   */
+  childrenOf(id: string): string[] {
+    const set = this.childrenIndex.get(id);
+    return set ? [...set] : [];
+  }
+
+  /**
+   * All descendants of `root` (depth-first, excludes `root` itself),
+   * PARENT-BEFORE-CHILD order — mirrors engine `World.descendants()`'s
+   * exact stack/pop DFS shape (packages/engine/src/world.ts) so this holds
+   * the same ordering invariant `aoi.ts`'s spawn walk already relies on
+   * server-side. O(subtree).
+   */
+  descendants(root: string): string[] {
+    const out: string[] = [];
+    const stack = [...this.childrenOf(root)];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      out.push(id);
+      const kids = this.childrenIndex.get(id);
+      if (kids) for (const k of kids) stack.push(k);
+    }
+    return out;
   }
 
   /** The chunk at (chunkX, chunkY), or undefined if no grid data has arrived
@@ -451,6 +547,7 @@ export class ClientWorld {
     this.chunks.clear();
     this.chunkCoordByEntity.clear();
     this.readyCoords.clear();
+    this.childrenIndex.clear();
   }
 }
 
