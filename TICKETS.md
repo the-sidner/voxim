@@ -117,6 +117,14 @@ The dissolve is NOT left beside this as a second path — it becomes a STYLE in 
 (`DeathStyleDef` naming its `DissolveProfileDef`). One dispatch, two styles, chosen per creature by
 content: a corrupted haunt frays, a bandit's body comes apart.
 
+**Live-verified post-merge (2026-07-15).** Killed a humanoid and tracked its detached pieces
+frame by frame: 17 (one per bone), horizontal spread 0.33 -> 0.56 -> 1.39 as they fly apart, top
+piece falling z 2.08 -> 0.69, lowest holding at z -0.16 on the terrain lookup. The crumble_timer
+resource reaches the client and getActiveDeathStyle dispatches to the crumble handler; dissolve's
+handler is a registered no-op (its visual rides AnimationState.dissolutionPhase). The headless
+client's ~2 FPS makes a clean action screenshot hard to time — the piece positions are the proof;
+a real browser shows it plainly.
+
 **Closing notes (lane/t339-death-crumble):** landed exactly as decided — `DeathStyleDef`
 (`data/death_styles/{id}.json`) is a discriminated union (`style: "dissolve" | "crumble"`), dispatched
 by registry on BOTH server (each of `shed_dissolve`/`shed_crumble` resolves the dying entity's
