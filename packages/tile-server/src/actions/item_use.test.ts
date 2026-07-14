@@ -14,6 +14,7 @@ import { assertEquals } from "jsr:@std/assert";
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import { JsonSource } from "@voxim/content";
 import { ActorSlots, ActiveActions } from "../components/action.ts";
+import type { ActiveActionState } from "../components/action.ts";
 import { Resource } from "../components/resource.ts";
 import { Inventory, ItemData } from "../components/items.ts";
 import { ItemEffects } from "../components/instance.ts";
@@ -21,6 +22,7 @@ import { ActionDispatcher } from "./dispatcher.ts";
 import type { IntentResolver } from "./dispatcher.ts";
 import { newGateRegistry } from "./gate.ts";
 import { newEffectRegistry } from "./effect.ts";
+import type { ResolveContext } from "./effect.ts";
 import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./resolvers/item_use.ts";
 
 const content = await JsonSource.load();
@@ -110,4 +112,55 @@ Deno.test("use_item: slot_has_usable blocks the action with nothing usable", () 
 
   assertEquals(world.get(id, ActiveActions)?.states["primary"], undefined);
   assertEquals(world.get(id, Resource)?.values.hunger.value, 50);
+});
+
+// ---- T-344: spend_item is a multi-writer of Inventory (world.mutate, not get-then-set) ----
+
+const STATE: ActiveActionState = { actionId: "", phase: "", ticksInPhase: 0, initiator: "intent" };
+
+function directCtx(world: World, entityId: string): ResolveContext {
+  return {
+    world, events: new EventBus(), entityId, slot: "primary", state: STATE,
+    content, params: {}, edge: "enter", serverTick: 0,
+  };
+}
+
+Deno.test("T-344: two spend_item resolutions in one tick for the SAME entity compose (decrement twice), not clobber", () => {
+  const world = new World();
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, Inventory, { slots: [{ kind: "stack", prefabId: "berries", quantity: 3 }], capacity: 20 });
+
+  // Both calls resolve findUsableSlot against the SAME committed pre-tick
+  // Inventory (nothing commits between them) — the exact same-tick shape
+  // T-344 targets, e.g. two action slots crossing a phase edge together.
+  spendItemResolver.resolve(directCtx(world, id));
+  spendItemResolver.resolve(directCtx(world, id));
+  world.applyChangeset();
+
+  assertEquals(world.get(id, Inventory)!.slots, [{ kind: "stack", prefabId: "berries", quantity: 1 }], "both spends landed (3 - 1 - 1), not last-write-wins (3 - 1)");
+});
+
+Deno.test("T-344: spend_item composes with a concurrent same-tick Inventory writer on an unrelated slot", () => {
+  const world = new World();
+  const itemId = newEntityId();
+  world.create(itemId);
+  world.write(itemId, ItemData, { prefabId: "_potion", quantity: 1 });
+  world.write(itemId, ItemEffects, { effects: [{ id: "spend_item" }] });
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, Inventory, { slots: [{ kind: "unique", entityId: itemId }], capacity: 20 });
+
+  spendItemResolver.resolve(directCtx(world, id));
+  // Simulate a concurrent same-tick writer (e.g. a debug give) appending to
+  // this SAME entity's Inventory.
+  world.mutate(id, Inventory, (cur) => ({
+    ...cur,
+    slots: [...cur.slots, { kind: "stack" as const, prefabId: "berries", quantity: 1 }],
+  }));
+  world.applyChangeset();
+
+  const slots = world.get(id, Inventory)!.slots;
+  assertEquals(slots, [{ kind: "stack", prefabId: "berries", quantity: 1 }], "the potion was consumed AND destroyed; the concurrent append also landed");
+  assertEquals(world.isAlive(itemId), false);
 });
