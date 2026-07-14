@@ -298,7 +298,11 @@ export class ParticleSystem {
       const pos: Vec3 = {
         x: this.lastTarget.x + (Math.random() * 2 - 1) * def.ambience.boxHalfExtent,
         y: this.lastTarget.z + (Math.random() * 2 - 1) * def.ambience.boxHalfExtent,
-        z: Math.random() * def.ambience.boxHeight,
+        // Vertical half-extent is boxHeight/2 (boxHeight is the full span,
+        // e.g. 44 = DustMotes' old BOX_Y*2) — centred on the camera target's
+        // world height, same as x/y, so the cloud follows the player up and
+        // down terrain instead of sitting at a fixed absolute world height.
+        z: this.lastTarget.y + (Math.random() * 2 - 1) * (def.ambience.boxHeight / 2),
       };
       this.ambienceParticles.push({
         pos, vel,
@@ -346,7 +350,8 @@ export class ParticleSystem {
     if (def?.ambience) {
       const half = def.ambience.boxHalfExtent;
       const height = def.ambience.boxHeight;
-      const cx = this.lastTarget.x, cy = this.lastTarget.z;
+      const halfHeight = height / 2;
+      const cx = this.lastTarget.x, cy = this.lastTarget.z, cz = this.lastTarget.y;
       const archetypeId = this.ensureArchetype(def);
       const slots: InstanceSlot[] = [];
       for (const p of this.ambienceParticles) {
@@ -355,7 +360,10 @@ export class ParticleSystem {
         p.vel = stepped.vel;
         if (p.pos.x - cx > half) p.pos.x -= half * 2; else if (p.pos.x - cx < -half) p.pos.x += half * 2;
         if (p.pos.y - cy > half) p.pos.y -= half * 2; else if (p.pos.y - cy < -half) p.pos.y += half * 2;
-        if (p.pos.z > height) p.pos.z -= height; else if (p.pos.z < 0) p.pos.z += height;
+        // Wrap relative to the camera target's world height, not an absolute
+        // [0,height] band — otherwise the cloud stays pinned near world z=0
+        // instead of following the player up/down terrain (T-340 fix).
+        if (p.pos.z - cz > halfHeight) p.pos.z -= height; else if (p.pos.z - cz < -halfHeight) p.pos.z += height;
         const size = def.size.start;
         p.matrix.compose(worldToThree(p.pos), p.rotQuat, new THREE.Vector3(size, size, size));
         slots.push({ archetypeId, matrix: p.matrix });
