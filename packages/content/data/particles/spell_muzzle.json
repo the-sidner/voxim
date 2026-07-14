@@ -1,0 +1,10 @@
+{
+  "id": "spell_muzzle",
+  "material": "aether_spark",
+  "count": [3, 5],
+  "speed": [2, 4],
+  "spreadDeg": 20,
+  "lifetime": [0.12, 0.2],
+  "gravityScale": 0,
+  "size": { "start": 0.08, "end": 0 }
+}
