@@ -18,7 +18,7 @@
 import * as THREE from "three";
 import type { ClientChunk, ClientWorld, EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { WeaponActionDef, Prefab, AtmosphereDef } from "@voxim/content";
+import type { WeaponActionDef, Prefab, AtmosphereDef, ParticleEmitterDef } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG, type CliffFieldInput } from "./terrain_voxels.ts";
 import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
 import { applySurfaceTreatment, setWetReflectSkyColor } from "./surface_treatments.ts";
@@ -99,8 +99,7 @@ import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
 import { HitboxDebugOverlay, HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay.ts";
 import { DebugOverlayManager } from "./debug_overlay_manager.ts";
 import type { DebugUpdateContext } from "./debug_overlay_manager.ts";
-import { HitSparkRenderer } from "./hit_spark_renderer.ts";
-import { DustMotes } from "./dust_motes.ts";
+import { ParticleSystem } from "./particle_system.ts";
 import { LightManager } from "./light_manager.ts";
 import { EdgePass, PRE_BOOTSTRAP_GRADE } from "./edge_pass.ts";
 import { BloomPass } from "./bloom_pass.ts";
@@ -109,6 +108,7 @@ import { ShadowCascadePass } from "./shadow_cascade_pass.ts";
 import { CameraRig } from "./camera_rig.ts";
 import type { FogOfWar } from "../state/fog_of_war.ts";
 import { FOG_GRID_SIZE, FOG_CELL_SIZE } from "@voxim/protocol";
+import type { GameEvent } from "@voxim/protocol";
 
 
 /**
@@ -267,8 +267,7 @@ export class VoximRenderer {
   // Typed refs for event-driven calls (trackEntity, addChunk, etc.)
   private readonly _skeletonOverlay: SkeletonOverlay;
   private readonly _chunkOverlay:    ChunkOverlay;
-  private readonly hitSparkRenderer: HitSparkRenderer;
-  private readonly dustMotes: DustMotes;
+  private readonly particles: ParticleSystem;
   private readonly lightManager = new LightManager();
 
   private cameraTarget = new THREE.Vector3(256, 4, 256);
@@ -399,8 +398,7 @@ export class VoximRenderer {
     this.debugOverlayManager.register("blade",     new BladeDebugOverlay(this.scene));
     this.debugOverlayManager.register("hitbox",    new HitboxDebugOverlay());
 
-    this.hitSparkRenderer = new HitSparkRenderer(this.scene);
-    this.dustMotes = new DustMotes(this.scene);
+    this.particles = new ParticleSystem(this.instancePool);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     // Supersample: render the whole pipeline at up to 2× the CSS resolution and
@@ -574,6 +572,7 @@ export class VoximRenderer {
     this.content = cache;
     this.entities.setContent(cache);
     this.lightManager.setContent(cache);
+    this.particles.setContent(cache);
     // Lighting + sky/fog come from the single palette source (T-280) once the
     // bootstrap arrives — replaces the hardcoded cyan noon sky with the
     // ash-hazed phase colors (EnvironmentLighting rebuilds its phase table).
@@ -1476,6 +1475,10 @@ export class VoximRenderer {
           // weight) — applied once here, not every frame.
           this.godRay.setParams(atmo.godRay);
           this.edgePass.setGodRayParams(atmo.godRay.strength, atmo.godRay.color);
+          // T-340: the ambient drift population rides the same per-frame
+          // atmosphere re-selection — a tile transition or biome change
+          // picks up a different ambience (or none) for free.
+          this.particles.setAmbience(atmo.ambienceParticleId ?? null);
         }
       }
     }
@@ -1501,9 +1504,11 @@ export class VoximRenderer {
     this.weaponTrail.update(this.entities.all, this.weaponActionsMap, now);
     this.frameTimings.trailMs = performance.now() - tTrailStart;
 
-    // Advance hit spark particles and flicker lights.
-    this.hitSparkRenderer.update(dt);
-    this.dustMotes.update(dt * 1000, this.cameraTarget);
+    // T-340: muzzle-flash edge detection reads the same weapon-action phase
+    // math weaponTrail just applied this frame; burst/ambience particle
+    // physics integrate right after (replaces hitSparkRenderer/dustMotes).
+    this.particles.updateMuzzleFlashes(this.entities.all, this.weaponActionsMap, now);
+    this.particles.update(dt, this.cameraTarget);
     canopyFade.setWindTime(now);
     this.edgePass.setTime(now * 0.001);
     this.lightManager.tick(now, this.camera.position);
@@ -1612,9 +1617,22 @@ export class VoximRenderer {
     this.frameTimings.tris      = this.renderer.info.render.triangles;
   }
 
-  /** Spawn a hit spark burst at the given world-space position. */
-  spawnHitSpark(x: number, y: number, z: number): void {
-    this.hitSparkRenderer.spawn(x, y, z);
+  /** Feed a wire GameEvent to the particle system's source registry (T-340) —
+   *  replaces spawnHitSpark. */
+  onParticleEvent(ev: GameEvent): void {
+    this.particles.onEvent(ev);
+  }
+
+  /** Register particle emitter definitions (T-340), from the bootstrap-
+   *  delivered ContentService. */
+  setParticleDefs(defs: ParticleEmitterDef[]): void {
+    this.particles.setDefs(defs);
+  }
+
+  /** Wire the particle system's gravity constant to GameConfig.physics.gravity
+   *  (T-340) — never a hardcoded TS constant. */
+  setParticlePhysics(gravity: number): void {
+    this.particles.setPhysics(gravity);
   }
 
   /**
@@ -1663,8 +1681,7 @@ export class VoximRenderer {
 
   dispose(): void {
     this.debugOverlayManager.dispose();
-    this.hitSparkRenderer.dispose();
-    this.dustMotes.dispose();
+    this.particles.dispose();
     this.lightManager.dispose();
     this.weaponTrail.dispose();
     this.instancePool.dispose();

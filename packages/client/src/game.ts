@@ -35,6 +35,7 @@ import { WaterRenderer } from "./render/water_renderer.ts";
 import { RoofRenderer } from "./render/roof_renderer.ts";
 import { DecalRenderer } from "./render/decal_renderer.ts";
 import { crossCheckDecals } from "./render/decal_sources.ts";
+import { crossCheckParticles } from "./render/particle_sources.ts";
 import { AimIndicatorRenderer } from "./render/aim_indicator.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
@@ -379,6 +380,9 @@ export class VoximGame {
       // T-311 Phase 2: every LightDef.flickerCurveId resolves to a registered curve.
       crossCheckFlickerCurves(this.contentService);
       crossCheckDecals(this.contentService);
+      // T-340: every ParticleEmitterDef.source resolves to a registered
+      // particle source, and every def.material resolves to a known material.
+      crossCheckParticles(this.contentService);
       // T-311 P6: every CliffProfileDef.id resolves to a registered cliffVoxeliser.
       crossCheckCliffVoxelisers(this.contentService);
       // T-315 D5: LOS gameplay tuning moved from protocol/fog.ts to
@@ -406,6 +410,10 @@ export class VoximGame {
     // mirrors what the static `item_prefabs` aggregation contained.
     if (this.contentService) {
       this.renderer.setWeaponActions([...this.contentService.weaponActions.values()]);
+      // T-340: particle emitters + the engine-owned gravity constant they
+      // integrate against (never a hardcoded TS constant).
+      this.renderer.setParticleDefs([...this.contentService.particles.values()]);
+      this.renderer.setParticlePhysics(this.contentService.getGameConfig().physics.gravity);
       const itemPrefabs: Prefab[] = [];
       for (const p of this.contentService.prefabs.values()) {
         const c = p.components;
@@ -867,7 +875,7 @@ export class VoximGame {
             break;
           }
           case "HitSpark":
-            this.renderer?.spawnHitSpark(ev.x, ev.y, ev.z);
+            this.renderer?.onParticleEvent(ev);
             break;
           case "Healed": {
             const screenPos = this.renderer?.getEntityScreenPos(ev.entityId);
