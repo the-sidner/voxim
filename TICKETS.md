@@ -81,7 +81,7 @@ comparably to blade_grammar/armor_grammar themselves). In-lane verification only
 suite, 995 passed); live testplay/docker verification deferred to post-merge per lane rules.
 
 ### T-339 · Death: the body comes apart — DeathStyleDef, with crumble as the first style
-Effort: L   Status: in-progress   (user, 2026-07-14; design decided 2026-07-14)
+Effort: L   Status: done   Commit: 0b5294f   (user, 2026-07-14; design decided 2026-07-14; landed 2026-07-15)
 
 Death today = the T-311 P5c dissolve (fray/coreness sidecar, in-shader drift, `shed_dissolve` DeathHook,
 `dissolve_timer`) — a corrupted creature frays and sheds voxels. The user wants the OTHER death: a body
@@ -117,6 +117,60 @@ The dissolve is NOT left beside this as a second path — it becomes a STYLE in 
 (`DeathStyleDef` naming its `DissolveProfileDef`). One dispatch, two styles, chosen per creature by
 content: a corrupted haunt frays, a bandit's body comes apart.
 
+**Closing notes (lane/t339-death-crumble):** landed exactly as decided — `DeathStyleDef`
+(`data/death_styles/{id}.json`) is a discriminated union (`style: "dissolve" | "crumble"`), dispatched
+by registry on BOTH server (each of `shed_dissolve`/`shed_crumble` resolves the dying entity's
+`NpcTemplate.deathStyleId` via a shared `resolveDeathStyle` helper and no-ops unless its own style
+matches — no second nested registry, `Registry<DeathHook>` was already the dispatch layer) and client
+(a new `registerDeathStyle`/`getDeathStyleHandler` Map registry mirroring `particle_sources.ts`/
+`decal_sources.ts`). Dissolve did NOT survive as a parallel path: `shed_dissolve.ts` now resolves
+through `DeathStyleDef` instead of reading `NpcTemplate.dissolveProfileId` directly, and that field is
+renamed to `deathStyleId` (no shim). `DeathStyleDef.resourceKey` names the Resource id each style's
+DeathHook seeds (`dissolve_timer` / `crumble_timer`, each its own resource, same convention as
+`buff_timer`/`crafting_timer`) — naming it on the CONTENT def, rather than each side separately
+hardcoding a `"${style}_timer"` string, is why server and client can never drift on what key to look
+for. `crumble_timer.json` mirrors `dissolve_timer.json` exactly (`cross@0 -> destroy_self`, already
+`destroySubtree`-safe from the T-219/ce0c01f fix — zero server code needed for corpse teardown).
+
+Client mechanism: `CrumbleController` reparents the entity's EXISTING `mesh.boneGroups` (built once by
+T-281's `buildMergedSubMeshes`) via `THREE.Object3D.attach()` into a per-corpse container —
+world-transform-preserving, flattening the skeleton hierarchy so every bone becomes an independent
+falling piece. Zero new `THREE.Mesh`, zero new geometry, only reparenting — T-281's per-corpse
+draw-call count is preserved BY CONSTRUCTION (live before/after count deferred to post-merge, see
+checklist). Pieces integrate with `ballisticStep` (`@voxim/engine`, T-337) — the same integrator
+projectiles/particles use — settle on terrain contact, fire a content-defined impact burst
+(`ParticleSystem.spawnBurstAt`, a new fixed-mechanism trigger joining muzzle-flash/ambience), and fade
+per-piece (never alpha) before the server's timer destroys the corpse. `EntityMeshGroup.crumbling`
+gates the renderer's per-entity pose-eval block off for a crumbling entity — one line, in `renderer.ts`
+only; confirmed by `git diff` that `swing_pose.ts`/`ik_solver.ts`/`skeleton_solver.ts`/
+`skeleton_evaluator.ts` were never touched.
+
+Per-entity STYLE dispatch (dissolve / crumble / none) turned out to need NO new wire field: the
+already-networked `Resource` component (T-262) carries `dissolve_timer`/`crumble_timer` as ordinary
+resource keys, so the client scans loaded `DeathStyleDef`s for whichever `resourceKey` is present on
+the dying entity and reads `durationTicks` off that key's wire-authoritative `.max`. KNOWN V1
+LIMITATION, same shape as the pre-existing `getSoleDissolveProfileSync`: which CrumbleStyleParams
+apply is resolved from whichever `DeathStyleDef` matched the style, not per-archetype — a non-issue
+today since exactly one `"dissolve"` and one `"crumble"` def exist, but would need a real per-entity
+archetype id on the wire (the same gap `getSoleDissolveProfileSync` already lived with) if content
+ever authors a second def sharing a style. A second, separate limitation: crumble is purely
+`EntityDied`-event-driven with no wire-replicated per-piece state, so a client entering AoI (or
+reconnecting) mid-crumble sees that corpse standing upright for the remainder of its timer, then just
+disappears — acknowledged, not fixed, matches the spirit of dissolve's own pre-existing v1 gap.
+
+Content: `bandit`/`wolf`/`archer`/`heavy_thrower`/`rotten_knight`/`shield_knight` (the six combat
+NPC archetypes; all skeletal — `biped_skeletal` or `wolf`) get `deathStyleId: "crumble"`; `drowner`
+keeps `deathStyleId: "dissolve"` (renamed from its old `dissolveProfileId`); `merchant`/`villager`/
+`training_dummy`/`training_dummy_attacker`/`generated_test_npc` are left with no `deathStyleId`
+(corpse vanishes, the pre-existing default — training dummies specifically never reach `DeathSystem`,
+they heal back instead). Active ragdoll remains explicitly out of scope — a later style in the same
+registry; no physics engine was added.
+
+`BOOTSTRAP_VERSION` 23 → 24. In-lane verification only: type-check matrix green, full suite 1088
+passed (1071 baseline + 17 new: 6 server DeathHook tests, 8 `CrumbleController` tests, 3 death-style
+registry tests). LIVE VERIFICATION (screenshot of an actual crumble + the T-281 mesh-count
+before/after) deferred to post-merge per lane rules — see the lane implementer's final report for the
+exact procedure.
 
 ### T-323 · Hits don't connect — the hitbox is the skeleton, not the body
 Effort: M   Status: done   Commit: dd71a68   (user, live play 2026-07-07)
@@ -528,7 +582,11 @@ Migration phases (each its own ticket):
     Nothing needs that yet. Building it now costs draw-call risk (25 parts × ~200 props, if
     the batching is lost) and wire/entity growth for capability with no consumer. **Revisit
     when T-339 (death: ragdoll / crumble into voxels or parts) makes the requirement
-    concrete** — at which point it specifies itself instead of being guessed at. The
+    concrete** — at which point it specifies itself instead of being guessed at. [Update,
+    lane/t339-death-crumble: T-339 landed (2026-07-15) — did NOT unblock this ticket. Crumble
+    is skeleton bone-GROUP detachment off T-219/T-223's addressable bones, an entirely
+    different subsystem from `Prefab.children`/static props; the PRNG-on-`Prefab.children`
+    blocker described below is untouched.] The
     2026-07-13 audit's findings, preserved because they are still the map of the terrain: `subObjects` (packages/content's `ModelDefinition.subObjects`, resolved by
     `resolveSubObjects`/`hitbox_derive.ts`) is populated on exactly 5 models in the repo, and
     every one fails a different way: (1) the ticket's own named targets —
