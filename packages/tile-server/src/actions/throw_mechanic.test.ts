@@ -127,3 +127,33 @@ Deno.test("T-337: no ammo — the draw never starts (has_item precondition block
     "throw_draw never started without ammo",
   );
 });
+
+Deno.test("T-337: ammo raced away mid-hold (dropped/traded) — release cannot fire a free projectile", () => {
+  // Reproduces the has_item/consume_item split: `has_item` only gated the
+  // DRAW's start. Without a matching precondition on the RELEASE action,
+  // an actor could draw with its last rock, lose that rock via an
+  // unrelated inventory command (DropItem etc. run through EquipmentSystem,
+  // ungated by ActiveActions) while still holding, then release —
+  // `projectile_spawn` doesn't itself check ammo, so a shot would fire for
+  // free (consume_item would silently no-op, "raced away"). Asserts the
+  // release action's own `has_item` precondition closes this: the release
+  // is rejected by canStart and the actor stays parked in the hold phase
+  // (recoverable via block, the universal out) rather than firing for free.
+  const world = new World();
+  const id = thrower(world, 1);
+  const d = dispatcher();
+
+  setActions(world, id, ACTION_USE_SKILL);
+  const drawTicks = content.actions.get("throw_draw")!.phases.windup.ticks;
+  runTicks(world, d, 0, drawTicks); // through the windup into the perpetual hold
+  assertEquals(world.get(id, ActiveActions)?.states["primary"]?.phase, "hold");
+
+  // Simulate the race: the last rock leaves inventory by some other path
+  // (DropItem, trade, craft) while still holding the draw.
+  world.write(id, Inventory, { slots: [], capacity: 20 });
+
+  setActions(world, id, 0); // release
+  runTicks(world, d, drawTicks + 1, drawTicks + 3);
+  assertEquals(projectileCount(world), 0, "no free projectile without ammo");
+  assertEquals(world.get(id, ActiveActions)?.states["primary"]?.actionId, "throw_draw", "release rejected — still parked in the draw");
+});

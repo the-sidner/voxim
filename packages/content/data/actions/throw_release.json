@@ -16,6 +16,9 @@
     "winddown": "slowed"
   },
   "priority": 5,
+  "preconditions": [
+    { "gate": "has_item", "params": { "prefabId": "throwing_rock" } }
+  ],
   "effects": [
     { "phase": "active:enter", "kind": "projectile_spawn" },
     { "phase": "active:enter", "kind": "consume_item", "params": { "prefabId": "throwing_rock" } }
