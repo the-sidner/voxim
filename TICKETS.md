@@ -1231,7 +1231,7 @@ lane could touch).
 ## AAA Graphics
 
 ### T-340 · Spell & ambience particles — experiment, then integrate into the renderer
-Effort: M   Status: todo   (user, 2026-07-14)
+Effort: M   Status: in-progress   (user, 2026-07-14)
 
 We have dust motes, hit sparks, weapon trails, an impact flash and the dissolve drift — all bespoke,
 each its own little system. Spells and ambience need MORE, and the answer is not a sixth bespoke pass:
