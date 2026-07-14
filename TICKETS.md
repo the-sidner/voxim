@@ -444,9 +444,20 @@ Migration phases (each its own ticket):
     (characters animate, sword follows hand) deferred to post-merge per
     lane rules — see the lane implementer's final report for the exact
     procedure.
-  - T-221 — static prop sub-objects as scene-graph children. **BLOCKED (lane/t221-sceneprops
-    audit, 2026-07-13, no code changed):** there is no unambiguous slice of real content to
-    migrate. `subObjects` (packages/content's `ModelDefinition.subObjects`, resolved by
+  - T-221 — static prop sub-objects as scene-graph children. **DEFERRED (2026-07-14) — the
+    original blockers are GONE, but the payoff is not here yet.** T-333 (hit bubbling) and
+    T-334 (`resolveSeededPick`) both landed, so the two hard blockers named below — a child
+    trunk being unharvestable, and `Prefab.children` having no PRNG concept — are answered:
+    a hit on a child now bubbles to the nearest ancestor carrying the handler's component,
+    and `Prefab.children` can express `tree_oak`'s 1 trunk + 24 pool/probability branches.
+    The ticket is buildable. It is deferred anyway, because what it would BUY is not
+    rendering (the client draws prop parts from content today, merged and cheap) but
+    **dynamic per-part state** — a branch you can break off, a wall that partially collapses.
+    Nothing needs that yet. Building it now costs draw-call risk (25 parts × ~200 props, if
+    the batching is lost) and wire/entity growth for capability with no consumer. **Revisit
+    when T-339 (death: ragdoll / crumble into voxels or parts) makes the requirement
+    concrete** — at which point it specifies itself instead of being guessed at. The
+    2026-07-13 audit's findings, preserved because they are still the map of the terrain: `subObjects` (packages/content's `ModelDefinition.subObjects`, resolved by
     `resolveSubObjects`/`hitbox_derive.ts`) is populated on exactly 5 models in the repo, and
     every one fails a different way: (1) the ticket's own named targets —
     `model_building_well`/`_cottage`/`_ruin_tower`/`_ruin_wall` — all have `subObjects: []`
@@ -508,9 +519,22 @@ Migration phases (each its own ticket):
     `skeleton_evaluator.ts`) untouched — `git diff 6cecdd5` on all four is empty, the
     tripwire the plan named explicitly. 25 new tests across three first-ever test files
     (`client_world.test.ts`, `entity_mesh_registry.test.ts`, `armor_covers_bones.test.ts`);
-    full suite 940 green (915 baseline + 25). Live-stack verification (weapon-in-hand,
-    swing correctness, draw-call parity, legs-armor fan-out) deferred to post-merge per
-    lane rules — exact procedure in the lane's final report.
+    full suite 940 green (915 baseline + 25). **Live-stack verification DONE post-merge
+    (2026-07-14, merge 74b343d):** attachment resolves through the graph in the live client
+    (17-entry bone identity map; `childrenOf(player)`=1 root bone, `descendants`=19 = 17
+    bones + 2 held items; anchors `main_hand`/`off_hand` present, equipment = stone_axe /
+    iron_sword). **Per-humanoid render cost is IDENTICAL, measured not asserted:** the
+    fully-equipped player's mesh subtree is 61 Object3D / 22 THREE.Mesh both before
+    (6cecdd5) and after (74b343d) — bone entities took identity, not geometry, exactly as
+    the re-spec required. (Total scene draw calls are NOT a usable metric here: the same
+    build measured 970 and 1030 in two runs, a 60-call spread, because NPCs wander and the
+    visible chunk set differs — the +13 seen between pre/post builds is far inside that
+    noise. The per-humanoid subtree count is the deterministic one.) ANIM gates 6/7 with
+    the single failure (`locomotion clip while moving`) proven PRE-EXISTING by running the
+    same gates against the pre-lane build, which scores 5/7 — the check looks for a
+    walk/run CLIP, but since T-308 the gait is procedural (`applyGaitPose`), so no clip is
+    active while limbs demonstrably sweep (0.127 vs 0.015 idle). **The harness check is
+    stale, not the code — it should be rewritten to assert limb sweep, not clip identity.**
   - T-224 — inspector / editor tooling against any World
 
 The T-214 IR + reducer + rasterizer split work is the substrate this
