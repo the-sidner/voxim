@@ -716,6 +716,20 @@ not paired with an Inventory move (`crafting.ts` SelectRecipe, `crafting/steps/t
 concern with its own multi-station-hit race, not this ticket's Inventory-audit mandate. Worth a
 follow-up ticket if it bites live.
 
+**Adversarial verification (commit 6a68ff0)** found "destination gates first" is not a safe
+universal COUPLED-DECLINE rule — only correct when the destination IS the shared/contested
+resource. Two sites had it backwards, where the SOURCE was actually shared: `container.ts`'s
+`withdrawFromContainer` (Inventory, private per-holder, claimed first; Container, the shared
+chest, second) and `crafting.ts`'s `_handleTakeWorkstation` (Inventory claimed first;
+WorkstationBuffer, worked by multiple players, second). Both let two different actors racing the
+SAME item both "win" — reproduced live with probe tests (two dynasty members withdrawing the same
+chest slot; two players taking the same buffer slot), no contradictory commands needed, just
+ordinary co-op play. Fixed with 3-closure claim/commit/revert (the pattern
+`blueprint_hit_handler.ts` already used): the shared resource claims first, the private
+destination's grant is dependent + rechecks capacity itself, the shared resource reverts if the
+destination turns out full. New adversarial regression tests pin both the duplication case and the
+revert-on-full case. Full suite 1065 → 1069, all green.
+
 ### T-335 · Ctrl+W closes the browser tab — crouch is bound to Ctrl
 Effort: S   Status: done   Commit: (see below)   (user, 2026-07-14)
 
