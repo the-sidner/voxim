@@ -161,6 +161,46 @@ Deno.test("TakeWorkstation: declines cleanly when the player's inventory is full
   assertEquals(w.get(p, Inventory)!.slots, [{ kind: "stack", prefabId: "berries", quantity: 1 }]);
 });
 
+Deno.test("T-344 adversarial: two DIFFERENT players TakeWorkstation-ing the SAME buffer slot in one tick — only one gets it, never both", () => {
+  // The bug this regression pins: destination-first COUPLED-DECLINE
+  // (Inventory claims capacity first, WorkstationBuffer's removal
+  // dependent) gates on a resource that ISN'T contested between two
+  // different players — each player's own Inventory capacity has nothing
+  // to do with the other player — so both private-Inventory claims could
+  // independently succeed before either buffer-side identity check ran,
+  // duplicating the item. A shared workbench worked by two players in the
+  // same tick is completely ordinary play, not a contrived race. Fixed
+  // via 3-closure claim/commit/revert with WorkstationBuffer (the
+  // genuinely shared resource) claiming first.
+  const w = new World();
+  const st = station(w, 0, 0, [{ kind: "unique", entityId: "sword-1", prefabId: "iron_sword" }]);
+  const p1 = player(w, 0.5, 0, []);
+  const p2 = player(w, 0.5, 0.1, []);
+
+  runBatch(w, [
+    [p1, { cmd: CommandType.TakeWorkstation, bufferSlot: 0 }],
+    [p2, { cmd: CommandType.TakeWorkstation, bufferSlot: 0 }],
+  ]);
+
+  const p1Has = w.get(p1, Inventory)!.slots.some((s) => s.kind === "unique" && s.entityId === "sword-1");
+  const p2Has = w.get(p2, Inventory)!.slots.some((s) => s.kind === "unique" && s.entityId === "sword-1");
+  assert(p1Has !== p2Has, "exactly one player got the item, never both (no duplication) and never neither (no loss)");
+  assertEquals(w.get(st, WorkstationBuffer)!.slots[0], null, "buffer slot correctly shows the item gone, not duplicated back");
+});
+
+Deno.test("T-344 adversarial: TakeWorkstation reverts cleanly when the winning claimant's inventory turns out full", () => {
+  // WorkstationBuffer claims first now; if the destination Inventory then
+  // declines (full), the buffer must revert — the item must not vanish.
+  const w = new World();
+  const st = station(w, 0, 0, [{ kind: "unique", entityId: "sword-1", prefabId: "iron_sword" }]);
+  const p = player(w, 0.5, 0, [{ kind: "stack", prefabId: "berries", quantity: 1 }], 1); // already full
+
+  runBatch(w, [[p, { cmd: CommandType.TakeWorkstation, bufferSlot: 0 }]]);
+
+  assertEquals(w.get(p, Inventory)!.slots, [{ kind: "stack", prefabId: "berries", quantity: 1 }], "holder's inventory unchanged");
+  assertEquals(w.get(st, WorkstationBuffer)!.slots[0], { kind: "unique", entityId: "sword-1", prefabId: "iron_sword" }, "item reverted back into the buffer, not lost");
+});
+
 // ---- PickUp ----
 
 Deno.test("PickUp: a stackable ground item merges into an existing matching stack", () => {

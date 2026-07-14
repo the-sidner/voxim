@@ -15,23 +15,43 @@
  * members' sessions in the same tick — get-then-set here was the same
  * lost-update shape as everywhere else (two same-tick deposits into a
  * near-full chest could both read "room for one more" and both write,
- * silently clobbering one). Each op is now COUPLED-DECLINE across the two
- * components it moves an item between: the DESTINATION component's mutate
- * runs first (its own recheck against commit-time state — capacity for a
- * store, capacity for a withdraw), and the SOURCE component's removal is
- * dependent on that claim succeeding, re-locating the item by identity
- * rather than trusting a raw index (an earlier same-tick op on the SAME
- * chest may have spliced a slot out from under it). Putting the destination
- * first means the FAILURE mode this ticket's own bar treats as unacceptable
- * ("a consumed material with no output") is closed on both sides — the item
- * is only ever removed from its source once it has already landed at the
- * destination. The residual this can't close without a cross-component
- * transaction primitive: if the exact SAME captured item is independently
- * moved by a SECOND same-tick command (e.g. deposited AND traded away in
- * one tick — needs two contradictory commands from one client), the
- * destination's claim can commit before the source-side identity re-check
- * discovers the item is gone, producing a narrow duplicate ref. Documented,
- * not papered over — see the two functions below.
+ * silently clobbering one). Each op is COUPLED-DECLINE across the two
+ * components it moves an item between, but which side gates FIRST has to
+ * be whichever side is the actually-SHARED/contested resource — "the
+ * destination always gates first" is not a safe universal rule, and this
+ * file initially got it wrong for withdraw (found + fixed in the same
+ * ticket, see below):
+ *
+ *  - store: Container (the destination) IS the shared resource — many
+ *    actors' deposits target the SAME chest's capacity, but each deposits
+ *    FROM their own private Inventory. Destination-first is correct here:
+ *    the chest claims a slot, the depositor's own Inventory removal is
+ *    dependent on that claim.
+ *  - withdraw: Container (the SOURCE) is the shared resource this time —
+ *    many actors can race to withdraw the SAME banked item, but each
+ *    withdraws INTO their own private Inventory (never shared). Gating on
+ *    the destination first, as store does, does not arbitrate the real
+ *    race at all: two different dynasty members withdrawing the SAME slot
+ *    in the same tick — ordinary play, no contradictory commands from one
+ *    client needed — each had their own private-Inventory capacity claim
+ *    succeed (nothing about "does MY inventory have room" contends with
+ *    the OTHER actor), duplicating the item before either op's
+ *    Container-side check ran. Fixed with 3-closure claim/commit/revert
+ *    (same shape as `blueprint_hit_handler.ts`'s materials claim):
+ *    Container claims (removes) the item FIRST via TARGETED-DECLINE;
+ *    Inventory's grant is dependent on that claim AND does its own
+ *    commit-time capacity recheck; Container reverts (re-adds the slot)
+ *    if the holder turned out to have no room, so a losing race never
+ *    strands the item mid-air — it just stays banked, never the
+ *    "consumed material with no output" case this ticket's bar treats as
+ *    unacceptable.
+ *
+ * Residual left open (documented, not papered over): a SECOND same-tick
+ * command independently touching the exact same captured item (e.g. one
+ * client issuing two contradictory commands against it in one batch)
+ * is bounded to that compound case, not the ordinary two-different-writers
+ * race this ticket targets — that race is now closed on both store and
+ * withdraw.
  *
  * Invariant in both directions: the op MOVES an entity ref — it never copies or
  * destroys the item entity, so the tome's `Inscribed` / the weapon's
@@ -163,22 +183,35 @@ export function withdrawFromContainer(
   if (!inv) return { ok: false, reason: "holder-has-no-inventory" };
   if (inv.slots.length >= inv.capacity) return { ok: false, reason: "inventory-full" };
 
-  // T-344: COUPLED-DECLINE — Inventory (the destination) claims capacity
-  // first; Container's removal (the source) is dependent on that claim and
-  // re-locates the item by identity. Destination-first closes the "removed
-  // from the chest but the holder never received it" loss case; see the
-  // file header for the residual this still leaves open.
+  // T-344 follow-up: 3-closure claim/commit/revert — Container (the
+  // SOURCE) is the actually-shared/contested resource here (see the file
+  // header): it claims (removes) the item FIRST via TARGETED-DECLINE.
+  // Inventory's grant is dependent on that claim AND does its own
+  // commit-time capacity recheck; if the holder turns out to have no
+  // room, Container reverts (re-adds the slot) instead of the item
+  // vanishing. Destination-first (claiming the holder's private,
+  // uncontested Inventory capacity before the actually-contested
+  // Container slot) let two different actors both "win" a race to
+  // withdraw the SAME item — see container_ops.test.ts's same-slot
+  // regression.
   let claimed = false;
-  world.mutate(intoHolderId, Inventory, (cur) => {
-    if (cur.slots.length >= cur.capacity) return cur;
+  world.mutate(containerId, Container, (cur) => {
+    const idx = cur.slots.findIndex((s) => s.entityId === itemEntityId);
+    if (idx === -1) return cur; // already withdrawn by an earlier same-tick op
     claimed = true;
+    return { ...cur, slots: cur.slots.filter((_, i) => i !== idx) };
+  });
+  let granted = false;
+  world.mutate(intoHolderId, Inventory, (cur) => {
+    if (!claimed) return cur;
+    if (cur.slots.length >= cur.capacity) return cur;
+    granted = true;
     return { ...cur, slots: [...cur.slots, { kind: "unique" as const, entityId: itemEntityId }] };
   });
   world.mutate(containerId, Container, (cur) => {
-    if (!claimed) return cur;
-    const idx = cur.slots.findIndex((s) => s.entityId === itemEntityId);
-    if (idx === -1) return cur;
-    return { ...cur, slots: cur.slots.filter((_, i) => i !== idx) };
+    if (!claimed || granted) return cur;
+    // Holder had no room after all — revert the claim, item stays banked.
+    return { ...cur, slots: [...cur.slots, { entityId: itemEntityId }] };
   });
   return { ok: true, slotIndex };
 }

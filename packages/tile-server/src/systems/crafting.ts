@@ -225,30 +225,52 @@ export class CraftingSystem implements System {
 
     if (!world.get(playerId, Inventory)) return;
 
-    // T-344: COUPLED-DECLINE. Inventory (the destination) claims capacity
-    // first; WorkstationBuffer's removal (the source) is dependent on that
-    // claim and re-locates the slot by identity rather than trusting
-    // bufferSlot literally (an earlier same-tick Load/Take on this SAME
-    // station can shift it). Destination-first closes the "taken out of
-    // the buffer but the player never received it" loss case.
+    // T-344 follow-up: 3-closure claim/commit/revert, not destination-
+    // first COUPLED-DECLINE. WorkstationBuffer (the SOURCE) is the
+    // actually-shared/contested resource — a station can be worked by
+    // MULTIPLE players in the same tick (that's the whole point of a
+    // shared crafting bench), each Taking INTO their own private
+    // Inventory. The original destination-first ordering here (Inventory
+    // claims capacity first, WorkstationBuffer's removal dependent) let
+    // two different players both "win" a race to Take the SAME buffer
+    // slot: each player's own-inventory capacity check has nothing to do
+    // with whether the OTHER player already has it, so both claimed
+    // successfully before either's buffer-side removal ran, duplicating
+    // the item. Fixed the same way as `systems/container.ts`'s withdraw:
+    // WorkstationBuffer claims (nulls) the slot FIRST via TARGETED-
+    // DECLINE (re-locates by identity rather than trusting bufferSlot
+    // literally — an earlier same-tick Load/Take on this SAME station can
+    // shift it); Inventory's grant is dependent on that claim AND does
+    // its own commit-time capacity recheck; WorkstationBuffer reverts
+    // (puts the slot back) if the player turned out to have no room, so a
+    // losing race never strands the item — it just stays in the buffer.
     const newInvSlot: InventorySlot = slot.kind === "stack"
       ? { kind: "stack", prefabId: slot.itemType, quantity: slot.quantity }
       : { kind: "unique", entityId: slot.entityId };
-    let claimed = false;
+    let claimedIdx = -1;
+    world.mutate(stationId, WorkstationBuffer, (cur) => {
+      const idx = findWorkstationSlot(cur.slots, slot, bufferSlot);
+      if (idx === -1) return cur; // already taken by an earlier same-tick op
+      claimedIdx = idx;
+      const newSlots = [...cur.slots];
+      newSlots[idx] = null;
+      return { ...cur, slots: newSlots };
+    });
+    let granted = false;
     world.mutate(playerId, Inventory, (cur) => {
+      if (claimedIdx === -1) return cur;
       if (cur.slots.length >= cur.capacity) {
         log.debug("take: player=%s inventory full", playerId);
         return cur;
       }
-      claimed = true;
+      granted = true;
       return { ...cur, slots: [...cur.slots, newInvSlot] };
     });
     world.mutate(stationId, WorkstationBuffer, (cur) => {
-      if (!claimed) return cur;
-      const idx = findWorkstationSlot(cur.slots, slot, bufferSlot);
-      if (idx === -1) return cur;
+      if (claimedIdx === -1 || granted) return cur;
+      if (cur.slots[claimedIdx] !== null) return cur; // defensive — shouldn't happen
       const newSlots = [...cur.slots];
-      newSlots[idx] = null;
+      newSlots[claimedIdx] = slot;
       return { ...cur, slots: newSlots };
     });
     log.info("take: player=%s station=%s slot=%d item=%s",

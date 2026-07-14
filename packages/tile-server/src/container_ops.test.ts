@@ -242,6 +242,72 @@ Deno.test("T-344: two same-tick withdraws into ONE holder with room for only one
   assertEquals(chestSlots.length, 1, "exactly one withdrawal actually composed — the other's item is still banked, not lost");
 });
 
+Deno.test("T-344 adversarial: two DIFFERENT actors withdrawing the SAME slot in one tick — only one gets the item, never both", () => {
+  // The bug this regression pins: destination-first COUPLED-DECLINE
+  // (Inventory claims capacity first, Container's removal dependent)
+  // gates on a resource that ISN'T actually contested between two
+  // different withdrawers (each actor's own Inventory capacity has
+  // nothing to do with the other actor), so both private-Inventory claims
+  // could independently succeed before either Container-side identity
+  // check ran — duplicating the item. This needs no contradictory
+  // commands from one client; two ordinary family members each issuing
+  // one normal withdraw is enough. Fixed via 3-closure claim/commit/
+  // revert with Container (the genuinely shared resource) claiming first.
+  const w = new World();
+  const treas = deployChest(w, "treasury_chest", DYN);
+  const sword = makeUniqueItem(w, "iron_sword");
+  const owner = makeActor(w, DYN, [{ kind: "unique", entityId: sword }]);
+  storeInContainer(w, content, owner, treas, sword);
+  w.applyChangeset();
+  assertEquals(w.get(treas, Container)!.slots.length, 1);
+
+  const heir1 = makeActor(w, DYN, []);
+  const heir2 = makeActor(w, DYN, []);
+  // Both calls read the SAME pre-commit chest snapshot (slot 0 = sword) —
+  // the same-tick shape.
+  const r1 = withdrawFromContainer(w, heir1, treas, 0, heir1);
+  const r2 = withdrawFromContainer(w, heir2, treas, 0, heir2);
+  assert(r1.ok && r2.ok, "both pre-checks look ok before commit — the real gate is the mutate");
+  w.applyChangeset();
+
+  const heir1Has = w.get(heir1, Inventory)!.slots.some((s) => s.kind === "unique" && s.entityId === sword);
+  const heir2Has = w.get(heir2, Inventory)!.slots.some((s) => s.kind === "unique" && s.entityId === sword);
+  assert(heir1Has !== heir2Has, "exactly one heir got the item, never both (no duplication) and never neither (no loss)");
+  assertEquals(w.get(treas, Container)!.slots.length, 0, "chest correctly shows the item gone, not duplicated back");
+});
+
+Deno.test("T-344 adversarial: withdraw reverts cleanly when the winning claimant's inventory turns out full", () => {
+  // Container claims first now; if the destination Inventory then declines
+  // (full), Container must revert — the item must not vanish. The holder
+  // must pass the synchronous pre-check (room at READ time) so the revert
+  // path — not the early `inventory-full` return — is what's exercised: a
+  // same-tick writer PUSHED FIRST fills the last slot before the
+  // withdraw's own Inventory-grant closure runs at commit.
+  const w = new World();
+  const treas = deployChest(w, "treasury_chest", DYN);
+  const sword = makeUniqueItem(w, "iron_sword");
+  const owner = makeActor(w, DYN, [{ kind: "unique", entityId: sword }]);
+  storeInContainer(w, content, owner, treas, sword);
+  w.applyChangeset();
+
+  const holder = makeActor(w, DYN, [{ kind: "stack", prefabId: "berries", quantity: 1 }]);
+  w.write(holder, Inventory, { slots: w.get(holder, Inventory)!.slots, capacity: 2 }); // room for one more, at read time
+  w.mutate(holder, Inventory, (cur) =>
+    cur.slots.length >= cur.capacity ? cur : { ...cur, slots: [...cur.slots, { kind: "stack" as const, prefabId: "coal", quantity: 1 }] });
+
+  const r = withdrawFromContainer(w, owner, treas, 0, holder);
+  assert(r.ok, "optimistic pre-check — real gate is the mutate");
+  w.applyChangeset();
+
+  const holderSlots = w.get(holder, Inventory)!.slots;
+  assertEquals(holderSlots.length, 2, "capacity never exceeded");
+  assert(holderSlots.some((s) => s.kind === "stack" && s.prefabId === "coal"), "the earlier same-tick writer's append landed");
+  assert(!holderSlots.some((s) => s.kind === "unique" && s.entityId === sword), "sword did NOT land — holder ended up full by commit time");
+  const chestSlots = w.get(treas, Container)!.slots;
+  assertEquals(chestSlots.length, 1, "item reverted back into the chest, not lost");
+  assertEquals(chestSlots[0].entityId, sword);
+});
+
 Deno.test("5a: chest/tome/kit prefabs load with the right wiring", () => {
   for (const id of ["tome", "blank_tome", "library_chest", "treasury_chest", "library_chest_kit", "treasury_chest_kit"]) {
     assert(content.prefabs.get(id), `${id} loads`);
