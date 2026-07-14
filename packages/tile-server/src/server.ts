@@ -68,6 +68,7 @@ import { PlacementSystem } from "./systems/placement.ts";
 import { EnclosureSystem } from "./systems/enclosure.ts";
 import { CraftingSystem } from "./systems/crafting.ts";
 import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./actions/resolvers/item_use.ts";
+import { hasItemGate, consumeItemResolver } from "./actions/resolvers/inventory_item.ts";
 import { spawnNpcTableResolver } from "./actions/resolvers/spawn_npc_table.ts";
 import { UnlockStairResolver } from "./actions/resolvers/unlock_stair.ts";
 import { bossArenaUnlockHook } from "./deathhooks/boss_arena_unlock.ts";
@@ -526,6 +527,11 @@ export class TileServer {
     // uninterruptible_active (T-299): a committed swing's active phase can't
     // be flinched out of by a light hit reaction — only stagger_heavy/death.
     actionGates.register(uninterruptibleActiveGate);
+    // has_item (T-337): generic named-inventory-item precondition — the ammo
+    // economy for hold-to-aim draw actions (bow_draw checks "arrow", a
+    // thrown rock's draw checks "throwing_rock"). Vacuously true for
+    // entities with no Inventory (NPCs) — see inventory_item.ts's doc.
+    actionGates.register(hasItemGate);
     const actionEffects = newEffectRegistry();
     actionEffects.register(setTagResolver);
     actionEffects.register(clearTagResolver);
@@ -535,6 +541,10 @@ export class TileServer {
     actionEffects.register(adjustResourceResolver);
     actionEffects.register(spendItemResolver);
     actionEffects.register(new ApplyItemEffectsResolver(actionEffects));
+    // consume_item (T-337): has_item's effect-side pair — decrements the
+    // named item on the release action's active:enter, alongside
+    // projectile_spawn.
+    actionEffects.register(consumeItemResolver);
     // spawn_npc_table (T-212 v2) — bossfight's phase-adds trigger effect.
     actionEffects.register(spawnNpcTableResolver);
     // unlock_stair (T-213b) — a trinket's use_item effect. Reads
