@@ -32,7 +32,8 @@ import { Inventory } from "../../components/items.ts";
 import type { InventorySlot } from "../../components/items.ts";
 import type { GateHandler } from "../gate.ts";
 import type { EffectResolver } from "../effect.ts";
-import { slotPrefabId, consumeOne } from "./item_use.ts";
+import { slotPrefabId } from "./item_use.ts";
+import { findByIdentity, removeAt, slotIdentity } from "../../inventory_ops.ts";
 
 function findItemSlot(world: World, entityId: EntityId, prefabId: string): number {
   const inv = world.get(entityId, Inventory);
@@ -50,6 +51,14 @@ export const hasItemGate: GateHandler = {
   },
 };
 
+/**
+ * T-344: two consuming effects targeting the SAME entity's Inventory in one
+ * tick (e.g. dual-wielded ranged weapons both consuming ammo) used to
+ * clobber under plain world.set. Same identity-capture-then-mutate shape
+ * as item_use.ts's spendItemResolver — see its doc comment for the
+ * unique-kind destroy-before-decline residual, which applies identically
+ * here.
+ */
 export const consumeItemResolver: EffectResolver = {
   id: "consume_item",
   resolve(ctx) {
@@ -59,6 +68,13 @@ export const consumeItemResolver: EffectResolver = {
     if (!inv) return; // nothing to consume — same exemption as the gate
     const idx = findItemSlot(ctx.world, ctx.entityId, prefabId);
     if (idx === -1) return; // raced away between gate check and this effect
-    ctx.world.set(ctx.entityId, Inventory, { ...inv, slots: consumeOne(ctx.world, inv.slots, idx) });
+    const slot = inv.slots[idx];
+    const identity = slotIdentity(slot);
+    if (slot.kind === "unique") ctx.world.destroy(slot.entityId as EntityId);
+    ctx.world.mutate(ctx.entityId, Inventory, (cur) => {
+      const i = findByIdentity(cur.slots, identity, idx);
+      if (i === -1) return cur;
+      return { ...cur, slots: removeAt(cur.slots, i) };
+    });
   },
 };

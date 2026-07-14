@@ -36,6 +36,8 @@ import { Equipment } from "../components/equipment.ts";
 import { Inventory } from "../components/items.ts";
 import { Blueprint } from "../components/building.ts";
 import { spawnPrefab } from "../spawner.ts";
+import { findByIdentity } from "../inventory_ops.ts";
+import type { SlotIdentity } from "../inventory_ops.ts";
 import { createLogger } from "../logger.ts";
 import { getHeight, snapHeight, CHUNK_SIZE } from "@voxim/world";
 import { buildChunkIndex } from "../physics/terrain_lookup.ts";
@@ -73,6 +75,7 @@ export class PlacementSystem implements System {
     // ── Resolve spawn prefab ──────────────────────────────────────────────
     let spawnPrefabId: string;
     let consumeFromSlot: number | null = null;
+    let consumeIdentity: SlotIdentity | null = null;
 
     if (cmd.source === "prefab") {
       spawnPrefabId = cmd.prefabId;
@@ -96,6 +99,7 @@ export class PlacementSystem implements System {
       }
       spawnPrefabId = deployable.prefabId;
       consumeFromSlot = cmd.fromInventorySlot;
+      consumeIdentity = { kind: "stack", prefabId: slot.prefabId };
     }
 
     // ── Load spawn prefab + placement rules ──────────────────────────────
@@ -194,20 +198,27 @@ export class PlacementSystem implements System {
     }
 
     // ── Consume from inventory ───────────────────────────────────────────
-    if (consumeFromSlot !== null) {
-      const inv = world.get(placerId, Inventory);
-      if (inv) {
-        const slot = inv.slots[consumeFromSlot];
-        if (slot?.kind === "stack") {
-          const newSlots = [...inv.slots];
-          if (slot.quantity <= 1) {
-            newSlots.splice(consumeFromSlot, 1);
-          } else {
-            newSlots[consumeFromSlot] = { kind: "stack", prefabId: slot.prefabId, quantity: slot.quantity - 1 };
-          }
-          world.set(placerId, Inventory, { ...inv, slots: newSlots });
-        }
-      }
+    // T-344: the structure/blueprint entity above is already spawned
+    // unconditionally, BEFORE this point — pre-existing ordering, not
+    // introduced here; closing it would need a conditional-spawn primitive
+    // this engine doesn't have (same class as CraftingSystem's PickUp).
+    // TARGETED-DECLINE: re-locate the source slot by identity rather than
+    // trusting consumeFromSlot literally, since a same-tick MoveItem/Equip/
+    // etc. for this SAME placer can shift indices. Residual: a same-tick
+    // race can leave the placement "free" (material undeducted while the
+    // structure still spawned) — bounded economy impact, no corruption,
+    // no worse than this site's pre-T-344 clobber-based equivalent.
+    if (consumeFromSlot !== null && consumeIdentity !== null) {
+      const identity = consumeIdentity;
+      world.mutate(placerId, Inventory, (cur) => {
+        const idx = findByIdentity(cur.slots, identity, consumeFromSlot!);
+        if (idx === -1) return cur;
+        const slot = cur.slots[idx] as Extract<typeof cur.slots[number], { kind: "stack" }>;
+        const newSlots = slot.quantity <= 1
+          ? cur.slots.filter((_, i) => i !== idx)
+          : cur.slots.map((s, i) => (i === idx ? { ...slot, quantity: slot.quantity - 1 } : s));
+        return { ...cur, slots: newSlots };
+      });
     }
 
     // ── Publish EntityDeployed ───────────────────────────────────────────

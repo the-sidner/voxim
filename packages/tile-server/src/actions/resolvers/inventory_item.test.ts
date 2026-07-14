@@ -130,3 +130,28 @@ Deno.test("consume_item: no-ops for an entity with no Inventory (same exemption 
   world.applyChangeset();
   assertEquals(world.has(id, Inventory), false);
 });
+
+Deno.test("T-344: consume_item on an unrelated slot composes with a same-tick spend_item consuming a DIFFERENT slot instead of clobbering it", () => {
+  const world = new World();
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, Inventory, {
+    slots: [
+      { kind: "stack", prefabId: "arrow", quantity: 3 },
+      { kind: "stack", prefabId: "throwing_rock", quantity: 2 },
+    ],
+    capacity: 20,
+  });
+
+  // Two different action slots' consuming effects firing in the SAME tick —
+  // both resolve() calls read the SAME committed pre-tick Inventory (no
+  // commit between them), matching the exact same-tick shape T-344 targets.
+  consumeItemResolver.resolve(effectCtx(world, id, "arrow"));
+  consumeItemResolver.resolve(effectCtx(world, id, "throwing_rock"));
+  world.applyChangeset();
+
+  const slots = world.get(id, Inventory)!.slots;
+  assertEquals(slots.length, 2, "both slots survived, both decremented — neither clobbered the other");
+  assert(slots.some((s) => s.kind === "stack" && s.prefabId === "arrow" && s.quantity === 2));
+  assert(slots.some((s) => s.kind === "stack" && s.prefabId === "throwing_rock" && s.quantity === 1));
+});

@@ -26,7 +26,7 @@ import { evalFormula, parseFormula } from "@voxim/content";
 import type { System, EventEmitter, TickContext } from "../system.ts";
 import { Position } from "../components/game.ts";
 import { Inventory, ItemData } from "../components/items.ts";
-import type { InventorySlot } from "@voxim/codecs";
+import type { InventorySlot, WorkstationSlot } from "@voxim/codecs";
 import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { WorkstationBufferData } from "../components/building.ts";
 import { Provenance, QualityStamped, Stats } from "../components/instance.ts";
@@ -34,6 +34,8 @@ import type { ProvenanceData } from "../components/instance.ts";
 import { LoreLoadout } from "../components/lore_loadout.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 import { spawnPrefab, spawnGroundStack, installDurability } from "../spawner.ts";
+import { findByIdentity, slotIdentity } from "../inventory_ops.ts";
+import type { SlotIdentity } from "../inventory_ops.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("CraftingSystem");
@@ -136,53 +138,71 @@ export class CraftingSystem implements System {
       log.debug("load: player=%s no station in range", playerId);
       return;
     }
-    const buffer = world.get(stationId, WorkstationBuffer);
-    if (!buffer) return;
+    if (!world.get(stationId, WorkstationBuffer)) return;
 
     const slotPrefab = slot.kind === "stack" ? slot.prefabId : this.resolveUniquePrefab(world, slot.entityId);
-    const newSlots: (typeof buffer.slots[number])[] = [...buffer.slots];
-    let dst = bufferSlot;
-    if (dst >= buffer.capacity) {
-      // Prefer merging with an existing matching stack first (stack→stack only).
+    const sourceIdentity: SlotIdentity = slotIdentity(slot);
+
+    // T-344: COUPLED-DECLINE. WorkstationBuffer (the destination) claims a
+    // slot first — the WHOLE dst-resolution + merge computation moves
+    // INSIDE the closure, recomputed against commit-time cur.slots/
+    // cur.capacity (wrapping the old stale computation in mutate() would
+    // have kept the bug wearing a hat, same trap as everywhere else in this
+    // ticket). Inventory's removal (the source) is dependent on that claim
+    // and re-locates the item by identity — destination-first means a
+    // decline never removes the player's item without it landing in the
+    // buffer.
+    let claimedDst = -1;
+    world.mutate(stationId, WorkstationBuffer, (cur) => {
+      const newSlots: (typeof cur.slots[number])[] = [...cur.slots];
+      let dst = bufferSlot;
+      if (dst >= cur.capacity) {
+        // Prefer merging with an existing matching stack first (stack→stack only).
+        if (slot.kind === "stack") {
+          dst = newSlots.findIndex((s) => s !== null && s.kind === "stack" && s.itemType === slot.prefabId);
+        } else {
+          dst = -1;
+        }
+        if (dst === -1) dst = newSlots.findIndex((s) => s === null);
+        if (dst === -1 && newSlots.length < cur.capacity) dst = newSlots.length;
+        if (dst === -1) {
+          log.debug("load: station=%s buffer full", stationId);
+          return cur;
+        }
+      }
+
+      const existing = newSlots[dst] ?? null;
       if (slot.kind === "stack") {
-        dst = newSlots.findIndex((s) => s !== null && s.kind === "stack" && s.itemType === slot.prefabId);
+        if (existing && (existing.kind !== "stack" || existing.itemType !== slot.prefabId)) {
+          log.debug("load: station=%s slot=%d incompatible with existing", stationId, dst);
+          return cur;
+        }
+        newSlots[dst] = {
+          kind: "stack",
+          itemType: slot.prefabId,
+          quantity: (existing && existing.kind === "stack" ? existing.quantity : 0) + slot.quantity,
+        };
       } else {
-        dst = -1;
+        // Unique entities never merge — refuse if the target slot is occupied.
+        if (existing) {
+          log.debug("load: station=%s slot=%d already occupied (unique)", stationId, dst);
+          return cur;
+        }
+        newSlots[dst] = { kind: "unique", entityId: slot.entityId, prefabId: slotPrefab };
       }
-      if (dst === -1) dst = newSlots.findIndex((s) => s === null);
-      if (dst === -1 && newSlots.length < buffer.capacity) dst = newSlots.length;
-      if (dst === -1) {
-        log.debug("load: station=%s buffer full", stationId);
-        return;
-      }
-    }
+      while (newSlots.length <= dst) newSlots.push(null);
 
-    const existing = newSlots[dst] ?? null;
-    if (slot.kind === "stack") {
-      if (existing && (existing.kind !== "stack" || existing.itemType !== slot.prefabId)) {
-        log.debug("load: station=%s slot=%d incompatible with existing", stationId, dst);
-        return;
-      }
-      newSlots[dst] = {
-        kind: "stack",
-        itemType: slot.prefabId,
-        quantity: (existing && existing.kind === "stack" ? existing.quantity : 0) + slot.quantity,
-      };
-    } else {
-      // Unique entities never merge — refuse if the target slot is occupied.
-      if (existing) {
-        log.debug("load: station=%s slot=%d already occupied (unique)", stationId, dst);
-        return;
-      }
-      newSlots[dst] = { kind: "unique", entityId: slot.entityId, prefabId: slotPrefab };
-    }
-    while (newSlots.length <= dst) newSlots.push(null);
+      claimedDst = dst;
+      log.info("load: player=%s item=%s → station=%s slot=%d", playerId, describeSlot(newSlots[dst]!), stationId, dst);
+      return { ...cur, slots: newSlots };
+    });
 
-    const newInv = inv.slots.filter((_, i) => i !== inventorySlot);
-    world.set(playerId, Inventory, { ...inv, slots: newInv });
-    world.set(stationId, WorkstationBuffer, { ...buffer, slots: newSlots });
-    log.info("load: player=%s item=%s → station=%s slot=%d",
-      playerId, describeSlot(newSlots[dst]!), stationId, dst);
+    world.mutate(playerId, Inventory, (cur) => {
+      if (claimedDst === -1) return cur;
+      const idx = findByIdentity(cur.slots, sourceIdentity, inventorySlot);
+      if (idx === -1) return cur; // source slot vanished by commit time — narrow residual, see equipment.ts's identical shape
+      return { ...cur, slots: cur.slots.filter((_, i) => i !== idx) };
+    });
   }
 
   private _handleTakeWorkstation(
@@ -203,20 +223,56 @@ export class CraftingSystem implements System {
     const slot = buffer.slots[bufferSlot];
     if (!slot) return;
 
-    const inv = world.get(playerId, Inventory);
-    if (!inv) return;
-    if (inv.slots.length >= inv.capacity) {
-      log.debug("take: player=%s inventory full", playerId);
-      return;
-    }
-    const newBuffer = [...buffer.slots];
-    newBuffer[bufferSlot] = null;
+    if (!world.get(playerId, Inventory)) return;
+
+    // T-344 follow-up: 3-closure claim/commit/revert, not destination-
+    // first COUPLED-DECLINE. WorkstationBuffer (the SOURCE) is the
+    // actually-shared/contested resource — a station can be worked by
+    // MULTIPLE players in the same tick (that's the whole point of a
+    // shared crafting bench), each Taking INTO their own private
+    // Inventory. The original destination-first ordering here (Inventory
+    // claims capacity first, WorkstationBuffer's removal dependent) let
+    // two different players both "win" a race to Take the SAME buffer
+    // slot: each player's own-inventory capacity check has nothing to do
+    // with whether the OTHER player already has it, so both claimed
+    // successfully before either's buffer-side removal ran, duplicating
+    // the item. Fixed the same way as `systems/container.ts`'s withdraw:
+    // WorkstationBuffer claims (nulls) the slot FIRST via TARGETED-
+    // DECLINE (re-locates by identity rather than trusting bufferSlot
+    // literally — an earlier same-tick Load/Take on this SAME station can
+    // shift it); Inventory's grant is dependent on that claim AND does
+    // its own commit-time capacity recheck; WorkstationBuffer reverts
+    // (puts the slot back) if the player turned out to have no room, so a
+    // losing race never strands the item — it just stays in the buffer.
     const newInvSlot: InventorySlot = slot.kind === "stack"
       ? { kind: "stack", prefabId: slot.itemType, quantity: slot.quantity }
       : { kind: "unique", entityId: slot.entityId };
-    const newInv = [...inv.slots, newInvSlot];
-    world.set(stationId, WorkstationBuffer, { ...buffer, slots: newBuffer });
-    world.set(playerId, Inventory, { ...inv, slots: newInv });
+    let claimedIdx = -1;
+    world.mutate(stationId, WorkstationBuffer, (cur) => {
+      const idx = findWorkstationSlot(cur.slots, slot, bufferSlot);
+      if (idx === -1) return cur; // already taken by an earlier same-tick op
+      claimedIdx = idx;
+      const newSlots = [...cur.slots];
+      newSlots[idx] = null;
+      return { ...cur, slots: newSlots };
+    });
+    let granted = false;
+    world.mutate(playerId, Inventory, (cur) => {
+      if (claimedIdx === -1) return cur;
+      if (cur.slots.length >= cur.capacity) {
+        log.debug("take: player=%s inventory full", playerId);
+        return cur;
+      }
+      granted = true;
+      return { ...cur, slots: [...cur.slots, newInvSlot] };
+    });
+    world.mutate(stationId, WorkstationBuffer, (cur) => {
+      if (claimedIdx === -1 || granted) return cur;
+      if (cur.slots[claimedIdx] !== null) return cur; // defensive — shouldn't happen
+      const newSlots = [...cur.slots];
+      newSlots[claimedIdx] = slot;
+      return { ...cur, slots: newSlots };
+    });
     log.info("take: player=%s station=%s slot=%d item=%s",
       playerId, stationId, bufferSlot, describeSlot(slot));
   }
@@ -263,25 +319,62 @@ export class CraftingSystem implements System {
     const prefab = this.content.prefabs.get(item.prefabId);
     const isStackable = prefab?.components["stackable"] !== undefined;
 
-    let newSlots = inv.slots.slice();
+    // Synchronous capacity pre-check against the once-per-command stale
+    // read — same shape as the pre-T-344 code, so the ordinary (non-racy)
+    // "inventory already full" case still leaves the ground item on the
+    // ground, untouched, exactly as before: a merge never needs room, a
+    // fresh slot does.
+    const willMerge = isStackable && inv.slots.some((s) => s.kind === "stack" && s.prefabId === item.prefabId);
+    if (!willMerge && inv.slots.length >= inv.capacity) {
+      log.debug("pickup: inventory full");
+      return;
+    }
+
+    // T-344 residual: this system's command loop does not break after one
+    // command, so "two PickUp commands while walking through a loot pile
+    // in one tick" is a real, reachable path — the mutate's own fresh
+    // recheck below handles that correctly (composes or declines against
+    // commit-time state, not the stale pre-check above). But the stack
+    // path's world.destroy (and the unique path's world.remove(Position))
+    // are irreversible/unconditional once the pre-check above passes: if a
+    // SAME-tick race then fills the last slot before this command's own
+    // mutate runs, the ground item is still consumed with nothing gained.
+    // Narrow (needs a second same-tick capacity-consuming command for the
+    // SAME player) and documented, not papered over — closing it needs a
+    // "defer the side effect until the mutate commits" primitive this
+    // engine doesn't have (same class as gather_resource.ts's collectDrop).
     if (isStackable) {
-      const merged = newSlots.findIndex((s) => s.kind === "stack" && s.prefabId === item.prefabId);
-      if (merged !== -1) {
-        const existing = newSlots[merged] as { kind: "stack"; prefabId: string; quantity: number };
-        newSlots[merged] = { kind: "stack", prefabId: item.prefabId, quantity: existing.quantity + item.quantity };
-      } else {
-        if (newSlots.length >= inv.capacity) { log.debug("pickup: inventory full"); return; }
-        newSlots = [...newSlots, { kind: "stack", prefabId: item.prefabId, quantity: item.quantity }];
-      }
       world.destroy(entityId as EntityId);
     } else {
-      if (newSlots.length >= inv.capacity) { log.debug("pickup: inventory full"); return; }
-      newSlots = [...newSlots, { kind: "unique", entityId }];
       // Strip Position so the unique entity stops being a world thing —
       // it'll re-spawn at a new position only if dropped again.
       world.remove(entityId as EntityId, Position);
     }
-    world.set(playerId, Inventory, { ...inv, slots: newSlots });
+
+    world.mutate(playerId, Inventory, (cur) => {
+      if (isStackable) {
+        const merged = cur.slots.findIndex((s) => s.kind === "stack" && s.prefabId === item.prefabId);
+        if (merged !== -1) {
+          const existing = cur.slots[merged] as { kind: "stack"; prefabId: string; quantity: number };
+          return {
+            ...cur,
+            slots: cur.slots.map((s, i) => i === merged
+              ? { kind: "stack" as const, prefabId: item.prefabId, quantity: existing.quantity + item.quantity }
+              : s),
+          };
+        }
+        if (cur.slots.length >= cur.capacity) {
+          log.debug("pickup: inventory full");
+          return cur;
+        }
+        return { ...cur, slots: [...cur.slots, { kind: "stack" as const, prefabId: item.prefabId, quantity: item.quantity }] };
+      }
+      if (cur.slots.length >= cur.capacity) {
+        log.debug("pickup: inventory full");
+        return cur;
+      }
+      return { ...cur, slots: [...cur.slots, { kind: "unique" as const, entityId }] };
+    });
     log.info("pickup: player=%s item=%s qty=%d", playerId, item.prefabId, item.quantity);
   }
 
@@ -377,6 +470,28 @@ function describeSlot(slot: WorkstationBufferData["slots"][number] & {}): string
   return slot.kind === "stack"
     ? `${slot.itemType}x${slot.quantity}`
     : `${slot.prefabId}#${slot.entityId.slice(0, 6)}`;
+}
+
+/**
+ * T-344: the WorkstationBuffer-slot analogue of inventory_ops.ts's
+ * findByIdentity — re-locate a captured WorkstationSlot inside `slots` at
+ * commit time (hint index first, full scan fallback) instead of trusting a
+ * pre-closure index literally. Separate from inventory_ops.ts because
+ * WorkstationSlot's shape differs from InventorySlot's (itemType vs
+ * prefabId for the stack case) — not worth a shared generic over two
+ * call sites.
+ */
+function findWorkstationSlot(slots: WorkstationBufferData["slots"], target: WorkstationSlot, hintIndex?: number): number {
+  const matches = (s: WorkstationBufferData["slots"][number]): boolean => {
+    if (!s || s.kind !== target.kind) return false;
+    return s.kind === "stack"
+      ? s.itemType === (target as Extract<WorkstationSlot, { kind: "stack" }>).itemType
+      : s.entityId === (target as Extract<WorkstationSlot, { kind: "unique" }>).entityId;
+  };
+  if (hintIndex !== undefined && hintIndex >= 0 && hintIndex < slots.length && matches(slots[hintIndex])) {
+    return hintIndex;
+  }
+  return slots.findIndex(matches);
 }
 
 function inputSpecificity(input: Recipe["inputs"][number]): number {
