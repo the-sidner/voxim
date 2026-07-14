@@ -31,6 +31,7 @@ const INPUT_STYLE = {
 } as const;
 
 const networkOpen = computed(() => uiState.value.openPanels.has("network"));
+const sceneOpen   = computed(() => uiState.value.openPanels.has("scene"));
 
 // ── Toggle row ─────────────────────────────────────────────────────────────────
 
@@ -153,6 +154,19 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
 
       {/* ── Character state machine ──────────────────────────────────────── */}
       <CSMSection />
+
+      {/* ── Scene graph ───────────────────────────────────────────────────── */}
+      <Section
+        title="Scene graph"
+        hint="The replicated Parent/Bone hierarchy as a tree — NOT the Three.js scene. Those are two different trees on purpose (entities supply structure, content supplies pose)."
+      >
+        <ToggleRow
+          label="Scene panel"
+          on={sceneOpen.value}
+          onToggle={() => sceneOpen.value ? closePanel("scene") : openPanel("scene")}
+          hint="T-224 — walkable since T-223 gave ClientWorld a children index"
+        />
+      </Section>
 
       {/* ── Network inspector ─────────────────────────────────────────────── */}
       <Section title="Network">

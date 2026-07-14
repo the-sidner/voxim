@@ -39,6 +39,7 @@ import { RadialMenu }      from "./components/RadialMenu.tsx";
 import { BuildHud }        from "./components/BuildHud.tsx";
 import { DebugPanel }      from "./components/DebugPanel.tsx";
 import { NetworkPanel }    from "./components/NetworkPanel.tsx";
+import { ScenePanel } from "./components/ScenePanel.tsx";
 import { Minimap }         from "./components/Minimap.tsx";
 import { HudStats }        from "./components/HudStats.tsx";
 import { ZoneCaption }     from "./components/ZoneCaption.tsx";
@@ -125,6 +126,7 @@ export function UIManager({ onAction }: UIManagerProps) {
       {panels.has("debug")      && <DebugPanel       onAction={onAction} />}
       {panels.has("debug")      && <HudStats />}
       {panels.has("network")    && <NetworkPanel />}
+      {panels.has("scene")      && <ScenePanel />}
 
       {/* Portals — always on top */}
       <ChargeBar />

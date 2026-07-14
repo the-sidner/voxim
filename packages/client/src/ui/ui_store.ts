@@ -302,7 +302,8 @@ export type PanelId =
   | "settings"
   | "death"
   | "debug"
-  | "network";
+  | "network"
+  | "scene";
 
 // ── Root UIState ───────────────────────────────────────────────────────────────
 

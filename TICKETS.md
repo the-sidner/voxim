@@ -535,7 +535,22 @@ Migration phases (each its own ticket):
     walk/run CLIP, but since T-308 the gait is procedural (`applyGaitPose`), so no clip is
     active while limbs demonstrably sweep (0.127 vs 0.015 idle). **The harness check is
     stale, not the code — it should be rewritten to assert limb sweep, not clip identity.**
-  - T-224 — inspector / editor tooling against any World
+  - T-224 — inspector / editor tooling against any World. **CLIENT HALF DONE
+    (2026-07-14): `ScenePanel`** — the replicated Parent/Bone hierarchy as a live tree
+    (Debug → Scene graph). Only buildable since T-223 gave `ClientWorld` a children
+    index; before that the client held a flat Map and there was no tree to walk. Shows
+    the player subtree with the equipped weapons visibly hanging off `hand_r`/`hand_l`,
+    chunks as roots, per-entity component detail, filter, live/pause, and a "reveal me"
+    that expands the 17-bone chain in one click. Orphans (a child whose parent left AoI)
+    are shown flagged rather than dropped — a silently vanished subtree is precisely the
+    failure this panel exists to expose. It deliberately renders the ENTITY graph, not
+    the Three.js scene: those are two different trees on purpose (entities supply
+    structure, content supplies pose), and conflating them would hide the bug you opened
+    the panel to find.
+    STILL OPEN: the generalisation the ticket actually names — one `EngineInspector`
+    module taking any `World` (bake-time / runtime / replicated), with the atlas
+    inspector and a tile-server admin endpoint as specialisations of it. The client panel
+    is a purpose-built consumer, not that shared module.
 
 The T-214 IR + reducer + rasterizer split work is the substrate this
 builds on. Snapshot determinism stays the invariant across every
