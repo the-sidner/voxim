@@ -19,7 +19,24 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 ## Combat
 
 ### T-337 · Spell/throw targeting — hold to pre-cast and aim, release to fire
-Effort: M   Status: todo   (user, 2026-07-14)
+Effort: M   Status: done   (user, 2026-07-14)   Commit: edb9f5f
+
+Landed on `lane/t337-t338-aim-ranged`: `ActionDef.releaseActionId` pairs a
+perpetual-phase (ambient) hold action with the action its release fires;
+`PrimaryIntentResolver` reuses `ACTION_USE_SKILL` as a held signal (no new
+wire bit) gated on whether the equipped weapon's swingActionId is
+hold-to-aim. Pitch added to the wire (`MovementDatagram.pitch` /
+`InputState.pitch`); `ballisticStep`/`launchVelocity` moved to
+`@voxim/engine` so the client's new `AimIndicatorRenderer` (arc + landing
+marker) integrates the IDENTICAL math the server fires the projectile
+with. CAMERA-CAPTURE decision: the aim-pitch axis is CAPTURED (its own
+independent band, `combat.aim.pitchMinDeg/pitchMaxDeg`) rather than
+reusing CameraRig's own narrow 17° framing band — justified in full in
+the `client: wire aimWeaponActive...` commit body. Proved generic (not
+bow-only) via a new `sling` + `throwing_rock` thrown-item content pair
+(`throw_mechanic.test.ts`), landed before T-338's bow. In-lane
+verification only (type-check + full suite, 987 passed); live
+testplay/docker verification deferred to post-merge per lane rules.
 
 One aiming mechanic, shared by spells AND throws:
 - **Facing** (mouse-X, T-328) aims the DIRECTION.
