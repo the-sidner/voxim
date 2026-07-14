@@ -17,7 +17,7 @@
  * being removed, replaced, or pooled while a model prefetch is in flight.
  */
 import * as THREE from "three";
-import type { EntityState } from "../state/client_world.ts";
+import type { ClientWorld, EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type {
   MaterialDef,
@@ -168,6 +168,10 @@ export class EntityMeshRegistry {
   private content: ContentCache | null = null;
   private localPlayerId: string | null = null;
   private hover: HoverOutlineSink | null = null;
+  /** T-223 — read-only access to the replicated scene graph (childrenOf/
+   *  descendants/get), for resolving attachment bones and building each
+   *  skeleton's boneId↔bone-entityId identity map. */
+  private clientWorld: ClientWorld | null = null;
 
   /**
    * Local player's hotbar occupancy (T-309) — one prefabId per hotbar slot
@@ -190,6 +194,7 @@ export class EntityMeshRegistry {
   ) {}
 
   setContent(c: ContentCache): void { this.content = c; }
+  setClientWorld(w: ClientWorld): void { this.clientWorld = w; }
   setLocalPlayer(id: string | null): void { this.localPlayerId = id; }
   setHover(s: HoverOutlineSink | null): void { this.hover = s; }
 
@@ -345,6 +350,23 @@ export class EntityMeshRegistry {
                 x: sub.transform.x, y: sub.transform.y, z: sub.transform.z,
                 scale: sub.transform.scaleX,
               });
+            }
+          }
+
+          // T-223: boneId ↔ bone-ENTITY-id identity map, built from the
+          // character entity's replicated bone children. A full-subtree walk
+          // (not direct children) is required — only the skeleton ROOT bone
+          // is a direct child of the character entity; every other bone
+          // parents to its own parent BONE entity, mirroring the content
+          // SkeletonDef hierarchy (spawner.ts's installSkeletonBones). Maps
+          // were already cleared by clearMeshContent (inside
+          // upgradeToSkeletonModel above), so this is a pure rebuild.
+          if (this.clientWorld) {
+            for (const descId of this.clientWorld.descendants(entityId)) {
+              const boneId = this.clientWorld.get(descId)?.bone?.boneId;
+              if (!boneId) continue; // an equipped item or other non-bone descendant
+              capture.boneEntityByBoneId.set(boneId, descId);
+              capture.boneIdByEntity.set(descId, boneId);
             }
           }
 

@@ -567,6 +567,7 @@ export class VoximRenderer {
    *  it instead of keeping its own parallel copies. */
   setClientWorld(world: ClientWorld): void {
     this.world = world;
+    this.entities.setClientWorld(world);
   }
 
   setContentCache(cache: ContentCache): void {

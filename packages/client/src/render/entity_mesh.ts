@@ -71,6 +71,17 @@ export interface AttachmentSlot {
    */
   boneParented: boolean;
   /**
+   * T-223 — the bone this ENTITY-ROOT slot rest-follows each frame (position
+   * + rotation) when it isn't mid-swing (`updateAttachmentPositions`'s
+   * non-blade branch). Resolved once, at slot-build time, from the scene
+   * graph (`resolveItemAttachment`) rather than a static slotId→bone table.
+   * Meaningless for bone-parented slots (boneParented === true) — Three.js
+   * already propagates the bone's transform for those. Null while the
+   * slot's parent hasn't resolved yet (transient) or for a slot with no
+   * rest-follow behavior at all.
+   */
+  restBoneId: string | null;
+  /**
    * Hand-bone-local attachment data when this slot holds a blade-bearing
    * item (a weapon with a swingable component). Null for shields,
    * lanterns, or any other held thing without a blade. When present, the
@@ -101,6 +112,20 @@ export interface EntityMeshGroup {
   voxelMeshes: THREE.Mesh[] | null;
   /** Non-null when in skeleton mode. boneId → bone Group. */
   boneGroups: Map<string, THREE.Group> | null;
+  /**
+   * T-223 — boneId ↔ bone-ENTITY-id, built from the character entity's
+   * replicated bone children (`ClientWorld.descendants()`, walked once at
+   * skeleton-build time by `EntityMeshRegistry`). This is IDENTITY only —
+   * which wire entity corresponds to which content boneId — never geometry
+   * or transform; `boneGroups` above stays the one THREE.Group-per-boneId
+   * pose target, built from content `SkeletonDef` data exactly as before.
+   * `resolveItemAttachment` uses `boneIdByEntity` to turn an equipped item's
+   * scene-graph parent (a bone entity id) into the boneId `syncArmorSlot`/
+   * `syncHandSlot` need. Empty (not null) before the skeleton is built or
+   * for a non-skeletal entity — see `createEntityMesh`.
+   */
+  boneEntityByBoneId: Map<string, string>;
+  boneIdByEntity: Map<string, string>;
   /**
    * Item attachment slots — slotId → AttachmentSlot.
    * Entity-root slots are positioned per-frame by the renderer.
@@ -254,6 +279,8 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     placeholder,
     voxelMeshes: null,
     boneGroups: null,
+    boneEntityByBoneId: new Map(),
+    boneIdByEntity: new Map(),
     attachments: new Map(),
     boneSlotTransforms: new Map(),
     boneSprings: new Map(),
@@ -419,6 +446,11 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
   }
   mesh.attachments.clear();
   mesh.boneSlotTransforms.clear();
+  // T-223: identity maps are rebuilt fresh right after upgradeToSkeletonModel
+  // returns (EntityMeshRegistry walks the bone entities again) — clear here
+  // so a model swap can't leave a stale entity→boneId mapping alive.
+  mesh.boneEntityByBoneId.clear();
+  mesh.boneIdByEntity.clear();
   mesh.boneSprings.clear(); // drop stale spring state so a model swap doesn't ease from a garbage pose
   mesh.dissolveUniforms = []; // drop refs to about-to-be-disposed materials' uniform bundles
   // Gait accumulator (T-308): re-seed on next frame instead of carrying a
@@ -1011,7 +1043,7 @@ export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): Attachm
     const anchor = new THREE.Group();
     anchor.name = `attachment:${slotId}`;
     mesh.group.add(anchor);
-    slot = { anchor, modelId: null, boneParented: false, bladeAttach: null };
+    slot = { anchor, modelId: null, boneParented: false, bladeAttach: null, restBoneId: null };
     mesh.attachments.set(slotId, slot);
   }
   return slot;
@@ -1061,7 +1093,7 @@ export function ensureBoneAttachment(
     // when building the armor model voxels at the correct scale.
     anchor.userData.armorSubScale = subScale;
     boneGroup.add(anchor);
-    slot = { anchor, modelId: null, boneParented: true, bladeAttach: null };
+    slot = { anchor, modelId: null, boneParented: true, bladeAttach: null, restBoneId: null };
     mesh.attachments.set(slotId, slot);
   }
   return slot;
