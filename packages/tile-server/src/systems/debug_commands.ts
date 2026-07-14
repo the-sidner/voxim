@@ -90,15 +90,24 @@ export class DebugCommandSystem implements System {
   // ── handlers ──────────────────────────────────────────────────────────────
 
   private _giveItem(world: World, entityId: EntityId, itemType: string, quantity: number): void {
-    const inv = world.get(entityId, Inventory);
-    if (!inv) return;
-    if (inv.slots.length >= inv.capacity) {
-      log.debug("debug_give: entity=%s inventory full", entityId);
-      return;
-    }
+    if (!world.get(entityId, Inventory)) return;
     const clampedQty = Math.max(1, Math.min(quantity, 255));
     const newSlot: InventorySlot = { kind: "stack", prefabId: itemType, quantity: clampedQty };
-    world.set(entityId, Inventory, { ...inv, slots: [...inv.slots, newSlot] });
+    // `mutate`, not get-then-set (T-249): two gives in the SAME tick would both
+    // read the same pre-tick Inventory and both write `[...thatSame, mine]`, so
+    // the second silently clobbers the first and one item vanishes. Found live —
+    // giving a bow and arrows together delivered only the arrows. mutate() runs
+    // at commit against whatever earlier ops this tick already left behind, so
+    // concurrent contributors compose. The capacity check has to move INSIDE the
+    // closure for the same reason: checked against the stale read it could admit
+    // a slot that no longer fits.
+    world.mutate(entityId, Inventory, (inv) => {
+      if (inv.slots.length >= inv.capacity) {
+        log.debug("debug_give: entity=%s inventory full", entityId);
+        return inv;
+      }
+      return { ...inv, slots: [...inv.slots, newSlot] };
+    });
     log.info("debug_give: entity=%s item=%s qty=%d", entityId, itemType, clampedQty);
   }
 
@@ -174,7 +183,11 @@ export class DebugCommandSystem implements System {
     world.write(itemId, ItemEffects, {
       effects: [{ id: "unlock_stair", params: { trinketId: stair.trinketId } }],
     });
-    world.set(playerId, Inventory, { ...inv, slots: [...inv.slots, { kind: "unique", entityId: itemId }] });
+    // mutate, not set — same lost-update reason as _giveItem above (T-249).
+    world.mutate(playerId, Inventory, (cur) => ({
+      ...cur,
+      slots: [...cur.slots, { kind: "unique", entityId: itemId } as InventorySlot],
+    }));
     log.info("debug_give_trinket: player=%s stair=%s trinketId=%s item=%s", playerId, stairId, stair.trinketId, itemId);
   }
 

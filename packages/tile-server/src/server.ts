@@ -896,9 +896,38 @@ export class TileServer {
       // instead of a fail-fast boot error, same bar as every other content
       // cross-check on this page.
       const swingable = (prefab.components as Record<string, unknown> | undefined)?.swingable as
-        | { swingActionId?: string } | undefined;
+        | { swingActionId?: string; chain?: Array<{ light?: string; heavy?: string }> } | undefined;
       if (swingable?.swingActionId && !content.actions.get(swingable.swingActionId)) {
         throw new Error(`Prefab "${prefab.id}" swingable.swingActionId "${swingable.swingActionId}" resolves to no ActionDef.`);
+      }
+      // T-337: a HOLD-TO-AIM weapon must not offer a light/heavy split.
+      //
+      // The server picks light-vs-heavy from the SwingChain component, which is a
+      // MELEE combo concept — nothing writes or resets it when a hold-to-aim
+      // weapon is equipped. So a stale `heavy` left behind by a previously-held
+      // sword could make the server fire the .heavy WeaponActionDef while the
+      // client's aim arc — which has no access to SwingChain — always previews
+      // .light. The arc would then lie about where the shot lands, and a landing
+      // marker that lies reads as "netcode" forever. Every shipped ranged/thrown
+      // weapon happens to set light === heavy today, so the divergence is
+      // currently unreachable; this makes that a rule instead of a coincidence.
+      //
+      // Lifting it means giving hold-to-aim weapons a real charge→variant model
+      // that the client can also see. That is a design call, not an oversight —
+      // and this check is what will force it to be made deliberately.
+      const swingAction = swingable?.swingActionId ? content.actions.get(swingable.swingActionId) : undefined;
+      if (swingAction?.releaseActionId) {
+        for (const [i, step] of (swingable?.chain ?? []).entries()) {
+          if (step.light !== step.heavy) {
+            throw new Error(
+              `Prefab "${prefab.id}" is hold-to-aim (its action "${swingable!.swingActionId}" has releaseActionId ` +
+              `"${swingAction.releaseActionId}") but chain[${i}] declares light "${step.light}" ≠ heavy "${step.heavy}". ` +
+              `The client's aim arc cannot see SwingChain, so it would preview one action while the server fires the ` +
+              `other — the arc would lie about the impact point. Make them equal, or design a charge→variant model ` +
+              `the client can read too.`,
+            );
+          }
+        }
       }
     }
 
@@ -1383,6 +1412,25 @@ export class TileServer {
     const _tChangeset = performance.now();
     const changeset = this.world.applyChangeset();
     _sysMs.push(["[changeset]", performance.now() - _tChangeset]);
+
+    // Re-index the spatial grid on the COMMITTED world (T-343).
+    //
+    // The rebuild in step 2 reflects last tick's state — which is right for the
+    // systems, who must all see one consistent snapshot. But AoI (step 6) reads
+    // this same grid, and an entity BORN during step 2 (a projectile, a dropped
+    // item, a spawned NPC) is not in it. So on its first tick it is replicated to
+    // nobody.
+    //
+    // For a projectile that is not a rounding error, it is the whole feature: a
+    // bow arrow lives ~3 ticks, so a third of its flight is never sent, and it
+    // appears to the client already downrange. Anything faster — dying inside one
+    // tick — is NEVER rendered at all, while the server happily reports the hit.
+    // That is exactly what "the arrow doesn't show up but the damage lands" looks
+    // like, and it would have been chased as a render bug forever.
+    //
+    // O(entities with Position) and allocation-free, so a second pass is cheap
+    // next to shipping an invisible projectile.
+    this.spatial.rebuild(this.world);
 
     // ── 4. FIRE EVENTS ──────────────────────────────────────────────────────
     // Subscribers see the already-committed world state.

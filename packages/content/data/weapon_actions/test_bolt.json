@@ -1,0 +1,17 @@
+{
+  "id": "test_bolt",
+  "actionType": "ranged",
+  "windupTicks": 12,
+  "activeTicks": 1,
+  "winddownTicks": 10,
+  "clipId": "standing_aim_recoil",
+  "staminaCost": 4,
+  "projectile": {
+    "speed": 16,
+    "gravityScale": 0.0,
+    "radius": 0.3,
+    "maxHits": 0,
+    "lifetimeTicks": 150,
+    "modelId": "model_bolt"
+  }
+}

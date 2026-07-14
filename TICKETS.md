@@ -619,6 +619,44 @@ the new (replace, don't accrete). Phases are ordered cheapest-identity-win first
 
 ## Client / Controls, Feel & Render Polish
 
+### T-343 · Spatial grid was rebuilt BEFORE the systems, but AoI reads it AFTER
+Effort: S   Status: done   Commit: (see below)   (found live, 2026-07-14)
+
+The tick did `spatial.rebuild()` at the top of step 2 (run systems), and `computeSessionUpdate`
+(step 6, AoI) then read that same grid. So an entity BORN during step 2 — a projectile, a dropped
+item, a spawned NPC — was not in the grid, and on its first tick was replicated **to nobody**.
+
+For a projectile that is not a rounding error, it is the feature: a bow arrow lives ~3 ticks, so a
+third of its flight was never sent and it appeared to the client already downrange. Anything dying
+inside one tick would NEVER be rendered at all, while the server happily reported the hit — i.e.
+"the arrow doesn't show up but the damage lands", which would have been chased as a render bug
+forever.
+
+Fix: a second `spatial.rebuild()` on the COMMITTED world, after `applyChangeset()` and before the
+AoI pass. The step-2 rebuild stays — the systems must all see one consistent snapshot. O(entities
+with Position) and allocation-free, so the second pass is cheap next to shipping an invisible
+projectile.
+
+### T-344 · `Inventory` is a multi-writer component still using get-then-set
+Effort: M   Status: todo   (found live, 2026-07-14)
+
+`world.mutate` (T-249) exists precisely because a component with several writers cannot be updated
+with a `get` → `set` pair: two writers in the same tick both read the same pre-tick value and both
+write their own version, so the second silently clobbers the first. `Health` and `Resource` were
+migrated. **`Inventory` was not**, and it has at least seven writers: DebugCommandSystem, Trader,
+Container, Placement, BlueprintHitHandler, StaleSlotCleanup, EquipmentSystem.
+
+Found live: giving a bow and arrows in the same tick delivered only the arrows — the bow's slot
+append was overwritten. Fixed in `DebugCommandSystem` (both give paths now `mutate`), but the
+pattern is repo-wide and the same lost update is reachable in real gameplay whenever two of those
+writers land on one tick (loot a stack while a crafting output completes; a trade settles while a
+blueprint consumes materials).
+
+Done when: every `world.set(..., Inventory, ...)` is a `world.mutate`, with the read-side
+validation (capacity, "do I still have the item") moved INSIDE the closure — checking against a
+stale read is the same bug wearing a hat. Audit `Equipment` and `Container` for the same shape
+while in there.
+
 ### T-335 · Ctrl+W closes the browser tab — crouch is bound to Ctrl
 Effort: S   Status: done   Commit: (see below)   (user, 2026-07-14)
 
