@@ -6,8 +6,13 @@
  * shell). v2 carries the carried item entities and re-completes the player
  * through spawnPrefab. Asserts the ticket's "done when": a player crosses with
  * an equipped unique item and continues playing — visible, hittable, acting,
- * item intact, fog preserved. The payload is round-tripped through JSON to
- * match how it actually travels (gateway POST).
+ * item intact. The payload is round-tripped through JSON to match how it
+ * actually travels (gateway POST).
+ *
+ * Fog deliberately does NOT travel (T-361): it is keyed per (player, tile)
+ * in the account service, so the destination hydrates its own stored bitmap
+ * at rejoin — carrying the source bitmap painted tile A's exploration onto
+ * tile B's minimap.
  */
 
 import { assert, assertEquals } from "jsr:@std/assert";
@@ -43,7 +48,7 @@ function spawnPlayerWithGear(world: World, c: ContentService): { playerId: strin
   const eq = world.get(playerId, Equipment)!;
   world.write(playerId, Equipment, { ...eq, weapon: { entityId: itemId, prefabId: "stone_sword" } });
 
-  // Mark a fog cell so we can prove the bitmap survives.
+  // Mark a fog cell so we can prove the SOURCE bitmap does NOT cross (T-361).
   const fog = world.get(playerId, FogState)!;
   fog.seenEver[7] = 0x5a;
   world.write(playerId, FogState, fog);
@@ -79,8 +84,10 @@ Deno.test("T-256: a player crosses with an equipped unique item and is re-comple
   assertEquals(dst.get(playerId, Health)!.current, 33, "health carried");
   assertEquals(dst.get(playerId, Position)!.x, 50, "position carried");
 
-  // Fog bitmap preserved.
-  assertEquals(dst.get(playerId, FogState)!.seenEver[7], 0x5a, "fog survives the crossing");
+  // Fog does NOT cross (T-361): per-(player,tile) in the account service —
+  // the destination starts empty and hydrates its own row at rejoin.
+  assert(!("fogSeenEver" in wire), "payload carries no fog bitmap");
+  assertEquals(dst.get(playerId, FogState)!.seenEver[7], 0, "source exploration not painted onto the destination");
 });
 
 Deno.test("T-256: restore is idempotent (retry doesn't duplicate or clobber)", async () => {

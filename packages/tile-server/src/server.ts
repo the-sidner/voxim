@@ -898,19 +898,29 @@ export class TileServer {
 
     // Fog of war (T-161): hydrate from the account service. Non-fatal;
     // pendingSnapshot stays true so the next state message ships the bitmap.
-    if (this.accountClient) {
-      const fogBitmap = await this.accountClient.getFog(playerId, this.tileId).catch((err: unknown) => {
-        console.error("[TileServer] fog fetch failed:", err);
-        return null;
-      });
-      if (fogBitmap) {
-        const fog = this.world.get(playerId, FogState);
-        if (fog && fogBitmap.byteLength === fog.seenEver.byteLength) {
-          fog.seenEver.set(fogBitmap);
-          console.log(`[TileServer] fog restored for ${playerId.slice(0, 8)} on ${this.tileId}`);
-        }
-      }
-    }
+    await this.hydrateFog(playerId);
+  }
+
+  /**
+   * Hydrate the player's FogState from the account service's per-(player,
+   * tile) bitmap (T-161). OR-merges into whatever the live entity already
+   * revealed (a handed-off entity stands in-world before its client joins,
+   * so a few cells may be lit already) and forces `pendingSnapshot` so the
+   * next state message ships the merged bitmap. Best-effort: no account
+   * client / no stored row / length mismatch → no-op.
+   */
+  private async hydrateFog(playerId: EntityId): Promise<void> {
+    if (!this.accountClient) return;
+    const fogBitmap = await this.accountClient.getFog(playerId, this.tileId).catch((err: unknown) => {
+      console.error("[TileServer] fog fetch failed:", err);
+      return null;
+    });
+    if (!fogBitmap) return;
+    const fog = this.world.get(playerId, FogState);
+    if (!fog || fogBitmap.byteLength !== fog.seenEver.byteLength) return;
+    for (let i = 0; i < fogBitmap.length; i++) fog.seenEver[i] |= fogBitmap[i];
+    fog.pendingSnapshot = true;
+    console.log(`[TileServer] fog restored for ${playerId.slice(0, 8)} on ${this.tileId}`);
   }
 
   /**
@@ -1098,6 +1108,11 @@ export class TileServer {
 
     if (this.world.isAlive(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)} rejoining (post-handoff)`);
+      // A handed-off entity arrives with an EMPTY fog bitmap — fog is keyed
+      // per (player, tile) in the account service and never travels in the
+      // handoff payload (T-361). Hydrate THIS tile's stored exploration the
+      // same way a fresh spawn does.
+      await this.hydrateFog(playerId);
     } else {
       await this.spawnFreshPlayer(playerId, this.handoffCoordinator.getHearthAnchor(playerId));
     }

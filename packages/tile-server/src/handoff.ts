@@ -15,16 +15,22 @@
  *
  * v2 fixes both with the same re-completion `SpawnedFrom` gives save/load
  * (T-251): carry the player's `prefabId` + position + mutable overlay
- * components + the carried item entities + the fog bitmap; restore the items
- * first, RE-SPAWN the player through `spawnPrefab` (rebuilding the full shell),
- * then overlay the saved state on top (the Inventory/Equipment now point at the
- * restored item entities). Components travel as their decoded data objects
- * keyed by name (JSON-native); fog travels as a raw byte array (its codec is a
- * no-op stub).
+ * components + the carried item entities; restore the items first, RE-SPAWN
+ * the player through `spawnPrefab` (rebuilding the full shell), then overlay
+ * the saved state on top (the Inventory/Equipment now point at the restored
+ * item entities). Components travel as their decoded data objects keyed by
+ * name (JSON-native).
  *
  * NOT carried (transient, reset on connect): InputState, the action runtime
  * (ActiveActions), presence-as-flag combat tags (iframe/blocking/staggered),
  * buffs (scene-graph children).
+ *
+ * Fog is NOT carried either (T-361): the account service keys fog per
+ * (player, tile), so the source tile's bitmap is meaningless on the
+ * destination — smuggling it across painted tile A's exploration onto tile
+ * B's minimap and then persisted the contamination on the next save. The
+ * source tile saves its fog in teardownSession(handedOff); the destination
+ * hydrates ITS OWN stored fog when the client rejoins (handleSession).
  */
 import type { World, EntityId, ComponentDef } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
@@ -36,7 +42,6 @@ import { LoreLoadout } from "./components/lore_loadout.ts";
 import { Heritage } from "./components/heritage.ts";
 import { ItemData } from "./components/items.ts";
 import { Durability, Inscribed, QualityStamped, Stats, Provenance, History, Owned } from "./components/instance.ts";
-import { FogState } from "./components/fog_state.ts";
 import { SpawnedFrom } from "./components/spawned_from.ts";
 import { DEF_BY_NAME } from "./component_registry.ts";
 import { spawnPrefab, destroyCarriedItemEntities, reattachAllEquipment } from "./spawner.ts";
@@ -76,8 +81,6 @@ export interface HandoffPayload {
   player: ComponentMap;
   /** Carried unique item entities, restored before the player overlay references them. */
   items: SerializedEntity[];
-  /** Fog `seenEver` bitmap as a byte array (its codec is a no-op stub). */
-  fogSeenEver: number[] | null;
 }
 
 /** The entity ids of every unique item this holder carries (inventory + equipment). */
@@ -127,7 +130,6 @@ export function serializePlayer(
   handoffId: string,
 ): HandoffPayload {
   const pos = world.get(playerId, Position) ?? { x: 256, y: 256, z: 4 };
-  const fog = world.get(playerId, FogState);
   return {
     playerId,
     dynastyId,
@@ -140,7 +142,6 @@ export function serializePlayer(
       entityId: id,
       components: collect(world, id, ITEM_DEFS),
     })),
-    fogSeenEver: fog ? Array.from(fog.seenEver) : null,
   };
 }
 
@@ -191,14 +192,9 @@ export function restorePlayer(world: World, content: ContentService, payload: Ha
   //     never yet visible to any session.
   reattachAllEquipment(world, id);
 
-  // 5. Fog bitmap — its codec is a no-op, so it rides as raw bytes.
-  if (payload.fogSeenEver) {
-    const seen = world.get(id, FogState)?.seenEver;
-    if (seen && seen.length === payload.fogSeenEver.length) {
-      seen.set(payload.fogSeenEver);
-      world.write(id, FogState, { seenEver: seen, revealedThisTick: [], pendingSnapshot: true });
-    }
-  }
+  // (Fog: deliberately untouched — spawnPrefab created an empty FogState;
+  // this tile's stored bitmap is hydrated when the client rejoins, see
+  // TileServer.hydrateFog. T-361.)
 
   return id;
 }
