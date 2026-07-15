@@ -211,9 +211,34 @@ export class PhysicsSystem implements System {
     // one-tick events for SM transitions that care about the moment of
     // takeoff/landing.
     for (const s of steps) {
-      world.set(s.entityId, Position, s.position);
-      world.set(s.entityId, Velocity, s.velocity);
-      world.set(s.entityId, Facing, { angle: s.facing });
+      // Sparse-delta gate (T-361): only commit values that actually changed.
+      // Every set in the changeset becomes a wire delta (applyChangeset has
+      // no value-equality gate), so an unconditional commit of a resting
+      // actor's Position/Velocity/Facing turned the "only changed
+      // components" channel into a 20 Hz rebroadcast of every idle actor —
+      // and stepPhysics at rest is an exact fixpoint (ground snap re-yields
+      // the same position, drag zeroes velocity), so exact comparison is
+      // enough. Exact, NOT epsilon: a sub-epsilon-per-tick creep must still
+      // commit, or the next tick (which integrates from committed state)
+      // would freeze the entity in place.
+      const prevPos = world.get(s.entityId, Position);
+      if (
+        !prevPos || prevPos.x !== s.position.x || prevPos.y !== s.position.y ||
+        prevPos.z !== s.position.z
+      ) {
+        world.set(s.entityId, Position, s.position);
+      }
+      const prevVel = world.get(s.entityId, Velocity);
+      if (
+        !prevVel || prevVel.x !== s.velocity.x || prevVel.y !== s.velocity.y ||
+        prevVel.z !== s.velocity.z
+      ) {
+        world.set(s.entityId, Velocity, s.velocity);
+      }
+      const prevFacing = world.get(s.entityId, Facing);
+      if (!prevFacing || prevFacing.angle !== s.facing) {
+        world.set(s.entityId, Facing, { angle: s.facing });
+      }
 
       const groundZ = getHeight(s.position.x, s.position.y);
       // Generous deadband (one stair step) plus coyote ticks so the SM never

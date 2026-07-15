@@ -48,6 +48,20 @@ import { NETWORKED_DEFS } from "./component_registry.ts";
  */
 const MAX_CHUNK_SPAWNS_PER_TICK = 12;
 
+/**
+ * AoI exit hysteresis margin (world units). Entities ENTER AoI at aoiRadius
+ * (the spatial query, unchanged) but a known positioned entity only LEAVES
+ * beyond aoiRadius + this margin. Without the split, an entity pacing across
+ * the boundary alternates between a whole-entity destroy and a full re-spawn
+ * — re-shipping its complete component snapshot AND its bone-entity subtree
+ * every crossing, with the client rebuilding mesh + skeleton in lockstep.
+ *
+ * Two spatial-grid cells (2 × 16): nearby() is cell-quantized, so the
+ * effective entry edge wobbles by up to a cell — the margin must clear that
+ * wobble or hysteresis degrades back to a hard cut on cell boundaries.
+ */
+const AOI_EXIT_MARGIN = 32;
+
 function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponentEntry[] {
   const components: BinaryComponentEntry[] = [];
   for (const def of NETWORKED_DEFS) {
@@ -146,6 +160,25 @@ export function computeSessionUpdate(
 
   // The player's own entity is always visible
   inAoI.add(playerId);
+
+  // Exit hysteresis: a positioned entity the session already knows stays
+  // visible until it passes aoiRadius + AOI_EXIT_MARGIN. Re-adding it to
+  // inAoI (rather than special-casing the prune below) keeps every
+  // downstream rule intact — the descendants pass still pulls its bone
+  // subtree, deltas keep flowing, and the eventual despawn is the ordinary
+  // prune. World-destroyed entities read null Position post-purge and fall
+  // through to the destroy diff as before.
+  if (pos) {
+    const exitRadiusSq = (aoiRadius + AOI_EXIT_MARGIN) ** 2;
+    for (const id of session.knownEntities) {
+      if (inAoI.has(id)) continue;
+      const epos = world.get(id, Position);
+      if (!epos) continue;
+      const dx = epos.x - pos.x;
+      const dy = epos.y - pos.y;
+      if (dx * dx + dy * dy <= exitRadiusSq) inAoI.add(id);
+    }
+  }
 
   // Unique item entities the player carries have no Position (they don't sit
   // in the spatial grid) yet the holder's client must see them — their prefab

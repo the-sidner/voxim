@@ -12,7 +12,7 @@
  * bilinear interpolation).  Out-of-tile coordinates return 0 and log once.
  */
 import type { World, EntityId } from "@voxim/engine";
-import { Heightmap, OpenMask, getHeight, worldToChunk, worldToLocal, CHUNK_SIZE } from "@voxim/world";
+import { Heightmap, OpenMask, getHeight, CHUNK_SIZE } from "@voxim/world";
 import type { HeightmapData, OpenMaskData } from "@voxim/world";
 import { createLogger } from "../logger.ts";
 
@@ -22,26 +22,41 @@ export type TerrainHeightFn = (x: number, y: number) => number;
 export type OpennessFn = (x: number, y: number) => boolean;
 
 /**
+ * Packed numeric chunk key. Probes are the hottest loops on the server
+ * (fog LOS alone is ~8,800/player/tick), and a template-string key costs a
+ * string allocation + string hash per probe; a plain number is neither.
+ * Valid chunk coords are 0..15, so ×2^16 is collision-free for any
+ * out-of-tile query a physics probe can realistically produce (they just
+ * miss the map, same as the string key did).
+ */
+function chunkKey(chunkX: number, chunkY: number): number {
+  return chunkX * 0x10000 + chunkY;
+}
+
+/**
  * Build a per-tick height lookup from the current world's Heightmap chunks.
  * Cheap (~256 chunks/tile, one map insert each); rebuilds every tick because
  * TerrainDigSystem replaces Heightmap components when cells are lowered, so
  * a stored closure would read pre-dig data.
  */
 export function buildTerrainLookup(world: World): TerrainHeightFn {
-  const chunkMap = new Map<string, HeightmapData>();
+  const chunkMap = new Map<number, HeightmapData>();
   for (const { heightmap } of world.query(Heightmap)) {
-    chunkMap.set(`${heightmap.chunkX},${heightmap.chunkY}`, heightmap);
+    chunkMap.set(chunkKey(heightmap.chunkX, heightmap.chunkY), heightmap);
   }
 
+  // Allocation-free probe: chunk/local math inlined (worldToChunk/
+  // worldToLocal return fresh objects) + numeric map key. floor(x) − cx·32
+  // equals floor(worldToLocal(x)) for negative coordinates too.
   return (x: number, y: number): number => {
-    const { chunkX, chunkY } = worldToChunk(x, y);
-    const { localX, localY } = worldToLocal(x, y);
-    const hm = chunkMap.get(`${chunkX},${chunkY}`);
+    const chunkX = Math.floor(x / CHUNK_SIZE);
+    const chunkY = Math.floor(y / CHUNK_SIZE);
+    const hm = chunkMap.get(chunkKey(chunkX, chunkY));
     if (!hm) {
       log.warn("no heightmap for chunk (%d,%d) — query at (%.1f,%.1f) in void", chunkX, chunkY, x, y);
       return 0;
     }
-    return getHeight(hm, Math.floor(localX), Math.floor(localY));
+    return getHeight(hm, Math.floor(x) - chunkX * CHUNK_SIZE, Math.floor(y) - chunkY * CHUNK_SIZE);
   };
 }
 
@@ -58,19 +73,20 @@ export function buildTerrainLookup(world: World): TerrainHeightFn {
 export function buildOpennessLookup(world: World): OpennessFn {
   // OpenMask doesn't carry chunkX/chunkY itself, so join with Heightmap
   // (which does) to index by coordinate. Cheap — same chunk count.
-  const chunkByCoord = new Map<string, OpenMaskData>();
+  const chunkByCoord = new Map<number, OpenMaskData>();
   for (const { entityId, heightmap } of world.query(Heightmap)) {
     const om = world.get(entityId, OpenMask);
-    if (om) chunkByCoord.set(`${heightmap.chunkX},${heightmap.chunkY}`, om);
+    if (om) chunkByCoord.set(chunkKey(heightmap.chunkX, heightmap.chunkY), om);
   }
 
+  // Same allocation-free probe shape as buildTerrainLookup above.
   return (x: number, y: number): boolean => {
-    const { chunkX, chunkY } = worldToChunk(x, y);
-    const { localX, localY } = worldToLocal(x, y);
-    const om = chunkByCoord.get(`${chunkX},${chunkY}`);
+    const chunkX = Math.floor(x / CHUNK_SIZE);
+    const chunkY = Math.floor(y / CHUNK_SIZE);
+    const om = chunkByCoord.get(chunkKey(chunkX, chunkY));
     if (!om) return true; // out of tile — don't accidentally block
-    const lx = Math.floor(localX);
-    const ly = Math.floor(localY);
+    const lx = Math.floor(x) - chunkX * CHUNK_SIZE;
+    const ly = Math.floor(y) - chunkY * CHUNK_SIZE;
     return om.data[lx + ly * CHUNK_SIZE] === 1;
   };
 }

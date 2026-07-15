@@ -1,8 +1,7 @@
 /// <reference path="./types/webtransport.d.ts" />
 import type { EntityId } from "@voxim/engine";
 import type { CommandPayload } from "@voxim/protocol";
-import { decodeDatagram, commandDatagramCodec, worldSnapshotCodec, makeFrameReader } from "@voxim/protocol";
-import type { WorldSnapshot } from "@voxim/protocol";
+import { decodeDatagram, commandDatagramCodec, makeFrameReader } from "@voxim/protocol";
 import { InputRingBuffer } from "./input_buffer.ts";
 
 /**
@@ -165,13 +164,17 @@ export class ClientSession {
   // ── send ─────────────────────────────────────────────────────────────────
 
   /**
-   * Send a WorldSnapshot as an unreliable datagram.
+   * Send a pre-encoded WorldSnapshot page as an unreliable datagram.
    * Fire-and-forget — loss is acceptable; the next tick supersedes this one.
+   *
+   * Takes bytes, not the snapshot object: a page's bytes are identical for
+   * every session, so the tick loop encodes each page exactly once and
+   * broadcasts the shared buffer (datagram writes never mutate their input).
    */
-  sendSnapshot(snap: WorldSnapshot): void {
+  sendSnapshot(bytes: Uint8Array): void {
     if (this._closed || !this.datagramWriter) return;
     try {
-      this.datagramWriter.write(worldSnapshotCodec.encode(snap)).catch(() => {});
+      this.datagramWriter.write(bytes).catch(() => {});
     } catch {
       // Datagram writer gone — session likely closing
     }
