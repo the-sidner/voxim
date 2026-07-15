@@ -24,6 +24,7 @@ function hammerCtx(attackerId: EntityId, targetId: EntityId, buildPower = 5): Hi
     attackerX: 0, attackerY: 0, targetX: 0, targetY: 0,
     hitX: 0, hitY: 0, hitZ: 0,
     parryAllowed: true,
+    serverTick: 0,
   };
 }
 

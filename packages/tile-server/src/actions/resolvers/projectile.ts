@@ -141,6 +141,7 @@ export class ProjectileTraceResolver implements EffectResolver {
           hitY: newPos.y,
           hitZ: newPos.z,
           parryAllowed: false,
+          serverTick: ctx.serverTick,
         }),
       );
       if (!hit) continue;

@@ -1,4 +1,4 @@
-import type { World } from "@voxim/engine";
+import type { World, EntityId } from "@voxim/engine";
 import { TileEvents } from "@voxim/protocol";
 import type { ContentService } from "@voxim/content";
 import type { EventEmitter } from "../system.ts";
@@ -48,6 +48,40 @@ export class HealthHitHandler implements HitHandler {
     private readonly modifierSources: ModifierSourceRegistry,
   ) {}
 
+  /**
+   * Reaction requests staged this tick, keyed off ctx.serverTick. Two
+   * attackers' swings can both be in their active phase in the same
+   * dispatcher run, so onHit fires twice against one target in one tick —
+   * and PendingReaction writes from separate calls would otherwise be
+   * last-write-wins in the op-log (a poise-break stagger silently
+   * downgraded to a later light hit's flinch; a parry's punish stagger
+   * erased by an unrelated hit on the attacker).
+   */
+  private stagedTick = -1;
+  private readonly stagedReactions = new Map<EntityId, string>();
+
+  /**
+   * Post a reaction request, keeping the highest-`interruptPriority`
+   * ActionDef when several land on one entity in one tick. Emits a plain
+   * `world.set` carrying the merged winner (NOT a mutate): the resolver's
+   * one-shot consume is a deferred `world.remove`, and set is the only op
+   * that survives it regardless of op order — matching the pre-existing
+   * single-writer semantics exactly, with only the winner changed.
+   */
+  private requestReaction(world: World, entityId: EntityId, actionId: string, serverTick: number): void {
+    if (serverTick !== this.stagedTick) {
+      this.stagedReactions.clear();
+      this.stagedTick = serverTick;
+    }
+    const staged = this.stagedReactions.get(entityId);
+    if (staged !== undefined) {
+      const prio = (id: string) => this.content.actions.get(id)?.interruptPriority ?? 0;
+      if (prio(staged) > prio(actionId)) return; // staged request outranks this one
+    }
+    this.stagedReactions.set(entityId, actionId);
+    world.set(entityId, PendingReaction, { actionId });
+  }
+
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {
     const health = world.get(ctx.targetId, Health);
     if (!health) return;
@@ -95,7 +129,7 @@ export class HealthHitHandler implements HitHandler {
       // counter window: the CounterReady flag plus a `counter_window` Resource
       // that expires it (cross@0 → clear_counter_ready) if unconsumed — so the
       // bonus can't latch forever the way it did before T-250.
-      world.set(ctx.attackerId, PendingReaction, { actionId: "stagger_heavy" });
+      this.requestReaction(world, ctx.attackerId, "stagger_heavy", ctx.serverTick);
       world.set(ctx.targetId, CounterReady, {});
       const counterTicks = combatCfg.counterWindowTicks;
       upsertResourceKey(world, ctx.targetId, "counter_window", counterTicks, counterTicks);
@@ -241,9 +275,11 @@ export class HealthHitHandler implements HitHandler {
     if (!isBlocking && damage > 0) {
       // Reuses frontBackDot computed above (T-299) — dot >= 0 means the
       // attacker is in front of the target.
-      world.set(ctx.targetId, PendingReaction, {
-        actionId: frontBackDot >= 0 ? "hit_front" : "hit_back",
-      });
+      this.requestReaction(
+        world, ctx.targetId,
+        frontBackDot >= 0 ? "hit_front" : "hit_back",
+        ctx.serverTick,
+      );
 
       // ── Poise / stagger (T-197, poise is a Resource since T-238d) ──────────
       // Damage reduces `Resource.values.poise`. When it breaks, the breaking
@@ -264,12 +300,14 @@ export class HealthHitHandler implements HitHandler {
           // Break: reset to max (absolute, composing-merge — sibling keys
           // and later same-tick contributions stay intact, T-249).
           upsertResourceKey(world, ctx.targetId, "poise", poise.max, poise.max);
-          // Overwrites the hit_front/back request set above — stagger
-          // supersedes the flinch (and the dispatcher's interrupt
-          // priority would anyway).
-          world.set(ctx.targetId, PendingReaction, {
-            actionId: heavy ? "stagger_heavy" : "stagger_light",
-          });
+          // Outranks the hit_front/back request above via the priority
+          // merge — stagger supersedes the flinch, here AND across other
+          // same-tick onHit calls against this target.
+          this.requestReaction(
+            world, ctx.targetId,
+            heavy ? "stagger_heavy" : "stagger_light",
+            ctx.serverTick,
+          );
         } else {
           // Composing subtract: two same-tick hits both chip poise (each
           // hit's break decision still reads committed state — a break only
