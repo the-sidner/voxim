@@ -332,13 +332,17 @@ export class HealthHitHandler implements HitHandler {
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       const kx = (dx / dist) * combatCfg.knockbackImpulseXY * knockbackMult;
       const ky = (dy / dist) * combatCfg.knockbackImpulseXY * knockbackMult;
-      const vel = world.get(ctx.targetId, Velocity);
-      if (vel) {
-        world.set(ctx.targetId, Velocity, {
-          x: vel.x + kx,
-          y: vel.y + ky,
-          z: vel.z + combatCfg.knockbackImpulseZ * knockbackMult,
-        });
+      const kz = combatCfg.knockbackImpulseZ * knockbackMult;
+      // Composing mutate (T-249): two same-tick hits both shove — each
+      // impulse adds onto whatever earlier ops (physics' write, a prior
+      // hit's impulse) left behind, instead of a committed-read + set
+      // dropping every impulse but the last.
+      if (world.has(ctx.targetId, Velocity)) {
+        world.mutate(ctx.targetId, Velocity, (v) => ({
+          x: v.x + kx,
+          y: v.y + ky,
+          z: v.z + kz,
+        }));
       }
     }
   }
